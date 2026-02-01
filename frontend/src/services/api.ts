@@ -43,7 +43,7 @@ export const propertyAPI = {
 
   list: async (filters?: any): Promise<Property[]> => {
     const { data } = await api.get('/properties', { params: filters });
-    return data;
+    return data.data || [];
   },
 
   togglePin: async (id: string): Promise<Property> => {
