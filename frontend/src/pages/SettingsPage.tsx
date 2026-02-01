@@ -366,33 +366,272 @@ function AgentConfigModal({ onClose }: { onClose: () => void }) {
 }
 
 function ProfilePanel({ user }: { user: any }) {
+  const [markets, setMarkets] = useState(['Atlanta, GA', 'Phoenix, AZ', 'Dallas, TX']);
+  const [newMarket, setNewMarket] = useState('');
+
+  const addMarket = () => {
+    if (newMarket.trim() && !markets.includes(newMarket.trim())) {
+      setMarkets([...markets, newMarket.trim()]);
+      setNewMarket('');
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-lg">
-      <div className="flex items-center gap-4">
-        <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-2xl font-bold text-white">
-          {user?.name?.charAt(0) || 'U'}
+    <div className="space-y-6">
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Profile Information</h4>
+        
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-2xl font-bold text-white">
+            {user?.name?.charAt(0) || 'L'}
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-900">{user?.name || 'Leon Doe'}</h4>
+            <p className="text-sm text-gray-500">{user?.email || 'leon@example.com'}</p>
+            <p className="text-xs text-gray-400">Active Investor</p>
+            <button className="text-sm text-blue-600 hover:text-blue-700 mt-1 flex items-center gap-1">
+              📷 Change Photo
+            </button>
+          </div>
         </div>
-        <div>
-          <h4 className="font-bold text-gray-900">{user?.name || 'User'}</h4>
-          <p className="text-sm text-gray-500">{user?.email || 'user@example.com'}</p>
-          <button className="text-sm text-blue-600 hover:text-blue-700 mt-1">Change photo</button>
+
+        <div className="grid gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <input type="text" defaultValue={user?.name || 'Leon Doe'} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+            <input type="email" defaultValue={user?.email || 'leon@example.com'} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+            <div className="flex items-center gap-1 mt-1 text-sm text-green-600">
+              <Check className="w-4 h-4" /> Verified
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number (Optional)</label>
+            <input type="tel" defaultValue="+1 (555) 123-4567" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <button className="w-fit px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium border border-blue-200">
+            Change Password
+          </button>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-          <input type="text" defaultValue={user?.name} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Investment Preferences</h4>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Primary Markets</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {markets.map((market) => (
+                <span key={market} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                  {market}
+                  <button onClick={() => setMarkets(markets.filter(m => m !== market))} className="hover:text-blue-900">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={newMarket}
+                  onChange={(e) => setNewMarket(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addMarket()}
+                  placeholder="Add market"
+                  className="px-2 py-1 border border-gray-300 rounded text-sm w-28"
+                />
+                <button onClick={addMarket} className="text-blue-600 text-sm">+ Add</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Investment Strategies</label>
+            <div className="space-y-2">
+              {[
+                { id: 'flip', label: 'Single Family (Flip)', checked: true },
+                { id: 'rental', label: 'Single Family (Rental)', checked: true },
+                { id: 'build', label: 'Build-to-Sell', checked: true },
+                { id: 'land', label: 'Land Development', checked: false },
+                { id: 'commercial', label: 'Commercial', checked: false },
+              ].map((strategy) => (
+                <label key={strategy.id} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" defaultChecked={strategy.checked} className="rounded text-blue-600" />
+                  <span className="text-sm text-gray-700">{strategy.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Default Filters</label>
+            <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
+              <div>
+                <span className="text-gray-500">Score Range:</span>
+                <span className="ml-1 font-medium">70-100</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Price Range:</span>
+                <span className="ml-1 font-medium">$100K-$500K</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Timeline:</span>
+                <span className="ml-1 font-medium">6-12 months</span>
+              </div>
+            </div>
+            <button className="mt-2 text-sm text-gray-500 hover:text-gray-700">Reset to Defaults</button>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-          <input type="email" defaultValue={user?.email} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Notification Settings</h4>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Email Notifications</label>
+            <div className="space-y-2">
+              {[
+                { label: 'New high-score properties', checked: true },
+                { label: 'Arbitrage opportunities (>15% spread)', checked: true },
+                { label: 'Market alerts', checked: true },
+                { label: 'Weekly digest', checked: true },
+                { label: 'Product updates', checked: false },
+              ].map((notif, i) => (
+                <label key={i} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" defaultChecked={notif.checked} className="rounded text-blue-600" />
+                  <span className="text-sm text-gray-700">{notif.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Push Notifications (Mobile)</label>
+            <div className="space-y-2">
+              {[
+                { label: 'Saved property updates', checked: true },
+                { label: 'Collaboration mentions', checked: true },
+                { label: 'All property updates', checked: false },
+              ].map((notif, i) => (
+                <label key={i} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" defaultChecked={notif.checked} className="rounded text-blue-600" />
+                  <span className="text-sm text-gray-700">{notif.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Frequency</label>
+            <div className="flex gap-4">
+              {['Real-time', 'Daily digest', 'Weekly'].map((freq, i) => (
+                <label key={freq} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="notif-frequency" defaultChecked={i === 0} className="text-blue-600" />
+                  <span className="text-sm text-gray-700">{freq}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-          <input type="tel" placeholder="+1 (555) 000-0000" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Display Settings</h4>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
+            <div className="flex gap-4">
+              {['Light', 'Dark', 'Auto (system)'].map((theme, i) => (
+                <label key={theme} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="theme" defaultChecked={i === 0} className="text-blue-600" />
+                  <span className="text-sm text-gray-700">{theme}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Map Style</label>
+              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option>Streets</option>
+                <option>Satellite</option>
+                <option>Hybrid</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Currency Format</label>
+              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                <option>USD ($)</option>
+                <option>EUR (€)</option>
+                <option>GBP (£)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+            <div className="flex gap-4">
+              {['MM/DD/YYYY', 'DD/MM/YYYY'].map((format, i) => (
+                <label key={format} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="date-format" defaultChecked={i === 0} className="text-blue-600" />
+                  <span className="text-sm text-gray-700">{format}</span>
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
-        <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Privacy & Security</h4>
+        
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {[
+              { label: 'Make my profile visible to team members', checked: true },
+              { label: 'Allow others to see my cursor on map', checked: true },
+              { label: 'Share anonymous usage data', checked: false },
+            ].map((setting, i) => (
+              <label key={i} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" defaultChecked={setting.checked} className="rounded text-blue-600" />
+                <span className="text-sm text-gray-700">{setting.label}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Two-Factor Authentication</span>
+              <span className="flex items-center gap-1 text-sm text-green-600">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Enabled
+              </span>
+            </div>
+            <button className="text-sm text-blue-600 hover:text-blue-700">Manage 2FA</button>
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Connected Accounts</label>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">G</div>
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Google Account</div>
+                  <div className="text-xs text-gray-500">leon@gmail.com</div>
+                </div>
+              </div>
+              <button className="text-sm text-red-600 hover:text-red-700">Disconnect</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
           Save Changes
         </button>
       </div>
