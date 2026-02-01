@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Search, SlidersHorizontal, Bookmark, Eye, Star, ChevronDown } from 'lucide-react';
+import MobileFiltersSheet from './MobileFiltersSheet';
 
 interface Property {
   id: string;
@@ -109,6 +110,7 @@ const mockProperties: Property[] = [
 
 export default function MobileListView({ onPropertySelect }: MobileListViewProps) {
   const [filter, setFilter] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
   const [showingCount] = useState(12);
   const [totalCount] = useState(247);
 
@@ -162,7 +164,10 @@ export default function MobileListView({ onPropertySelect }: MobileListViewProps
               className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <button className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg">
+          <button 
+            onClick={() => setShowFilters(true)}
+            className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg"
+          >
             <SlidersHorizontal className="w-5 h-5 text-gray-600" />
           </button>
         </div>
@@ -276,6 +281,14 @@ export default function MobileListView({ onPropertySelect }: MobileListViewProps
       <div className="pb-4 text-center text-sm text-gray-500">
         Showing {showingCount} of {totalCount} properties
       </div>
+
+      <MobileFiltersSheet
+        isOpen={showFilters}
+        onClose={() => setShowFilters(false)}
+        onApply={(filters) => {
+          console.log('Applied filters:', filters);
+        }}
+      />
     </div>
   );
 }
