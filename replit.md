@@ -57,6 +57,47 @@ Key variables are set automatically:
 - `backend/src/services/zoning.ts` - Zoning lookup and analysis
 - `frontend/src/components/property/PropertyAnalyzer.tsx` - Analysis UI
 
+## Component Architecture
+```
+<App>
+  <MainPage>
+    <FiltersBar />              # Strategy, Score, Timeline, Modules filters
+    <AgentStatusBar />          # Real-time agent confidence indicators
+    <QuickInsights />           # Actionable market intelligence
+    
+    <PropertyAnalyzer />        # Zoning analysis sidebar (togglable)
+    
+    <MapView>
+      <PropertyBubble />        # Color by strategy, size by score
+      <CollaboratorCursor />    # Real-time collaboration
+    </MapView>
+    
+    <PropertyDetail>
+      <StrategyCard />          # Build-to-Sell, Flip, Rental, Airbnb
+      <AgentInsights />         # Per-property agent analysis
+      <ZoningPanel />           # Zoning module insights
+      <SupplyPanel />           # Supply module insights
+      <CashFlowPanel />         # Cash flow module insights
+      <AnnotationSection />     # Collaborative annotations
+    </PropertyDetail>
+  </MainPage>
+</App>
+```
+
+## State Management (Zustand)
+- `properties` - Property list with coordinates, scores, zoning
+- `selectedProperty` - Currently selected property
+- `mapCenter/mapZoom` - Map viewport state
+- `filters` - Active filter settings
+- `activeModules` - Enabled analysis modules
+- `collaborators` - Real-time collaboration users
+
+## WebSocket Events
+- `user_join/leave` - Collaboration presence
+- `cursor_move` - Real-time cursor tracking
+- `pin_property` - Property pinning sync
+- `add_annotation` - Comment synchronization
+
 ## Recent Changes
 - 2026-02-01: Updated UI to match wireframes
   - New header with search bar and user profile
