@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Mail, Lock, Loader, Eye, EyeOff } from 'lucide-react';
 
@@ -13,6 +14,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const { login } = useAuth();
 
@@ -23,7 +25,9 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
 
     try {
       const result = await login(email, password);
-      if (!result.success) {
+      if (result.success) {
+        navigate('/app');
+      } else {
         setError(result.error || 'Login failed');
       }
     } catch (err: any) {

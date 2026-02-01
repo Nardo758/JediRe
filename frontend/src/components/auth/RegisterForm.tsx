@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Mail, Lock, User, Loader, Eye, EyeOff, Check, X, ArrowLeft, ArrowRight } from 'lucide-react';
 
@@ -47,6 +48,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
   const [loading, setLoading] = useState(false);
 
   const { register } = useAuth();
+  const navigate = useNavigate();
 
   const validatePassword = (pwd: string): PasswordValidation => ({
     minLength: pwd.length >= 8,
@@ -94,7 +96,9 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
 
     try {
       const result = await register(email, password, name);
-      if (!result.success) {
+      if (result.success) {
+        navigate('/app');
+      } else {
         setError(result.error || 'Registration failed');
       }
     } catch (err: any) {

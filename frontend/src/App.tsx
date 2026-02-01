@@ -1,11 +1,19 @@
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { useIsMobile } from './hooks/useIsMobile';
 import AuthPage from './pages/AuthPage';
 import MainPage from './pages/MainPage';
+import LandingPage from './pages/LandingPage';
+import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
 
-function App() {
+function SettingsPageWrapper() {
+  const navigate = useNavigate();
+  return <SettingsPage onClose={() => navigate('/app')} />;
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const isMobile = useIsMobile();
 
@@ -21,10 +29,36 @@ function App() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    return <Navigate to="/auth" replace />;
   }
 
-  return isMobile ? <MobileLayout /> : <MainPage />;
+  return isMobile ? <MobileLayout /> : <>{children}</>;
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/auth" element={<AuthPage />} />
+      <Route
+        path="/app"
+        element={
+          <ProtectedRoute>
+            <MainPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPageWrapper />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
 
 export default App;
