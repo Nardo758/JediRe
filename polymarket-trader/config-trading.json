@@ -1,0 +1,33 @@
+{
+  "enabled": true,
+  "monitoring": {
+    "pollIntervalMinutes": 5,
+    "maxMarkets": 50,
+    "minSpreadPercent": 3,
+    "minLiquidity": 10000,
+    "categories": ["politics", "crypto", "sports", "all"]
+  },
+  "trading": {
+    "maxPositionSize": 100,
+    "defaultPositionSize": 50,
+    "autoApprove": false,
+    "riskTolerance": "medium",
+    "enabled": true
+  },
+  "alerts": {
+    "telegram": true,
+    "telegramChatId": "5468062863",
+    "minRiskScore": 3
+  },
+  "apis": {
+    "polymarket": {
+      "apiKey": null,
+      "privateKey": "${WALLET_PRIVATE_KEY}",
+      "baseUrl": "https://clob.polymarket.com"
+    },
+    "xai": {
+      "apiKey": "${XAI_API_KEY}",
+      "model": "grok-3"
+    }
+  }
+}
