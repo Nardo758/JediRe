@@ -1,10 +1,12 @@
-import { X, Pin, MapPin, Building2, DollarSign, TrendingUp } from 'lucide-react';
+import { X, Pin, MapPin, Share2, Calendar, Download } from 'lucide-react';
 import { useAppStore } from '@/store';
-import { formatCurrency, formatNumber, formatPercent, getScoreColor } from '@/utils';
+import { formatNumber, getScoreColor } from '@/utils';
 import ZoningPanel from './ZoningPanel';
 import SupplyPanel from './SupplyPanel';
 import CashFlowPanel from './CashFlowPanel';
 import AnnotationSection from './AnnotationSection';
+import StrategyCard from './StrategyCard';
+import AgentInsights from './AgentInsights';
 
 export default function PropertyDetail() {
   const { selectedProperty, setSelectedProperty, updateProperty, activeModules } = useAppStore();
@@ -101,33 +103,90 @@ export default function PropertyDetail() {
 
       {/* Content */}
       <div className="p-6 space-y-6">
-        {/* Property Summary */}
-        <div className="grid grid-cols-2 gap-4">
-          {selectedProperty.lotSizeSqft && (
-            <div className="card">
-              <div className="flex items-center gap-2 text-gray-600 text-sm mb-1">
-                <Building2 className="w-4 h-4" />
-                <span>Lot Size</span>
-              </div>
-              <div className="text-2xl font-bold text-gray-900">
-                {formatNumber(selectedProperty.lotSizeSqft)}
-                <span className="text-sm text-gray-500 ml-1">sq ft</span>
-              </div>
+        {/* Property Overview */}
+        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-3">Property Overview</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Type</span>
+              <span className="font-medium text-gray-800">{selectedProperty.currentUse || 'Single Family'}</span>
             </div>
-          )}
-
-          {selectedProperty.currentUse && (
-            <div className="card">
-              <div className="flex items-center gap-2 text-gray-600 text-sm mb-1">
-                <TrendingUp className="w-4 h-4" />
-                <span>Current Use</span>
-              </div>
-              <div className="text-lg font-bold text-gray-900">
-                {selectedProperty.currentUse}
-              </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Size</span>
+              <span className="font-medium text-gray-800">{formatNumber(selectedProperty.lotSizeSqft || 0)} sqft</span>
             </div>
-          )}
+            <div className="flex justify-between">
+              <span className="text-gray-500">Year Built</span>
+              <span className="font-medium text-gray-800">1985</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Lot</span>
+              <span className="font-medium text-gray-800">{((selectedProperty.lotSizeSqft || 0) / 43560).toFixed(2)} acres</span>
+            </div>
+          </div>
         </div>
+
+        {/* Strategy Arbitrage Comparison */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Strategy Comparison</h3>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+              18% Arbitrage
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <StrategyCard
+              name="BUILD-TO-SELL"
+              annualROI={22}
+              investment={380000}
+              timeline="18 months"
+              profit="$42K"
+              profitLabel="Net Profit"
+              riskLevel="Medium"
+            />
+            <StrategyCard
+              name="FLIP"
+              annualROI={24}
+              investment={330000}
+              timeline="6 months"
+              profit="$39K"
+              profitLabel="Net Profit"
+              riskLevel="Medium"
+            />
+            <StrategyCard
+              name="RENTAL"
+              annualROI={42}
+              investment={300000}
+              timeline="Ongoing"
+              profit="$1,050/mo"
+              profitLabel="Monthly NOI"
+              riskLevel="Low"
+              isOptimal={true}
+            />
+            <StrategyCard
+              name="AIRBNB"
+              annualROI={31}
+              investment={315000}
+              timeline="Ongoing"
+              profit="$785/mo"
+              profitLabel="Monthly NOI"
+              riskLevel="Medium"
+            />
+          </div>
+
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="text-lg">💡</span>
+              <p className="text-sm text-blue-700">
+                <strong>Arbitrage Opportunity:</strong> Converting to rental generates $850/month more NOI than typical investor would expect from Airbnb strategy
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Agent Insights */}
+        <AgentInsights />
 
         {/* Module Insights */}
         {activeModules.includes('zoning') && selectedProperty.zoning && (
@@ -141,6 +200,22 @@ export default function PropertyDetail() {
         {activeModules.includes('cashflow') && selectedProperty.cashFlow && (
           <CashFlowPanel cashFlow={selectedProperty.cashFlow} />
         )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-3 gap-2">
+          <button className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            <Download className="w-4 h-4" />
+            Save
+          </button>
+          <button className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+            <Share2 className="w-4 h-4" />
+            Share
+          </button>
+          <button className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
+            <Calendar className="w-4 h-4" />
+            Tour
+          </button>
+        </div>
 
         {/* Annotations */}
         <AnnotationSection
