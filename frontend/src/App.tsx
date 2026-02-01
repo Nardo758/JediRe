@@ -12,6 +12,7 @@ import BlogPage from './pages/BlogPage';
 import CaseStudiesPage from './pages/CaseStudiesPage';
 import HelpCenterPage from './pages/HelpCenterPage';
 import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
 import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
@@ -55,6 +56,7 @@ function App() {
       <Route path="/case-studies" element={<CaseStudiesPage />} />
       <Route path="/help" element={<HelpCenterPage />} />
       <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/app"
