@@ -640,52 +640,208 @@ function ProfilePanel({ user }: { user: any }) {
 }
 
 function BillingPanel() {
+  const [copied, setCopied] = useState(false);
+
+  const copyReferralLink = () => {
+    navigator.clipboard.writeText('jedire.com/ref/leon-doe');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm opacity-80">Current Plan</div>
-            <div className="text-2xl font-bold">Jedi Pro Bundle</div>
-            <div className="text-sm opacity-80 mt-1">$201/month</div>
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Current Plan</h4>
+        
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white mb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-2xl">📦</span>
+                <span className="text-xl font-bold">RENTAL INVESTOR BUNDLE</span>
+              </div>
+              <div className="text-lg font-semibold">$228/month <span className="text-sm font-normal opacity-80">(billed monthly)</span></div>
+              <div className="text-sm opacity-80 mt-1">Save 20% with annual billing → $2,188/year</div>
+            </div>
           </div>
-          <button className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium">
-            Upgrade Plan
+        </div>
+
+        <div className="mb-4">
+          <div className="text-sm font-medium text-gray-700 mb-2">Active Modules:</div>
+          <div className="space-y-1">
+            {[
+              { name: 'Jedi Core', price: 'Included' },
+              { name: 'Single Family Strategy', price: '$47/mo' },
+              { name: 'Cash Flow Optimization', price: '$57/mo' },
+              { name: 'Professional Network', price: '$67/mo' },
+            ].map((module) => (
+              <div key={module.name} className="flex items-center gap-2 text-sm">
+                <span className="text-green-500">✅</span>
+                <span className="text-gray-700">{module.name}</span>
+                <span className="text-gray-400">({module.price})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="text-sm text-gray-600 mb-4">
+          Next billing date: <span className="font-medium">March 1, 2026</span>
+        </div>
+
+        <div className="flex gap-3">
+          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+            Change Plan
+          </button>
+          <button className="px-4 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium">
+            Switch to Annual
           </button>
         </div>
       </div>
 
-      <div>
-        <h4 className="font-medium text-gray-900 mb-3">Payment Method</h4>
-        <div className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
-          <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded flex items-center justify-center text-white text-xs font-bold">
-            VISA
-          </div>
-          <div className="flex-1">
-            <div className="font-medium text-gray-900">•••• •••• •••• 4242</div>
-            <div className="text-sm text-gray-500">Expires 12/2027</div>
-          </div>
-          <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">Edit</button>
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Usage This Month</h4>
+        
+        <div className="space-y-4">
+          {[
+            { label: 'Properties Analyzed', used: 1247, limit: '∞', percent: 84 },
+            { label: 'API Calls', used: 8420, limit: 10000, percent: 84 },
+            { label: 'Storage', used: '245 MB', limit: '5 GB', percent: 5 },
+            { label: 'Team Members', used: 3, limit: 5, percent: 60 },
+          ].map((usage) => (
+            <div key={usage.label}>
+              <div className="flex justify-between text-sm mb-1">
+                <span className="text-gray-700">{usage.label}</span>
+                <span className="text-gray-500">{usage.used} / {usage.limit}</span>
+              </div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${usage.percent > 80 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                  style={{ width: `${usage.percent}%` }}
+                />
+              </div>
+              <div className="text-right text-xs text-gray-400 mt-0.5">{usage.percent}%</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div>
-        <h4 className="font-medium text-gray-900 mb-3">Billing History</h4>
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          {[
-            { date: 'Feb 1, 2026', amount: '$201.00', status: 'Paid' },
-            { date: 'Jan 1, 2026', amount: '$201.00', status: 'Paid' },
-            { date: 'Dec 1, 2025', amount: '$154.00', status: 'Paid' },
-          ].map((invoice, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3 border-b last:border-b-0">
-              <div className="text-sm text-gray-900">{invoice.date}</div>
-              <div className="text-sm font-medium text-gray-900">{invoice.amount}</div>
-              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">
-                {invoice.status}
-              </span>
-              <button className="text-blue-600 hover:text-blue-700 text-sm">Download</button>
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Payment Method</h4>
+        
+        <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg mb-4">
+          <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded flex items-center justify-center text-white text-xs font-bold">
+            💳
+          </div>
+          <div className="flex-1">
+            <div className="font-medium text-gray-900">Visa ending in 4242</div>
+            <div className="text-sm text-gray-500">Expires: 12/2027</div>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <button className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700">
+            Update Card
+          </button>
+          <button className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg text-sm font-medium">
+            Add Payment Method
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-4">Billing History</h4>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 font-medium text-gray-600">Date</th>
+                <th className="text-left py-2 font-medium text-gray-600">Description</th>
+                <th className="text-right py-2 font-medium text-gray-600">Amount</th>
+                <th className="text-right py-2 font-medium text-gray-600">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { date: "Feb 1 '26", desc: 'Monthly subscription', amount: '$228.00' },
+                { date: "Jan 1 '26", desc: 'Monthly subscription', amount: '$228.00' },
+                { date: "Dec 1 '25", desc: 'Monthly subscription', amount: '$201.00' },
+                { date: "Nov 1 '25", desc: 'Initial subscription', amount: '$201.00' },
+              ].map((invoice, i) => (
+                <tr key={i} className="border-b border-gray-100 last:border-b-0">
+                  <td className="py-3 text-gray-900">{invoice.date}</td>
+                  <td className="py-3 text-gray-600">{invoice.desc}</td>
+                  <td className="py-3 text-right font-medium text-gray-900">{invoice.amount}</td>
+                  <td className="py-3 text-right">
+                    <span className="text-green-600">✓</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <button className="mt-4 text-blue-600 hover:text-blue-700 text-sm font-medium">
+          View All Invoices
+        </button>
+      </div>
+
+      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
+        <div className="flex items-start gap-3 mb-4">
+          <span className="text-2xl">🎁</span>
+          <div>
+            <h4 className="font-semibold text-gray-900">Referral Program</h4>
+            <p className="text-sm text-gray-600">Refer friends and get $50 credit</p>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm text-gray-600 mb-1">Your referral link:</label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700">
+              jedire.com/ref/leon-doe
             </div>
-          ))}
+            <button
+              onClick={copyReferralLink}
+              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm"
+            >
+              {copied ? '✓ Copied' : '📋 Copy'}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex gap-6 text-sm">
+          <div>
+            <span className="text-gray-500">Referrals:</span>
+            <span className="ml-1 font-medium text-gray-900">2</span>
+          </div>
+          <div>
+            <span className="text-gray-500">Credits earned:</span>
+            <span className="ml-1 font-medium text-green-600">$100</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+        <h4 className="font-semibold text-gray-900 mb-2">Cancel Subscription</h4>
+        <p className="text-sm text-gray-600 mb-3">We'd hate to see you go!</p>
+
+        <div className="text-sm text-gray-600 mb-4">
+          <p className="font-medium mb-1">Before you cancel:</p>
+          <ul className="list-disc list-inside space-y-1 text-gray-500">
+            <li>You'll lose access on March 1, 2026</li>
+            <li>Your saved properties will be deleted</li>
+            <li>No refunds for partial months</li>
+          </ul>
+        </div>
+
+        <div className="flex gap-3">
+          <button className="px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-lg text-sm font-medium">
+            Pause Subscription
+          </button>
+          <button className="px-4 py-2 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium">
+            Cancel Subscription
+          </button>
         </div>
       </div>
     </div>
