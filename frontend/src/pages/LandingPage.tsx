@@ -88,7 +88,7 @@ export default function LandingPage() {
             </div>
 
             <nav className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</a>
+              <Link to="/features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</Link>
               <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Pricing</Link>
               <a href="#about" className="text-gray-600 hover:text-gray-900 text-sm font-medium">About</a>
               <a href="#blog" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</a>
@@ -121,7 +121,7 @@ export default function LandingPage() {
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 py-4">
             <div className="px-4 space-y-3">
-              <a href="#features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</a>
+              <Link to="/features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</Link>
               <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium">Pricing</Link>
               <a href="#about" className="block text-gray-600 hover:text-gray-900 font-medium">About</a>
               <a href="#blog" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</a>
