@@ -192,15 +192,26 @@ app.post('/api/v1/auth/login', async (req, res) => {
     
     // For demo: check against demo user
     if (email === 'demo@jedire.com' && password === 'demo123') {
-      const user = await pool.query(
-        'SELECT id, email, full_name, role, subscription_tier FROM users WHERE email = $1',
+      const result = await pool.query(
+        'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE email = $1',
         [email]
       );
       
-      if (user.rows.length > 0) {
+      if (result.rows.length > 0) {
+        const dbUser = result.rows[0];
+        const user = {
+          id: dbUser.id,
+          email: dbUser.email,
+          name: dbUser.full_name || 'Demo User',
+          role: dbUser.role || 'user',
+          subscription: {
+            plan: dbUser.subscription_tier || 'free',
+            modules: dbUser.enabled_modules || ['supply']
+          }
+        };
         res.json({
           success: true,
-          user: user.rows[0],
+          user,
           token: 'demo-token-' + Date.now()
         });
         return;
