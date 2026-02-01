@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
   Search, Play, Check, X, Target, Bot, BarChart3, Map, Users, Zap, 
   ArrowRight, Star, ChevronRight, Menu, Building2
@@ -89,7 +89,7 @@ export default function LandingPage() {
 
             <nav className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</a>
-              <a href="#pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Pricing</a>
+              <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Pricing</Link>
               <a href="#about" className="text-gray-600 hover:text-gray-900 text-sm font-medium">About</a>
               <a href="#blog" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</a>
             </nav>
@@ -122,7 +122,7 @@ export default function LandingPage() {
           <div className="md:hidden bg-white border-t border-gray-100 py-4">
             <div className="px-4 space-y-3">
               <a href="#features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</a>
-              <a href="#pricing" className="block text-gray-600 hover:text-gray-900 font-medium">Pricing</a>
+              <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium">Pricing</Link>
               <a href="#about" className="block text-gray-600 hover:text-gray-900 font-medium">About</a>
               <a href="#blog" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</a>
               <hr className="border-gray-200" />

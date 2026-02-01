@@ -4,6 +4,7 @@ import { useIsMobile } from './hooks/useIsMobile';
 import AuthPage from './pages/AuthPage';
 import MainPage from './pages/MainPage';
 import LandingPage from './pages/LandingPage';
+import PricingPage from './pages/PricingPage';
 import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
@@ -39,6 +40,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/app"
