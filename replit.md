@@ -58,6 +58,14 @@ Key variables are set automatically:
 - `frontend/src/components/property/PropertyAnalyzer.tsx` - Analysis UI
 
 ## Recent Changes
+- 2026-02-01: Updated UI to match wireframes
+  - New header with search bar and user profile
+  - FiltersBar: Strategy, Score, Timeline, Modules, Saved Searches filters
+  - AgentStatusBar: Shows agent confidence levels (Supply, Demand, News, Debt, SF Strategy, Cash)
+  - QuickInsights: Actionable market intelligence panel
+  - PropertyBubble: Color-coded by strategy, sized by score, red ring for arbitrage opportunities
+  - PropertyDetail: Strategy comparison cards (Build-to-Sell, Flip, Rental, Airbnb) with ROI metrics
+  - AgentInsights: Per-property agent analysis with confidence scores
 - 2026-02-01: Added zoning intelligence MVP
   - Created zoning schema (zoning_districts, zoning_district_boundaries tables)
   - Built geocoding and zoning lookup services
