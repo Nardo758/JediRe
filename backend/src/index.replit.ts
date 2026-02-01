@@ -559,11 +559,20 @@ io.on('connection', (socket) => {
 // Serve Frontend in Production
 // ============================================
 if (isProduction) {
-  const frontendPath = path.join(__dirname, '../../frontend/dist');
+  const frontendPath = path.join(__dirname, '../public');
+  console.log(`Serving static files from: ${frontendPath}`);
   app.use(express.static(frontendPath));
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api/') && !req.path.startsWith('/health')) {
-      res.sendFile(path.join(frontendPath, 'index.html'));
+  app.get('*', (req, res, next) => {
+    if (!req.path.startsWith('/api/') && !req.path.startsWith('/health') && !req.path.startsWith('/socket.io')) {
+      const indexPath = path.join(frontendPath, 'index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error('Error serving index.html:', err);
+          res.status(404).send('Frontend not found. Please ensure the build completed successfully.');
+        }
+      });
+    } else {
+      next();
     }
   });
 }
