@@ -22,19 +22,19 @@ api.interceptors.request.use((config) => {
 // Property API
 export const propertyAPI = {
   search: async (query: string, filters?: any): Promise<SearchResult> => {
-    const { data } = await api.get('/api/properties/search', {
+    const { data } = await api.get('/properties/search', {
       params: { query, ...filters },
     });
     return data;
   },
 
   getById: async (id: string): Promise<Property> => {
-    const { data } = await api.get(`/api/properties/${id}`);
+    const { data } = await api.get(`/properties/${id}`);
     return data;
   },
 
   analyze: async (address: string, lotSize?: number): Promise<Property> => {
-    const { data } = await api.post('/api/properties/analyze', {
+    const { data } = await api.post('/properties/analyze', {
       address,
       lot_size_sqft: lotSize,
     });
@@ -42,17 +42,17 @@ export const propertyAPI = {
   },
 
   list: async (filters?: any): Promise<Property[]> => {
-    const { data } = await api.get('/api/properties', { params: filters });
+    const { data } = await api.get('/properties', { params: filters });
     return data;
   },
 
   togglePin: async (id: string): Promise<Property> => {
-    const { data } = await api.post(`/api/properties/${id}/pin`);
+    const { data } = await api.post(`/properties/${id}/pin`);
     return data;
   },
 
   addAnnotation: async (id: string, text: string, type: string) => {
-    const { data } = await api.post(`/api/properties/${id}/annotations`, {
+    const { data } = await api.post(`/properties/${id}/annotations`, {
       text,
       type,
     });
@@ -63,7 +63,7 @@ export const propertyAPI = {
 // Zoning API
 export const zoningAPI = {
   lookup: async (lat: number, lng: number, municipality: string): Promise<ZoningInsight> => {
-    const { data } = await api.post('/api/zoning/lookup', {
+    const { data } = await api.post('/zoning/lookup', {
       lat,
       lng,
       municipality,
@@ -72,7 +72,7 @@ export const zoningAPI = {
   },
 
   getDistricts: async (municipality: string) => {
-    const { data } = await api.get(`/api/zoning/districts/${municipality}`);
+    const { data } = await api.get(`/zoning/districts/${municipality}`);
     return data;
   },
 };
@@ -80,14 +80,14 @@ export const zoningAPI = {
 // Geocoding API
 export const geocodingAPI = {
   geocode: async (address: string) => {
-    const { data } = await api.get('/api/geocode', {
+    const { data } = await api.get('/geocode', {
       params: { address },
     });
     return data;
   },
 
   reverseGeocode: async (lat: number, lng: number) => {
-    const { data } = await api.get('/api/geocode/reverse', {
+    const { data } = await api.get('/geocode/reverse', {
       params: { lat, lng },
     });
     return data;
@@ -97,21 +97,21 @@ export const geocodingAPI = {
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string): Promise<{ token: string; user: User }> => {
-    const { data } = await api.post('/api/auth/login', { email, password });
+    const { data } = await api.post('/auth/login', { email, password });
     return data;
   },
 
   register: async (email: string, password: string, name: string): Promise<{ token: string; user: User }> => {
-    const { data } = await api.post('/api/auth/register', { email, password, name });
+    const { data } = await api.post('/auth/register', { email, password, name });
     return data;
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/api/auth/logout');
+    await api.post('/auth/logout');
   },
 
   me: async (): Promise<User> => {
-    const { data } = await api.get('/api/auth/me');
+    const { data } = await api.get('/auth/me');
     return data;
   },
 };
