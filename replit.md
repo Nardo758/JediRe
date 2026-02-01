@@ -98,7 +98,71 @@ Key variables are set automatically:
 - `pin_property` - Property pinning sync
 - `add_annotation` - Comment synchronization
 
+## All Routes (50+ pages)
+### Public Routes
+- `/` - Landing page
+- `/features` - Features overview
+- `/pricing` - Pricing plans
+- `/about` - About us
+- `/contact` - Contact form
+- `/blog` - Blog articles
+- `/case-studies` - Case studies
+- `/help` - Help center
+- `/terms` - Terms of service
+- `/privacy` - Privacy policy
+- `/security` - Security practices
+- `/careers` - Job listings
+- `/docs` - API documentation
+- `/status` - System status
+
+### Utility Routes
+- `/404` - Page not found
+- `/verify-email` - Email verification
+- `/reset-password` - Password reset
+- `/payment` - Payment success/failure
+
+### App Feature Routes
+- `/compare` - Property comparison (side-by-side)
+- `/pipeline` - Deal pipeline (Kanban board)
+- `/calculators` - ROI, mortgage, cash flow, cap rate calculators
+- `/analytics` - Portfolio analytics dashboard
+- `/alerts` - Alert/watchlist management
+- `/team` - Team management
+- `/billing` - Payment methods and invoices
+- `/integrations` - Integration connections
+
+### Community Routes
+- `/referral` - Referral program dashboard
+- `/partner-portal` - Partner portal
+- `/market-reports` - Market reports library
+- `/academy` - Educational courses
+- `/community` - Community forum
+- `/webinars` - Webinars and events
+- `/success-stories` - Customer success stories
+- `/press` - Press and media kit
+- `/partner-directory` - Partner directory
+- `/integrations-marketplace` - Integrations marketplace
+- `/investor-profile` - Investor profile questionnaire
+
+### Legal/Utility Routes
+- `/reviews` - Reviews aggregator
+- `/changelog` - Product updates
+- `/sitemap` - Site navigation
+- `/cookies` - Cookie preferences
+- `/accessibility` - Accessibility statement
+- `/dmca` - DMCA notice
+- `/unsubscribe` - Email preferences
+
+### Protected Routes
+- `/app` - Main dashboard
+- `/settings` - User settings
+
 ## Recent Changes
+- 2026-02-01: Added 31 new pages for complete website
+  - Utility pages: 404, email verification, password reset, payment results
+  - Core features: property comparison, deal pipeline, calculators, analytics, alerts, team, billing, integrations
+  - Community: referral, partner portal, market reports, academy, forum, webinars, success stories, press, partner directory, integrations marketplace, investor profile
+  - Legal/utility: reviews, changelog, sitemap, cookies, accessibility, DMCA, unsubscribe
 - 2026-02-01: Updated UI to match wireframes
   - New header with search bar and user profile
   - FiltersBar: Strategy, Score, Timeline, Modules, Saved Searches filters

@@ -18,6 +18,36 @@ import CareersPage from './pages/CareersPage';
 import ApiDocsPage from './pages/ApiDocsPage';
 import StatusPage from './pages/StatusPage';
 import SettingsPage from './pages/SettingsPage';
+import NotFoundPage from './pages/NotFoundPage';
+import VerifyEmailPage from './pages/VerifyEmailPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import PaymentResultPage from './pages/PaymentResultPage';
+import PropertyComparisonPage from './pages/PropertyComparisonPage';
+import DealPipelinePage from './pages/DealPipelinePage';
+import CalculatorsPage from './pages/CalculatorsPage';
+import AnalyticsDashboardPage from './pages/AnalyticsDashboardPage';
+import AlertsPage from './pages/AlertsPage';
+import TeamManagementPage from './pages/TeamManagementPage';
+import BillingPage from './pages/BillingPage';
+import IntegrationsPage from './pages/IntegrationsPage';
+import ReferralPage from './pages/ReferralPage';
+import PartnerPortalPage from './pages/PartnerPortalPage';
+import MarketReportsPage from './pages/MarketReportsPage';
+import AcademyPage from './pages/AcademyPage';
+import CommunityPage from './pages/CommunityPage';
+import WebinarsPage from './pages/WebinarsPage';
+import SuccessStoriesPage from './pages/SuccessStoriesPage';
+import PressPage from './pages/PressPage';
+import PartnerDirectoryPage from './pages/PartnerDirectoryPage';
+import IntegrationsMarketplacePage from './pages/IntegrationsMarketplacePage';
+import InvestorProfilePage from './pages/InvestorProfilePage';
+import ReviewsPage from './pages/ReviewsPage';
+import ChangelogPage from './pages/ChangelogPage';
+import SitemapPage from './pages/SitemapPage';
+import CookiesPage from './pages/CookiesPage';
+import AccessibilityPage from './pages/AccessibilityPage';
+import DmcaPage from './pages/DmcaPage';
+import UnsubscribePage from './pages/UnsubscribePage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
 
@@ -66,6 +96,41 @@ function App() {
       <Route path="/docs" element={<ApiDocsPage />} />
       <Route path="/status" element={<StatusPage />} />
       <Route path="/auth" element={<AuthPage />} />
+      
+      {/* Utility Pages */}
+      <Route path="/404" element={<NotFoundPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/payment" element={<PaymentResultPage />} />
+      
+      {/* Public Pages */}
+      <Route path="/compare" element={<PropertyComparisonPage />} />
+      <Route path="/pipeline" element={<DealPipelinePage />} />
+      <Route path="/calculators" element={<CalculatorsPage />} />
+      <Route path="/analytics" element={<AnalyticsDashboardPage />} />
+      <Route path="/alerts" element={<AlertsPage />} />
+      <Route path="/team" element={<TeamManagementPage />} />
+      <Route path="/billing" element={<BillingPage />} />
+      <Route path="/integrations" element={<IntegrationsPage />} />
+      <Route path="/referral" element={<ReferralPage />} />
+      <Route path="/partner-portal" element={<PartnerPortalPage />} />
+      <Route path="/market-reports" element={<MarketReportsPage />} />
+      <Route path="/academy" element={<AcademyPage />} />
+      <Route path="/community" element={<CommunityPage />} />
+      <Route path="/webinars" element={<WebinarsPage />} />
+      <Route path="/success-stories" element={<SuccessStoriesPage />} />
+      <Route path="/press" element={<PressPage />} />
+      <Route path="/partner-directory" element={<PartnerDirectoryPage />} />
+      <Route path="/integrations-marketplace" element={<IntegrationsMarketplacePage />} />
+      <Route path="/investor-profile" element={<InvestorProfilePage />} />
+      <Route path="/reviews" element={<ReviewsPage />} />
+      <Route path="/changelog" element={<ChangelogPage />} />
+      <Route path="/sitemap" element={<SitemapPage />} />
+      <Route path="/cookies" element={<CookiesPage />} />
+      <Route path="/accessibility" element={<AccessibilityPage />} />
+      <Route path="/dmca" element={<DmcaPage />} />
+      <Route path="/unsubscribe" element={<UnsubscribePage />} />
+      
       <Route
         path="/app"
         element={
@@ -82,7 +147,7 @@ function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }
