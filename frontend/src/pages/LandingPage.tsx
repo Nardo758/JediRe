@@ -91,7 +91,7 @@ export default function LandingPage() {
               <Link to="/features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</Link>
               <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Pricing</Link>
               <Link to="/about" className="text-gray-600 hover:text-gray-900 text-sm font-medium">About</Link>
-              <a href="#blog" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</a>
+              <Link to="/blog" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</Link>
             </nav>
 
             <div className="hidden md:flex items-center gap-4">
@@ -124,7 +124,7 @@ export default function LandingPage() {
               <Link to="/features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</Link>
               <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium">Pricing</Link>
               <Link to="/about" className="block text-gray-600 hover:text-gray-900 font-medium">About</Link>
-              <a href="#blog" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</a>
+              <Link to="/blog" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</Link>
               <hr className="border-gray-200" />
               <button onClick={() => navigate('/auth')} className="block w-full text-left text-gray-600 font-medium">Login</button>
               <button onClick={() => navigate('/auth')} className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-center">Sign Up</button>

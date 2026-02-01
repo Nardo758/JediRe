@@ -8,6 +8,7 @@ import PricingPage from './pages/PricingPage';
 import FeaturesPage from './pages/FeaturesPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
+import BlogPage from './pages/BlogPage';
 import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
@@ -47,6 +48,7 @@ function App() {
       <Route path="/pricing" element={<PricingPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/contact" element={<ContactPage />} />
+      <Route path="/blog" element={<BlogPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/app"
