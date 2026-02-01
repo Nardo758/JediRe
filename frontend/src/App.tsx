@@ -15,6 +15,8 @@ import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import SecurityPage from './pages/SecurityPage';
 import CareersPage from './pages/CareersPage';
+import ApiDocsPage from './pages/ApiDocsPage';
+import StatusPage from './pages/StatusPage';
 import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
@@ -61,6 +63,8 @@ function App() {
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/security" element={<SecurityPage />} />
       <Route path="/careers" element={<CareersPage />} />
+      <Route path="/docs" element={<ApiDocsPage />} />
+      <Route path="/status" element={<StatusPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/app"
