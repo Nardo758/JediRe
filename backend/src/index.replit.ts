@@ -9,10 +9,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
+import path from 'path';
 
 dotenv.config();
 
 const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -249,7 +251,7 @@ app.post('/api/v1/geocode', async (req, res) => {
       { headers: { 'User-Agent': 'JediRE/1.0 (contact@jedire.com)' } }
     );
     
-    const data = await response.json();
+    const data = await response.json() as any[];
     
     if (!data || data.length === 0) {
       return res.status(404).json({ success: false, error: 'Address not found' });
@@ -552,6 +554,19 @@ io.on('connection', (socket) => {
     io.emit('users:update', Array.from(activeUsers.values()));
   });
 });
+
+// ============================================
+// Serve Frontend in Production
+// ============================================
+if (isProduction) {
+  const frontendPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendPath));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api/') && !req.path.startsWith('/health')) {
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    }
+  });
+}
 
 // ============================================
 // Error Handler
