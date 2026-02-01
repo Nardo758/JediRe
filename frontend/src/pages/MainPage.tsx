@@ -5,10 +5,11 @@ import FiltersBar from '@/components/dashboard/FiltersBar';
 import AgentStatusBar from '@/components/dashboard/AgentStatusBar';
 import QuickInsights from '@/components/dashboard/QuickInsights';
 import PropertyAnalyzer from '@/components/property/PropertyAnalyzer';
+import SettingsPage from './SettingsPage';
 import { useAppStore } from '@/store';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { propertyAPI } from '@/services/api';
-import { LogOut, Search, ChevronUp, ChevronDown, Building2 } from 'lucide-react';
+import { LogOut, Search, ChevronUp, ChevronDown, Building2, Settings } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function MainPage() {
@@ -16,6 +17,7 @@ export default function MainPage() {
   const { user, logout } = useAuth();
   const [showBottomPanel, setShowBottomPanel] = useState(true);
   const [showAnalyzer, setShowAnalyzer] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Initialize WebSocket connection
@@ -66,6 +68,14 @@ export default function MainPage() {
             title="Property Analyzer"
           >
             <Building2 className="w-5 h-5" />
+          </button>
+          
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
           </button>
           
           {user && (
@@ -164,6 +174,9 @@ export default function MainPage() {
           </div>
         </div>
       )}
+
+      {/* Settings Modal */}
+      {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
     </div>
   );
 }
