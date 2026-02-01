@@ -6,6 +6,7 @@ import MainPage from './pages/MainPage';
 import LandingPage from './pages/LandingPage';
 import PricingPage from './pages/PricingPage';
 import FeaturesPage from './pages/FeaturesPage';
+import AboutPage from './pages/AboutPage';
 import SettingsPage from './pages/SettingsPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
@@ -43,6 +44,7 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/features" element={<FeaturesPage />} />
       <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/about" element={<AboutPage />} />
       <Route path="/auth" element={<AuthPage />} />
       <Route
         path="/app"
