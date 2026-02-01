@@ -1,10 +1,13 @@
 import { useAuth } from './hooks/useAuth';
+import { useIsMobile } from './hooks/useIsMobile';
 import AuthPage from './pages/AuthPage';
 import MainPage from './pages/MainPage';
+import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
 
 function App() {
   const { user, loading } = useAuth();
+  const isMobile = useIsMobile();
 
   if (loading) {
     return (
@@ -17,7 +20,11 @@ function App() {
     );
   }
 
-  return user ? <MainPage /> : <AuthPage />;
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  return isMobile ? <MobileLayout /> : <MainPage />;
 }
 
 export default App;
