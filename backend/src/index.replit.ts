@@ -559,7 +559,7 @@ io.on('connection', (socket) => {
 // Serve Frontend in Production
 // ============================================
 if (isProduction) {
-  const frontendPath = path.join(__dirname, '../public');
+  const frontendPath = path.join(__dirname, 'public');
   console.log(`Serving static files from: ${frontendPath}`);
   app.use(express.static(frontendPath));
   app.get('*', (req, res, next) => {
