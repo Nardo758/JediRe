@@ -3,13 +3,13 @@ set -e
 
 echo "=== Building Frontend ==="
 cd frontend
-npm install
+npm install --include=dev
 npm run build
 cd ..
 
 echo "=== Building Backend ==="
 cd backend
-npm install
+npm install --include=dev
 npm run build
 cd ..
 
