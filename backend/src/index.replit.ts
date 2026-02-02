@@ -578,6 +578,82 @@ if (isProduction) {
 }
 
 // ============================================
+// Microsoft Integration Endpoints
+// ============================================
+
+// Microsoft configuration
+const microsoftConfig = {
+  clientId: process.env.MICROSOFT_CLIENT_ID || '',
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+  tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
+  redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
+  scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
+};
+
+// Check Microsoft integration status
+app.get('/api/v1/microsoft/status', (req, res) => {
+  const configured = !!(microsoftConfig.clientId && microsoftConfig.clientSecret);
+  res.json({
+    configured,
+    connected: false
+  });
+});
+
+// Get Microsoft OAuth authorization URL
+app.get('/api/v1/microsoft/auth/url', (req, res) => {
+  if (!microsoftConfig.clientId) {
+    return res.status(500).json({ success: false, error: 'Microsoft not configured' });
+  }
+  
+  const authUrl = `https://login.microsoftonline.com/${microsoftConfig.tenantId}/oauth2/v2.0/authorize?` +
+    `client_id=${microsoftConfig.clientId}` +
+    `&response_type=code` +
+    `&redirect_uri=${encodeURIComponent(microsoftConfig.redirectUri)}` +
+    `&response_mode=query` +
+    `&scope=${encodeURIComponent(microsoftConfig.scopes.join(' '))}` +
+    `&state=${Date.now()}`;
+  
+  res.json({ success: true, authUrl });
+});
+
+// Microsoft OAuth callback
+app.get('/api/v1/microsoft/auth/callback', async (req, res) => {
+  const { code, error } = req.query;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  
+  if (error) {
+    return res.redirect(`${frontendUrl}/settings?microsoft_error=${error}`);
+  }
+  
+  if (!code) {
+    return res.redirect(`${frontendUrl}/settings?microsoft_error=no_code`);
+  }
+  
+  try {
+    // Exchange code for tokens
+    const axios = require('axios');
+    const tokenResponse = await axios.post(
+      `https://login.microsoftonline.com/${microsoftConfig.tenantId}/oauth2/v2.0/token`,
+      new URLSearchParams({
+        client_id: microsoftConfig.clientId,
+        client_secret: microsoftConfig.clientSecret,
+        code: code as string,
+        redirect_uri: microsoftConfig.redirectUri,
+        grant_type: 'authorization_code',
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    
+    // TODO: Store tokens in database for the user
+    console.log('Microsoft OAuth successful');
+    res.redirect(`${frontendUrl}/settings?microsoft_connected=true`);
+  } catch (error) {
+    console.error('Microsoft OAuth error:', error);
+    res.redirect(`${frontendUrl}/settings?microsoft_error=token_exchange_failed`);
+  }
+});
+
+// ============================================
 // Error Handler
 // ============================================
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
