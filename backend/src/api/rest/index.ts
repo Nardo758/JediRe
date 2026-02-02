@@ -9,6 +9,7 @@ import propertyRoutes from './property.routes';
 import zoningRoutes from './zoning.routes';
 import marketRoutes from './market.routes';
 import agentRoutes from './agent.routes';
+import llmRoutes from './llm.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -28,6 +29,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Agent routes (orchestration)
   app.use(`${API_PREFIX}/agents`, agentRoutes);
+
+  // LLM routes (AI-powered features)
+  app.use(`${API_PREFIX}/llm`, llmRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
