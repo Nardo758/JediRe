@@ -1,14 +1,21 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  Search, Play, Check, X, Target, Bot, BarChart3, Map, Users, Zap, 
-  ArrowRight, Star, ChevronRight, Menu, Building2
+  Search, Play, Target, Bot, BarChart3, Map, Users, Zap, 
+  Menu, X, ChevronRight, TrendingUp, Building2, DollarSign
 } from 'lucide-react';
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const stats = [
+    { value: '2,847', label: 'Properties Analyzed' },
+    { value: '$847M+', label: 'Opportunities Found' },
+    { value: '24', label: 'Markets Tracked' },
+    { value: '12', label: 'AI Agents Active' },
+  ];
 
   const features = [
     {
@@ -31,354 +38,387 @@ export default function LandingPage() {
       title: 'Interactive Bubble Map',
       description: 'Visual scoring shows best opportunities at a glance',
     },
-    {
-      icon: Users,
-      title: 'Professional Network',
-      description: 'Expert validation from contractors and professionals',
-    },
-    {
-      icon: Zap,
-      title: 'Real-Time Intelligence',
-      description: 'Live market updates every 15 minutes',
-    },
-  ];
-
-  const problems = [
-    "You're looking at properties one strategy at a time",
-    "Missing 18% average ROI spreads between strategies",
-    "Spending hours on manual analysis per property",
-    "Flying blind without real-time market intelligence",
-    "Relying on gut feeling instead of data",
-  ];
-
-  const solutions = [
-    "Analyze ALL strategies instantly (Build/Flip/Rental/Airbnb)",
-    "Find arbitrage opportunities automatically",
-    "2-minute comprehensive analysis vs 2-hour manual work",
-    "Real-time AI agents monitoring 12+ market factors",
-    "Data-driven decisions with 95% AI confidence",
-  ];
-
-  const steps = [
-    {
-      number: 1,
-      title: 'Set Your Criteria',
-      description: 'Tell us your markets, budget, and investment goals',
-    },
-    {
-      number: 2,
-      title: 'AI Agents Analyze Markets',
-      description: '12+ agents scan properties 24/7 across all strategies',
-    },
-    {
-      number: 3,
-      title: 'Find Hidden Opportunities',
-      description: 'Get alerts for arbitrage opportunities others miss',
-    },
   ];
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Header */}
       <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
+            {/* Logo */}
             <div className="flex items-center gap-2">
-              <Building2 className="w-8 h-8 text-blue-600" />
-              <span className="text-xl font-bold text-gray-900">JediRe</span>
+              <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">JR</span>
+              </div>
+              <div className="text-2xl font-bold">
+                <span className="text-emerald-500">Jedi</span><span className="text-gray-900">Re</span>
+              </div>
             </div>
 
+            {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-8">
-              <Link to="/features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</Link>
-              <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Pricing</Link>
-              <Link to="/about" className="text-gray-600 hover:text-gray-900 text-sm font-medium">About</Link>
-              <Link to="/blog" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</Link>
+              <Link to="/features" className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+                Discover
+              </Link>
+              <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+                Analyst Studio
+              </Link>
+              <Link to="/about" className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+                Markets
+              </Link>
+              <Link to="/docs" className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+                API
+              </Link>
+              <Link to="/pricing" className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">
+                Pricing
+              </Link>
             </nav>
 
+            {/* Desktop Auth */}
             <div className="hidden md:flex items-center gap-4">
               <button
                 onClick={() => navigate('/auth')}
-                className="text-gray-600 hover:text-gray-900 text-sm font-medium"
+                className="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors"
               >
-                Login
+                Sign In
               </button>
               <button
                 onClick={() => navigate('/auth')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-sm font-medium transition-colors"
               >
-                Sign Up
+                Get Started
               </button>
             </div>
 
+            {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden p-2"
             >
-              <Menu className="w-6 h-6 text-gray-600" />
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6 text-gray-600" />
+              ) : (
+                <Menu className="w-6 h-6 text-gray-600" />
+              )}
             </button>
           </div>
         </div>
 
+        {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white border-t border-gray-100 py-4">
             <div className="px-4 space-y-3">
-              <Link to="/features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</Link>
-              <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium">Pricing</Link>
-              <Link to="/about" className="block text-gray-600 hover:text-gray-900 font-medium">About</Link>
-              <Link to="/blog" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</Link>
+              <Link to="/features" className="block text-gray-600 hover:text-gray-900 font-medium py-2">Discover</Link>
+              <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium py-2">Analyst Studio</Link>
+              <Link to="/about" className="block text-gray-600 hover:text-gray-900 font-medium py-2">Markets</Link>
+              <Link to="/docs" className="block text-gray-600 hover:text-gray-900 font-medium py-2">API</Link>
+              <Link to="/pricing" className="block text-gray-600 hover:text-gray-900 font-medium py-2">Pricing</Link>
               <hr className="border-gray-200" />
-              <button onClick={() => navigate('/auth')} className="block w-full text-left text-gray-600 font-medium">Login</button>
-              <button onClick={() => navigate('/auth')} className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-center">Sign Up</button>
+              <button onClick={() => navigate('/auth')} className="block w-full text-left text-gray-600 font-medium py-2">
+                Sign In
+              </button>
+              <button onClick={() => navigate('/auth')} className="block w-full px-4 py-2 bg-gray-900 text-white rounded-lg font-medium text-center">
+                Get Started
+              </button>
             </div>
           </div>
         )}
       </header>
 
-      <section className="pt-24 pb-16 bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-4xl mx-auto">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 mb-6">
-              Find Your Next Investment Opportunity{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
-                With AI-Powered Intelligence
-              </span>
-            </h1>
-            <p className="text-lg sm:text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              Stop guessing. Start investing smarter with autonomous AI agents that analyze every property 
-              across 4 investment strategies to find hidden arbitrage opportunities others miss.
-            </p>
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Stats Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-full mb-8">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-sm font-medium text-emerald-700">
+              2,847+ Properties Analyzed This Month
+            </span>
+          </div>
 
-            <div className="max-w-xl mx-auto mb-6">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder='Enter your target market... e.g., "Atlanta, GA"'
-                  className="w-full pl-12 pr-28 py-4 border border-gray-300 rounded-xl text-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
-                />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium">
-                  Search
+          <div className="grid lg:grid-cols-2 gap-12 items-start">
+            {/* Left Column - Hero Content */}
+            <div>
+              <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
+                Transform Property Data into{' '}
+                <span className="text-emerald-500">Investment Opportunities</span>
+              </h1>
+              
+              <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+                Discover validated real estate opportunities backed by AI-powered 
+                analysis. From autonomous agents to expert insights—everything you 
+                need to invest smarter.
+              </p>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-wrap gap-4 mb-12">
+                <button
+                  onClick={() => navigate('/auth')}
+                  className="px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium transition-colors inline-flex items-center gap-2"
+                >
+                  <Target className="w-5 h-5" />
+                  Find Opportunities
+                </button>
+                <button
+                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium transition-colors inline-flex items-center gap-2"
+                >
+                  <Map className="w-5 h-5" />
+                  Explore Markets
+                </button>
+                <button className="px-6 py-3 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors inline-flex items-center gap-2">
+                  <Play className="w-5 h-5" />
+                  Watch Demo
                 </button>
               </div>
-            </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
-              <button
-                onClick={() => navigate('/auth')}
-                className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-lg flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25"
-              >
-                🚀 Start Free 30-Day Trial
-              </button>
-              <button className="w-full sm:w-auto px-8 py-4 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded-xl font-semibold text-lg flex items-center justify-center gap-2">
-                <Play className="w-5 h-5" />
-                Watch 2-Min Demo
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
-              <span className="flex items-center gap-1"><Check className="w-4 h-4 text-green-500" /> No credit card required</span>
-              <span className="flex items-center gap-1"><Check className="w-4 h-4 text-green-500" /> Cancel anytime</span>
-              <span className="flex items-center gap-1"><Check className="w-4 h-4 text-green-500" /> Full access</span>
-            </div>
-
-            <div className="mt-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 shadow-2xl">
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-4">
-                {[92, 88, 85, 79, 75].map((score, i) => (
-                  <div
-                    key={i}
-                    className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-lg shadow-lg ${
-                      score >= 90 ? 'bg-green-500' : score >= 80 ? 'bg-blue-500' : 'bg-yellow-500'
-                    }`}
-                    style={{ animationDelay: `${i * 0.1}s` }}
-                  >
-                    {score}
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+                {stats.map((stat, i) => (
+                  <div key={i}>
+                    <div className="text-2xl font-bold text-gray-900 mb-1">{stat.value}</div>
+                    <div className="text-sm text-gray-600">{stat.label}</div>
                   </div>
                 ))}
               </div>
-              <p className="text-white/80 text-sm mt-4">Interactive Bubble Map Preview</p>
+            </div>
+
+            {/* Right Column - Featured Opportunity Card */}
+            <div className="lg:pl-8">
+              <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
+                {/* Badge */}
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full mb-4">
+                  <Zap className="w-4 h-4 text-gray-600" />
+                  <span className="text-xs font-medium text-gray-700">UNLOCK THIS WEEK'S TOP OPPORTUNITY</span>
+                </div>
+
+                {/* Opportunity Title */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">
+                      Multifamily Development Site in Growing Austin Submarket
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      847 property validations at 4.8/5 severity reveal massive arbitrage 
+                      opportunity in emerging development zone
+                    </p>
+                  </div>
+                  <div className="ml-4 flex-shrink-0">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+                      <span className="text-2xl font-bold text-white">92</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Metrics */}
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">Market Size</div>
+                    <div className="text-lg font-bold text-gray-900">$12M-$18M</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">Validations</div>
+                    <div className="text-lg font-bold text-gray-900">847</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500 uppercase mb-1">Growth</div>
+                    <div className="text-lg font-bold text-emerald-600">+38%</div>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-4">
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600" style={{ width: '92%' }} />
+                  </div>
+                  <div className="flex items-center gap-1 mt-2">
+                    <TrendingUp className="w-3 h-3 text-emerald-600" />
+                    <span className="text-xs text-emerald-600 font-medium">+38% monthly growth</span>
+                  </div>
+                </div>
+
+                {/* CTA */}
+                <button className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium transition-colors inline-flex items-center justify-center gap-2">
+                  See More Opportunities
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Small Users Badge */}
+              <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                <Users className="w-4 h-4" />
+                <span>1,247 investors tracking this market</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="py-12 bg-gray-50 border-y border-gray-200">
+      {/* Features Section - Dark Background */}
+      <section className="py-20 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-gray-600 mb-8">
-            Trusted by <span className="font-semibold">5,000+</span> investors who've found <span className="font-semibold">$2.4B</span> in opportunities
+          {/* Section Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full mb-8">
+            <Zap className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-medium text-white">Featured Tools</span>
+          </div>
+
+          <h2 className="text-4xl font-bold text-white mb-4">
+            AI-Powered Investment Analysis
+          </h2>
+          <p className="text-xl text-gray-400 mb-12 max-w-3xl">
+            Get investor-ready analysis in minutes. Generate comprehensive feasibility 
+            studies, market analyses, and strategic assessments powered by AI.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-12 opacity-60">
-            {['Forbes', 'TechCrunch', 'WSJ', 'RE Investor'].map((logo) => (
-              <div key={logo} className="text-xl sm:text-2xl font-bold text-gray-400">{logo}</div>
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-2 mt-8">
-            <div className="flex">
-              {[1,2,3,4,5].map((i) => (
-                <Star key={i} className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-              ))}
-            </div>
-            <span className="text-gray-600 font-medium">4.9/5 from 1,247 reviews</span>
-          </div>
-        </div>
-      </section>
 
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 gap-12">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6">
-                The Problem with Traditional RE Investing
-              </h2>
-              <div className="space-y-4">
-                {problems.map((problem, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <X className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-gray-600">{problem}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6">
-                The JediRe Solution
-              </h2>
-              <div className="space-y-4">
-                {solutions.map((solution, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <Check className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
-                    <span className="text-gray-600">{solution}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="features" className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              What Makes JediRe Different
-            </h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Our AI-powered platform gives you an unfair advantage in real estate investing
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {features.map((feature, i) => (
-              <div key={i} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-                  <feature.icon className="w-6 h-6 text-blue-600" />
+              <div
+                key={i}
+                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-colors"
+              >
+                <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center mb-4">
+                  <feature.icon className="w-6 h-6 text-emerald-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">{feature.title}</h3>
-                <p className="text-gray-600 mb-4">{feature.description}</p>
-                <a href="#" className="text-blue-600 hover:text-blue-700 font-medium text-sm flex items-center gap-1">
-                  Learn More <ChevronRight className="w-4 h-4" />
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              Get Started in 3 Simple Steps
-            </h2>
-          </div>
-
-          <div className="max-w-3xl mx-auto">
-            {steps.map((step, i) => (
-              <div key={i} className="relative">
-                <div className="flex items-start gap-6 mb-8">
-                  <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                    {step.number}
-                  </div>
-                  <div className="flex-1 bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">{step.title}</h3>
-                    <p className="text-gray-600">{step.description}</p>
-                  </div>
-                </div>
-                {i < steps.length - 1 && (
-                  <div className="absolute left-6 top-14 w-0.5 h-8 bg-blue-200" />
-                )}
+                <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
+                <p className="text-gray-400 text-sm">{feature.description}</p>
               </div>
             ))}
           </div>
 
-          <div className="text-center mt-12">
-            <button
-              onClick={() => navigate('/auth')}
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-lg inline-flex items-center gap-2 shadow-lg"
-            >
-              Start Your Free Trial <ArrowRight className="w-5 h-5" />
-            </button>
+          {/* Sample Report Card */}
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-white/10 p-8">
+            <div className="grid lg:grid-cols-2 gap-8 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 rounded-full mb-4">
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-medium text-emerald-400">Sample Analysis</span>
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-4">
+                  Complete Market Analysis
+                </h3>
+                <p className="text-gray-400 mb-6">
+                  Generate comprehensive property assessments including market sizing, 
+                  growth projections, competitive analysis, and ROI calculations.
+                </p>
+                <div className="flex flex-wrap gap-3 mb-6">
+                  {['Feasibility Study', 'Market Analysis', 'SWOT', 'PESTLE', 'Pitch Deck'].map((tag) => (
+                    <span key={tag} className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-medium text-gray-300">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-4">
+                  <button className="px-6 py-3 bg-white hover:bg-gray-100 text-gray-900 rounded-lg font-medium transition-colors inline-flex items-center gap-2">
+                    <Play className="w-4 h-4" />
+                    See Examples
+                  </button>
+                  <button className="px-6 py-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-lg font-medium transition-colors">
+                    Try Free Sample
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-900/50 rounded-xl border border-white/10 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <BarChart3 className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-emerald-400">Property Report</div>
+                    <div className="text-xs text-gray-500">Generated Analysis</div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Market Size (TAM)</span>
+                    <span className="text-sm font-bold text-white">$8.2B</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Growth Rate</span>
+                    <span className="text-sm font-bold text-emerald-400">+24% YoY</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Competition Level</span>
+                    <span className="px-2 py-0.5 bg-yellow-500/10 text-yellow-400 rounded text-xs font-medium">Medium</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Confidence Score</span>
+                    <span className="text-sm font-bold text-white">87%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="pricing" className="py-20 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Find Hidden Opportunities?</h2>
-          <p className="text-xl text-white/80 mb-8 max-w-2xl mx-auto">
+      {/* CTA Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            Ready to Find Your Next Investment?
+          </h2>
+          <p className="text-xl text-gray-600 mb-8">
             Join 5,000+ investors who are already using AI to find better deals faster.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => navigate('/auth')}
-              className="px-8 py-4 bg-white text-blue-600 hover:bg-gray-100 rounded-xl font-semibold text-lg"
+              className="px-8 py-4 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-semibold text-lg transition-colors inline-flex items-center gap-2"
             >
-              Start Free 30-Day Trial
+              Start Free Trial
+              <ChevronRight className="w-5 h-5" />
             </button>
-            <button className="px-8 py-4 bg-white/10 hover:bg-white/20 border border-white/30 rounded-xl font-semibold text-lg">
-              Schedule a Demo
+            <button className="px-8 py-4 bg-white hover:bg-gray-50 border-2 border-gray-900 text-gray-900 rounded-xl font-semibold text-lg transition-colors">
+              Schedule Demo
             </button>
           </div>
         </div>
       </section>
 
-      <footer className="py-12 bg-gray-900 text-gray-400">
+      {/* Footer */}
+      <footer className="py-12 bg-gray-50 border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <Building2 className="w-6 h-6 text-blue-500" />
-                <span className="text-lg font-bold text-white">JediRe</span>
+                <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">JR</span>
+                </div>
+                <div className="text-lg font-bold">
+                  <span className="text-emerald-500">Jedi</span><span className="text-gray-900">Re</span>
+                </div>
               </div>
-              <p className="text-sm">AI-Powered Real Estate Intelligence</p>
+              <p className="text-sm text-gray-600">AI-Powered Real Estate Intelligence</p>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Product</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">Features</a></li>
-                <li><a href="#" className="hover:text-white">Pricing</a></li>
-                <li><a href="#" className="hover:text-white">API</a></li>
+              <h4 className="font-semibold text-gray-900 mb-4">Product</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><Link to="/features" className="hover:text-gray-900">Features</Link></li>
+                <li><Link to="/pricing" className="hover:text-gray-900">Pricing</Link></li>
+                <li><Link to="/docs" className="hover:text-gray-900">API</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Company</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">About</a></li>
-                <li><a href="#" className="hover:text-white">Blog</a></li>
-                <li><a href="#" className="hover:text-white">Careers</a></li>
+              <h4 className="font-semibold text-gray-900 mb-4">Company</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><Link to="/about" className="hover:text-gray-900">About</Link></li>
+                <li><Link to="/blog" className="hover:text-gray-900">Blog</Link></li>
+                <li><Link to="/careers" className="hover:text-gray-900">Careers</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">Privacy</a></li>
-                <li><a href="#" className="hover:text-white">Terms</a></li>
-                <li><a href="#" className="hover:text-white">Security</a></li>
+              <h4 className="font-semibold text-gray-900 mb-4">Legal</h4>
+              <ul className="space-y-2 text-sm text-gray-600">
+                <li><Link to="/privacy" className="hover:text-gray-900">Privacy</Link></li>
+                <li><Link to="/terms" className="hover:text-gray-900">Terms</Link></li>
+                <li><Link to="/security" className="hover:text-gray-900">Security</Link></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-800 pt-8 text-sm text-center">
+          <div className="border-t border-gray-200 pt-8 text-sm text-gray-600 text-center">
             © 2026 JediRe. All rights reserved.
           </div>
         </div>
