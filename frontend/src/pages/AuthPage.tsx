@@ -21,8 +21,8 @@ export default function AuthPage() {
       <div className="flex-1 flex items-center justify-center p-4 relative z-10">
         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-              <span className="text-3xl font-bold text-white">JR</span>
+            <div className="text-3xl font-bold">
+              <span className="text-emerald-500">Jedi</span><span className="text-gray-900">Re</span>
             </div>
           </div>
 
