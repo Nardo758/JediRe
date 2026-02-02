@@ -47,10 +47,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-gray-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">JR</span>
-              </div>
+            <div className="flex items-center">
               <div className="text-2xl font-bold">
                 <span className="text-emerald-500">Jedi</span><span className="text-gray-900">Re</span>
               </div>
@@ -525,10 +522,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">JR</span>
-                </div>
+              <div className="flex items-center mb-4">
                 <div className="text-lg font-bold">
                   <span className="text-emerald-500">Jedi</span><span className="text-gray-900">Re</span>
                 </div>
