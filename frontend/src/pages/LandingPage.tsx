@@ -137,14 +137,13 @@ export default function LandingPage() {
             {/* Left Column - Hero Content */}
             <div>
               <h1 className="text-5xl lg:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-                Find Hidden Real Estate{' '}
-                <span className="text-emerald-500">Arbitrage Opportunities</span>
+                The Operating System for{' '}
+                <span className="text-emerald-500">Real Estate Professionals</span>
               </h1>
               
               <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-                Stop analyzing properties one strategy at a time. JediRe compares Build, 
-                Flip, Rental, and Airbnb strategies simultaneously—powered by 12+ autonomous 
-                AI agents that never sleep.
+                One platform. Every strategy. Powered by 12 autonomous AI agents analyzing 
+                Build, Flip, Rental, and Airbnb opportunities across your entire market—24/7.
               </p>
 
               {/* CTA Buttons */}
@@ -345,17 +344,153 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Social Proof */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-gray-600 mb-6">
-            Trusted by investors who've discovered <strong className="text-gray-900">$2.4B+</strong> in opportunities
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 text-2xl font-bold text-gray-300">
-            <span>Multifamily Pros</span>
-            <span>Fix & Flip Elite</span>
-            <span>STR Investors</span>
-            <span>Developers</span>
+      {/* User Types Section */}
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Built for Every Real Estate Professional
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Whether you invest, develop, broker, syndicate, or lend—JediRe adapts to your workflow
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Investors */}
+            <div className="bg-gray-50 rounded-xl p-6 border-2 border-transparent hover:border-emerald-500 transition-all">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Investors</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Single-family arbitrage across Build, Flip, Rental, Airbnb</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Opportunity scoring and deal prioritization</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Market timing signals from debt cycle and supply agents</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Developers */}
+            <div className="bg-gray-50 rounded-xl p-6 border-2 border-transparent hover:border-emerald-500 transition-all">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Developers</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>AI-powered zoning interpretation</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Feasibility analysis and buildable envelope calculations</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>5-year supply pipeline forecasting</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Brokers & Agents */}
+            <div className="bg-gray-50 rounded-xl p-6 border-2 border-transparent hover:border-emerald-500 transition-all">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
+                  <Home className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Brokers & Agents</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Market intelligence to advise investor clients</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Off-market opportunity identification</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Data-backed listing presentations</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Syndicators & Fund Managers */}
+            <div className="bg-gray-50 rounded-xl p-6 border-2 border-transparent hover:border-emerald-500 transition-all">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Syndicators & Fund Managers</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Deal flow scoring and filtering</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Portfolio-level risk monitoring</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Investor reporting with AI-generated insights</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Lenders & Capital Partners */}
+            <div className="bg-gray-50 rounded-xl p-6 border-2 border-transparent hover:border-emerald-500 transition-all">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-emerald-500 rounded-lg flex items-center justify-center">
+                  <BarChart3 className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Lenders & Capital Partners</h3>
+              </div>
+              <ul className="space-y-3 text-sm text-gray-700">
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Automated due diligence support</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Market validation for underwriting</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <ChevronRight className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                  <span>Risk assessment across strategies</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* All Professionals - CTA Card */}
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-6 text-white flex flex-col justify-center items-center text-center">
+              <Sparkles className="w-12 h-12 mb-4" />
+              <h3 className="text-xl font-bold mb-2">Your Role Not Listed?</h3>
+              <p className="text-emerald-50 text-sm mb-4">
+                JediRe adapts to any real estate workflow. See how it fits yours.
+              </p>
+              <button
+                onClick={() => navigate('/auth')}
+                className="px-6 py-3 bg-white text-emerald-600 rounded-lg font-semibold hover:bg-emerald-50 transition-colors"
+              >
+                Start Free Trial
+              </button>
+            </div>
           </div>
         </div>
       </section>
