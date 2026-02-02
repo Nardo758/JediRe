@@ -14,6 +14,9 @@ npm run build
 cd ..
 
 echo "=== Copying Frontend to Backend ==="
-cp -r frontend/dist backend/dist/public
+mkdir -p backend/public
+cp -r frontend/dist/* backend/public/
+echo "Copied frontend files to backend/public/"
+ls -la backend/public/ | head -5
 
 echo "=== Build Complete ==="
