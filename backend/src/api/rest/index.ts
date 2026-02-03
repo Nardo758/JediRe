@@ -14,6 +14,8 @@ import microsoftRoutes from './microsoft.routes';
 import preferencesRoutes from './preferences.routes';
 import extractionsRoutes from './extractions.routes';
 import mapsRoutes from './maps.routes';
+import proposalsRoutes from './proposals.routes';
+import notificationsRoutes from './notifications.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -30,6 +32,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Maps & pins routes
   app.use(`${API_PREFIX}/maps`, mapsRoutes);
+
+  // Collaboration proposals routes
+  app.use(`${API_PREFIX}/proposals`, proposalsRoutes);
+
+  // Notifications routes
+  app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 
   // Property routes
   app.use(`${API_PREFIX}/properties`, propertyRoutes);
