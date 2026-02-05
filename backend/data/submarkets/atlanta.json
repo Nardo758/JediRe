@@ -1,0 +1,273 @@
+{
+  "city": "Atlanta",
+  "state": "GA",
+  "metadata": {
+    "population": 498715,
+    "metro_population": 6144050,
+    "median_income": 69164,
+    "unemployment_rate": 3.2,
+    "last_updated": "2026-02-05"
+  },
+  "submarkets": [
+    {
+      "id": "atlanta-ga-midtown",
+      "name": "Midtown",
+      "center_lat": 33.7844,
+      "center_lng": -84.3858,
+      "zip_codes": ["30308", "30309"],
+      "characteristics": {
+        "type": "urban_core",
+        "walkability_score": 95,
+        "transit_score": 85,
+        "avg_building_age": 15,
+        "dominant_class": "A"
+      },
+      "demographics": {
+        "population": 25000,
+        "median_age": 32,
+        "median_income": 85000,
+        "college_educated_pct": 0.78
+      },
+      "market_stats": {
+        "total_units": 12543,
+        "avg_rent": 1982,
+        "vacancy_rate": 0.203,
+        "avg_rent_growth_3yr": 0.045
+      }
+    },
+    {
+      "id": "atlanta-ga-buckhead",
+      "name": "Buckhead",
+      "center_lat": 33.8490,
+      "center_lng": -84.3781,
+      "zip_codes": ["30305", "30326", "30327"],
+      "characteristics": {
+        "type": "affluent_suburb",
+        "walkability_score": 75,
+        "transit_score": 60,
+        "avg_building_age": 20,
+        "dominant_class": "A"
+      },
+      "demographics": {
+        "population": 80000,
+        "median_age": 38,
+        "median_income": 125000,
+        "college_educated_pct": 0.85
+      },
+      "market_stats": {
+        "total_units": 18500,
+        "avg_rent": 2350,
+        "vacancy_rate": 0.085,
+        "avg_rent_growth_3yr": 0.062
+      }
+    },
+    {
+      "id": "atlanta-ga-virginia-highland",
+      "name": "Virginia Highland",
+      "center_lat": 33.7844,
+      "center_lng": -84.3444,
+      "zip_codes": ["30306"],
+      "characteristics": {
+        "type": "historic_neighborhood",
+        "walkability_score": 88,
+        "transit_score": 70,
+        "avg_building_age": 35,
+        "dominant_class": "B"
+      },
+      "demographics": {
+        "population": 12000,
+        "median_age": 35,
+        "median_income": 95000,
+        "college_educated_pct": 0.82
+      },
+      "market_stats": {
+        "total_units": 3200,
+        "avg_rent": 1850,
+        "vacancy_rate": 0.045,
+        "avg_rent_growth_3yr": 0.038
+      }
+    },
+    {
+      "id": "atlanta-ga-west-end",
+      "name": "West End",
+      "center_lat": 33.7356,
+      "center_lng": -84.4148,
+      "zip_codes": ["30310"],
+      "characteristics": {
+        "type": "emerging_neighborhood",
+        "walkability_score": 70,
+        "transit_score": 75,
+        "avg_building_age": 45,
+        "dominant_class": "C"
+      },
+      "demographics": {
+        "population": 8500,
+        "median_age": 33,
+        "median_income": 52000,
+        "college_educated_pct": 0.55
+      },
+      "market_stats": {
+        "total_units": 2800,
+        "avg_rent": 1250,
+        "vacancy_rate": 0.12,
+        "avg_rent_growth_3yr": 0.085
+      }
+    },
+    {
+      "id": "atlanta-ga-downtown",
+      "name": "Downtown",
+      "center_lat": 33.7490,
+      "center_lng": -84.3880,
+      "zip_codes": ["30303", "30312"],
+      "characteristics": {
+        "type": "central_business_district",
+        "walkability_score": 92,
+        "transit_score": 90,
+        "avg_building_age": 12,
+        "dominant_class": "A"
+      },
+      "demographics": {
+        "population": 18000,
+        "median_age": 30,
+        "median_income": 75000,
+        "college_educated_pct": 0.72
+      },
+      "market_stats": {
+        "total_units": 8500,
+        "avg_rent": 1950,
+        "vacancy_rate": 0.18,
+        "avg_rent_growth_3yr": 0.032
+      }
+    },
+    {
+      "id": "atlanta-ga-east-atlanta",
+      "name": "East Atlanta",
+      "center_lat": 33.7266,
+      "center_lng": -84.3379,
+      "zip_codes": ["30316"],
+      "characteristics": {
+        "type": "arts_district",
+        "walkability_score": 78,
+        "transit_score": 65,
+        "avg_building_age": 40,
+        "dominant_class": "B"
+      },
+      "demographics": {
+        "population": 9500,
+        "median_age": 31,
+        "median_income": 68000,
+        "college_educated_pct": 0.70
+      },
+      "market_stats": {
+        "total_units": 2500,
+        "avg_rent": 1550,
+        "vacancy_rate": 0.065,
+        "avg_rent_growth_3yr": 0.095
+      }
+    },
+    {
+      "id": "atlanta-ga-kirkwood",
+      "name": "Kirkwood",
+      "center_lat": 33.7590,
+      "center_lng": -84.3140,
+      "zip_codes": ["30317"],
+      "characteristics": {
+        "type": "family_neighborhood",
+        "walkability_score": 72,
+        "transit_score": 60,
+        "avg_building_age": 38,
+        "dominant_class": "B"
+      },
+      "demographics": {
+        "population": 7200,
+        "median_age": 36,
+        "median_income": 78000,
+        "college_educated_pct": 0.75
+      },
+      "market_stats": {
+        "total_units": 1800,
+        "avg_rent": 1650,
+        "vacancy_rate": 0.038,
+        "avg_rent_growth_3yr": 0.072
+      }
+    },
+    {
+      "id": "atlanta-ga-inman-park",
+      "name": "Inman Park",
+      "center_lat": 33.7570,
+      "center_lng": -84.3510,
+      "zip_codes": ["30307"],
+      "characteristics": {
+        "type": "historic_district",
+        "walkability_score": 85,
+        "transit_score": 78,
+        "avg_building_age": 42,
+        "dominant_class": "B"
+      },
+      "demographics": {
+        "population": 4500,
+        "median_age": 37,
+        "median_income": 105000,
+        "college_educated_pct": 0.88
+      },
+      "market_stats": {
+        "total_units": 1200,
+        "avg_rent": 2100,
+        "vacancy_rate": 0.025,
+        "avg_rent_growth_3yr": 0.055
+      }
+    },
+    {
+      "id": "atlanta-ga-old-fourth-ward",
+      "name": "Old Fourth Ward",
+      "center_lat": 33.7656,
+      "center_lng": -84.3698,
+      "zip_codes": ["30312"],
+      "characteristics": {
+        "type": "redevelopment_zone",
+        "walkability_score": 82,
+        "transit_score": 75,
+        "avg_building_age": 8,
+        "dominant_class": "A"
+      },
+      "demographics": {
+        "population": 11000,
+        "median_age": 29,
+        "median_income": 72000,
+        "college_educated_pct": 0.68
+      },
+      "market_stats": {
+        "total_units": 5600,
+        "avg_rent": 1875,
+        "vacancy_rate": 0.092,
+        "avg_rent_growth_3yr": 0.125
+      }
+    },
+    {
+      "id": "atlanta-ga-grant-park",
+      "name": "Grant Park",
+      "center_lat": 33.7406,
+      "center_lng": -84.3691,
+      "zip_codes": ["30315"],
+      "characteristics": {
+        "type": "historic_neighborhood",
+        "walkability_score": 75,
+        "transit_score": 68,
+        "avg_building_age": 48,
+        "dominant_class": "C"
+      },
+      "demographics": {
+        "population": 6800,
+        "median_age": 34,
+        "median_income": 65000,
+        "college_educated_pct": 0.72
+      },
+      "market_stats": {
+        "total_units": 2200,
+        "avg_rent": 1450,
+        "vacancy_rate": 0.055,
+        "avg_rent_growth_3yr": 0.088
+      }
+    }
+  ]
+}
