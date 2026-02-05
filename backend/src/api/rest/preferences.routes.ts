@@ -4,14 +4,14 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(requireAuth);
 
 /**
  * GET /api/v1/preferences
@@ -19,7 +19,7 @@ router.use(authMiddleware);
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
+    const userId = (req as any).user?.userId;
 
     const result = await query(
       `SELECT * FROM user_acquisition_preferences 
@@ -56,7 +56,7 @@ router.get('/', async (req: Request, res: Response) => {
  */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
+    const userId = (req as any).user?.userId;
     const {
       property_types,
       min_units,
@@ -208,7 +208,7 @@ router.post('/', async (req: Request, res: Response) => {
  */
 router.delete('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
+    const userId = (req as any).user?.userId;
 
     await query(
       `UPDATE user_acquisition_preferences 
