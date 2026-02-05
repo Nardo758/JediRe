@@ -183,7 +183,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
     logger.info(`Analyzing parcel (standalone): ${parcel.parcel_id}`);
     
     const PYTHON_CMD = process.env.PYTHON_PATH || '/home/leon/clawd/jedi-re/venv/bin/python3';
-    const PYTHON_DIR = path.join(__dirname, '../../python-services');
+    // Absolute path to backend root (works in both ts-node and compiled)
+    const PYTHON_DIR = '/home/leon/clawd/jedire/backend/python-services';
     const cmd = `cd ${PYTHON_DIR} && echo '${JSON.stringify(parcel)}' | ${PYTHON_CMD} analyze_standalone.py`;
     
     const { stdout, stderr } = await execPromise(cmd);
