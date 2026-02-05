@@ -4,6 +4,8 @@
 **Date:** February 1, 2026  
 **Vision:** War mapping + collaborative intelligence + AI automation
 
+**📐 Data Schema:** See `JEDI_DATA_SCHEMA.md` (v2.0) for complete data structures supporting all 8 engines + JEDI Score. This document is the **single source of truth** for all data models.
+
 ---
 
 ## Core Concept
