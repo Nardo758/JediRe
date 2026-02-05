@@ -13,8 +13,9 @@ asyncpg==0.29.0
 # Cache
 redis==5.0.1
 
-# Data Processing (numpy only - using system scipy/pandas/geopandas)
+# Data Processing
 numpy==1.26.0
+scipy==1.11.4
 
 # Background Jobs (optional for now)
 celery==5.3.4

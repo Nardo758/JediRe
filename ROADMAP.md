@@ -12,8 +12,11 @@
 - [x] Imbalance Detector (synthesized verdict system)
 - [x] Database schema (PostgreSQL + TimescaleDB)
 - [x] Documentation (README, Integration Plan)
+- [x] **Unified Data Schema** (JEDI_DATA_SCHEMA.md v2.0) - 2026-02-05
 
 **Status:** ✅ COMPLETE - All code working, tested with simulated data
+
+**Key Deliverable:** `JEDI_DATA_SCHEMA.md` - Living document defining all data structures for the complete platform (8 engines + JEDI Score). Updated as we build.
 
 ---
 
@@ -235,6 +238,35 @@
 
 ---
 
-**Last Updated:** 2026-02-02  
+## 📐 Data Schema Evolution
+
+**Central Document:** `/home/leon/clawd/jedire/JEDI_DATA_SCHEMA.md`
+
+**Version History:**
+- v2.0 (2026-02-05): Complete platform schema (all 8 engines + JEDI Score)
+- v1.0 (2026-02-02): Initial Phase 1 schemas (3 engines)
+
+**Update Process:**
+1. Each phase adds new engine I/O schemas
+2. Schema version embedded in all API outputs
+3. Backward compatibility maintained for 2+ versions
+4. Breaking changes = major version bump
+5. Document reviewed at start of each phase
+
+**When to Update:**
+- Adding new engines (Phase 2, 3, 4)
+- Adding new data sources (scrapers, APIs)
+- API endpoint changes
+- After user feedback reveals gaps
+
+**Schema Status by Phase:**
+- Phase 1: ✅ Signal Processing, Carrying Capacity, Imbalance Detector
+- Phase 2: 📝 Game Theory, Network Science (designed, not built)
+- Phase 3: 📝 Contagion Model, Monte Carlo (designed, not built)
+- Phase 4: 📝 Behavioral Economics, Capital Flow, JEDI Score (designed, not built)
+
+---
+
+**Last Updated:** 2026-02-05  
 **Current Phase:** Phase 1, Week 2  
 **Next Milestone:** Data Integration Complete (2026-02-09)

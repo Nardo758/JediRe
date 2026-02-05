@@ -48,6 +48,7 @@ import CookiesPage from './pages/CookiesPage';
 import AccessibilityPage from './pages/AccessibilityPage';
 import DmcaPage from './pages/DmcaPage';
 import UnsubscribePage from './pages/UnsubscribePage';
+import AnalysisPage from './pages/AnalysisPage';
 import { MobileLayout } from './components/mobile';
 import { Loader } from 'lucide-react';
 
@@ -130,6 +131,7 @@ function App() {
       <Route path="/accessibility" element={<AccessibilityPage />} />
       <Route path="/dmca" element={<DmcaPage />} />
       <Route path="/unsubscribe" element={<UnsubscribePage />} />
+      <Route path="/analysis" element={<AnalysisPage />} />
       
       <Route
         path="/app"
