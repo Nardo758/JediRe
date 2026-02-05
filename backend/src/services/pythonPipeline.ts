@@ -12,6 +12,8 @@ import { logger } from '../utils/logger';
 const execPromise = promisify(exec);
 
 const PYTHON_DIR = path.join(__dirname, '../../python-services');
+const VENV_PYTHON = '/home/leon/clawd/jedi-re/venv/bin/python3';
+const PYTHON_CMD = process.env.PYTHON_PATH || VENV_PYTHON;
 
 export interface ParcelAnalysisResult {
   parcelId: string;
@@ -47,7 +49,7 @@ export class PythonPipelineService {
    */
   static async analyzeParcel(parcelId: string): Promise<ParcelAnalysisResult> {
     try {
-      const cmd = `cd ${PYTHON_DIR} && python3 load_parcels.py analyze --parcel-ids ${parcelId} --json`;
+      const cmd = `cd ${PYTHON_DIR} && ${PYTHON_CMD} load_parcels.py analyze --parcel-ids ${parcelId}`;
       logger.info(`Executing: ${cmd}`);
       
       const { stdout, stderr } = await execPromise(cmd);
@@ -73,7 +75,7 @@ export class PythonPipelineService {
   ): Promise<BatchLoadResult> {
     try {
       const limitArg = limit ? `--limit ${limit}` : '';
-      const cmd = `cd ${PYTHON_DIR} && python3 load_parcels.py pipeline --pattern "${pattern}" ${limitArg}`;
+      const cmd = `cd ${PYTHON_DIR} && ${PYTHON_CMD} load_parcels.py pipeline --pattern "${pattern}" ${limitArg}`;
       
       logger.info(`Loading parcels: ${cmd}`);
       
@@ -110,7 +112,7 @@ export class PythonPipelineService {
   static async loadMockData(types: string[] = ['all']): Promise<BatchLoadResult> {
     try {
       const typeArg = types.join(',');
-      const cmd = `cd ${PYTHON_DIR} && python3 load_mock_data.py --types ${typeArg}`;
+      const cmd = `cd ${PYTHON_DIR} && ${PYTHON_CMD} load_mock_data.py --types ${typeArg}`;
       
       logger.info(`Loading mock data: ${cmd}`);
       
@@ -140,7 +142,7 @@ export class PythonPipelineService {
    */
   static async getStatus(): Promise<any> {
     try {
-      const cmd = `cd ${PYTHON_DIR} && python3 -c "from data_pipeline.database import db_manager; print('Python pipeline OK')"`;
+      const cmd = `cd ${PYTHON_DIR} && ${PYTHON_CMD} -c "from data_pipeline.database import db_manager; print('Python pipeline OK')"`;
       const { stdout } = await execPromise(cmd);
       
       return {
