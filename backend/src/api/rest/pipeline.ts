@@ -7,7 +7,11 @@
 import { Router, Request, Response } from 'express';
 import { PythonPipelineService } from '../../services/pythonPipeline';
 import { logger } from '../../utils/logger';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
 
+const execPromise = promisify(exec);
 const router = Router();
 
 /**
@@ -152,3 +156,53 @@ router.post('/analyze-batch', async (req: Request, res: Response) => {
 });
 
 export default router;
+
+/**
+ * POST /api/pipeline/analyze
+ * Analyze parcel capacity (standalone, no database required)
+ * 
+ * Body: {
+ *   parcel_id: string,
+ *   current_zoning: string,  // e.g. "MR-3", "MRC-2"
+ *   lot_size_sqft: number,
+ *   current_units?: number,
+ *   existing_sqft?: number
+ * }
+ */
+router.post('/analyze', async (req: Request, res: Response) => {
+  try {
+    const parcel = req.body;
+    
+    if (!parcel.parcel_id || !parcel.current_zoning || !parcel.lot_size_sqft) {
+      return res.status(400).json({
+        success: false,
+        error: 'Required fields: parcel_id, current_zoning, lot_size_sqft'
+      });
+    }
+    
+    logger.info(`Analyzing parcel (standalone): ${parcel.parcel_id}`);
+    
+    const PYTHON_CMD = process.env.PYTHON_PATH || '/home/leon/clawd/jedi-re/venv/bin/python3';
+    const PYTHON_DIR = path.join(__dirname, '../../python-services');
+    const cmd = `cd ${PYTHON_DIR} && echo '${JSON.stringify(parcel)}' | ${PYTHON_CMD} analyze_standalone.py`;
+    
+    const { stdout, stderr } = await execPromise(cmd);
+    
+    if (stderr) {
+      logger.warn(`Python stderr: ${stderr}`);
+    }
+    
+    const analysis = JSON.parse(stdout);
+    
+    res.json({
+      success: true,
+      analysis
+    });
+  } catch (error) {
+    logger.error('Standalone analysis failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
