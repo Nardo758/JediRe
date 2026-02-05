@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import path from 'path';
+import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 
 dotenv.config();
 
@@ -160,13 +161,14 @@ app.get('/api/v1/properties', async (req, res) => {
   }
 });
 
-// Get user alerts
-app.get('/api/v1/alerts/:userId', async (req, res) => {
+// Get user alerts (requires authentication)
+app.get('/api/v1/alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user!.userId;
     const limit = parseInt(req.query.limit as string) || 20;
     
-    const result = await pool.query(
+    const client = req.dbClient || pool;
+    const result = await client.query(
       `SELECT * FROM alerts 
        WHERE user_id = $1 
        ORDER BY created_at DESC 
@@ -590,17 +592,27 @@ const microsoftConfig = {
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
 
-// Check Microsoft integration status
-app.get('/api/v1/microsoft/status', (req, res) => {
+// Check Microsoft integration status (requires auth to check user connection)
+app.get('/api/v1/microsoft/status', requireAuth, async (req: AuthenticatedRequest, res) => {
   const configured = !!(microsoftConfig.clientId && microsoftConfig.clientSecret);
-  res.json({
-    configured,
-    connected: false
-  });
+  let connected = false;
+  
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(
+      'SELECT id FROM microsoft_accounts WHERE user_id = $1 AND is_active = true LIMIT 1',
+      [req.user!.userId]
+    );
+    connected = result.rows.length > 0;
+  } catch (error) {
+    console.error('Error checking Microsoft connection:', error);
+  }
+  
+  res.json({ configured, connected });
 });
 
-// Get Microsoft OAuth authorization URL
-app.get('/api/v1/microsoft/auth/url', (req, res) => {
+// Get Microsoft OAuth authorization URL (requires auth)
+app.get('/api/v1/microsoft/auth/url', requireAuth, (req: AuthenticatedRequest, res) => {
   if (!microsoftConfig.clientId) {
     return res.status(500).json({ success: false, error: 'Microsoft not configured' });
   }
