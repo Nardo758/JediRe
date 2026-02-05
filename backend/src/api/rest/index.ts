@@ -16,6 +16,7 @@ import extractionsRoutes from './extractions.routes';
 import mapsRoutes from './maps.routes';
 import proposalsRoutes from './proposals.routes';
 import notificationsRoutes from './notifications.routes';
+import pipelineRoutes from './pipeline';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -56,6 +57,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Microsoft integration (Outlook, Calendar)
   app.use(`${API_PREFIX}/microsoft`, microsoftRoutes);
+
+  // Data pipeline routes (Python integration)
+  app.use(`${API_PREFIX}/pipeline`, pipelineRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

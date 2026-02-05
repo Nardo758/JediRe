@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Property, SearchResult, ZoningInsight, User } from '@/types';
+import { Property, SearchResult, ZoningInsight, User, Lead, Commission, CommissionSummary } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -112,6 +112,70 @@ export const authAPI = {
 
   me: async (): Promise<User> => {
     const { data } = await api.get('/auth/me');
+    return data;
+  },
+};
+
+// Lead Management API
+export const leadAPI = {
+  create: async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lead> => {
+    const { data } = await api.post('/api/agent/leads', leadData);
+    return data;
+  },
+
+  list: async (filters?: { status?: string; priority?: string; source?: string }): Promise<Lead[]> => {
+    const { data } = await api.get('/api/agent/leads', { params: filters });
+    return data.data || [];
+  },
+
+  getById: async (id: string): Promise<Lead> => {
+    const { data } = await api.get(`/api/agent/leads/${id}`);
+    return data;
+  },
+
+  update: async (id: string, updates: Partial<Lead>): Promise<Lead> => {
+    const { data } = await api.patch(`/api/agent/leads/${id}`, updates);
+    return data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/api/agent/leads/${id}`);
+  },
+
+  convertToClient: async (id: string): Promise<any> => {
+    const { data } = await api.post(`/api/agent/leads/${id}/convert`);
+    return data;
+  },
+};
+
+// Commission API
+export const commissionAPI = {
+  calculate: (dealValue: number, rate: number, split: number) => {
+    const grossCommission = dealValue * (rate / 100);
+    const netCommission = grossCommission * (split / 100);
+    return { grossCommission, netCommission };
+  },
+
+  getSummary: async (): Promise<CommissionSummary> => {
+    const { data } = await api.get('/api/agent/commission/summary');
+    return data;
+  },
+
+  getHistory: async (filters?: { status?: string; year?: number }): Promise<Commission[]> => {
+    const { data } = await api.get('/api/agent/commission/history', { params: filters });
+    return data.data || [];
+  },
+
+  create: async (commissionData: Omit<Commission, 'id' | 'createdAt'>): Promise<Commission> => {
+    const { data } = await api.post('/api/agent/commission', commissionData);
+    return data;
+  },
+
+  exportCSV: async (filters?: any): Promise<Blob> => {
+    const { data } = await api.get('/api/agent/commission/export', {
+      params: filters,
+      responseType: 'blob',
+    });
     return data;
   },
 };
