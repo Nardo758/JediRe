@@ -6,6 +6,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { extractTokenFromHeader, verifyAccessToken } from '../auth/jwt';
 import { logger } from '../utils/logger';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -17,12 +22,13 @@ export interface AuthenticatedRequest extends Request {
 
 /**
  * Require authentication
+ * Sets RLS user context for database queries
  */
-export function requireAuth(
+export async function requireAuth(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const token = extractTokenFromHeader(req.headers.authorization);
 
   if (!token) {
@@ -41,6 +47,12 @@ export function requireAuth(
       message: 'Invalid or expired token',
     });
     return;
+  }
+
+  try {
+    await pool.query('SET LOCAL app.current_user_id = $1', [payload.userId]);
+  } catch (error) {
+    logger.warn('Failed to set RLS user context:', error);
   }
 
   req.user = payload;
