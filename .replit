@@ -26,3 +26,42 @@ start = "typescript-language-server --stdio"
 [deployment]
 run = ["sh", "-c", "cd backend && npm run build && npm start"]
 deploymentTarget = "cloudrun"
+
+[agent]
+expertMode = true
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 4000
+externalPort = 80
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "JediRe"
+
+[[workflows.workflow]]
+name = "JediRe"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./start.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"

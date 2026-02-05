@@ -1,16 +1,14 @@
 /**
  * Authentication Middleware
  * Protect routes with JWT verification
+ * Sets RLS user context via dedicated client from shared pool
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { extractTokenFromHeader, verifyAccessToken } from '../auth/jwt';
 import { logger } from '../utils/logger';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import { getClient } from '../database/connection';
+import { PoolClient } from 'pg';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -18,11 +16,13 @@ export interface AuthenticatedRequest extends Request {
     email: string;
     role: string;
   };
+  dbClient?: PoolClient;
 }
 
 /**
  * Require authentication
- * Sets RLS user context for database queries
+ * Acquires a dedicated DB client, sets RLS user context within a transaction,
+ * and attaches the client to the request for downstream handlers.
  */
 export async function requireAuth(
   req: AuthenticatedRequest,
@@ -49,11 +49,40 @@ export async function requireAuth(
     return;
   }
 
+  let client: PoolClient | null = null;
   try {
-    await pool.query('SET LOCAL app.current_user_id = $1', [payload.userId]);
+    client = await getClient();
+    await client.query('BEGIN');
+    await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', String(payload.userId)]);
+    req.dbClient = client;
   } catch (error) {
-    logger.warn('Failed to set RLS user context:', error);
+    logger.error('Failed to set RLS user context:', error);
+    if (client) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      client.release();
+    }
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Failed to establish database context',
+    });
+    return;
   }
+
+  const releaseClient = async () => {
+    if (req.dbClient) {
+      try {
+        await req.dbClient.query('COMMIT');
+      } catch (err) {
+        try { await req.dbClient.query('ROLLBACK'); } catch (_) {}
+      } finally {
+        req.dbClient.release();
+        req.dbClient = undefined;
+      }
+    }
+  };
+
+  res.on('finish', releaseClient);
+  res.on('close', releaseClient);
 
   req.user = payload;
   next();
