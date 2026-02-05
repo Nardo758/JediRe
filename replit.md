@@ -158,6 +158,12 @@ Key variables are set automatically:
 - `/settings` - User settings
 
 ## Recent Changes
+- 2026-02-05: Security hardening (architect-reviewed)
+  - Fixed RLS context: uses shared pool with proper transactions and parameterized `set_config()`
+  - Protected sensitive routes: alerts and Microsoft endpoints now require authentication
+  - Alerts endpoint uses authenticated user ID instead of URL parameter
+  - Hardened token encryption: validates key length at startup, no random fallback
+  - Added `res.on('close')` handler for connection cleanup on aborted requests
 - 2026-02-01: Added 31 new pages for complete website
   - Utility pages: 404, email verification, password reset, payment results
   - Core features: property comparison, deal pipeline, calculators, analytics, alerts, team, billing, integrations
