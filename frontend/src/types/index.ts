@@ -140,3 +140,105 @@ export interface CollaborationUser {
   };
   color: string;
 }
+
+// Deal types for Agent Dashboard
+export type DealStage = 'lead' | 'qualified' | 'under_contract' | 'closed' | 'lost';
+export type DealType = 'buyer' | 'seller' | 'both';
+export type DealPriority = 'low' | 'medium' | 'high';
+
+export interface Deal {
+  id: string;
+  clientId: string;
+  clientName: string;
+  propertyAddress: string;
+  dealType: DealType;
+  stage: DealStage;
+  dealValue: number;
+  commissionRate: number;
+  commissionEstimate: number;
+  expectedCloseDate: string | null;
+  actualCloseDate: string | null;
+  priority: DealPriority;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  daysInStage: number;
+  // Activity timeline
+  activities?: DealActivity[];
+}
+
+export interface DealActivity {
+  id: string;
+  dealId: string;
+  userId: string;
+  userName: string;
+  type: 'stage_change' | 'note_added' | 'value_updated' | 'created' | 'archived';
+  description: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  type: 'buyer' | 'seller' | 'both';
+  createdAt: string;
+}
+
+export interface DealFormData {
+  clientId: string;
+  propertyAddress: string;
+  dealType: DealType;
+  dealValue: number;
+  commissionRate: number;
+  expectedCloseDate: string | null;
+  priority: DealPriority;
+  notes?: string;
+}
+
+// Agent/Lead Management types
+export interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  propertyInterest?: string;
+  source: 'referral' | 'website' | 'social' | 'open_house' | 'other';
+  priority: 'low' | 'medium' | 'high';
+  status: 'new' | 'contacted' | 'qualified' | 'converted' | 'dead';
+  notes?: string;
+  lastContact?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Commission {
+  id: string;
+  dealId?: string;
+  dealValue: number;
+  commissionRate: number;
+  splitPercentage: number;
+  grossCommission: number;
+  netCommission: number;
+  status: 'pending' | 'paid';
+  datePaid?: string;
+  dealType?: 'sale' | 'lease' | 'rental';
+  propertyAddress?: string;
+  createdAt: string;
+}
+
+export interface CommissionSummary {
+  ytdTotal: number;
+  mtdTotal: number;
+  pendingTotal: number;
+  commissionsByType: {
+    sale: number;
+    lease: number;
+    rental: number;
+  };
+}
+
+// Export agent types
+export * from './agent';

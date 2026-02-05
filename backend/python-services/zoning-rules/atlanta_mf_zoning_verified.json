@@ -1,0 +1,286 @@
+{
+  "city": "Atlanta",
+  "state": "GA",
+  "source": "Atlanta Code of Ordinances Part 16",
+  "last_updated": "2026-02-03",
+  "verification_status": "VERIFIED",
+  "zones": [
+    {
+      "zoning_code": "RG",
+      "description": "Residential General District - Multi-family with density based on Land Use Intensity Ratios across 6 sectors",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 1000,
+      "minimum_lot_size_acres": 0.023,
+      "maximum_far": "Varies by sector (see LUI table)",
+      "maximum_height_feet": null,
+      "front_setback_feet": 40,
+      "side_setback_feet": "See 16-28.011(5)(e)",
+      "rear_setback_feet": "See 16-28.011(5)(e)",
+      "parking_required_per_unit": "See LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Uses Land Use Intensity Ratio (LUI) table for density/parking",
+        "Sector 1: FAR 0.100-0.162",
+        "Sector 2: FAR 0.174-0.348",
+        "Sector 3: FAR 0.373-0.696",
+        "Sector 4: FAR 0.746-1.49",
+        "Sector 5: FAR 1.60-3.20",
+        "Sector 6: FAR 3.43-6.40",
+        "Minimum lot width: 20 feet",
+        "Transitional height planes apply adjacent to R-districts"
+      ]
+    },
+    {
+      "zoning_code": "MR-1",
+      "description": "Primarily single-family dwellings which may have zero-lot-line along one side yard",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": 0.162,
+      "maximum_height_feet": 35,
+      "front_setback_feet": null,
+      "side_setback_feet": 10,
+      "rear_setback_feet": 10,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 25 linear feet",
+        "No accessory commercial uses permitted"
+      ]
+    },
+    {
+      "zoning_code": "MR-2",
+      "description": "Two- to three-story multi-family dwellings",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": 0.348,
+      "maximum_height_feet": 35,
+      "front_setback_feet": null,
+      "side_setback_feet": 10,
+      "rear_setback_feet": 10,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 25 linear feet",
+        "No accessory commercial uses permitted"
+      ]
+    },
+    {
+      "zoning_code": "MR-3",
+      "description": "Eight-story, zero-lot-line multi-family dwellings",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": 0.696,
+      "maximum_height_feet": 80,
+      "front_setback_feet": null,
+      "side_setback_feet": 15,
+      "rear_setback_feet": 15,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 40 linear feet",
+        "Accessory commercial up to 2,000-4,000 sq ft",
+        "Transitional height planes apply"
+      ]
+    },
+    {
+      "zoning_code": "MR-4A",
+      "description": "Eight-story multi-family dwellings",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": 1.49,
+      "maximum_height_feet": 80,
+      "front_setback_feet": null,
+      "side_setback_feet": 15,
+      "rear_setback_feet": 20,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 40 linear feet",
+        "Accessory commercial up to 2,000-4,000 sq ft",
+        "Transitional height planes apply"
+      ]
+    },
+    {
+      "zoning_code": "MR-4B",
+      "description": "Five-story, zero-lot-line single-family dwellings",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": 1.49,
+      "maximum_height_feet": 52,
+      "front_setback_feet": null,
+      "side_setback_feet": 15,
+      "rear_setback_feet": 20,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 20 linear feet",
+        "No residential unit above/below another",
+        "Accessory commercial up to 2,000 sq ft",
+        "Transitional height planes apply"
+      ]
+    },
+    {
+      "zoning_code": "MR-5A",
+      "description": "15-story multi-family dwellings along major corridors",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 5000,
+      "minimum_lot_size_acres": 0.115,
+      "maximum_far": 3.20,
+      "maximum_height_feet": 150,
+      "front_setback_feet": null,
+      "side_setback_feet": 20,
+      "rear_setback_feet": 20,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 40 linear feet",
+        "Accessory commercial up to 4,000-8,000 sq ft",
+        "Transitional height planes apply"
+      ]
+    },
+    {
+      "zoning_code": "MR-5B",
+      "description": "Multi-family dwellings with height controls adjacent to single-family neighborhoods",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 5000,
+      "minimum_lot_size_acres": 0.115,
+      "maximum_far": 3.20,
+      "maximum_height_feet": 150,
+      "front_setback_feet": null,
+      "side_setback_feet": 15,
+      "rear_setback_feet": 15,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Height varies by distance from protected districts:",
+        "- 35ft within 150ft",
+        "- 80ft within 150-300ft",
+        "- 150ft beyond 300ft",
+        "Minimum street frontage: 40 linear feet",
+        "Accessory commercial up to 4,000-8,000 sq ft",
+        "Transitional height planes apply"
+      ]
+    },
+    {
+      "zoning_code": "MR-6",
+      "description": "22-story multi-family dwellings along major corridors",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 5000,
+      "minimum_lot_size_acres": 0.115,
+      "maximum_far": 6.40,
+      "maximum_height_feet": null,
+      "front_setback_feet": null,
+      "side_setback_feet": 20,
+      "rear_setback_feet": 20,
+      "parking_required_per_unit": "Per LUI table",
+      "maximum_lot_coverage": null,
+      "notes": [
+        "Minimum street frontage: 40 linear feet",
+        "Accessory commercial up to 4,000-8,000 sq ft",
+        "Transitional height planes apply",
+        "Height not explicitly stated (22 stories ~220-240ft typical)"
+      ]
+    },
+    {
+      "zoning_code": "MR-MU",
+      "description": "Missing Middle - Two- to three-story multi-unit buildings (4-12 units)",
+      "zone_type": "multi-family",
+      "minimum_lot_size_sqft": 2000,
+      "minimum_lot_size_acres": 0.046,
+      "maximum_far": null,
+      "maximum_density_units_per_building": 12,
+      "maximum_height_feet": 35,
+      "front_setback_feet": null,
+      "side_setback_feet": 5,
+      "rear_setback_feet": 10,
+      "parking_required_per_unit": 0.5,
+      "maximum_lot_coverage": null,
+      "notes": [
+        "4-12 dwelling units per building",
+        "Minimum street frontage: 25 linear feet",
+        "No accessory commercial uses",
+        "Parking decks prohibited",
+        "No transitional yard required"
+      ]
+    },
+    {
+      "zoning_code": "MRC-1",
+      "description": "Low density residential and commercial - single neighborhood or small group",
+      "zone_type": "mixed-use",
+      "minimum_lot_size_sqft": null,
+      "minimum_lot_size_acres": null,
+      "maximum_far_nonresidential": 1.0,
+      "maximum_far_residential": 0.696,
+      "maximum_far_combined": 1.696,
+      "maximum_far_with_bonuses": 2.696,
+      "maximum_height_feet": 225,
+      "front_setback_feet": null,
+      "side_setback_feet": null,
+      "rear_setback_feet": null,
+      "parking_required_per_unit": "Varies by use",
+      "maximum_lot_coverage": 85,
+      "notes": [
+        "Height varies by distance from protected districts:",
+        "- 35ft within 150ft",
+        "- 52ft within 150-300ft",
+        "- 225ft beyond 300ft",
+        "Drive-through service windows prohibited",
+        "Minimum building façade height: 24 feet",
+        "Max 85% lot coverage"
+      ]
+    },
+    {
+      "zoning_code": "MRC-2",
+      "description": "Medium density residential and commercial along corridors",
+      "zone_type": "mixed-use",
+      "minimum_lot_size_sqft": null,
+      "minimum_lot_size_acres": null,
+      "maximum_far_nonresidential": 2.5,
+      "maximum_far_residential": 1.49,
+      "maximum_far_combined": 3.196,
+      "maximum_far_with_bonuses": 3.696,
+      "maximum_height_feet": 225,
+      "front_setback_feet": null,
+      "side_setback_feet": null,
+      "rear_setback_feet": null,
+      "parking_required_per_unit": "Varies by use",
+      "maximum_lot_coverage": 85,
+      "notes": [
+        "Height varies by distance from protected districts:",
+        "- 52ft within 150ft",
+        "- 225ft beyond 150ft",
+        "Minimum building façade height: 24 feet",
+        "Max 85% lot coverage"
+      ]
+    },
+    {
+      "zoning_code": "MRC-3",
+      "description": "High density commercial and residential along major corridors",
+      "zone_type": "mixed-use",
+      "minimum_lot_size_sqft": null,
+      "minimum_lot_size_acres": null,
+      "maximum_far_nonresidential": 4.0,
+      "maximum_far_residential": 3.2,
+      "maximum_far_combined": 7.20,
+      "maximum_far_with_bonuses": 8.20,
+      "maximum_height_feet": 225,
+      "front_setback_feet": null,
+      "side_setback_feet": null,
+      "rear_setback_feet": null,
+      "parking_required_per_unit": "Varies by use",
+      "maximum_lot_coverage": 85,
+      "notes": [
+        "Maximum height: 225 feet",
+        "Minimum building façade height: 24 feet",
+        "Max 85% lot coverage",
+        "Highest density mixed-use district",
+        "Affordable housing bonuses available"
+      ]
+    }
+  ]
+}
