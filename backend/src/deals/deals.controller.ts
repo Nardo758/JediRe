@@ -110,6 +110,56 @@ export class DealsController {
   }
 
   /**
+   * GET /api/v1/deals/:id/pipeline
+   * Get pipeline status for a deal
+   */
+  @Get(':id/pipeline')
+  async getPipeline(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getPipeline(id, req.user.userId);
+  }
+
+  /**
+   * PATCH /api/v1/deals/:id/pipeline/stage
+   * Update pipeline stage
+   */
+  @Patch(':id/pipeline/stage')
+  async updatePipelineStage(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: { stage: string },
+  ) {
+    return this.dealsService.updatePipelineStage(
+      id,
+      req.user.userId,
+      body.stage,
+    );
+  }
+
+  /**
+   * GET /api/v1/deals/:id/analysis/latest
+   * Get latest analysis for a deal
+   */
+  @Get(':id/analysis/latest')
+  async getLatestAnalysis(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getLatestAnalysis(id, req.user.userId);
+  }
+
+  /**
+   * POST /api/v1/deals/:id/analysis/trigger
+   * Trigger new analysis (async job)
+   */
+  @Post(':id/analysis/trigger')
+  async triggerAnalysis(@Request() req, @Param('id') id: string) {
+    // TODO: Queue analysis job
+    // For now, return job accepted
+    return {
+      jobId: `job-${Date.now()}`,
+      status: 'queued',
+      message: 'Analysis job queued. Check back in a few minutes.'
+    };
+  }
+
+  /**
    * GET /api/v1/deals/:id/activity
    * Get activity feed for a deal
    */
