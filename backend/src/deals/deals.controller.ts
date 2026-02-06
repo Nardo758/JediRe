@@ -1,0 +1,124 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
+import { DealsService } from './deals.service';
+import { CreateDealDto, UpdateDealDto, DealQueryDto, LinkPropertyDto } from './dto';
+import { AuthGuard } from '../auth/auth.guard';
+
+@Controller('api/v1/deals')
+@UseGuards(AuthGuard)
+export class DealsController {
+  constructor(private readonly dealsService: DealsService) {}
+
+  /**
+   * POST /api/v1/deals
+   * Create a new deal
+   */
+  @Post()
+  async create(@Request() req, @Body() createDealDto: CreateDealDto) {
+    return this.dealsService.create(req.user.userId, createDealDto);
+  }
+
+  /**
+   * GET /api/v1/deals
+   * Get all deals for current user
+   */
+  @Get()
+  async findAll(@Request() req, @Query() query: DealQueryDto) {
+    return this.dealsService.findAll(req.user.userId, query);
+  }
+
+  /**
+   * GET /api/v1/deals/:id
+   * Get a single deal
+   */
+  @Get(':id')
+  async findOne(@Request() req, @Param('id') id: string) {
+    return this.dealsService.findOne(id, req.user.userId);
+  }
+
+  /**
+   * PATCH /api/v1/deals/:id
+   * Update a deal
+   */
+  @Patch(':id')
+  async update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updateDealDto: UpdateDealDto,
+  ) {
+    return this.dealsService.update(id, req.user.userId, updateDealDto);
+  }
+
+  /**
+   * DELETE /api/v1/deals/:id
+   * Archive a deal
+   */
+  @Delete(':id')
+  async remove(@Request() req, @Param('id') id: string) {
+    return this.dealsService.remove(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/modules
+   * Get enabled modules for a deal
+   */
+  @Get(':id/modules')
+  async getModules(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getModules(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/properties
+   * Get properties within deal boundary
+   */
+  @Get(':id/properties')
+  async getProperties(
+    @Request() req,
+    @Param('id') id: string,
+    @Query() filters: any,
+  ) {
+    return this.dealsService.getProperties(id, req.user.userId, filters);
+  }
+
+  /**
+   * POST /api/v1/deals/:id/properties/:propertyId
+   * Link a property to a deal
+   */
+  @Post(':id/properties/:propertyId')
+  async linkProperty(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('propertyId') propertyId: string,
+    @Body() dto: LinkPropertyDto,
+  ) {
+    return this.dealsService.linkProperty(
+      id,
+      req.user.userId,
+      propertyId,
+      dto.relationship,
+    );
+  }
+
+  /**
+   * GET /api/v1/deals/:id/activity
+   * Get activity feed for a deal
+   */
+  @Get(':id/activity')
+  async getActivity(
+    @Request() req,
+    @Param('id') id: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.dealsService.getActivity(id, req.user.userId, limit);
+  }
+}

@@ -1,62 +1,72 @@
-import { useEffect } from 'react';
-import { wsService } from '@/services/websocket';
-import { useAppStore } from '@/store';
-import { Property, CollaborationUser } from '@/types';
+import { useEffect, useState, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
+import { useAuthStore } from '../stores/authStore';
 
-export function useWebSocket(sessionId?: string) {
-  const { updateProperty, setCollaborators, setSelectedProperty } = useAppStore();
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+
+export function useWebSocket() {
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [connected, setConnected] = useState(false);
+  const reconnectAttempts = useRef(0);
+  const messageQueue = useRef<Array<{ event: string; data: any }>>([]);
+  
+  const token = useAuthStore((state) => state.token);
 
   useEffect(() => {
-    wsService.connect(sessionId);
+    if (!token) return;
 
-    // Listen for property updates
-    const unsubPropertyUpdate = wsService.on('property_update', (data: { property: Property }) => {
-      updateProperty(data.property.id, data.property);
+    const newSocket = io(WS_URL, {
+      auth: { token },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      reconnectionAttempts: 10,
     });
 
-    // Listen for user join/leave
-    const unsubUserJoin = wsService.on('user_join', (data: { user: CollaborationUser }) => {
-      useAppStore.setState((state) => ({
-        collaborators: [...state.collaborators, data.user],
-      }));
+    newSocket.on('connect', () => {
+      console.log('✅ WebSocket connected');
+      setConnected(true);
+      reconnectAttempts.current = 0;
+      
+      // Process queued messages
+      if (messageQueue.current.length > 0) {
+        console.log(`Sending ${messageQueue.current.length} queued messages`);
+        messageQueue.current.forEach(({ event, data }) => {
+          newSocket.emit(event, data);
+        });
+        messageQueue.current = [];
+      }
     });
 
-    const unsubUserLeave = wsService.on('user_leave', (data: { userId: string }) => {
-      useAppStore.setState((state) => ({
-        collaborators: state.collaborators.filter((u) => u.id !== data.userId),
-      }));
+    newSocket.on('disconnect', (reason) => {
+      console.log('❌ WebSocket disconnected:', reason);
+      setConnected(false);
+      reconnectAttempts.current++;
     });
 
-    // Listen for cursor movements
-    const unsubCursorMove = wsService.on('cursor_move', (data: { userId: string; lat: number; lng: number }) => {
-      useAppStore.setState((state) => ({
-        collaborators: state.collaborators.map((u) =>
-          u.id === data.userId ? { ...u, cursor: { lat: data.lat, lng: data.lng } } : u
-        ),
-      }));
+    newSocket.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error);
     });
 
-    // Listen for property selection
-    const unsubPropertySelect = wsService.on('property_selected', (data: { propertyId: string }) => {
-      // Could fetch and show the property
-      console.log('User selected property:', data.propertyId);
+    newSocket.on('reconnect_attempt', (attempt) => {
+      console.log(`Reconnection attempt ${attempt}`);
     });
 
-    // Cleanup
+    setSocket(newSocket);
+
     return () => {
-      unsubPropertyUpdate();
-      unsubUserJoin();
-      unsubUserLeave();
-      unsubCursorMove();
-      unsubPropertySelect();
-      wsService.disconnect();
+      newSocket.close();
     };
-  }, [sessionId]);
+  }, [token]);
 
-  return {
-    updateCursor: wsService.updateCursor.bind(wsService),
-    pinProperty: wsService.pinProperty.bind(wsService),
-    addAnnotation: wsService.addAnnotation.bind(wsService),
-    selectProperty: wsService.selectProperty.bind(wsService),
+  const emit = (event: string, data: any) => {
+    if (socket?.connected) {
+      socket.emit(event, data);
+    } else {
+      console.log('Queuing message:', event);
+      messageQueue.current.push({ event, data });
+    }
   };
+
+  return { socket, connected, emit };
 }
