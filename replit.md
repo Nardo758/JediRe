@@ -13,7 +13,7 @@ JediRe is a full-stack real estate intelligence platform with React frontend, Ex
 │   │   ├── services/   # API and WebSocket services
 │   │   └── store/      # Zustand state management
 │   └── vite.config.ts  # Vite configuration
-├── backend/            # Express + GraphQL backend (port 4000)
+├── backend/            # Express + GraphQL backend (port 3000)
 │   ├── src/
 │   │   ├── api/        # REST and GraphQL endpoints
 │   │   ├── auth/       # Authentication logic
@@ -157,7 +157,42 @@ Key variables are set automatically:
 - `/app` - Main dashboard
 - `/settings` - User settings
 
+## Database Schema - Deal-Centric Architecture
+### Core Tables
+- `users` - User accounts
+- `properties` - Property listings with coordinates
+- `deals` - Core deal entity with PostGIS boundary polygon
+- `deal_modules` - Feature toggles per deal (supply, demand, zoning, etc.)
+- `deal_properties` - Link properties to deals (auto or manual)
+- `deal_emails` - Link emails to deals via AI confidence scoring
+- `deal_annotations` - Map markers, notes, custom overlays with geometry
+- `deal_pipeline` - Track deal progression through stages
+- `deal_tasks` - To-do items per deal with priority/assignment
+- `deal_activity` - Activity log for all deal events
+- `subscriptions` - User tier management (basic/pro/enterprise)
+- `team_members` - Multi-user access for enterprise
+
+### Microsoft Integration Tables
+- `microsoft_accounts` - OAuth connections (RLS protected)
+- `emails` - Synced emails from Outlook
+- `calendar_events` - Synced calendar events
+- `email_attachments` - Email file attachments
+
+### Helper Functions
+- `get_deal_properties(deal_id)` - Find properties within deal boundary (PostGIS)
+- `count_user_deals(user_id)` - Count active deals
+- `can_create_deal(user_id)` - Check tier deal limit
+
+### Zoning Tables
+- `zoning_districts` - Zoning district definitions
+- `zoning_district_boundaries` - GeoJSON boundaries for point-in-polygon lookup
+
 ## Recent Changes
+- 2026-02-06: Added deal-centric schema (10 new tables)
+  - deals, deal_modules, deal_properties, deal_emails, deal_annotations
+  - deal_pipeline, deal_tasks, subscriptions, team_members, deal_activity
+  - 3 helper functions, PostGIS spatial indexes, auto-logging triggers
+  - Seeded basic subscription for existing users
 - 2026-02-05: Security hardening (architect-reviewed)
   - Fixed RLS context: uses shared pool with proper transactions and parameterized `set_config()`
   - Protected sensitive routes: alerts and Microsoft endpoints now require authentication
