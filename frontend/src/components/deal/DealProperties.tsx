@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Property } from '../../types';
 import { PropertyCard } from '../property/PropertyCard';
+import { calculateNegotiationPower } from '../../utils/leaseIntel';
 
 interface DealPropertiesProps {
   dealId: string;
@@ -277,6 +278,84 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-1">Notes</h4>
                   <p className="text-sm text-gray-600">{selectedProperty.notes}</p>
+                </div>
+              )}
+
+              {(selectedProperty.lease_expiration_date || selectedProperty.current_lease_amount) && (
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Lease Intelligence</h4>
+                  <div className="space-y-3">
+                    {selectedProperty.lease_expiration_date && (
+                      <div>
+                        <div className="text-xs text-gray-500">Lease Expiration</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {new Date(selectedProperty.lease_expiration_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.lease_start_date && (
+                      <div>
+                        <div className="text-xs text-gray-500">Lease Start</div>
+                        <div className="text-sm text-gray-900">
+                          {new Date(selectedProperty.lease_start_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.current_lease_amount && (
+                      <div>
+                        <div className="text-xs text-gray-500">Current Lease Amount</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          ${selectedProperty.current_lease_amount.toLocaleString()}/mo
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.renewal_status && (
+                      <div>
+                        <div className="text-xs text-gray-500">Renewal Status</div>
+                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+                          selectedProperty.renewal_status === 'renewed' ? 'bg-green-100 text-green-800' :
+                          selectedProperty.renewal_status === 'expiring' ? 'bg-red-100 text-red-800' :
+                          selectedProperty.renewal_status === 'month_to_month' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {selectedProperty.renewal_status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+                    {selectedProperty.lease_expiration_date && (() => {
+                      const neg = calculateNegotiationPower(selectedProperty);
+                      return neg.signal !== 'low' ? (
+                        <div className={`p-3 rounded-lg ${
+                          neg.signal === 'high' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
+                        }`}>
+                          <div className={`text-sm font-semibold ${
+                            neg.signal === 'high' ? 'text-green-800' : 'text-yellow-800'
+                          }`}>
+                            {neg.signal === 'high' ? 'High' : 'Moderate'} Negotiation Power
+                          </div>
+                          <div className={`text-xs mt-1 ${
+                            neg.signal === 'high' ? 'text-green-700' : 'text-yellow-700'
+                          }`}>
+                            {neg.reason}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            Score: {neg.score}/100
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                    {selectedProperty.current_lease_amount && selectedProperty.rent && selectedProperty.current_lease_amount < selectedProperty.rent && (
+                      <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+                        <div className="text-sm font-semibold text-green-800">
+                          Below Market Rent
+                        </div>
+                        <div className="text-xs text-green-700 mt-1">
+                          ${(selectedProperty.rent - selectedProperty.current_lease_amount).toLocaleString()}/mo gap
+                          (${((selectedProperty.rent - selectedProperty.current_lease_amount) * 12).toLocaleString()}/yr upside)
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
