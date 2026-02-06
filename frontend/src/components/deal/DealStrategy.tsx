@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnalysisResult } from '../../types';
+import LeaseRolloverAnalysis from './LeaseRolloverAnalysis';
 
 interface DealStrategyProps {
   dealId: string;
@@ -93,23 +94,28 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
   if (!analysis) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center max-w-md">
-          <div className="text-6xl mb-4">📊</div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">
-            No Analysis Yet
-          </h3>
-          <p className="text-gray-600 mb-6">
-            Run a JEDI Score analysis to get insights on this deal's potential,
-            market conditions, and strategic recommendations.
-          </p>
-          <button
-            onClick={triggerAnalysis}
-            disabled={isAnalyzing}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
-          </button>
+      <div className="h-full overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center max-w-md">
+              <div className="text-6xl mb-4">📊</div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                No Analysis Yet
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Run a JEDI Score analysis to get insights on this deal's potential,
+                market conditions, and strategic recommendations.
+              </p>
+              <button
+                onClick={triggerAnalysis}
+                disabled={isAnalyzing}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
+              </button>
+            </div>
+          </div>
+          <LeaseRolloverAnalysis dealId={dealId} />
         </div>
       </div>
     );
@@ -240,23 +246,23 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Key Insights */}
         <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-          <h3 className="text-lg font-bold text-blue-900 mb-3">💡 Key Insights</h3>
+          <h3 className="text-lg font-bold text-blue-900 mb-3">Key Insights</h3>
           <ul className="space-y-2 text-blue-800">
             {score >= 80 && (
               <li className="flex items-start gap-2">
-                <span className="text-green-500">✅</span>
+                <span className="text-green-500">+</span>
                 <span>Strong market conditions favor development</span>
               </li>
             )}
             {outputData.signals?.growthRate > 5 && (
               <li className="flex items-start gap-2">
-                <span className="text-green-500">✅</span>
+                <span className="text-green-500">+</span>
                 <span>Above-average rent growth indicates high demand</span>
               </li>
             )}
             {outputData.capacity?.maxUnits && (
               <li className="flex items-start gap-2">
-                <span className="text-blue-500">ℹ️</span>
+                <span className="text-blue-500">i</span>
                 <span>
                   Development capacity of {outputData.capacity.maxUnits} units identified
                 </span>
@@ -264,6 +270,8 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
             )}
           </ul>
         </div>
+
+        <LeaseRolloverAnalysis dealId={dealId} />
       </div>
     </div>
   );
