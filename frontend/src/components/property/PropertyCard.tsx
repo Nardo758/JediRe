@@ -1,6 +1,7 @@
 import React from 'react';
 import { Property } from '../../stores/mapStore';
 import { Button } from '../shared/Button';
+import { calculateNegotiationPower } from '../../utils/leaseIntel';
 
 interface PropertyCardProps {
   property: Property;
@@ -61,6 +62,21 @@ export function PropertyCard({ property, onSelect, onSave, loading }: PropertyCa
             📐 {property.sqft.toLocaleString()} sqft
           </span>
         </div>
+
+        {property.lease_expiration_date && (
+          <div className="mt-2">
+            {calculateNegotiationPower(property as any).signal === 'high' && (
+              <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                High Negotiation Power
+              </span>
+            )}
+            {calculateNegotiationPower(property as any).signal === 'medium' && (
+              <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                Moderate Negotiation Window
+              </span>
+            )}
+          </div>
+        )}
 
         <Button className="mt-3 w-full" variant="outline" size="sm">
           View Details

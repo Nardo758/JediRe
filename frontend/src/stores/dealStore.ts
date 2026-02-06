@@ -45,7 +45,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get('/api/v1/deals');
+      const response = await apiClient.get('/deals');
       set({ 
         deals: response.data.deals,
         isLoading: false 
@@ -63,7 +63,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get(`/api/v1/deals/${dealId}`);
+      const response = await apiClient.get(`/deals/${dealId}`);
       set({ 
         selectedDeal: response.data,
         selectedDealId: dealId,
@@ -94,7 +94,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.post('/api/v1/deals', dealData);
+      const response = await apiClient.post('/deals', dealData);
       const newDeal = response.data;
       
       set((state) => ({ 
@@ -117,7 +117,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.patch(`/api/v1/deals/${dealId}`, updates);
+      await apiClient.patch(`/deals/${dealId}`, updates);
       
       // Refresh deal list
       await get().fetchDeals();
@@ -142,7 +142,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.delete(`/api/v1/deals/${dealId}`);
+      await apiClient.delete(`/deals/${dealId}`);
       
       set((state) => ({ 
         deals: state.deals.filter(d => d.id !== dealId),

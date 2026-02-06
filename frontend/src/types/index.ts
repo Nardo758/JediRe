@@ -59,6 +59,10 @@ export interface Property {
   relationship?: 'comparable' | 'target' | 'competitor' | 'other';
   notes?: string;
   distanceMiles?: number;
+  lease_expiration_date?: string;
+  current_lease_amount?: number;
+  lease_start_date?: string;
+  renewal_status?: 'renewed' | 'expiring' | 'month_to_month' | 'unknown';
 }
 
 export interface DealProperty {
