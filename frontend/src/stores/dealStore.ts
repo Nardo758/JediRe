@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiClient } from '../api/client';
+import { api } from '../services/api.client';
 
 interface Deal {
   id: string;
@@ -45,14 +45,14 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get('/deals');
+      const response = await api.deals.list();
       set({ 
-        deals: response.data.deals,
+        deals: response.data || [],
         isLoading: false 
       });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to fetch deals',
+        error: error.response?.data?.message || error.message || 'Failed to fetch deals',
         isLoading: false 
       });
     }
@@ -63,7 +63,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get(`/deals/${dealId}`);
+      const response = await api.deals.get(dealId);
       set({ 
         selectedDeal: response.data,
         selectedDealId: dealId,
@@ -71,7 +71,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to fetch deal',
+        error: error.response?.data?.message || error.message || 'Failed to fetch deal',
         isLoading: false 
       });
     }
@@ -94,7 +94,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.post('/deals', dealData);
+      const response = await api.deals.create(dealData);
       const newDeal = response.data;
       
       set((state) => ({ 
@@ -105,7 +105,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       return newDeal;
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to create deal',
+        error: error.response?.data?.message || error.message || 'Failed to create deal',
         isLoading: false 
       });
       throw error;
@@ -117,7 +117,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.patch(`/deals/${dealId}`, updates);
+      await api.deals.update(dealId, updates);
       
       // Refresh deal list
       await get().fetchDeals();
@@ -130,7 +130,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       set({ isLoading: false });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to update deal',
+        error: error.response?.data?.message || error.message || 'Failed to update deal',
         isLoading: false 
       });
       throw error;
@@ -142,7 +142,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.delete(`/deals/${dealId}`);
+      await api.deals.delete(dealId);
       
       set((state) => ({ 
         deals: state.deals.filter(d => d.id !== dealId),
@@ -152,7 +152,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       }));
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to delete deal',
+        error: error.response?.data?.message || error.message || 'Failed to delete deal',
         isLoading: false 
       });
       throw error;

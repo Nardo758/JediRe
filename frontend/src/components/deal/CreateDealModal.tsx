@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { MapBuilder } from '../map/MapBuilder';
 import { Button } from '../shared/Button';
-import { apiClient } from '../../api/client';
+import { useDealStore } from '../../stores/dealStore';
 
 interface CreateDealModalProps {
   isOpen: boolean;
@@ -19,10 +19,12 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
   onClose,
   onDealCreated
 }) => {
+  const { createDeal, error: storeError } = useDealStore();
   const [step, setStep] = useState<Step>(Step.DRAW_BOUNDARY);
   const [boundary, setBoundary] = useState<any>(null);
   const [area, setArea] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Form data
   const [dealData, setDealData] = useState({
@@ -54,6 +56,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setError(null);
     
     try {
       const payload = {
@@ -67,8 +70,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
         timelineEnd: dealData.timelineEnd || undefined
       };
 
-      const response = await apiClient.post('/deals', payload);
-      onDealCreated(response.data);
+      const newDeal = await createDeal(payload);
+      onDealCreated(newDeal);
       onClose();
       
       // Reset form
@@ -83,11 +86,13 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
         timelineStart: '',
         timelineEnd: ''
       });
-    } catch (error: any) {
-      if (error.response?.data?.error === 'DEAL_LIMIT_REACHED') {
-        alert(error.response.data.message);
-      } else {
-        alert('Failed to create deal. Please try again.');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to create deal';
+      setError(errorMsg);
+      
+      // Show alert for deal limit
+      if (err.response?.data?.error === 'DEAL_LIMIT_REACHED') {
+        alert(errorMsg);
       }
     } finally {
       setIsSubmitting(false);
@@ -245,6 +250,15 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="px-6 py-3 bg-red-50 border-t border-red-200">
+            <p className="text-sm text-red-800">
+              ⚠️ {error}
+            </p>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
