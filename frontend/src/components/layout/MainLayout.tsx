@@ -19,6 +19,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     { name: 'Email', path: '/email', icon: '📧', badge: '5' },
     { name: 'Reports', path: '/reports', icon: '📈', badge: null },
     { name: 'Team', path: '/team', icon: '👥', badge: null },
+    { name: 'Architecture', path: '/architecture', icon: '🏗️', badge: null },
     { name: 'Settings', path: '/settings', icon: '⚙️', badge: null },
   ];
 
