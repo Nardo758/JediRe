@@ -1,5 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useArchitecture } from '../../contexts/ArchitectureContext';
+import { ArchitectureInfo } from '../ArchitectureOverlay';
 
 interface PageHeaderProps {
   title: string;
@@ -8,6 +10,7 @@ interface PageHeaderProps {
   actions?: React.ReactNode;
   architectureDiagram?: string; // Link to relevant architecture diagram
   documentation?: string; // Link to relevant docs
+  architectureInfo?: ArchitectureInfo; // Architecture metadata for this page
 }
 
 export function PageHeader({
@@ -16,8 +19,17 @@ export function PageHeader({
   icon,
   actions,
   architectureDiagram,
-  documentation
+  documentation,
+  architectureInfo
 }: PageHeaderProps) {
+  const { openArchitecture } = useArchitecture();
+
+  const handleArchitectureClick = () => {
+    if (architectureInfo) {
+      openArchitecture(architectureInfo);
+    }
+  };
+
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-start justify-between">
@@ -25,6 +37,17 @@ export function PageHeader({
           <div className="flex items-center gap-3 mb-2">
             {icon && <span className="text-3xl">{icon}</span>}
             <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+            
+            {/* Architecture Toggle Button */}
+            {architectureInfo && (
+              <button
+                onClick={handleArchitectureClick}
+                className="ml-auto px-3 py-1 text-sm bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all shadow-md hover:shadow-lg flex items-center gap-1"
+              >
+                <span>🏗️</span>
+                <span>Show Architecture</span>
+              </button>
+            )}
           </div>
           <p className="text-gray-600">{description}</p>
           
