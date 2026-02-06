@@ -146,17 +146,12 @@ export class DealsController {
 
   /**
    * POST /api/v1/deals/:id/analysis/trigger
-   * Trigger new analysis (async job)
+   * Trigger new analysis
    */
   @Post(':id/analysis/trigger')
   async triggerAnalysis(@Request() req, @Param('id') id: string) {
-    // TODO: Queue analysis job
-    // For now, return job accepted
-    return {
-      jobId: `job-${Date.now()}`,
-      status: 'queued',
-      message: 'Analysis job queued. Check back in a few minutes.'
-    };
+    const result = await this.dealsService.triggerAnalysis(id, req.user.userId);
+    return result;
   }
 
   /**

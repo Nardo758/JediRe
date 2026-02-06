@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CreateDealDto, UpdateDealDto, DealQueryDto } from './dto';
+import { DealAnalysisService } from '../services/dealAnalysis';
 
 @Injectable()
 export class DealsService {
@@ -485,6 +486,56 @@ export class DealsService {
     if (result.rows.length === 0) {
       throw new NotFoundException('Deal not found or access denied');
     }
+  }
+
+  /**
+   * Trigger analysis for a deal
+   */
+  async triggerAnalysis(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get deal details
+    const dealResult = await this.db.query(
+      `SELECT id, name, boundary, target_units, budget
+       FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    if (dealResult.rows.length === 0) {
+      throw new NotFoundException('Deal not found');
+    }
+
+    const deal = dealResult.rows[0];
+
+    // Convert PostGIS geometry to GeoJSON
+    const boundaryResult = await this.db.query(
+      `SELECT ST_AsGeoJSON(boundary) AS boundary_geojson
+       FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    const boundaryGeoJSON = JSON.parse(boundaryResult.rows[0].boundary_geojson);
+
+    // Run analysis
+    const analysisService = new DealAnalysisService(this.db);
+    const result = await analysisService.analyzeDeal({
+      dealId: deal.id,
+      dealName: deal.name,
+      boundary: boundaryGeoJSON,
+      targetUnits: deal.target_units,
+      budget: deal.budget,
+    });
+
+    // Log activity
+    await this.logActivity(
+      dealId,
+      userId,
+      'analysis_triggered',
+      `JEDI Score analysis completed: ${result.jediScore}/100 (${result.verdict})`,
+      { jediScore: result.jediScore, verdict: result.verdict }
+    );
+
+    return result;
   }
 
   /**
