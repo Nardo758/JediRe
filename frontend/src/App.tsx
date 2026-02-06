@@ -9,6 +9,7 @@ import { DealView } from './pages/DealView';
 import { EmailPage } from './pages/EmailPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
+import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
         <Route path="/email" element={<EmailPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/team" element={<TeamPage />} />
+        <Route path="/architecture" element={<SystemArchitecturePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
