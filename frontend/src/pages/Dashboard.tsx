@@ -3,6 +3,8 @@ import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { Button } from '../components/shared/Button';
+import { PageHeader } from '../components/layout/PageHeader';
+import { architectureMetadata } from '../data/architectureMetadata';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -158,14 +160,12 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Portfolio Overview</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {deals.length} {deals.length === 1 ? 'deal' : 'deals'} active
-            </p>
-          </div>
+      <PageHeader
+        title="Portfolio Overview"
+        description={`${deals.length} ${deals.length === 1 ? 'deal' : 'deals'} active`}
+        icon="📊"
+        architectureInfo={architectureMetadata.dashboard}
+        actions={
           <Button
             onClick={() => setIsCreateModalOpen(true)}
             className="gap-2"
@@ -175,8 +175,8 @@ export const Dashboard: React.FC = () => {
             </svg>
             Create New Deal
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Content */}
       <div className="flex-1 flex">

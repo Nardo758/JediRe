@@ -11,26 +11,49 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
+import { ArchitectureOverlay } from './components/ArchitectureOverlay';
+
+function AppContent() {
+  const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
+
+  return (
+    <>
+      <MainLayout>
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/properties" element={<PropertiesPage />} />
+          <Route path="/deals" element={<DealsPage />} />
+          <Route path="/deals/:id" element={<DealView />} />
+          <Route path="/deals/:id/:module" element={<DealView />} />
+          <Route path="/email" element={<EmailPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/team" element={<TeamPage />} />
+          <Route path="/architecture" element={<SystemArchitecturePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </MainLayout>
+      
+      {/* Architecture Overlay */}
+      {currentInfo && (
+        <ArchitectureOverlay
+          isOpen={isOpen}
+          onClose={closeArchitecture}
+          info={currentInfo}
+        />
+      )}
+    </>
+  );
+}
 
 function App() {
   return (
-    <MainLayout>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/map" element={<MapPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/properties" element={<PropertiesPage />} />
-        <Route path="/deals" element={<DealsPage />} />
-        <Route path="/deals/:id" element={<DealView />} />
-        <Route path="/deals/:id/:module" element={<DealView />} />
-        <Route path="/email" element={<EmailPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/team" element={<TeamPage />} />
-        <Route path="/architecture" element={<SystemArchitecturePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
-      </Routes>
-    </MainLayout>
+    <ArchitectureProvider>
+      <AppContent />
+    </ArchitectureProvider>
   );
 }
 
