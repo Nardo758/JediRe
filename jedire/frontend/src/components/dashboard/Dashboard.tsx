@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Search, Filter, Layers, Users, Settings } from 'lucide-react';
+import { Search, Filter, Layers, Users, Settings, Building2 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import SearchBar from './SearchBar';
 import FilterPanel from './FilterPanel';
 import ModuleToggle from './ModuleToggle';
 import CollaboratorsList from './CollaboratorsList';
+import PropertyAnalyzer from '../property/PropertyAnalyzer';
 
 export default function Dashboard() {
   const [showFilters, setShowFilters] = useState(false);
   const [showModules, setShowModules] = useState(false);
+  const [showAnalyzer, setShowAnalyzer] = useState(true);
   const { sidebarOpen, setSidebarOpen, properties, collaborators } = useAppStore();
 
   return (
@@ -51,21 +53,34 @@ export default function Dashboard() {
             <SearchBar />
           </div>
 
-          {/* Action Buttons */}
-          <div className="p-4 border-b border-gray-200 space-y-2">
+          {/* Tab Buttons */}
+          <div className="p-4 border-b border-gray-200 flex gap-2">
             <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="w-full btn btn-secondary flex items-center justify-center gap-2"
+              onClick={() => { setShowAnalyzer(true); setShowFilters(false); setShowModules(false); }}
+              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
+                showAnalyzer ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
-              <Filter className="w-4 h-4" />
-              <span>Filters</span>
+              <Building2 className="w-4 h-4" />
+              Analyze
             </button>
             <button
-              onClick={() => setShowModules(!showModules)}
-              className="w-full btn btn-secondary flex items-center justify-center gap-2"
+              onClick={() => { setShowAnalyzer(false); setShowFilters(!showFilters); }}
+              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
+                showFilters ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              Filters
+            </button>
+            <button
+              onClick={() => { setShowAnalyzer(false); setShowModules(!showModules); }}
+              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
+                showModules ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
             >
               <Layers className="w-4 h-4" />
-              <span>Modules</span>
+              Modules
             </button>
           </div>
 
@@ -77,51 +92,62 @@ export default function Dashboard() {
           )}
 
           {/* Module Toggle */}
-          {showModules && (
+          {showModules && !showAnalyzer && (
             <div className="border-b border-gray-200">
               <ModuleToggle />
             </div>
           )}
 
-          {/* Stats */}
-          <div className="p-4 border-b border-gray-200">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="card text-center">
-                <div className="text-2xl font-bold text-primary-600">
-                  {properties.length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Properties</div>
-              </div>
-              <div className="card text-center">
-                <div className="text-2xl font-bold text-purple-600">
-                  {collaborators.length}
-                </div>
-                <div className="text-xs text-gray-600 mt-1">Online</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Collaborators */}
-          {collaborators.length > 0 && (
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center gap-2 mb-3">
-                <Users className="w-4 h-4 text-gray-600" />
-                <h3 className="font-semibold text-gray-900 text-sm">Collaborators</h3>
-              </div>
-              <CollaboratorsList collaborators={collaborators} />
+          {/* Property Analyzer */}
+          {showAnalyzer && (
+            <div className="flex-1 overflow-hidden">
+              <PropertyAnalyzer />
             </div>
           )}
 
-          {/* Spacer */}
-          <div className="flex-1"></div>
+          {/* Stats (only when not showing analyzer) */}
+          {!showAnalyzer && (
+            <>
+              <div className="p-4 border-b border-gray-200">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="card text-center">
+                    <div className="text-2xl font-bold text-primary-600">
+                      {properties.length}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">Properties</div>
+                  </div>
+                  <div className="card text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {collaborators.length}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-1">Online</div>
+                  </div>
+                </div>
+              </div>
 
-          {/* Settings */}
-          <div className="p-4 border-t border-gray-200">
-            <button className="w-full btn btn-ghost flex items-center justify-center gap-2">
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </button>
-          </div>
+              {/* Collaborators */}
+              {collaborators.length > 0 && (
+                <div className="p-4 border-b border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="w-4 h-4 text-gray-600" />
+                    <h3 className="font-semibold text-gray-900 text-sm">Collaborators</h3>
+                  </div>
+                  <CollaboratorsList collaborators={collaborators} />
+                </div>
+              )}
+
+              {/* Spacer */}
+              <div className="flex-1"></div>
+
+              {/* Settings */}
+              <div className="p-4 border-t border-gray-200">
+                <button className="w-full btn btn-ghost flex items-center justify-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

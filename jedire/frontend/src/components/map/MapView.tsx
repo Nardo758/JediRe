@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import Map, { Marker, Source, Layer, MapRef } from 'react-map-gl';
+import Map, { Source, Layer, MapRef } from 'react-map-gl';
 import { useAppStore } from '@/store';
 import { Property } from '@/types';
 import PropertyBubble from './PropertyBubble';
@@ -21,7 +21,9 @@ export default function MapView() {
     collaborators,
   } = useAppStore();
 
-  const { updateCursor, selectProperty } = useWebSocket();
+  const wsHook = useWebSocket();
+  const updateCursor = wsHook?.updateCursor || (() => {});
+  const selectPropertyWs = wsHook?.selectProperty || (() => {});
 
   const [viewState, setViewState] = useState({
     longitude: mapCenter[0],
@@ -41,16 +43,12 @@ export default function MapView() {
     setViewState(evt.viewState);
     setMapCenter([evt.viewState.longitude, evt.viewState.latitude]);
     setMapZoom(evt.viewState.zoom);
-    
-    // Emit cursor position to other users (throttled)
     updateCursor(evt.viewState.latitude, evt.viewState.longitude);
   };
 
   const handlePropertyClick = (property: Property) => {
     setSelectedProperty(property);
-    selectProperty(property.id);
-    
-    // Center map on property
+    selectPropertyWs(property.id);
     mapRef.current?.flyTo({
       center: [property.coordinates.lng, property.coordinates.lat],
       zoom: 16,
@@ -58,7 +56,6 @@ export default function MapView() {
     });
   };
 
-  // Buildable envelope layer (if available)
   const buildableEnvelopeData = selectedProperty?.zoning?.buildableEnvelope
     ? {
         type: 'FeatureCollection',
@@ -72,6 +69,23 @@ export default function MapView() {
       }
     : null;
 
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className="relative w-full h-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+        <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md">
+          <div className="text-6xl mb-4">🗺️</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Map View</h2>
+          <p className="text-gray-600 mb-4">
+            To enable the interactive map, add a Mapbox token to your environment variables.
+          </p>
+          <p className="text-sm text-gray-500">
+            Set <code className="bg-gray-100 px-2 py-1 rounded">VITE_MAPBOX_TOKEN</code> in your .env file
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full h-full">
       <Map
@@ -82,8 +96,7 @@ export default function MapView() {
         mapStyle="mapbox://styles/mapbox/streets-v12"
         style={{ width: '100%', height: '100%' }}
       >
-        {/* Property bubbles */}
-        {properties.map((property) => (
+        {Array.isArray(properties) && properties.map((property) => (
           <PropertyBubble
             key={property.id}
             property={property}
@@ -92,7 +105,6 @@ export default function MapView() {
           />
         ))}
 
-        {/* Buildable envelope overlay */}
         {buildableEnvelopeData && (
           <Source id="buildable-envelope" type="geojson" data={buildableEnvelopeData}>
             <Layer
@@ -114,8 +126,7 @@ export default function MapView() {
           </Source>
         )}
 
-        {/* Collaborator cursors */}
-        {collaborators.map((collab) =>
+        {Array.isArray(collaborators) && collaborators.map((collab) =>
           collab.cursor ? (
             <CollaboratorCursor
               key={collab.id}
@@ -127,7 +138,6 @@ export default function MapView() {
         )}
       </Map>
 
-      {/* Map controls overlay */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-2">
         <button
           onClick={() => {

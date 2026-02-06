@@ -1,0 +1,17 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "**Status:** Planning & Architecture Phase   **Created:** 2026-01-31   **Owner:** Leon D",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/react-window": "^1.8.8",
+    "react-virtualized-auto-sizer": "^2.0.2",
+    "react-window": "^2.2.6"
+  }
+}

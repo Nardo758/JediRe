@@ -1,6 +1,5 @@
 import { Marker } from 'react-map-gl';
 import { Property } from '@/types';
-import { getScoreColor, getScoreBgColor } from '@/utils';
 import { Pin } from 'lucide-react';
 
 interface PropertyBubbleProps {
@@ -9,18 +8,43 @@ interface PropertyBubbleProps {
   onClick: () => void;
 }
 
+type Strategy = 'build-to-sell' | 'flip' | 'rental' | 'airbnb';
+
+function getOptimalStrategy(_score: number): Strategy {
+  const strategies: Strategy[] = ['build-to-sell', 'flip', 'rental', 'airbnb'];
+  return strategies[Math.floor(Math.random() * strategies.length)];
+}
+
+function getStrategyColor(strategy: Strategy): { bg: string; border: string; text: string } {
+  switch (strategy) {
+    case 'build-to-sell':
+      return { bg: 'bg-green-500', border: 'border-green-600', text: 'text-white' };
+    case 'flip':
+      return { bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-white' };
+    case 'rental':
+      return { bg: 'bg-purple-500', border: 'border-purple-600', text: 'text-white' };
+    case 'airbnb':
+      return { bg: 'bg-orange-500', border: 'border-orange-600', text: 'text-white' };
+    default:
+      return { bg: 'bg-gray-500', border: 'border-gray-600', text: 'text-white' };
+  }
+}
+
 export default function PropertyBubble({ property, isSelected, onClick }: PropertyBubbleProps) {
   const score = property.opportunityScore;
-  const size = isSelected ? 48 : 36;
+  const strategy = getOptimalStrategy(score);
+  const colors = getStrategyColor(strategy);
   
-  // Calculate bubble size based on score (larger = better opportunity)
-  const bubbleSize = 24 + (score / 100) * 24;
+  const baseSize = 28 + (score / 100) * 20;
+  const size = isSelected ? baseSize + 12 : baseSize;
+  
+  const hasArbitrage = score >= 85;
 
   return (
     <Marker
       latitude={property.coordinates.lat}
       longitude={property.coordinates.lng}
-      anchor="bottom"
+      anchor="center"
     >
       <div
         onClick={onClick}
@@ -39,50 +63,35 @@ export default function PropertyBubble({ property, isSelected, onClick }: Proper
           </div>
         )}
 
+        {/* Arbitrage ring for high opportunity */}
+        {hasArbitrage && (
+          <div className="absolute inset-[-4px] rounded-full border-2 border-red-500 animate-pulse" />
+        )}
+
         {/* Bubble */}
         <div
           className={`
             w-full h-full rounded-full shadow-lg border-2 flex items-center justify-center
             transition-all duration-200
-            ${isSelected ? 'ring-4 ring-primary-500 ring-opacity-50' : ''}
-            ${getScoreBgColor(score)}
-            ${getScoreBorderColor(score)}
+            ${isSelected ? 'ring-4 ring-white ring-opacity-50 scale-110' : ''}
+            ${colors.bg}
+            ${colors.border}
             hover:scale-110
           `}
         >
-          <span
-            className={`font-bold ${isSelected ? 'text-lg' : 'text-sm'} ${getScoreColor(score)}`}
-          >
+          <span className={`font-bold ${isSelected ? 'text-sm' : 'text-xs'} ${colors.text}`}>
             {score}
           </span>
         </div>
 
-        {/* Pulsing ring for high scores */}
-        {score >= 80 && (
-          <div
-            className={`
-              absolute inset-0 rounded-full border-2 border-green-500
-              animate-ping opacity-75
-            `}
-          />
-        )}
-
         {/* Address tooltip on hover */}
-        {!isSelected && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
-            <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-              {property.address}
-            </div>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
+            <div className="font-medium">{property.address}</div>
+            <div className="text-gray-300 capitalize">{strategy.replace('-', ' ')}</div>
           </div>
-        )}
+        </div>
       </div>
     </Marker>
   );
-}
-
-function getScoreBorderColor(score: number): string {
-  if (score >= 80) return 'border-green-500';
-  if (score >= 60) return 'border-blue-500';
-  if (score >= 40) return 'border-yellow-500';
-  return 'border-red-500';
 }

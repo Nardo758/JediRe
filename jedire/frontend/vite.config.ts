@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -11,16 +11,33 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    host: '0.0.0.0',
+    port: 5000,
+    strictPort: true,
+    allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:4000',
         changeOrigin: true,
       },
-      '/ws': {
-        target: 'ws://localhost:8000',
+      '/socket.io': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
         ws: true,
-      },
-    },
+      }
+    }
   },
-});
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'map-vendor': ['mapbox-gl', 'react-map-gl'],
+          'ui-vendor': ['zustand', 'axios', 'socket.io-client']
+        }
+      }
+    }
+  }
+})

@@ -8,15 +8,22 @@
 
 ## 📚 **Documentation Index**
 
-### **Core Documents:**
-1. **README.md** (this file) - Project overview & index
-2. **TECHNICAL_ARCHITECTURE.md** - Complete system architecture
-3. **EXTERNAL_INTEGRATIONS.md** - Data sources & API integrations
-4. **PERFORMANCE_SCALABILITY.md** - Performance optimization & scaling
-5. **CICD_PIPELINE.md** - Development & deployment pipeline
+### **⭐ START HERE:**
+1. **[ARCHITECTURE_INDEX.md](./ARCHITECTURE_INDEX.md)** - Master index to all architecture docs
+2. **[JEDI_DATA_SCHEMA.md](./JEDI_DATA_SCHEMA.md)** - Complete data structures (all 8 engines + JEDI Score) - **SINGLE SOURCE OF TRUTH**
+3. **[ROADMAP.md](./ROADMAP.md)** - Development timeline and milestones
 
-### **Planning Documents:**
-- **../JEDIRE_PROJECT_OVERVIEW.md** - High-level business overview
+### **Core Architecture:**
+- **[JEDIRE_ARCHITECTURE_V2.md](./JEDIRE_ARCHITECTURE_V2.md)** - Map-centric platform design
+- **[docs/PHASE_2_ARCHITECTURE.md](./docs/PHASE_2_ARCHITECTURE.md)** - Market intelligence layer
+- **[docs/BACKEND_ARCHITECTURE.md](./docs/BACKEND_ARCHITECTURE.md)** - Backend API & services
+- **[docs/UX_DESIGN.md](./docs/UX_DESIGN.md)** - User experience design
+
+### **Legacy Documents:**
+- **TECHNICAL_ARCHITECTURE.md** - Original technical architecture (superseded by v2 docs)
+- **EXTERNAL_INTEGRATIONS.md** - Data sources & API integrations
+- **PERFORMANCE_SCALABILITY.md** - Performance optimization & scaling
+- **CICD_PIPELINE.md** - Development & deployment pipeline
 
 ---
 
