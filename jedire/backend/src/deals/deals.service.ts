@@ -108,7 +108,6 @@ export class DealsService {
    * Initialize pipeline stages based on project type
    */
   private async initializePipeline(dealId: string, projectType: string) {
-    // Default stages for multifamily/mixed-use
     const defaultStage = 'lead';
     
     await this.db.query(
@@ -178,7 +177,7 @@ export class DealsService {
         d.*,
         ST_AsGeoJSON(d.boundary)::json AS boundary,
         ST_Area(d.boundary::geography) / 4046.86 AS acres,
-        ST_Centroid(d.boundary)::json AS center,
+        ST_AsGeoJSON(ST_Centroid(d.boundary))::json AS center,
         dp.stage AS pipeline_stage,
         dp.days_in_stage,
         COUNT(DISTINCT dpr.property_id) AS property_count,
@@ -206,7 +205,6 @@ export class DealsService {
    * Update a deal
    */
   async update(dealId: string, userId: string, dto: UpdateDealDto) {
-    // Verify ownership
     await this.verifyOwnership(dealId, userId);
 
     const updates: string[] = [];
@@ -254,7 +252,6 @@ export class DealsService {
       values
     );
 
-    // Log activity
     await this.logActivity(dealId, userId, 'updated', `Deal updated: ${dto.name || 'properties changed'}`);
 
     return result.rows[0];
@@ -266,7 +263,6 @@ export class DealsService {
   async remove(dealId: string, userId: string) {
     await this.verifyOwnership(dealId, userId);
 
-    // Soft delete (archive)
     await this.db.query(
       'UPDATE deals SET status = \'archived\', archived_at = NOW() WHERE id = $1',
       [dealId]
@@ -375,6 +371,82 @@ export class DealsService {
     );
 
     await this.logActivity(dealId, userId, 'property_linked', `Property linked as ${relationship}`);
+
+    return result.rows[0];
+  }
+
+  /**
+   * Get deal pipeline status
+   */
+  async getPipeline(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const result = await this.db.query(
+      `SELECT 
+        stage,
+        EXTRACT(DAY FROM NOW() - entered_stage_at)::INTEGER AS days_in_stage,
+        stage_history,
+        notes
+      FROM deal_pipeline
+      WHERE deal_id = $1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException('Pipeline not found');
+    }
+
+    return result.rows[0];
+  }
+
+  /**
+   * Update pipeline stage
+   */
+  async updatePipelineStage(dealId: string, userId: string, stage: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get current stage history
+    const current = await this.db.query(
+      'SELECT stage_history FROM deal_pipeline WHERE deal_id = $1',
+      [dealId]
+    );
+
+    const history = current.rows[0]?.stage_history || [];
+    history.push({
+      stage,
+      timestamp: new Date().toISOString()
+    });
+
+    // Update stage
+    await this.db.query(
+      `UPDATE deal_pipeline 
+       SET stage = $1, entered_stage_at = NOW(), stage_history = $2
+       WHERE deal_id = $3`,
+      [stage, JSON.stringify(history), dealId]
+    );
+
+    await this.logActivity(dealId, userId, 'pipeline_stage_changed', `Stage changed to ${stage}`);
+
+    return { success: true, stage };
+  }
+
+  /**
+   * Get latest analysis for a deal
+   */
+  async getLatestAnalysis(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const result = await this.db.query(
+      `SELECT * FROM analysis_results
+       WHERE deal_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException('No analysis found');
+    }
 
     return result.rows[0];
   }
