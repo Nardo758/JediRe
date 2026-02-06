@@ -517,6 +517,100 @@ app.post('/api/v1/analyze', async (req, res) => {
 });
 
 // ============================================
+// Lease Analysis Endpoint
+// ============================================
+
+app.get('/api/v1/deals/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const dealId = req.params.id;
+    const client = req.dbClient || pool;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const result = await client.query(`
+      SELECT 
+        p.*,
+        p.lease_expiration_date,
+        p.current_lease_amount,
+        p.lease_start_date,
+        p.renewal_status
+      FROM properties p
+      JOIN deals d ON d.id = $1
+      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+    `, [dealId]);
+
+    const properties = result.rows;
+    const now = new Date();
+    const next30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const next90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+    const expiringNext30 = properties.filter((p: any) =>
+      p.lease_expiration_date &&
+      new Date(p.lease_expiration_date) <= next30Days &&
+      new Date(p.lease_expiration_date) >= now
+    ).length;
+
+    const expiringNext90 = properties.filter((p: any) =>
+      p.lease_expiration_date &&
+      new Date(p.lease_expiration_date) <= next90Days &&
+      new Date(p.lease_expiration_date) >= now
+    ).length;
+
+    const totalUnits = properties.length;
+    const rolloverRiskScore = totalUnits > 0 ? Math.round((expiringNext90 / totalUnits) * 100) : 0;
+
+    const belowMarketUnits = properties.filter((p: any) =>
+      p.current_lease_amount && p.rent && p.current_lease_amount < p.rent
+    );
+
+    const totalRentGap = belowMarketUnits.reduce((sum: number, p: any) =>
+      sum + (p.rent - p.current_lease_amount), 0
+    );
+
+    const annualOpportunity = totalRentGap * 12;
+
+    const timeline: Record<string, number> = {};
+    for (let i = 0; i < 12; i++) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+      const monthKey = monthStart.toISOString().slice(0, 7);
+
+      timeline[monthKey] = properties.filter((p: any) => {
+        if (!p.lease_expiration_date) return false;
+        const expDate = new Date(p.lease_expiration_date);
+        return expDate >= monthStart && expDate <= monthEnd;
+      }).length;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalUnits,
+        expiringNext30,
+        expiringNext90,
+        rolloverRiskScore,
+        rolloverRiskLevel: rolloverRiskScore > 40 ? 'high' : rolloverRiskScore > 20 ? 'medium' : 'low',
+        rentGapOpportunity: {
+          unitsBelow: belowMarketUnits.length,
+          monthlyGap: Math.round(totalRentGap),
+          annualUpside: Math.round(annualOpportunity)
+        },
+        expirationTimeline: timeline
+      }
+    });
+  } catch (error) {
+    console.error('Lease analysis error:', error);
+    res.status(500).json({ success: false, error: 'Lease analysis failed' });
+  }
+});
+
+// ============================================
 // WebSocket Handlers
 // ============================================
 

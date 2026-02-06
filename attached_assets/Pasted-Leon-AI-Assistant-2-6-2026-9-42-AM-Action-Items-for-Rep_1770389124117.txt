@@ -1,0 +1,625 @@
+Leon AI Assistant, [2/6/2026 9:42 AM]
+🎯 Action Items for Replit
+
+
+1. Database Schema Updates (Both Platforms)
+
+Run this SQL in both databases:
+
+-- Add lease intelligence columns to properties table
+ALTER TABLE properties 
+ADD COLUMN IF NOT EXISTS lease_expiration_date DATE,
+ADD COLUMN IF NOT EXISTS current_lease_amount NUMERIC(10, 2),
+ADD COLUMN IF NOT EXISTS lease_start_date DATE,
+ADD COLUMN IF NOT EXISTS renewal_status VARCHAR(50);
+
+-- Create index for expiration queries
+CREATE INDEX IF NOT EXISTS idx_properties_lease_expiration 
+ON properties(lease_expiration_date) 
+WHERE lease_expiration_date IS NOT NULL;
+
+-- Create index for renewal status
+CREATE INDEX IF NOT EXISTS idx_properties_renewal_status 
+ON properties(renewal_status);
+
+
+2. Apartment Locator AI Updates
+
+A. Update Property Type/Interface (wherever you define property schema)
+
+Add these fields:
+
+lease_expiration_date?: string;  // ISO date
+current_lease_amount?: number;
+lease_start_date?: string;
+renewal_status?: 'renewed' | 'expiring' | 'month_to_month' | 'unknown';
+
+B. Add Negotiation Signal Function (utils or services folder)
+
+// utils/leaseIntel.ts
+export function calculateNegotiationPower(property: Property): {
+  score: number;  // 0-100
+  signal: 'high' | 'medium' | 'low';
+  reason: string;
+} {
+  const expirationDate = property.lease_expiration_date 
+    ? new Date(property.lease_expiration_date) 
+    : null;
+  
+  if (!expirationDate) {
+    return { score: 0, signal: 'low', reason: 'No lease data available' };
+  }
+
+  const daysUntilExpiration = Math.floor(
+    (expirationDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Within 30 days = high negotiation power
+  if (daysUntilExpiration <= 30 && daysUntilExpiration >= 0) {
+    return { 
+      score: 85, 
+      signal: 'high', 
+      reason: 'Lease expiring soon - landlord motivated to fill' 
+    };
+  }
+
+  // Within 60 days = medium
+  if (daysUntilExpiration <= 60 && daysUntilExpiration > 30) {
+    return { 
+      score: 60, 
+      signal: 'medium', 
+      reason: 'Lease expiring in 2 months - good timing for negotiation' 
+    };
+  }
+
+  return { score: 20, signal: 'low', reason: 'Lease not expiring soon' };
+}
+
+export function calculateBelowMarketGap(
+  currentLease: number, 
+  marketRate: number
+): number {
+  return Math.max(0, marketRate - currentLease);
+}
+
+C. Display on Property Cards
+
+Add this badge to your property card component:
+
+{property.lease_expiration_date && (
+  <div className="mt-2">
+    {calculateNegotiationPower(property).signal === 'high' && (
+      <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+        💰 High Negotiation Power
+      </span>
+    )}
+  </div>
+)}
+
+
+3. JEDI RE Updates
+
+A. Add to Property Search Response (backend API)
+
+When fetching properties in deal boundary, include lease data:
+
+// In your DealsService or PropertiesService
+async getPropertiesInBoundary(dealId: string): Promise<Property[]> {
+  // Your existing query, just add the new columns:
+  const properties = await this.db.query(`
+    SELECT 
+      p.*,
+      p.lease_expiration_date,
+      p.current_lease_amount,
+      p.lease_start_date,
+      p.renewal_status
+    FROM properties p
+    JOIN deals d ON d.id = $1
+    WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+  `, [dealId]);
+  
+  return properties.rows;
+}
+
+B. Add Rollover Analysis Endpoint (backend)
+
+// In DealsController or new LeaseAnalysisController
+@Get(':id/lease-analysis')
+async getLeaseAnalysis(@Param('id') dealId: string) {
+  const properties = await this.dealsService.getPropertiesInBoundary(dealId);
+  
+  const now = new Date();
+  const next30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const next90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+  
+  const expiringNext30 = properties.filter(p => 
+    p.lease_expiration_date && 
+    new Date(p.lease_expiration_date) <= next30Days &&
+    new Date(p.lease_expiration_date) >= now
+  ).length;
+
+Leon AI Assistant, [2/6/2026 9:42 AM]
+const expiringNext90 = properties.filter(p => 
+    p.lease_expiration_date && 
+    new Date(p.lease_expiration_date) <= next90Days &&
+    new Date(p.lease_expiration_date) >= now
+  ).length;
+  
+  const totalUnits = properties.length;
+  const rolloverRiskScore = Math.round((expiringNext90 / totalUnits) * 100);
+  
+  // Calculate rent gap opportunity
+  const belowMarketUnits = properties.filter(p => 
+    p.current_lease_amount && p.rent && p.current_lease_amount < p.rent
+  );
+  
+  const totalRentGap = belowMarketUnits.reduce((sum, p) => 
+    sum + (p.rent - p.current_lease_amount), 0
+  );
+  
+  const annualOpportunity = totalRentGap * 12;
+  
+  return {
+    totalUnits,
+    expiringNext30,
+    expiringNext90,
+    rolloverRiskScore,
+    rolloverRiskLevel: rolloverRiskScore > 40 ? 'high' : rolloverRiskScore > 20 ? 'medium' : 'low',
+    rentGapOpportunity: {
+      unitsBelow: belowMarketUnits.length,
+      monthlyGap: Math.round(totalRentGap),
+      annualUpside: Math.round(annualOpportunity)
+    },
+    expirationTimeline: this.buildExpirationTimeline(properties)
+  };
+}
+
+private buildExpirationTimeline(properties: Property[]) {
+  // Group by month for next 12 months
+  const timeline = {};
+  const now = new Date();
+  
+  for (let i = 0; i < 12; i++) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+    const monthKey = monthStart.toISOString().slice(0, 7); // "2026-02"
+    
+    timeline[monthKey] = properties.filter(p => {
+      if (!p.lease_expiration_date) return false;
+      const expDate = new Date(p.lease_expiration_date);
+      return expDate >= monthStart && expDate <= monthEnd;
+    }).length;
+  }
+  
+  return timeline;
+}
+
+C. Display in Deal Strategy Module (frontend)
+
+Add this section to DealStrategy.tsx:
+
+{/* Lease Rollover Analysis */}
+<div className="bg-white rounded-lg shadow p-6 mt-6">
+  <h3 className="text-lg font-semibold mb-4">📅 Lease Rollover Analysis</h3>
+  
+  <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="text-center">
+      <div className="text-3xl font-bold text-blue-600">
+        {leaseAnalysis.expiringNext30}
+      </div>
+      <div className="text-sm text-gray-600">Expiring Next 30 Days</div>
+    </div>
+    
+    <div className="text-center">
+      <div className="text-3xl font-bold text-purple-600">
+        {leaseAnalysis.expiringNext90}
+      </div>
+      <div className="text-sm text-gray-600">Expiring Next 90 Days</div>
+    </div>
+    
+    <div className="text-center">
+      <div className={`text-3xl font-bold ${
+        leaseAnalysis.rolloverRiskScore > 40 ? 'text-red-600' :
+        leaseAnalysis.rolloverRiskScore > 20 ? 'text-yellow-600' : 'text-green-600'
+      }`}>
+        {leaseAnalysis.rolloverRiskScore}%
+      </div>
+      <div className="text-sm text-gray-600">Rollover Risk Score</div>
+    </div>
+  </div>
+  
+  {/* Rent Gap Opportunity */}
+  {leaseAnalysis.rentGapOpportunity.annualUpside > 0 && (
+    <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+      <div className="flex items-center">
+        <div className="text-green-600 mr-2">💰</div>
+        <div>
+          <div className="font-semibold text-green-900">
+            ${(leaseAnalysis.rentGapOpportunity.annualUpside / 1000).toFixed(0)}K Annual Upside
+          </div>
+          <div className="text-sm text-green-700">
+            {leaseAnalysis.rentGapOpportunity.unitsBelow} units below market rate 
+            (avg ${leaseAnalysis.rentGapOpportunity.monthlyGap} gap/mo)
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+  
+  {/* Expiration Timeline Chart */}
+  <div className="text-sm text-gray-600 mb-2">Lease Expirations (Next 12 Months)</div>
+  <div className="flex gap-1 h-24 items-end">
+
+Leon AI Assistant, [2/6/2026 9:42 AM]
+{Object.entries(leaseAnalysis.expirationTimeline).map(([month, count]) => (
+      <div key={month} className="flex-1 flex flex-col items-center">
+        <div 
+          className="w-full bg-blue-500 rounded-t"
+          style={{ height: `${(count / leaseAnalysis.totalUnits) * 100}%` }}
+          title={`${month}: ${count} units`}
+        />
+        <div className="text-xs mt-1 transform -rotate-45 origin-top-left">
+          {month.slice(5)}
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
+
+4. Summary Checklist
+
+In Replit for both platforms:
+
+1. ✅ Run SQL schema updates (add 4 columns to properties table)
+2. ✅ Apartment Locator AI:  • Add lease fields to property TypeScript types
+  • Add leaseIntel.ts utility functions
+  • Add negotiation badge to property cards
+
+3. ✅ JEDI RE:  • Add lease columns to property query in getPropertiesInBoundary()
+  • Add new endpoint: GET /api/v1/deals/:id/lease-analysis
+  • Add Lease Rollover section to DealStrategy.tsx frontend component
+  • Fetch lease analysis data on Strategy tab load
+
+
+That's it! All the code you need to add. Once done, you'll have lease intelligence powering both platforms. Want me to clarify any of these steps?
+
+Leon AI Assistant, [2/6/2026 9:43 AM]
+🚀 JEDI RE - Lease Intelligence Implementation
+
+Step 1: Database Schema (Run in Replit SQL Console)
+
+-- Add lease intelligence columns to properties table
+ALTER TABLE properties 
+ADD COLUMN IF NOT EXISTS lease_expiration_date DATE,
+ADD COLUMN IF NOT EXISTS current_lease_amount NUMERIC(10, 2),
+ADD COLUMN IF NOT EXISTS lease_start_date DATE,
+ADD COLUMN IF NOT EXISTS renewal_status VARCHAR(50);
+
+-- Create indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_properties_lease_expiration 
+ON properties(lease_expiration_date) 
+WHERE lease_expiration_date IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_properties_renewal_status 
+ON properties(renewal_status);
+
+-- Verify columns added
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'properties' 
+AND column_name LIKE 'lease%' OR column_name = 'renewal_status';
+
+
+Step 2: Backend - Add Lease Analysis Service
+
+File: backend/src/deals/deals.service.ts
+
+Add this method to your DealsService class:
+
+async getLeaseAnalysis(dealId: string, userId: string) {
+  // Verify ownership
+  const deal = await this.findOne(dealId, userId);
+  if (!deal) {
+    throw new NotFoundException('Deal not found');
+  }
+
+  // Get all properties in deal boundary with lease data
+  const properties = await this.db.query(`
+    SELECT 
+      p.id,
+      p.address,
+      p.rent,
+      p.lease_expiration_date,
+      p.current_lease_amount,
+      p.lease_start_date,
+      p.renewal_status
+    FROM properties p
+    JOIN deals d ON d.id = $1
+    WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+      AND p.lease_expiration_date IS NOT NULL
+  `, [dealId]);
+
+  const now = new Date();
+  const next30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const next90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+  const allProperties = properties.rows;
+  const totalUnits = allProperties.length;
+
+  // Calculate expiring units
+  const expiringNext30 = allProperties.filter(p => {
+    const expDate = new Date(p.lease_expiration_date);
+    return expDate <= next30Days && expDate >= now;
+  }).length;
+
+  const expiringNext90 = allProperties.filter(p => {
+    const expDate = new Date(p.lease_expiration_date);
+    return expDate <= next90Days && expDate >= now;
+  }).length;
+
+  // Rollover risk score (0-100)
+  const rolloverRiskScore = totalUnits > 0 
+    ? Math.round((expiringNext90 / totalUnits) * 100) 
+    : 0;
+
+  const rolloverRiskLevel = 
+    rolloverRiskScore > 40 ? 'high' : 
+    rolloverRiskScore > 20 ? 'medium' : 'low';
+
+  // Calculate rent gap opportunity
+  const belowMarketUnits = allProperties.filter(p => 
+    p.current_lease_amount && p.rent && p.current_lease_amount < p.rent
+  );
+
+  const totalMonthlyGap = belowMarketUnits.reduce((sum, p) => 
+    sum + (p.rent - p.current_lease_amount), 0
+  );
+
+  const annualUpside = Math.round(totalMonthlyGap * 12);
+
+  // Build expiration timeline (next 12 months)
+  const timeline = {};
+  for (let i = 0; i < 12; i++) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+    const monthKey = monthStart.toISOString().slice(0, 7); // "2026-02"
+    
+    timeline[monthKey] = allProperties.filter(p => {
+      const expDate = new Date(p.lease_expiration_date);
+      return expDate >= monthStart && expDate <= monthEnd;
+    }).length;
+  }
+
+  // Log activity
+  await this.logActivity(dealId, userId, 'lease_analysis_viewed', null, null, 
+    'Viewed lease rollover analysis');
+
+  return {
+    totalUnits,
+    expiringNext30,
+    expiringNext90,
+    rolloverRiskScore,
+    rolloverRiskLevel,
+    rentGapOpportunity: {
+      unitsBelow: belowMarketUnits.length,
+      monthlyGap: Math.round(totalMonthlyGap),
+      annualUpside
+    },
+    expirationTimeline: timeline
+  };
+}
+
+
+Step 3: Backend - Add Controller Endpoint
+
+File: backend/src/deals/deals.controller.ts
+
+Add this route:
+
+@Get(':id/lease-analysis')
+
+Leon AI Assistant, [2/6/2026 9:43 AM]
+async getLeaseAnalysis(
+  @Param('id') dealId: string,
+  @Req() req: any
+) {
+  return this.dealsService.getLeaseAnalysis(dealId, req.user.userId);
+}
+
+
+Step 4: Frontend - Update Property Query
+
+File: backend/src/deals/deals.service.ts
+
+Find your getPropertiesInBoundary() method (or similar) and add lease columns to the SELECT:
+
+// In your existing property query, add these columns:
+const properties = await this.db.query(`
+  SELECT 
+    p.*,
+    p.lease_expiration_date,
+    p.current_lease_amount,
+    p.lease_start_date,
+    p.renewal_status
+  FROM properties p
+  JOIN deals d ON d.id = $1
+  WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+  LIMIT 100
+`, [dealId]);
+
+
+Step 5: Frontend - Add TypeScript Types
+
+File: frontend/src/types/index.ts
+
+Add to your Property interface:
+
+export interface Property {
+  // ... existing fields ...
+  lease_expiration_date?: string;
+  current_lease_amount?: number;
+  lease_start_date?: string;
+  renewal_status?: 'renewed' | 'expiring' | 'month_to_month' | 'unknown';
+}
+
+export interface LeaseAnalysis {
+  totalUnits: number;
+  expiringNext30: number;
+  expiringNext90: number;
+  rolloverRiskScore: number;
+  rolloverRiskLevel: 'high' | 'medium' | 'low';
+  rentGapOpportunity: {
+    unitsBelow: number;
+    monthlyGap: number;
+    annualUpside: number;
+  };
+  expirationTimeline: Record<string, number>;
+}
+
+
+Step 6: Frontend - Update DealStrategy Component
+
+File: frontend/src/components/deal/DealStrategy.tsx
+
+Add lease analysis section. Add this code after the existing strategy sections:
+
+import { useEffect, useState } from 'react';
+import type { LeaseAnalysis } from '../../types';
+
+// Inside your DealStrategy component:
+const [leaseAnalysis, setLeaseAnalysis] = useState<LeaseAnalysis | null>(null);
+const [loadingLease, setLoadingLease] = useState(false);
+
+useEffect(() => {
+  fetchLeaseAnalysis();
+}, [dealId]);
+
+const fetchLeaseAnalysis = async () => {
+  setLoadingLease(true);
+  try {
+    const response = await fetch(`/api/v1/deals/${dealId}/lease-analysis`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      setLeaseAnalysis(data);
+    }
+  } catch (error) {
+    console.error('Failed to fetch lease analysis:', error);
+  } finally {
+    setLoadingLease(false);
+  }
+};
+
+// Add this JSX after your existing strategy sections:
+
+{/* Lease Rollover Analysis */}
+
+Leon AI Assistant, [2/6/2026 9:43 AM]
+{leaseAnalysis && (
+  <div className="bg-white rounded-lg shadow p-6 mt-6">
+    <h3 className="text-lg font-semibold mb-4">📅 Lease Rollover Analysis</h3>
+    
+    <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="text-center p-4 bg-blue-50 rounded-lg">
+        <div className="text-3xl font-bold text-blue-600">
+          {leaseAnalysis.expiringNext30}
+        </div>
+        <div className="text-sm text-gray-600 mt-1">Expiring Next 30 Days</div>
+      </div>
+      
+      <div className="text-center p-4 bg-purple-50 rounded-lg">
+        <div className="text-3xl font-bold text-purple-600">
+          {leaseAnalysis.expiringNext90}
+        </div>
+        <div className="text-sm text-gray-600 mt-1">Expiring Next 90 Days</div>
+      </div>
+      
+      <div className="text-center p-4 bg-gray-50 rounded-lg">
+        <div className={`text-3xl font-bold ${
+          leaseAnalysis.rolloverRiskLevel === 'high' ? 'text-red-600' :
+          leaseAnalysis.rolloverRiskLevel === 'medium' ? 'text-yellow-600' : 
+          'text-green-600'
+        }`}>
+          {leaseAnalysis.rolloverRiskScore}%
+        </div>
+        <div className="text-sm text-gray-600 mt-1">Rollover Risk Score</div>
+      </div>
+    </div>
+    
+    {/* Rent Gap Opportunity */}
+    {leaseAnalysis.rentGapOpportunity.annualUpside > 0 && (
+      <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+        <div className="flex items-center">
+          <div className="text-2xl mr-3">💰</div>
+          <div>
+            <div className="font-semibold text-green-900">
+              ${(leaseAnalysis.rentGapOpportunity.annualUpside / 1000).toFixed(0)}K Annual Upside Potential
+            </div>
+            <div className="text-sm text-green-700">
+              {leaseAnalysis.rentGapOpportunity.unitsBelow} units below market 
+              (avg ${Math.round(leaseAnalysis.rentGapOpportunity.monthlyGap / leaseAnalysis.rentGapOpportunity.unitsBelow)}/mo gap)
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    
+    {/* Expiration Timeline Chart */}
+    <div className="mt-6">
+      <div className="text-sm text-gray-600 mb-2 font-medium">
+        Lease Expirations by Month (Next 12 Months)
+      </div>
+      <div className="flex gap-1 h-32 items-end bg-gray-50 p-4 rounded">
+        {Object.entries(leaseAnalysis.expirationTimeline).map(([month, count]) => {
+          const maxCount = Math.max(...Object.values(leaseAnalysis.expirationTimeline));
+          const heightPercent = maxCount > 0 ? (count / maxCount) * 100 : 0;
+          
+          return (
+            <div key={month} className="flex-1 flex flex-col items-center justify-end">
+              <div 
+                className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors cursor-pointer relative group"
+                style={{ height: `${heightPercent}%`, minHeight: count > 0 ? '4px' : '0' }}
+                title={`${month}: ${count} units expiring`}
+              >
+                <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {count}
+                </span>
+              </div>
+              <div className="text-xs mt-2 text-gray-500">
+                {month.slice(5)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-xs text-gray-500 mt-2 text-center">
+        Total: {leaseAnalysis.totalUnits} units tracked
+      </div>
+    </div>
+  </div>
+)}
+
+{loadingLease && (
+  <div className="bg-white rounded-lg shadow p-6 mt-6 text-center">
+    <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+    <p className="text-gray-600 mt-2">Loading lease analysis...</p>
+  </div>
+)}
+
+
+✅ Testing Checklist
+
+After implementing:
+
+1. ✅ Verify database columns created (Step 1 SQL)
+2. ✅ Test endpoint: GET /api/v1/deals/{dealId}/lease-analysis
+
+Leon AI Assistant, [2/6/2026 9:43 AM]
+3. ✅ Navigate to Strategy tab in deal view
+4. ✅ Verify lease analysis section appears
+5. ✅ Add some test data with lease_expiration_date to properties table
+6. ✅ Refresh and verify calculations are correct
+
+Ready to implement! Start with Step 1 (SQL) and work through in order. Let me know when you hit any issues! 🚀

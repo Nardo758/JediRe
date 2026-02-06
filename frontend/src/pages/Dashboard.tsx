@@ -10,6 +10,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 export const Dashboard: React.FC = () => {
   const { deals, fetchDeals, isLoading } = useDealStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
@@ -20,16 +21,18 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    // Initialize map
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-84.388, 33.749], // Atlanta default
-      zoom: 11
-    });
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [-84.388, 33.749],
+        zoom: 11
+      });
 
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    } catch (err: any) {
+      setMapError(err.message || 'Failed to initialize map');
+    }
 
     return () => {
       if (map.current) {
@@ -253,6 +256,16 @@ export const Dashboard: React.FC = () => {
         {/* Map */}
         <div className="flex-1 relative">
           <div ref={mapContainer} className="absolute inset-0" />
+          {mapError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="text-center p-8">
+                <div className="text-6xl mb-4">🗺️</div>
+                <h3 className="text-lg font-semibold text-gray-700 mb-2">Map View</h3>
+                <p className="text-sm text-gray-500">Map requires a Mapbox token to display.</p>
+                <p className="text-xs text-gray-400 mt-1">Set VITE_MAPBOX_TOKEN in environment variables.</p>
+              </div>
+            </div>
+          )}
           
           {/* Quick stats overlay */}
           {deals.length > 0 && (

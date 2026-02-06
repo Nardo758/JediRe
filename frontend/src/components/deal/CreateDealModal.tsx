@@ -67,7 +67,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
         timelineEnd: dealData.timelineEnd || undefined
       };
 
-      const response = await apiClient.post('/api/v1/deals', payload);
+      const response = await apiClient.post('/deals', payload);
       onDealCreated(response.data);
       onClose();
       
