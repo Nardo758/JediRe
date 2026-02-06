@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Property } from '../../types';
 import { PropertyCard } from '../property/PropertyCard';
 import { calculateNegotiationPower } from '../../utils/leaseIntel';
+import { api } from '../../services/api.client';
 
 interface DealPropertiesProps {
   dealId: string;
@@ -10,6 +11,7 @@ interface DealPropertiesProps {
 export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   
   // Filters
@@ -26,18 +28,21 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
   const fetchProperties = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const params = new URLSearchParams();
-      if (filters.class) params.append('class', filters.class);
-      if (filters.minRent) params.append('minRent', filters.minRent);
-      if (filters.maxRent) params.append('maxRent', filters.maxRent);
-      if (filters.beds) params.append('beds', filters.beds);
+      const filterParams: any = {};
+      if (filters.class) filterParams.class = filters.class;
+      if (filters.minRent) filterParams.minRent = parseInt(filters.minRent);
+      if (filters.maxRent) filterParams.maxRent = parseInt(filters.maxRent);
+      if (filters.beds) filterParams.beds = parseInt(filters.beds);
 
-      const response = await fetch(`/api/v1/deals/${dealId}/properties?${params}`);
-      const data = await response.json();
-      setProperties(data);
-    } catch (error) {
-      console.error('Failed to fetch properties:', error);
+      const response = await api.deals.properties(dealId, filterParams);
+      setProperties(response.data || []);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to fetch properties';
+      setError(errorMsg);
+      console.error('Failed to fetch properties:', err);
     } finally {
       setIsLoading(false);
     }
@@ -146,18 +151,39 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
         {/* Property List */}
         <div className="flex-1 overflow-y-auto p-6">
-          {isLoading ? (
+          {error ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">⚠️</div>
+              <p className="text-gray-900 font-semibold mb-2">Failed to load properties</p>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <button
+                onClick={fetchProperties}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : isLoading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-600">Loading properties...</p>
             </div>
           ) : properties.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-600">
+              <div className="text-6xl mb-4">🏢</div>
+              <p className="text-gray-600 font-semibold mb-2">
                 {hasActiveFilters 
                   ? 'No properties match your filters'
                   : 'No properties found in this boundary'}
               </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-blue-600 hover:text-blue-700 text-sm"
+                >
+                  Clear filters to see all properties
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { api } from '../../services/api.client';
 
 interface DealPipelineProps {
   dealId: string;
@@ -22,6 +23,8 @@ const stages = [
 export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     fetchPipeline();
@@ -29,30 +32,32 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
 
   const fetchPipeline = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
-      // This endpoint would need to be created in the backend
-      const response = await fetch(`/api/v1/deals/${dealId}/pipeline`);
-      if (response.ok) {
-        const data = await response.json();
-        setPipeline(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch pipeline:', error);
+      const response = await api.deals.pipeline(dealId);
+      setPipeline(response.data);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to fetch pipeline data';
+      setError(errorMsg);
+      console.error('Failed to fetch pipeline:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   const updateStage = async (newStage: string) => {
+    setIsUpdating(true);
+    
     try {
-      await fetch(`/api/v1/deals/${dealId}/pipeline/stage`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage: newStage })
-      });
-      fetchPipeline();
-    } catch (error) {
-      console.error('Failed to update stage:', error);
+      await api.deals.update(dealId, { pipelineStage: newStage });
+      await fetchPipeline();
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to update stage';
+      setError(errorMsg);
+      console.error('Failed to update stage:', err);
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -66,6 +71,35 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading pipeline...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <p className="text-gray-900 font-semibold mb-2">Failed to load pipeline</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchPipeline}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pipeline) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📋</div>
+          <p className="text-gray-600">No pipeline data available</p>
         </div>
       </div>
     );

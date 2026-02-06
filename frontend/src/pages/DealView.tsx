@@ -7,29 +7,44 @@ import { DealProperties } from '../components/deal/DealProperties';
 import { DealStrategy } from '../components/deal/DealStrategy';
 import { DealPipeline } from '../components/deal/DealPipeline';
 import { Button } from '../components/shared/Button';
+import { api } from '../services/api.client';
 
 export const DealView: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, module } = useParams<{ id: string; module?: string }>();
   const navigate = useNavigate();
-  const { selectedDeal, fetchDealById, isLoading } = useDealStore();
-  const [currentModule, setCurrentModule] = useState('map');
+  const { selectedDeal, fetchDealById, isLoading, error } = useDealStore();
+  const [currentModule, setCurrentModule] = useState(module || 'map');
   const [modules, setModules] = useState<any[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
       fetchDealById(id);
-      // Fetch modules
       fetchModules(id);
     }
   }, [id]);
 
+  // Update current module when URL param changes
+  useEffect(() => {
+    if (module) {
+      setCurrentModule(module);
+    }
+  }, [module]);
+
   const fetchModules = async (dealId: string) => {
+    setModulesLoading(true);
+    setModulesError(null);
+    
     try {
-      const response = await fetch(`/api/v1/deals/${dealId}/modules`);
-      const data = await response.json();
-      setModules(data);
-    } catch (error) {
-      console.error('Failed to fetch modules:', error);
+      const response = await api.deals.modules(dealId);
+      setModules(response.data || []);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to fetch modules';
+      setModulesError(errorMsg);
+      console.error('Failed to fetch modules:', err);
+    } finally {
+      setModulesLoading(false);
     }
   };
 
@@ -56,7 +71,7 @@ export const DealView: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !selectedDeal) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
@@ -67,11 +82,28 @@ export const DealView: React.FC = () => {
     );
   }
 
+  if (error && !selectedDeal) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <p className="text-gray-900 font-semibold mb-2">Failed to load deal</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={() => navigate('/dashboard')}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!selectedDeal) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Deal not found</p>
+          <div className="text-6xl mb-4">🔍</div>
+          <p className="text-gray-900 font-semibold mb-2">Deal not found</p>
+          <p className="text-gray-600 mb-4">This deal may have been deleted or you don't have access.</p>
           <Button onClick={() => navigate('/dashboard')}>
             Back to Dashboard
           </Button>
