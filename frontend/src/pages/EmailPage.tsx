@@ -1,102 +1,48 @@
-/**
- * Email Management Page
- * Full-featured email interface using Outlook integration
- */
+import React from 'react';
 
-import { useState } from 'react';
-import { Mail, Plus } from 'lucide-react';
-import { 
-  OutlookConnect, 
-  EmailInbox, 
-  ComposeEmail, 
-  EmailViewer 
-} from '../components/outlook';
-
-export default function EmailPage() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
-
-  const handleEmailSelect = (email: any) => {
-    setSelectedEmailId(email.id);
-    setViewerOpen(true);
-  };
-
-  const handleLinkToProperty = (emailId: string) => {
-    // TODO: Implement property linking modal
-    alert(`Link email ${emailId} to property (feature coming soon)`);
-  };
-
-  const handleEmailDeleted = (emailId: string) => {
-    setViewerOpen(false);
-    setSelectedEmailId(null);
-    // Inbox will automatically refresh
-  };
+export function EmailPage() {
+  const emails = [
+    { from: 'broker@example.com', subject: 'New listing in Buckhead', preview: 'Check out this amazing property...', unread: true },
+    { from: 'owner@example.com', subject: 'RE: Offer on 123 Main St', preview: 'We accept your offer of...', unread: true },
+    { from: 'team@jedi.com', subject: 'Weekly Market Report', preview: 'Here are this week\'s market insights...', unread: false },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Mail className="w-6 h-6 text-blue-600" />
+    <div className="h-full flex">
+      {/* Email List */}
+      <div className="w-96 border-r border-gray-200 bg-white overflow-y-auto">
+        <div className="p-4 border-b border-gray-200">
+          <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            ✉️ Compose
+          </button>
+        </div>
+
+        <div className="divide-y divide-gray-200">
+          {emails.map((email, idx) => (
+            <div key={idx} className={`p-4 hover:bg-gray-50 cursor-pointer ${email.unread ? 'bg-blue-50' : ''}`}>
+              <div className="flex items-start justify-between mb-1">
+                <div className="font-medium text-gray-900">{email.from}</div>
+                {email.unread && <div className="w-2 h-2 bg-blue-600 rounded-full"></div>}
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Email</h1>
-                <p className="text-sm text-gray-600">
-                  Manage property communications from Outlook
-                </p>
-              </div>
+              <div className="font-medium text-sm text-gray-900 mb-1">{email.subject}</div>
+              <div className="text-sm text-gray-600 truncate">{email.preview}</div>
             </div>
-
-            {isConnected && (
-              <button
-                onClick={() => setComposeOpen(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors inline-flex items-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                New Email
-              </button>
-            )}
-          </div>
+          ))}
         </div>
+      </div>
 
-        {/* Connection Status */}
-        <div className="mb-6">
-          <OutlookConnect onStatusChange={setIsConnected} />
+      {/* Email View */}
+      <div className="flex-1 bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📧</div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Email Integration</h3>
+          <p className="text-gray-600 max-w-md">
+            Connect your email to automatically extract property details and link them to deals.
+          </p>
+          <button className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Connect Email
+          </button>
         </div>
-
-        {/* Email Inbox (only show if connected) */}
-        {isConnected && (
-          <EmailInbox 
-            onEmailSelect={handleEmailSelect}
-            onLinkToProperty={handleLinkToProperty}
-          />
-        )}
-
-        {/* Modals */}
-        <ComposeEmail
-          isOpen={composeOpen}
-          onClose={() => setComposeOpen(false)}
-          onSent={() => {
-            setComposeOpen(false);
-            // Could trigger inbox refresh here
-          }}
-        />
-
-        <EmailViewer
-          isOpen={viewerOpen}
-          emailId={selectedEmailId}
-          onClose={() => {
-            setViewerOpen(false);
-            setSelectedEmailId(null);
-          }}
-          onLinkToProperty={handleLinkToProperty}
-          onDelete={handleEmailDeleted}
-        />
       </div>
     </div>
   );
