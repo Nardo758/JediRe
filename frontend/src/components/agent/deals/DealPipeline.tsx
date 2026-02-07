@@ -94,7 +94,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
     try {
       const response = await fetch(`${apiBaseUrl}/deals`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
       
@@ -117,7 +117,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
     try {
       const response = await fetch(`${apiBaseUrl}/clients`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
       
@@ -242,7 +242,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
         body: JSON.stringify({ stage: newStage }),
       });
@@ -271,7 +271,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
         body: JSON.stringify(formData),
       });
@@ -298,7 +298,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
         body: JSON.stringify(formData),
       });
@@ -338,7 +338,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
         body: JSON.stringify({ stage: newStage }),
       });
@@ -371,7 +371,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
       const response = await fetch(`${apiBaseUrl}/deals/${dealId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 
@@ -393,7 +393,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
         body: JSON.stringify({ note }),
       });
@@ -405,7 +405,7 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
       // Refresh the deal to get updated activities
       const dealResponse = await fetch(`${apiBaseUrl}/deals/${dealId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 

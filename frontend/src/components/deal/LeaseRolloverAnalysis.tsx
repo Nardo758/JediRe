@@ -27,7 +27,7 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
     async function fetchAnalysis() {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('auth_token');
         const res = await fetch(`/api/v1/deals/${dealId}/lease-analysis`, {
           headers: { Authorization: `Bearer ${token}` }
         });

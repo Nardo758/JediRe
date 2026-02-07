@@ -35,7 +35,7 @@ export default function ComposeEmail({
   const [showCc, setShowCc] = useState(false);
 
   const getAuthToken = () => {
-    return localStorage.getItem('jwt_token') || '';
+    return localStorage.getItem('auth_token') || '';
   };
 
   const handleSend = async () => {

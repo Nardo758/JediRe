@@ -1,22 +1,25 @@
 import { useEffect, useState } from 'react';
 import { authAPI } from '@/services/api';
 import { useAppStore } from '@/store';
+import { useAuthStore } from '@/stores/authStore';
 import { User } from '@/types';
 
 export function useAuth() {
   const { user, setUser } = useAppStore();
+  const { setToken: setStoreToken, logout: storeLogout } = useAuthStore();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
     const checkAuth = async () => {
       const token = localStorage.getItem('auth_token');
       if (token) {
         try {
+          setStoreToken(token);
           const userData = await authAPI.me();
           setUser(userData);
         } catch (error) {
           localStorage.removeItem('auth_token');
+          storeLogout();
         }
       }
       setLoading(false);
@@ -29,6 +32,7 @@ export function useAuth() {
     try {
       const { token, user: userData } = await authAPI.login(email, password);
       localStorage.setItem('auth_token', token);
+      setStoreToken(token);
       setUser(userData);
       return { success: true };
     } catch (error: any) {
@@ -40,6 +44,7 @@ export function useAuth() {
     try {
       const { token, user: userData } = await authAPI.register(email, password, name);
       localStorage.setItem('auth_token', token);
+      setStoreToken(token);
       setUser(userData);
       return { success: true };
     } catch (error: any) {
@@ -54,6 +59,7 @@ export function useAuth() {
       // Ignore logout errors
     } finally {
       localStorage.removeItem('auth_token');
+      storeLogout();
       setUser(null);
     }
   };

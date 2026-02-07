@@ -42,7 +42,7 @@ export default function EmailInbox({
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
 
   const getAuthToken = () => {
-    return localStorage.getItem('jwt_token') || '';
+    return localStorage.getItem('auth_token') || '';
   };
 
   // Load inbox

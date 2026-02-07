@@ -49,7 +49,7 @@ export default function EmailViewer({
   const [sending, setSending] = useState(false);
 
   const getAuthToken = () => {
-    return localStorage.getItem('jwt_token') || '';
+    return localStorage.getItem('auth_token') || '';
   };
 
   // Load email details
