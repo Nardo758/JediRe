@@ -28,7 +28,7 @@ JediRe is a full-stack real estate intelligence platform with React frontend, Ex
 
 ## Running the Project
 - Frontend runs on port 5000 (Vite dev server)
-- Backend runs on port 4000 (Express)
+- Backend runs on port 3000 (Express)
 - Database: PostgreSQL (via DATABASE_URL)
 
 ## Demo Credentials
@@ -36,9 +36,9 @@ JediRe is a full-stack real estate intelligence platform with React frontend, Ex
 - Password: demo123
 
 ## API Endpoints
-- Health check: http://localhost:4000/health
-- REST API: http://localhost:4000/api/v1
-- GraphQL: http://localhost:4000/graphql
+- Health check: http://localhost:3000/health
+- REST API: http://localhost:3000/api/v1
+- GraphQL: http://localhost:3000/graphql
 
 ## Environment Variables
 Key variables are set automatically:
@@ -188,6 +188,14 @@ Key variables are set automatically:
 - `zoning_district_boundaries` - GeoJSON boundaries for point-in-polygon lookup
 
 ## Recent Changes
+- 2026-02-07: Critical bug fixes and infrastructure improvements
+  - Fixed database connection to use DATABASE_URL instead of localhost:5432
+  - Demo login now generates proper JWT tokens (was returning fake `demo-token-*`)
+  - Fixed auth middleware race condition (double client release crash)
+  - Added missing deal columns: deal_category, development_type, address, description, acres
+  - Dashboard GeoJSON safety: filters invalid boundaries, validates coordinate arrays
+  - Map fitBounds handles Polygon and Point geometry types
+  - Backend port is 3000 (not 4000 as previously documented)
 - 2026-02-06: Added deal-centric schema (10 new tables)
   - deals, deal_modules, deal_properties, deal_emails, deal_annotations
   - deal_pipeline, deal_tasks, subscriptions, team_members, deal_activity

@@ -15,19 +15,24 @@ class DatabaseConnection {
   }
 
   private initialize(): void {
-    const config = {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      database: process.env.DB_NAME || 'jedire',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD,
+    const poolConfig: any = {
       min: parseInt(process.env.DB_POOL_MIN || '2'),
       max: parseInt(process.env.DB_POOL_MAX || '10'),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
     };
 
-    this.pool = new Pool(config);
+    if (process.env.DATABASE_URL) {
+      poolConfig.connectionString = process.env.DATABASE_URL;
+    } else {
+      poolConfig.host = process.env.DB_HOST || 'localhost';
+      poolConfig.port = parseInt(process.env.DB_PORT || '5432');
+      poolConfig.database = process.env.DB_NAME || 'jedire';
+      poolConfig.user = process.env.DB_USER || 'postgres';
+      poolConfig.password = process.env.DB_PASSWORD;
+    }
+
+    this.pool = new Pool(poolConfig);
 
     // Handle pool errors
     this.pool.on('error', (err) => {

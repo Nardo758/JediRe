@@ -69,14 +69,15 @@ export async function requireAuth(
   }
 
   const releaseClient = async () => {
-    if (req.dbClient) {
+    const cl = req.dbClient;
+    if (cl) {
+      req.dbClient = undefined;
       try {
-        await req.dbClient.query('COMMIT');
+        await cl.query('COMMIT');
       } catch (err) {
-        try { await req.dbClient.query('ROLLBACK'); } catch (_) {}
+        try { await cl.query('ROLLBACK'); } catch (_) {}
       } finally {
-        req.dbClient.release();
-        req.dbClient = undefined;
+        try { cl.release(); } catch (_) {}
       }
     }
   };

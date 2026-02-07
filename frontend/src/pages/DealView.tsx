@@ -38,7 +38,8 @@ export const DealView: React.FC = () => {
     
     try {
       const response = await api.deals.modules(dealId);
-      setModules(response.data || []);
+      const data = response.data;
+      setModules(Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || 'Failed to fetch modules';
       setModulesError(errorMsg);
@@ -138,11 +139,11 @@ export const DealView: React.FC = () => {
                            selectedDeal.tier === 'pro' ? '#1e40af' : '#065f46'
                   }}
                 >
-                  {selectedDeal.tier.toUpperCase()}
+                  {(selectedDeal.tier || 'basic').toUpperCase()}
                 </span>
               </div>
               <p className="text-sm text-gray-600 mt-1">
-                {selectedDeal.projectType} • {selectedDeal.acres.toFixed(1)} acres
+                {selectedDeal.projectType || 'multifamily'} • {(selectedDeal.acres || 0).toFixed(1)} acres
                 {selectedDeal.budget && ` • $${(selectedDeal.budget / 1000000).toFixed(1)}M budget`}
               </p>
             </div>
@@ -152,11 +153,11 @@ export const DealView: React.FC = () => {
             {/* Quick stats */}
             <div className="flex items-center gap-4 text-sm">
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount}</div>
+                <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount || 0}</div>
                 <div className="text-xs text-gray-600">Properties</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.taskCount}</div>
+                <div className="text-2xl font-bold text-gray-900">{selectedDeal.taskCount || 0}</div>
                 <div className="text-xs text-gray-600">Tasks</div>
               </div>
               {selectedDeal.pipelineStage && (

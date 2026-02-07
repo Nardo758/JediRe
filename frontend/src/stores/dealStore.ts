@@ -53,8 +53,10 @@ export const useDealStore = create<DealStore>((set, get) => ({
     
     try {
       const response = await api.deals.get(dealId);
+      const data = response.data;
+      const deal = data?.deal || data;
       set({ 
-        selectedDeal: response.data,
+        selectedDeal: deal,
         selectedDealId: dealId,
         isLoading: false 
       });
@@ -84,7 +86,8 @@ export const useDealStore = create<DealStore>((set, get) => ({
     
     try {
       const response = await api.deals.create(dealData);
-      const newDeal = response.data;
+      const respData = response.data;
+      const newDeal = respData?.deal || respData;
       
       set((state) => ({ 
         deals: [newDeal, ...state.deals],
