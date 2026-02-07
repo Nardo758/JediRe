@@ -8,6 +8,7 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 interface CreateDealModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onDealCreated?: (deal: any) => void;
 }
 
 type DealCategory = 'portfolio' | 'pipeline';
@@ -21,7 +22,7 @@ const STEPS = {
   DETAILS: 5,
 } as const;
 
-export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClose }) => {
+export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClose, onDealCreated }) => {
   const { createDeal, isLoading } = useDealStore();
   
   // Wizard state
@@ -151,7 +152,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     }
 
     try {
-      await createDeal({
+      const newDeal = await createDeal({
         name: dealName,
         description,
         tier,
@@ -160,6 +161,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         address,
         boundary,
       });
+      onDealCreated?.(newDeal);
       handleClose();
     } catch (err: any) {
       setError(err.message || 'Failed to create deal');
