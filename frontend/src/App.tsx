@@ -7,6 +7,7 @@ import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
 import { DealView } from './pages/DealView';
 import { EmailPage } from './pages/EmailPage';
+import { TasksPage } from './pages/TasksPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
@@ -39,6 +40,7 @@ function AppContent() {
               <Route path="/deals/:id" element={<DealView />} />
               <Route path="/deals/:id/:module" element={<DealView />} />
               <Route path="/email" element={<EmailPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/architecture" element={<SystemArchitecturePage />} />

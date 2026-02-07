@@ -18,6 +18,7 @@ import proposalsRoutes from './proposals.routes';
 import notificationsRoutes from './notifications.routes';
 import pipelineRoutes from './pipeline';
 import analysisRoutes from './analysis.routes';
+import tasksRoutes from './tasks.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -64,6 +65,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Market analysis routes (JEDI RE Phase 1 engines)
   app.use(`${API_PREFIX}/analysis`, analysisRoutes);
+
+  // Tasks routes (Global Tasks Module)
+  app.use(`${API_PREFIX}/tasks`, tasksRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
