@@ -11,6 +11,9 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MarketDataPage } from './pages/MarketDataPage';
+import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
+import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
@@ -28,6 +31,8 @@ function AppContent() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/map" element={<MapPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/market-data" element={<MarketDataPage />} />
+              <Route path="/assets-owned" element={<AssetsOwnedPage />} />
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/deals/:id" element={<DealView />} />
@@ -37,6 +42,7 @@ function AppContent() {
               <Route path="/team" element={<TeamPage />} />
               <Route path="/architecture" element={<SystemArchitecturePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings/modules" element={<ModuleMarketplacePage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </MainLayout>
