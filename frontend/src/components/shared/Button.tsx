@@ -10,6 +10,7 @@ const buttonVariants = cva(
         default: 'bg-blue-500 text-white hover:bg-blue-600 focus-visible:ring-blue-500',
         agent: 'bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:opacity-90',
         outline: 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700',
+        secondary: 'border border-gray-300 bg-white hover:bg-gray-50 text-gray-700',
         ghost: 'hover:bg-gray-100 text-gray-700',
         danger: 'bg-red-500 text-white hover:bg-red-600 focus-visible:ring-red-500',
       },
@@ -27,8 +28,9 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: 'default' | 'agent' | 'outline' | 'ghost' | 'danger' | 'secondary';
+  size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
 }
 

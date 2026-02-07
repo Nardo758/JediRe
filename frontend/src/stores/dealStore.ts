@@ -1,19 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../services/api.client';
-
-interface Deal {
-  id: string;
-  name: string;
-  projectType: string;
-  tier: string;
-  status: string;
-  budget: number;
-  boundary: any;
-  acres: number;
-  propertyCount: number;
-  pendingTasks: number;
-  createdAt: string;
-}
+import type { Deal } from '../types/deal';
 
 interface DealStore {
   // State
