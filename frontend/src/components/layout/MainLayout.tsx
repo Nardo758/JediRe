@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ChatOverlay } from '../chat/ChatOverlay';
 import { AgentStatusBar } from '../dashboard/AgentStatusBar';
 import { HorizontalBar } from '../map/HorizontalBar';
+import { useMapLayers } from '../../contexts/MapLayersContext';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -11,25 +12,39 @@ interface MainLayoutProps {
 export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { layers, toggleLayer } = useMapLayers();
+
+  const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
+    // Only toggle layer if on dashboard/map page
+    if (location.pathname === '/dashboard' || location.pathname === '/map') {
+      e.preventDefault();
+      toggleLayer(layerId);
+    }
+  };
+
+  const getLayerState = (layerId: string) => {
+    const layer = layers.find(l => l.id === layerId);
+    return layer?.active ?? false;
+  };
 
   const navigationSections = [
     {
       title: null,
       items: [
-        { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: null },
+        { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: null, layerId: null },
       ]
     },
     {
       title: 'INTELLIGENCE LAYERS',
       items: [
-        { name: 'Market Data', path: '/market-data', icon: '📊', badge: null },
-        { name: 'Assets Owned', path: '/assets-owned', icon: '🏢', badge: '23' },
+        { name: 'Market Data', path: '/market-data', icon: '📊', badge: null, layerId: null },
+        { name: 'Assets Owned', path: '/assets-owned', icon: '🏢', badge: '23', layerId: 'assets-owned' },
       ]
     },
     {
       title: 'DEAL MANAGEMENT',
       items: [
-        { name: 'Pipeline', path: '/deals', icon: '📁', badge: '8' },
+        { name: 'Pipeline', path: '/deals', icon: '📁', badge: '8', layerId: 'pipeline' },
       ]
     },
     {
@@ -100,10 +115,11 @@ export function MainLayout({ children }: MainLayoutProps) {
                   </div>
                 )}
                 <div className="space-y-1">
-                  {section.items.map((item) => (
+                  {section.items.map((item: any) => (
                     <Link
                       key={item.path}
                       to={item.path}
+                      onClick={(e) => item.layerId && handleLayerToggle(item.layerId, e)}
                       className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
                         isActive(item.path)
                           ? 'bg-blue-50 text-blue-600 font-medium'
@@ -114,11 +130,23 @@ export function MainLayout({ children }: MainLayoutProps) {
                       {!sidebarCollapsed && (
                         <>
                           <span className="flex-1">{item.name}</span>
-                          {item.badge && (
-                            <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
-                              {item.badge}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/map') && (
+                              <span
+                                className={`text-lg ${
+                                  getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
+                                }`}
+                                title={getLayerState(item.layerId) ? 'Layer visible on map' : 'Layer hidden'}
+                              >
+                                👁️
+                              </span>
+                            )}
+                            {item.badge && (
+                              <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
                         </>
                       )}
                     </Link>

@@ -17,6 +17,7 @@ import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
+import { MapLayersProvider } from './contexts/MapLayersContext';
 
 function AppContent() {
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
@@ -63,7 +64,9 @@ function AppContent() {
 function App() {
   return (
     <ArchitectureProvider>
-      <AppContent />
+      <MapLayersProvider>
+        <AppContent />
+      </MapLayersProvider>
     </ArchitectureProvider>
   );
 }
