@@ -8,10 +8,10 @@ export function ChatOverlay() {
   const [messages, setMessages] = useState([
     {
       id: '1',
-      type: 'agent' as const,
+      role: 'agent' as const,
       content: "Hi! I'm your Chief Orchestrator. I coordinate all specialist agents to help you analyze properties and deals. What would you like to work on?",
-      timestamp: new Date().toISOString(),
-      agentName: 'Chief Orchestrator'
+      created_at: new Date().toISOString(),
+      agent_name: 'Chief Orchestrator'
     }
   ]);
 
@@ -62,7 +62,7 @@ export function ChatOverlay() {
           {/* Chat Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 h-[calc(600px-120px)]">
             {messages.map((message) => (
-              <ChatMessage key={message.id} {...message} />
+              <ChatMessage key={message.id} message={message} />
             ))}
             
             {/* Sample property cards */}
@@ -92,9 +92,9 @@ export function ChatOverlay() {
             <ChatInput onSend={(msg) => {
               setMessages([...messages, {
                 id: Date.now().toString(),
-                type: 'user',
+                role: 'user' as const,
                 content: msg,
-                timestamp: new Date().toISOString()
+                created_at: new Date().toISOString()
               }]);
             }} />
           </div>
