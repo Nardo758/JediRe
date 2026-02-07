@@ -41,6 +41,18 @@ export function ModuleMarketplacePage() {
       featured: true
     },
     {
+      id: '31',
+      name: 'Email Intelligence',
+      icon: '📧',
+      description: 'AI-powered email agent that auto-categorizes, extracts data, creates tasks, and integrates deal context',
+      price: '$49/mo',
+      category: 'Market Intelligence',
+      rating: 5.0,
+      reviews: 89,
+      installed: false,
+      featured: true
+    },
+    {
       id: '2',
       name: 'Financial Modeling',
       icon: '💰',
