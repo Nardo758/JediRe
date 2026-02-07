@@ -166,4 +166,22 @@ export class DealsController {
   ) {
     return this.dealsService.getActivity(id, req.user.userId, limit);
   }
+
+  /**
+   * GET /api/v1/deals/:id/timeline
+   * Get timeline events for a deal
+   */
+  @Get(':id/timeline')
+  async getTimeline(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getTimeline(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/key-moments
+   * Get key moments for a deal
+   */
+  @Get(':id/key-moments')
+  async getKeyMoments(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getKeyMoments(id, req.user.userId);
+  }
 }

@@ -19,6 +19,7 @@ import notificationsRoutes from './notifications.routes';
 import pipelineRoutes from './pipeline';
 import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
+import emailRoutes from './email.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -68,6 +69,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Tasks routes (Global Tasks Module)
   app.use(`${API_PREFIX}/tasks`, tasksRoutes);
+
+  // Email routes (Email AI Integration)
+  app.use(`${API_PREFIX}/emails`, emailRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

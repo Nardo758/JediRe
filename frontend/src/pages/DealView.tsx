@@ -6,6 +6,7 @@ import { DealMapView } from '../components/deal/DealMapView';
 import { DealProperties } from '../components/deal/DealProperties';
 import { DealStrategy } from '../components/deal/DealStrategy';
 import { DealPipeline } from '../components/deal/DealPipeline';
+import { DealContextTracker } from '../components/deal/DealContextTracker';
 import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
 
@@ -61,6 +62,8 @@ export const DealView: React.FC = () => {
         return <DealStrategy dealId={selectedDeal.id} />;
       case 'pipeline':
         return <DealPipeline dealId={selectedDeal.id} />;
+      case 'context':
+        return <DealContextTracker dealId={selectedDeal.id} />;
       case 'market':
         return <div className="p-6">Market Intelligence (Coming Soon)</div>;
       case 'reports':

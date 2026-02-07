@@ -480,6 +480,131 @@ export class DealsService {
   }
 
   /**
+   * Get timeline events for a deal
+   */
+  async getTimeline(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get activities grouped by date
+    const result = await this.db.query(
+      `SELECT 
+        DATE(da.created_at) as event_date,
+        json_agg(
+          json_build_object(
+            'id', da.id,
+            'dealId', da.deal_id,
+            'userId', da.user_id,
+            'activityType', da.action_type,
+            'description', da.description,
+            'metadata', da.metadata,
+            'createdAt', da.created_at,
+            'user', json_build_object(
+              'id', u.id,
+              'name', u.name,
+              'email', u.email
+            )
+          ) ORDER BY da.created_at DESC
+        ) as activities
+      FROM deal_activity da
+      LEFT JOIN users u ON da.user_id = u.id
+      WHERE da.deal_id = $1
+      GROUP BY DATE(da.created_at)
+      ORDER BY DATE(da.created_at) DESC
+      LIMIT 30`,
+      [dealId]
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const events = result.rows.map(row => {
+      const eventDate = new Date(row.event_date);
+      eventDate.setHours(0, 0, 0, 0);
+      
+      let type: 'past' | 'current' | 'future' = 'past';
+      if (eventDate.getTime() === today.getTime()) {
+        type = 'current';
+      } else if (eventDate > today) {
+        type = 'future';
+      }
+
+      return {
+        date: row.event_date,
+        title: `${row.activities.length} activities`,
+        type,
+        completed: type === 'past',
+        activities: row.activities,
+      };
+    });
+
+    return events;
+  }
+
+  /**
+   * Get key moments for a deal
+   */
+  async getKeyMoments(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get critical activities that are key moments
+    const result = await this.db.query(
+      `SELECT 
+        da.*,
+        u.name AS user_name,
+        u.email AS user_email
+      FROM deal_activity da
+      LEFT JOIN users u ON da.user_id = u.id
+      WHERE da.deal_id = $1
+        AND da.action_type IN (
+          'milestone_hit',
+          'deal_created',
+          'status_change',
+          'risk_flagged',
+          'analysis_triggered',
+          'financial_update'
+        )
+      ORDER BY da.created_at DESC
+      LIMIT 20`,
+      [dealId]
+    );
+
+    const moments = result.rows.map(row => {
+      let momentType: 'milestone' | 'decision' | 'risk' | 'achievement' = 'milestone';
+      let importance: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+
+      if (row.action_type === 'risk_flagged') {
+        momentType = 'risk';
+        importance = 'high';
+      } else if (row.action_type === 'milestone_hit') {
+        momentType = 'milestone';
+        importance = 'high';
+      } else if (row.action_type === 'deal_created') {
+        momentType = 'achievement';
+        importance = 'critical';
+      } else if (row.action_type === 'status_change') {
+        momentType = 'decision';
+        importance = 'medium';
+      } else if (row.action_type === 'analysis_triggered') {
+        momentType = 'achievement';
+        importance = 'medium';
+      }
+
+      return {
+        id: row.id,
+        dealId: row.deal_id,
+        title: row.action_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+        description: row.description,
+        momentType,
+        importance,
+        date: row.created_at,
+        metadata: row.metadata,
+      };
+    });
+
+    return moments;
+  }
+
+  /**
    * Helper: Verify user owns deal
    */
   private async verifyOwnership(dealId: string, userId: string) {
