@@ -51,9 +51,10 @@ export class DealsService {
     const result = await this.db.query(
       `INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
-        target_units, budget, timeline_start, timeline_end, tier
-      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10)
-      RETURNING id, name, project_type, tier, created_at`,
+        target_units, budget, timeline_start, timeline_end, tier,
+        deal_category, development_type, address, description
+      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id, name, project_type, tier, deal_category, development_type, address, created_at`,
       [
         userId,
         dto.name,
@@ -64,7 +65,11 @@ export class DealsService {
         dto.budget,
         dto.timelineStart,
         dto.timelineEnd,
-        tier
+        dto.tier || tier,
+        dto.deal_category,
+        dto.development_type,
+        dto.address,
+        dto.description || null
       ]
     );
 
