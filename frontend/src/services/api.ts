@@ -1,10 +1,8 @@
 import axios from 'axios';
 import { Property, SearchResult, ZoningInsight, User, Lead, Commission, CommissionSummary } from '@/types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
