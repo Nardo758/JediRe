@@ -178,6 +178,7 @@ export const Dashboard: React.FC = () => {
         title="Portfolio Overview"
         description={`${(Array.isArray(deals) ? deals.length : 0)} ${(Array.isArray(deals) ? deals.length : 0) === 1 ? 'deal' : 'deals'} active`}
         icon="📊"
+        architectureInfo={architectureMetadata.dashboard}
       />
 
       {/* Content */}

@@ -37,6 +37,17 @@ export function PageHeader({
           <div className="flex items-center gap-3 mb-2">
             {icon && <span className="text-3xl">{icon}</span>}
             <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+            
+            {/* Architecture Toggle Button */}
+            {architectureInfo && (
+              <button
+                onClick={handleArchitectureClick}
+                className="ml-auto px-3 py-1 text-sm bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all shadow-md hover:shadow-lg flex items-center gap-1"
+              >
+                <span>🏗️</span>
+                <span>Show Architecture</span>
+              </button>
+            )}
           </div>
           <p className="text-gray-600">{description}</p>
           
