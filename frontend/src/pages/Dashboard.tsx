@@ -46,7 +46,7 @@ export const Dashboard: React.FC = () => {
 
   // Update map when deals change
   useEffect(() => {
-    if (!map.current || !deals.length) return;
+    if (!map.current || !Array.isArray(deals) || !deals.length) return;
 
     const m = map.current;
 
@@ -162,7 +162,7 @@ export const Dashboard: React.FC = () => {
       {/* Header */}
       <PageHeader
         title="Portfolio Overview"
-        description={`${deals.length} ${deals.length === 1 ? 'deal' : 'deals'} active`}
+        description={`${(Array.isArray(deals) ? deals.length : 0)} ${(Array.isArray(deals) ? deals.length : 0) === 1 ? 'deal' : 'deals'} active`}
         icon="📊"
         architectureInfo={architectureMetadata.dashboard}
         actions={
@@ -187,7 +187,7 @@ export const Dashboard: React.FC = () => {
             
             {isLoading ? (
               <div className="text-center py-8 text-gray-500">Loading...</div>
-            ) : deals.length === 0 ? (
+            ) : !Array.isArray(deals) || deals.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-500 mb-4">No deals yet</p>
                 <Button onClick={() => setIsCreateModalOpen(true)} size="sm">
@@ -268,7 +268,7 @@ export const Dashboard: React.FC = () => {
           )}
           
           {/* Quick stats overlay */}
-          {deals.length > 0 && (
+          {Array.isArray(deals) && deals.length > 0 && (
             <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">Quick Stats</h3>
               <div className="space-y-1 text-sm">

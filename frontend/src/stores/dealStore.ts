@@ -33,8 +33,10 @@ export const useDealStore = create<DealStore>((set, get) => ({
     
     try {
       const response = await api.deals.list();
+      const data = response.data;
+      const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
       set({ 
-        deals: response.data || [],
+        deals: dealsList,
         isLoading: false 
       });
     } catch (error: any) {
