@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import path from 'path';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
+import { generateAccessToken } from './auth/jwt';
 
 dotenv.config();
 
@@ -213,10 +214,15 @@ app.post('/api/v1/auth/login', async (req, res) => {
             modules: dbUser.enabled_modules || ['supply']
           }
         };
+        const token = generateAccessToken({
+          userId: dbUser.id,
+          email: dbUser.email,
+          role: dbUser.role || 'user'
+        });
         res.json({
           success: true,
           user,
-          token: 'demo-token-' + Date.now()
+          token
         });
         return;
       }
@@ -232,6 +238,293 @@ app.post('/api/v1/auth/login', async (req, res) => {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+// ============================================
+// Deals CRUD Endpoints
+// ============================================
+
+// List all deals for the authenticated user
+app.get('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(`
+      SELECT 
+        d.*,
+        ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+        (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+        CASE 
+          WHEN d.boundary IS NOT NULL THEN 
+            ST_Area(d.boundary::geography) / 4046.86
+          ELSE 0
+        END as acres
+      FROM deals d
+      WHERE d.user_id = $1 AND d.archived_at IS NULL
+      ORDER BY d.created_at DESC
+    `, [req.user!.userId]);
+
+    res.json({
+      success: true,
+      deals: result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type,
+        projectIntent: row.project_intent,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        boundary: row.boundary_geojson,
+        targetUnits: row.target_units,
+        timelineStart: row.timeline_start,
+        timelineEnd: row.timeline_end,
+        acres: parseFloat(row.acres) || 0,
+        propertyCount: row.propertyCount || 0,
+        pendingTasks: row.pendingTasks || 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        description: row.description,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching deals:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch deals' });
+  }
+});
+
+// Get a single deal
+app.get('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(`
+      SELECT 
+        d.*,
+        ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+        (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
+        (SELECT dp2.stage FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_at DESC LIMIT 1) as "pipelineStage",
+        (SELECT EXTRACT(DAY FROM NOW() - dp2.entered_at)::int FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_at DESC LIMIT 1) as "daysInStage",
+        CASE 
+          WHEN d.boundary IS NOT NULL THEN 
+            ST_Area(d.boundary::geography) / 4046.86
+          ELSE 0
+        END as acres
+      FROM deals d
+      WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
+    `, [req.params.id, req.user!.userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      deal: {
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type || 'multifamily',
+        projectIntent: row.project_intent,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        boundary: row.boundary_geojson,
+        targetUnits: row.target_units,
+        timelineStart: row.timeline_start,
+        timelineEnd: row.timeline_end,
+        acres: parseFloat(row.acres) || 0,
+        propertyCount: row.propertyCount || 0,
+        pendingTasks: row.pendingTasks || 0,
+        taskCount: row.taskCount || 0,
+        pipelineStage: row.pipelineStage || null,
+        daysInStage: row.daysInStage || 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        description: row.description,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch deal' });
+  }
+});
+
+// Create a new deal
+app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const {
+      name, boundary, projectType, projectIntent, targetUnits,
+      budget, timelineStart, timelineEnd, tier,
+      deal_category, development_type, address, description
+    } = req.body;
+
+    if (!name || !boundary) {
+      return res.status(400).json({ success: false, error: 'Name and boundary are required' });
+    }
+
+    const userTier = tier || 'basic';
+    const result = await client.query(`
+      INSERT INTO deals (
+        user_id, name, boundary, project_type, project_intent,
+        target_units, budget, timeline_start, timeline_end, tier, status,
+        deal_category, development_type, address, description
+      )
+      VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      RETURNING *
+    `, [
+      req.user!.userId,
+      name,
+      JSON.stringify(boundary),
+      projectType || 'multifamily',
+      projectIntent || null,
+      targetUnits || null,
+      budget || null,
+      timelineStart || null,
+      timelineEnd || null,
+      userTier,
+      deal_category || 'pipeline',
+      development_type || 'new',
+      address || null,
+      description || null,
+    ]);
+
+    const row = result.rows[0];
+    res.status(201).json({
+      success: true,
+      deal: {
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        acres: 0,
+        propertyCount: 0,
+        pendingTasks: 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        createdAt: row.created_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error creating deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to create deal' });
+  }
+});
+
+// Update a deal
+app.patch('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const updates = req.body;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const allowedFields: Record<string, string> = {
+      name: 'name', projectType: 'project_type', projectIntent: 'project_intent',
+      targetUnits: 'target_units', budget: 'budget', status: 'status',
+      timelineStart: 'timeline_start', timelineEnd: 'timeline_end',
+      description: 'description', address: 'address',
+    };
+
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    for (const [key, dbCol] of Object.entries(allowedFields)) {
+      if (updates[key] !== undefined) {
+        setClauses.push(`${dbCol} = $${paramIndex}`);
+        values.push(updates[key]);
+        paramIndex++;
+      }
+    }
+
+    values.push(dealId);
+    const result = await client.query(
+      `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    res.json({ success: true, deal: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to update deal' });
+  }
+});
+
+// Delete (archive) a deal
+app.delete('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const result = await client.query(
+      'UPDATE deals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND archived_at IS NULL RETURNING id',
+      [dealId, req.user!.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    res.json({ success: true, message: 'Deal archived' });
+  } catch (error) {
+    console.error('Error deleting deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete deal' });
+  }
+});
+
+// Get deal modules
+app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const result = await client.query(
+      'SELECT * FROM deal_modules WHERE deal_id = $1',
+      [dealId]
+    );
+
+    const modules = result.rows.length > 0 ? result.rows : [
+      { module_name: 'map', enabled: true, config: {} },
+      { module_name: 'properties', enabled: true, config: {} },
+      { module_name: 'strategy', enabled: true, config: {} },
+      { module_name: 'pipeline', enabled: true, config: {} },
+      { module_name: 'market', enabled: false, config: {} },
+      { module_name: 'reports', enabled: false, config: {} },
+      { module_name: 'team', enabled: false, config: {} },
+    ];
+
+    res.json({ success: true, data: modules });
+  } catch (error) {
+    console.error('Error fetching deal modules:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch modules' });
   }
 });
 

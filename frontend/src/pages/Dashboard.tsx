@@ -66,19 +66,21 @@ export const Dashboard: React.FC = () => {
       m.removeSource('deals');
     }
 
-    // Create GeoJSON from deals
+    // Create GeoJSON from deals (only include deals with valid GeoJSON boundaries)
     const geojson = {
       type: 'FeatureCollection',
-      features: deals.map(deal => ({
-        type: 'Feature',
-        geometry: deal.boundary,
-        properties: {
-          id: deal.id,
-          name: deal.name,
-          tier: deal.tier,
-          projectType: deal.projectType
-        }
-      }))
+      features: deals
+        .filter(deal => deal.boundary && deal.boundary.type && deal.boundary.coordinates)
+        .map(deal => ({
+          type: 'Feature',
+          geometry: deal.boundary,
+          properties: {
+            id: deal.id,
+            name: deal.name,
+            tier: deal.tier,
+            projectType: deal.projectType
+          }
+        }))
     };
 
     // Add source
@@ -142,14 +144,26 @@ export const Dashboard: React.FC = () => {
     // Fit map to show all deals
     if (deals.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
+      let hasValidBounds = false;
       deals.forEach(deal => {
-        if (deal.boundary && deal.boundary.coordinates) {
+        if (deal.boundary && deal.boundary.type === 'Polygon' && deal.boundary.coordinates) {
           deal.boundary.coordinates[0].forEach((coord: number[]) => {
-            bounds.extend(coord as [number, number]);
+            if (Array.isArray(coord) && coord.length >= 2) {
+              bounds.extend(coord as [number, number]);
+              hasValidBounds = true;
+            }
           });
+        } else if (deal.boundary && deal.boundary.type === 'Point' && deal.boundary.coordinates) {
+          const coord = deal.boundary.coordinates;
+          if (Array.isArray(coord) && coord.length >= 2) {
+            bounds.extend(coord as [number, number]);
+            hasValidBounds = true;
+          }
         }
       });
-      m.fitBounds(bounds, { padding: 50 });
+      if (hasValidBounds) {
+        m.fitBounds(bounds, { padding: 50 });
+      }
     }
   };
 
