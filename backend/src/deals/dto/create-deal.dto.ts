@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsObject, IsDateString, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsObject, IsDateString, IsEnum, IsIn } from 'class-validator';
 
 export enum ProjectType {
   MULTIFAMILY = 'multifamily',
@@ -9,6 +9,16 @@ export enum ProjectType {
   LAND = 'land',
 }
 
+export enum DealCategory {
+  PORTFOLIO = 'portfolio',
+  PIPELINE = 'pipeline',
+}
+
+export enum DevelopmentType {
+  NEW = 'new',
+  EXISTING = 'existing',
+}
+
 export class CreateDealDto {
   @IsString()
   @IsNotEmpty()
@@ -17,12 +27,13 @@ export class CreateDealDto {
   @IsObject()
   @IsNotEmpty()
   boundary: {
-    type: 'Polygon';
-    coordinates: number[][][];
+    type: 'Polygon' | 'Point';
+    coordinates: number[][][] | number[];
   };
 
   @IsEnum(ProjectType)
-  projectType: ProjectType;
+  @IsOptional()
+  projectType?: ProjectType;
 
   @IsString()
   @IsOptional()
@@ -43,4 +54,25 @@ export class CreateDealDto {
   @IsDateString()
   @IsOptional()
   timelineEnd?: string;
+
+  // New fields
+  @IsEnum(DealCategory)
+  @IsNotEmpty()
+  deal_category: DealCategory;
+
+  @IsEnum(DevelopmentType)
+  @IsNotEmpty()
+  development_type: DevelopmentType;
+
+  @IsString()
+  @IsNotEmpty()
+  address: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsIn(['basic', 'pro', 'enterprise'])
+  @IsOptional()
+  tier?: string;
 }
