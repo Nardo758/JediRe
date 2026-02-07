@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { useAgentStore } from '../stores/agentStore';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
+const WS_URL = import.meta.env.VITE_WS_URL || window.location.origin;
 
 class WebSocketService {
   private socket: Socket | null = null;
