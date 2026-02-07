@@ -33,7 +33,7 @@ export default function OutlookConnect({
 
   // Get JWT token (adjust based on your auth setup)
   const getAuthToken = () => {
-    return localStorage.getItem('jwt_token') || '';
+    return localStorage.getItem('auth_token') || '';
   };
 
   // Check connection status

@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Load token and user from localStorage on mount
   useEffect(() => {
-    const storedToken = localStorage.getItem('jedi_token');
+    const storedToken = localStorage.getItem('auth_token');
     const storedUser = localStorage.getItem('jedi_user');
 
     if (storedToken && storedUser) {
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(data.token);
       setUser(data.user);
       
-      localStorage.setItem('jedi_token', data.token);
+      localStorage.setItem('auth_token', data.token);
       localStorage.setItem('jedi_user', JSON.stringify(data.user));
     } catch (error) {
       console.error('Login error:', error);
@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('jedi_token');
+    localStorage.removeItem('auth_token');
     localStorage.removeItem('jedi_user');
   };
 

@@ -11,7 +11,7 @@ export const apiClient: AxiosInstance = axios.create({
 // Request interceptor - add auth token
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('jedi_token');
+    const token = localStorage.getItem('auth_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -28,8 +28,7 @@ apiClient.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       // Unauthorized - clear auth and redirect to login
-      localStorage.removeItem('jedi_token');
-      localStorage.removeItem('jedi_user');
+      localStorage.removeItem('auth_token');
       window.location.href = '/login';
     }
 
