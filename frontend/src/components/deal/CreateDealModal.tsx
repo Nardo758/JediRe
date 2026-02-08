@@ -3,6 +3,8 @@ import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../../stores/dealStore';
 import { Button } from '../shared/Button';
+import { TradeAreaDefinitionPanel } from '../trade-area';
+import { api } from '../../services/api';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 interface CreateDealModalProps {
@@ -17,8 +19,9 @@ const STEPS = {
   CATEGORY: 1,
   TYPE: 2,
   ADDRESS: 3,
-  BOUNDARY: 4,
-  DETAILS: 5,
+  TRADE_AREA: 4,
+  BOUNDARY: 5,
+  DETAILS: 6,
 } as const;
 
 export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClose }) => {
@@ -35,6 +38,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   const [description, setDescription] = useState('');
   const [tier, setTier] = useState<'basic' | 'pro' | 'enterprise'>('basic');
   const [error, setError] = useState<string | null>(null);
+  
+  // Trade area state
+  const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
+  const [submarketId, setSubmarketId] = useState<number | null>(null);
+  const [msaId, setMsaId] = useState<number | null>(null);
   
   // Map refs
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -109,18 +117,30 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         const [lng, lat] = data.features[0].center;
         setCoordinates([lng, lat]);
         
-        // Auto-advance to boundary step
-        if (developmentType === 'new') {
-          setCurrentStep(STEPS.BOUNDARY);
-        } else {
-          // For existing properties, try to fetch parcel boundary
-          // For now, just use a point and move to details
+        // Lookup submarket and MSA for this location
+        try {
+          const submarketResponse = await api.get('/submarkets/lookup', {
+            params: { lat, lng }
+          });
+          if (submarketResponse.data.success) {
+            setSubmarketId(submarketResponse.data.data.id);
+            setMsaId(submarketResponse.data.data.msa_id);
+          }
+        } catch (err) {
+          console.error('Failed to lookup submarket:', err);
+          // Continue even if lookup fails
+        }
+        
+        // For existing properties, set point geometry
+        if (developmentType === 'existing') {
           setBoundary({
             type: 'Point',
             coordinates: [lng, lat],
           });
-          setCurrentStep(STEPS.DETAILS);
         }
+        
+        // Advance to trade area step
+        setCurrentStep(STEPS.TRADE_AREA);
       } else {
         setError('Address not found. Please try a different address.');
       }
@@ -151,7 +171,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     }
 
     try {
-      await createDeal({
+      const result = await createDeal({
         name: dealName,
         description,
         tier,
@@ -160,6 +180,22 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         address,
         boundary,
       });
+      
+      // Link geographic context if we have submarket/MSA
+      if (result && submarketId && msaId) {
+        try {
+          await api.post(`/deals/${result.id}/geographic-context`, {
+            trade_area_id: tradeAreaId,
+            submarket_id: submarketId,
+            msa_id: msaId,
+            active_scope: tradeAreaId ? 'trade_area' : 'submarket',
+          });
+        } catch (contextErr) {
+          console.error('Failed to link geographic context:', contextErr);
+          // Don't fail the whole deal creation if context linking fails
+        }
+      }
+      
       handleClose();
     } catch (err: any) {
       setError(err.message || 'Failed to create deal');
@@ -178,6 +214,9 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     setDescription('');
     setTier('basic');
     setError(null);
+    setTradeAreaId(null);
+    setSubmarketId(null);
+    setMsaId(null);
     onClose();
   };
 
@@ -209,6 +248,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
               { num: STEPS.CATEGORY, label: 'Category' },
               { num: STEPS.TYPE, label: 'Type' },
               { num: STEPS.ADDRESS, label: 'Address' },
+              { num: STEPS.TRADE_AREA, label: 'Trade Area' },
               { num: STEPS.BOUNDARY, label: 'Boundary' },
               { num: STEPS.DETAILS, label: 'Details' },
             ].map((step, idx) => (
@@ -350,7 +390,35 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
             </div>
           )}
 
-          {/* Step 4: Boundary */}
+          {/* Step 4: Trade Area Definition */}
+          {currentStep === STEPS.TRADE_AREA && coordinates && (
+            <div>
+              <TradeAreaDefinitionPanel
+                propertyLat={coordinates[1]}
+                propertyLng={coordinates[0]}
+                onSave={(id) => {
+                  setTradeAreaId(id);
+                  // If new development, go to boundary drawing
+                  if (developmentType === 'new') {
+                    setCurrentStep(STEPS.BOUNDARY);
+                  } else {
+                    // If existing property, skip to details
+                    setCurrentStep(STEPS.DETAILS);
+                  }
+                }}
+                onSkip={() => {
+                  // User skipped - will use submarket default
+                  if (developmentType === 'new') {
+                    setCurrentStep(STEPS.BOUNDARY);
+                  } else {
+                    setCurrentStep(STEPS.DETAILS);
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* Step 5: Boundary */}
           {currentStep === STEPS.BOUNDARY && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">

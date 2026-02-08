@@ -7,6 +7,8 @@ import { DealProperties } from '../components/deal/DealProperties';
 import { DealStrategy } from '../components/deal/DealStrategy';
 import { DealPipeline } from '../components/deal/DealPipeline';
 import { DealContextTracker } from '../components/deal/DealContextTracker';
+import { GeographicScopeTabs } from '../components/trade-area';
+import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
 
@@ -14,6 +16,7 @@ export const DealView: React.FC = () => {
   const { id, module } = useParams<{ id: string; module?: string }>();
   const navigate = useNavigate();
   const { selectedDeal, fetchDealById, isLoading, error } = useDealStore();
+  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
   const [currentModule, setCurrentModule] = useState(module || 'map');
   const [modules, setModules] = useState<any[]>([]);
   const [modulesLoading, setModulesLoading] = useState(false);
@@ -23,6 +26,7 @@ export const DealView: React.FC = () => {
     if (id) {
       fetchDealById(id);
       fetchModules(id);
+      loadTradeAreaForDeal(parseInt(id));
     }
   }, [id]);
 
@@ -180,6 +184,20 @@ export const DealView: React.FC = () => {
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Geographic Scope Tabs */}
+      <div className="px-6 py-4 border-b border-gray-200">
+        <GeographicScopeTabs
+          activeScope={activeScope}
+          onChange={setScope}
+          tradeAreaEnabled={true}
+          stats={{
+            trade_area: { occupancy: 94.0, avg_rent: 2150 },
+            submarket: { occupancy: 91.5, avg_rent: 2080 },
+            msa: { occupancy: 89.0, avg_rent: 1950 },
+          }}
+        />
       </div>
 
       {/* Main Content */}
