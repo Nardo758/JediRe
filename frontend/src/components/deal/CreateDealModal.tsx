@@ -172,7 +172,6 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     }
 
     try {
-      const newDeal = await createDeal({
       const result = await createDeal({
         name: dealName,
         description,
@@ -182,7 +181,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         address,
         boundary,
       });
-      onDealCreated?.(newDeal);
+      onDealCreated?.(result);
       
       // Link geographic context if we have submarket/MSA
       if (result && submarketId && msaId) {
