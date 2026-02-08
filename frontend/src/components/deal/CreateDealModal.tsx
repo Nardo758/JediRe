@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../../stores/dealStore';
 import { useMapDrawingStore } from '../../stores/mapDrawingStore';
 import { Button } from '../shared/Button';
+import { GooglePlacesInput } from '../shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../trade-area';
 import { api } from '../../services/api';
 
@@ -348,23 +349,41 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Street Address
                 </label>
-                <input
+                <GooglePlacesInput
                   id="create-deal-address"
                   name="address"
-                  type="text"
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="123 Peachtree St NE, Atlanta, GA 30303"
-                  aria-label="Street address"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleGeocodeAddress();
+                  onChange={(value, coords) => {
+                    setAddress(value);
+                    // If coordinates provided (user selected from dropdown), auto-advance
+                    if (coords) {
+                      setCoordinates(coords);
+                      setError(null);
+                      
+                      // Lookup submarket and MSA
+                      const [lng, lat] = coords;
+                      api.get('/submarkets/lookup', { params: { lat, lng } })
+                        .then((res) => {
+                          if (res.data.success) {
+                            setSubmarketId(res.data.data.id);
+                            setMsaId(res.data.data.msa_id);
+                          }
+                        })
+                        .catch((err) => console.error('Submarket lookup failed:', err));
+                      
+                      // Set boundary for existing properties
+                      if (developmentType === 'existing') {
+                        setBoundary({ type: 'Point', coordinates: coords });
+                      }
+                      
+                      // Auto-advance
+                      setCurrentStep(STEPS.TRADE_AREA);
                     }
                   }}
+                  placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  Enter a full address including city and state for best results
+                  ✨ Powered by Google - Select from dropdown for instant validation
                 </p>
               </div>
             </div>
@@ -378,20 +397,22 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 propertyLng={coordinates[0]}
                 onSave={(id) => {
                   setTradeAreaId(id);
-                  // If new development, go to boundary drawing
+                  // For new dev: go to boundary drawing
+                  // For existing: skip boundary verification (redundant)
                   if (developmentType === 'new') {
                     setCurrentStep(STEPS.BOUNDARY);
                   } else {
-                    // If existing property, skip to details
-                    setCurrentStep(STEPS.DETAILS);
+                    setCurrentStep(STEPS.DETAILS); // Skip boundary step
                   }
                 }}
                 onSkip={() => {
-                  // User skipped - will use submarket default
+                  // User skipped trade area definition
+                  // For new dev: go to boundary drawing
+                  // For existing: skip boundary verification (already verified at address step)
                   if (developmentType === 'new') {
                     setCurrentStep(STEPS.BOUNDARY);
                   } else {
-                    setCurrentStep(STEPS.DETAILS);
+                    setCurrentStep(STEPS.DETAILS); // Skip boundary step entirely
                   }
                 }}
                 onCustomDraw={() => {
