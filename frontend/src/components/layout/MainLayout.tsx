@@ -22,7 +22,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     dashboard: true,
-    intelligence: true
+    intelligence: true,
+    news: false
   });
   
   // Global map state
@@ -199,10 +200,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               
               <SidebarItem
                 icon="📰"
-                label="News"
+                label="News Intel"
                 count={3}
-                path="/news"
-                isActive={isActive('/news')}
+                hasSubItems
+                isExpanded={expandedSections.news}
+                onToggle={() => toggleSection('news')}
                 layerConfig={{
                   sourceType: 'news',
                   layerType: 'heatmap',
@@ -214,6 +216,35 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 }}
                 onShowOnMap={handleShowOnMap}
               />
+              
+              {expandedSections.news && (
+                <div className="ml-4 space-y-1">
+                  <SidebarItem
+                    icon="📋"
+                    label="Event Feed"
+                    path="/dashboard/news"
+                    isActive={isActive('/dashboard/news')}
+                  />
+                  <SidebarItem
+                    icon="📊"
+                    label="Market Dashboard"
+                    path="/dashboard/news/dashboard"
+                    isActive={isActive('/dashboard/news/dashboard')}
+                  />
+                  <SidebarItem
+                    icon="🔗"
+                    label="Network Intel"
+                    path="/dashboard/news/network"
+                    isActive={isActive('/dashboard/news/network')}
+                  />
+                  <SidebarItem
+                    icon="🔔"
+                    label="Alerts"
+                    path="/dashboard/news/alerts"
+                    isActive={isActive('/dashboard/news/alerts')}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Other sections */}
