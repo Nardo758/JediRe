@@ -6,7 +6,7 @@ import { KeyMoment } from './context/KeyMoment';
 import { api } from '../../services/api';
 
 interface DealContextTrackerProps {
-  dealId: number;
+  dealId: string;
   onCreateTask?: (activityContext?: any) => void;
 }
 

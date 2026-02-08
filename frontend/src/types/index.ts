@@ -1,5 +1,6 @@
 // Central type exports
 export * from './deal';
+export * from './analysis';
 
 // User type
 export interface User {
@@ -25,6 +26,23 @@ export interface ZoningInsight {
   zone: string;
   description: string;
   reasoning?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  districtCode?: string;
+  districtName?: string;
+  maxUnits?: number;
+  maxGfaSqft?: number;
+  maxHeightFt?: number;
+  maxStories?: number;
+  setbacks?: {
+    front?: number;
+    side?: number;
+    rear?: number;
+    frontFt?: number;
+    sideFt?: number;
+    rearFt?: number;
+  };
+  parkingRequired?: number;
+  buildableEnvelope?: any;
 }
 
 // Lead
@@ -40,6 +58,8 @@ export interface Lead {
   propertyInterest?: string;
   assignedAgent?: string;
   createdAt?: string;
+  lastContact?: string;
+  notes?: string;
 }
 
 // Commission
@@ -65,6 +85,14 @@ export interface CommissionSummary {
   pending: number;
   paid: number;
   count: number;
+  ytdTotal?: number;
+  mtdTotal?: number;
+  pendingTotal?: number;
+  commissionsByType?: {
+    sale: number;
+    lease: number;
+    rental: number;
+  };
 }
 
 // Map filter
@@ -79,7 +107,7 @@ export interface MapFilter {
   municipalities?: string[];
 }
 
-export type ModuleType = 'map' | 'properties' | 'strategy' | 'pipeline' | 'market' | 'reports' | 'team' | 'zoning' | 'supply' | 'cashflow';
+export type ModuleType = 'map' | 'properties' | 'strategy' | 'pipeline' | 'market' | 'reports' | 'team' | 'zoning' | 'supply' | 'cashflow' | 'news' | 'email' | 'tasks' | 'demand' | 'events';
 
 // Collaboration
 export interface CollaborationUser {
@@ -88,6 +116,11 @@ export interface CollaborationUser {
   email: string;
   avatar?: string;
   role?: string;
+  color?: string;
+  cursor?: {
+    lat: number;
+    lng: number;
+  };
 }
 
 export interface WebSocketMessage {
@@ -106,6 +139,40 @@ export interface Annotation {
   text?: string;
   type?: string;
   createdAt: string;
+}
+
+// Supply Insight
+export interface SupplyInsight {
+  activeListings?: number;
+  inventoryTrend?: 'increasing' | 'decreasing' | 'stable';
+  daysOnMarket?: number;
+  absorptionRate: number;
+  comparableProperties?: number;
+  medianPrice?: number;
+  reasoning?: string;
+}
+
+// Cash Flow Insight
+export interface CashFlowInsight {
+  netOperatingIncome?: number;
+  estimatedRent?: number;
+  operatingExpenses?: number;
+  capRate?: number;
+  cashOnCashReturn?: number;
+  breakEvenOccupancy?: number;
+  scenarios?: {
+    name: string;
+    noi: number;
+    capRate: number;
+    cashOnCash: number;
+    purchasePrice?: number;
+    downPayment?: number;
+    interestRate?: number;
+    monthlyPayment?: number;
+    monthlyCashFlow?: number;
+    annualReturn?: number;
+  }[];
+  reasoning?: string;
 }
 
 // Property
@@ -131,6 +198,17 @@ export interface Property {
   comparableScore?: number;
   amenities?: string[];
   notes?: string;
+  coordinates?: { lat: number; lng: number };
+  isPinned?: boolean;
+  opportunityScore?: number;
+  currentUse?: string;
+  lotSizeSqft?: number;
+  municipality?: string;
+  districtCode?: string;
+  zoning?: ZoningInsight;
+  supply?: SupplyInsight;
+  cashFlow?: CashFlowInsight;
+  annotations?: Annotation[];
 }
 
 // Agent Deal types
@@ -166,4 +244,12 @@ export interface DealActivity {
   userId?: string;
   userName?: string;
   createdAt: string;
+}
+
+// Deal Sidebar Props
+export interface DealSidebarProps {
+  deal: any;
+  modules: any[];
+  currentModule: string;
+  onModuleChange: (module: string) => void;
 }

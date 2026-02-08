@@ -70,6 +70,7 @@ export const api = {
     pipeline: (id: string) => apiClient.get(`/api/v1/deals/${id}/pipeline`),
     analysis: (id: string) => apiClient.post(`/api/v1/deals/${id}/analysis/trigger`),
     leaseAnalysis: (id: string) => apiClient.get(`/api/v1/deals/${id}/lease-analysis`),
+    geographicContext: (id: string) => apiClient.get(`/api/v1/deals/${id}/geographic-context`),
   },
 
   // Properties

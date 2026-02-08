@@ -5,10 +5,10 @@ import { ChatInput } from './ChatInput';
 export function ChatOverlay() {
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'agent' | 'system'; content: string; created_at: string; agent_name?: string }>>([
     {
       id: '1',
-      role: 'agent' as const,
+      role: 'agent',
       content: "Hi! I'm your Chief Orchestrator. I coordinate all specialist agents to help you analyze properties and deals. What would you like to work on?",
       created_at: new Date().toISOString(),
       agent_name: 'Chief Orchestrator'

@@ -88,7 +88,7 @@ export default function AnalysisResults() {
     }
   };
 
-  const getVerdictConfig = (verdict: VerdictType) => {
+  const getVerdictConfig = (verdict: VerdictType | string) => {
     switch (verdict) {
       case 'STRONG_OPPORTUNITY':
         return {
@@ -138,19 +138,21 @@ export default function AnalysisResults() {
     }
   };
 
-  const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 0.7) {
+  const getConfidenceBadge = (confidence: number | string) => {
+    const val = Number(confidence) || 0;
+    if (val >= 0.7) {
       return 'bg-green-100 text-green-800 border-green-300';
-    } else if (confidence >= 0.4) {
+    } else if (val >= 0.4) {
       return 'bg-yellow-100 text-yellow-800 border-yellow-300';
     } else {
       return 'bg-red-100 text-red-800 border-red-300';
     }
   };
 
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 0.7) return 'HIGH';
-    if (confidence >= 0.4) return 'MEDIUM';
+  const getConfidenceLabel = (confidence: number | string) => {
+    const val = Number(confidence) || 0;
+    if (val >= 0.7) return 'HIGH';
+    if (val >= 0.4) return 'MEDIUM';
     return 'LOW';
   };
 

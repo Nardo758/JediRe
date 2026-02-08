@@ -124,7 +124,7 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
   const { outputData } = analysis;
   const score = outputData.score || 0;
   const verdict = outputData.verdict || 'unknown';
-  const confidence = (analysis.confidence || 0) * 100;
+  const confidence = (Number(analysis.confidence) || 0) * 100;
 
   return (
     <div className="h-full overflow-y-auto p-6">
