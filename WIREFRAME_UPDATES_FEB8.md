@@ -13,9 +13,9 @@
 │   └─ Portfolio Overview                  │
 │   └─ Email (5)                           │
 │                                           │
-│ INTELLIGENCE LAYERS                       │
+│ INTELLIGENCE                              │
 │ 📊 Market Data                           │
-│ 📰 News Intelligence                     │  ← NEW
+│ 📰 News                                  │  ← NEW
 │ 🏢 Assets Owned (23)         👁️         │  ← Eye = layer toggle
 │                                           │
 │ DEAL MANAGEMENT                           │
