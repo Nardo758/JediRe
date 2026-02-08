@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChatOverlay } from '../chat/ChatOverlay';
 import { AgentStatusBar } from '../dashboard/AgentStatusBar';
@@ -13,7 +13,26 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dashboardExpanded, setDashboardExpanded] = useState(true);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { layers, toggleLayer } = useMapLayers();
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userMenuOpen]);
 
   const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
     // Only toggle layer if on dashboard/map page
@@ -65,12 +84,6 @@ export function MainLayout({ children }: MainLayoutProps) {
         { name: 'Reports', path: '/reports', icon: '📈', badge: null },
         { name: 'Team', path: '/team', icon: '👥', badge: null },
       ]
-    },
-    {
-      title: null,
-      items: [
-        { name: 'Settings', path: '/settings', icon: '⚙️', badge: null },
-      ]
     }
   ];
 
@@ -98,10 +111,59 @@ export function MainLayout({ children }: MainLayoutProps) {
             <span className="text-xl">🔔</span>
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
           </button>
-          <button className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg">
-            <span className="text-2xl">👤</span>
-            <span className="hidden md:block text-sm font-medium">Leon D</span>
-          </button>
+          <div className="relative" ref={userMenuRef}>
+            <button 
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-lg"
+            >
+              <span className="text-2xl">👤</span>
+              <span className="hidden md:block text-sm font-medium">Leon D</span>
+              <span className="text-gray-400 text-xs">{userMenuOpen ? '▲' : '▼'}</span>
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <p className="text-sm font-medium text-gray-900">Leon D</p>
+                  <p className="text-xs text-gray-500">leon@example.com</p>
+                </div>
+                <Link
+                  to="/settings"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <span>⚙️</span>
+                  <span>Settings</span>
+                </Link>
+                <Link
+                  to="/settings/profile"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <span>👤</span>
+                  <span>Profile</span>
+                </Link>
+                <Link
+                  to="/settings/billing"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <span>💳</span>
+                  <span>Billing</span>
+                </Link>
+                <hr className="my-2 border-gray-100" />
+                <button
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    // TODO: Add sign out logic
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  <span>🚪</span>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
