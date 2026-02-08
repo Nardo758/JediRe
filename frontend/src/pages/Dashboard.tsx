@@ -1,20 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
+import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
+import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { Button } from '../components/shared/Button';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
   const location = useLocation();
   const { deals, fetchDeals, isLoading } = useDealStore();
+  const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const draw = useRef<MapboxDraw | null>(null);
 
   useEffect(() => {
     fetchDeals();
@@ -38,7 +44,36 @@ export const Dashboard: React.FC = () => {
         zoom: 11
       });
 
+      // Initialize MapboxDraw
+      draw.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          trash: true,
+        },
+      });
+
+      map.current.addControl(draw.current, 'top-left');
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+      // Listen for drawing events
+      map.current.on('draw.create', (e: any) => {
+        const geometry = e.features[0].geometry;
+        console.log('[Dashboard] Polygon created:', geometry);
+        saveDrawing(geometry);
+      });
+
+      map.current.on('draw.update', (e: any) => {
+        const geometry = e.features[0].geometry;
+        console.log('[Dashboard] Polygon updated:', geometry);
+        saveDrawing(geometry);
+      });
+
+      map.current.on('draw.delete', () => {
+        console.log('[Dashboard] Polygon deleted');
+        saveDrawing(null as any);
+      });
+
     } catch (err: any) {
       setMapError(err.message || 'Failed to initialize map');
     }
@@ -50,6 +85,42 @@ export const Dashboard: React.FC = () => {
       }
     };
   }, []);
+
+  // Handle drawing mode activation
+  useEffect(() => {
+    if (!map.current || !draw.current) return;
+
+    if (isDrawing) {
+      console.log('[Dashboard] Activating drawing mode');
+      
+      // Clear any existing drawings
+      draw.current.deleteAll();
+      
+      // Start polygon drawing mode
+      draw.current.changeMode('draw_polygon');
+      
+      // Center map on property location if provided
+      if (centerPoint) {
+        map.current.flyTo({
+          center: centerPoint,
+          zoom: 16,
+          duration: 1500,
+        });
+        
+        // Add marker at property location
+        new mapboxgl.Marker({ color: '#3B82F6' })
+          .setLngLat(centerPoint)
+          .addTo(map.current);
+      }
+    } else {
+      console.log('[Dashboard] Deactivating drawing mode');
+      
+      // Exit drawing mode
+      if (draw.current) {
+        draw.current.changeMode('simple_select');
+      }
+    }
+  }, [isDrawing, centerPoint]);
 
   // Update map when deals change
   useEffect(() => {
@@ -241,6 +312,24 @@ export const Dashboard: React.FC = () => {
         {/* Map */}
         <div className="flex-1 relative">
           <div ref={mapContainer} className="absolute inset-0" />
+          
+          {/* Drawing Control Panel */}
+          {isDrawing && (
+            <DrawingControlPanel
+              onComplete={() => {
+                console.log('[Dashboard] Drawing complete');
+                stopDrawing();
+              }}
+              onCancel={() => {
+                console.log('[Dashboard] Drawing cancelled');
+                if (draw.current) {
+                  draw.current.deleteAll();
+                }
+                stopDrawing();
+              }}
+            />
+          )}
+          
           {mapError && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
               <div className="text-center p-8">
