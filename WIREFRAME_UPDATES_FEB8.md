@@ -49,201 +49,305 @@ Click **👤 Leon D ▼** opens:
 
 ---
 
-## Dashboard Sub-Views - Consistent Layout Pattern
+## Global Layout Structure
 
-### Pattern: Sidebar + Map
+### Shared Horizontal Bar (ALL Pages)
 
-All Dashboard sub-views follow the same layout:
-- **Left:** Sidebar panel (w-80) with list/content
-- **Right:** Full Mapbox map with deal markers
-  
-**Sub-views:** Email, Pipeline, Assets Owned
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  [🔍 Search] [🗺️ War Maps] [📍 Custom Maps...]  [➕ Map] [➕ Deal]         │  ← MapTabsBar (global)
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- Appears on ALL pages (Email, Pipeline, Assets, Market Data, News, etc.)
+- Search bar (left)
+- Map tabs (center) - War Maps + saved custom maps
+- Action buttons (right) - Create Map, Create Deal
 
 ---
 
-### Pipeline Page (Dashboard → Pipeline)
+## 3-Panel Split-View Pattern (Standard for Data Pages)
+
+**Applied to:** Email, Pipeline, Assets Owned, Market Data, News Intelligence
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  📊 Pipeline                                              [+ Create Deal]   │
-│  12 deals active                                                             │
-├─────────────┬───────────────────────────────────────────────────────────────┤
-│             │                                                                 │
-│ MY DEALS    │                                                                 │
-│             │                                                                 │
-│ ┌─────────┐ │                                                                 │
-│ │🟡       │ │                    MAPBOX MAP                                  │
-│ │ Buckhead│ │                                                                 │
-│ │ Mixed-  │ │              - Deal boundaries (colored)                       │
-│ │ Use Dev │ │              - Property markers                                │
-│ │         │ │              - Click deal → Navigate to detail                 │
-│ │ 228.3   │ │                                                                 │
-│ │ acres   │ │                                                                 │
-│ │ 0 props │ │                                                                 │
-│ └─────────┘ │                                                                 │
-│             │                                                                 │
-└─────────────┴───────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared horizontal bar - see above)                             │
+├──────────────┬─────────────────────────┬─────────────────────────────────────┤
+│   PANEL 1    │      PANEL 2            │         PANEL 3                     │
+│   VIEWS      │      CONTENT            │         MAP                         │
+│   SIDEBAR    │      PANEL              │                                     │
+│              │                         │                                     │
+│  📋 View 1   │  ┌─────────────────┐   │                                     │
+│  📊 View 2   │  │ List/Card       │   │      MAPBOX MAP                     │
+│  🔗 View 3   │  │ Content         │   │                                     │
+│  🔔 View 4   │  │                 │   │      - Deal boundaries              │
+│              │  │ (scrollable)    │   │      - Property markers             │
+│              │  │                 │   │      - Event markers                │
+│              │  └─────────────────┘   │      - Click to interact            │
+│              │                         │                                     │
+│  64-80px     │  400-800px (resizable)  │      flex-1 (remaining space)      │
+└──────────────┴─────────────────────────┴─────────────────────────────────────┘
 ```
 
-**Sidebar Content:**
-- Header: "MY DEALS"
-- Deal cards with:
-  - Color indicator (tier)
-  - Name
-  - Type (multifamily, etc.)
-  - Acreage
-  - Property count
-  - Click to navigate to deal detail
-
----
-
-### Email Page (Dashboard → Email)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  📧 Email                                                   [✉️ Compose]     │
-│  4 unread messages                                                           │
-├─────────────┬───────────────────────────────────────────────────────────────┤
-│ ┌─────────┐ │                                                                 │
-│ │ Stats   │ │                                                                 │
-│ │ Total:7 │ │                    MAPBOX MAP                                  │
-│ │ Unread:4│ │                                                                 │
-│ │ Flagged:│ │              - Same map as Portfolio Overview                  │
-│ │     3   │ │              - Deal markers visible                            │
-│ │ Deal: 4 │ │              - Provides spatial context for emails             │
-│ └─────────┘ │                                                                 │
-│             │                                                                 │
-│ INBOX       │                                                                 │
-│             │                                                                 │
-│ ┌─────────┐ │                                                                 │
-│ │📧 Sarah │ │                                                                 │
-│ │New MF   │ │                                                                 │
-│ │📁Deal ⭐│ │                                                                 │
-│ │🔵 2h ago│ │                                                                 │
-│ └─────────┘ │                                                                 │
-│             │                                                                 │
-│ ┌─────────┐ │                                                                 │
-│ │ John S  │ │                                                                 │
-│ │Phase I  │ │                                                                 │
-│ │📁Deal  │ │                                                                 │
-│ │🔵 4h ago│ │                                                                 │
-│ └─────────┘ │                                                                 │
-│             │                                                                 │
-└─────────────┴───────────────────────────────────────────────────────────────┘
-```
-
-**Sidebar Content:**
-- Stats card (total, unread, flagged, deal-related)
-- "INBOX" section header
-- Email cards with:
-  - From name
-  - Subject
-  - Deal badge (📁 Deal name) if linked
-  - Star button (toggle flag)
-  - Blue dot if unread
-  - Timestamp (2h ago, 1d ago)
-  - Attachment indicator (📎 2)
-
-**Interactions:**
-- Click email → Marks as read, highlights card
-- Click star → Toggles flag
-- Email cards color-coded:
-  - Unread: Blue background
-  - Read: White background
-  - Selected: Highlighted blue border
-
----
-
-## Email Backend (Fully Wired)
-
-### Database Schema
-- `emails` - Full email storage
-- `email_accounts` - OAuth connections
-- `email_attachments` - File tracking
-- `email_labels` - Folders/tags
-
-### API Endpoints
-- `GET /inbox` - List with filters
-- `GET /inbox/stats` - Dashboard stats
-- `GET /inbox/:id` - Email detail
-- `PATCH /inbox/:id` - Update (read, flag, link to deal)
-- `DELETE /inbox/:id` - Delete/archive
-- `POST /inbox/sync` - Sync from provider
-- `POST /inbox/compose` - Send email
-- `POST /inbox/bulk-action` - Bulk operations
-
-### Features Implemented
-✅ Link emails to deals  
-✅ Read/unread tracking  
-✅ Flag important emails  
-✅ Attachment tracking  
-✅ Real-time UI updates  
-✅ Deal badges  
-✅ Stats dashboard  
-✅ Bulk operations  
-✅ Search & filters  
-
----
-
-## Design Pattern Established
-
-**Sidebar + Map Layout** for all Dashboard sub-views:
-- Email: Inbox + Map (5 messages)
-- Pipeline: Deal list + Map (12 deals)
-- Assets Owned: Asset list + Map (23 assets)
+**Features:**
+- **Panel 1 (Views):** Navigation between sub-views (64-80px fixed width)
+- **Panel 2 (Content):** Main content area (resizable 400-800px, default 550px)
+- **Panel 3 (Map):** Always-visible map context (takes remaining space)
+- **Toggle buttons:** Top-right controls to show/hide panels
+- **Resize handle:** Drag to adjust Panel 2 width
+- **Persistent state:** Width saved to localStorage
 
 **Benefits:**
-- Consistent UX across views
-- Map always visible (spatial context)
-- Easy to see location of deals/properties while managing emails or reviewing portfolio
-- Clean, focused layouts
+- Consistent UX across all data pages
+- Map always visible for spatial context
+- Easy navigation between views
+- Flexible content sizing
 
 ---
 
-## Implementation Status
+### 1. Email Page (Dashboard → Email)
 
-### ✅ Completed (Feb 8, 2026)
-- Navigation reorganization
-- Settings moved to user menu
-- Email page layout matching Portfolio Overview
-- Full email backend API
-- Email frontend with real data
-- Database schema and migrations
-- Sample data seeded
+**Route:** `/dashboard/email`
 
-### 🔄 In Progress
-- Pipeline stats and filters (planned next)
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared)                                                         │
+├──────────┬────────────────────────────┬──────────────────────────────────────┤
+│  VIEWS   │       CONTENT              │           MAP                        │
+│          │                            │                                      │
+│ 📥 Inbox │  ┌──────────────────────┐  │                                      │
+│ 📤 Sent  │  │ 📧 Sarah Johnson     │  │      MAPBOX MAP                      │
+│ 📝 Drafts│  │ New MF opportunity   │  │                                      │
+│ ⭐ Flagged   📁 Buckhead Deal  🔵  │  │      - Deal boundaries               │
+│          │  │ 2h ago              │  │      - Email locations (if geocoded) │
+│          │  └──────────────────────┘  │      - Property markers              │
+│          │                            │                                      │
+│          │  Email list (scrollable)   │                                      │
+└──────────┴────────────────────────────┴──────────────────────────────────────┘
+```
 
-### 📋 Planned
-- Email detail view (click email to expand full content)
-- Compose email modal
-- Email search and advanced filters
-- Email-to-deal linking UI
-- Bulk email operations UI
-
----
-
-## Files Modified (Feb 8, 2026)
-
-**Backend:**
-- `backend/src/api/rest/inbox.routes.ts` (new)
-- `backend/src/database/migrations/006_emails.sql` (new)
-- `backend/src/database/migrations/007_seed_emails.sql` (new)
-- `backend/src/api/rest/index.ts` (updated)
-
-**Frontend:**
-- `frontend/src/components/layout/MainLayout.tsx` (navigation)
-- `frontend/src/App.tsx` (routes)
-- `frontend/src/pages/EmailPage.tsx` (rewritten)
-- `frontend/src/services/inbox.service.ts` (new)
-
-**Commits:**
-- `0c177e1` - Remove Architecture link
-- `fbd68ec` - Move Settings to user dropdown
-- `cd3c3af` - Update Email page layout
-- `19f479c` - Wire up Email inbox with full backend API
+**Panel 1 (Views):** Inbox, Sent, Drafts, Flagged  
+**Panel 2 (Content):** Email cards with sender, subject, deal badge, timestamp  
+**Panel 3 (Map):** Deals visible, email locations if available
 
 ---
 
-**Last Updated:** February 8, 2026 00:26 EST  
-**Status:** Email system fully functional ✅
+### 2. Pipeline Page (Dashboard → Pipeline)
+
+**Route:** `/deals`
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared)                                                         │
+├──────────┬────────────────────────────┬──────────────────────────────────────┤
+│  VIEWS   │       CONTENT              │           MAP                        │
+│          │                            │                                      │
+│ 📊 All   │  ┌──────────────────────┐  │                                      │
+│ 🟢 Active│  │ 🟡 Buckhead Mixed-Use│  │      MAPBOX MAP                      │
+│ 🔍 Due D │  │ 228.3 acres          │  │                                      │
+│ 📝 Qualified  0 properties         │  │      - Deal boundaries (colored)     │
+│ 🏁 Closing   $52M estimated       │  │      - Property markers              │
+│ ✅ Closed│  └──────────────────────┘  │      - Click → Navigate to detail    │
+│          │                            │                                      │
+│          │  Deal cards (scrollable)   │                                      │
+└──────────┴────────────────────────────┴──────────────────────────────────────┘
+```
+
+**Panel 1 (Views):** All, Active, Qualified, Due Diligence, Closing, Closed  
+**Panel 2 (Content):** Deal cards with tier, acreage, property count, value  
+**Panel 3 (Map):** Deal boundaries with tier-based colors
+
+---
+
+### 3. Assets Owned Page (Dashboard → Assets Owned)
+
+**Route:** `/assets`
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared)                                                         │
+├──────────┬────────────────────────────┬──────────────────────────────────────┤
+│  VIEWS   │       CONTENT              │           MAP                        │
+│          │                            │                                      │
+│ 🏢 All   │  ┌──────────────────────┐  │                                      │
+│ 📊 Perform.  │ Midtown Tower       │  │      MAPBOX MAP                      │
+│ 📄 Documents 250 units, 94% occ.   │  │                                      │
+│          │  │ $2.1M NOI            │  │      - Asset locations               │
+│          │  │ Class A+             │  │      - Property markers              │
+│          │  └──────────────────────┘  │      - Performance heat overlay      │
+│          │                            │                                      │
+│          │  Asset cards (scrollable)  │                                      │
+└──────────┴────────────────────────────┴──────────────────────────────────────┘
+```
+
+**Panel 1 (Views):** All, Performance, Documents  
+**Panel 2 (Content):** Asset cards with units, occupancy, NOI, class  
+**Panel 3 (Map):** Asset markers with performance overlay
+
+---
+
+### 4. Market Data Page (Intelligence → Market Data)
+
+**Route:** `/market-data`
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared)                                                         │
+├──────────┬────────────────────────────┬──────────────────────────────────────┤
+│  VIEWS   │       CONTENT              │           MAP                        │
+│          │                            │                                      │
+│ 📊 Overview  KPIs + Charts           │  │      MAPBOX MAP                      │
+│ 🏘️ Comparables  Comp properties        │  │                                      │
+│ 👥 Demographics  Census data            │  │      - Submarket boundaries          │
+│ 📈 Supply/Demand Supply pressure        │  │      - Data overlays (choropleth)    │
+│          │                            │  │      - Comparable markers            │
+│          │  Data viz (scrollable)     │  │      - Heat maps (rent, vacancy)     │
+│          │                            │                                      │
+└──────────┴────────────────────────────┴──────────────────────────────────────┘
+```
+
+**Panel 1 (Views):** Overview, Comparables, Demographics, Supply/Demand  
+**Panel 2 (Content):** Charts, tables, KPIs  
+**Panel 3 (Map):** Data overlays, heat maps, submarket boundaries
+
+---
+
+### 5. News Intelligence Page (Intelligence → News)
+
+**Route:** `/news`
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  MapTabsBar (shared)                                                         │
+├──────────┬────────────────────────────┬──────────────────────────────────────┤
+│  VIEWS   │       CONTENT              │           MAP                        │
+│          │                            │                                      │
+│ 📋 Feed  │  ┌──────────────────────┐  │                                      │
+│ 📊 Dashboard  MS relocating 3,200   │  │      MAPBOX MAP                      │
+│ 🔗 Network   Employment → +2,100   │  │                                      │
+│ 🔔 Alerts│  │ housing demand       │  │      - Event markers (by category)   │
+│          │  │ ⚠️ High Impact       │  │      - Deal boundaries               │
+│          │  └──────────────────────┘  │      - Click event → Zoom to location│
+│          │                            │                                      │
+│          │  Event cards (scrollable)  │                                      │
+└──────────┴────────────────────────────┴──────────────────────────────────────┘
+```
+
+**Panel 1 (Views):** Event Feed, Market Dashboard, Network Intelligence, Alerts  
+**Panel 2 (Content):** Event cards with impact analysis, source tracking  
+**Panel 3 (Map):** Event markers color-coded by category
+
+---
+
+## Implementation Summary
+
+### Design System Established (Feb 8, 2026)
+
+**Core Pattern:** 3-Panel Split-View with Shared Horizontal Bar
+
+**Applied to 5 major pages:**
+1. ✅ **Email** - Fully implemented backend, needs 3-panel UI update
+2. ✅ **News Intelligence** - 3-panel layout built, needs views restoration  
+3. ⏳ **Pipeline** - Backend ready, needs 3-panel UI
+4. ⏳ **Assets Owned** - Backend ready, needs 3-panel UI
+5. ⏳ **Market Data** - Backend ready, needs 3-panel UI
+
+### Shared Components
+
+**MapTabsBar (Horizontal Bar):**
+- ✅ Search bar integration
+- ✅ Map tabs (War Maps + custom maps)
+- ✅ Action buttons (Create Map, Create Deal)
+- ✅ Appears on ALL pages globally
+- ✅ WarMapsComposer modal wired
+
+**3-Panel Layout Components:**
+- ⏳ Reusable ThreePanelLayout wrapper
+- ⏳ ViewsSidebar component (64-80px)
+- ⏳ ContentPanel component (resizable 400-800px)
+- ⏳ MapPanel component (flex-1, always visible)
+- ⏳ Toggle controls (show/hide panels)
+- ⏳ Resize handle with localStorage persistence
+
+### Backend Status
+
+**Email:**
+- ✅ Database schema (4 tables)
+- ✅ API endpoints (11 routes)
+- ✅ Email service layer
+- ✅ Sample data seeded
+
+**News Intelligence:**
+- ✅ Database schema (6 tables)
+- ✅ API endpoints (8 routes)
+- ✅ News service layer
+- ✅ Sample data ready
+
+**Pipeline/Assets/Market Data:**
+- ✅ Existing API infrastructure
+- ✅ Database schemas complete
+- ✅ Service layers functional
+
+### Next Implementation Steps
+
+**Phase 1: Create Reusable Components (4 hours)**
+1. Build ThreePanelLayout wrapper component
+2. Build ViewsSidebar with navigation logic
+3. Build resizable ContentPanel
+4. Integrate MapPanel with existing map logic
+
+**Phase 2: Update Existing Pages (6 hours)**
+1. News Intelligence - restore 3-panel layout
+2. Email - convert to 3-panel layout
+3. Pipeline - convert to 3-panel layout
+4. Assets Owned - convert to 3-panel layout
+5. Market Data - convert to 3-panel layout
+
+**Phase 3: Polish & Testing (2 hours)**
+1. Consistent styling across all pages
+2. LocalStorage persistence for panel widths
+3. Responsive behavior
+4. Performance optimization
+
+---
+
+## Key Design Decisions
+
+### Why 3-Panel Layout?
+
+**User Benefits:**
+1. **Consistent navigation** - Same pattern across all data pages
+2. **Spatial context** - Map always visible (no context switching)
+3. **Flexible content** - Resizable middle panel for different content types
+4. **Progressive disclosure** - Toggle panels to focus on content or map
+5. **Mobile-ready foundation** - Panels can stack on smaller screens
+
+### Why Shared Horizontal Bar?
+
+**User Benefits:**
+1. **Global map access** - Switch between War Maps on any page
+2. **Quick actions** - Create Map/Deal buttons always available
+3. **Unified search** - One search bar for entire platform
+4. **Consistent navigation** - No context loss when switching pages
+
+### Technical Decisions
+
+**Component Architecture:**
+- Reusable ThreePanelLayout wrapper (DRY principle)
+- Props-based configuration (viewItems, contentRenderer, mapRenderer)
+- LocalStorage for panel width persistence
+- CSS Grid for layout (cleaner than flexbox for 3-column)
+
+**Performance:**
+- Map instance reused across panel toggles
+- Panel widths cached to prevent layout thrashing
+- Lazy loading for content panels
+- Virtualized lists for large datasets
+
+---
+
+**Last Updated:** February 8, 2026 18:57 EST  
+**Status:** Design system defined, implementation in progress  
+**Next Milestone:** Phase 1 - Build reusable 3-panel components (4 hours)
