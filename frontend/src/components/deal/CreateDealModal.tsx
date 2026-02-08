@@ -553,8 +553,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 Locate on Map →
               </Button>
             )}
-            {currentStep === STEPS.BOUNDARY && developmentType === 'new' && (
-              <Button onClick={handleNext} disabled={isLoading || !boundary}>
+            {currentStep === STEPS.BOUNDARY && (
+              <Button 
+                onClick={handleNext} 
+                disabled={isLoading || (developmentType === 'new' && !boundary)}
+              >
                 Continue →
               </Button>
             )}
