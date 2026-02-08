@@ -374,6 +374,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   Street Address
                 </label>
                 <input
+                  id="create-deal-address"
+                  name="address"
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
@@ -460,6 +462,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   Deal Name *
                 </label>
                 <input
+                  id="create-deal-name"
+                  name="dealName"
                   type="text"
                   value={dealName}
                   onChange={(e) => setDealName(e.target.value)}
@@ -473,6 +477,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   Description
                 </label>
                 <textarea
+                  id="create-deal-description"
+                  name="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Brief description of the deal..."
@@ -486,6 +492,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   Subscription Tier
                 </label>
                 <select
+                  id="create-deal-tier"
+                  name="tier"
                   value={tier}
                   onChange={(e) => setTier(e.target.value as any)}
                   aria-label="Subscription tier"

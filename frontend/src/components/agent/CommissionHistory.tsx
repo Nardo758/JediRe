@@ -170,6 +170,8 @@ export default function CommissionHistory() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="commissionSearchInput"
+              name="commissionSearchInput"
               type="text"
               placeholder="Search by property address or deal ID..."
               aria-label="Search commissions"
@@ -182,6 +184,8 @@ export default function CommissionHistory() {
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <select
+              id="commissionYearFilter"
+              name="commissionYearFilter"
               value={yearFilter}
               onChange={(e) => setYearFilter(parseInt(e.target.value))}
               aria-label="Filter by year"

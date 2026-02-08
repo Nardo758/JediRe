@@ -175,6 +175,8 @@ export default function AnalysisResults() {
               Atlanta Neighborhood *
             </label>
             <select
+              id="analysisNeighborhood"
+              name="analysisNeighborhood"
               value={input.name}
               onChange={(e) => setInput({ ...input, name: e.target.value })}
               aria-label="Atlanta neighborhood"
@@ -198,6 +200,8 @@ export default function AnalysisResults() {
                 Population *
               </label>
               <input
+                id="analysisPopulation"
+                name="analysisPopulation"
                 type="number"
                 placeholder="e.g., 50000"
                 value={input.population || ''}
@@ -214,6 +218,8 @@ export default function AnalysisResults() {
                 Existing Units *
               </label>
               <input
+                id="analysisExistingUnits"
+                name="analysisExistingUnits"
                 type="number"
                 placeholder="e.g., 20000"
                 value={input.existing_units || ''}
@@ -230,6 +236,8 @@ export default function AnalysisResults() {
                 Median Income
               </label>
               <input
+                id="analysisMedianIncome"
+                name="analysisMedianIncome"
                 type="number"
                 placeholder="e.g., 65000"
                 value={input.median_income || ''}
@@ -248,6 +256,8 @@ export default function AnalysisResults() {
                 Pipeline Units
               </label>
               <input
+                id="analysisPipelineUnits"
+                name="analysisPipelineUnits"
                 type="number"
                 placeholder="e.g., 500"
                 value={input.pipeline_units || ''}
@@ -264,6 +274,8 @@ export default function AnalysisResults() {
                 Future Permitted
               </label>
               <input
+                id="analysisFuturePermitted"
+                name="analysisFuturePermitted"
                 type="number"
                 placeholder="e.g., 200"
                 value={input.future_permitted_units || ''}
@@ -280,6 +292,8 @@ export default function AnalysisResults() {
                 Employment
               </label>
               <input
+                id="analysisEmployment"
+                name="analysisEmployment"
                 type="number"
                 placeholder="e.g., 70000"
                 value={input.employment || ''}

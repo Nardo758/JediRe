@@ -291,6 +291,8 @@ export default function DealDetailModal({
               <h3 className="font-semibold text-gray-900 mb-3">Add Note</h3>
               <form onSubmit={handleAddNote} className="space-y-3">
                 <textarea
+                  id="deal-detail-new-note"
+                  name="newNote"
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add a note to this deal..."

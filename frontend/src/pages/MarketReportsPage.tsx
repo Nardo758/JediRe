@@ -78,6 +78,8 @@ export default function MarketReportsPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="market-reports-search"
+              name="marketReportsSearch"
               type="text"
               placeholder="Search reports..."
               aria-label="Search reports"
@@ -87,6 +89,8 @@ export default function MarketReportsPage() {
             />
           </div>
           <select
+            id="market-reports-filter"
+            name="marketReportsFilter"
             value={selectedMarket}
             onChange={(e) => setSelectedMarket(e.target.value)}
             aria-label="Filter by market"

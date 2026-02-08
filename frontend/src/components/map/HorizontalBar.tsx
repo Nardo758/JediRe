@@ -74,6 +74,8 @@ export function HorizontalBar() {
       <form onSubmit={handleSearch} className="flex-1 max-w-xl">
         <div className="relative">
           <input
+            id="map-search"
+            name="mapSearch"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

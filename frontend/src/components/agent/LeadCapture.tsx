@@ -135,6 +135,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
           </label>
           <input
             type="text"
+            id="lead-name"
             name="name"
             value={formData.name}
             onChange={handleChange}
@@ -142,6 +143,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
               errors.name ? 'border-red-500' : 'border-gray-300'
             }`}
             placeholder="John Doe"
+            aria-label="Lead name"
           />
           {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
         </div>
@@ -154,6 +156,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
             </label>
             <input
               type="tel"
+              id="lead-phone"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
@@ -161,6 +164,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
                 errors.phone ? 'border-red-500' : 'border-gray-300'
               }`}
               placeholder="(555) 123-4567"
+              aria-label="Lead phone number"
             />
             {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone}</p>}
           </div>
@@ -171,6 +175,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
             </label>
             <input
               type="email"
+              id="lead-email"
               name="email"
               value={formData.email}
               onChange={handleChange}
@@ -178,6 +183,7 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
                 errors.email ? 'border-red-500' : 'border-gray-300'
               }`}
               placeholder="john@example.com"
+              aria-label="Lead email address"
             />
             {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
           </div>
@@ -190,11 +196,13 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
           </label>
           <input
             type="text"
+            id="lead-property-interest"
             name="propertyInterest"
             value={formData.propertyInterest}
             onChange={handleChange}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="3BR condo in downtown"
+            aria-label="Property interest"
           />
         </div>
 
@@ -203,9 +211,11 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
             <select
+              id="lead-source"
               name="source"
               value={formData.source}
               onChange={handleChange}
+              aria-label="Lead source"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="website">Website</option>
@@ -219,9 +229,11 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
             <select
+              id="lead-priority"
               name="priority"
               value={formData.priority}
               onChange={handleChange}
+              aria-label="Lead priority"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="low">Low</option>
@@ -235,10 +247,12 @@ export default function LeadCapture({ onClose, onSuccess }: LeadCaptureProps) {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea
+            id="lead-notes"
             name="notes"
             value={formData.notes}
             onChange={handleChange}
             rows={3}
+            aria-label="Lead notes"
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             placeholder="Additional notes about this lead..."
           />

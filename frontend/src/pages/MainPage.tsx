@@ -52,6 +52,8 @@ export default function MainPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/60" />
             <input
+              id="main-search-location"
+              name="mainSearchLocation"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

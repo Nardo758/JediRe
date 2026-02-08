@@ -163,6 +163,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
+                  id="register-name"
+                  name="registerName"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -179,6 +181,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
+                  id="register-email"
+                  name="registerEmail"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -201,6 +205,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
+                  id="register-password"
+                  name="registerPassword"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -244,6 +250,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
+                  id="register-confirm-password"
+                  name="registerConfirmPassword"
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -271,6 +279,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
             <div className="space-y-3 pt-2">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
+                  id="register-agree-terms"
+                  name="registerAgreeTerms"
                   type="checkbox"
                   checked={agreeTerms}
                   onChange={(e) => setAgreeTerms(e.target.checked)}
@@ -284,6 +294,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               </label>
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
+                  id="register-agree-updates"
+                  name="registerAgreeUpdates"
                   type="checkbox"
                   checked={agreeUpdates}
                   onChange={(e) => setAgreeUpdates(e.target.checked)}
@@ -353,6 +365,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                 {experienceLevels.map((level) => (
                   <label key={level.id} className="flex items-center gap-3 cursor-pointer">
                     <input
+                      id={`register-experience-${level.id}`}
                       type="radio"
                       name="experience"
                       value={level.id}
@@ -373,6 +386,8 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
               </label>
               <div className="flex gap-2 mb-2">
                 <input
+                  id="register-new-market"
+                  name="registerNewMarket"
                   type="text"
                   value={newMarket}
                   onChange={(e) => setNewMarket(e.target.value)}

@@ -98,6 +98,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Client <span className="text-red-500">*</span>
           </label>
           <select
+            id="deal-client"
+            name="clientId"
             value={formData.clientId}
             onChange={(e) => updateField('clientId', e.target.value)}
             aria-label="Client"
@@ -124,6 +126,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Property Address <span className="text-red-500">*</span>
           </label>
           <input
+            id="deal-property-address"
+            name="propertyAddress"
             type="text"
             value={formData.propertyAddress}
             onChange={(e) => updateField('propertyAddress', e.target.value)}
@@ -157,6 +161,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                 `}
               >
                 <input
+                  id={`deal-type-${type}`}
                   type="radio"
                   name="dealType"
                   value={type}
@@ -181,6 +186,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
               <input
+                id="deal-value"
+                name="dealValue"
                 type="number"
                 value={formData.dealValue || ''}
                 onChange={(e) => updateField('dealValue', parseFloat(e.target.value) || 0)}
@@ -205,6 +212,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             </label>
             <div className="relative">
               <input
+                id="deal-commission-rate"
+                name="commissionRate"
                 type="number"
                 value={formData.commissionRate || ''}
                 onChange={(e) => updateField('commissionRate', parseFloat(e.target.value) || 0)}
@@ -240,6 +249,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Expected Close Date
           </label>
           <input
+            id="deal-expected-close-date"
+            name="expectedCloseDate"
             type="date"
             value={formData.expectedCloseDate || ''}
             onChange={(e) => updateField('expectedCloseDate', e.target.value || null)}
@@ -267,6 +278,7 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                 `}
               >
                 <input
+                  id={`deal-priority-${priority}`}
                   type="radio"
                   name="priority"
                   value={priority}
@@ -288,6 +300,8 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Notes
           </label>
           <textarea
+            id="deal-notes"
+            name="notes"
             value={formData.notes || ''}
             onChange={(e) => updateField('notes', e.target.value)}
             placeholder="Additional notes about this deal..."

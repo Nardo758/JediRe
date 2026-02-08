@@ -159,6 +159,8 @@ export function ModuleMarketplacePage() {
       <div className="mb-6 flex items-center gap-4">
         <input
           type="text"
+          id="module-search"
+          name="moduleSearch"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search modules..."
@@ -166,6 +168,8 @@ export function ModuleMarketplacePage() {
           className="flex-1 max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
+          id="module-category"
+          name="moduleCategory"
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
           aria-label="Filter by category"

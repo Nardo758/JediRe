@@ -110,6 +110,8 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
           {/* Sort */}
           <div className="flex items-center gap-2">
             <select
+              id="deal-filter-sort-by"
+              name="sortBy"
               value={filters.sortBy}
               onChange={(e) => onChange({ ...filters, sortBy: e.target.value as any })}
               aria-label="Sort by"
@@ -189,6 +191,8 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
               Client
             </label>
             <select
+              id="deal-filter-client"
+              name="clientId"
               value={filters.clientId || ''}
               onChange={(e) => onChange({ 
                 ...filters, 
@@ -214,6 +218,8 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
             </label>
             <div className="grid grid-cols-2 gap-2">
               <input
+                id="deal-filter-date-from"
+                name="dateFrom"
                 type="date"
                 value={filters.dateFrom || ''}
                 onChange={(e) => onChange({ ...filters, dateFrom: e.target.value || undefined })}
@@ -222,6 +228,8 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
                 placeholder="From"
               />
               <input
+                id="deal-filter-date-to"
+                name="dateTo"
                 type="date"
                 value={filters.dateTo || ''}
                 onChange={(e) => onChange({ ...filters, dateTo: e.target.value || undefined })}
