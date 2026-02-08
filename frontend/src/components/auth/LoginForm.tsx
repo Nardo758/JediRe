@@ -26,7 +26,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate('/app');
+        navigate('/dashboard');
       } else {
         setError(result.error || 'Login failed');
       }
@@ -182,7 +182,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
             try {
               const result = await login('demo@jedire.com', 'demo123');
               if (result.success) {
-                navigate('/app');
+                navigate('/dashboard');
               } else {
                 setError(result.error || 'Demo login failed');
               }

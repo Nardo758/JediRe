@@ -32,6 +32,7 @@ export function useAuth() {
     try {
       const { token, user: userData } = await authAPI.login(email, password);
       localStorage.setItem('auth_token', token);
+      localStorage.setItem('jedi_user', JSON.stringify(userData));
       setStoreToken(token);
       setUser(userData);
       return { success: true };
