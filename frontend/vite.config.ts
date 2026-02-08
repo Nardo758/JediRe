@@ -14,18 +14,6 @@ export default defineConfig({
     port: 5000,
     strictPort: true,
     allowedHosts: true as any,
-    headers: {
-      'Content-Security-Policy': [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com https://events.mapbox.com",
-        "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
-        "img-src 'self' data: blob: https: http:",
-        "font-src 'self' data: https:",
-        "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
-        "worker-src 'self' blob:",
-        "child-src 'self' blob:",
-      ].join('; '),
-    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
