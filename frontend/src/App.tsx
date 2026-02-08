@@ -7,6 +7,7 @@ import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
 import { DealView } from './pages/DealView';
 import { EmailPage } from './pages/EmailPage';
+import { NewsPage } from './pages/NewsPage';
 import { TasksPage } from './pages/TasksPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
@@ -35,6 +36,7 @@ function AppContent() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/email" element={<EmailPage />} />
               <Route path="/market-data" element={<MarketDataPage />} />
+              <Route path="/news" element={<NewsPage />} />
               <Route path="/assets-owned" element={<AssetsOwnedPage />} />
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/deals" element={<DealsPage />} />
