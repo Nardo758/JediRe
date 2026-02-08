@@ -13,6 +13,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dashboardExpanded, setDashboardExpanded] = useState(true);
+  const [newsExpanded, setNewsExpanded] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const { layers, toggleLayer } = useMapLayers();
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -34,9 +35,14 @@ export function MainLayout({ children }: MainLayoutProps) {
     };
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    if (location.pathname.startsWith('/dashboard/news')) {
+      setNewsExpanded(true);
+    }
+  }, [location.pathname]);
+
   const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
-    // Only toggle layer if on dashboard views or map page
-    if (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/dashboard/news' || location.pathname === '/map') {
+    if (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname.startsWith('/dashboard/news') || location.pathname === '/map') {
       e.preventDefault();
       toggleLayer(layerId);
     }
@@ -61,7 +67,15 @@ export function MainLayout({ children }: MainLayoutProps) {
           subitems: [
             { name: 'Portfolio Overview', path: '/dashboard', icon: '📊', badge: null },
             { name: 'Email', path: '/dashboard/email', icon: '📧', badge: '5' },
-            { name: 'News Intelligence', path: '/dashboard/news', icon: '📰', badge: '3' },
+            { name: 'News Intelligence', path: '/dashboard/news', icon: '📰', badge: '3',
+              expandable: true,
+              subitems: [
+                { name: 'Event Feed', path: '/dashboard/news', icon: '📋' },
+                { name: 'Market Dashboard', path: '/dashboard/news/dashboard', icon: '📊' },
+                { name: 'Network Intelligence', path: '/dashboard/news/network', icon: '🔗' },
+                { name: 'Alerts', path: '/dashboard/news/alerts', icon: '🔔', badge: '2' },
+              ]
+            },
           ]
         },
       ]
@@ -213,22 +227,73 @@ export function MainLayout({ children }: MainLayoutProps) {
                           {dashboardExpanded && !sidebarCollapsed && item.subitems && (
                             <div className="ml-8 space-y-1 mt-1">
                               {item.subitems.map((subitem: any) => (
-                                <Link
-                                  key={subitem.path}
-                                  to={subitem.path}
-                                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
-                                    location.pathname === subitem.path
-                                      ? 'bg-blue-50 text-blue-600 font-medium'
-                                      : 'text-gray-600 hover:bg-gray-50'
-                                  }`}
-                                >
-                                  <span>{subitem.name}</span>
-                                  {subitem.badge && (
-                                    <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
-                                      {subitem.badge}
-                                    </span>
+                                <div key={subitem.path}>
+                                  {subitem.expandable ? (
+                                    <>
+                                      <div
+                                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
+                                          location.pathname.startsWith('/dashboard/news')
+                                            ? 'bg-blue-50 text-blue-600 font-medium'
+                                            : 'text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <Link to={subitem.path} className="flex-1 text-left">
+                                          {subitem.name}
+                                        </Link>
+                                        {subitem.badge && (
+                                          <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                                            {subitem.badge}
+                                          </span>
+                                        )}
+                                        <button
+                                          onClick={() => setNewsExpanded(!newsExpanded)}
+                                          className="text-gray-400 text-xs hover:text-gray-600 p-1"
+                                        >
+                                          {newsExpanded ? '▼' : '▶'}
+                                        </button>
+                                      </div>
+                                      {newsExpanded && subitem.subitems && (
+                                        <div className="ml-4 space-y-0.5 mt-0.5">
+                                          {subitem.subitems.map((newsItem: any) => (
+                                            <Link
+                                              key={newsItem.path}
+                                              to={newsItem.path}
+                                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
+                                                location.pathname === newsItem.path
+                                                  ? 'bg-blue-50 text-blue-600 font-medium'
+                                                  : 'text-gray-500 hover:bg-gray-50'
+                                              }`}
+                                            >
+                                              <span className="text-xs">{newsItem.icon}</span>
+                                              <span>{newsItem.name}</span>
+                                              {newsItem.badge && (
+                                                <span className="ml-auto px-1.5 py-0.5 text-xs font-semibold bg-red-100 text-red-600 rounded-full">
+                                                  {newsItem.badge}
+                                                </span>
+                                              )}
+                                            </Link>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <Link
+                                      to={subitem.path}
+                                      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
+                                        location.pathname === subitem.path
+                                          ? 'bg-blue-50 text-blue-600 font-medium'
+                                          : 'text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <span>{subitem.name}</span>
+                                      {subitem.badge && (
+                                        <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                                          {subitem.badge}
+                                        </span>
+                                      )}
+                                    </Link>
                                   )}
-                                </Link>
+                                </div>
                               ))}
                             </div>
                           )}
