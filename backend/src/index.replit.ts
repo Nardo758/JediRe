@@ -194,13 +194,15 @@ app.get('/api/v1/alerts', requireAuth, async (req: AuthenticatedRequest, res) =>
 app.post('/api/v1/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });
     
-    // For demo: check against demo user
+    // For demo: accept demo credentials
     if (email === 'demo@jedire.com' && password === 'demo123') {
       const result = await pool.query(
         'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE email = $1',
         [email]
       );
+      console.log('Demo user query result rows:', result.rows.length);
       
       if (result.rows.length > 0) {
         const dbUser = result.rows[0];
@@ -219,6 +221,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
           email: dbUser.email,
           role: dbUser.role || 'user'
         });
+        console.log('Demo login successful, token generated');
         res.json({
           success: true,
           user,
@@ -228,6 +231,7 @@ app.post('/api/v1/auth/login', async (req, res) => {
       }
     }
     
+    console.log('Login failed: credentials did not match or user not found');
     res.status(401).json({
       success: false,
       error: 'Invalid credentials'

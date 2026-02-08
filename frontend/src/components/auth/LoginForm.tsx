@@ -8,8 +8,8 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('demo@jedire.com');
+  const [password, setPassword] = useState('demo123');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
