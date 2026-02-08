@@ -10,16 +10,13 @@
 ├──────────────────────────────────────────┤
 │                                           │
 │ 📊 Dashboard ▼                           │  ← Expandable
-│   └─ Pipeline                            │
 │   └─ Email (5)                           │
+│   └─ Pipeline (3)                        │
+│   └─ Assets Owned (23)       👁️         │  ← Eye = layer toggle
 │                                           │
 │ INTELLIGENCE                              │
 │ 📊 Market Data                           │
-│ 📰 News                                  │  ← NEW
-│ 🏢 Assets Owned (23)         👁️         │  ← Eye = layer toggle
-│                                           │
-│ DEAL MANAGEMENT                           │
-│ 📁 Pipeline (8)               👁️         │
+│ 📰 News (3)                  👁️         │
 │                                           │
 │ TOOLS                                     │
 │ 📊 Reports                               │
@@ -44,10 +41,10 @@ Click **👤 Leon D ▼** opens:
 ```
 
 ### Key Changes from Wireframe
-1. **Dashboard is now expandable** with Portfolio Overview + Email subitems
+1. **Dashboard is now expandable** with Email, Pipeline, and Assets Owned subitems
 2. **Settings moved to user dropdown** (top right, not in sidebar)
 3. **Architecture link removed** (internal dev tool only)
-4. **Email moved under Dashboard** (was in TOOLS section)
+4. **Email, Pipeline, and Assets under Dashboard** (consolidated deal management)
 
 ---
 
@@ -55,9 +52,11 @@ Click **👤 Leon D ▼** opens:
 
 ### Pattern: Sidebar + Map
 
-Both Dashboard sub-views follow the same layout:
+All Dashboard sub-views follow the same layout:
 - **Left:** Sidebar panel (w-80) with list/content
 - **Right:** Full Mapbox map with deal markers
+  
+**Sub-views:** Email, Pipeline, Assets Owned
 
 ---
 
@@ -188,8 +187,9 @@ Both Dashboard sub-views follow the same layout:
 ## Design Pattern Established
 
 **Sidebar + Map Layout** for all Dashboard sub-views:
-- Pipeline: Deal list + Map
 - Email: Inbox + Map
+- Pipeline: Deal list + Map
+- Assets Owned: Asset list + Map
 
 **Benefits:**
 - Consistent UX across views

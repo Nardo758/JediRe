@@ -109,14 +109,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               {expandedSections.dashboard && (
                 <div className="ml-4 space-y-1">
                   <SidebarItem
-                    icon="🏢"
-                    label="Pipeline"
-                    count={3}
-                    path="/dashboard/portfolio"
-                    isActive={isActive('/dashboard/portfolio')}
-                  />
-                  
-                  <SidebarItem
                     icon="📧"
                     label="Email"
                     count={5}
@@ -129,6 +121,32 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                         icon: '📧',
                         color: '#f59e0b',
                         size: 'small'
+                      }
+                    }}
+                    onShowOnMap={handleShowOnMap}
+                  />
+                  
+                  <SidebarItem
+                    icon="🏢"
+                    label="Pipeline"
+                    count={3}
+                    path="/dashboard/portfolio"
+                    isActive={isActive('/dashboard/portfolio')}
+                  />
+                  
+                  <SidebarItem
+                    icon="🏢"
+                    label="Assets Owned"
+                    count={23}
+                    path="/assets"
+                    isActive={isActive('/assets')}
+                    layerConfig={{
+                      sourceType: 'assets',
+                      layerType: 'pin',
+                      defaultStyle: {
+                        icon: '🏢',
+                        color: '#10b981',
+                        size: 'medium'
                       }
                     }}
                     onShowOnMap={handleShowOnMap}
@@ -172,49 +190,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
                     radius: 25,
                     intensity: 1.0
-                  }
-                }}
-                onShowOnMap={handleShowOnMap}
-              />
-              
-              <SidebarItem
-                icon="🏢"
-                label="Assets Owned"
-                count={23}
-                path="/assets"
-                isActive={isActive('/assets')}
-                layerConfig={{
-                  sourceType: 'assets',
-                  layerType: 'pin',
-                  defaultStyle: {
-                    icon: '🏢',
-                    color: '#10b981',
-                    size: 'medium'
-                  }
-                }}
-                onShowOnMap={handleShowOnMap}
-              />
-            </div>
-
-            {/* PIPELINE */}
-            <div className="mb-4">
-              <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Pipeline
-              </h3>
-              
-              <SidebarItem
-                icon="📊"
-                label="All Pipeline"
-                count={8}
-                path="/pipeline"
-                isActive={isActive('/pipeline')}
-                layerConfig={{
-                  sourceType: 'pipeline',
-                  layerType: 'pin',
-                  defaultStyle: {
-                    icon: '📊',
-                    color: '#3b82f6',
-                    size: 'medium'
                   }
                 }}
                 onShowOnMap={handleShowOnMap}
