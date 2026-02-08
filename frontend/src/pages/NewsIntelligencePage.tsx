@@ -15,6 +15,8 @@ interface NewsIntelligencePageProps {
 export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProps) {
   const { deals, fetchDeals } = useDealStore();
 
+  const [showContent, setShowContent] = useState(true);
+  const [showMap, setShowMap] = useState(true);
   const [contentWidth, setContentWidth] = useState(
     parseInt(localStorage.getItem('news-content-width') || '550')
   );
@@ -541,42 +543,75 @@ export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProp
 
   return (
     <div className="h-full flex relative">
-      <div
-        className="bg-gray-50 overflow-y-auto flex-shrink-0 border-r border-gray-200"
-        style={{ width: `${contentWidth}px` }}
-      >
-        <div className="p-4">
-          <h1 className="text-xl font-bold text-gray-900 mb-4">
-            {viewTitles[view]}
-          </h1>
-          {renderContent()}
-        </div>
-      </div>
-      <div
-        className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
-        onMouseDown={() => setIsResizingContent(true)}
-      />
-
-      <div className="flex-1 relative">
-        <div ref={mapContainer} className="absolute inset-0" />
-
-        <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
-              <span>Employment</span>
+      {showContent && (
+        <>
+          <div
+            className={`bg-gray-50 overflow-y-auto flex-shrink-0 border-r border-gray-200 ${!showMap ? 'flex-1' : ''}`}
+            style={showMap ? { width: `${contentWidth}px` } : undefined}
+          >
+            <div className="p-4">
+              <h1 className="text-xl font-bold text-gray-900 mb-4">
+                {viewTitles[view]}
+              </h1>
+              {renderContent()}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-orange-500 border-2 border-white" />
-              <span>Development</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white" />
-              <span>Transactions</span>
+          </div>
+          {showMap && (
+            <div
+              className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
+              onMouseDown={() => setIsResizingContent(true)}
+            />
+          )}
+        </>
+      )}
+
+      {showMap && (
+        <div className="flex-1 relative">
+          <div ref={mapContainer} className="absolute inset-0" />
+
+          <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white" />
+                <span>Employment</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-500 border-2 border-white" />
+                <span>Development</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-green-500 border-2 border-white" />
+                <span>Transactions</span>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      <div className="absolute top-3 right-3 flex gap-2 z-20">
+        <button
+          onClick={() => setShowContent(!showContent)}
+          className={`px-3 py-1.5 rounded-lg shadow-md text-xs font-medium transition-colors ${
+            showContent
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+          }`}
+          title={showContent ? 'Hide content panel' : 'Show content panel'}
+        >
+          {showContent ? '◀ Content' : '▶ Content'}
+        </button>
+        <button
+          onClick={() => setShowMap(!showMap)}
+          className={`px-3 py-1.5 rounded-lg shadow-md text-xs font-medium transition-colors ${
+            showMap
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+          }`}
+          title={showMap ? 'Hide map panel' : 'Show map panel'}
+        >
+          {showMap ? 'Map ▶' : 'Map ◀'}
+        </button>
       </div>
     </div>
   );
