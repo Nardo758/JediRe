@@ -1,18 +1,15 @@
 import React, { useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
+import { WarMapsComposer } from '../map/WarMapsComposer';
 import { layersService } from '../../services/layers.service';
 import { mapConfigsService, MapConfiguration } from '../../services/map-configs.service';
 import { MapLayer } from '../../types/layers';
 
 const DEFAULT_MAP_ID = 'default';
 
-interface MainLayoutProps {
-  children: React.ReactNode;
-}
-
-export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+export const MainLayout: React.FC = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -26,6 +23,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   });
   
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
+  const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>([]);
 
   const isActive = (path: string) => location.pathname === path;
@@ -85,12 +83,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   };
 
+  // Handle War Maps creation
+  const handleWarMapsCreated = (newLayers: MapLayer[]) => {
+    setLayers([...layers, ...newLayers]);
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <MapTabsBar
         activeConfigId={activeConfig?.id}
         onConfigSelect={handleConfigSelect}
-        onNewConfig={() => {}}
+        onNewConfig={() => setIsWarMapsOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -408,9 +411,20 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
-          {children}
+          <Outlet context={{ layers, setLayers }} />
         </main>
       </div>
+
+      {/* War Maps Composer Modal - Global */}
+      {isWarMapsOpen && (
+        <WarMapsComposer
+          isOpen={isWarMapsOpen}
+          onClose={() => setIsWarMapsOpen(false)}
+          mapId={DEFAULT_MAP_ID}
+          existingLayers={layers}
+          onLayersCreated={handleWarMapsCreated}
+        />
+      )}
     </div>
   );
 };
