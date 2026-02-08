@@ -42,4 +42,7 @@ export interface Deal {
   
   // Timestamps
   updatedAt?: string;
+  
+  // Activity
+  activities?: import('./index').DealActivity[];
 }
