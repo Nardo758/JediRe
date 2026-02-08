@@ -53,11 +53,17 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// Health Check Endpoint
+// Health Check Endpoint (lightweight - no DB query)
 // ============================================
-app.get('/health', async (req, res) => {
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health/full', async (req, res) => {
   try {
-    // Check database connection
     const result = await pool.query('SELECT NOW()');
     
     res.json({
