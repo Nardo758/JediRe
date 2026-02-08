@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import MapView from '@/components/map/MapView';
 import PropertyDetail from '@/components/property/PropertyDetail';
 import FiltersBar from '@/components/dashboard/FiltersBar';
-import AgentStatusBar from '@/components/dashboard/AgentStatusBar';
+import { AgentStatusBar } from '@/components/dashboard/AgentStatusBar';
 import QuickInsights from '@/components/dashboard/QuickInsights';
 import PropertyAnalyzer from '@/components/property/PropertyAnalyzer';
-import SettingsPage from './SettingsPage';
+import { SettingsPage } from './SettingsPage';
 import { useAppStore } from '@/store';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { propertyAPI } from '@/services/api';
@@ -159,9 +159,7 @@ export default function MainPage() {
       {/* Bottom Panels */}
       {showBottomPanel && (
         <div className="flex-shrink-0 z-20">
-          <AgentStatusBar 
-            alert="Interest rate decision tomorrow - Debt Agent confidence at 65%"
-          />
+          <AgentStatusBar />
           <QuickInsights />
         </div>
       )}
@@ -177,7 +175,7 @@ export default function MainPage() {
       )}
 
       {/* Settings Modal */}
-      {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsPage />}
     </div>
   );
 }

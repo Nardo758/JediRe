@@ -6,18 +6,20 @@ export interface User {
   id: string;
   email: string;
   name?: string;
-  subscription?: string;
+  subscription?: any;
   role?: string;
 }
 
-// Additional types that may be referenced
+// Search result
 export interface SearchResult {
   id: string;
   title: string;
   description: string;
   type: string;
+  properties?: any[];
 }
 
+// Zoning
 export interface ZoningInsight {
   id: string;
   zone: string;
@@ -25,6 +27,7 @@ export interface ZoningInsight {
   reasoning?: string;
 }
 
+// Lead
 export interface Lead {
   id: string;
   name: string;
@@ -34,12 +37,22 @@ export interface Lead {
   status?: string;
 }
 
+// Commission
 export interface Commission {
   id: string;
-  dealId: string;
-  amount: number;
-  rate: number;
+  dealId?: string;
+  amount?: number;
+  rate?: number;
   status: string;
+  propertyAddress?: string;
+  dealType?: string;
+  dealValue?: number;
+  commissionRate?: number;
+  splitPercentage?: number;
+  grossCommission?: number;
+  netCommission?: number;
+  datePaid?: string;
+  createdAt?: string;
 }
 
 export interface CommissionSummary {
@@ -49,14 +62,21 @@ export interface CommissionSummary {
   count: number;
 }
 
+// Map filter
 export interface MapFilter {
   bounds?: any;
   propertyType?: string;
   priceRange?: [number, number];
+  minScore?: number;
+  maxScore?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  municipalities?: string[];
 }
 
 export type ModuleType = 'map' | 'properties' | 'strategy' | 'pipeline' | 'market' | 'reports' | 'team' | 'zoning' | 'supply' | 'cashflow';
 
+// Collaboration
 export interface CollaborationUser {
   id: string;
   name: string;
@@ -71,6 +91,19 @@ export interface WebSocketMessage {
   timestamp: number;
 }
 
+// Annotation
+export interface Annotation {
+  id: string;
+  propertyId: string;
+  userId: string;
+  userName?: string;
+  content: string;
+  text?: string;
+  type?: string;
+  createdAt: string;
+}
+
+// Property
 export interface Property {
   id: string;
   address: string;
@@ -92,4 +125,39 @@ export interface Property {
   comparableScore?: number;
   amenities?: string[];
   notes?: string;
+}
+
+// Agent Deal types
+export type DealType = 'buyer' | 'seller' | 'dual' | 'both' | 'referral' | 'lease';
+export type DealPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type DealStage = 'lead' | 'qualified' | 'prospecting' | 'contacted' | 'proposal' | 'negotiation' | 'under_contract' | 'closed' | 'lost';
+
+export interface DealFormData {
+  clientId: string;
+  propertyAddress: string;
+  dealType: string;
+  dealValue: number;
+  commissionRate: number;
+  expectedCloseDate: string | null;
+  priority: string;
+  notes: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  type?: string;
+  status?: string;
+}
+
+export interface DealActivity {
+  id: string;
+  dealId: string;
+  type: string;
+  description: string;
+  userId?: string;
+  userName?: string;
+  createdAt: string;
 }

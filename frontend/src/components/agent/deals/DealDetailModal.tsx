@@ -29,6 +29,10 @@ interface DealDetailModalProps {
 const stageConfig: Record<DealStage, { label: string; color: string; icon: any }> = {
   lead: { label: 'Lead', color: 'bg-gray-100 text-gray-700', icon: FileText },
   qualified: { label: 'Qualified', color: 'bg-blue-100 text-blue-700', icon: CheckCircle },
+  prospecting: { label: 'Prospecting', color: 'bg-indigo-100 text-indigo-700', icon: TrendingUp },
+  contacted: { label: 'Contacted', color: 'bg-cyan-100 text-cyan-700', icon: User },
+  proposal: { label: 'Proposal', color: 'bg-purple-100 text-purple-700', icon: FileText },
+  negotiation: { label: 'Negotiation', color: 'bg-orange-100 text-orange-700', icon: DollarSign },
   under_contract: { label: 'Under Contract', color: 'bg-yellow-100 text-yellow-700', icon: FileText },
   closed: { label: 'Closed', color: 'bg-green-100 text-green-700', icon: CheckCircle },
   lost: { label: 'Lost', color: 'bg-red-100 text-red-700', icon: XCircle },
