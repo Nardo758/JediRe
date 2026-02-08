@@ -133,24 +133,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
-                  
-                  <SidebarItem
-                    icon="📰"
-                    label="News Intelligence"
-                    count={3}
-                    path="/dashboard/news"
-                    isActive={isActive('/dashboard/news')}
-                    layerConfig={{
-                      sourceType: 'news',
-                      layerType: 'heatmap',
-                      defaultStyle: {
-                        colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
-                        radius: 25,
-                        intensity: 1.0
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
                 </div>
               )}
             </div>
@@ -172,6 +154,24 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                   defaultStyle: {
                     colorScale: ['#dcfce7', '#86efac', '#22c55e', '#15803d'],
                     opacity: 0.5
+                  }
+                }}
+                onShowOnMap={handleShowOnMap}
+              />
+              
+              <SidebarItem
+                icon="📰"
+                label="News"
+                count={3}
+                path="/news"
+                isActive={isActive('/news')}
+                layerConfig={{
+                  sourceType: 'news',
+                  layerType: 'heatmap',
+                  defaultStyle: {
+                    colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
+                    radius: 25,
+                    intensity: 1.0
                   }
                 }}
                 onShowOnMap={handleShowOnMap}
