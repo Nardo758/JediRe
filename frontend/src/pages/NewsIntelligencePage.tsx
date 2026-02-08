@@ -21,7 +21,7 @@ export function NewsIntelligencePage() {
     parseInt(localStorage.getItem('news-views-width') || '256')
   );
   const [contentWidth, setContentWidth] = useState(
-    parseInt(localStorage.getItem('news-content-width') || '384')
+    parseInt(localStorage.getItem('news-content-width') || '550')
   );
 
   const [activeView, setActiveView] = useState<ViewType>('feed');
@@ -271,7 +271,7 @@ export function NewsIntelligencePage() {
         localStorage.setItem('news-views-width', String(newWidth));
       }
       if (isResizingContent) {
-        const newWidth = Math.max(300, Math.min(600, e.clientX - (showViewsSidebar ? viewsWidth : 0)));
+        const newWidth = Math.max(400, Math.min(800, e.clientX - (showViewsSidebar ? viewsWidth : 0)));
         setContentWidth(newWidth);
         localStorage.setItem('news-content-width', String(newWidth));
       }
@@ -310,13 +310,13 @@ export function NewsIntelligencePage() {
           <button
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors font-medium ${
               selectedCategory === cat.id
                 ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
             }`}
           >
-            <span className="mr-1">{cat.icon}</span>
+            <span className="mr-2">{cat.icon}</span>
             {cat.label}
           </button>
         ))}
@@ -333,55 +333,83 @@ export function NewsIntelligencePage() {
               selectedEvent === event.id ? 'border-blue-500 shadow-lg' : 'border-gray-200'
             }`}
           >
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-1 text-sm">
-                  {event.headline}
-                </h3>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span>📍 {event.location}</span>
-                  <span>•</span>
-                  <span>{event.date}</span>
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-1 ml-2">
+            {/* Header Row */}
+            <div className="flex items-start justify-between mb-3">
+              <h3 className="font-semibold text-gray-900 text-base flex-1">
+                {event.headline}
+              </h3>
+              <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                 {event.sourceType === 'email' && (
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                    🔵 Email
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                    🔵 Email Intel
                   </span>
                 )}
                 <span
-                  className={`px-2 py-0.5 text-xs font-medium rounded ${
+                  className={`px-3 py-1 text-xs font-medium rounded-full ${
                     event.impact.severity === 'high'
-                      ? 'bg-red-100 text-red-700'
+                      ? 'bg-orange-100 text-orange-700'
                       : event.impact.severity === 'moderate'
                       ? 'bg-yellow-100 text-yellow-700'
                       : 'bg-blue-100 text-blue-700'
                   }`}
                 >
-                  {event.impact.severity === 'high' ? '⚠️ High' : 
-                   event.impact.severity === 'moderate' ? '⚡ Moderate' : 'ℹ️ Low'}
+                  {event.impact.severity === 'high' ? '⚠️ High Impact' : 
+                   event.impact.severity === 'moderate' ? '⚡ Moderate Impact' : 'ℹ️ Low Impact'}
                 </span>
               </div>
             </div>
 
-            <div className="bg-gray-50 rounded p-2 text-xs text-gray-700">
-              {event.impact.housingDemand && (
-                <div>~{event.impact.housingDemand.toLocaleString()} housing units needed</div>
-              )}
-              {event.impact.supplyPressure && (
-                <div>{(event.impact.supplyPressure * 100).toFixed(1)}% supply pressure increase</div>
-              )}
-              {event.impact.compDeviation && (
-                <div>{(event.impact.compDeviation * 100).toFixed(0)}% above market average</div>
+            {/* Location & Time Row */}
+            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+              <span className="flex items-center gap-1">
+                📍 {event.location}
+              </span>
+              <span>•</span>
+              <span>{event.date}</span>
+              {event.earlySignalDays && (
+                <>
+                  <span>•</span>
+                  <span className="text-green-600 font-medium">
+                    {event.earlySignalDays} days early
+                  </span>
+                </>
               )}
             </div>
 
-            <div className="flex items-center justify-between text-xs mt-2">
-              <span className="text-gray-600">{event.source}</span>
-              <span className="text-gray-500">
-                {(event.confidence * 100).toFixed(0)}% confidence
-              </span>
+            {/* Impact Box */}
+            <div className="bg-gray-50 rounded-lg p-3 mb-3">
+              {event.impact.housingDemand && (
+                <div className="text-sm text-gray-700">
+                  <strong>Demand Impact:</strong> ~{event.impact.housingDemand.toLocaleString()} housing units needed • Target rent: ${event.impact.targetRent[0].toLocaleString()}–${event.impact.targetRent[1].toLocaleString()}/mo
+                </div>
+              )}
+              {event.impact.supplyPressure && (
+                <div className="text-sm text-gray-700">
+                  <strong>Supply Impact:</strong> {(event.impact.supplyPressure * 100).toFixed(1)}% supply pressure increase • Watch concessions in Class A
+                </div>
+              )}
+              {event.impact.compDeviation && (
+                <div className="text-sm text-gray-700">
+                  <strong>Comp Impact:</strong> {(event.impact.compDeviation * 100).toFixed(0)}% above market average • May influence valuations
+                </div>
+              )}
+            </div>
+
+            {/* Footer Row */}
+            <div className="flex items-center justify-between text-sm">
+              <div className="text-gray-600">
+                Source: <span className="font-medium">{event.source}</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-gray-500">
+                  Confidence: {(event.confidence * 100).toFixed(0)}%
+                </span>
+                {event.affectedDeals > 0 && (
+                  <span className="text-blue-600 font-medium">
+                    {event.affectedDeals} {event.affectedDeals === 1 ? 'deal' : 'deals'} affected
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}
