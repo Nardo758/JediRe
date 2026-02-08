@@ -36,7 +36,8 @@ export function useAuth() {
       setUser(userData);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      const msg = error.response?.data?.error || error.message || 'Login failed';
+      return { success: false, error: msg };
     }
   };
 
@@ -48,7 +49,8 @@ export function useAuth() {
       setUser(userData);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      const msg = error.response?.data?.error || error.message || 'Registration failed';
+      return { success: false, error: msg };
     }
   };
 
