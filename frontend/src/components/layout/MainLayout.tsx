@@ -69,6 +69,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       title: 'INTELLIGENCE LAYERS',
       items: [
         { name: 'Market Data', path: '/market-data', icon: '📊', badge: null, layerId: null },
+        { name: 'News Intelligence', path: '/news', icon: '📰', badge: null, layerId: null },
         { name: 'Assets Owned', path: '/assets-owned', icon: '🏢', badge: '23', layerId: 'assets-owned' },
       ]
     },

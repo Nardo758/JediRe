@@ -15,6 +15,7 @@
 │                                           │
 │ INTELLIGENCE LAYERS                       │
 │ 📊 Market Data                           │
+│ 📰 News Intelligence                     │  ← NEW
 │ 🏢 Assets Owned (23)         👁️         │  ← Eye = layer toggle
 │                                           │
 │ DEAL MANAGEMENT                           │
