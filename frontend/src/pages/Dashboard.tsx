@@ -239,23 +239,6 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Platform modules */}
-          <div className="p-4 border-t border-gray-200 mt-auto">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">PLATFORM</h2>
-            <div className="space-y-1">
-              <a href="/inbox" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                📧 Communication Hub
-              </a>
-              <a href="/team" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                👥 Team Management
-              </a>
-              <a href="/settings" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                ⚙️ Settings
-              </a>
-            </div>
-          </div>
-        </div>
-
         {/* Map */}
         <div className="flex-1 relative">
           <div ref={mapContainer} className="absolute inset-0" />
