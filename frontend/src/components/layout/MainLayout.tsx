@@ -15,7 +15,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [dashboardExpanded, setDashboardExpanded] = useState(true);
   const [newsExpanded, setNewsExpanded] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { layers, toggleLayer } = useMapLayers();
+  const { layers, toggleLayer, createLayer } = useMapLayers();
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   // Close user menu when clicking outside
@@ -53,6 +53,13 @@ export function MainLayout({ children }: MainLayoutProps) {
     return layer?.active ?? false;
   };
 
+  const handleCreateLayer = (layerId: string, name: string, icon: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log(`[MainLayout] Creating layer: ${layerId}`);
+    createLayer(layerId, name, icon);
+  };
+
   const navigationSections = [
     {
       title: null,
@@ -68,6 +75,7 @@ export function MainLayout({ children }: MainLayoutProps) {
             { name: 'Portfolio Overview', path: '/dashboard', icon: '📊', badge: null },
             { name: 'Email', path: '/dashboard/email', icon: '📧', badge: '5' },
             { name: 'News Intelligence', path: '/dashboard/news', icon: '📰', badge: '3',
+              layerId: 'news-intelligence',
               expandable: true,
               subitems: [
                 { name: 'Event Feed', path: '/dashboard/news', icon: '📋' },
@@ -246,6 +254,15 @@ export function MainLayout({ children }: MainLayoutProps) {
                                             {subitem.badge}
                                           </span>
                                         )}
+                                        {subitem.layerId && (location.pathname === '/dashboard' || location.pathname.startsWith('/dashboard')) && (
+                                          <button
+                                            onClick={(e) => handleCreateLayer(subitem.layerId, subitem.name, subitem.icon, e)}
+                                            className="px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 rounded"
+                                            title="Add as map layer"
+                                          >
+                                            + Layer
+                                          </button>
+                                        )}
                                         <button
                                           onClick={() => setNewsExpanded(!newsExpanded)}
                                           className="text-gray-400 text-xs hover:text-gray-600 p-1"
@@ -315,14 +332,13 @@ export function MainLayout({ children }: MainLayoutProps) {
                               <span className="flex-1">{item.name}</span>
                               <div className="flex items-center gap-2">
                                 {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/dashboard/news' || location.pathname === '/map') && (
-                                  <span
-                                    className={`text-lg ${
-                                      getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
-                                    }`}
-                                    title={getLayerState(item.layerId) ? 'Layer visible on map' : 'Layer hidden'}
+                                  <button
+                                    onClick={(e) => handleCreateLayer(item.layerId, item.name, item.icon, e)}
+                                    className="px-2 py-0.5 text-xs text-blue-600 hover:bg-blue-100 rounded"
+                                    title="Add as map layer"
                                   >
-                                    👁️
-                                  </span>
+                                    + Layer
+                                  </button>
                                 )}
                                 {item.badge && (
                                   <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">

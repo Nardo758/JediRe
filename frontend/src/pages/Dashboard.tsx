@@ -4,6 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useMapDrawingStore } from '../stores/mapDrawingStore';
+import { useMapLayers } from '../contexts/MapLayersContext';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { Button } from '../components/shared/Button';
@@ -14,13 +15,15 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
   const location = useLocation();
-  const { deals, fetchDeals, isLoading } = useDealStore();
+  const { deals, fetchDeals, isLoading} = useDealStore();
   const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
+  const { layers } = useMapLayers();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const draw = useRef<MapboxDraw | null>(null);
+  const layerMarkers = useRef<Map<string, mapboxgl.Marker[]>>(new Map());
 
   useEffect(() => {
     fetchDeals();
@@ -121,6 +124,112 @@ export const Dashboard: React.FC = () => {
       }
     }
   }, [isDrawing, centerPoint]);
+
+  // Render map layers when they change
+  useEffect(() => {
+    if (!map.current) return;
+
+    const activeLayerIds = layers.filter(l => l.active).map(l => l.id);
+    const currentLayerIds = Array.from(layerMarkers.current.keys());
+
+    // Add new active layers
+    activeLayerIds.forEach(layerId => {
+      if (!currentLayerIds.includes(layerId)) {
+        console.log(`[Dashboard] Adding layer: ${layerId}`);
+        fetchAndRenderLayer(layerId);
+      }
+    });
+
+    // Remove inactive layers
+    currentLayerIds.forEach(layerId => {
+      if (!activeLayerIds.includes(layerId)) {
+        console.log(`[Dashboard] Removing layer: ${layerId}`);
+        removeLayer(layerId);
+      }
+    });
+  }, [layers]);
+
+  const fetchAndRenderLayer = async (layerId: string) => {
+    if (!map.current) return;
+
+    try {
+      console.log(`[Dashboard] Fetching data for layer: ${layerId}`);
+      const response = await fetch(`/api/v1/layers/${layerId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}` || '',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch layer: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success || !data.locations) {
+        console.warn(`[Dashboard] No locations for layer: ${layerId}`);
+        return;
+      }
+
+      console.log(`[Dashboard] Rendering ${data.locations.length} markers for layer: ${layerId}`);
+      
+      // Create markers
+      const markers: mapboxgl.Marker[] = data.locations.map((loc: any) => {
+        // Create custom marker element
+        const el = document.createElement('div');
+        el.className = 'custom-map-marker';
+        el.style.cursor = 'pointer';
+        el.style.fontSize = '24px';
+        
+        // Set icon based on layer type
+        const icon = getLayerIcon(layerId);
+        el.innerHTML = icon;
+
+        // Create popup
+        const popup = new mapboxgl.Popup({
+          offset: 25,
+          closeButton: true,
+          closeOnClick: false,
+        }).setHTML(loc.popupHTML);
+
+        // Create marker
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([loc.lng, loc.lat])
+          .setPopup(popup)
+          .addTo(map.current!);
+
+        return marker;
+      });
+
+      // Store markers for later removal
+      layerMarkers.current.set(layerId, markers);
+
+    } catch (error) {
+      console.error(`[Dashboard] Error rendering layer ${layerId}:`, error);
+    }
+  };
+
+  const removeLayer = (layerId: string) => {
+    const markers = layerMarkers.current.get(layerId);
+    if (markers) {
+      console.log(`[Dashboard] Removing ${markers.length} markers for layer: ${layerId}`);
+      markers.forEach(marker => marker.remove());
+      layerMarkers.current.delete(layerId);
+    }
+  };
+
+  const getLayerIcon = (layerId: string): string => {
+    switch (layerId) {
+      case 'news-intelligence':
+        return '📰';
+      case 'assets-owned':
+        return '🏢';
+      case 'pipeline':
+        return '📊';
+      default:
+        return '📍';
+    }
+  };
 
   // Update map when deals change
   useEffect(() => {
