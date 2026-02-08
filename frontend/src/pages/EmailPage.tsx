@@ -267,6 +267,5 @@ export function EmailPage() {
           )}
         </div>
       </div>
-    </div>
   );
 }
