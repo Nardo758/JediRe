@@ -355,8 +355,8 @@ app.get('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res)
         (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
         (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
         (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
-        (SELECT dp2.stage FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_at DESC LIMIT 1) as "pipelineStage",
-        (SELECT EXTRACT(DAY FROM NOW() - dp2.entered_at)::int FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_at DESC LIMIT 1) as "daysInStage",
+        (SELECT dp2.stage FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "pipelineStage",
+        (SELECT EXTRACT(DAY FROM NOW() - dp2.entered_stage_at)::int FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "daysInStage",
         CASE 
           WHEN d.boundary IS NOT NULL THEN 
             ST_Area(d.boundary::geography) / 4046.86
