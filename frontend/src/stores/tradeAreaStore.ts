@@ -34,6 +34,9 @@ interface TradeAreaStore {
   
   // Generate drive-time isochrone
   generateDriveTimeIsochrone: (lat: number, lng: number, minutes: number, profile: 'driving' | 'walking') => Promise<GeoJSON.Polygon>;
+  
+  // Generate AI-powered traffic-informed boundary
+  generateTrafficInformedBoundary: (lat: number, lng: number, hintMiles?: number) => Promise<GeoJSON.Polygon>;
 }
 
 export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
@@ -167,6 +170,30 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       return geometry;
     } catch (error) {
       console.error('Error generating drive-time isochrone:', error);
+      throw error;
+    }
+  },
+  
+  generateTrafficInformedBoundary: async (lat, lng, hintMiles = 3) => {
+    try {
+      console.log('[TradeArea] Generating AI boundary:', { lat, lng, hintMiles });
+      const response = await api.post('/traffic-ai/generate', { 
+        lat, 
+        lng, 
+        hint_miles: hintMiles 
+      });
+      console.log('[TradeArea] AI boundary response:', response.data);
+      const geometry = response.data.geometry;
+      set({ draftGeometry: geometry });
+      
+      // Update preview stats if available
+      if (response.data.stats) {
+        set({ previewStats: response.data.stats });
+      }
+      
+      return geometry;
+    } catch (error) {
+      console.error('[TradeArea] Error generating AI boundary:', error);
       throw error;
     }
   },
