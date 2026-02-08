@@ -144,29 +144,15 @@ export function EmailPage() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              📧 Email
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {stats ? `${stats.unread} unread message${stats.unread !== 1 ? 's' : ''}` : 'Loading...'}
-            </p>
-          </div>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-            ✉️ Compose
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 flex overflow-hidden">
+    <div className="h-full flex overflow-hidden">
         {/* Left Sidebar - Email List */}
         <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
           <div className="p-4">
+            {/* Compose Button */}
+            <button className="w-full mb-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+              ✉️ Compose
+            </button>
+
             {/* Stats */}
             {stats && (
               <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
