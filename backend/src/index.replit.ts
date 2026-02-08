@@ -25,7 +25,7 @@ const io = new Server(httpServer, {
   }
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 // Database connection
 const pool = new Pool({
@@ -1394,7 +1394,7 @@ io.on('connection', (socket) => {
 // Serve Frontend in Production
 // ============================================
 if (isProduction) {
-  const frontendPath = path.join(__dirname, 'public');
+  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
   console.log(`Serving static files from: ${frontendPath}`);
   app.use(express.static(frontendPath));
   app.get('*', (req, res, next) => {
