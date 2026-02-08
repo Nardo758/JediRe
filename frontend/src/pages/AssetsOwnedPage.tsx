@@ -14,7 +14,7 @@ interface Property {
   renewalRate: number;
 }
 
-export function AssetsOwnedPage() {
+export function AssetsOwnedPage({ view = 'portfolio' }: { view?: string }) {
   const [viewMode, setViewMode] = useState<'map' | 'grid'>('grid');
 
   const properties: Property[] = [

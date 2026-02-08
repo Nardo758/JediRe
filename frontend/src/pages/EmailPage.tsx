@@ -7,7 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
-export function EmailPage() {
+export function EmailPage({ view = 'inbox' }: { view?: string }) {
   const { deals, fetchDeals } = useDealStore();
   const [mapError, setMapError] = useState<string | null>(null);
   const [emails, setEmails] = useState<Email[]>([]);
