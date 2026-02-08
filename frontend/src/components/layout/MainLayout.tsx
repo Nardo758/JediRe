@@ -36,7 +36,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
     // Only toggle layer if on dashboard views or map page
-    if (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') {
+    if (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/dashboard/news' || location.pathname === '/map') {
       e.preventDefault();
       toggleLayer(layerId);
     }
@@ -61,6 +61,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           subitems: [
             { name: 'Portfolio Overview', path: '/dashboard', icon: '📊', badge: null },
             { name: 'Email', path: '/dashboard/email', icon: '📧', badge: '5' },
+            { name: 'News Intelligence', path: '/dashboard/news', icon: '📰', badge: '3' },
           ]
         },
       ]
@@ -69,7 +70,6 @@ export function MainLayout({ children }: MainLayoutProps) {
       title: 'INTELLIGENCE LAYERS',
       items: [
         { name: 'Market Data', path: '/market-data', icon: '📊', badge: null, layerId: null },
-        { name: 'News Intelligence', path: '/news', icon: '📰', badge: null, layerId: null },
         { name: 'Assets Owned', path: '/assets-owned', icon: '🏢', badge: '23', layerId: 'assets-owned' },
       ]
     },
@@ -248,7 +248,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                             <>
                               <span className="flex-1">{item.name}</span>
                               <div className="flex items-center gap-2">
-                                {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') && (
+                                {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/dashboard/news' || location.pathname === '/map') && (
                                   <span
                                     className={`text-lg ${
                                       getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
