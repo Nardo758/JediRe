@@ -64,7 +64,6 @@ export function MainLayout({ children }: MainLayoutProps) {
       items: [
         { name: 'Reports', path: '/reports', icon: '📈', badge: null },
         { name: 'Team', path: '/team', icon: '👥', badge: null },
-        { name: 'Architecture', path: '/architecture', icon: '🏗️', badge: null },
       ]
     },
     {
