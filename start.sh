@@ -9,6 +9,9 @@ for pid in $(lsof -ti:3000 2>/dev/null); do
 done
 sleep 2
 
+# Build backend TypeScript
+cd "$WORKSPACE/backend" && npx tsc --skipLibCheck 2>&1
+
 PORT=3000 node "$WORKSPACE/backend/dist/index.replit.js" &
 BACKEND_PID=$!
 
