@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LayerControlsPanel } from './LayerControlsPanel';
 import { useMapLayers } from '../../contexts/MapLayersContext';
+import { useDealStore } from '../../stores/dealStore';
 
 interface CustomMap {
   id: string;
@@ -10,9 +12,12 @@ interface CustomMap {
 }
 
 export function HorizontalBar() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [warMapsActive, setWarMapsActive] = useState(false);
+  const [isCreateDealOpen, setIsCreateDealOpen] = useState(false);
   const { layers, toggleLayer, updateOpacity, reorderLayers } = useMapLayers();
+  const { fetchDeals } = useDealStore();
   
   const [customMaps, setCustomMaps] = useState<CustomMap[]>([
     { id: '1', name: 'Midtown Research', icon: '📍', active: false },
@@ -44,8 +49,22 @@ export function HorizontalBar() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!searchQuery.trim()) return;
+    
+    // Navigate to search results (implement search page later)
     console.log('Searching for:', searchQuery);
     // TODO: Implement search functionality
+    // navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
+  };
+
+  const handleCreateDeal = () => {
+    // Navigate to dashboard with create modal open
+    navigate('/dashboard', { state: { openCreateDeal: true } });
+  };
+
+  const handleCreateMap = () => {
+    // TODO: Implement create map modal
+    console.log('Create Map clicked');
   };
 
   return (
@@ -105,13 +124,19 @@ export function HorizontalBar() {
       </div>
 
       {/* Create Map Button */}
-      <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+      <button 
+        onClick={handleCreateMap}
+        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+      >
         <span className="text-lg">➕</span>
         <span className="hidden lg:inline">Create Map</span>
       </button>
 
       {/* Create Deal Button */}
-      <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg transition-all">
+      <button 
+        onClick={handleCreateDeal}
+        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg transition-all"
+      >
         <span className="text-lg">➕</span>
         <span className="hidden lg:inline">Create Deal</span>
       </button>
