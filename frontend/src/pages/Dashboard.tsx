@@ -170,6 +170,7 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
+    <>
     <div className="h-full flex">
         {/* Sidebar */}
         <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
@@ -269,6 +270,6 @@ export const Dashboard: React.FC = () => {
         onClose={() => setIsCreateModalOpen(false)}
         onDealCreated={handleDealCreated}
       />
-    </div>
+    </>
   );
 };
