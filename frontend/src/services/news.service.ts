@@ -107,21 +107,15 @@ export const newsService = {
     if (filters.include_private !== undefined) 
       params.append('include_private', filters.include_private.toString());
 
-    const response = await apiClient.get(`/news/events?${params.toString()}`);
+    const response = await apiClient.get(`/api/v1/news/events?${params.toString()}`);
     return response.data;
   },
 
-  /**
-   * Get single event with full details
-   */
   async getEvent(id: string): Promise<{ success: boolean; data: NewsEvent }> {
-    const response = await apiClient.get(`/news/events/${id}`);
+    const response = await apiClient.get(`/api/v1/news/events/${id}`);
     return response.data;
   },
 
-  /**
-   * Get market dashboard metrics
-   */
   async getDashboard(filters: {
     trade_area_id?: number;
     submarket_id?: number;
@@ -131,13 +125,10 @@ export const newsService = {
     if (filters.trade_area_id) params.append('trade_area_id', filters.trade_area_id.toString());
     if (filters.submarket_id) params.append('submarket_id', filters.submarket_id.toString());
 
-    const response = await apiClient.get(`/news/dashboard?${params.toString()}`);
+    const response = await apiClient.get(`/api/v1/news/dashboard?${params.toString()}`);
     return response.data;
   },
 
-  /**
-   * Get user's alerts
-   */
   async getAlerts(filters: {
     unread_only?: boolean;
     severity?: string;
@@ -151,27 +142,21 @@ export const newsService = {
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.offset) params.append('offset', filters.offset.toString());
 
-    const response = await apiClient.get(`/news/alerts?${params.toString()}`);
+    const response = await apiClient.get(`/api/v1/news/alerts?${params.toString()}`);
     return response.data;
   },
 
-  /**
-   * Update alert (mark read, dismissed, or snoozed)
-   */
   async updateAlert(id: string, updates: {
     is_read?: boolean;
     is_dismissed?: boolean;
     snooze_hours?: number;
   }) {
-    const response = await apiClient.patch(`/news/alerts/${id}`, updates);
+    const response = await apiClient.patch(`/api/v1/news/alerts/${id}`, updates);
     return response.data;
   },
 
-  /**
-   * Get network intelligence (contact credibility)
-   */
   async getNetworkIntelligence(): Promise<{ success: boolean; data: NetworkIntelligence }> {
-    const response = await apiClient.get('/news/network');
+    const response = await apiClient.get('/api/v1/news/network');
     return response.data;
   },
 };

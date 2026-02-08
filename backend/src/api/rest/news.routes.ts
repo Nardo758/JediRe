@@ -5,8 +5,9 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
-import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
+
+const logger = { error: (...args: any[]) => console.error(...args) };
 
 const router = Router();
 
@@ -14,7 +15,7 @@ const router = Router();
  * GET /api/v1/news/events
  * Get news events with filtering
  */
-router.get('/events', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/events', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
     const {
@@ -26,7 +27,7 @@ router.get('/events', authMiddleware, async (req: Request, res: Response, next: 
       include_private = 'true',
     } = req.query;
 
-    let whereConditions = [];
+    let whereConditions: string[] = [];
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -109,7 +110,7 @@ router.get('/events', authMiddleware, async (req: Request, res: Response, next: 
  * GET /api/v1/news/events/:id
  * Get single event with full details
  */
-router.get('/events/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/events/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.userId;
@@ -152,7 +153,7 @@ router.get('/events/:id', authMiddleware, async (req: Request, res: Response, ne
  * GET /api/v1/news/dashboard
  * Get market dashboard metrics
  */
-router.get('/dashboard', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/dashboard', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
     const { trade_area_id, submarket_id } = req.query;
@@ -249,7 +250,7 @@ router.get('/dashboard', authMiddleware, async (req: Request, res: Response, nex
  * GET /api/v1/news/alerts
  * Get user's news alerts
  */
-router.get('/alerts', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
     const { unread_only = 'false', severity, limit = 50, offset = 0 } = req.query;
@@ -278,7 +279,7 @@ router.get('/alerts', authMiddleware, async (req: Request, res: Response, next: 
         ne.event_type,
         ne.location_raw,
         d.name as deal_name,
-        p.name as property_name
+        p.address_line1 as property_name
       FROM news_alerts na
       JOIN news_events ne ON ne.id = na.event_id
       LEFT JOIN deals d ON d.id = na.linked_deal_id
@@ -313,7 +314,7 @@ router.get('/alerts', authMiddleware, async (req: Request, res: Response, next: 
  * PATCH /api/v1/news/alerts/:id
  * Mark alert as read/dismissed/snoozed
  */
-router.patch('/alerts/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/alerts/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.userId;
@@ -385,7 +386,7 @@ router.patch('/alerts/:id', authMiddleware, async (req: Request, res: Response, 
  * GET /api/v1/news/network
  * Get network intelligence (contact credibility)
  */
-router.get('/network', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/network', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
 
