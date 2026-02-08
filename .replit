@@ -27,7 +27,7 @@ start = "typescript-language-server --stdio"
 [deployment]
 run = ["bash", "-c", "cd backend && NODE_ENV=production PORT=5000 node dist/index.replit.js"]
 deploymentTarget = "vm"
-build = ["bash", "-c", "cd frontend && npm run build && cd ../backend && npm run build"]
+build = ["bash", "-c", "cd frontend && npm install && npm run build && cd ../backend && npm install && npm run build"]
 
 [agent]
 expertMode = true
