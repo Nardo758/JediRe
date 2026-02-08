@@ -26,7 +26,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   const { createDeal, isLoading } = useDealStore();
   
   // Wizard state
-  const [currentStep, setCurrentStep] = useState(STEPS.CATEGORY);
+  const [currentStep, setCurrentStep] = useState<number>(STEPS.CATEGORY);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [address, setAddress] = useState('');

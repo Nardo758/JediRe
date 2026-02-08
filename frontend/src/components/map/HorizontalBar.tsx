@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { LayerControlsPanel } from './LayerControlsPanel';
+import { useMapLayers } from '../../contexts/MapLayersContext';
 
 interface CustomMap {
   id: string;
@@ -10,6 +12,8 @@ interface CustomMap {
 export function HorizontalBar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [warMapsActive, setWarMapsActive] = useState(false);
+  const { layers, toggleLayer, updateOpacity, reorderLayers } = useMapLayers();
+  
   const [customMaps, setCustomMaps] = useState<CustomMap[]>([
     { id: '1', name: 'Midtown Research', icon: '📍', active: false },
     { id: '2', name: 'Competitor Analysis', icon: '📍', active: false },
@@ -17,9 +21,15 @@ export function HorizontalBar() {
   ]);
 
   const toggleWarMaps = () => {
-    setWarMapsActive(!warMapsActive);
-    // When War Maps is active, show all custom maps
-    if (!warMapsActive) {
+    const newState = !warMapsActive;
+    setWarMapsActive(newState);
+    // When War Maps is activated, show all layers
+    if (newState) {
+      layers.forEach(layer => {
+        if (!layer.active) {
+          toggleLayer(layer.id);
+        }
+      });
       setCustomMaps(maps => maps.map(m => ({ ...m, active: true })));
     }
   };
@@ -28,6 +38,8 @@ export function HorizontalBar() {
     setCustomMaps(maps =>
       maps.map(m => (m.id === id ? { ...m, active: !m.active } : m))
     );
+    // Sync with layers state
+    toggleLayer(`custom-${id}`);
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -37,7 +49,8 @@ export function HorizontalBar() {
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 z-20">
+    <>
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 z-20">
       {/* Google Search Bar */}
       <form onSubmit={handleSearch} className="flex-1 max-w-xl">
         <div className="relative">
@@ -102,6 +115,17 @@ export function HorizontalBar() {
         <span className="text-lg">➕</span>
         <span className="hidden lg:inline">Create Deal</span>
       </button>
-    </div>
+      </div>
+
+      {/* Layer Controls Panel */}
+      <LayerControlsPanel
+        isOpen={warMapsActive}
+        onClose={() => setWarMapsActive(false)}
+        layers={layers}
+        onToggleLayer={toggleLayer}
+        onUpdateOpacity={updateOpacity}
+        onReorderLayers={reorderLayers}
+      />
+    </>
   );
 }

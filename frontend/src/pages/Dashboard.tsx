@@ -220,7 +220,7 @@ export const Dashboard: React.FC = () => {
                           {deal.name}
                         </h3>
                         <p className="text-sm text-gray-500">
-                          {deal.projectType} • {deal.acres.toFixed(1)} acres
+                          {deal.projectType} • {(deal.acres || 0).toFixed(1)} acres
                         </p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                           <span>{deal.propertyCount} properties</span>
