@@ -26,6 +26,7 @@ import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
 import isochroneRoutes from './isochrone.routes';
 import trafficAiRoutes from './traffic-ai.routes';
+import layersRoutes from './layers.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -97,6 +98,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Traffic-AI routes (AI-powered trade area generation)
   app.use(`${API_PREFIX}/traffic-ai`, trafficAiRoutes);
+
+  // Map Layers routes (data sources for map rendering)
+  app.use(`${API_PREFIX}/layers`, layersRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

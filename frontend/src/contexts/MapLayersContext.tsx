@@ -16,6 +16,7 @@ interface MapLayersContextType {
   reorderLayers: (layers: Layer[]) => void;
   getActiveLayerIds: () => string[];
   getLayerOpacity: (layerId: string) => number;
+  createLayer: (id: string, name: string, icon: string, type?: Layer['type']) => void;
 }
 
 const MapLayersContext = createContext<MapLayersContextType | undefined>(undefined);
@@ -29,8 +30,9 @@ export function MapLayersProvider({ children }: MapLayersProviderProps) {
     { id: 'custom-1', name: 'Midtown Research', type: 'custom', icon: '📍', active: false, opacity: 0.8 },
     { id: 'custom-2', name: 'Competitor Analysis', type: 'custom', icon: '📍', active: false, opacity: 0.8 },
     { id: 'custom-3', name: 'Broker Recommendations', type: 'custom', icon: '📍', active: false, opacity: 0.8 },
-    { id: 'assets-owned', name: 'Assets Owned', type: 'assets', icon: '🏢', active: true, opacity: 1.0 },
-    { id: 'pipeline', name: 'Pipeline', type: 'pipeline', icon: '📁', active: true, opacity: 1.0 },
+    { id: 'news-intelligence', name: 'News Intelligence', type: 'custom', icon: '📰', active: false, opacity: 1.0 },
+    { id: 'assets-owned', name: 'Assets Owned', type: 'assets', icon: '🏢', active: false, opacity: 1.0 },
+    { id: 'pipeline', name: 'Pipeline', type: 'pipeline', icon: '📁', active: false, opacity: 1.0 },
   ]);
 
   const toggleLayer = (layerId: string) => {
@@ -58,6 +60,31 @@ export function MapLayersProvider({ children }: MapLayersProviderProps) {
     return layer?.opacity ?? 1.0;
   };
 
+  const createLayer = (id: string, name: string, icon: string, type: Layer['type'] = 'custom') => {
+    // Check if layer already exists
+    const existingLayer = layers.find(l => l.id === id);
+    
+    if (existingLayer) {
+      // Layer exists, just toggle it on
+      console.log(`[MapLayers] Layer ${id} already exists, toggling on`);
+      if (!existingLayer.active) {
+        toggleLayer(id);
+      }
+    } else {
+      // Create new layer
+      console.log(`[MapLayers] Creating new layer: ${id}`);
+      const newLayer: Layer = {
+        id,
+        name,
+        type,
+        icon,
+        active: true, // Start active
+        opacity: 1.0
+      };
+      setLayers([...layers, newLayer]);
+    }
+  };
+
   const value: MapLayersContextType = {
     layers,
     toggleLayer,
@@ -65,6 +92,7 @@ export function MapLayersProvider({ children }: MapLayersProviderProps) {
     reorderLayers,
     getActiveLayerIds,
     getLayerOpacity,
+    createLayer,
   };
 
   return (
