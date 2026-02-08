@@ -145,32 +145,6 @@ export const MainLayout: React.FC = () => {
                 {expandedSections.dashboard && (
                   <div className="ml-4 space-y-1">
                     <SidebarItem
-                      icon="🏢"
-                      label="Portfolio Overview"
-                      count={3}
-                      path="/dashboard/portfolio"
-                      isActive={isActive('/dashboard/portfolio')}
-                    />
-                    
-                    <SidebarItem
-                      icon="🏢"
-                      label="Assets Owned"
-                      count={23}
-                      path="/dashboard/assets"
-                      isActive={isActive('/dashboard/assets')}
-                      layerConfig={{
-                        sourceType: 'assets',
-                        layerType: 'pin',
-                        defaultStyle: {
-                          icon: '🏢',
-                          color: '#10b981',
-                          size: 'medium'
-                        }
-                      }}
-                      onShowOnMap={handleShowOnMap}
-                    />
-                    
-                    <SidebarItem
                       icon="📧"
                       label="Email"
                       count={5}
@@ -189,18 +163,26 @@ export const MainLayout: React.FC = () => {
                     />
                     
                     <SidebarItem
-                      icon="📰"
-                      label="News Intelligence"
+                      icon="🏢"
+                      label="Pipeline"
                       count={3}
-                      path="/dashboard/news"
-                      isActive={isActive('/dashboard/news')}
+                      path="/dashboard/portfolio"
+                      isActive={isActive('/dashboard/portfolio')}
+                    />
+                    
+                    <SidebarItem
+                      icon="🏢"
+                      label="Assets Owned"
+                      count={23}
+                      path="/assets"
+                      isActive={isActive('/assets')}
                       layerConfig={{
-                        sourceType: 'news',
-                        layerType: 'heatmap',
+                        sourceType: 'assets',
+                        layerType: 'pin',
                         defaultStyle: {
-                          colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
-                          radius: 25,
-                          intensity: 1.0
+                          icon: '🏢',
+                          color: '#10b981',
+                          size: 'medium'
                         }
                       }}
                       onShowOnMap={handleShowOnMap}
@@ -230,27 +212,20 @@ export const MainLayout: React.FC = () => {
                   }}
                   onShowOnMap={handleShowOnMap}
                 />
-              </div>
-
-              {/* PIPELINE */}
-              <div className="mb-4">
-                <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Pipeline
-                </h3>
                 
                 <SidebarItem
-                  icon="📊"
-                  label="All Pipeline"
-                  count={8}
-                  path="/pipeline"
-                  isActive={isActive('/pipeline')}
+                  icon="📰"
+                  label="News"
+                  count={3}
+                  path="/news"
+                  isActive={isActive('/news')}
                   layerConfig={{
-                    sourceType: 'pipeline',
-                    layerType: 'pin',
+                    sourceType: 'news',
+                    layerType: 'heatmap',
                     defaultStyle: {
-                      icon: '📊',
-                      color: '#3b82f6',
-                      size: 'medium'
+                      colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
+                      radius: 25,
+                      intensity: 1.0
                     }
                   }}
                   onShowOnMap={handleShowOnMap}
