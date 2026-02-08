@@ -112,6 +112,14 @@ export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProp
   }, []);
 
   useEffect(() => {
+    if (map.current) {
+      setTimeout(() => {
+        map.current?.resize();
+      }, 50);
+    }
+  }, [showContent, showMap, contentWidth]);
+
+  useEffect(() => {
     if (!map.current || !deals.length) return;
 
     const m = map.current;
