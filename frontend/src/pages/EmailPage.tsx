@@ -148,7 +148,7 @@ export function EmailPage() {
     <div className="flex flex-col h-full bg-gray-50">
       <PageHeader
         title="Email"
-        subtitle={stats ? `${stats.unread} unread messages` : 'Loading...'}
+        description={stats ? `${stats.unread} unread messages` : 'Loading...'}
         icon="📧"
         actions={
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">

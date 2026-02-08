@@ -70,58 +70,40 @@ export const inboxService = {
     if (filters.label) params.append('label', filters.label);
     if (filters.search) params.append('search', filters.search);
 
-    const response = await apiClient.get(`/inbox?${params.toString()}`);
+    const response = await apiClient.get(`/api/v1/inbox?${params.toString()}`);
     return response.data;
   },
 
-  /**
-   * Get inbox statistics
-   */
   async getStats(): Promise<{ success: boolean; data: InboxStats }> {
-    const response = await apiClient.get('/inbox/stats');
+    const response = await apiClient.get('/api/v1/inbox/stats');
     return response.data;
   },
 
-  /**
-   * Get single email with full content
-   */
   async getEmail(id: number): Promise<{ success: boolean; data: EmailDetail }> {
-    const response = await apiClient.get(`/inbox/${id}`);
+    const response = await apiClient.get(`/api/v1/inbox/${id}`);
     return response.data;
   },
 
-  /**
-   * Update email (mark read, flag, link to deal, etc)
-   */
   async updateEmail(id: number, updates: {
     is_read?: boolean;
     is_flagged?: boolean;
     deal_id?: number | null;
     is_archived?: boolean;
   }) {
-    const response = await apiClient.patch(`/inbox/${id}`, updates);
+    const response = await apiClient.patch(`/api/v1/inbox/${id}`, updates);
     return response.data;
   },
 
-  /**
-   * Delete email (or move to trash)
-   */
   async deleteEmail(id: number, permanent = false) {
-    const response = await apiClient.delete(`/inbox/${id}?permanent=${permanent}`);
+    const response = await apiClient.delete(`/api/v1/inbox/${id}?permanent=${permanent}`);
     return response.data;
   },
 
-  /**
-   * Trigger email sync
-   */
   async sync() {
-    const response = await apiClient.post('/inbox/sync');
+    const response = await apiClient.post('/api/v1/inbox/sync');
     return response.data;
   },
 
-  /**
-   * Send a new email
-   */
   async compose(data: {
     to: string | string[];
     cc?: string | string[];
@@ -129,15 +111,12 @@ export const inboxService = {
     body: string;
     deal_id?: number;
   }) {
-    const response = await apiClient.post('/inbox/compose', data);
+    const response = await apiClient.post('/api/v1/inbox/compose', data);
     return response.data;
   },
 
-  /**
-   * Bulk actions on emails
-   */
   async bulkAction(emailIds: number[], action: 'mark_read' | 'mark_unread' | 'flag' | 'unflag' | 'archive' | 'delete') {
-    const response = await apiClient.post('/inbox/bulk-action', {
+    const response = await apiClient.post('/api/v1/inbox/bulk-action', {
       email_ids: emailIds,
       action,
     });

@@ -4,7 +4,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { authMiddleware as authModule } from '../../middleware/auth';
+const requireAuth = authModule.requireAuth;
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
 
@@ -14,7 +15,7 @@ const router = Router();
  * GET /api/v1/inbox
  * Get user's emails with filtering
  */
-router.get('/', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId || 1;
     const {
@@ -100,7 +101,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response, next: NextFu
  * GET /api/v1/inbox/stats
  * Get inbox statistics
  */
-router.get('/stats', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/stats', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId || 1;
 
@@ -130,7 +131,7 @@ router.get('/stats', authMiddleware, async (req: Request, res: Response, next: N
  * GET /api/v1/inbox/:id
  * Get single email with full content
  */
-router.get('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.userId || 1;
@@ -185,7 +186,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response, next: Nex
  * PATCH /api/v1/inbox/:id
  * Update email (mark read, flag, link to deal, etc)
  */
-router.patch('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.patch('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.userId || 1;
@@ -259,7 +260,7 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response, next: N
  * DELETE /api/v1/inbox/:id
  * Delete email (or move to trash)
  */
-router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const userId = (req as any).user?.userId || 1;
@@ -293,7 +294,7 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: 
  * POST /api/v1/inbox/sync
  * Trigger email sync (pull from provider)
  */
-router.post('/sync', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/sync', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId || 1;
 
@@ -333,7 +334,7 @@ router.post('/sync', authMiddleware, async (req: Request, res: Response, next: N
  * POST /api/v1/inbox/compose
  * Send a new email
  */
-router.post('/compose', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/compose', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId || 1;
     const { to, cc, subject, body, deal_id } = req.body;
@@ -373,7 +374,7 @@ router.post('/compose', authMiddleware, async (req: Request, res: Response, next
  * POST /api/v1/inbox/bulk-action
  * Bulk actions on emails
  */
-router.post('/bulk-action', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/bulk-action', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId || 1;
     const { email_ids, action } = req.body;
