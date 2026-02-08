@@ -187,7 +187,32 @@ Key variables are set automatically:
 - `zoning_districts` - Zoning district definitions
 - `zoning_district_boundaries` - GeoJSON boundaries for point-in-polygon lookup
 
+### News Intelligence Tables
+- `news_events` - Core intelligence extraction storage (employment, development, transactions, government, amenities)
+- `news_event_geo_impacts` - Links events to deals/properties with distance and impact scores
+- `news_alerts` - User notifications for high-impact events
+- `news_contact_credibility` - Contact credibility tracking for email sources
+- `news_sources` - Public source configuration and performance tracking
+- `news_event_corroboration` - Track when events corroborate each other
+
+### Email/Inbox Tables
+- `email_accounts` - Email account connections
+- `emails` - Synced emails with deal linking
+- `email_attachments` - Email file attachments
+- `email_labels` - Email label/folder system
+
 ## Recent Changes
+- 2026-02-08: News Intelligence system integration
+  - 6 backend endpoints: events (list/detail), dashboard, alerts (list/update), network intelligence
+  - Mounted via newsRouter in index.replit.ts at /api/v1/news/*
+  - 6 database tables with UUID foreign keys, GIN/GIST indexes
+  - NewsIntelligencePage uses real API data (events, alerts, dashboard, network)
+  - Resizable split-panel layout with map, category filters, severity badges
+  - 6 sample events and 3 alerts seeded for demo user
+- 2026-02-08: Email/Inbox system integration
+  - 4 backend endpoints: list, stats, detail, update mounted in index.replit.ts
+  - EmailPage at /dashboard/email with inbox stats, email list, flag/read toggle
+  - 7 seeded emails with attachments and deal linking
 - 2026-02-07: Critical bug fixes and infrastructure improvements
   - Fixed database connection to use DATABASE_URL instead of localhost:5432
   - Demo login now generates proper JWT tokens (was returning fake `demo-token-*`)

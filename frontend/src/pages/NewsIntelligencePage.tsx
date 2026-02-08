@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
+import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -10,7 +11,6 @@ type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 export function NewsIntelligencePage() {
   const { deals, fetchDeals } = useDealStore();
   
-  // Panel visibility and widths
   const [showViewsSidebar, setShowViewsSidebar] = useState(
     localStorage.getItem('news-views-visible') !== 'false'
   );
@@ -26,15 +26,21 @@ export function NewsIntelligencePage() {
 
   const [activeView, setActiveView] = useState<ViewType>('feed');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedEvent, setSelectedEvent] = useState<number | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 
-  // Resize state
   const [isResizingViews, setIsResizingViews] = useState(false);
   const [isResizingContent, setIsResizingContent] = useState(false);
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const eventMarkers = useRef<mapboxgl.Marker[]>([]);
+
+  const [events, setEvents] = useState<NewsEvent[]>([]);
+  const [alerts, setAlerts] = useState<NewsAlert[]>([]);
+  const [unreadAlertCount, setUnreadAlertCount] = useState(0);
+  const [dashboard, setDashboard] = useState<MarketDashboard | null>(null);
+  const [contacts, setContacts] = useState<ContactCredibility[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const categories = [
     { id: 'all', label: 'All Events', icon: '📋' },
@@ -45,66 +51,50 @@ export function NewsIntelligencePage() {
     { id: 'amenities', label: 'Amenities', icon: '🏪' },
   ];
 
-  const mockEvents = [
-    {
-      id: 1,
-      category: 'employment',
-      type: 'company_relocation_inbound',
-      headline: 'Microsoft relocating 3,200 employees to Midtown Atlanta',
-      source: 'Atlanta Business Chronicle',
-      sourceType: 'public',
-      date: '2 hours ago',
-      location: 'Midtown Atlanta, GA',
-      coordinates: [-84.385, 33.785],
-      impact: {
-        housingDemand: 2100,
-        targetRent: [1800, 3200],
-        severity: 'high',
-      },
-      affectedDeals: 2,
-      confidence: 0.92,
-    },
-    {
-      id: 2,
-      category: 'development',
-      type: 'multifamily_permit_approval',
-      headline: '400-unit luxury apartment project approved in Buckhead',
-      source: 'Email: John Smith (CBRE)',
-      sourceType: 'email',
-      date: '4 hours ago',
-      location: 'Buckhead, Atlanta, GA',
-      coordinates: [-84.388, 33.835],
-      impact: {
-        supplyPressure: 0.08,
-        severity: 'moderate',
-      },
-      affectedDeals: 1,
-      confidence: 0.78,
-      earlySignalDays: 14,
-    },
-    {
-      id: 3,
-      category: 'transactions',
-      type: 'property_sale',
-      headline: 'Summit Ridge Apartments sells for $68M ($272K/unit)',
-      source: 'Real Capital Analytics',
-      sourceType: 'public',
-      date: '1 day ago',
-      location: 'Peachtree Corners, GA',
-      coordinates: [-84.220, 33.970],
-      impact: {
-        compDeviation: 0.12,
-        severity: 'medium',
-      },
-      affectedDeals: 3,
-      confidence: 0.95,
-    },
-  ];
-
-  // Initialize map
   useEffect(() => {
     fetchDeals();
-    
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    loadEvents();
+  }, [selectedCategory]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [eventsRes, alertsRes, dashRes, networkRes] = await Promise.all([
+        newsService.getEvents({ category: selectedCategory !== 'all' ? selectedCategory : undefined }),
+        newsService.getAlerts(),
+        newsService.getDashboard(),
+        newsService.getNetworkIntelligence(),
+      ]);
+      if (eventsRes.success) setEvents(eventsRes.data);
+      if (alertsRes.success) {
+        setAlerts(alertsRes.data);
+        setUnreadAlertCount(alertsRes.unread_count);
+      }
+      if (dashRes.success) setDashboard(dashRes.data);
+      if (networkRes.success) setContacts(networkRes.data.contacts);
+    } catch (error) {
+      console.error('Error loading news data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadEvents = async () => {
+    try {
+      const res = await newsService.getEvents({
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+      });
+      if (res.success) setEvents(res.data);
+    } catch (error) {
+      console.error('Error loading events:', error);
+    }
+  };
+
+  useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
     try {
@@ -128,20 +118,15 @@ export function NewsIntelligencePage() {
     };
   }, []);
 
-  // Add deals and events to map
   useEffect(() => {
     if (!map.current || !deals.length) return;
 
     const m = map.current;
 
     if (!m.loaded()) {
-      m.on('load', () => {
-        addDealsToMap(m, deals);
-        addEventsToMap(m, mockEvents);
-      });
+      m.on('load', () => addDealsToMap(m, deals));
     } else {
       addDealsToMap(m, deals);
-      addEventsToMap(m, mockEvents);
     }
   }, [deals]);
 
@@ -200,69 +185,41 @@ export function NewsIntelligencePage() {
     });
   };
 
-  const addEventsToMap = (m: mapboxgl.Map, events: any[]) => {
-    // Clear existing markers
-    eventMarkers.current.forEach(marker => marker.remove());
-    eventMarkers.current = [];
-
-    // Add new markers
-    events.forEach(event => {
-      const el = document.createElement('div');
-      el.className = 'event-marker';
-      el.style.width = '32px';
-      el.style.height = '32px';
-      el.style.borderRadius = '50%';
-      el.style.border = '3px solid white';
-      el.style.cursor = 'pointer';
-      el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)';
-      el.style.transition = 'transform 0.2s';
-      
-      const color = 
-        event.category === 'employment' ? '#3b82f6' :
-        event.category === 'development' ? '#f97316' :
-        event.category === 'transactions' ? '#10b981' :
-        event.category === 'government' ? '#8b5cf6' :
-        '#6b7280';
-      
-      el.style.backgroundColor = color;
-      
-      el.addEventListener('mouseenter', () => {
-        el.style.transform = 'scale(1.2)';
-      });
-      
-      el.addEventListener('mouseleave', () => {
-        el.style.transform = 'scale(1)';
-      });
-      
-      el.addEventListener('click', () => {
-        setSelectedEvent(event.id);
-        // Scroll to event in content panel
-        const eventElement = document.getElementById(`event-${event.id}`);
-        if (eventElement) {
-          eventElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      });
-
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat(event.coordinates as [number, number])
-        .addTo(m);
-
-      eventMarkers.current.push(marker);
-    });
+  const handleEventClick = (event: NewsEvent) => {
+    setSelectedEvent(event.id);
   };
 
-  const handleEventClick = (event: any) => {
-    setSelectedEvent(event.id);
-    if (map.current && event.coordinates) {
-      map.current.flyTo({
-        center: event.coordinates,
-        zoom: 13,
-        duration: 1000
-      });
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    if (days === 1) return '1d ago';
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const getSeverityLabel = (severity?: string) => {
+    switch (severity) {
+      case 'high': case 'critical': return '⚠️ High Impact';
+      case 'significant': return '🔥 Significant';
+      case 'moderate': return '⚡ Moderate Impact';
+      default: return 'ℹ️ Low Impact';
     }
   };
 
-  // Handle resizing
+  const getSeverityClass = (severity?: string) => {
+    switch (severity) {
+      case 'high': case 'critical': return 'bg-orange-100 text-orange-700';
+      case 'significant': return 'bg-red-100 text-red-700';
+      case 'moderate': return 'bg-yellow-100 text-yellow-700';
+      default: return 'bg-blue-100 text-blue-700';
+    }
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingViews) {
@@ -293,7 +250,6 @@ export function NewsIntelligencePage() {
     };
   }, [isResizingViews, isResizingContent, showViewsSidebar, viewsWidth]);
 
-  // Save visibility state
   useEffect(() => {
     localStorage.setItem('news-views-visible', String(showViewsSidebar));
   }, [showViewsSidebar]);
@@ -304,7 +260,6 @@ export function NewsIntelligencePage() {
 
   const renderEventFeed = () => (
     <div className="space-y-4">
-      {/* Category Filters */}
       <div className="flex flex-wrap gap-2">
         {categories.map((cat) => (
           <button
@@ -322,165 +277,276 @@ export function NewsIntelligencePage() {
         ))}
       </div>
 
-      {/* Events List */}
-      <div className="space-y-3">
-        {mockEvents.map((event) => (
-          <div
-            key={event.id}
-            id={`event-${event.id}`}
-            onClick={() => handleEventClick(event)}
-            className={`bg-white rounded-lg border p-4 hover:shadow-md transition-all cursor-pointer ${
-              selectedEvent === event.id ? 'border-blue-500 shadow-lg' : 'border-gray-200'
-            }`}
-          >
-            {/* Header Row */}
-            <div className="flex items-start justify-between mb-3">
-              <h3 className="font-semibold text-gray-900 text-base flex-1">
-                {event.headline}
-              </h3>
-              <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                {event.sourceType === 'email' && (
-                  <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
-                    🔵 Email Intel
-                  </span>
-                )}
-                <span
-                  className={`px-3 py-1 text-xs font-medium rounded-full ${
-                    event.impact.severity === 'high'
-                      ? 'bg-orange-100 text-orange-700'
-                      : event.impact.severity === 'moderate'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-blue-100 text-blue-700'
-                  }`}
-                >
-                  {event.impact.severity === 'high' ? '⚠️ High Impact' : 
-                   event.impact.severity === 'moderate' ? '⚡ Moderate Impact' : 'ℹ️ Low Impact'}
-                </span>
-              </div>
-            </div>
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">Loading events...</div>
+      ) : events.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <div className="text-4xl mb-2">📰</div>
+          <div>No events found</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {events.map((event) => {
+            const data = event.extracted_data || {};
+            const impact = event.impact_analysis || {};
+            const headline = data.company_name
+              ? `${data.company_name} ${event.event_type?.replace(/_/g, ' ')} - ${data.employee_count?.toLocaleString() || ''} employees`
+              : data.project_name
+              ? `${data.project_name} - ${data.unit_count || ''} units`
+              : `${event.event_type?.replace(/_/g, ' ')} in ${event.location_raw}`;
 
-            {/* Location & Time Row */}
-            <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-              <span className="flex items-center gap-1">
-                📍 {event.location}
-              </span>
-              <span>•</span>
-              <span>{event.date}</span>
-              {event.earlySignalDays && (
-                <>
+            return (
+              <div
+                key={event.id}
+                id={`event-${event.id}`}
+                onClick={() => handleEventClick(event)}
+                className={`bg-white rounded-lg border p-4 hover:shadow-md transition-all cursor-pointer ${
+                  selectedEvent === event.id ? 'border-blue-500 shadow-lg' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <h3 className="font-semibold text-gray-900 text-base flex-1">
+                    {headline}
+                  </h3>
+                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                    {event.source_type === 'email_private' && (
+                      <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        🔵 Email Intel
+                      </span>
+                    )}
+                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${getSeverityClass(event.impact_severity)}`}>
+                      {getSeverityLabel(event.impact_severity)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                  <span className="flex items-center gap-1">📍 {event.location_raw}</span>
                   <span>•</span>
-                  <span className="text-green-600 font-medium">
-                    {event.earlySignalDays} days early
-                  </span>
-                </>
-              )}
-            </div>
+                  <span>{formatTimestamp(event.published_at)}</span>
+                  {event.early_signal_days && (
+                    <>
+                      <span>•</span>
+                      <span className="text-green-600 font-medium">
+                        {event.early_signal_days} days early
+                      </span>
+                    </>
+                  )}
+                </div>
 
-            {/* Impact Box */}
-            <div className="bg-gray-50 rounded-lg p-3 mb-3">
-              {event.impact.housingDemand && (
-                <div className="text-sm text-gray-700">
-                  <strong>Demand Impact:</strong> ~{event.impact.housingDemand.toLocaleString()} housing units needed • Target rent: ${event.impact.targetRent[0].toLocaleString()}–${event.impact.targetRent[1].toLocaleString()}/mo
+                <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                  {impact.housing_demand && (
+                    <div className="text-sm text-gray-700">
+                      <strong>Demand Impact:</strong> ~{impact.housing_demand.toLocaleString()} housing units needed
+                      {impact.target_rent_range && ` • Target rent: $${impact.target_rent_range[0]?.toLocaleString()}–$${impact.target_rent_range[1]?.toLocaleString()}/mo`}
+                    </div>
+                  )}
+                  {impact.supply_pressure && (
+                    <div className="text-sm text-gray-700">
+                      <strong>Supply Impact:</strong> {(impact.supply_pressure * 100).toFixed(1)}% supply pressure increase
+                    </div>
+                  )}
+                  {impact.cap_rate_trend && (
+                    <div className="text-sm text-gray-700">
+                      <strong>Market Signal:</strong> {impact.market_signal?.replace(/_/g, ' ')} • Cap rates {impact.cap_rate_trend}
+                    </div>
+                  )}
+                  {impact.development_potential && (
+                    <div className="text-sm text-gray-700">
+                      <strong>Development:</strong> {impact.development_potential} potential
+                      {impact.land_value_impact && ` • Land value +${(impact.land_value_impact * 100).toFixed(0)}%`}
+                    </div>
+                  )}
+                  {impact.property_value_impact && (
+                    <div className="text-sm text-gray-700">
+                      <strong>Value Impact:</strong> +{(impact.property_value_impact * 100).toFixed(0)}% property value increase expected
+                    </div>
+                  )}
                 </div>
-              )}
-              {event.impact.supplyPressure && (
-                <div className="text-sm text-gray-700">
-                  <strong>Supply Impact:</strong> {(event.impact.supplyPressure * 100).toFixed(1)}% supply pressure increase • Watch concessions in Class A
-                </div>
-              )}
-              {event.impact.compDeviation && (
-                <div className="text-sm text-gray-700">
-                  <strong>Comp Impact:</strong> {(event.impact.compDeviation * 100).toFixed(0)}% above market average • May influence valuations
-                </div>
-              )}
-            </div>
 
-            {/* Footer Row */}
-            <div className="flex items-center justify-between text-sm">
-              <div className="text-gray-600">
-                Source: <span className="font-medium">{event.source}</span>
+                <div className="flex items-center justify-between text-sm">
+                  <div className="text-gray-600">
+                    Source: <span className="font-medium">{event.source_name}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-500">
+                      Confidence: {(event.extraction_confidence * 100).toFixed(0)}%
+                    </span>
+                    {(event.affected_deals_count ?? 0) > 0 && (
+                      <span className="text-blue-600 font-medium">
+                        {event.affected_deals_count} {Number(event.affected_deals_count) === 1 ? 'deal' : 'deals'} affected
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <span className="text-gray-500">
-                  Confidence: {(event.confidence * 100).toFixed(0)}%
-                </span>
-                {event.affectedDeals > 0 && (
-                  <span className="text-blue-600 font-medium">
-                    {event.affectedDeals} {event.affectedDeals === 1 ? 'deal' : 'deals'} affected
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 
   const renderMarketDashboard = () => (
     <div className="space-y-4">
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="font-semibold mb-3">Demand Momentum</h3>
-        <div className="text-3xl font-bold text-green-600 mb-1">+3.2%</div>
-        <div className="text-sm text-gray-600 mb-3">Strong growth</div>
-        <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Inbound jobs</span>
-            <span className="font-medium text-green-600">+4,200</span>
+      {!dashboard ? (
+        <div className="text-center py-8 text-gray-500">Loading dashboard...</div>
+      ) : (
+        <>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold mb-3">Demand Momentum</h3>
+            <div className={`text-3xl font-bold mb-1 ${dashboard.demand_momentum.net_jobs >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {dashboard.demand_momentum.momentum_pct > 0 ? '+' : ''}{dashboard.demand_momentum.momentum_pct.toFixed(1)}%
+            </div>
+            <div className="text-sm text-gray-600 mb-3">
+              {dashboard.demand_momentum.net_jobs >= 0 ? 'Growth' : 'Decline'}
+            </div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Inbound jobs</span>
+                <span className="font-medium text-green-600">+{dashboard.demand_momentum.inbound_jobs.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Outbound jobs</span>
+                <span className="font-medium text-red-600">-{dashboard.demand_momentum.outbound_jobs.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Net Impact</span>
+                <span className={`font-semibold ${dashboard.demand_momentum.net_jobs >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {dashboard.demand_momentum.net_jobs >= 0 ? '+' : ''}{dashboard.demand_momentum.net_jobs.toLocaleString()} jobs
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Housing Demand</span>
+                <span className="font-medium">{dashboard.demand_momentum.estimated_housing_demand.toLocaleString()} units</span>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Net Impact</span>
-            <span className="font-semibold text-green-600">+3,200 jobs</span>
-          </div>
-        </div>
-      </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="font-semibold mb-3">Supply Pressure</h3>
-        <div className="text-3xl font-bold text-yellow-600 mb-1">8.5%</div>
-        <div className="text-sm text-gray-600 mb-3">Moderate pressure</div>
-        <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Pipeline units</span>
-            <span className="font-medium">1,800</span>
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold mb-3">Supply Pressure</h3>
+            <div className="text-3xl font-bold text-yellow-600 mb-1">{dashboard.supply_pressure.pressure_pct.toFixed(1)}%</div>
+            <div className="text-sm text-gray-600 mb-3">Pipeline pressure</div>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Pipeline units</span>
+                <span className="font-medium">{dashboard.supply_pressure.pipeline_units.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Active projects</span>
+                <span className="font-medium">{dashboard.supply_pressure.project_count}</span>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Existing inventory</span>
-            <span className="font-medium">21,200</span>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold mb-3">Transaction Activity</h3>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Recent transactions</span>
+                <span className="font-medium">{dashboard.transaction_activity.count}</span>
+              </div>
+              {dashboard.transaction_activity.avg_cap_rate && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Avg cap rate</span>
+                  <span className="font-medium">{dashboard.transaction_activity.avg_cap_rate.toFixed(1)}%</span>
+                </div>
+              )}
+              {dashboard.transaction_activity.avg_price_per_unit && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Avg $/unit</span>
+                  <span className="font-medium">${dashboard.transaction_activity.avg_price_per_unit.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 
   const renderNetworkIntelligence = () => (
     <div className="space-y-3">
-      {[
-        { name: 'John Smith', company: 'CBRE', credibility: 0.88, signals: 13 },
-        { name: 'Sarah Johnson', company: 'JLL', credibility: 0.75, signals: 8 },
-        { name: 'Mike Davis', company: 'Colliers', credibility: 0.82, signals: 11 },
-      ].map((contact, idx) => (
-        <div key={idx} className="bg-white rounded-lg border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium text-sm">{contact.name}</div>
-              <div className="text-xs text-gray-600">{contact.company}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-semibold text-green-600">
-                {(contact.credibility * 100).toFixed(0)}%
+      {contacts.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <div className="text-4xl mb-2">🔗</div>
+          <div>No contacts with enough signals yet</div>
+          <div className="text-xs mt-1">Contacts appear after 3+ intelligence signals</div>
+        </div>
+      ) : (
+        contacts.map((contact, idx) => (
+          <div key={idx} className="bg-white rounded-lg border border-gray-200 p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium text-sm">{contact.contact_name}</div>
+                <div className="text-xs text-gray-600">{contact.contact_company}</div>
               </div>
-              <div className="text-xs text-gray-500">{contact.signals} signals</div>
+              <div className="text-right">
+                <div className="text-lg font-semibold text-green-600">
+                  {(contact.credibility_score * 100).toFixed(0)}%
+                </div>
+                <div className="text-xs text-gray-500">{contact.total_signals} signals</div>
+              </div>
             </div>
           </div>
+        ))
+      )}
+    </div>
+  );
+
+  const renderAlerts = () => (
+    <div className="space-y-3">
+      {alerts.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          <div className="text-4xl mb-2">🔔</div>
+          <div>No alerts</div>
         </div>
-      ))}
+      ) : (
+        alerts.map((alert) => (
+          <div
+            key={alert.id}
+            className={`bg-white rounded-lg border p-4 ${
+              alert.is_read ? 'border-gray-200' : 'border-blue-300 bg-blue-50'
+            }`}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <h3 className={`font-semibold text-sm flex-1 ${alert.is_read ? 'text-gray-700' : 'text-gray-900'}`}>
+                {alert.headline}
+              </h3>
+              <span className={`px-2 py-0.5 text-xs font-medium rounded-full ml-2 ${getSeverityClass(alert.severity)}`}>
+                {alert.severity}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">{alert.summary}</p>
+            {alert.suggested_action && (
+              <div className="bg-blue-50 rounded p-2 text-xs text-blue-700">
+                <strong>Suggested:</strong> {alert.suggested_action}
+              </div>
+            )}
+            {!alert.is_read && (
+              <button
+                onClick={async () => {
+                  try {
+                    await newsService.updateAlert(alert.id, { is_read: true });
+                    setAlerts(alerts.map(a => a.id === alert.id ? { ...a, is_read: true } : a));
+                    setUnreadAlertCount(prev => Math.max(0, prev - 1));
+                  } catch (e) {
+                    console.error('Error marking alert read:', e);
+                  }
+                }}
+                className="mt-2 text-xs text-blue-600 hover:underline"
+              >
+                Mark as read
+              </button>
+            )}
+          </div>
+        ))
+      )}
     </div>
   );
 
   return (
     <div className="h-full flex relative">
-      {/* Views Sidebar */}
       {showViewsSidebar && (
         <>
           <div
@@ -494,7 +560,7 @@ export function NewsIntelligencePage() {
                   { id: 'feed', icon: '📋', label: 'Event Feed' },
                   { id: 'dashboard', icon: '📊', label: 'Market Dashboard' },
                   { id: 'network', icon: '🔗', label: 'Network Intelligence' },
-                  { id: 'alerts', icon: '🔔', label: 'Alerts', badge: 3 },
+                  { id: 'alerts', icon: '🔔', label: 'Alerts', badge: unreadAlertCount },
                 ].map((view) => (
                   <button
                     key={view.id}
@@ -507,17 +573,16 @@ export function NewsIntelligencePage() {
                   >
                     <span>{view.icon}</span>
                     <span>{view.label}</span>
-                    {view.badge && (
+                    {view.badge ? (
                       <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-600 rounded-full">
                         {view.badge}
                       </span>
-                    )}
+                    ) : null}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-          {/* Resize handle */}
           <div
             className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
             onMouseDown={() => setIsResizingViews(true)}
@@ -525,7 +590,6 @@ export function NewsIntelligencePage() {
         </>
       )}
 
-      {/* Content Panel */}
       {showContentPanel && (
         <>
           <div
@@ -542,14 +606,9 @@ export function NewsIntelligencePage() {
               {activeView === 'feed' && renderEventFeed()}
               {activeView === 'dashboard' && renderMarketDashboard()}
               {activeView === 'network' && renderNetworkIntelligence()}
-              {activeView === 'alerts' && (
-                <div className="text-center py-12 text-gray-500 text-sm">
-                  Alerts view coming soon
-                </div>
-              )}
+              {activeView === 'alerts' && renderAlerts()}
             </div>
           </div>
-          {/* Resize handle */}
           <div
             className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
             onMouseDown={() => setIsResizingContent(true)}
@@ -557,11 +616,9 @@ export function NewsIntelligencePage() {
         </>
       )}
 
-      {/* Map */}
       <div className="flex-1 relative">
         <div ref={mapContainer} className="absolute inset-0" />
         
-        {/* Toggle Controls */}
         <div className="absolute top-4 left-4 flex gap-2 z-10">
           <button
             onClick={() => setShowViewsSidebar(!showViewsSidebar)}
@@ -579,7 +636,6 @@ export function NewsIntelligencePage() {
           </button>
         </div>
 
-        {/* Legend */}
         <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
           <div className="space-y-1.5 text-xs">

@@ -59,11 +59,8 @@ CREATE TABLE IF NOT EXISTS news_event_geo_impacts (
   event_id UUID NOT NULL REFERENCES news_events(id) ON DELETE CASCADE,
   
   -- Geographic entity (one of these will be set)
-  trade_area_id INTEGER REFERENCES trade_areas(id) ON DELETE CASCADE,
-  submarket_id INTEGER REFERENCES submarkets(id) ON DELETE CASCADE,
-  msa_id INTEGER REFERENCES msas(id) ON DELETE CASCADE,
-  deal_id INTEGER REFERENCES deals(id) ON DELETE CASCADE,
-  property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
+  deal_id UUID REFERENCES deals(id) ON DELETE CASCADE,
+  property_id UUID REFERENCES properties(id) ON DELETE CASCADE,
   
   -- Impact metadata
   impact_type VARCHAR(20) NOT NULL, -- direct (inside area) or adjacent (within radius)
@@ -74,8 +71,6 @@ CREATE TABLE IF NOT EXISTS news_event_geo_impacts (
 );
 
 CREATE INDEX idx_news_geo_impacts_event ON news_event_geo_impacts(event_id);
-CREATE INDEX idx_news_geo_impacts_trade_area ON news_event_geo_impacts(trade_area_id);
-CREATE INDEX idx_news_geo_impacts_submarket ON news_event_geo_impacts(submarket_id);
 CREATE INDEX idx_news_geo_impacts_deal ON news_event_geo_impacts(deal_id);
 CREATE INDEX idx_news_geo_impacts_property ON news_event_geo_impacts(property_id);
 
@@ -98,8 +93,8 @@ CREATE TABLE IF NOT EXISTS news_alerts (
   snoozed_until TIMESTAMP,
   
   -- Linking
-  linked_deal_id INTEGER REFERENCES deals(id) ON DELETE SET NULL,
-  linked_property_id INTEGER REFERENCES properties(id) ON DELETE SET NULL,
+  linked_deal_id UUID REFERENCES deals(id) ON DELETE SET NULL,
+  linked_property_id UUID REFERENCES properties(id) ON DELETE SET NULL,
   
   created_at TIMESTAMP DEFAULT NOW(),
   read_at TIMESTAMP,

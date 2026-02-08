@@ -931,6 +931,12 @@ app.patch('/api/v1/inbox/:id', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 // ============================================
+// News Intelligence Endpoints
+// ============================================
+import newsRouter from './api/rest/news.routes';
+app.use('/api/v1/news', newsRouter);
+
+// ============================================
 // Zoning & Property Analysis Endpoints
 // ============================================
 
