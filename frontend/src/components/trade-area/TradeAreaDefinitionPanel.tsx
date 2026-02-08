@@ -44,6 +44,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     setDriveTimeProfile,
     generateRadiusCircle,
     generateDriveTimeIsochrone,
+    generateTrafficInformedBoundary,
     saveTradeArea,
   } = useTradeAreaStore();
 
@@ -51,14 +52,26 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   const [isSaving, setIsSaving] = React.useState(false);
   const [isGenerating, setIsGenerating] = React.useState(false);
 
-  // Auto-generate radius circle when radius changes
+  // Generate radius on method change, but not on slider change (too many API calls)
   useEffect(() => {
     if (definitionMethod === 'radius') {
-      generateRadiusCircle(propertyLat, propertyLng, radiusMiles).catch((error) => {
-        console.error('Failed to generate radius circle:', error);
-      });
+      handleGenerateRadius();
     }
-  }, [definitionMethod, radiusMiles, propertyLat, propertyLng]);
+  }, [definitionMethod]);
+  
+  // Generate radius circle
+  const handleGenerateRadius = async () => {
+    setIsGenerating(true);
+    try {
+      console.log('[TradeArea] Generating radius:', { propertyLat, propertyLng, radiusMiles });
+      await generateRadiusCircle(propertyLat, propertyLng, radiusMiles);
+    } catch (error: any) {
+      console.error('[TradeArea] Radius generation failed:', error);
+      alert(`Failed to generate radius boundary: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   
   // Generate drive-time isochrone
   const handleGenerateDriveTime = async () => {
@@ -67,6 +80,19 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
       await generateDriveTimeIsochrone(propertyLat, propertyLng, driveTimeMinutes, driveTimeProfile);
     } catch (error: any) {
       alert(`Failed to generate drive-time boundary: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
+  // Generate AI-powered boundary
+  const handleGenerateAI = async () => {
+    setIsGenerating(true);
+    try {
+      // Use radius as hint for AI (how far to look)
+      await generateTrafficInformedBoundary(propertyLat, propertyLng, radiusMiles);
+    } catch (error: any) {
+      alert(`Failed to generate AI boundary: ${error.message || 'Unknown error'}`);
     } finally {
       setIsGenerating(false);
     }
@@ -141,29 +167,40 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
 
       {/* Method-Specific Controls */}
       {definitionMethod === 'radius' && (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Radius: {radiusMiles} miles
-          </label>
-          <input
-            id="trade-area-radius"
-            name="radiusMiles"
-            type="range"
-            min="1"
-            max="10"
-            step="0.5"
-            value={radiusMiles}
-            onChange={(e) => setRadiusMiles(parseFloat(e.target.value))}
-            aria-label="Trade area radius in miles"
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-          />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>1 mi</span>
-            <span>5 mi</span>
-            <span>10 mi</span>
+        <div className="mb-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Radius: {radiusMiles} miles
+            </label>
+            <input
+              id="trade-area-radius"
+              name="radiusMiles"
+              type="range"
+              min="1"
+              max="10"
+              step="0.5"
+              value={radiusMiles}
+              onChange={(e) => setRadiusMiles(parseFloat(e.target.value))}
+              aria-label="Trade area radius in miles"
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>1 mi</span>
+              <span>5 mi</span>
+              <span>10 mi</span>
+            </div>
+          </div>
+          <div className="flex justify-center">
+            <button
+              onClick={handleGenerateRadius}
+              disabled={isGenerating}
+              className="px-6 py-3 bg-pink-600 text-white rounded-lg hover:bg-pink-700 disabled:bg-pink-300 transition-colors font-semibold"
+            >
+              {isGenerating ? 'Generating...' : '📍 Generate Radius Circle'}
+            </button>
           </div>
           {draftGeometry && (
-            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-800">
                 ✓ {radiusMiles}-mile circle generated and ready to save
               </p>
@@ -240,22 +277,59 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
       )}
 
       {definitionMethod === 'traffic_informed' && (
-        <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-200 rounded-lg">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">🤖</span>
-            <div>
-              <h3 className="font-semibold text-purple-900 mb-1">
-                AI-Powered Trade Area
-              </h3>
-              <p className="text-sm text-purple-700">
-                Our AI will analyze traffic patterns, commute corridors, and natural barriers
-                to suggest an optimal competitive boundary.
-              </p>
-              <button className="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
-                Generate AI Boundary
-              </button>
+        <div className="mb-6 space-y-4">
+          <div className="p-4 bg-purple-50 border-2 border-purple-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">🤖</span>
+              <div>
+                <h3 className="font-semibold text-purple-900 mb-1">
+                  AI-Powered Trade Area
+                </h3>
+                <p className="text-sm text-purple-700 mb-3">
+                  Our AI analyzes multiple drive-time scenarios, traffic patterns, and
+                  commute corridors to generate an intelligent competitive boundary.
+                </p>
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-purple-900 mb-2">
+                    Search Radius Hint: {radiusMiles} miles
+                  </label>
+                  <input
+                    id="ai-radius-hint"
+                    name="aiRadiusHint"
+                    type="range"
+                    min="1"
+                    max="10"
+                    step="0.5"
+                    value={radiusMiles}
+                    onChange={(e) => setRadiusMiles(parseFloat(e.target.value))}
+                    aria-label="AI search radius hint in miles"
+                    className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-purple-600 mt-1">
+                    <span>1 mi</span>
+                    <span>5 mi</span>
+                    <span>10 mi</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+          <div className="flex justify-center">
+            <button
+              onClick={handleGenerateAI}
+              disabled={isGenerating}
+              className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 transition-colors font-semibold"
+            >
+              {isGenerating ? 'AI Generating... (may take 10-15 seconds)' : '🤖 Generate AI Boundary'}
+            </button>
+          </div>
+          {draftGeometry && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                ✓ AI-powered boundary generated and ready to save
+              </p>
+            </div>
+          )}
         </div>
       )}
 
