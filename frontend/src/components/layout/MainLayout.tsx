@@ -1,9 +1,3 @@
-/**
- * Main Layout with Enhanced Sidebar
- * Includes layer integration for all sidebar items
- * Global MapTabsBar for all pages
- */
-
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
@@ -20,17 +14,22 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     dashboard: true,
+    email: false,
+    pipeline: false,
+    assets: false,
     intelligence: true,
+    market: false,
     news: false
   });
   
-  // Global map state
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
   const [layers, setLayers] = useState<MapLayer[]>([]);
 
   const isActive = (path: string) => location.pathname === path;
+  const isActivePrefix = (prefix: string) => location.pathname.startsWith(prefix);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -39,7 +38,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }));
   };
 
-  // Handle "Show on Map" from sidebar items
   const handleShowOnMap = async (config: any) => {
     try {
       const layer = await layersService.createLayer({
@@ -58,7 +56,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       console.log('[MainLayout] Layer created:', layer);
       setLayers([...layers, layer]);
       
-      // Navigate to dashboard if not there
       if (location.pathname !== '/') {
         window.location.href = '/';
       }
@@ -68,7 +65,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   };
 
-  // Handle map config selection
   const handleConfigSelect = async (config: MapConfiguration) => {
     setActiveConfig(config);
     
@@ -91,50 +87,59 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Global Horizontal Bar - Shows on ALL pages */}
       <MapTabsBar
         activeConfigId={activeConfig?.id}
         onConfigSelect={handleConfigSelect}
-        onNewConfig={() => {/* Open War Maps Composer if needed */}}
+        onNewConfig={() => {}}
       />
 
-      {/* Main Content Area with Sidebar */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
-        <div className="p-4">
-          {/* Logo */}
-          <div className="flex items-center gap-2 mb-6">
-            <div className="text-2xl">🚀</div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              JEDI RE
-            </h1>
-          </div>
+        <aside
+          className={`bg-white border-r border-gray-200 overflow-y-auto transition-all duration-300 relative ${
+            sidebarOpen ? 'w-64' : 'w-0'
+          }`}
+        >
+          {sidebarOpen && (
+            <div className="p-4 w-64">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="text-2xl">🚀</div>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    JEDI RE
+                  </h1>
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-xs"
+                  title="Collapse sidebar"
+                >
+                  ◀◀
+                </button>
+              </div>
 
-          {/* Navigation */}
-          <nav className="space-y-1">
-            {/* DASHBOARD */}
-            <div className="mb-4">
-              <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Dashboard
-              </h3>
-              
-              <SidebarItem
-                icon="📊"
-                label="Dashboard"
-                hasSubItems
-                isExpanded={expandedSections.dashboard}
-                onToggle={() => toggleSection('dashboard')}
-              />
-              
-              {expandedSections.dashboard && (
-                <div className="ml-4 space-y-1">
+              <nav className="space-y-1">
+                {/* DASHBOARD */}
+                <div className="mb-4">
+                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Dashboard
+                  </h3>
+                  
+                  <SidebarItem
+                    icon="📊"
+                    label="Dashboard"
+                    path="/dashboard"
+                    isActive={isActive('/dashboard')}
+                  />
+
+                  {/* EMAIL - Expandable */}
                   <SidebarItem
                     icon="📧"
                     label="Email"
                     count={5}
-                    path="/dashboard/email"
-                    isActive={isActive('/dashboard/email')}
+                    hasSubItems
+                    isExpanded={expandedSections.email}
+                    onToggle={() => toggleSection('email')}
                     layerConfig={{
                       sourceType: 'email',
                       layerType: 'pin',
@@ -147,20 +152,82 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     onShowOnMap={handleShowOnMap}
                   />
                   
+                  {expandedSections.email && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="📥"
+                        label="Inbox"
+                        path="/dashboard/email"
+                        isActive={isActive('/dashboard/email')}
+                      />
+                      <SidebarItem
+                        icon="📤"
+                        label="Sent"
+                        path="/dashboard/email/sent"
+                        isActive={isActive('/dashboard/email/sent')}
+                      />
+                      <SidebarItem
+                        icon="📝"
+                        label="Drafts"
+                        path="/dashboard/email/drafts"
+                        isActive={isActive('/dashboard/email/drafts')}
+                      />
+                      <SidebarItem
+                        icon="🚩"
+                        label="Flagged"
+                        path="/dashboard/email/flagged"
+                        isActive={isActive('/dashboard/email/flagged')}
+                      />
+                    </div>
+                  )}
+
+                  {/* PIPELINE - Expandable */}
                   <SidebarItem
                     icon="📊"
                     label="Pipeline"
                     count={12}
-                    path="/deals"
-                    isActive={isActive('/deals')}
+                    hasSubItems
+                    isExpanded={expandedSections.pipeline}
+                    onToggle={() => toggleSection('pipeline')}
                   />
                   
+                  {expandedSections.pipeline && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="📋"
+                        label="Kanban Board"
+                        path="/deals"
+                        isActive={isActive('/deals')}
+                      />
+                      <SidebarItem
+                        icon="📑"
+                        label="Grid View"
+                        path="/deals/grid"
+                        isActive={isActive('/deals/grid')}
+                      />
+                      <SidebarItem
+                        icon="✅"
+                        label="Active Deals"
+                        path="/deals/active"
+                        isActive={isActive('/deals/active')}
+                      />
+                      <SidebarItem
+                        icon="🏁"
+                        label="Closed Deals"
+                        path="/deals/closed"
+                        isActive={isActive('/deals/closed')}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* ASSETS OWNED - Expandable */}
                   <SidebarItem
                     icon="🏢"
                     label="Assets Owned"
                     count={23}
-                    path="/assets"
-                    isActive={isActive('/assets')}
+                    hasSubItems
+                    isExpanded={expandedSections.assets}
+                    onToggle={() => toggleSection('assets')}
                     layerConfig={{
                       sourceType: 'assets',
                       layerType: 'pin',
@@ -172,107 +239,172 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
+                  
+                  {expandedSections.assets && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="🏠"
+                        label="Portfolio"
+                        path="/assets-owned"
+                        isActive={isActive('/assets-owned')}
+                      />
+                      <SidebarItem
+                        icon="📈"
+                        label="Performance"
+                        path="/assets-owned/performance"
+                        isActive={isActive('/assets-owned/performance')}
+                      />
+                      <SidebarItem
+                        icon="📄"
+                        label="Documents"
+                        path="/assets-owned/documents"
+                        isActive={isActive('/assets-owned/documents')}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* INTELLIGENCE */}
-            <div className="mb-4">
-              <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Intelligence
-              </h3>
-              
-              <SidebarItem
-                icon="📈"
-                label="Market Data"
-                path="/market"
-                isActive={isActive('/market')}
-                layerConfig={{
-                  sourceType: 'market',
-                  layerType: 'overlay',
-                  defaultStyle: {
-                    colorScale: ['#dcfce7', '#86efac', '#22c55e', '#15803d'],
-                    opacity: 0.5
-                  }
-                }}
-                onShowOnMap={handleShowOnMap}
-              />
-              
-              <SidebarItem
-                icon="📰"
-                label="News Intel"
-                count={3}
-                hasSubItems
-                isExpanded={expandedSections.news}
-                onToggle={() => toggleSection('news')}
-                layerConfig={{
-                  sourceType: 'news',
-                  layerType: 'heatmap',
-                  defaultStyle: {
-                    colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
-                    radius: 25,
-                    intensity: 1.0
-                  }
-                }}
-                onShowOnMap={handleShowOnMap}
-              />
-              
-              {expandedSections.news && (
-                <div className="ml-4 space-y-1">
+                {/* INTELLIGENCE */}
+                <div className="mb-4">
+                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Intelligence
+                  </h3>
+                  
+                  {/* MARKET DATA - Expandable */}
                   <SidebarItem
-                    icon="📋"
-                    label="Event Feed"
-                    path="/dashboard/news"
-                    isActive={isActive('/dashboard/news')}
+                    icon="📈"
+                    label="Market Data"
+                    hasSubItems
+                    isExpanded={expandedSections.market}
+                    onToggle={() => toggleSection('market')}
+                    layerConfig={{
+                      sourceType: 'market',
+                      layerType: 'overlay',
+                      defaultStyle: {
+                        colorScale: ['#dcfce7', '#86efac', '#22c55e', '#15803d'],
+                        opacity: 0.5
+                      }
+                    }}
+                    onShowOnMap={handleShowOnMap}
                   />
+                  
+                  {expandedSections.market && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="📊"
+                        label="Trends"
+                        path="/market-data"
+                        isActive={isActive('/market-data')}
+                      />
+                      <SidebarItem
+                        icon="🔄"
+                        label="Comparables"
+                        path="/market-data/comparables"
+                        isActive={isActive('/market-data/comparables')}
+                      />
+                      <SidebarItem
+                        icon="👥"
+                        label="Demographics"
+                        path="/market-data/demographics"
+                        isActive={isActive('/market-data/demographics')}
+                      />
+                      <SidebarItem
+                        icon="📦"
+                        label="Supply & Demand"
+                        path="/market-data/supply-demand"
+                        isActive={isActive('/market-data/supply-demand')}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* NEWS INTEL - Expandable */}
                   <SidebarItem
-                    icon="📊"
-                    label="Market Dashboard"
-                    path="/dashboard/news/dashboard"
-                    isActive={isActive('/dashboard/news/dashboard')}
+                    icon="📰"
+                    label="News Intel"
+                    count={3}
+                    hasSubItems
+                    isExpanded={expandedSections.news}
+                    onToggle={() => toggleSection('news')}
+                    layerConfig={{
+                      sourceType: 'news',
+                      layerType: 'heatmap',
+                      defaultStyle: {
+                        colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
+                        radius: 25,
+                        intensity: 1.0
+                      }
+                    }}
+                    onShowOnMap={handleShowOnMap}
                   />
+                  
+                  {expandedSections.news && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="📋"
+                        label="Event Feed"
+                        path="/dashboard/news"
+                        isActive={isActive('/dashboard/news')}
+                      />
+                      <SidebarItem
+                        icon="📊"
+                        label="Market Dashboard"
+                        path="/dashboard/news/dashboard"
+                        isActive={isActive('/dashboard/news/dashboard')}
+                      />
+                      <SidebarItem
+                        icon="🔗"
+                        label="Network Intel"
+                        path="/dashboard/news/network"
+                        isActive={isActive('/dashboard/news/network')}
+                      />
+                      <SidebarItem
+                        icon="🔔"
+                        label="Alerts"
+                        path="/dashboard/news/alerts"
+                        isActive={isActive('/dashboard/news/alerts')}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Other sections */}
+                <div className="border-t border-gray-200 pt-4 mt-4">
                   <SidebarItem
-                    icon="🔗"
-                    label="Network Intel"
-                    path="/dashboard/news/network"
-                    isActive={isActive('/dashboard/news/network')}
+                    icon="📈"
+                    label="Reports"
+                    path="/reports"
+                    isActive={isActive('/reports')}
                   />
+                  
                   <SidebarItem
-                    icon="🔔"
-                    label="Alerts"
-                    path="/dashboard/news/alerts"
-                    isActive={isActive('/dashboard/news/alerts')}
+                    icon="👥"
+                    label="Team"
+                    path="/team"
+                    isActive={isActive('/team')}
+                  />
+                  
+                  <SidebarItem
+                    icon="⚙️"
+                    label="Settings"
+                    path="/settings"
+                    isActive={isActive('/settings')}
                   />
                 </div>
-              )}
+              </nav>
             </div>
+          )}
+        </aside>
 
-            {/* Other sections */}
-            <div className="border-t border-gray-200 pt-4 mt-4">
-              <SidebarItem
-                icon="📈"
-                label="Reports"
-                path="/reports"
-                isActive={isActive('/reports')}
-              />
-              
-              <SidebarItem
-                icon="👥"
-                label="Team"
-                path="/team"
-                isActive={isActive('/team')}
-              />
-              
-              <SidebarItem
-                icon="⚙️"
-                label="Settings"
-                path="/settings"
-                isActive={isActive('/settings')}
-              />
-            </div>
-          </nav>
-        </div>
-      </aside>
+        {/* Sidebar Toggle (when collapsed) */}
+        {!sidebarOpen && (
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-white border border-gray-200 border-l-0 rounded-r-lg p-2 shadow-md hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors text-xs"
+            title="Expand sidebar"
+          >
+            ▶▶
+          </button>
+        )}
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto">

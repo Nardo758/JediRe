@@ -12,7 +12,7 @@ interface Submarket {
   status: 'strong' | 'moderate' | 'weak';
 }
 
-export function MarketDataPage() {
+export function MarketDataPage({ view = 'trends' }: { view?: string }) {
   const submarkets: Submarket[] = [
     {
       id: '1',

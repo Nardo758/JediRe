@@ -15,7 +15,7 @@ const stageColors: Record<string, string> = {
   closed: 'bg-green-100 text-green-700',
 };
 
-export function DealsPage() {
+export function DealsPage({ view = 'kanban' }: { view?: string }) {
   const navigate = useNavigate();
   const { deals, fetchDeals, isLoading, error } = useDealStore();
 
