@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
+import { HorizontalBar } from '../components/map/HorizontalBar';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -550,7 +551,9 @@ export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProp
   };
 
   return (
-    <div className="h-full flex relative">
+    <div className="h-full flex flex-col">
+      <HorizontalBar />
+      <div className="flex-1 flex relative min-h-0">
       {showContent && (
         <>
           <div
@@ -620,6 +623,7 @@ export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProp
         >
           {showMap ? 'Map ▶' : 'Map ◀'}
         </button>
+      </div>
       </div>
     </div>
   );

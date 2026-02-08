@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
 import { inboxService, Email, InboxStats } from '../services/inbox.service';
+import { HorizontalBar } from '../components/map/HorizontalBar';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -144,7 +145,9 @@ export function EmailPage() {
   };
 
   return (
-    <div className="h-full flex overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
+      <HorizontalBar />
+      <div className="flex-1 flex min-h-0">
         {/* Left Sidebar - Email List */}
         <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
           <div className="p-4">
@@ -267,5 +270,6 @@ export function EmailPage() {
           )}
         </div>
       </div>
+    </div>
   );
 }
