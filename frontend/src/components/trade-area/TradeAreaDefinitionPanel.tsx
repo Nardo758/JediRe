@@ -54,7 +54,9 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   // Auto-generate radius circle when radius changes
   useEffect(() => {
     if (definitionMethod === 'radius') {
-      generateRadiusCircle(propertyLat, propertyLng, radiusMiles);
+      generateRadiusCircle(propertyLat, propertyLng, radiusMiles).catch((error) => {
+        console.error('Failed to generate radius circle:', error);
+      });
     }
   }, [definitionMethod, radiusMiles, propertyLat, propertyLng]);
   
@@ -160,6 +162,13 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             <span>5 mi</span>
             <span>10 mi</span>
           </div>
+          {draftGeometry && (
+            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                ✓ {radiusMiles}-mile circle generated and ready to save
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -338,7 +347,12 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
         <button
           onClick={handleSave}
           disabled={!draftGeometry || isSaving}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors font-semibold"
+          className={`px-6 py-2 rounded-lg transition-colors font-semibold ${
+            !draftGeometry || isSaving
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+          title={!draftGeometry ? 'Please select a definition method and generate boundary' : ''}
         >
           {isSaving ? 'Saving...' : 'Save Trade Area'}
         </button>

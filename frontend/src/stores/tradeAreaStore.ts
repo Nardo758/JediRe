@@ -135,12 +135,15 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   
   generateRadiusCircle: async (lat, lng, miles) => {
     try {
+      console.log('[TradeArea] Generating radius circle:', { lat, lng, miles });
       const response = await api.post('/trade-areas/radius', { lat, lng, miles });
+      console.log('[TradeArea] Radius circle response:', response.data);
       const geometry = response.data.data.geometry;
       set({ draftGeometry: geometry });
+      console.log('[TradeArea] Draft geometry updated:', geometry);
       return geometry;
     } catch (error) {
-      console.error('Error generating radius circle:', error);
+      console.error('[TradeArea] Error generating radius circle:', error);
       throw error;
     }
   },
