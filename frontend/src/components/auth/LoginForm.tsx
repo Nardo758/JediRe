@@ -172,6 +172,33 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         </button>
       </div>
 
+      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-xs text-blue-700 mb-2 font-medium">Quick Demo Access</p>
+        <button
+          type="button"
+          onClick={async () => {
+            setError('');
+            setLoading(true);
+            try {
+              const result = await login('demo@jedire.com', 'demo123');
+              if (result.success) {
+                navigate('/app');
+              } else {
+                setError(result.error || 'Demo login failed');
+              }
+            } catch (err: any) {
+              setError(err.message || 'An error occurred');
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 rounded-lg transition-colors text-sm disabled:opacity-50"
+        >
+          Sign In as Demo User
+        </button>
+      </div>
+
       <div className="mt-6 text-center">
         <p className="text-sm text-gray-600">
           Don't have an account?{' '}
