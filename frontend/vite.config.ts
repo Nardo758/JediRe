@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -14,7 +13,19 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5000,
     strictPort: true,
-    allowedHosts: true,
+    allowedHosts: true as any,
+    headers: {
+      'Content-Security-Policy': [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com https://events.mapbox.com",
+        "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
+        "img-src 'self' data: blob: https: http:",
+        "font-src 'self' data: https:",
+        "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com",
+        "worker-src 'self' blob:",
+        "child-src 'self' blob:",
+      ].join('; '),
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
@@ -36,10 +47,16 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'map-vendor': ['mapbox-gl', 'react-map-gl'],
-          'ui-vendor': ['zustand', 'axios', 'socket.io-client']
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/mapbox-gl')) {
+            return 'map-vendor';
+          }
+          if (id.includes('node_modules/zustand') || id.includes('node_modules/axios')) {
+            return 'ui-vendor';
+          }
         }
       }
     }

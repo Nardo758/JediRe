@@ -117,6 +117,7 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
                 type="number"
                 value={dealValue}
                 onChange={(e) => setDealValue(e.target.value)}
+                aria-label="Deal value"
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
                 placeholder="500000"
                 min="0"
@@ -134,6 +135,7 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               type="number"
               value={commissionRate}
               onChange={(e) => setCommissionRate(e.target.value)}
+              aria-label="Commission rate percentage"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
               placeholder="3"
               min="0"
@@ -144,6 +146,7 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               type="range"
               value={commissionRate}
               onChange={(e) => setCommissionRate(e.target.value)}
+              aria-label="Commission rate slider"
               min="0"
               max="10"
               step="0.1"
@@ -160,6 +163,7 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               type="number"
               value={splitPercentage}
               onChange={(e) => setSplitPercentage(e.target.value)}
+              aria-label="Your split percentage"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
               placeholder="50"
               min="0"
@@ -170,6 +174,7 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               type="range"
               value={splitPercentage}
               onChange={(e) => setSplitPercentage(e.target.value)}
+              aria-label="Your split percentage slider"
               min="0"
               max="100"
               step="1"

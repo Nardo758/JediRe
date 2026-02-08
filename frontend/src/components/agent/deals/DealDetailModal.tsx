@@ -290,6 +290,7 @@ export default function DealDetailModal({
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Add a note to this deal..."
+                  aria-label="Add a note to this deal"
                   rows={3}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 resize-none"
                   disabled={isSubmittingNote}

@@ -38,6 +38,7 @@ export function SettingsPage() {
               <input
                 type="text"
                 defaultValue="Leon D"
+                aria-label="Name"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -47,6 +48,7 @@ export function SettingsPage() {
               <input
                 type="email"
                 defaultValue="leon@example.com"
+                aria-label="Email"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
               />
             </div>

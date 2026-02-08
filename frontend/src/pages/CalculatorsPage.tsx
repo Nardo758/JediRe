@@ -95,6 +95,7 @@ export default function CalculatorsPage() {
                         type="number"
                         value={roiInputs[field.key as keyof typeof roiInputs]}
                         onChange={(e) => setRoiInputs({ ...roiInputs, [field.key]: Number(e.target.value) })}
+                        aria-label={field.label}
                         className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -140,6 +141,7 @@ export default function CalculatorsPage() {
                       type="number"
                       value={mortgageInputs.price}
                       onChange={(e) => setMortgageInputs({ ...mortgageInputs, price: Number(e.target.value) })}
+                      aria-label="Purchase price"
                       className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -150,6 +152,7 @@ export default function CalculatorsPage() {
                     type="number"
                     value={mortgageInputs.downPayment}
                     onChange={(e) => setMortgageInputs({ ...mortgageInputs, downPayment: Number(e.target.value) })}
+                    aria-label="Down payment percentage"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -160,6 +163,7 @@ export default function CalculatorsPage() {
                     step="0.1"
                     value={mortgageInputs.interestRate}
                     onChange={(e) => setMortgageInputs({ ...mortgageInputs, interestRate: Number(e.target.value) })}
+                    aria-label="Interest rate percentage"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -168,6 +172,7 @@ export default function CalculatorsPage() {
                   <select
                     value={mortgageInputs.term}
                     onChange={(e) => setMortgageInputs({ ...mortgageInputs, term: Number(e.target.value) })}
+                    aria-label="Loan term"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
                     <option value={15}>15 years</option>
@@ -222,6 +227,7 @@ export default function CalculatorsPage() {
                         type="number"
                         value={cashflowInputs[field.key as keyof typeof cashflowInputs]}
                         onChange={(e) => setCashflowInputs({ ...cashflowInputs, [field.key]: Number(e.target.value) })}
+                        aria-label={field.label}
                         className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -271,6 +277,7 @@ export default function CalculatorsPage() {
                       type="number"
                       value={caprateInputs.noi}
                       onChange={(e) => setCaprateInputs({ ...caprateInputs, noi: Number(e.target.value) })}
+                      aria-label="Annual net operating income"
                       className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -283,6 +290,7 @@ export default function CalculatorsPage() {
                       type="number"
                       value={caprateInputs.price}
                       onChange={(e) => setCaprateInputs({ ...caprateInputs, price: Number(e.target.value) })}
+                      aria-label="Property price"
                       className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

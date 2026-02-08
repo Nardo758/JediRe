@@ -161,6 +161,7 @@ export default function MobileListView({ onPropertySelect }: MobileListViewProps
             <input
               type="text"
               placeholder="Search properties..."
+              aria-label="Search properties"
               className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

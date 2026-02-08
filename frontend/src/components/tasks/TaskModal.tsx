@@ -137,6 +137,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               required
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              aria-label="Task title"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Enter task title..."
             />
@@ -150,6 +151,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              aria-label="Task description"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows={3}
               placeholder="Add details..."
@@ -167,6 +169,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 onChange={(e) =>
                   setFormData({ ...formData, category: e.target.value as TaskCategory })
                 }
+                aria-label="Task category"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 {categories.map((cat) => (
@@ -213,6 +216,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               type="date"
               value={formData.dueDate || ''}
               onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+              aria-label="Due date"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
@@ -228,6 +232,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                aria-label="Add tag"
                 className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Add tag..."
               />

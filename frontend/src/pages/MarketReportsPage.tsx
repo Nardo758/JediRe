@@ -80,6 +80,7 @@ export default function MarketReportsPage() {
             <input
               type="text"
               placeholder="Search reports..."
+              aria-label="Search reports"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -88,6 +89,7 @@ export default function MarketReportsPage() {
           <select
             value={selectedMarket}
             onChange={(e) => setSelectedMarket(e.target.value)}
+            aria-label="Filter by market"
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             {markets.map(m => (

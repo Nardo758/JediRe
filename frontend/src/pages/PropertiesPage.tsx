@@ -71,6 +71,7 @@ export function PropertiesPage() {
             <input
               type="text"
               placeholder="Search properties..."
+              aria-label="Search properties"
               value={localFilters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleApplyFilters()}
@@ -79,6 +80,7 @@ export function PropertiesPage() {
             <select 
               value={localFilters.building_class}
               onChange={(e) => handleFilterChange('building_class', e.target.value)}
+              aria-label="Filter by building class"
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">All Classes</option>
@@ -92,6 +94,7 @@ export function PropertiesPage() {
             <select 
               value={localFilters.neighborhood}
               onChange={(e) => handleFilterChange('neighborhood', e.target.value)}
+              aria-label="Filter by neighborhood"
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">All Neighborhoods</option>

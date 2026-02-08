@@ -167,6 +167,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="John Smith"
+                  aria-label="Full name"
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -182,6 +183,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="john@example.com"
+                  aria-label="Email address"
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -203,6 +205,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
+                  aria-label="Password"
                   className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -245,6 +248,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="••••••••••••"
+                  aria-label="Confirm password"
                   className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -270,6 +274,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   type="checkbox"
                   checked={agreeTerms}
                   onChange={(e) => setAgreeTerms(e.target.checked)}
+                  aria-label="Agree to Terms of Service and Privacy Policy"
                   className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm text-gray-600">
@@ -282,6 +287,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   type="checkbox"
                   checked={agreeUpdates}
                   onChange={(e) => setAgreeUpdates(e.target.checked)}
+                  aria-label="Send me product updates and investment tips"
                   className="w-4 h-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm text-gray-600">Send me product updates and investment tips</span>
@@ -352,6 +358,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                       value={level.id}
                       checked={experienceLevel === level.id}
                       onChange={(e) => setExperienceLevel(e.target.value)}
+                      aria-label={level.label}
                       className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm text-gray-700">{level.label}</span>
@@ -371,6 +378,7 @@ export default function RegisterForm({ onSwitchToLogin }: RegisterFormProps) {
                   onChange={(e) => setNewMarket(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addMarket())}
                   placeholder="e.g., Atlanta, GA"
+                  aria-label="Add investment market"
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <button

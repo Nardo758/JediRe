@@ -70,6 +70,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@example.com"
+              aria-label="Email address"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               required
               autoComplete="email"
@@ -88,6 +89,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••••"
+              aria-label="Password"
               className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               required
               autoComplete="current-password"
@@ -108,6 +110,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
+              aria-label="Remember me"
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-600">Remember me</span>
