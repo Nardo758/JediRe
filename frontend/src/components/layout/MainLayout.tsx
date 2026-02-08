@@ -12,6 +12,7 @@ interface MainLayoutProps {
 export function MainLayout({ children }: MainLayoutProps) {
   const location = useLocation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [dashboardExpanded, setDashboardExpanded] = useState(true);
   const { layers, toggleLayer } = useMapLayers();
 
   const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
@@ -31,7 +32,18 @@ export function MainLayout({ children }: MainLayoutProps) {
     {
       title: null,
       items: [
-        { name: 'Dashboard', path: '/dashboard', icon: '📊', badge: null, layerId: null },
+        { 
+          name: 'Dashboard', 
+          path: '/dashboard', 
+          icon: '📊', 
+          badge: null, 
+          layerId: null,
+          expandable: true,
+          subitems: [
+            { name: 'Portfolio Overview', path: '/dashboard', icon: '📊', badge: null },
+            { name: 'Email', path: '/dashboard/email', icon: '📧', badge: '5' },
+          ]
+        },
       ]
     },
     {
@@ -50,7 +62,6 @@ export function MainLayout({ children }: MainLayoutProps) {
     {
       title: 'TOOLS',
       items: [
-        { name: 'Email', path: '/email', icon: '📧', badge: '5' },
         { name: 'Reports', path: '/reports', icon: '📈', badge: null },
         { name: 'Team', path: '/team', icon: '👥', badge: null },
         { name: 'Architecture', path: '/architecture', icon: '🏗️', badge: null },
@@ -60,9 +71,6 @@ export function MainLayout({ children }: MainLayoutProps) {
       title: null,
       items: [
         { name: 'Settings', path: '/settings', icon: '⚙️', badge: null },
-      ],
-      subitems: [
-        { name: 'Module Marketplace', path: '/settings/modules', icon: '🛒', badge: 'NEW' },
       ]
     }
   ];
@@ -116,40 +124,86 @@ export function MainLayout({ children }: MainLayoutProps) {
                 )}
                 <div className="space-y-1">
                   {section.items.map((item: any) => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={(e) => item.layerId && handleLayerToggle(item.layerId, e)}
-                      className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
-                        isActive(item.path)
-                          ? 'bg-blue-50 text-blue-600 font-medium'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className="text-xl">{item.icon}</span>
-                      {!sidebarCollapsed && (
+                    <div key={item.path}>
+                      {item.expandable ? (
                         <>
-                          <span className="flex-1">{item.name}</span>
-                          <div className="flex items-center gap-2">
-                            {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/map') && (
-                              <span
-                                className={`text-lg ${
-                                  getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
-                                }`}
-                                title={getLayerState(item.layerId) ? 'Layer visible on map' : 'Layer hidden'}
-                              >
-                                👁️
-                              </span>
+                          <button
+                            onClick={() => setDashboardExpanded(!dashboardExpanded)}
+                            className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
+                              isActive(item.path)
+                                ? 'bg-blue-50 text-blue-600 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <span className="text-xl">{item.icon}</span>
+                            {!sidebarCollapsed && (
+                              <>
+                                <span className="flex-1 text-left">{item.name}</span>
+                                <span className="text-gray-400">
+                                  {dashboardExpanded ? '▼' : '▶'}
+                                </span>
+                              </>
                             )}
-                            {item.badge && (
-                              <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
-                                {item.badge}
-                              </span>
-                            )}
-                          </div>
+                          </button>
+                          {dashboardExpanded && !sidebarCollapsed && item.subitems && (
+                            <div className="ml-8 space-y-1 mt-1">
+                              {item.subitems.map((subitem: any) => (
+                                <Link
+                                  key={subitem.path}
+                                  to={subitem.path}
+                                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
+                                    location.pathname === subitem.path
+                                      ? 'bg-blue-50 text-blue-600 font-medium'
+                                      : 'text-gray-600 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <span>{subitem.name}</span>
+                                  {subitem.badge && (
+                                    <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                                      {subitem.badge}
+                                    </span>
+                                  )}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
                         </>
+                      ) : (
+                        <Link
+                          to={item.path}
+                          onClick={(e) => item.layerId && handleLayerToggle(item.layerId, e)}
+                          className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
+                            isActive(item.path)
+                              ? 'bg-blue-50 text-blue-600 font-medium'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <span className="text-xl">{item.icon}</span>
+                          {!sidebarCollapsed && (
+                            <>
+                              <span className="flex-1">{item.name}</span>
+                              <div className="flex items-center gap-2">
+                                {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/map') && (
+                                  <span
+                                    className={`text-lg ${
+                                      getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
+                                    }`}
+                                    title={getLayerState(item.layerId) ? 'Layer visible on map' : 'Layer hidden'}
+                                  >
+                                    👁️
+                                  </span>
+                                )}
+                                {item.badge && (
+                                  <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                                    {item.badge}
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </Link>
                       )}
-                    </Link>
+                    </div>
                   ))}
                 </div>
               </div>

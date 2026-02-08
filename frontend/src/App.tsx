@@ -33,13 +33,13 @@ function AppContent() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/map" element={<MapPage />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard/email" element={<EmailPage />} />
               <Route path="/market-data" element={<MarketDataPage />} />
               <Route path="/assets-owned" element={<AssetsOwnedPage />} />
               <Route path="/properties" element={<PropertiesPage />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/deals/:id" element={<DealView />} />
               <Route path="/deals/:id/:module" element={<DealView />} />
-              <Route path="/email" element={<EmailPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/team" element={<TeamPage />} />
