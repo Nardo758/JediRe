@@ -10,8 +10,8 @@
 ├──────────────────────────────────────────┤
 │                                           │
 │ 📊 Dashboard ▼                           │  ← Expandable
-│   └─ Pipeline (12)                       │
 │   └─ Email (5)                           │
+│   └─ Pipeline (12)                       │
 │   └─ Assets Owned (23)       👁️         │  ← Eye = layer toggle
 │                                           │
 │ INTELLIGENCE                              │
@@ -41,11 +41,11 @@ Click **👤 Leon D ▼** opens:
 ```
 
 ### Key Changes from Wireframe
-1. **Dashboard is now expandable** with Pipeline, Email, and Assets Owned subitems
+1. **Dashboard is now expandable** with Email, Pipeline, and Assets Owned subitems
 2. **"My Deals" renamed to "Pipeline"** and moved under Dashboard section
 3. **Settings moved to user dropdown** (top right, not in sidebar)
 4. **Architecture link removed** (internal dev tool only)
-5. **Pipeline, Email, and Assets under Dashboard** (consolidated deal management)
+5. **Email, Pipeline, and Assets under Dashboard** (consolidated deal management)
 
 ---
 
@@ -57,7 +57,7 @@ All Dashboard sub-views follow the same layout:
 - **Left:** Sidebar panel (w-80) with list/content
 - **Right:** Full Mapbox map with deal markers
   
-**Sub-views:** Pipeline, Email, Assets Owned
+**Sub-views:** Email, Pipeline, Assets Owned
 
 ---
 
@@ -188,8 +188,8 @@ All Dashboard sub-views follow the same layout:
 ## Design Pattern Established
 
 **Sidebar + Map Layout** for all Dashboard sub-views:
-- Pipeline: Deal list + Map (12 deals)
 - Email: Inbox + Map (5 messages)
+- Pipeline: Deal list + Map (12 deals)
 - Assets Owned: Asset list + Map (23 assets)
 
 **Benefits:**
