@@ -131,14 +131,6 @@ export const MainLayout: React.FC = () => {
                 {expandedSections.dashboard && (
                   <div className="ml-4 space-y-1">
                     <SidebarItem
-                      icon="📊"
-                      label="Pipeline"
-                      count={12}
-                      path="/deals"
-                      isActive={isActive('/deals')}
-                    />
-                    
-                    <SidebarItem
                       icon="📧"
                       label="Email"
                       count={5}
@@ -154,6 +146,14 @@ export const MainLayout: React.FC = () => {
                         }
                       }}
                       onShowOnMap={handleShowOnMap}
+                    />
+                    
+                    <SidebarItem
+                      icon="📊"
+                      label="Pipeline"
+                      count={12}
+                      path="/deals"
+                      isActive={isActive('/deals')}
                     />
                     
                     <SidebarItem
