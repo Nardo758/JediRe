@@ -178,4 +178,5 @@ export const commissionAPI = {
   },
 };
 
+export { api };
 export default api;
