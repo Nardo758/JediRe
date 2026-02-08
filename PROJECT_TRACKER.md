@@ -1,6 +1,6 @@
 # 🚀 Project Tracker - Leon's Portfolio
 
-**Last Updated:** 2026-02-08 07:00 EST  
+**Last Updated:** 2026-02-08 15:36 EST  
 **Active Sprint:** Week of Feb 10-16, 2026 (Sprint #3)
 
 ---
@@ -9,7 +9,7 @@
 
 | Project | Status | Progress | Sprint Focus | Next Milestone |
 |---------|--------|----------|--------------|----------------|
-| **JEDI RE** | 🟢 Building | Architecture Redesigned + Enhanced Create Deal | New wireframe implementation | Architecture rebuild + Deploy |
+| **JEDI RE** | 🟢 Building | **Map Layer System Complete (Phases 1-3)** | Ready for deployment | Production deployment + Phase 4 (Mobile) |
 | **Apartment Locator AI** | 🟢 Building | 99% MVP Ready | All backends complete | Production deployment (Feb 5) |
 | **Traveloure** | 🟡 Maintenance | 70% | - | Production sync |
 | **OppGrid** | 🔵 Running | - | - | Independent operation |
@@ -41,8 +41,8 @@
 ### 1. JEDI RE - Real Estate Intelligence Platform
 
 **Status:** 🟢 Active Development  
-**Current Phase:** Phase 0 COMPLETE → Phase 0.5 (Backend APIs) Next  
-**Progress:** Phase 0: 100% Complete | Overall: 60% Complete ⭐⭐⭐⭐⭐
+**Current Phase:** Map Layer System (Phases 1-3 COMPLETE) → Phase 4 or Deploy Next  
+**Progress:** Phase 0: 100% | Map Layers: 75% | Overall: **75% Complete** ⭐⭐⭐⭐⭐
 
 **This Week:**
 - [x] ✅ Run `./SETUP_PIPELINE.sh` (install Python deps) - **COMPLETED 21:45 EST Feb 4**
@@ -957,4 +957,88 @@
     - Market metrics dashboard ✅
   - **Commits:** 8a81a4d, c743142, d71d5b1, 87420fe, 6873492, 45e38d3, 14a16d6
   - **Status:** UI 100%, Backend 100%, Database 100% - Ready for data integration! 🎉
+
+**Completed Afternoon (12:50-14:10 EST Feb 8):**
+- ✅ **🗺️ COMPLETE TRADE AREA SYSTEM** - All 4 methods fully implemented!
+  - **1. Quick Radius (FIXED 13:04):**
+    - Added manual "Generate Radius Circle" button
+    - Changed to manual generation (no auto-generation)
+    - Visual success indicator
+    - Comprehensive error handling
+  - **2. Drive-Time Isochrones (NEW 12:57-13:15):**
+    - Real Mapbox Isochrone API integration
+    - Backend: `isochrone.routes.ts` with `/api/v1/isochrone/generate`
+    - 5/10/15/20 minute presets
+    - Driving 🚗 / Walking 🚶 profiles
+    - Returns GeoJSON Polygon geometry
+    - Green themed UI with loading states
+  - **3. Traffic-Informed AI (NEW 13:04-13:20):**
+    - Backend: `traffic-ai.routes.ts` with `/api/v1/traffic-ai/generate`
+    - Multi-sample algorithm (6 isochrones merged):
+      - 2 profiles: 'driving', 'driving-traffic'
+      - 3 time variants: 0.8x (off-peak), 1.0x (average), 1.2x (peak)
+    - Uses @turf/union for merging
+    - Confidence scoring (0.85)
+    - Purple themed UI
+    - Smart loading: "AI Generating... (may take 10-15 seconds)"
+  - **4. Custom Draw (FIXED 12:50):**
+    - Added explicit "Open Map to Draw →" button
+    - Wired to advance to BOUNDARY step
+    - Mapbox Draw tools integration
+  - **Commits:** f5535cf, f6fd952, fa41d1f
+- ✅ **📍 DASHBOARD MAP DRAWING INTEGRATION** - Major UX improvement! (13:20-13:40)
+  - **New Architecture:**
+    - mapDrawingStore (shared state) - manages drawing across Dashboard + Modal
+    - DrawingControlPanel (floating UI) - top-right controls during drawing
+    - Dashboard map activates polygon drawing
+    - CreateDealModal minimizes to right sidebar during drawing
+  - **User Flow:**
+    - Modal slides to right sidebar when drawing starts
+    - Full-screen map activates drawing mode
+    - Floating control panel appears
+    - User draws boundary on Dashboard map
+    - Click "Done Drawing" → Modal returns to center
+  - **Benefits:**
+    - Full-screen drawing (better UX)
+    - No redundant map rendering
+    - Better spatial context (see existing deals)
+    - Professional integrated feel
+  - **Files:** 2 new (store + panel), 2 updated (Dashboard + Modal), ~300 lines
+  - **Commit:** d43153a
+- ✅ **⚡ UX IMPROVEMENTS** - Streamlined Create Deal flow (13:40-14:00)
+  - **Skip Redundant Steps:**
+    - Existing properties now skip "Verify Location" step
+    - Flow: Address → Trade Area → Details (3 steps instead of 4)
+    - Point geometry set automatically
+  - **Google Places Autocomplete:**
+    - New GooglePlacesInput component (140 lines)
+    - Loads Google Places API dynamically
+    - Instant dropdown suggestions as user types
+    - Auto-geocoding on selection
+    - Auto-advances to next step (no extra button)
+    - Fallback to plain input if API unavailable
+    - Shows "G" badge when Google loaded
+  - **Type declarations:** `google-maps.d.ts` for TypeScript support
+  - **Setup needed:** Add `VITE_GOOGLE_MAPS_API_KEY` to Replit secrets
+  - **Commit:** 6625df7
+- ✅ **🗺️ MAP LAYER SYSTEM DESIGN** - Complete architecture specification (13:43-14:10)
+  - **Design document:** MAP_LAYER_SYSTEM_DESIGN.md (16KB, 593 lines)
+  - **Photoshop-like layer composition:**
+    - 5 layer types (pins, bubbles, heatmaps, boundaries, data overlays)
+    - Layer controls (visibility, opacity, z-order, filters, styles)
+    - 4 creation workflows (right-click, drag-drop, War Maps, blank canvas)
+  - **Data model:**
+    - MapConfiguration (saved map tabs)
+    - MapLayer (type, source, style, filters)
+    - LayerSource (sidebar items, APIs, static)
+    - LayerStyle (per layer type customization)
+  - **Backend requirements:**
+    - 12+ API endpoints (/api/v1/maps, /api/v1/layers/*)
+    - 2 database tables
+  - **Frontend components:**
+    - 8 new components (LayersPanel, LayerComposer, LayerPicker, etc.)
+  - **Implementation:** 5 phases, 44-55 hours total estimate
+  - **Reference implementations:** Google My Maps, Mapbox Studio, ArcGIS, Felt
+  - **Commit:** 4692360
+  - **Status:** Design complete, comprehensive, production-ready architecture
 
