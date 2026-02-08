@@ -18,24 +18,22 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    let center: [number, number] = [-84.388, 33.749];
-    if (deal.boundary && deal.boundary.type === 'Polygon' && deal.boundary.coordinates?.[0]?.[0]) {
-      center = [deal.boundary.coordinates[0][0][0], deal.boundary.coordinates[0][0][1]];
-    } else if (deal.boundary && deal.boundary.type === 'Point' && deal.boundary.coordinates) {
-      center = [deal.boundary.coordinates[0], deal.boundary.coordinates[1]];
-    }
+    // Get center from boundary
+    const center = deal.boundary.coordinates[0][0];
 
+    // Initialize map
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center,
+      center: [center[0], center[1]],
       zoom: 14
     });
 
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
+    // Load boundary and properties when map loads
     map.current.on('load', () => {
-      if (map.current && deal.boundary) {
+      if (map.current) {
         addBoundaryToMap(map.current, deal.boundary);
         fetchProperties();
       }
@@ -50,6 +48,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
   }, []);
 
   const addBoundaryToMap = (m: mapboxgl.Map, boundary: any) => {
+    // Add boundary source
     m.addSource('deal-boundary', {
       type: 'geojson',
       data: {
@@ -59,51 +58,34 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
       }
     });
 
-    if (boundary.type === 'Polygon') {
-      m.addLayer({
-        id: 'deal-boundary-fill',
-        type: 'fill',
-        source: 'deal-boundary',
-        paint: {
-          'fill-color': '#3b82f6',
-          'fill-opacity': 0.1
-        }
-      });
+    // Add fill layer
+    m.addLayer({
+      id: 'deal-boundary-fill',
+      type: 'fill',
+      source: 'deal-boundary',
+      paint: {
+        'fill-color': '#3b82f6',
+        'fill-opacity': 0.1
+      }
+    });
 
-      m.addLayer({
-        id: 'deal-boundary-line',
-        type: 'line',
-        source: 'deal-boundary',
-        paint: {
-          'line-color': '#2563eb',
-          'line-width': 3
-        }
-      });
-    } else if (boundary.type === 'Point') {
-      m.addLayer({
-        id: 'deal-boundary-point',
-        type: 'circle',
-        source: 'deal-boundary',
-        paint: {
-          'circle-radius': 10,
-          'circle-color': '#3b82f6',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#2563eb'
-        }
-      });
-    }
+    // Add border layer
+    m.addLayer({
+      id: 'deal-boundary-line',
+      type: 'line',
+      source: 'deal-boundary',
+      paint: {
+        'line-color': '#2563eb',
+        'line-width': 3
+      }
+    });
 
-    if (boundary.type === 'Polygon' && boundary.coordinates?.[0]) {
-      const bounds = new mapboxgl.LngLatBounds();
-      boundary.coordinates[0].forEach((coord: number[]) => {
-        if (Array.isArray(coord) && coord.length >= 2) {
-          bounds.extend(coord as [number, number]);
-        }
-      });
-      m.fitBounds(bounds, { padding: 50 });
-    } else if (boundary.type === 'Point' && boundary.coordinates) {
-      m.flyTo({ center: boundary.coordinates as [number, number], zoom: 16 });
-    }
+    // Fit map to boundary
+    const bounds = new mapboxgl.LngLatBounds();
+    boundary.coordinates[0].forEach((coord: number[]) => {
+      bounds.extend(coord as [number, number]);
+    });
+    m.fitBounds(bounds, { padding: 50 });
   };
 
   const fetchProperties = async () => {

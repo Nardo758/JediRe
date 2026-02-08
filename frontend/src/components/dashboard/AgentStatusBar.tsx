@@ -2,12 +2,10 @@ import React from 'react';
 
 export function AgentStatusBar() {
   const agents = [
-    { name: 'Supply', status: 'completed', progress: 100, emoji: '📦' },
-    { name: 'Demand', status: 'running', progress: 78, emoji: '📈' },
-    { name: 'News', status: 'completed', progress: 100, emoji: '📰' },
-    { name: 'Debt', status: 'idle', progress: 0, emoji: '🏦' },
-    { name: 'SF Strategy', status: 'running', progress: 45, emoji: '🎯' },
-    { name: 'Cash', status: 'idle', progress: 0, emoji: '💰' },
+    { name: 'Property Search', status: 'completed', progress: 100, emoji: '🔍' },
+    { name: 'Strategy Arbitrage', status: 'running', progress: 78, emoji: '🎯' },
+    { name: 'Zoning Analysis', status: 'idle', progress: 0, emoji: '📋' },
+    { name: 'Cash Flow', status: 'idle', progress: 0, emoji: '💰' },
   ];
 
   return (
