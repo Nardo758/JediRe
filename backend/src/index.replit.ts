@@ -986,6 +986,7 @@ import tradeAreasRoutes from './api/rest/trade-areas.routes';
 import geographicContextRoutes from './api/rest/geographic-context.routes';
 import isochroneRoutes from './api/rest/isochrone.routes';
 import trafficAiRoutes from './api/rest/traffic-ai.routes';
+import mapConfigsRouter from './api/rest/map-configs.routes';
 
 app.use('/api/v1/news', newsRouter);
 app.use('/api/v1/trade-areas', tradeAreasRoutes);
@@ -993,6 +994,7 @@ app.use('/api/v1/isochrone', isochroneRoutes);
 app.use('/api/v1/traffic-ai', trafficAiRoutes);
 app.use('/api/v1', geographicContextRoutes);
 app.use('/api/v1/deals', geographicContextRoutes);
+app.use('/api/v1/map-configs', mapConfigsRouter);
 
 // ============================================
 // Zoning & Property Analysis Endpoints
