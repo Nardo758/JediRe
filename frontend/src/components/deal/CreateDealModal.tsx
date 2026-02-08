@@ -1,11 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import mapboxgl from 'mapbox-gl';
-import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import React, { useState, useEffect } from 'react';
 import { useDealStore } from '../../stores/dealStore';
+import { useMapDrawingStore } from '../../stores/mapDrawingStore';
 import { Button } from '../shared/Button';
 import { TradeAreaDefinitionPanel } from '../trade-area';
 import { api } from '../../services/api';
-import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 interface CreateDealModalProps {
   isOpen: boolean;
@@ -27,6 +25,7 @@ const STEPS = {
 
 export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClose, onDealCreated }) => {
   const { createDeal, isLoading } = useDealStore();
+  const { startDrawing, drawnGeometry, clearDrawing } = useMapDrawingStore();
   
   // Wizard state
   const [currentStep, setCurrentStep] = useState<number>(STEPS.CATEGORY);
@@ -44,60 +43,23 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
-  
-  // Map refs
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const draw = useRef<MapboxDraw | null>(null);
 
-  // Initialize map when we reach boundary step
+  // Trigger drawing mode when reaching boundary step
   useEffect(() => {
-    if (currentStep !== STEPS.BOUNDARY || !mapContainer.current || map.current) return;
-
-    const centerCoords = coordinates || [-84.388, 33.749]; // Default to Atlanta
-
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/satellite-streets-v12',
-      center: centerCoords,
-      zoom: coordinates ? 16 : 11,
-    });
-
-    draw.current = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: {
-        polygon: true,
-        trash: true,
-      },
-      defaultMode: 'draw_polygon',
-    });
-
-    map.current.addControl(draw.current);
-    map.current.addControl(new mapboxgl.NavigationControl());
-
-    // Add marker if we have coordinates
-    if (coordinates) {
-      new mapboxgl.Marker()
-        .setLngLat(coordinates)
-        .addTo(map.current);
+    if (currentStep === STEPS.BOUNDARY && developmentType === 'new') {
+      console.log('[CreateDeal] Starting drawing mode');
+      // Activate drawing on Dashboard map
+      startDrawing('boundary', coordinates || undefined);
     }
-
-    // Listen for polygon completion
-    map.current.on('draw.create', (e: any) => {
-      setBoundary(e.features[0].geometry);
-    });
-
-    map.current.on('draw.update', (e: any) => {
-      setBoundary(e.features[0].geometry);
-    });
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, [currentStep, coordinates]);
+  }, [currentStep, developmentType, coordinates]);
+  
+  // Sync drawn boundary from shared store
+  useEffect(() => {
+    if (drawnGeometry) {
+      console.log('[CreateDeal] Boundary drawn:', drawnGeometry);
+      setBoundary(drawnGeometry);
+    }
+  }, [drawnGeometry]);
 
   // Geocode address
   const handleGeocodeAddress = async () => {
@@ -205,6 +167,9 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   };
 
   const handleClose = () => {
+    // Clear drawing state
+    clearDrawing();
+    
     // Reset all state
     setCurrentStep(STEPS.CATEGORY);
     setDealCategory(null);
@@ -224,9 +189,16 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
+  // Minimize modal when in drawing mode
+  const isDrawingMode = currentStep === STEPS.BOUNDARY && developmentType === 'new';
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+    <div className={`fixed inset-0 z-50 ${isDrawingMode ? '' : 'bg-black bg-opacity-50 flex items-center justify-center'}`}>
+      <div className={`bg-white shadow-2xl overflow-y-auto ${
+        isDrawingMode 
+          ? 'absolute right-0 top-0 bottom-0 w-96 rounded-l-xl' 
+          : 'rounded-xl max-w-4xl w-full max-h-[90vh]'
+      }`}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <div>
@@ -432,23 +404,39 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 {developmentType === 'new'
-                  ? 'Draw the property boundary'
+                  ? 'Draw Property Boundary on Map'
                   : 'Verify property location'}
               </h3>
-              <div
-                ref={mapContainer}
-                className="w-full h-[400px] rounded-lg border-2 border-gray-200"
-              />
-              {developmentType === 'new' && (
-                <p className="text-sm text-gray-600">
-                  Use the polygon tool to draw the property boundary. Click to add points,
-                  double-click to complete.
-                </p>
-              )}
-              {boundary && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-800">
-                    ✓ {developmentType === 'new' ? 'Boundary drawn' : 'Location set'}
+              
+              {developmentType === 'new' ? (
+                <>
+                  <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg text-center">
+                    <div className="text-6xl mb-4">🗺️</div>
+                    <h4 className="text-lg font-semibold text-blue-900 mb-2">
+                      Drawing on Dashboard Map
+                    </h4>
+                    <p className="text-sm text-blue-700 mb-4">
+                      The map is now in drawing mode. Use the drawing tools to outline your property boundary.
+                    </p>
+                    <div className="text-xs text-blue-600 space-y-1">
+                      <div>• Click to add points</div>
+                      <div>• Double-click to finish</div>
+                      <div>• Use trash icon to start over</div>
+                    </div>
+                  </div>
+                  
+                  {boundary && (
+                    <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+                      <p className="text-sm text-green-800 font-semibold text-center">
+                        ✓ Boundary drawn successfully! Click "Continue" below.
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <p className="text-sm text-gray-700">
+                    Location verified for existing property.
                   </p>
                 </div>
               )}
