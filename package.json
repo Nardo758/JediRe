@@ -12,6 +12,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@turf/helpers": "^7.3.4",
+    "@turf/union": "^7.3.4",
     "@types/react-window": "^1.8.8",
     "react-virtualized-auto-sizer": "^2.0.2",
     "react-window": "^2.2.6",

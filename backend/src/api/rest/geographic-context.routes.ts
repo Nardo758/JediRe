@@ -9,7 +9,7 @@ import { logger } from '../../utils/logger';
 const router = Router();
 
 // POST /api/v1/deals/:id/geographic-context - Set geographic context for deal
-router.post('/:id/geographic-context', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:id/geographic-context', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id: dealId } = req.params;
     const { trade_area_id, submarket_id, msa_id, active_scope } = req.body;
@@ -47,7 +47,7 @@ router.post('/:id/geographic-context', authMiddleware, async (req: Request, res:
 });
 
 // GET /api/v1/deals/:id/geographic-context - Get deal's geographic hierarchy
-router.get('/:id/geographic-context', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id: dealId } = req.params;
 
@@ -98,7 +98,7 @@ router.get('/:id/geographic-context', authMiddleware, async (req: Request, res: 
 });
 
 // PUT /api/v1/deals/:id/geographic-context - Update active scope
-router.put('/:id/geographic-context', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id/geographic-context', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id: dealId } = req.params;
     const { active_scope, trade_area_id } = req.body;
@@ -126,7 +126,7 @@ router.put('/:id/geographic-context', authMiddleware, async (req: Request, res: 
 });
 
 // GET /api/v1/submarkets/lookup - Find submarket for coordinates
-router.get('/submarkets/lookup', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/submarkets/lookup', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng } = req.query;
 
@@ -163,7 +163,7 @@ router.get('/submarkets/lookup', authMiddleware, async (req: Request, res: Respo
 });
 
 // GET /api/v1/msas/lookup - Find MSA for coordinates
-router.get('/msas/lookup', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/msas/lookup', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng } = req.query;
 

@@ -12,7 +12,7 @@ import { point } from '@turf/helpers';
 const router = Router();
 
 // POST /api/v1/trade-areas - Create new trade area
-router.post('/', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
       name,
@@ -64,7 +64,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response, next: NextF
 });
 
 // GET /api/v1/trade-areas/:id - Get trade area with stats
-router.get('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -107,7 +107,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response, next: Nex
 });
 
 // PUT /api/v1/trade-areas/:id - Update trade area
-router.put('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.put('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const updates = req.body;
@@ -128,7 +128,7 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response, next: Nex
 });
 
 // DELETE /api/v1/trade-areas/:id - Delete trade area
-router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 
@@ -147,7 +147,7 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: 
 });
 
 // GET /api/v1/trade-areas/library - List user's saved trade areas
-router.get('/library', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/library', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { shared } = req.query;
     const userId = (req as any).user?.userId || 1;
@@ -194,7 +194,7 @@ router.get('/library', authMiddleware, async (req: Request, res: Response, next:
 });
 
 // POST /api/v1/trade-areas/generate - AI-generate trade area from traffic data
-router.post('/generate', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/generate', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng, radius_hint } = req.body;
 
@@ -234,7 +234,7 @@ router.post('/generate', authMiddleware, async (req: Request, res: Response, nex
 });
 
 // POST /api/v1/trade-areas/preview-stats - Get stats for draft geometry
-router.post('/preview-stats', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { geometry } = req.body;
 
@@ -267,7 +267,7 @@ router.post('/preview-stats', authMiddleware, async (req: Request, res: Response
 });
 
 // POST /api/v1/trade-areas/radius - Quick helper to create radius circle
-router.post('/radius', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/radius', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng, miles } = req.body;
 

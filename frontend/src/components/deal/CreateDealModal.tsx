@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../../stores/dealStore';
 import { useMapDrawingStore } from '../../stores/mapDrawingStore';
 import { Button } from '../shared/Button';
 import { TradeAreaDefinitionPanel } from '../trade-area';
 import { api } from '../../services/api';
+
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 interface CreateDealModalProps {
   isOpen: boolean;
