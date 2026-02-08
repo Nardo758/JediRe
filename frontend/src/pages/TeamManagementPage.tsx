@@ -178,6 +178,7 @@ export default function TeamManagementPage() {
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@company.com"
+                  aria-label="Email address"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -186,6 +187,7 @@ export default function TeamManagementPage() {
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
+                  aria-label="Role"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="admin">Admin</option>

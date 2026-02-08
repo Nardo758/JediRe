@@ -110,6 +110,7 @@ export function LayerControlsPanel({
                     type="checkbox"
                     checked={layer.active}
                     onChange={() => onToggleLayer(layer.id)}
+                    aria-label={`Toggle ${layer.name} layer`}
                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                   />
                   <span className="text-lg">{layer.icon}</span>
@@ -155,6 +156,7 @@ export function LayerControlsPanel({
                     min="0"
                     max="100"
                     value={layer.opacity * 100}
+                    aria-label={`${layer.name} layer opacity`}
                     onChange={(e) =>
                       onUpdateOpacity(layer.id, parseInt(e.target.value) / 100)
                     }

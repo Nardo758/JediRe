@@ -47,6 +47,7 @@ export default function SearchBar() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search address or city..."
+          aria-label="Search address or city"
           className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
         />
         {isSearching && (

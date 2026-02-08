@@ -378,6 +378,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   placeholder="123 Peachtree St NE, Atlanta, GA 30303"
+                  aria-label="Street address"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter') {
@@ -463,6 +464,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   value={dealName}
                   onChange={(e) => setDealName(e.target.value)}
                   placeholder="e.g., Buckhead Mixed-Use Development"
+                  aria-label="Deal name"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -474,6 +476,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Brief description of the deal..."
+                  aria-label="Deal description"
                   rows={3}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -485,6 +488,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                 <select
                   value={tier}
                   onChange={(e) => setTier(e.target.value as any)}
+                  aria-label="Subscription tier"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="basic">Basic</option>

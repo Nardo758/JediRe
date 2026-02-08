@@ -162,11 +162,13 @@ export function ModuleMarketplacePage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search modules..."
+          aria-label="Search modules"
           className="flex-1 max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
+          aria-label="Filter by category"
           className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {categories.map((cat) => (

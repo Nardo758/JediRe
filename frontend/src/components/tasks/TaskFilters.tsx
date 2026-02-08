@@ -16,6 +16,7 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({ filters, onChange }) =
       <select
         value={filters.category || ''}
         onChange={(e) => onChange({ ...filters, category: e.target.value || undefined })}
+        aria-label="Filter by category"
         className="border border-gray-300 rounded-lg px-3 py-2"
       >
         <option value="">All Categories</option>
@@ -34,6 +35,7 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({ filters, onChange }) =
       <select
         value={filters.priority || ''}
         onChange={(e) => onChange({ ...filters, priority: e.target.value || undefined })}
+        aria-label="Filter by priority"
         className="border border-gray-300 rounded-lg px-3 py-2"
       >
         <option value="">All Priorities</option>

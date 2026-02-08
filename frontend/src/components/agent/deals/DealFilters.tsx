@@ -112,6 +112,7 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
             <select
               value={filters.sortBy}
               onChange={(e) => onChange({ ...filters, sortBy: e.target.value as any })}
+              aria-label="Sort by"
               className="text-xs border border-gray-300 rounded px-2 py-1"
             >
               {sortOptions.map(opt => (
@@ -193,6 +194,7 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
                 ...filters, 
                 clientId: e.target.value || undefined 
               })}
+              aria-label="Filter by client"
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
             >
               <option value="">All Clients</option>
@@ -215,6 +217,7 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
                 type="date"
                 value={filters.dateFrom || ''}
                 onChange={(e) => onChange({ ...filters, dateFrom: e.target.value || undefined })}
+                aria-label="Expected close date from"
                 className="text-sm border border-gray-300 rounded-lg px-3 py-2"
                 placeholder="From"
               />
@@ -222,6 +225,7 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
                 type="date"
                 value={filters.dateTo || ''}
                 onChange={(e) => onChange({ ...filters, dateTo: e.target.value || undefined })}
+                aria-label="Expected close date to"
                 className="text-sm border border-gray-300 rounded-lg px-3 py-2"
                 placeholder="To"
               />

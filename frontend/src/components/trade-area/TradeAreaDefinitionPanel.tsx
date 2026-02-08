@@ -134,6 +134,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             step="0.5"
             value={radiusMiles}
             onChange={(e) => setRadiusMiles(parseFloat(e.target.value))}
+            aria-label="Trade area radius in miles"
             className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
           />
           <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -285,6 +286,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             value={tradeAreaName}
             onChange={(e) => setTradeAreaName(e.target.value)}
             placeholder={`${radiusMiles}-Mile Trade Area`}
+            aria-label="Trade area name"
             className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>

@@ -28,6 +28,7 @@ export default function FilterPanel() {
             min="0"
             max="100"
             placeholder="Min"
+            aria-label="Minimum opportunity score"
             value={localFilters.minScore || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, minScore: Number(e.target.value) })
@@ -40,6 +41,7 @@ export default function FilterPanel() {
             min="0"
             max="100"
             placeholder="Max"
+            aria-label="Maximum opportunity score"
             value={localFilters.maxScore || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, maxScore: Number(e.target.value) })
@@ -58,6 +60,7 @@ export default function FilterPanel() {
           <input
             type="number"
             placeholder="Min"
+            aria-label="Minimum price"
             value={localFilters.minPrice || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, minPrice: Number(e.target.value) })
@@ -68,6 +71,7 @@ export default function FilterPanel() {
           <input
             type="number"
             placeholder="Max"
+            aria-label="Maximum price"
             value={localFilters.maxPrice || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, maxPrice: Number(e.target.value) })
@@ -97,6 +101,7 @@ export default function FilterPanel() {
                       : current.filter((m) => m !== city),
                   });
                 }}
+                aria-label={`Filter by ${city}`}
                 className="rounded text-primary-600 focus:ring-primary-500"
               />
               <span>{city}</span>

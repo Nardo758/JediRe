@@ -107,6 +107,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                 max="100"
                 value={filters.scoreRange[0]}
                 onChange={(e) => setFilters(prev => ({ ...prev, scoreRange: [parseInt(e.target.value), prev.scoreRange[1]] }))}
+                aria-label="Minimum opportunity score"
                 className="w-full accent-blue-600"
               />
               <div className="flex justify-between text-sm text-gray-500 mt-1">
@@ -126,6 +127,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                 step="10000"
                 value={filters.priceRange[1]}
                 onChange={(e) => setFilters(prev => ({ ...prev, priceRange: [prev.priceRange[0], parseInt(e.target.value)] }))}
+                aria-label="Maximum price range"
                 className="w-full accent-blue-600"
               />
               <div className="text-center text-sm text-gray-600 mt-1">
@@ -143,6 +145,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                     type="checkbox"
                     checked={filters.strategies.includes(strategy.id)}
                     onChange={() => toggleStrategy(strategy.id)}
+                    aria-label={`${strategy.label} strategy`}
                     className="w-5 h-5 rounded text-blue-600"
                   />
                   <span className="text-gray-700">{strategy.label}</span>
@@ -161,6 +164,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                     name="timeline"
                     checked={filters.timeline === tl.id}
                     onChange={() => setFilters(prev => ({ ...prev, timeline: tl.id }))}
+                    aria-label={`${tl.label} timeline`}
                     className="w-5 h-5 text-blue-600"
                   />
                   <span className="text-gray-700">{tl.label}</span>
@@ -177,6 +181,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                   type="checkbox"
                   checked={filters.arbitrageOnly}
                   onChange={(e) => setFilters(prev => ({ ...prev, arbitrageOnly: e.target.checked }))}
+                  aria-label="Arbitrage only greater than 15 percent"
                   className="w-5 h-5 rounded text-blue-600"
                 />
                 <span className="text-gray-700">Arbitrage only (&gt;15%)</span>
@@ -186,6 +191,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                   type="checkbox"
                   checked={filters.withZoning}
                   onChange={(e) => setFilters(prev => ({ ...prev, withZoning: e.target.checked }))}
+                  aria-label="With zoning analysis"
                   className="w-5 h-5 rounded text-blue-600"
                 />
                 <span className="text-gray-700">With zoning analysis</span>
@@ -195,6 +201,7 @@ export default function MobileFiltersSheet({ isOpen, onClose, onApply }: MobileF
                   type="checkbox"
                   checked={filters.cashFlowOptimized}
                   onChange={(e) => setFilters(prev => ({ ...prev, cashFlowOptimized: e.target.checked }))}
+                  aria-label="Cash flow optimized"
                   className="w-5 h-5 rounded text-blue-600"
                 />
                 <span className="text-gray-700">Cash flow optimized</span>

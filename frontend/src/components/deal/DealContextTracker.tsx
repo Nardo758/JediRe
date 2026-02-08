@@ -144,6 +144,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
                   <select
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
+                    aria-label="Filter activity type"
                     className="border border-gray-300 rounded-lg px-3 py-2"
                   >
                     <option value="all">All Activity</option>

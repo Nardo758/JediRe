@@ -194,6 +194,7 @@ export default function BlogPage() {
               <input
                 type="text"
                 placeholder="Search articles..."
+                aria-label="Search articles"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-12 pr-24 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -363,6 +364,7 @@ export default function BlogPage() {
             <input
               type="email"
               placeholder="Enter your email"
+              aria-label="Email for newsletter subscription"
               className="flex-1 px-4 py-3 rounded-lg text-gray-900 placeholder-gray-500"
             />
             <button className="px-6 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-gray-100">

@@ -61,6 +61,7 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
               setMinScore(val);
               onScoreChange?.(val);
             }}
+            aria-label="Minimum opportunity score"
             className="w-12 text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none text-center"
             min={0}
             max={100}
@@ -78,6 +79,7 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
               setTimeline(val);
               onTimelineChange?.(val);
             }}
+            aria-label="Timeline filter"
             className="text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none"
           >
             <option value={3}>3 months</option>

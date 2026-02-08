@@ -43,6 +43,7 @@ export default function AnnotationSection({ propertyId, annotations }: Annotatio
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Add a comment or note..."
+            aria-label="Add a comment or note"
             className="input flex-1"
             disabled={isSubmitting}
           />

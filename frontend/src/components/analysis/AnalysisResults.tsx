@@ -177,6 +177,7 @@ export default function AnalysisResults() {
             <select
               value={input.name}
               onChange={(e) => setInput({ ...input, name: e.target.value })}
+              aria-label="Atlanta neighborhood"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
@@ -201,6 +202,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 50000"
                 value={input.population || ''}
                 onChange={(e) => setInput({ ...input, population: parseInt(e.target.value) || 0 })}
+                aria-label="Population"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
@@ -216,6 +218,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 20000"
                 value={input.existing_units || ''}
                 onChange={(e) => setInput({ ...input, existing_units: parseInt(e.target.value) || 0 })}
+                aria-label="Existing units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
@@ -231,6 +234,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 65000"
                 value={input.median_income || ''}
                 onChange={(e) => setInput({ ...input, median_income: parseInt(e.target.value) || 0 })}
+                aria-label="Median income"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -248,6 +252,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 500"
                 value={input.pipeline_units || ''}
                 onChange={(e) => setInput({ ...input, pipeline_units: parseInt(e.target.value) || 0 })}
+                aria-label="Pipeline units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">Units under construction</p>
@@ -263,6 +268,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 200"
                 value={input.future_permitted_units || ''}
                 onChange={(e) => setInput({ ...input, future_permitted_units: parseInt(e.target.value) || 0 })}
+                aria-label="Future permitted units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">Permitted but not started</p>
@@ -278,6 +284,7 @@ export default function AnalysisResults() {
                 placeholder="e.g., 70000"
                 value={input.employment || ''}
                 onChange={(e) => setInput({ ...input, employment: parseInt(e.target.value) || 0 })}
+                aria-label="Employment"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
