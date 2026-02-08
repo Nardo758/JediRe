@@ -110,7 +110,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 <div className="ml-4 space-y-1">
                   <SidebarItem
                     icon="🏢"
-                    label="Portfolio Overview"
+                    label="Pipeline"
                     count={3}
                     path="/dashboard/portfolio"
                     isActive={isActive('/dashboard/portfolio')}

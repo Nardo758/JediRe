@@ -10,7 +10,7 @@
 ├──────────────────────────────────────────┤
 │                                           │
 │ 📊 Dashboard ▼                           │  ← Expandable
-│   └─ Portfolio Overview                  │
+│   └─ Pipeline                            │
 │   └─ Email (5)                           │
 │                                           │
 │ INTELLIGENCE                              │
@@ -61,11 +61,11 @@ Both Dashboard sub-views follow the same layout:
 
 ---
 
-### Portfolio Overview Page
+### Pipeline Page (Dashboard → Pipeline)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  📊 Portfolio Overview                                    [+ Create Deal]   │
+│  📊 Pipeline                                              [+ Create Deal]   │
 │  1 deal active                                                               │
 ├─────────────┬───────────────────────────────────────────────────────────────┤
 │             │                                                                 │
@@ -188,7 +188,7 @@ Both Dashboard sub-views follow the same layout:
 ## Design Pattern Established
 
 **Sidebar + Map Layout** for all Dashboard sub-views:
-- Portfolio Overview: Deal list + Map
+- Pipeline: Deal list + Map
 - Email: Inbox + Map
 
 **Benefits:**
@@ -211,7 +211,7 @@ Both Dashboard sub-views follow the same layout:
 - Sample data seeded
 
 ### 🔄 In Progress
-- Portfolio Overview stats and filters (planned next)
+- Pipeline stats and filters (planned next)
 
 ### 📋 Planned
 - Email detail view (click email to expand full content)
