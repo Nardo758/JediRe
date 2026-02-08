@@ -3,8 +3,6 @@ import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { Button } from '../components/shared/Button';
-import { PageHeader } from '../components/layout/PageHeader';
-import { architectureMetadata } from '../data/architectureMetadata';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -172,17 +170,7 @@ export const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col">
-      {/* Header */}
-      <PageHeader
-        title="Portfolio Overview"
-        description={`${(Array.isArray(deals) ? deals.length : 0)} ${(Array.isArray(deals) ? deals.length : 0) === 1 ? 'deal' : 'deals'} active`}
-        icon="📊"
-        architectureInfo={architectureMetadata.dashboard}
-      />
-
-      {/* Content */}
-      <div className="flex-1 flex">
+    <div className="h-full flex">
         {/* Sidebar */}
         <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
           <div className="p-4">

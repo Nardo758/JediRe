@@ -167,6 +167,9 @@ export function MainLayout({ children }: MainLayoutProps) {
         </div>
       </header>
 
+      {/* Central Horizontal Bar - Always visible */}
+      <HorizontalBar />
+
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Sidebar */}
@@ -281,14 +284,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative flex flex-col">
-          {/* Horizontal Bar (Map Layers) - Show on dashboard views and map pages */}
-          {(location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') && (
-            <HorizontalBar />
-          )}
-          
-          <div className="flex-1 overflow-auto">
-            {children}
-          </div>
+          {children}
           
           {/* Floating Chat Overlay */}
           <ChatOverlay />
