@@ -31,6 +31,9 @@ interface TradeAreaStore {
   
   // Generate radius circle
   generateRadiusCircle: (lat: number, lng: number, miles: number) => Promise<GeoJSON.Polygon>;
+  
+  // Generate drive-time isochrone
+  generateDriveTimeIsochrone: (lat: number, lng: number, minutes: number, profile: 'driving' | 'walking') => Promise<GeoJSON.Polygon>;
 }
 
 export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
@@ -138,6 +141,29 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       return geometry;
     } catch (error) {
       console.error('Error generating radius circle:', error);
+      throw error;
+    }
+  },
+  
+  generateDriveTimeIsochrone: async (lat, lng, minutes, profile) => {
+    try {
+      const response = await api.post('/isochrone/generate', { 
+        lat, 
+        lng, 
+        minutes, 
+        profile 
+      });
+      const geometry = response.data.geometry;
+      set({ draftGeometry: geometry });
+      
+      // Update preview stats if available
+      if (response.data.stats) {
+        set({ previewStats: response.data.stats });
+      }
+      
+      return geometry;
+    } catch (error) {
+      console.error('Error generating drive-time isochrone:', error);
       throw error;
     }
   },
