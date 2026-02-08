@@ -35,8 +35,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   }, [userMenuOpen]);
 
   const handleLayerToggle = (layerId: string, e: React.MouseEvent) => {
-    // Only toggle layer if on dashboard/map page
-    if (location.pathname === '/dashboard' || location.pathname === '/map') {
+    // Only toggle layer if on dashboard views or map page
+    if (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') {
       e.preventDefault();
       toggleLayer(layerId);
     }
@@ -244,7 +244,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                             <>
                               <span className="flex-1">{item.name}</span>
                               <div className="flex items-center gap-2">
-                                {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/map') && (
+                                {item.layerId && (location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') && (
                                   <span
                                     className={`text-lg ${
                                       getLayerState(item.layerId) ? 'opacity-100' : 'opacity-30'
@@ -281,8 +281,8 @@ export function MainLayout({ children }: MainLayoutProps) {
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto relative flex flex-col">
-          {/* Horizontal Bar (Map Layers) - Show on dashboard and map pages */}
-          {(location.pathname === '/dashboard' || location.pathname === '/map') && (
+          {/* Horizontal Bar (Map Layers) - Show on dashboard views and map pages */}
+          {(location.pathname === '/dashboard' || location.pathname === '/dashboard/email' || location.pathname === '/map') && (
             <HorizontalBar />
           )}
           
