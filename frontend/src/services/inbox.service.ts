@@ -3,7 +3,7 @@
  * Frontend client for email management
  */
 
-import { api } from './api.client';
+import { apiClient } from './api.client';
 
 export interface Email {
   id: number;
@@ -70,7 +70,7 @@ export const inboxService = {
     if (filters.label) params.append('label', filters.label);
     if (filters.search) params.append('search', filters.search);
 
-    const response = await api.get(`/inbox?${params.toString()}`);
+    const response = await apiClient.get(`/inbox?${params.toString()}`);
     return response.data;
   },
 
@@ -78,7 +78,7 @@ export const inboxService = {
    * Get inbox statistics
    */
   async getStats(): Promise<{ success: boolean; data: InboxStats }> {
-    const response = await api.get('/inbox/stats');
+    const response = await apiClient.get('/inbox/stats');
     return response.data;
   },
 
@@ -86,7 +86,7 @@ export const inboxService = {
    * Get single email with full content
    */
   async getEmail(id: number): Promise<{ success: boolean; data: EmailDetail }> {
-    const response = await api.get(`/inbox/${id}`);
+    const response = await apiClient.get(`/inbox/${id}`);
     return response.data;
   },
 
@@ -99,7 +99,7 @@ export const inboxService = {
     deal_id?: number | null;
     is_archived?: boolean;
   }) {
-    const response = await api.patch(`/inbox/${id}`, updates);
+    const response = await apiClient.patch(`/inbox/${id}`, updates);
     return response.data;
   },
 
@@ -107,7 +107,7 @@ export const inboxService = {
    * Delete email (or move to trash)
    */
   async deleteEmail(id: number, permanent = false) {
-    const response = await api.delete(`/inbox/${id}?permanent=${permanent}`);
+    const response = await apiClient.delete(`/inbox/${id}?permanent=${permanent}`);
     return response.data;
   },
 
@@ -115,7 +115,7 @@ export const inboxService = {
    * Trigger email sync
    */
   async sync() {
-    const response = await api.post('/inbox/sync');
+    const response = await apiClient.post('/inbox/sync');
     return response.data;
   },
 
@@ -129,7 +129,7 @@ export const inboxService = {
     body: string;
     deal_id?: number;
   }) {
-    const response = await api.post('/inbox/compose', data);
+    const response = await apiClient.post('/inbox/compose', data);
     return response.data;
   },
 
@@ -137,7 +137,7 @@ export const inboxService = {
    * Bulk actions on emails
    */
   async bulkAction(emailIds: number[], action: 'mark_read' | 'mark_unread' | 'flag' | 'unflag' | 'archive' | 'delete') {
-    const response = await api.post('/inbox/bulk-action', {
+    const response = await apiClient.post('/inbox/bulk-action', {
       email_ids: emailIds,
       action,
     });
