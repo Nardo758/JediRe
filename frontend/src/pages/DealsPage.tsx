@@ -143,27 +143,27 @@ export function DealsPage() {
                       <h3 className="text-xl font-semibold text-gray-900">{deal.name}</h3>
                       <span
                         className={`px-3 py-1 text-sm font-medium rounded-full ${
-                          stageColors[deal.status || 'lead'] || 'bg-gray-100 text-gray-700'
+                          stageColors[deal.status] || 'bg-gray-100 text-gray-700'
                         }`}
                       >
-                        {(deal.status || 'lead').replace('_', ' ').toUpperCase()}
+                        {deal.status.replace('_', ' ').toUpperCase()}
                       </span>
                       <span
                         className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                          (deal.tier || 'basic') === 'basic'
+                          deal.tier === 'basic'
                             ? 'bg-yellow-100 text-yellow-800'
-                            : (deal.tier || 'basic') === 'pro'
+                            : deal.tier === 'pro'
                             ? 'bg-blue-100 text-blue-800'
                             : 'bg-green-100 text-green-800'
                         }`}
                       >
-                        {(deal.tier || 'basic').toUpperCase()}
+                        {deal.tier.toUpperCase()}
                       </span>
                     </div>
 
                     <div className="flex gap-6 text-sm text-gray-600">
-                      <span>🏢 {deal.propertyCount || 0} properties</span>
-                      <span>📏 {(deal.acres || 0).toFixed(1)} acres</span>
+                      <span>🏢 {deal.propertyCount} properties</span>
+                      <span>📏 {deal.acres.toFixed(1)} acres</span>
                       {deal.budget && <span>💰 ${(deal.budget / 1000000).toFixed(1)}M budget</span>}
                       <span>📅 {deal.projectType}</span>
                     </div>
