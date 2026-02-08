@@ -8,32 +8,23 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
-export function NewsIntelligencePage() {
+interface NewsIntelligencePageProps {
+  view?: ViewType;
+}
+
+export function NewsIntelligencePage({ view = 'feed' }: NewsIntelligencePageProps) {
   const { deals, fetchDeals } = useDealStore();
-  
-  const [showViewsSidebar, setShowViewsSidebar] = useState(
-    localStorage.getItem('news-views-visible') !== 'false'
-  );
-  const [showContentPanel, setShowContentPanel] = useState(
-    localStorage.getItem('news-content-visible') !== 'false'
-  );
-  const [viewsWidth, setViewsWidth] = useState(
-    parseInt(localStorage.getItem('news-views-width') || '256')
-  );
+
   const [contentWidth, setContentWidth] = useState(
     parseInt(localStorage.getItem('news-content-width') || '550')
   );
+  const [isResizingContent, setIsResizingContent] = useState(false);
 
-  const [activeView, setActiveView] = useState<ViewType>('feed');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 
-  const [isResizingViews, setIsResizingViews] = useState(false);
-  const [isResizingContent, setIsResizingContent] = useState(false);
-  
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const eventMarkers = useRef<mapboxgl.Marker[]>([]);
 
   const [events, setEvents] = useState<NewsEvent[]>([]);
   const [alerts, setAlerts] = useState<NewsAlert[]>([]);
@@ -222,24 +213,18 @@ export function NewsIntelligencePage() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (isResizingViews) {
-        const newWidth = Math.max(200, Math.min(400, e.clientX));
-        setViewsWidth(newWidth);
-        localStorage.setItem('news-views-width', String(newWidth));
-      }
       if (isResizingContent) {
-        const newWidth = Math.max(400, Math.min(800, e.clientX - (showViewsSidebar ? viewsWidth : 0)));
+        const newWidth = Math.max(400, Math.min(800, e.clientX));
         setContentWidth(newWidth);
         localStorage.setItem('news-content-width', String(newWidth));
       }
     };
 
     const handleMouseUp = () => {
-      setIsResizingViews(false);
       setIsResizingContent(false);
     };
 
-    if (isResizingViews || isResizingContent) {
+    if (isResizingContent) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     }
@@ -248,15 +233,14 @@ export function NewsIntelligencePage() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isResizingViews, isResizingContent, showViewsSidebar, viewsWidth]);
+  }, [isResizingContent]);
 
-  useEffect(() => {
-    localStorage.setItem('news-views-visible', String(showViewsSidebar));
-  }, [showViewsSidebar]);
-
-  useEffect(() => {
-    localStorage.setItem('news-content-visible', String(showContentPanel));
-  }, [showContentPanel]);
+  const viewTitles: Record<ViewType, string> = {
+    feed: '📋 Event Feed',
+    dashboard: '📊 Market Dashboard',
+    network: '🔗 Network Intelligence',
+    alerts: '🔔 Alerts',
+  };
 
   const renderEventFeed = () => (
     <div className="space-y-4">
@@ -545,96 +529,36 @@ export function NewsIntelligencePage() {
     </div>
   );
 
+  const renderContent = () => {
+    switch (view) {
+      case 'feed': return renderEventFeed();
+      case 'dashboard': return renderMarketDashboard();
+      case 'network': return renderNetworkIntelligence();
+      case 'alerts': return renderAlerts();
+      default: return renderEventFeed();
+    }
+  };
+
   return (
     <div className="h-full flex relative">
-      {showViewsSidebar && (
-        <>
-          <div
-            className="bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0"
-            style={{ width: `${viewsWidth}px` }}
-          >
-            <div className="p-4">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">VIEWS</h2>
-              <div className="space-y-1">
-                {[
-                  { id: 'feed', icon: '📋', label: 'Event Feed' },
-                  { id: 'dashboard', icon: '📊', label: 'Market Dashboard' },
-                  { id: 'network', icon: '🔗', label: 'Network Intelligence' },
-                  { id: 'alerts', icon: '🔔', label: 'Alerts', badge: unreadAlertCount },
-                ].map((view) => (
-                  <button
-                    key={view.id}
-                    onClick={() => setActiveView(view.id as ViewType)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-left text-sm ${
-                      activeView === view.id
-                        ? 'bg-blue-50 text-blue-600 font-medium'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>{view.icon}</span>
-                    <span>{view.label}</span>
-                    {view.badge ? (
-                      <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-red-100 text-red-600 rounded-full">
-                        {view.badge}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div
-            className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
-            onMouseDown={() => setIsResizingViews(true)}
-          />
-        </>
-      )}
-
-      {showContentPanel && (
-        <>
-          <div
-            className="bg-gray-50 overflow-y-auto flex-shrink-0"
-            style={{ width: `${contentWidth}px` }}
-          >
-            <div className="p-4">
-              <h1 className="text-xl font-bold text-gray-900 mb-4">
-                {activeView === 'feed' && '📋 Event Feed'}
-                {activeView === 'dashboard' && '📊 Market Dashboard'}
-                {activeView === 'network' && '🔗 Network Intelligence'}
-                {activeView === 'alerts' && '🔔 Alerts'}
-              </h1>
-              {activeView === 'feed' && renderEventFeed()}
-              {activeView === 'dashboard' && renderMarketDashboard()}
-              {activeView === 'network' && renderNetworkIntelligence()}
-              {activeView === 'alerts' && renderAlerts()}
-            </div>
-          </div>
-          <div
-            className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
-            onMouseDown={() => setIsResizingContent(true)}
-          />
-        </>
-      )}
+      <div
+        className="bg-gray-50 overflow-y-auto flex-shrink-0 border-r border-gray-200"
+        style={{ width: `${contentWidth}px` }}
+      >
+        <div className="p-4">
+          <h1 className="text-xl font-bold text-gray-900 mb-4">
+            {viewTitles[view]}
+          </h1>
+          {renderContent()}
+        </div>
+      </div>
+      <div
+        className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
+        onMouseDown={() => setIsResizingContent(true)}
+      />
 
       <div className="flex-1 relative">
         <div ref={mapContainer} className="absolute inset-0" />
-        
-        <div className="absolute top-4 left-4 flex gap-2 z-10">
-          <button
-            onClick={() => setShowViewsSidebar(!showViewsSidebar)}
-            className="px-3 py-2 bg-white rounded-lg shadow-lg hover:bg-gray-50 transition text-sm font-medium"
-            title="Toggle Views Sidebar"
-          >
-            {showViewsSidebar ? '◀ Hide Views' : '▶ Views'}
-          </button>
-          <button
-            onClick={() => setShowContentPanel(!showContentPanel)}
-            className="px-3 py-2 bg-white rounded-lg shadow-lg hover:bg-gray-50 transition text-sm font-medium"
-            title="Toggle Content Panel"
-          >
-            {showContentPanel ? '◀ Hide Content' : '▶ Content'}
-          </button>
-        </div>
 
         <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
