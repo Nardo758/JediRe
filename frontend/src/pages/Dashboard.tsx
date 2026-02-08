@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
@@ -8,6 +9,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
+  const location = useLocation();
   const { deals, fetchDeals, isLoading } = useDealStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -16,7 +18,14 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDeals();
-  }, []);
+    
+    // Check if we should open create deal modal from navigation state
+    if (location.state?.openCreateDeal) {
+      setIsCreateModalOpen(true);
+      // Clear the state to prevent reopening on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
