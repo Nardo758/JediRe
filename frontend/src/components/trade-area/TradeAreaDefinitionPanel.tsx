@@ -7,6 +7,7 @@ interface TradeAreaDefinitionPanelProps {
   propertyLng: number;
   onSave: (tradeAreaId: number) => void;
   onSkip: () => void;
+  onCustomDraw?: () => void;
 }
 
 const methodIcons: Record<DefinitionMethod, string> = {
@@ -28,6 +29,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   propertyLng,
   onSave,
   onSkip,
+  onCustomDraw,
 }) => {
   const {
     definitionMethod,
@@ -233,10 +235,16 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
               <h3 className="font-semibold text-blue-900 mb-1">
                 Draw Custom Boundary
               </h3>
-              <p className="text-sm text-blue-700">
-                Click points on the map to draw a polygon boundary. 
-                Double-click to finish.
+              <p className="text-sm text-blue-700 mb-3">
+                Click the button below to open the map drawing tool.
+                Draw a polygon by clicking points, then double-click to finish.
               </p>
+              <button 
+                onClick={onCustomDraw || onSkip}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+              >
+                Open Map to Draw →
+              </button>
             </div>
           </div>
         </div>
