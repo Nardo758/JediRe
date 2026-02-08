@@ -172,11 +172,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     }
 
     try {
-<<<<<<< HEAD
       const newDeal = await createDeal({
-=======
       const result = await createDeal({
->>>>>>> 1d5a90fee95f580f4e340437424737e3c1269bb2
         name: dealName,
         description,
         tier,
@@ -185,9 +182,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         address,
         boundary,
       });
-<<<<<<< HEAD
       onDealCreated?.(newDeal);
-=======
       
       // Link geographic context if we have submarket/MSA
       if (result && submarketId && msaId) {
@@ -204,7 +199,6 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         }
       }
       
->>>>>>> 1d5a90fee95f580f4e340437424737e3c1269bb2
       handleClose();
     } catch (err: any) {
       setError(err.message || 'Failed to create deal');
