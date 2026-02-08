@@ -419,6 +419,10 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                     setCurrentStep(STEPS.DETAILS);
                   }
                 }}
+                onCustomDraw={() => {
+                  // User wants to draw custom boundary on map
+                  setCurrentStep(STEPS.BOUNDARY);
+                }}
               />
             </div>
           )}
