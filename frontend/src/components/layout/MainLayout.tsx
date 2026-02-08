@@ -1,12 +1,15 @@
 /**
  * Main Layout with Enhanced Sidebar
  * Includes layer integration for all sidebar items
+ * Global MapTabsBar for all pages
  */
 
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
+import { MapTabsBar } from '../map/MapTabsBar';
 import { layersService } from '../../services/layers.service';
+import { mapConfigsService, MapConfiguration } from '../../services/map-configs.service';
 import { MapLayer } from '../../types/layers';
 
 const DEFAULT_MAP_ID = 'default';
@@ -21,6 +24,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     dashboard: true,
     intelligence: true
   });
+  
+  // Global map state
+  const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
+  const [layers, setLayers] = useState<MapLayer[]>([]);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -34,7 +41,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   // Handle "Show on Map" from sidebar items
   const handleShowOnMap = async (config: any) => {
     try {
-      // Create layer
       const layer = await layersService.createLayer({
         map_id: DEFAULT_MAP_ID,
         name: config.name,
@@ -42,20 +48,18 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         source_type: config.source_type,
         visible: true,
         opacity: config.opacity || 1.0,
-        z_index: 0, // Will auto-calculate
+        z_index: 0,
         filters: {},
         style: config.style || {},
         source_config: {}
       });
 
       console.log('[MainLayout] Layer created:', layer);
+      setLayers([...layers, layer]);
       
-      // Navigate to dashboard to show the layer
+      // Navigate to dashboard if not there
       if (location.pathname !== '/') {
         window.location.href = '/';
-      } else {
-        // Refresh layers if already on dashboard
-        window.location.reload();
       }
     } catch (error) {
       console.error('[MainLayout] Failed to create layer:', error);
@@ -63,10 +67,40 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   };
 
+  // Handle map config selection
+  const handleConfigSelect = async (config: MapConfiguration) => {
+    setActiveConfig(config);
+    
+    if (config.layer_config && Array.isArray(config.layer_config)) {
+      try {
+        const configLayers = await Promise.all(
+          config.layer_config.map(async (layerDef: any) => {
+            return await layersService.createLayer({
+              map_id: DEFAULT_MAP_ID,
+              ...layerDef
+            });
+          })
+        );
+        setLayers(configLayers);
+      } catch (error) {
+        console.error('Failed to load config layers:', error);
+      }
+    }
+  };
+
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Global Horizontal Bar - Shows on ALL pages */}
+      <MapTabsBar
+        activeConfigId={activeConfig?.id}
+        onConfigSelect={handleConfigSelect}
+        onNewConfig={() => {/* Open War Maps Composer if needed */}}
+      />
+
+      {/* Main Content Area with Sidebar */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-64 bg-white border-r border-gray-200 overflow-y-auto">
         <div className="p-4">
           {/* Logo */}
           <div className="flex items-center gap-2 mb-6">
@@ -209,10 +243,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
+        {/* Main Content */}
+        <main className="flex-1 overflow-auto">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };
