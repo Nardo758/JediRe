@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../stores/dealStore';
-import { PageHeader } from '../components/layout/PageHeader';
 import { inboxService, Email, InboxStats } from '../services/inbox.service';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -145,17 +144,23 @@ export function EmailPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <PageHeader
-        title="Email"
-        description={stats ? `${stats.unread} unread messages` : 'Loading...'}
-        icon="📧"
-        actions={
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              📧 Email
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              {stats ? `${stats.unread} unread message${stats.unread !== 1 ? 's' : ''}` : 'Loading...'}
+            </p>
+          </div>
           <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
             ✉️ Compose
           </button>
-        }
-      />
+        </div>
+      </div>
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
