@@ -241,6 +241,37 @@ app.post('/api/v1/auth/login', async (req, res) => {
   }
 });
 
+// Get current user profile
+app.get('/api/v1/auth/me', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const result = await pool.query(
+      'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    
+    const dbUser = result.rows[0];
+    res.json({
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.full_name || 'User',
+      role: dbUser.role || 'user',
+      subscription: {
+        plan: dbUser.subscription_tier || 'free',
+        modules: dbUser.enabled_modules || ['supply']
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
 // ============================================
 // Deals CRUD Endpoints
 // ============================================
