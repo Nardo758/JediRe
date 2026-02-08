@@ -2,11 +2,11 @@
   "name": "jedire-backend-replit",
   "version": "1.0.0",
   "description": "JediRe Backend for Replit - Simplified",
-  "main": "dist/index.js",
+  "main": "dist/index.replit.js",
   "scripts": {
-    "dev": "ts-node --transpile-only src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "dev": "ts-node --transpile-only src/index.replit.ts",
+    "build": "tsc --skipLibCheck",
+    "start": "node dist/index.replit.js",
     "replit": "npm install && npm run build && npm run start"
   },
   "dependencies": {
