@@ -7,6 +7,7 @@ import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { useMapLayers } from '../contexts/MapLayersContext';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
+import { HorizontalBar } from '../components/map/HorizontalBar';
 import { Button } from '../components/shared/Button';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
@@ -360,7 +361,11 @@ export const Dashboard: React.FC = () => {
 
   return (
     <>
-    <div className="h-full flex">
+    <div className="h-full flex flex-col">
+      {/* Horizontal Bar */}
+      <HorizontalBar />
+      
+      <div className="flex-1 flex min-h-0">
         {/* Sidebar */}
         <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
           <div className="p-4">
@@ -469,6 +474,7 @@ export const Dashboard: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* Create Deal Modal */}
