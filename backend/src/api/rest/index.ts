@@ -24,6 +24,7 @@ import inboxRoutes from './inbox.routes';
 import newsRoutes from './news.routes';
 import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
+import isochroneRoutes from './isochrone.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -89,6 +90,9 @@ export function setupRESTRoutes(app: Application): void {
   // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
   app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
   app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
+
+  // Isochrone routes (Drive-time boundary generation)
+  app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

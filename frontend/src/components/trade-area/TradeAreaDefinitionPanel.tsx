@@ -43,11 +43,13 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     setDriveTimeMinutes,
     setDriveTimeProfile,
     generateRadiusCircle,
+    generateDriveTimeIsochrone,
     saveTradeArea,
   } = useTradeAreaStore();
 
   const [tradeAreaName, setTradeAreaName] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isGenerating, setIsGenerating] = React.useState(false);
 
   // Auto-generate radius circle when radius changes
   useEffect(() => {
@@ -55,6 +57,18 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
       generateRadiusCircle(propertyLat, propertyLng, radiusMiles);
     }
   }, [definitionMethod, radiusMiles, propertyLat, propertyLng]);
+  
+  // Generate drive-time isochrone
+  const handleGenerateDriveTime = async () => {
+    setIsGenerating(true);
+    try {
+      await generateDriveTimeIsochrone(propertyLat, propertyLng, driveTimeMinutes, driveTimeProfile);
+    } catch (error: any) {
+      alert(`Failed to generate drive-time boundary: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!draftGeometry) {
@@ -203,6 +217,15 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
                 🚶 Walking
               </button>
             </div>
+          </div>
+          <div className="flex justify-center">
+            <button
+              onClick={handleGenerateDriveTime}
+              disabled={isGenerating}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-green-300 transition-colors font-semibold"
+            >
+              {isGenerating ? 'Generating...' : '🚗 Generate Drive-Time Boundary'}
+            </button>
           </div>
         </div>
       )}
