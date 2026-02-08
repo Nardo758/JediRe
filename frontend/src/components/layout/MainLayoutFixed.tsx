@@ -114,20 +114,6 @@ export const MainLayout: React.FC = () => {
 
             {/* Navigation */}
             <nav className="space-y-1">
-              {/* MY DEALS */}
-              <div className="mb-4">
-                <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  My Deals
-                </h3>
-                <SidebarItem
-                  icon="📊"
-                  label="All Deals"
-                  count={12}
-                  path="/deals"
-                  isActive={isActive('/deals')}
-                />
-              </div>
-
               {/* DASHBOARD */}
               <div className="mb-4">
                 <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -145,6 +131,14 @@ export const MainLayout: React.FC = () => {
                 {expandedSections.dashboard && (
                   <div className="ml-4 space-y-1">
                     <SidebarItem
+                      icon="📊"
+                      label="Pipeline"
+                      count={12}
+                      path="/deals"
+                      isActive={isActive('/deals')}
+                    />
+                    
+                    <SidebarItem
                       icon="📧"
                       label="Email"
                       count={5}
@@ -160,14 +154,6 @@ export const MainLayout: React.FC = () => {
                         }
                       }}
                       onShowOnMap={handleShowOnMap}
-                    />
-                    
-                    <SidebarItem
-                      icon="🏢"
-                      label="Pipeline"
-                      count={3}
-                      path="/dashboard/portfolio"
-                      isActive={isActive('/dashboard/portfolio')}
                     />
                     
                     <SidebarItem
