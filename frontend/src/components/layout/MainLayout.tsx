@@ -3,15 +3,19 @@
  * Includes layer integration for all sidebar items
  */
 
-import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { layersService } from '../../services/layers.service';
 import { MapLayer } from '../../types/layers';
 
-const DEFAULT_MAP_ID = 'default'; // TODO: Get from user's active map
+const DEFAULT_MAP_ID = 'default';
 
-export const MainLayout: React.FC = () => {
+interface MainLayoutProps {
+  children: React.ReactNode;
+}
+
+export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     dashboard: true,
@@ -246,7 +250,7 @@ export const MainLayout: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
-        <Outlet />
+        {children}
       </main>
     </div>
   );
