@@ -79,6 +79,8 @@ export default function ResetPasswordPage() {
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
+                      id="reset-password"
+                      name="resetPassword"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -101,6 +103,8 @@ export default function ResetPasswordPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
                   <input
                     type="password"
+                    id="reset-confirm-password"
+                    name="resetConfirmPassword"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"

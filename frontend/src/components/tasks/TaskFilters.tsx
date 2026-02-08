@@ -14,6 +14,8 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({ filters, onChange }) =
   return (
     <div className="flex gap-4 items-center">
       <select
+        id="task-filter-category"
+        name="category"
         value={filters.category || ''}
         onChange={(e) => onChange({ ...filters, category: e.target.value || undefined })}
         aria-label="Filter by category"
@@ -33,6 +35,8 @@ export const TaskFilters: React.FC<TaskFiltersProps> = ({ filters, onChange }) =
       </select>
 
       <select
+        id="task-filter-priority"
+        name="priority"
         value={filters.priority || ''}
         onChange={(e) => onChange({ ...filters, priority: e.target.value || undefined })}
         aria-label="Filter by priority"

@@ -70,6 +70,8 @@ export function PropertiesPage() {
           <div className="flex gap-4 items-center">
             <input
               type="text"
+              id="properties-search"
+              name="propertiesSearch"
               placeholder="Search properties..."
               aria-label="Search properties"
               value={localFilters.search}
@@ -78,6 +80,8 @@ export function PropertiesPage() {
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             <select 
+              id="properties-building-class"
+              name="propertiesBuildingClass"
               value={localFilters.building_class}
               onChange={(e) => handleFilterChange('building_class', e.target.value)}
               aria-label="Filter by building class"
@@ -92,6 +96,8 @@ export function PropertiesPage() {
               <option value="C">C</option>
             </select>
             <select 
+              id="properties-neighborhood"
+              name="propertiesNeighborhood"
               value={localFilters.neighborhood}
               onChange={(e) => handleFilterChange('neighborhood', e.target.value)}
               aria-label="Filter by neighborhood"

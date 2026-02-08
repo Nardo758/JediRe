@@ -147,6 +147,8 @@ export default function ClientFilters({ filters, onFiltersChange, onReset }: Cli
           <div>
             <label className="block text-xs text-gray-600 mb-1">From</label>
             <input
+              id="clientDateRangeStart"
+              name="clientDateRangeStart"
               type="date"
               value={localFilters.dateRange?.start || ''}
               onChange={(e) => handleDateRangeChange('start', e.target.value)}
@@ -157,6 +159,8 @@ export default function ClientFilters({ filters, onFiltersChange, onReset }: Cli
           <div>
             <label className="block text-xs text-gray-600 mb-1">To</label>
             <input
+              id="clientDateRangeEnd"
+              name="clientDateRangeEnd"
               type="date"
               value={localFilters.dateRange?.end || ''}
               onChange={(e) => handleDateRangeChange('end', e.target.value)}

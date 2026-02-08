@@ -35,6 +35,11 @@ export interface Lead {
   phone?: string;
   source?: string;
   status?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  message?: string;
+  propertyInterest?: string;
+  assignedAgent?: string;
+  createdAt?: string;
 }
 
 // Commission
@@ -116,6 +121,7 @@ export interface Property {
   beds: number;
   baths: number;
   sqft: number;
+  class?: string;
   building_class?: string;
   lease_expiration_date?: string;
   current_lease_amount?: number;

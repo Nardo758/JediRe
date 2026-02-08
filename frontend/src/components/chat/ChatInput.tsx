@@ -30,6 +30,8 @@ export function ChatInput({
   return (
     <div className="flex items-center gap-2 p-4 border-t border-gray-200 bg-white">
       <input
+        id="chatMessageInput"
+        name="chatMessageInput"
         type="text"
         value={input}
         onChange={(e) => setInput(e.target.value)}

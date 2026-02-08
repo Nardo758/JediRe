@@ -39,6 +39,8 @@ export default function AnnotationSection({ propertyId, annotations }: Annotatio
       <form onSubmit={handleSubmit} className="card">
         <div className="flex gap-2">
           <input
+            id="annotation-new-comment"
+            name="annotationNewComment"
             type="text"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}

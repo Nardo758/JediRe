@@ -66,6 +66,8 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="login-email"
+              name="loginEmail"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -85,6 +87,8 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="login-password"
+              name="loginPassword"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -107,6 +111,8 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
+              id="login-remember-me"
+              name="loginRememberMe"
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}

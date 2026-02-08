@@ -133,6 +133,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               Task Title *
             </label>
             <input
+              id="task-title"
+              name="title"
               type="text"
               required
               value={formData.title}
@@ -149,6 +151,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               Description
             </label>
             <textarea
+              id="task-description"
+              name="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               aria-label="Task description"
@@ -165,6 +169,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 Category *
               </label>
               <select
+                id="task-category"
+                name="category"
                 value={formData.category}
                 onChange={(e) =>
                   setFormData({ ...formData, category: e.target.value as TaskCategory })
@@ -213,6 +219,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               Due Date
             </label>
             <input
+              id="task-due-date"
+              name="dueDate"
               type="date"
               value={formData.dueDate || ''}
               onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
@@ -228,6 +236,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </label>
             <div className="flex gap-2 mb-2">
               <input
+                id="task-tag-input"
+                name="tagInput"
                 type="text"
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}

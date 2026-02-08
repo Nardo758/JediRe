@@ -163,11 +163,13 @@ export function AssetsOwnedPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="text"
+                  id="assets-search"
+                  name="assetsSearch"
                   placeholder="Search properties..."
                   aria-label="Search properties"
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <select aria-label="Filter by building class" className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <select id="assets-building-class" name="assetsBuildingClass" aria-label="Filter by building class" className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option>All Classes</option>
                   <option>Class A+</option>
                   <option>Class A</option>

@@ -38,7 +38,11 @@ app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
 }));
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || ['http://localhost:5000', /\.replit\.dev$/, /\.replit\.app$/],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

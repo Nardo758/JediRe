@@ -107,6 +107,8 @@ export function LayerControlsPanel({
                   className="flex items-center gap-2 flex-1"
                 >
                   <input
+                    id={`layer-toggle-${layer.id}`}
+                    name={`layerToggle${layer.id}`}
                     type="checkbox"
                     checked={layer.active}
                     onChange={() => onToggleLayer(layer.id)}
@@ -152,6 +154,8 @@ export function LayerControlsPanel({
                     <span>{Math.round(layer.opacity * 100)}%</span>
                   </div>
                   <input
+                    id={`layer-opacity-${layer.id}`}
+                    name={`layerOpacity${layer.id}`}
                     type="range"
                     min="0"
                     max="100"

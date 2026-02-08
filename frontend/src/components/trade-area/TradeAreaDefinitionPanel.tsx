@@ -128,6 +128,8 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             Radius: {radiusMiles} miles
           </label>
           <input
+            id="trade-area-radius"
+            name="radiusMiles"
             type="range"
             min="1"
             max="10"
@@ -282,6 +284,8 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             Trade Area Name (Optional)
           </label>
           <input
+            id="trade-area-name"
+            name="tradeAreaName"
             type="text"
             value={tradeAreaName}
             onChange={(e) => setTradeAreaName(e.target.value)}

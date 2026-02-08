@@ -54,6 +54,8 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           <Target className="w-4 h-4 text-gray-600" />
           <span className="text-sm text-gray-600">Score</span>
           <input
+            id="filters-min-score"
+            name="filtersMinScore"
             type="number"
             value={minScore}
             onChange={(e) => {
@@ -73,6 +75,8 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           <Clock className="w-4 h-4 text-gray-600" />
           <span className="text-sm text-gray-600">Timeline</span>
           <select
+            id="filters-timeline"
+            name="filtersTimeline"
             value={timeline}
             onChange={(e) => {
               const val = parseInt(e.target.value);

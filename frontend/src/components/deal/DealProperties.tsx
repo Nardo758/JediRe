@@ -90,8 +90,11 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Class
               </label>
               <select
+                id="dealPropertyClass"
+                name="dealPropertyClass"
                 value={filters.class}
                 onChange={(e) => handleFilterChange('class', e.target.value)}
+                aria-label="Property class filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               >
                 <option value="">All Classes</option>
@@ -109,10 +112,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Min Rent
               </label>
               <input
+                id="dealMinRent"
+                name="dealMinRent"
                 type="number"
                 value={filters.minRent}
                 onChange={(e) => handleFilterChange('minRent', e.target.value)}
                 placeholder="$1000"
+                aria-label="Minimum rent filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -122,10 +128,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Max Rent
               </label>
               <input
+                id="dealMaxRent"
+                name="dealMaxRent"
                 type="number"
                 value={filters.maxRent}
                 onChange={(e) => handleFilterChange('maxRent', e.target.value)}
                 placeholder="$3000"
+                aria-label="Maximum rent filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -135,8 +144,11 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Bedrooms
               </label>
               <select
+                id="dealBedrooms"
+                name="dealBedrooms"
                 value={filters.beds}
                 onChange={(e) => handleFilterChange('beds', e.target.value)}
+                aria-label="Bedrooms filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               >
                 <option value="">Any</option>

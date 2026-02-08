@@ -92,6 +92,8 @@ export default function CalculatorsPage() {
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                       <input
+                        id={`roi-${field.key}`}
+                        name={`roi${field.key.charAt(0).toUpperCase() + field.key.slice(1)}`}
                         type="number"
                         value={roiInputs[field.key as keyof typeof roiInputs]}
                         onChange={(e) => setRoiInputs({ ...roiInputs, [field.key]: Number(e.target.value) })}
@@ -138,6 +140,8 @@ export default function CalculatorsPage() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                     <input
+                      id="mortgage-price"
+                      name="mortgagePrice"
                       type="number"
                       value={mortgageInputs.price}
                       onChange={(e) => setMortgageInputs({ ...mortgageInputs, price: Number(e.target.value) })}
@@ -149,6 +153,8 @@ export default function CalculatorsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Down Payment (%)</label>
                   <input
+                    id="mortgage-down-payment"
+                    name="mortgageDownPayment"
                     type="number"
                     value={mortgageInputs.downPayment}
                     onChange={(e) => setMortgageInputs({ ...mortgageInputs, downPayment: Number(e.target.value) })}
@@ -159,6 +165,8 @@ export default function CalculatorsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Interest Rate (%)</label>
                   <input
+                    id="mortgage-interest-rate"
+                    name="mortgageInterestRate"
                     type="number"
                     step="0.1"
                     value={mortgageInputs.interestRate}
@@ -170,6 +178,8 @@ export default function CalculatorsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Loan Term (years)</label>
                   <select
+                    id="mortgage-term"
+                    name="mortgageTerm"
                     value={mortgageInputs.term}
                     onChange={(e) => setMortgageInputs({ ...mortgageInputs, term: Number(e.target.value) })}
                     aria-label="Loan term"
@@ -224,6 +234,8 @@ export default function CalculatorsPage() {
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                       <input
+                        id={`cashflow-${field.key}`}
+                        name={`cashflow${field.key.charAt(0).toUpperCase() + field.key.slice(1)}`}
                         type="number"
                         value={cashflowInputs[field.key as keyof typeof cashflowInputs]}
                         onChange={(e) => setCashflowInputs({ ...cashflowInputs, [field.key]: Number(e.target.value) })}
@@ -274,6 +286,8 @@ export default function CalculatorsPage() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                     <input
+                      id="caprate-noi"
+                      name="caprateNoi"
                       type="number"
                       value={caprateInputs.noi}
                       onChange={(e) => setCaprateInputs({ ...caprateInputs, noi: Number(e.target.value) })}
@@ -287,6 +301,8 @@ export default function CalculatorsPage() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                     <input
+                      id="caprate-price"
+                      name="capratePrice"
                       type="number"
                       value={caprateInputs.price}
                       onChange={(e) => setCaprateInputs({ ...caprateInputs, price: Number(e.target.value) })}

@@ -196,6 +196,8 @@ export default function CareersPage() {
           <div className="flex flex-wrap gap-4 mb-8">
             <div className="relative">
               <select
+                id="careers-department-filter"
+                name="careersDepartmentFilter"
                 value={selectedDepartment}
                 onChange={(e) => setSelectedDepartment(e.target.value)}
                 aria-label="Filter by department"
@@ -210,6 +212,8 @@ export default function CareersPage() {
             
             <div className="relative">
               <select
+                id="careers-location-filter"
+                name="careersLocationFilter"
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
                 aria-label="Filter by location"

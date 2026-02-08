@@ -95,6 +95,8 @@ export default function PropertyAnalyzer() {
               Property Address
             </label>
             <input
+              id="property-analyzer-address"
+              name="propertyAnalyzerAddress"
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
@@ -111,6 +113,8 @@ export default function PropertyAnalyzer() {
               Lot Size (sq ft)
             </label>
             <input
+              id="property-analyzer-lot-size"
+              name="propertyAnalyzerLotSize"
               type="number"
               value={lotSize}
               onChange={(e) => setLotSize(e.target.value ? Number(e.target.value) : '')}

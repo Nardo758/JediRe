@@ -175,6 +175,8 @@ export default function TeamManagementPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                 <input
                   type="email"
+                  id="team-invite-email"
+                  name="teamInviteEmail"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@company.com"
@@ -185,6 +187,8 @@ export default function TeamManagementPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <select
+                  id="team-invite-role"
+                  name="teamInviteRole"
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
                   aria-label="Role"
