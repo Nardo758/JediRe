@@ -238,6 +238,7 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
 
         {/* Map */}
         <div className="flex-1 relative">
