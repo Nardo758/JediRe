@@ -21,6 +21,7 @@ import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
 import emailRoutes from './email.routes';
 import inboxRoutes from './inbox.routes';
+import newsRoutes from './news.routes';
 import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
@@ -78,6 +79,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Inbox routes (Email Management)
   app.use(`${API_PREFIX}/inbox`, inboxRoutes);
+
+  // News Intelligence routes
+  app.use(`${API_PREFIX}/news`, newsRoutes);
 
   // Trade Areas routes (Geographic Definition System)
   app.use(`${API_PREFIX}/trade-areas`, tradeAreasRoutes);
