@@ -54,15 +54,21 @@ export interface KeyFactor {
 }
 
 export interface AnalysisResult {
-  submarket: string;
-  verdict: VerdictType;
-  composite_score: number;
-  confidence: number;
-  demand_signal: DemandSignal;
-  supply_signal: SupplySignal;
-  recommendation: string;
-  key_factors: string[];
-  risks: string[];
+  submarket?: string;
+  verdict: VerdictType | string;
+  composite_score?: number;
+  score?: number;
+  confidence: number | ConfidenceLevel;
+  demand_signal?: DemandSignal;
+  supply_signal?: SupplySignal;
+  recommendation?: string;
+  key_factors?: string[];
+  keyFactors?: KeyFactor[];
+  risks?: string[];
+  submarketName?: string;
+  analysisDate?: string;
+  outputData?: any;
+  createdAt?: string;
 }
 
 export interface AnalysisResponse {

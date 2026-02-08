@@ -32,6 +32,10 @@ interface DealPipelineProps {
 const stageConfig: Record<DealStage, { label: string; color: string }> = {
   lead: { label: 'Lead', color: 'bg-gray-100 border-gray-300' },
   qualified: { label: 'Qualified', color: 'bg-blue-100 border-blue-300' },
+  prospecting: { label: 'Prospecting', color: 'bg-indigo-100 border-indigo-300' },
+  contacted: { label: 'Contacted', color: 'bg-cyan-100 border-cyan-300' },
+  proposal: { label: 'Proposal', color: 'bg-purple-100 border-purple-300' },
+  negotiation: { label: 'Negotiation', color: 'bg-orange-100 border-orange-300' },
   under_contract: { label: 'Under Contract', color: 'bg-yellow-100 border-yellow-300' },
   closed: { label: 'Closed', color: 'bg-green-100 border-green-300' },
   lost: { label: 'Lost', color: 'bg-red-100 border-red-300' },
@@ -141,10 +145,10 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
 
     // Apply filters
     if (filters.dealTypes.length > 0) {
-      filtered = filtered.filter(deal => filters.dealTypes.includes(deal.dealType));
+      filtered = filtered.filter(deal => filters.dealTypes.includes(deal.dealType as any));
     }
     if (filters.priorities.length > 0) {
-      filtered = filtered.filter(deal => filters.priorities.includes(deal.priority));
+      filtered = filtered.filter(deal => filters.priorities.includes(deal.priority as any));
     }
     if (filters.clientId) {
       filtered = filtered.filter(deal => deal.clientId === filters.clientId);
@@ -185,9 +189,13 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
 
   // Group deals by stage
   const dealsByStage = useMemo(() => {
-    const grouped: Record<DealStage, Deal[]> = {
+    const grouped: Partial<Record<DealStage, Deal[]>> = {
       lead: [],
       qualified: [],
+      prospecting: [],
+      contacted: [],
+      proposal: [],
+      negotiation: [],
       under_contract: [],
       closed: [],
       lost: [],

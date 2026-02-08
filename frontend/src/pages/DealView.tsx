@@ -58,7 +58,7 @@ export const DealView: React.FC = () => {
 
   const fetchGeographicContext = async (dealId: string) => {
     try {
-      const response = await api.get(`/deals/${dealId}/geographic-context`);
+      const response = await api.deals.geographicContext(dealId);
       const context = response.data.data;
       
       // Transform API response to match GeographicScopeTabs format
