@@ -20,6 +20,8 @@ import pipelineRoutes from './pipeline';
 import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
 import emailRoutes from './email.routes';
+import tradeAreasRoutes from './trade-areas.routes';
+import geographicContextRoutes from './geographic-context.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -72,6 +74,13 @@ export function setupRESTRoutes(app: Application): void {
 
   // Email routes (Email AI Integration)
   app.use(`${API_PREFIX}/emails`, emailRoutes);
+
+  // Trade Areas routes (Geographic Definition System)
+  app.use(`${API_PREFIX}/trade-areas`, tradeAreasRoutes);
+
+  // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
+  app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
+  app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
