@@ -4,8 +4,6 @@ import { useDealStore } from '../stores/dealStore';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { Button } from '../components/shared/Button';
 import { PageHeader } from '../components/layout/PageHeader';
-import { GeographicScopeTabs } from '../components/trade-area';
-import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { architectureMetadata } from '../data/architectureMetadata';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -13,7 +11,6 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
   const { deals, fetchDeals, isLoading } = useDealStore();
-  const { activeScope, setScope } = useTradeAreaStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -183,19 +180,6 @@ export const Dashboard: React.FC = () => {
         icon="📊"
         architectureInfo={architectureMetadata.dashboard}
       />
-
-      {/* Geographic Scope Toggle */}
-      <div className="px-6 py-4 border-b border-gray-200">
-        <GeographicScopeTabs
-          activeScope={activeScope}
-          onChange={setScope}
-          tradeAreaEnabled={false}
-          stats={{
-            submarket: { occupancy: 91.5, avg_rent: 2150 },
-            msa: { occupancy: 89.0, avg_rent: 1950 },
-          }}
-        />
-      </div>
 
       {/* Content */}
       <div className="flex-1 flex">

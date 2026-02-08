@@ -21,12 +21,14 @@ export const DealView: React.FC = () => {
   const [modules, setModules] = useState<any[]>([]);
   const [modulesLoading, setModulesLoading] = useState(false);
   const [modulesError, setModulesError] = useState<string | null>(null);
+  const [geographicStats, setGeographicStats] = useState<any>(null);
 
   useEffect(() => {
     if (id) {
       fetchDealById(id);
       fetchModules(id);
       loadTradeAreaForDeal(parseInt(id));
+      fetchGeographicContext(id);
     }
   }, [id]);
 
@@ -51,6 +53,43 @@ export const DealView: React.FC = () => {
       console.error('Failed to fetch modules:', err);
     } finally {
       setModulesLoading(false);
+    }
+  };
+
+  const fetchGeographicContext = async (dealId: string) => {
+    try {
+      const response = await api.get(`/deals/${dealId}/geographic-context`);
+      const context = response.data.data;
+      
+      // Transform API response to match GeographicScopeTabs format
+      const stats: any = {};
+      
+      if (context.trade_area?.stats) {
+        stats.trade_area = {
+          occupancy: context.trade_area.stats.occupancy,
+          avg_rent: context.trade_area.stats.avg_rent,
+        };
+      }
+      
+      if (context.submarket?.stats) {
+        stats.submarket = {
+          occupancy: context.submarket.stats.avg_occupancy,
+          avg_rent: context.submarket.stats.avg_rent,
+        };
+      }
+      
+      if (context.msa?.stats) {
+        stats.msa = {
+          occupancy: context.msa.stats.avg_occupancy,
+          avg_rent: context.msa.stats.avg_rent,
+        };
+      }
+      
+      setGeographicStats(stats);
+    } catch (err) {
+      console.error('Failed to fetch geographic context:', err);
+      // Set null to fall back to empty state
+      setGeographicStats(null);
     }
   };
 
@@ -191,12 +230,8 @@ export const DealView: React.FC = () => {
         <GeographicScopeTabs
           activeScope={activeScope}
           onChange={setScope}
-          tradeAreaEnabled={true}
-          stats={{
-            trade_area: { occupancy: 94.0, avg_rent: 2150 },
-            submarket: { occupancy: 91.5, avg_rent: 2080 },
-            msa: { occupancy: 89.0, avg_rent: 1950 },
-          }}
+          tradeAreaEnabled={!!geographicStats?.trade_area}
+          stats={geographicStats || {}}
         />
       </div>
 
