@@ -982,7 +982,17 @@ app.patch('/api/v1/inbox/:id', requireAuth, async (req: AuthenticatedRequest, re
 // News Intelligence Endpoints
 // ============================================
 import newsRouter from './api/rest/news.routes';
+import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import geographicContextRoutes from './api/rest/geographic-context.routes';
+import isochroneRoutes from './api/rest/isochrone.routes';
+import trafficAiRoutes from './api/rest/traffic-ai.routes';
+
 app.use('/api/v1/news', newsRouter);
+app.use('/api/v1/trade-areas', tradeAreasRoutes);
+app.use('/api/v1/isochrone', isochroneRoutes);
+app.use('/api/v1/traffic-ai', trafficAiRoutes);
+app.use('/api/v1', geographicContextRoutes);
+app.use('/api/v1/deals', geographicContextRoutes);
 
 // ============================================
 // Zoning & Property Analysis Endpoints

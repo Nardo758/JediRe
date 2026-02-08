@@ -47,7 +47,7 @@ router.post('/generate', async (req: Request, res: Response) => {
       estimatedMinutes * 1.2,  // Peak traffic (slower)
     ];
 
-    const isochrones = [];
+    const isochrones: any[] = [];
 
     // Generate multiple isochrones
     for (const profile of profiles) {
