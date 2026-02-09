@@ -218,12 +218,6 @@ export const MainLayout: React.FC = () => {
                   {expandedSections.assets && (
                     <div className="ml-4 space-y-1">
                       <SidebarItem
-                        icon="📋"
-                        label="All"
-                        path="/assets-owned"
-                        isActive={isActive('/assets-owned')}
-                      />
-                      <SidebarItem
                         icon="📊"
                         label="Performance"
                         path="/assets-owned/performance"
