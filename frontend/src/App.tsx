@@ -17,6 +17,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+import { PipelineGridPage } from './pages/PipelineGridPage';
+import { AssetsOwnedGridPage } from './pages/AssetsOwnedGridPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
@@ -49,9 +51,10 @@ function AppContent() {
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<AssetsOwnedPage view="performance" />} />
           <Route path="/assets-owned/documents" element={<AssetsOwnedPage view="documents" />} />
+          <Route path="/assets-owned/grid" element={<AssetsOwnedGridPage />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/deals" element={<DealsPage />} />
-          <Route path="/deals/grid" element={<DealsPage view="grid" />} />
+          <Route path="/deals/grid" element={<PipelineGridPage />} />
           <Route path="/deals/active" element={<DealsPage view="active" />} />
           <Route path="/deals/closed" element={<DealsPage view="closed" />} />
           <Route path="/deals/:id" element={<DealView />} />
