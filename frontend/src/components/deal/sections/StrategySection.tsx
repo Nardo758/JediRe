@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Target, TrendingUp, Lightbulb, BookOpen, CheckCircle } from 'lucide-react';
 import { ModuleUpsellBanner } from './ModuleUpsellBanner';
 import { Button } from '../../shared/Button';
+import { strategyAnalysisService } from '../../../services/strategyAnalysis.service';
 
 interface StrategySectionProps {
   deal: any;
@@ -56,6 +57,8 @@ const getRiskColor = (score: number): string => {
 };
 
 export function StrategySection({ deal, enhanced, onToggleModule }: StrategySectionProps) {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [selectedBasicStrategy, setSelectedBasicStrategy] = useState('value-add');
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>(['va-1']);
   const [comparisonStrategies, setComparisonStrategies] = useState<any[]>([
@@ -63,6 +66,37 @@ export function StrategySection({ deal, enhanced, onToggleModule }: StrategySect
     strategiesData['value-add'][1],
     strategiesData['value-add'][2]
   ]);
+
+  // Load saved strategy analyses on mount
+  useEffect(() => {
+    if (!enhanced) return;
+
+    const loadAnalyses = async () => {
+      setLoading(true);
+      try {
+        const response = await strategyAnalysisService.getStrategyAnalysis(deal.id);
+        if (response.data && response.data.length > 0) {
+          // Load the most recent strategies
+          const recentStrategies = response.data.slice(0, 3);
+          setComparisonStrategies(recentStrategies.map(s => ({
+            id: s.strategySlug,
+            name: s.strategySlug,
+            irr: `${s.roi_metrics.irr}%`,
+            risk: s.risk_score,
+            timeline: `${s.roi_metrics.timeline_months}mo`,
+            capex: `$${(s.roi_metrics.capex / 1000).toFixed(0)}K`,
+            recommended: s.recommended
+          })));
+        }
+      } catch (error) {
+        console.log('No saved strategies found');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAnalyses();
+  }, [deal.id, enhanced]);
 
   const handleAddModule = () => {
     onToggleModule('strategy-arbitrage-engine');
@@ -78,9 +112,35 @@ export function StrategySection({ deal, enhanced, onToggleModule }: StrategySect
     console.log('Learn more about Strategy Arbitrage Engine');
   };
 
+  const saveStrategy = async (strategy: any) => {
+    if (!enhanced) return;
+
+    setSaving(true);
+    try {
+      await strategyAnalysisService.saveStrategySelection({
+        dealId: deal.id,
+        strategySlug: strategy.id,
+        assumptions: {},
+        roiMetrics: {
+          irr: parseFloat(strategy.irr) || 0,
+          risk_score: strategy.risk || 0,
+          timeline_months: parseInt(strategy.timeline) || 0,
+          capex: parseInt(strategy.capex.replace(/[$K]/g, '')) * 1000 || 0
+        },
+        riskScore: strategy.risk || 0,
+        recommended: strategy.recommended || false
+      });
+    } catch (error) {
+      console.error('Failed to save strategy:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const addToComparison = (strategy: any) => {
     if (comparisonStrategies.length < 4 && !comparisonStrategies.find(s => s.id === strategy.id)) {
       setComparisonStrategies([...comparisonStrategies, strategy]);
+      saveStrategy(strategy);
     }
   };
 

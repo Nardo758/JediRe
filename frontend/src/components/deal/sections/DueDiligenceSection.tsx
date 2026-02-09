@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, Clock, AlertTriangle, Square, ChevronDown, ChevronUp, Plus, FileText, Calendar } from 'lucide-react';
 import { ModuleUpsellBanner } from './ModuleUpsellBanner';
 import { Button } from '../../shared/Button';
+import { ddChecklistService } from '../../../services/ddChecklist.service';
 
 interface DueDiligenceSectionProps {
   deal: any;
@@ -158,8 +159,52 @@ const getRiskColor = (score: number): string => {
 };
 
 export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDiligenceSectionProps) {
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [checklistId, setChecklistId] = useState<string | null>(null);
   const [basicTasksState, setBasicTasksState] = useState(basicTasks);
   const [categories, setCategories] = useState(enhancedCategories);
+
+  // Load checklist with tasks on mount
+  useEffect(() => {
+    if (!enhanced) return;
+
+    const loadChecklist = async () => {
+      setLoading(true);
+      try {
+        const response = await ddChecklistService.getOrCreateChecklist(deal.id, 'enhanced');
+        setChecklistId(response.checklist.id);
+        
+        // Map backend tasks to frontend format
+        if (response.tasks && response.tasks.length > 0) {
+          const tasksByCategory: Record<string, any[]> = {};
+          response.tasks.forEach(task => {
+            if (!tasksByCategory[task.category]) {
+              tasksByCategory[task.category] = [];
+            }
+            tasksByCategory[task.category].push({
+              id: task.id,
+              name: task.title,
+              status: task.status,
+              dueDate: task.dueDate
+            });
+          });
+
+          // Update categories with loaded tasks
+          setCategories(prev => prev.map(cat => ({
+            ...cat,
+            tasks: tasksByCategory[cat.id] || cat.tasks
+          })));
+        }
+      } catch (error) {
+        console.error('Failed to load checklist:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChecklist();
+  }, [deal.id, enhanced]);
 
   const handleAddModule = () => {
     onToggleModule('dd-suite-pro');
@@ -171,6 +216,19 @@ export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDilig
 
   const handleLearnMore = () => {
     console.log('Learn more about DD Suite Pro');
+  };
+
+  const updateTaskStatus = async (taskId: string, newStatus: 'pending' | 'in_progress' | 'complete' | 'blocked') => {
+    if (!enhanced) return;
+
+    setSyncing(true);
+    try {
+      await ddChecklistService.updateTaskStatus(taskId, newStatus);
+    } catch (error) {
+      console.error('Failed to update task status:', error);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const toggleBasicTask = (taskId: string) => {
@@ -275,12 +333,16 @@ export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDilig
   // ENHANCED VERSION
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-6">
-        <CheckCircle className="w-6 h-6 text-blue-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Due Diligence</h2>
-        <span className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
-          DD Suite Pro Active
-        </span>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <CheckCircle className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold text-gray-900">Due Diligence</h2>
+          <span className="px-3 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+            DD Suite Pro Active
+          </span>
+        </div>
+        {loading && <span className="text-sm text-gray-500">Loading checklist...</span>}
+        {syncing && <span className="text-sm text-blue-600">💾 Syncing...</span>}
       </div>
 
       {/* Overall Progress & Risk Score */}
@@ -374,13 +436,39 @@ export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDilig
                     {category.tasks.map((task) => (
                       <div 
                         key={task.id}
-                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
+                        onClick={() => {
+                          // Cycle through statuses: pending → in_progress → complete → pending
+                          const statusCycle: Record<string, 'pending' | 'in_progress' | 'complete'> = {
+                            'pending': 'in_progress',
+                            'in_progress': 'complete',
+                            'complete': 'pending',
+                            'blocked': 'pending'
+                          };
+                          const newStatus = statusCycle[task.status];
+                          
+                          // Update local state optimistically
+                          setCategories(prev => prev.map(cat => 
+                            cat.id === category.id 
+                              ? {
+                                  ...cat,
+                                  tasks: cat.tasks.map(t => 
+                                    t.id === task.id ? { ...t, status: newStatus } : t
+                                  )
+                                }
+                              : cat
+                          ));
+                          
+                          // Save to backend
+                          updateTaskStatus(task.id, newStatus);
+                        }}
+                        className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                       >
                         <div className="flex items-center gap-3 flex-1">
                           {getStatusIcon(task.status)}
                           <span className={`${task.status === 'complete' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                             {task.name}
                           </span>
+                          {syncing && <span className="text-xs text-gray-500">💾</span>}
                         </div>
                         
                         {task.dueDate && (

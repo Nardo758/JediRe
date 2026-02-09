@@ -30,6 +30,9 @@ import layersRoutes from './layers.routes';
 import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
 import modulesRoutes from './modules.routes';
+import financialModelsRoutes from './financial-models.routes';
+import strategyAnalysesRoutes from './strategy-analyses.routes';
+import ddChecklistsRoutes from './dd-checklists.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -113,6 +116,15 @@ export function setupRESTRoutes(app: Application): void {
 
   // Module System routes (Settings > Modules page)
   app.use(`${API_PREFIX}/modules`, modulesRoutes);
+
+  // Financial Models routes (Module-enhanced feature)
+  app.use(`${API_PREFIX}/financial-models`, financialModelsRoutes);
+
+  // Strategy Analyses routes (Module-enhanced feature)
+  app.use(`${API_PREFIX}/strategy-analyses`, strategyAnalysesRoutes);
+
+  // Due Diligence Checklists routes (Module-enhanced feature)
+  app.use(`${API_PREFIX}/dd-checklists`, ddChecklistsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

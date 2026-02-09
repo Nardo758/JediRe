@@ -3,3 +3,7 @@ export { DueDiligenceSection } from './DueDiligenceSection';
 export { ModuleUpsellBanner } from './ModuleUpsellBanner';
 export { PropertiesSection } from './PropertiesSection';
 export { MarketAnalysisSection } from './MarketAnalysisSection';
+export { DocumentsSection } from './DocumentsSection';
+export { CollaborationSection } from './CollaborationSection';
+export { ActivityFeedSection } from './ActivityFeedSection';
+export { DevelopmentSection } from './DevelopmentSection';

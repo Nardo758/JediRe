@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types';
 import ModuleUpsellBanner from './ModuleUpsellBanner';
 import { checkModule } from '../../../utils/modules';
+import { financialModelsService } from '../../../services/financialModels.service';
 
 export interface FinancialAnalysisSectionProps {
   deal: Deal;
@@ -31,6 +32,12 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
   enhanced,
   onToggleModule
 }) => {
+  // Persistence state
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(null);
+
   // Basic calculator state
   const [purchasePrice, setPurchasePrice] = useState<number>(deal.dealValue || 0);
   const [downPayment, setDownPayment] = useState<number>(20); // percentage
@@ -46,6 +53,100 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
   const [revenueAdjust, setRevenueAdjust] = useState<number>(0); // -10 to +10
   const [expenseAdjust, setExpenseAdjust] = useState<number>(0); // -5 to +5
   const [capRateAdjust, setCapRateAdjust] = useState<number>(0); // -0.5 to +0.5
+
+  // Load existing financial model on mount
+  useEffect(() => {
+    const loadModel = async () => {
+      if (!enhanced) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const response = await financialModelsService.getFinancialModel(deal.id);
+        const model = response.data;
+        
+        setModelId(model.id);
+        
+        // Load assumptions
+        if (model.assumptions) {
+          setPurchasePrice(model.assumptions.purchasePrice || deal.dealValue || 0);
+          setDownPayment(model.assumptions.downPayment || 20);
+          setInterestRate(model.assumptions.interestRate || 6.5);
+          setLoanTerm(model.assumptions.loanTerm || 30);
+          setEstimatedNOI(model.assumptions.estimatedNOI || 0);
+          setCapRate(model.assumptions.capRate || 0);
+          setRevenueAdjust(model.assumptions.revenueAdjust || 0);
+          setExpenseAdjust(model.assumptions.expenseAdjust || 0);
+          setCapRateAdjust(model.assumptions.capRateAdjust || 0);
+        }
+        
+        // Load components
+        if (model.components?.activeComponents) {
+          setActiveComponents(model.components.activeComponents);
+        }
+      } catch (error: any) {
+        // Model doesn't exist yet - that's okay
+        console.log('No existing model, will create on save');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadModel();
+  }, [deal.id, enhanced]);
+
+  // Auto-save function with debouncing
+  const autoSave = useCallback(async () => {
+    if (!enhanced) return;
+
+    setSaving(true);
+    setSaveError(null);
+
+    try {
+      const modelData = {
+        dealId: deal.id,
+        name: `Financial Model - ${deal.name}`,
+        components: {
+          activeComponents
+        },
+        assumptions: {
+          purchasePrice,
+          downPayment,
+          interestRate,
+          loanTerm,
+          estimatedNOI,
+          capRate,
+          revenueAdjust,
+          expenseAdjust,
+          capRateAdjust
+        },
+        results: {
+          noi: estimatedNOI,
+          cashOnCashReturn,
+          debtServiceCoverageRatio,
+          monthlyPayment,
+          annualDebtService
+        }
+      };
+
+      if (modelId) {
+        await financialModelsService.updateFinancialModel(modelId, modelData);
+      } else {
+        const response = await financialModelsService.saveFinancialModel(modelData);
+        setModelId(response.data.id);
+      }
+    } catch (error: any) {
+      console.error('Auto-save failed:', error);
+      setSaveError('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    enhanced, deal.id, deal.name, modelId, activeComponents,
+    purchasePrice, downPayment, interestRate, loanTerm,
+    estimatedNOI, capRate, revenueAdjust, expenseAdjust, capRateAdjust
+  ]);
 
   // Calculate loan amount
   const loanAmount = purchasePrice * (1 - downPayment / 100);
@@ -70,6 +171,13 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
     ? estimatedNOI / annualDebtService
     : 0;
 
+  // Handle input blur (auto-save)
+  const handleBlur = () => {
+    if (enhanced && !loading) {
+      autoSave();
+    }
+  };
+
   // Format currency
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -86,11 +194,16 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
   };
 
   const toggleComponent = (id: number) => {
-    setActiveComponents(prev => 
-      prev.includes(id) 
+    setActiveComponents(prev => {
+      const newComponents = prev.includes(id) 
         ? prev.filter(cid => cid !== id)
-        : [...prev, id]
-    );
+        : [...prev, id];
+      
+      // Trigger auto-save after state update
+      setTimeout(() => autoSave(), 100);
+      
+      return newComponents;
+    });
   };
 
   // Enhanced version content
@@ -99,11 +212,27 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
       <div className="h-full overflow-y-auto p-6">
         <div className="max-w-6xl mx-auto space-y-6">
           {/* Header */}
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Financial Analysis</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Professional-grade financial modeling for {deal.name}
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Financial Analysis</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Professional-grade financial modeling for {deal.name}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {loading && (
+                <span className="text-sm text-gray-500">Loading...</span>
+              )}
+              {saving && (
+                <span className="text-sm text-blue-600">💾 Saving...</span>
+              )}
+              {!loading && !saving && saveError && (
+                <span className="text-sm text-red-600">⚠️ {saveError}</span>
+              )}
+              {!loading && !saving && !saveError && modelId && (
+                <span className="text-sm text-green-600">✓ Saved</span>
+              )}
+            </div>
           </div>
 
           {/* Component Builder */}
@@ -165,6 +294,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   step="0.5"
                   value={revenueAdjust}
                   onChange={(e) => setRevenueAdjust(parseFloat(e.target.value))}
+                  onBlur={handleBlur}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -191,6 +321,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   step="0.25"
                   value={expenseAdjust}
                   onChange={(e) => setExpenseAdjust(parseFloat(e.target.value))}
+                  onBlur={handleBlur}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -217,6 +348,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   step="0.05"
                   value={capRateAdjust}
                   onChange={(e) => setCapRateAdjust(parseFloat(e.target.value))}
+                  onBlur={handleBlur}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
@@ -336,6 +468,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   type="number"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
+                  onBlur={handleBlur}
                   className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -350,6 +483,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 type="number"
                 value={downPayment}
                 onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
+                onBlur={handleBlur}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -364,6 +498,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 step="0.125"
                 value={interestRate}
                 onChange={(e) => setInterestRate(parseFloat(e.target.value) || 0)}
+                onBlur={handleBlur}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -377,6 +512,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 type="number"
                 value={loanTerm}
                 onChange={(e) => setLoanTerm(parseFloat(e.target.value) || 0)}
+                onBlur={handleBlur}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -434,6 +570,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   type="number"
                   value={estimatedNOI}
                   onChange={(e) => setEstimatedNOI(parseFloat(e.target.value) || 0)}
+                  onBlur={handleBlur}
                   className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="0"
                 />
@@ -450,6 +587,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 step="0.1"
                 value={capRate}
                 onChange={(e) => setCapRate(parseFloat(e.target.value) || 0)}
+                onBlur={handleBlur}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="0.0"
               />
