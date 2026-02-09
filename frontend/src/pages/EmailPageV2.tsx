@@ -254,7 +254,7 @@ export function EmailPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className={`font-medium ${email.is_read ? 'text-gray-700' : 'text-gray-900'}`}>
-                    {email.from_name || email.from_email}
+                    {email.from_name || email.from_address}
                   </span>
                   {!email.is_read && (
                     <span className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0" />
@@ -285,10 +285,10 @@ export function EmailPage() {
                   </span>
                 </>
               )}
-              {email.attachments_count > 0 && (
+              {email.attachment_count && email.attachment_count > 0 && (
                 <>
                   <span>•</span>
-                  <span>📎 {email.attachments_count}</span>
+                  <span>📎 {email.attachment_count}</span>
                 </>
               )}
             </div>
