@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
 import { WarMapsComposer } from '../map/WarMapsComposer';
+import { ChatOverlay } from '../chat/ChatOverlay';
 import { layersService } from '../../services/layers.service';
 import { mapConfigsService, MapConfiguration } from '../../services/map-configs.service';
 import { MapLayer } from '../../types/layers';
@@ -281,6 +282,8 @@ export const MainLayout: React.FC = () => {
           onLayersCreated={handleWarMapsCreated}
         />
       )}
+
+      <ChatOverlay />
     </div>
   );
 };
