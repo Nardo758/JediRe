@@ -118,6 +118,11 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm">
       <div className="flex items-center px-3 py-1.5 gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-xl">🚀</span>
+          <span className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">JediRe</span>
+        </div>
+
         <form onSubmit={handleSearch} className="relative flex-shrink-0">
           <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -131,8 +136,8 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
             placeholder="Search deals, properties, contacts..."
             className={`pl-8 pr-3 py-1.5 text-sm rounded-lg border transition-all ${
               searchFocused
-                ? 'w-72 border-blue-400 ring-2 ring-blue-100'
-                : 'w-56 border-gray-300 hover:border-gray-400'
+                ? 'w-64 border-blue-400 ring-2 ring-blue-100'
+                : 'w-44 border-gray-300 hover:border-gray-400'
             } focus:outline-none`}
           />
         </form>
