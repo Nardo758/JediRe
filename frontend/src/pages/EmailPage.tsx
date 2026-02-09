@@ -33,13 +33,10 @@ export function EmailPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
-  // Load data on mount
   useEffect(() => {
-    loadInbox();
     fetchDeals();
   }, []);
 
-  // Reload emails when view changes
   useEffect(() => {
     loadInbox();
   }, [activeView]);
