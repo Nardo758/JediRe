@@ -7,8 +7,9 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -17,10 +18,18 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
+function getNewsViewFromPath(pathname: string): ViewType {
+  if (pathname.endsWith('/dashboard')) return 'dashboard';
+  if (pathname.endsWith('/network')) return 'network';
+  if (pathname.endsWith('/alerts')) return 'alerts';
+  return 'feed';
+}
+
 export function NewsIntelligencePage() {
   const { deals, fetchDeals } = useDealStore();
+  const location = useLocation();
   
-  const [activeView, setActiveView] = useState<ViewType>('feed');
+  const activeView = getNewsViewFromPath(location.pathname);
   const [selectedCategory, setSelectedCategory] = useState('all');
   
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -40,13 +49,6 @@ export function NewsIntelligencePage() {
     { id: 'transactions', label: 'Transactions', icon: '💰' },
     { id: 'government', label: 'Government', icon: '🏛️' },
     { id: 'amenities', label: 'Amenities', icon: '🏪' },
-  ];
-
-  const views: ViewItem[] = [
-    { id: 'feed', label: 'Feed', icon: '📋' },
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'network', label: 'Network', icon: '🔗' },
-    { id: 'alerts', label: 'Alerts', icon: '🔔', count: unreadAlertCount },
   ];
 
   // Load data on mount
@@ -411,10 +413,8 @@ export function NewsIntelligencePage() {
   return (
     <ThreePanelLayout
       storageKey="news"
-      views={views}
-      activeView={activeView}
-      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
-      renderContent={renderContent}
+      showViewsPanel={false}
+      renderContent={() => renderContent(activeView)}
       renderMap={renderMap}
     />
   );

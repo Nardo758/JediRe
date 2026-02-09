@@ -7,8 +7,9 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
 import { inboxService, Email, InboxStats } from '../services/inbox.service';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -17,10 +18,18 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'inbox' | 'sent' | 'drafts' | 'flagged';
 
+function getEmailViewFromPath(pathname: string): ViewType {
+  if (pathname.endsWith('/sent')) return 'sent';
+  if (pathname.endsWith('/drafts')) return 'drafts';
+  if (pathname.endsWith('/flagged')) return 'flagged';
+  return 'inbox';
+}
+
 export function EmailPage() {
   const { deals, fetchDeals } = useDealStore();
+  const location = useLocation();
   
-  const [activeView, setActiveView] = useState<ViewType>('inbox');
+  const activeView = getEmailViewFromPath(location.pathname);
   const [emails, setEmails] = useState<Email[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,14 +37,6 @@ export function EmailPage() {
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-
-  // Define views
-  const views: ViewItem[] = [
-    { id: 'inbox', label: 'Inbox', icon: '📥', count: stats?.unread || 0 },
-    { id: 'sent', label: 'Sent', icon: '📤' },
-    { id: 'drafts', label: 'Drafts', icon: '📝' },
-    { id: 'flagged', label: 'Flagged', icon: '⭐', count: stats?.flagged || 0 },
-  ];
 
   // Load data on mount
   useEffect(() => {
@@ -313,10 +314,8 @@ export function EmailPage() {
   return (
     <ThreePanelLayout
       storageKey="email"
-      views={views}
-      activeView={activeView}
-      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
-      renderContent={renderContent}
+      showViewsPanel={false}
+      renderContent={() => renderContent(activeView)}
       renderMap={renderMap}
     />
   );
