@@ -198,8 +198,8 @@ export const MainLayout: React.FC = () => {
                     icon="🏢"
                     label="Assets Owned"
                     count={23}
-                    path="/assets"
-                    isActive={isActive('/assets') || isActivePrefix('/assets')}
+                    path="/assets-owned"
+                    isActive={isActive('/assets-owned') || isActivePrefix('/assets-owned')}
                     layerConfig={{
                       sourceType: 'assets',
                       layerType: 'pin',
