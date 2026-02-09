@@ -1,8 +1,9 @@
 # JEDI RE - Complete Platform Wireframe
 
-**Version:** 2.0 - Central Map Canvas Architecture  
+**Version:** 2.1 - Central Map Canvas Architecture + Three-Panel Layout System  
 **Created:** 2026-02-07  
-**Status:** Design Specification
+**Last Updated:** 2026-02-09  
+**Status:** Production Implementation
 
 ---
 
@@ -12,11 +13,12 @@
 3. [Horizontal Bar - Map Layers](#horizontal-bar---map-layers)
 4. [Vertical Sidebar - Data Navigation](#vertical-sidebar---data-navigation)
 5. [Central Map Canvas](#central-map-canvas)
-6. [Properties Silo - Deep Dive](#properties-silo---deep-dive)
-7. [Pipeline Silo - Deep Dive](#pipeline-silo---deep-dive)
-8. [Individual Deal Pages](#individual-deal-pages)
-9. [User Flows](#user-flows)
-10. [Interaction Patterns](#interaction-patterns)
+6. [Three-Panel Layout System](#three-panel-layout-system)
+7. [Properties Silo - Deep Dive](#properties-silo---deep-dive)
+8. [Pipeline Silo - Deep Dive](#pipeline-silo---deep-dive)
+9. [Individual Deal Pages](#individual-deal-pages)
+10. [User Flows](#user-flows)
+11. [Interaction Patterns](#interaction-patterns)
 
 ---
 
@@ -459,6 +461,343 @@
 - ⚙️ Layer settings (opacity, blend mode, z-index)
 - 🔒 Lock layer (prevent edits)
 - Drag to reorder
+
+---
+
+## Three-Panel Layout System
+
+### Overview
+
+**Component:** `ThreePanelLayout.tsx`  
+**Purpose:** Standardized 3-panel split-view layout for all data pages  
+**Status:** Production (Deployed Feb 8-9, 2026)
+
+**Pages Using ThreePanelLayout:**
+- News Intelligence (`/news-intel`)
+- Email (`/dashboard/email`)
+- Pipeline/Deals (`/deals`)
+- Assets Owned (`/assets-owned`)
+- Market Data (`/market-data`)
+- Dashboard (Portfolio Overview) (`/dashboard`)
+
+---
+
+### Panel Structure
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  HORIZONTAL BAR (MapTabsBar - global)                                │
+├────────┬─────────────────────────────┬──────────────────────────────┤
+│ PANEL 1│      PANEL 2: CONTENT       │  PANEL 3: MAP                │
+│ Views  │      (Resizable)            │  (Always visible)            │
+│ 64-80px│      400-1400px             │  (Flex-1)                    │
+│        │                             │                              │
+│ [📋]   │  ┌───────────────────────┐  │  ┌────────────────────────┐ │
+│ Feed   │  │                       │  │  │                        │ │
+│        │  │   Event cards         │  │  │    Mapbox GL JS        │ │
+│ [📊]   │  │   Property list       │  │  │                        │ │
+│ Dash   │  │   Email threads       │  │  │    • Deal boundaries   │ │
+│        │  │   Deal Kanban         │  │  │    • Property markers  │ │
+│ [🔗]   │  │   Asset grid          │  │  │    • Event markers     │ │
+│ Network│  │                       │  │  │    • Custom layers     │ │
+│        │  │   (Scrollable)        │  │  │                        │ │
+│ [🔔]   │  │                       │  │  │    (Interactive)       │ │
+│ Alerts │  │                       │  │  │                        │ │
+│        │  └───────────────────────┘  │  └────────────────────────┘ │
+│        │                             │                              │
+│        │  [Resize Handle]            │                              │
+│        │       ║                     │                              │
+└────────┴─────────────────────────────┴──────────────────────────────┘
+             ▲                                      ▲
+         Toggle Controls (top-right):
+         [◀ Views] [◀ Content] [Map ▶] [⤢ Maximize]
+```
+
+---
+
+### Panel Features
+
+#### Panel 1: Views Sidebar (Optional)
+
+**Visibility:** Conditional - only shown if page has multiple views  
+**Width:** 64-80px fixed  
+**Background:** White  
+**Purpose:** Quick navigation between page views
+
+**Pages with Views:**
+- **News Intelligence:** 4 views (Event Feed, Dashboard, Network Intelligence, Alerts)
+
+**Pages without Views:**
+- Email, Pipeline, Assets Owned, Market Data (single view per page)
+
+**View Items:**
+```typescript
+interface ViewItem {
+  id: string;
+  label: string;
+  icon: string;     // Emoji (e.g., "📋", "📊", "🔗", "🔔")
+  count?: number;   // Badge count (e.g., unread emails, alerts)
+}
+```
+
+**Example:**
+```
+┌────────┐
+│  📋   │
+│  Feed  │  ← Active (blue background)
+│        │
+│  📊   │
+│  Dash  │  ← Inactive (gray text)
+│   [3]  │  ← Badge count
+│        │
+│  🔗   │
+│Network │
+└────────┘
+```
+
+---
+
+#### Panel 2: Content Panel
+
+**Width:** Resizable (400px - 1400px)  
+**Default:** 550px  
+**Background:** Light gray (`bg-gray-50`)  
+**Purpose:** Main content area for each page
+
+**Content Types:**
+- **News Intel:** Event cards (horizontal layout with full impact data)
+- **Email:** Email list with sender, subject, preview
+- **Pipeline:** Kanban board with deal cards
+- **Assets Owned:** Property grid/cards with performance metrics
+- **Market Data:** Market trends, comps, demographics tables
+
+**Resize Handle:**
+- **Position:** Right edge of content panel (1px wide)
+- **Visual:** Gray bar, blue on hover
+- **Behavior:** Click and drag horizontally
+- **Constraints:** Min 400px, Max 1400px
+- **Persistence:** Saved to localStorage per page
+
+**Maximize Feature:** *(Added Feb 9, 2026)*
+- **Button:** `[⤢ Maximize]` in top-right toggle controls
+- **Behavior:** 
+  - Hides map panel
+  - Expands content to full width (minus views panel if present)
+  - Button changes to `[⤡ Restore]`
+  - Clicking restore brings back map panel at previous size
+- **Use Cases:**
+  - Deep work in Kanban board (Pipeline)
+  - Reviewing large property grid (Assets)
+  - Reading long email threads (Email)
+
+---
+
+#### Panel 3: Map Panel
+
+**Width:** Flexible (flex-1, fills remaining space)  
+**Background:** Map (Mapbox GL JS)  
+**Purpose:** Spatial context for all data
+
+**Always Visible Rule:**
+- At least one panel (Content or Map) must be visible at all times
+- If user tries to hide both → Map automatically shows
+- This safeguard prevents blank screen
+
+**Map Content (by page):**
+- **News Intel:** Event markers color-coded by category + deal boundaries
+- **Email:** Email locations (if geocoded) + deal boundaries
+- **Pipeline:** Deal boundaries color-coded by stage + property markers
+- **Assets Owned:** Property markers clustered + ownership boundaries
+- **Market Data:** Market boundary overlays + comp property markers
+
+**Map Interactions:**
+- Click event/property → Highlight in content panel
+- Click content item → Zoom to location on map
+- Bi-directional sync between content and map
+
+---
+
+### Toggle Controls
+
+**Position:** Fixed top-right corner (z-index: 20, above content)  
+**Layout:** Horizontal button row
+
+**Buttons:**
+
+1. **[◀ Views]** / **[▶ Views]**
+   - Only visible if page has views panel
+   - Toggles Panel 1 visibility
+   - Blue when visible, white when hidden
+   - Keyboard: `V` (future enhancement)
+
+2. **[◀ Content]** / **[▶ Content]**
+   - Toggles Panel 2 visibility
+   - Blue when visible, white when hidden
+   - Keyboard: `C` (future enhancement)
+
+3. **[Map ▶]** / **[◀ Map]**
+   - Toggles Panel 3 visibility
+   - Blue when visible, white when hidden
+   - Keyboard: `M` (future enhancement)
+
+4. **[⤢ Maximize]** / **[⤡ Restore]** *(New!)*
+   - Maximizes content panel (full-width)
+   - Hides map while maximized
+   - Restores map on un-maximize
+   - Keyboard: `F` (future enhancement)
+
+**Button Styles:**
+```css
+Active (panel visible):
+- Background: Blue (#2563eb)
+- Text: White
+- Shadow: md
+- Hover: Darker blue (#1e40af)
+
+Inactive (panel hidden):
+- Background: White
+- Text: Gray (#374151)
+- Border: Light gray
+- Hover: Light gray background
+```
+
+---
+
+### State Persistence
+
+**localStorage Keys (per page):**
+- `{storageKey}-content-width` → Content panel width (px)
+- `{storageKey}-show-views` → Views panel visibility (boolean)
+- `{storageKey}-show-content` → Content panel visibility (boolean)
+- `{storageKey}-show-map` → Map panel visibility (boolean)
+
+**Example:**
+```javascript
+// News Intelligence page
+localStorage.getItem('news-content-width')     // "650"
+localStorage.getItem('news-show-views')        // "true"
+localStorage.getItem('news-show-content')      // "true"
+localStorage.getItem('news-show-map')          // "true"
+
+// Email page (no views panel)
+localStorage.getItem('email-content-width')    // "800"
+localStorage.getItem('email-show-content')     // "true"
+localStorage.getItem('email-show-map')         // "false"  // Maximized
+```
+
+**Benefits:**
+- User preferences persist across sessions
+- Each page remembers its own layout
+- Reduce cognitive load (no re-adjusting every time)
+
+---
+
+### Responsive Behavior
+
+**Desktop (1920px+):**
+- All three panels visible by default
+- Comfortable resize range (400-1400px for content)
+
+**Laptop (1366px-1920px):**
+- All panels fit, but tighter
+- Default content width: 550px
+- Map gets minimum ~600px
+
+**Tablet (768px-1366px):**
+- Views panel collapses by default
+- Content + Map side-by-side
+- Toggle views as overlay/drawer
+
+**Mobile (< 768px):** *(Future)*
+- Single panel view (content OR map)
+- Bottom tabs to switch
+- Full-screen map or content
+
+---
+
+### Implementation Details
+
+**Component Props:**
+```typescript
+interface ThreePanelLayoutProps {
+  storageKey: string;              // Unique ID for localStorage (e.g., 'news', 'email')
+  views?: ViewItem[];              // Optional view items for Panel 1
+  activeView?: string;             // Currently active view ID
+  onViewChange?: (viewId: string) => void;
+  renderContent: (viewId?: string) => ReactNode;  // Content panel renderer
+  renderMap: () => ReactNode;      // Map panel renderer
+  showViewsPanel?: boolean;        // Override views panel visibility
+  defaultContentWidth?: number;    // Initial width (default: 550)
+  minContentWidth?: number;        // Min resize (default: 400)
+  maxContentWidth?: number;        // Max resize (default: 1400)
+  onNewMap?: () => void;           // Optional: Create Map button handler
+}
+```
+
+**Usage Example (News Intelligence):**
+```tsx
+<ThreePanelLayout
+  storageKey="news"
+  views={tabs}                     // 4 views: Feed, Dashboard, Network, Alerts
+  activeView={activeView}
+  onViewChange={setActiveView}
+  renderContent={renderContent}    // Event cards, metrics, etc.
+  renderMap={renderMap}            // Mapbox with event markers
+  defaultContentWidth={550}
+  minContentWidth={400}
+  maxContentWidth={1400}
+/>
+```
+
+---
+
+### Recent Improvements (Feb 9, 2026)
+
+**1. Maximize Content Panel**
+- **Commit:** 3d7f857
+- **Feature:** New maximize button in toggle controls
+- **Behavior:** Full-width content, hides map temporarily
+- **Use Case:** Deep work sessions (Kanban, property analysis)
+
+**2. Increased Max Width**
+- **Old:** 800px
+- **New:** 1400px
+- **Reason:** Support wider content (Kanban board, property grids)
+
+**3. Panel Visibility Persistence**
+- **Commit:** 4e05090
+- **Feature:** Save/load panel states from localStorage
+- **Impact:** User preferences persist across sessions
+
+**4. Safeguard for Blank Screen**
+- **Issue:** Could hide all panels simultaneously
+- **Fix:** Auto-show map if both content and map hidden
+- **Benefit:** Prevents accidental blank screen
+
+**5. Rendering Optimizations**
+- **Commit:** aefe05e
+- **Changes:**
+  - `useRef` for accurate resize calculations
+  - Conditional data loading (auth-based)
+  - Prevent duplicate fetches (useRef for category tracking)
+- **Impact:** Smoother interactions, faster page loads
+
+---
+
+### Future Enhancements
+
+**Planned:**
+- Keyboard shortcuts (`V`, `C`, `M`, `F`)
+- Mobile responsive breakpoints
+- Panel animations (slide in/out)
+- Snap-to-size presets (small/medium/large)
+- Multi-panel layouts (4-panel for advanced users)
+- Panel layouts saved to user profile (sync across devices)
+
+**Under Consideration:**
+- Vertical split mode (content above/below map)
+- Picture-in-picture map (small floating map when content maximized)
+- Panel docking (detach panels to separate windows)
 
 ---
 
