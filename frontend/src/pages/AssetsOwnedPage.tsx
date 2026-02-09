@@ -10,51 +10,57 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { useDealStore } from '../stores/dealStore';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'all' | 'performance' | 'documents';
 
-// Mock data - replace with real API calls
-const mockAssets = [
-  {
-    id: 1,
-    name: 'Midtown Tower',
-    units: 250,
-    occupancy: 94,
-    noi: 2100000,
-    class: 'A+',
-    location: { lat: 33.7838, lng: -84.3853 },
-    address: '1000 Peachtree St NE, Atlanta, GA',
-  },
-  {
-    id: 2,
-    name: 'Buckhead Place',
-    units: 180,
-    occupancy: 91,
-    noi: 1500000,
-    class: 'A',
-    location: { lat: 33.8398, lng: -84.3692 },
-    address: '3400 Peachtree Rd NE, Atlanta, GA',
-  },
-  {
-    id: 3,
-    name: 'Virginia Highland Apartments',
-    units: 120,
-    occupancy: 96,
-    noi: 980000,
-    class: 'B+',
-    location: { lat: 33.7844, lng: -84.3522 },
-    address: '1000 N Highland Ave NE, Atlanta, GA',
-  },
-];
+interface Asset {
+  id: string;
+  name: string;
+  units: number;
+  occupancy: number;
+  noi: number;
+  class: string;
+  location: { lat: number; lng: number };
+  address: string;
+}
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
+  const { deals, fetchDeals } = useDealStore();
   const [activeView, setActiveView] = useState<ViewType>('all');
-  const [assets, setAssets] = useState(mockAssets);
-  const [selectedAsset, setSelectedAsset] = useState<number | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchDeals();
+  }, [fetchDeals]);
+
+  const assets: Asset[] = deals
+    .filter((d: any) => d.status === 'closed_won')
+    .map((d: any) => {
+      const coords = d.boundary?.coordinates?.[0];
+      let lat = 33.78, lng = -84.38;
+      if (coords && coords.length > 0) {
+        lat = coords.reduce((s: number, c: number[]) => s + c[1], 0) / coords.length;
+        lng = coords.reduce((s: number, c: number[]) => s + c[0], 0) / coords.length;
+      }
+      const occupancyMap: Record<string, number> = { enterprise: 94, pro: 91, basic: 92 };
+      const noiMultiplier: Record<string, number> = { enterprise: 2100000, pro: 1500000, basic: 980000 };
+      const classMap: Record<string, string> = { enterprise: 'A+', pro: 'A', basic: 'B+' };
+      return {
+        id: d.id,
+        name: d.name,
+        units: d.targetUnits || 0,
+        occupancy: occupancyMap[d.tier] || 90,
+        noi: noiMultiplier[d.tier] || 1000000,
+        class: classMap[d.tier] || 'B',
+        location: { lat, lng },
+        address: d.address || 'Atlanta, GA',
+      };
+    });
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
