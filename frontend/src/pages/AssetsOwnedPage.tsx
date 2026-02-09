@@ -76,13 +76,13 @@ export function AssetsOwnedPage() {
   const totals = {
     totalUnits: assets.length,
     avgOccupancy: assets.length > 0
-      ? (assets.reduce((sum, a) => sum + (a.actual_occupancy || 0), 0) / assets.length).toFixed(1)
+      ? (assets.reduce((sum, a) => sum + (Number(a.actual_occupancy) || 0), 0) / assets.length).toFixed(1)
       : '0.0',
-    totalNOI: assets.reduce((sum, a) => sum + (a.actual_noi || 0), 0),
+    totalNOI: assets.reduce((sum, a) => sum + (Number(a.actual_noi) || 0), 0),
     avgIRR: assets.length > 0
-      ? (assets.reduce((sum, a) => sum + (a.current_irr || 0), 0) / assets.length).toFixed(1)
+      ? (assets.reduce((sum, a) => sum + (Number(a.current_irr) || 0), 0) / assets.length).toFixed(1)
       : '0.0',
-    totalDistributions: assets.reduce((sum, a) => sum + (a.total_distributions || 0), 0),
+    totalDistributions: assets.reduce((sum, a) => sum + (Number(a.total_distributions) || 0), 0),
   };
 
   useEffect(() => {
@@ -128,7 +128,7 @@ export function AssetsOwnedPage() {
             <div class="p-2">
               <h3 class="font-semibold">${asset.property_name}</h3>
               <div class="text-sm text-gray-600 mt-1">
-                <div>${asset.actual_occupancy?.toFixed(1)}% occupied</div>
+                <div>${Number(asset.actual_occupancy || 0).toFixed(1)}% occupied</div>
                 <div>NOI: ${formatCurrency(asset.actual_noi)}</div>
               </div>
             </div>
@@ -278,7 +278,7 @@ export function AssetsOwnedPage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">CoC / Equity Multiple</span>
                     <span className="font-semibold">
-                      {formatPercent(asset.coc_return)} / {asset.equity_multiple?.toFixed(2)}x
+                      {formatPercent(asset.coc_return)} / {Number(asset.equity_multiple || 0).toFixed(2)}x
                     </span>
                   </div>
                   {asset.refi_risk_flag && (
@@ -384,7 +384,7 @@ export function AssetsOwnedPage() {
                 </div>
                 <div>
                   <div className="text-gray-600">Equity Multiple</div>
-                  <div className="font-semibold">{asset.equity_multiple?.toFixed(2) || '—'}x</div>
+                  <div className="font-semibold">{asset.equity_multiple ? Number(asset.equity_multiple).toFixed(2) : '—'}x</div>
                 </div>
                 <div>
                   <div className="text-gray-600">CoC Return</div>
