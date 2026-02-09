@@ -1503,3 +1503,376 @@
 **Architecture:** Central Map Canvas Model
 
 **Ready to build!** 🚀
+
+---
+
+## Grid View Specifications - Comprehensive Tracking
+
+**Added:** 2026-02-08 21:23 EST  
+**Purpose:** Detailed grid views for Pipeline (pre-acquisition) and Assets Owned (post-acquisition) tracking
+
+---
+
+### Pipeline Grid View (Pre-Acquisition Tracking)
+
+**URL:** `/deals/pipeline/grid`  
+**Access:** Pipeline → [Switch to Grid View]
+
+#### Layout
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  📁 Pipeline / Grid View                    [Toggle: Grid | Kanban]        │
+│  [Export CSV] [Export Excel] [Filters ▼] [Columns ▼]         [+ Create Deal]│
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Grouped Column Headers (Collapsible):                                     │
+│  ┌──────────┬───────────┬────────────┬──────────┬────────────┐            │
+│  │ Identity │ Financial │ Strategy   │ Market   │ Velocity   │            │
+│  │ & Status │ Snapshot  │ Arbitrage  │ Context  │ Metrics    │            │
+│  ├──────────┼───────────┼────────────┼──────────┼────────────┤            │
+│  │ • Name   │ • Ask $   │ • Best     │ • Supply │ • Source   │            │
+│  │ • Address│ • JEDI $  │   Strategy │   Risk   │ • LOI Date │            │
+│  │ • Type   │ • IRR (B) │ • Confidence│ • Absorb │ • Close    │            │
+│  │ • Units  │ • IRR (J) │ • Spread   │ • Imbal. │ • DD %     │            │
+│  │ • Stage  │ • NOI     │ • Signal   │ • Growth │ • Compete  │            │
+│  │ • Days   │ • Cap     │            │          │            │            │
+│  │ • AI Score│ • Equity  │            │          │            │            │
+│  └──────────┴───────────┴────────────┴──────────┴────────────┘            │
+│                                                                             │
+│  Row 1: (with visual indicators)                                           │
+│  ───────────────────────────────────────────────────────────────────────── │
+│  🟢⭐ Midtown Plaza         $45M → $38M     Build-to-Sell (92)  ⚠️ 1,240u  │
+│      123 Peachtree St      IRR: 18%→22%    Spread: $4.2M       Absorb: 45  │
+│      Multifamily, 450u     NOI: $3.2M      Signal: 88          Imbal: 72   │
+│      LOI | 12d | Score: 94                                  DD: 0% | 2 bids│
+│  ───────────────────────────────────────────────────────────────────────── │
+│  🟡 Buckhead Tower          ...                                             │
+│  ───────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Showing 1-50 of 127 deals | Pagination: [< 1 2 3 4 5 >]                 │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Complete Column Definitions
+
+**Group 1: Identity & Status (7 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Property Name | Text | Deal name/identifier | ✓ | ✓ |
+| Address | Text | Full property address | ✓ | ✓ |
+| Asset Type | Enum | Multifamily, Office, Retail, etc. | ✓ | ✓ |
+| Unit Count / SF | Number | Size metric | ✓ | ✓ |
+| Pipeline Stage | Enum | Sourced, Under Review, LOI, Contract, DD, Closing | ✓ | ✓ |
+| Days in Stage | Number | Days since stage change (⚠️ if >30) | ✓ | ✓ |
+| AI Opportunity Score | 0-100 | Strategy Arbitrage confidence | ✓ | ✓ |
+
+**Group 2: Financial Snapshot (12 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Ask Price | Currency | Broker/seller asking price | ✓ | ✓ |
+| Price per Unit/SF | Currency | Normalized pricing | ✓ | ✓ |
+| JEDI Adjusted Price | Currency | AI-recommended price | ✓ | ✓ |
+| Going-in Cap (Broker) | % | Seller's pro forma cap | ✓ | ✓ |
+| Going-in Cap (JEDI) | % | AI-adjusted cap rate | ✓ | ✓ |
+| Projected IRR (Broker) | % | Seller's projected IRR | ✓ | ✓ |
+| Projected IRR (JEDI) | % | AI-realistic IRR range | ✓ | ✓ |
+| Pro Forma NOI | Currency | Broker's NOI projection | ✓ | ✓ |
+| JEDI Adjusted NOI | Currency | AI-adjusted NOI | ✓ | ✓ |
+| Equity Required | Currency | Down payment needed | ✓ | ✓ |
+| Target DSCR | Ratio | Debt service coverage | ✓ | ✓ |
+| Debt Leverage | % | LTV ratio | ✓ | ✓ |
+
+**Group 3: Strategy Arbitrage (4 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Best Strategy | Enum | Build-to-Sell, Flip, Rental, Airbnb | ✓ | ✓ |
+| Confidence Score | 0-100 | Confidence in best strategy | ✓ | ✓ |
+| Strategy Spread | Currency | Delta between best/worst | ✓ | ✓ |
+| Arbitrage Signal | 0-100 | Hidden ROI strength | ✓ | ✓ |
+
+**Group 4: Market Context (5 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Supply Risk Flag | Boolean | ⚠️ if high competing supply | ✓ | ✓ |
+| Competing Units | Number | Units delivering in area | ✓ | ✓ |
+| Absorption Rate | Number | Units absorbed/month | ✓ | ✓ |
+| Rent Growth Forecast | % | 12-month projection | ✓ | ✓ |
+| Imbalance Score | 0-100 | Supply-demand balance | ✓ | ✓ |
+
+**Group 5: Velocity Metrics (6 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Source | Enum | Broker, Off-Market, Network, News | ✓ | ✓ |
+| Competing Offers | Number | Known competing bids | ✓ | ✓ |
+| LOI Deadline | Date | Letter of intent deadline | ✓ | ✓ |
+| Inspection Period End | Date | DD inspection deadline | ✓ | ✓ |
+| Closing Date | Date | Target close date | ✓ | ✓ |
+| DD Checklist % | % | Due diligence completion | ✓ | ✓ |
+
+**Total: 34 columns**
+
+#### Visual Indicators
+
+**Status Badges:**
+- 🟢 On Track - progressing normally
+- 🟡 Attention - approaching deadline / stalled
+- 🔴 Risk - missed deadline / critical issue
+- ⭐ High Confidence - AI score >85
+
+**Alert Icons:**
+- ⚠️ Supply Risk - high competing supply
+- 🚨 Stalled - >30 days in current stage
+- 💰 Value Gap - JEDI price significantly below ask
+- 🎯 Strong Arbitrage - high strategy spread (>$2M)
+
+---
+
+### Assets Owned Grid View (Post-Acquisition Tracking)
+
+**URL:** `/deals/owned/grid`  
+**Access:** Assets Owned → [Switch to Grid View]
+
+#### Layout
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  🏢 Assets Owned / Grid View                [Toggle: Grid | Map]            │
+│  [Export CSV] [Export Excel] [Filters ▼] [Columns ▼]         [Add Asset]    │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Grouped Column Headers (Collapsible):                                     │
+│  ┌──────────┬───────────┬────────────┬──────────┬────────────┬──────────┐ │
+│  │ Identity │ Perform.  │ Returns    │ Oper.    │ Market     │ Risk     │ │
+│  │          │ vs UW     │ Tracking   │ Health   │ Position   │ Monitor  │ │
+│  ├──────────┼───────────┼────────────┼──────────┼────────────┼──────────┤ │
+│  │ • Name   │ • NOI     │ • Curr IRR │ • Occ    │ • AI Score │ • Loan   │ │
+│  │ • Address│ • Occ %   │ • Proj IRR │   Trend  │ • Supply   │   Maturity│
+│  │ • Type   │ • Rent    │ • CoC      │ • Rent   │ • Comp     │ • Refi   │ │
+│  │ • Acq Dt │ • Variance│ • Equity M │   Growth │   Position │   Risk   │ │
+│  │ • Hold   │           │ • Distrib  │ • Opex % │ • Concess. │ • Market │ │
+│  │          │           │ • Gain/Loss│ • Capex  │            │   Signals│ │
+│  └──────────┴───────────┴────────────┴──────────┴────────────┴──────────┘ │
+│                                                                             │
+│  Row 1: (with variance highlighting)                                       │
+│  ───────────────────────────────────────────────────────────────────────── │
+│  🟢 Park Avenue Apts    NOI: $2.1M (vs $1.9M) +10.5%    IRR: 24% (vs 18%)  │
+│      345 Park Ave       Occ: 96% (vs 92%) +4%           CoC: 16%           │
+│      Multifamily, 120u  Rent: $1,850 (vs $1,750) +5.7%  Eq M: 1.8x        │
+│      Acq: Jan 2024      Variance: Outperforming ✅      Distrib: $420K     │
+│  ───────────────────────────────────────────────────────────────────────── │
+│  🟡 Midtown Tower       NOI: $1.5M (vs $1.8M) -16.7%   ...                 │
+│  ───────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Showing 1-20 of 45 owned deals | Pagination: [< 1 2 3 >]                 │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Complete Column Definitions
+
+**Group 1: Identity (5 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Property Name | Text | Asset name | ✓ | ✓ |
+| Address | Text | Full property address | ✓ | ✓ |
+| Asset Type | Enum | Property type | ✓ | ✓ |
+| Acquisition Date | Date | Purchase date | ✓ | ✓ |
+| Hold Period | Months | Months since acquisition | ✓ | ✓ |
+
+**Group 2: Performance vs Underwriting (13 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Actual NOI | Currency | TTM net operating income | ✓ | ✓ |
+| Pro Forma NOI | Currency | Underwritten NOI | ✓ | ✓ |
+| NOI Variance | % | (Actual - PF) / PF | ✓ | ✓ |
+| Actual Occupancy | % | Current occupancy rate | ✓ | ✓ |
+| Projected Occupancy | % | Underwritten occupancy | ✓ | ✓ |
+| Occupancy Variance | % | Actual - Projected | ✓ | ✓ |
+| Actual Rent/Unit | Currency | Current average rent | ✓ | ✓ |
+| Underwritten Rent | Currency | Pro forma rent | ✓ | ✓ |
+| Rent Variance | % | (Actual - UW) / UW | ✓ | ✓ |
+| Actual Concessions | Currency | Current concessions/unit | ✓ | ✓ |
+| Projected Concessions | Currency | Underwritten concessions | ✓ | ✓ |
+| Actual Cap Rate | % | Current NOI / Value | ✓ | ✓ |
+| Going-in Cap Rate | % | Acquisition cap rate | ✓ | ✓ |
+
+**Group 3: Returns Tracking (8 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Current IRR | % | Internal rate of return | ✓ | ✓ |
+| Projected IRR | % | Underwritten IRR | ✓ | ✓ |
+| IRR Variance | % | Current - Projected | ✓ | ✓ |
+| Cash-on-Cash Return | % | Current period CoC | ✓ | ✓ |
+| Equity Multiple | Ratio | Current equity multiple | ✓ | ✓ |
+| Projected Exit Multiple | Ratio | Underwritten exit | ✓ | ✓ |
+| Total Distributions | Currency | Cumulative distributions | ✓ | ✓ |
+| Unrealized Gain/Loss | Currency | Market value - basis | ✓ | ✓ |
+
+**Group 4: Operational Health (11 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Occupancy Trend (3mo) | % | 3-month average | ✓ | ✓ |
+| Occupancy Trend (6mo) | % | 6-month average | ✓ | ✓ |
+| Occupancy Trend (12mo) | % | 12-month average | ✓ | ✓ |
+| Rent Growth Achieved | % | Actual vs forecast | ✓ | ✓ |
+| Rent Growth Forecast | % | Underwritten growth | ✓ | ✓ |
+| Opex Ratio | % | Operating expenses / Revenue | ✓ | ✓ |
+| Budget Opex Ratio | % | Underwritten opex | ✓ | ✓ |
+| Capex Spend | Currency | Actual capex to date | ✓ | ✓ |
+| Capex Budget | Currency | Underwritten capex | ✓ | ✓ |
+| Capex Timeline % | % | Schedule completion | ✓ | ✓ |
+| Lease Renewal Rate | % | Renewals (trailing 12mo) | ✓ | ✓ |
+
+**Group 5: Market Position (5 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Current AI Score | 0-100 | Updated opportunity score | ✓ | ✓ |
+| Updated Supply Pipeline | Number | Competing units in area | ✓ | ✓ |
+| Comp Rent Position | Enum | Above/At/Below market | ✓ | ✓ |
+| Property Concessions | Currency | Your concessions | ✓ | ✓ |
+| Comp Concessions | Currency | Market average | ✓ | ✓ |
+
+**Group 6: Value-Add Progress (6 columns, if applicable)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Renovation % Complete | % | Value-add completion | ✓ | ✓ |
+| Renovation Budget Var | % | Actual vs budget | ✓ | ✓ |
+| Renovated Unit Rent | Currency | Avg rent renovated | ✓ | ✓ |
+| Unrenovated Unit Rent | Currency | Avg rent unrenovated | ✓ | ✓ |
+| Rent Premium Achieved | % | (Ren - Unren) / Unren | ✓ | ✓ |
+| Timeline Variance | Days | Days ahead/behind | ✓ | ✓ |
+
+**Group 7: Risk Monitoring (6 columns)**
+| Column | Type | Description | Sortable | Filterable |
+|--------|------|-------------|----------|------------|
+| Loan Maturity Date | Date | Debt maturity | ✓ | ✓ |
+| Months to Maturity | Number | Months until refi | ✓ | ✓ |
+| Refi Risk Flag | Boolean | ⚠️ if <12 months | ✓ | ✓ |
+| Interest Rate Sensitivity | % | Impact of +1% rate | ✓ | ✓ |
+| Market Risk Signals | Number | Negative news count | ✓ | ✓ |
+| Portfolio Concentration | % | % in this submarket | ✓ | ✓ |
+
+**Total: 54 columns**
+
+#### Visual Indicators
+
+**Performance Badges:**
+- 🟢 Outperforming - beating underwriting
+- 🟡 On Track - within 5% of pro forma
+- 🔴 Underperforming - >10% below pro forma
+- ⭐ Value-Add Success - achieving premiums
+
+**Alert Icons:**
+- ⚠️ Refi Risk - approaching loan maturity (<12 months)
+- 🚨 Underperforming - significant variance
+- 💰 Value-Add Opportunity - market shift detected
+- 🎯 Exit Window - favorable exit conditions
+
+**Variance Highlighting:**
+- Green text - Positive variance (beating pro forma)
+- Red text - Negative variance (below pro forma)
+- Gray text - Neutral / no variance
+
+---
+
+### Grid Features (Both Views)
+
+#### 1. Column Management
+- **Show/Hide Columns:** Toggle visibility via dropdown
+- **Reorder Columns:** Drag column headers to reorder
+- **Resize Columns:** Drag column borders
+- **Group Collapse/Expand:** Click group header to collapse entire section
+- **Save Custom Views:** Save preferred column configurations
+
+#### 2. Filtering
+- **Text Filters:** Search by name, address
+- **Range Filters:** Price, occupancy, IRR ranges
+- **Date Filters:** Acquisition date, LOI deadline
+- **Enum Filters:** Asset type, stage, source (multiselect)
+- **Boolean Filters:** Supply risk, refi risk toggles
+- **Advanced:** Combine multiple filters with AND/OR
+
+#### 3. Sorting
+- **Single Column:** Click header to sort asc/desc
+- **Multi-Column:** Shift+click for secondary sort
+- **Save Sort:** Remember last sort preference
+
+#### 4. Export
+- **CSV:** All columns, current filter/sort
+- **Excel:** Formatted with color coding, formulas
+- **PDF:** Current view only (visible columns)
+- **Email Report:** Schedule automated exports
+
+#### 5. Bulk Actions
+- **Select Multiple:** Checkbox selection
+- **Update Stage:** Move multiple deals
+- **Assign Owner:** Assign to team member
+- **Add Tags:** Bulk tagging
+- **Archive:** Archive multiple
+
+#### 6. Quick Actions (per row)
+- **View Details:** Navigate to deal page
+- **Run Analysis:** Trigger JEDI score
+- **Add Note:** Quick note dialog
+- **Send Email:** Compose email about deal
+- **More:** Additional actions menu
+
+---
+
+### Implementation Priority
+
+#### MVP Phase (Core Grid - Implement First)
+
+**Pipeline Grid MVP (20 columns):**
+- Identity & Status: All 7 columns
+- Financial Snapshot: Ask Price, JEDI Price, IRR (Broker), IRR (JEDI), NOI
+- Strategy Arbitrage: Best Strategy, Confidence Score
+- Market Context: Supply Risk Flag, Imbalance Score
+- Velocity: Source, LOI Deadline, Closing Date, DD %
+
+**Assets Owned Grid MVP (25 columns):**
+- Identity: All 5 columns
+- Performance vs UW: NOI (Actual, PF, Variance), Occupancy (Actual, PF, Variance), Rent (Actual, UW, Variance)
+- Returns: Current IRR, Projected IRR, CoC, Equity Multiple, Distributions
+- Operational: Occupancy Trend (12mo), Rent Growth, Opex Ratio, Capex Spend
+- Risk: Loan Maturity, Refi Risk Flag
+
+**MVP Features:**
+- ✓ Sortable columns
+- ✓ Basic filtering (text, range, enum)
+- ✓ Export CSV
+- ✓ View Details action
+- ✓ Visual indicators (badges, alerts)
+- ✓ Responsive layout
+
+**MVP Exclusions (Phase 2):**
+- Column reordering
+- Custom views
+- Excel export
+- Bulk actions
+- Email reports
+
+---
+
+### Data Requirements
+
+**Pipeline Grid Dependencies:**
+- deals table (core data)
+- deal_analysis table (Strategy Arbitrage results)
+- deal_trade_areas table (Market Context)
+- properties table (supply risk calculations)
+- news_events table (market signals)
+
+**Assets Owned Grid Dependencies:**
+- deals table (acquisition data)
+- deal_performance table (actuals vs pro forma) ← NEW TABLE NEEDED
+- properties table (operational data)
+- deal_analysis table (ongoing AI scoring)
+- market_data table (comp positioning)
+
+---
+
+**End of Grid View Specifications**
+
+---
+
