@@ -449,6 +449,23 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                     </div>
                   </div>
                   
+                  {!boundary && (
+                    <div className="flex justify-center mt-4">
+                      <button
+                        onClick={() => {
+                          console.log('[MANUAL] Starting drawing mode');
+                          console.log('[MANUAL] developmentType:', developmentType);
+                          console.log('[MANUAL] currentStep:', currentStep);
+                          console.log('[MANUAL] coordinates:', coordinates);
+                          startDrawing('boundary', coordinates || undefined);
+                        }}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
+                      >
+                        🗺️ Start Drawing Property Boundary
+                      </button>
+                    </div>
+                  )}
+                  
                   {boundary && (
                     <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
                       <p className="text-sm text-green-800 font-semibold text-center">

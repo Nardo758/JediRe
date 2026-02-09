@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
@@ -16,6 +16,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { deals, fetchDeals, isLoading} = useDealStore();
   const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
   const { layers } = useMapLayers();
@@ -313,6 +314,14 @@ export const Dashboard: React.FC = () => {
 
   const handleDealCreated = (deal: any) => {
     fetchDeals();
+    
+    // Navigate based on deal category
+    if (deal.deal_category === 'pipeline') {
+      navigate('/deals'); // Pipeline grid view
+    } else if (deal.deal_category === 'portfolio') {
+      navigate('/assets-owned'); // Assets Owned page
+    }
+    // If no category or unknown, stay on dashboard
   };
 
   const renderContent = () => (
