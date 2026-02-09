@@ -3,7 +3,7 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 
 export function ChatOverlay() {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Array<{ id: string; role: 'user' | 'agent' | 'system'; content: string; created_at: string; agent_name?: string }>>([
     {
