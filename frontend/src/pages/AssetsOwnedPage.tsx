@@ -143,8 +143,11 @@ export function AssetsOwnedPage() {
 
   // Content renderer
   const renderContent = (viewId: string) => {
-    const content = viewId === 'performance' ? (
-      <div className="space-y-4">
+    let mainContent;
+    
+    if (viewId === 'performance') {
+      mainContent = (
+        <div className="space-y-4">
           {/* Portfolio KPIs */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
@@ -269,6 +272,30 @@ export function AssetsOwnedPage() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+      );
+    } else {
+      mainContent = (
+        <div>No content for this view yet</div>
+      );
+    }
+    
+    return (
+      <div className="h-full flex flex-col">
+        {/* Header with toggle */}
+        <div className="flex-shrink-0 px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-gray-900">Assets Owned - {activeView === 'all' ? 'Map View' : activeView === 'performance' ? 'Performance' : 'Documents'}</h2>
+          <button
+            onClick={() => navigate('/assets-owned/grid')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+          >
+            Switch to Grid View →
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto">
+          {mainContent}
         </div>
       </div>
     );
