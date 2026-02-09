@@ -1,38 +1,10 @@
-/**
- * DealPage - Deal detail page with expandable accordion sections
- * 
- * Route: /deals/:dealId
- * 
- * Features:
- * - Deal header with name, type, strategy, stage, and back button
- * - 10 expandable sections (accordion):
- *   1. Overview (expanded by default)
- *   2. Properties
- *   3. Financial Analysis
- *   4. Strategy
- *   5. Due Diligence
- *   6. Market Analysis
- *   7. Development (conditional)
- *   8. Documents
- *   9. Collaboration
- *   10. Activity Feed
- * - LocalStorage persistence for section states
- * - Mobile-friendly layout
- */
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SectionCard } from '../components/deal/SectionCard';
-
-// Mock deal interface - replace with actual type
-interface Deal {
-  id: string;
-  name: string;
-  type: string;
-  strategy: string;
-  stage: string;
-  isDevelopment?: boolean;
-}
+import { apiClient } from '../services/api.client';
+import { useModuleCheck, invalidateModuleCache } from '../utils/modules';
+import { FinancialAnalysisSection } from '../components/deal/sections/FinancialAnalysisSection';
+import { Deal } from '../types/deal';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -41,6 +13,8 @@ export const DealPage: React.FC = () => {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { loading: financialModuleLoading, enabled: hasFinancialPro } = useModuleCheck('financial-modeling-pro');
 
   useEffect(() => {
     if (dealId) {
@@ -52,40 +26,53 @@ export const DealPage: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Mock data - Replace with actual API call
-      // const response = await apiClient.get(`/api/v1/deals/${id}`);
-      // setDeal(response.data);
-      
-      // Mock deal data for now
-      setTimeout(() => {
-        setDeal({
-          id,
-          name: 'Riverside Apartments',
-          type: 'Multifamily',
-          strategy: 'Value-Add',
-          stage: 'Due Diligence',
-          isDevelopment: false,
-        });
-        setLoading(false);
-      }, 500);
-    } catch (err) {
+      const response = await apiClient.get(`/api/v1/deals/${id}`);
+      const data = response.data;
+      const dealData = data.deal || data.data || data;
+      setDeal(dealData);
+    } catch (err: any) {
       console.error('Failed to load deal:', err);
-      setError('Failed to load deal details');
+      if (err.response?.status === 404) {
+        setError('Deal not found');
+      } else {
+        setError('Failed to load deal details');
+      }
+    } finally {
       setLoading(false);
     }
   };
 
   const handleBack = () => {
-    navigate('/deals');
+    navigate('/dashboard');
+  };
+
+  const formatCurrency = (value: number | undefined): string => {
+    if (!value) return '$0';
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
+    return `$${value.toFixed(0)}`;
   };
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading deal...</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="animate-pulse flex items-center gap-4">
+              <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+              <div className="flex-1">
+                <div className="h-6 bg-gray-200 rounded w-1/3 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-6 py-6 space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -95,46 +82,42 @@ export const DealPage: React.FC = () => {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="text-6xl mb-4">⚠️</div>
+          <div className="text-6xl mb-4">{error === 'Deal not found' ? '🔍' : '⚠️'}</div>
           <p className="text-gray-900 font-semibold mb-2">
             {error || 'Deal not found'}
+          </p>
+          <p className="text-gray-600 mb-4 text-sm">
+            {error === 'Deal not found'
+              ? 'This deal may have been deleted or you don\'t have access.'
+              : 'Please try again later.'}
           </p>
           <button
             onClick={handleBack}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Back to Deals
+            Back to Dashboard
           </button>
         </div>
       </div>
     );
   }
 
+  const isDevelopment = deal.projectType === 'development' || deal.projectType === 'ground-up';
+  const pipelineStage = deal.pipelineStage || deal.stage || 'Prospecting';
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* Left: Back button and Deal info */}
             <div className="flex items-center gap-4">
               <button
                 onClick={handleBack}
                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="Back to deals"
+                aria-label="Back to dashboard"
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                  />
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
               </button>
               
@@ -142,32 +125,34 @@ export const DealPage: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900">{deal.name}</h1>
                 <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
                   <span className="flex items-center gap-1">
-                    <span className="font-medium">Type:</span> {deal.type}
+                    <span className="font-medium">Type:</span> {deal.projectType || deal.dealType || 'N/A'}
                   </span>
-                  <span className="text-gray-300">•</span>
+                  <span className="text-gray-300">|</span>
                   <span className="flex items-center gap-1">
-                    <span className="font-medium">Strategy:</span> {deal.strategy}
+                    <span className="font-medium">Tier:</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      deal.tier === 'pro' ? 'bg-blue-100 text-blue-700'
+                        : deal.tier === 'enterprise' ? 'bg-green-100 text-green-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {(deal.tier || 'basic').toUpperCase()}
+                    </span>
                   </span>
-                  <span className="text-gray-300">•</span>
+                  <span className="text-gray-300">|</span>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Stage:</span>
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        deal.stage === 'Closed'
-                          ? 'bg-green-100 text-green-700'
-                          : deal.stage === 'Due Diligence'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}
-                    >
-                      {deal.stage}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      pipelineStage === 'closed' ? 'bg-green-100 text-green-700'
+                        : pipelineStage === 'due_diligence' ? 'bg-blue-100 text-blue-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {pipelineStage.replace(/_/g, ' ')}
                     </span>
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Right: Action buttons */}
             <div className="flex items-center gap-2">
               <button className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors font-medium text-sm">
                 Export
@@ -180,10 +165,8 @@ export const DealPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content - Accordion Sections */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="space-y-4">
-          {/* 1. Overview - Expanded by default */}
           <SectionCard
             id="overview"
             icon="📊"
@@ -191,118 +174,86 @@ export const DealPage: React.FC = () => {
             dealId={dealId}
             defaultExpanded={true}
           >
-            {/* Placeholder content - replace with actual components */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Total Investment</div>
-                  <div className="text-xl font-bold text-gray-900">$2.5M</div>
+                  <div className="text-sm text-gray-600 mb-1">Budget</div>
+                  <div className="text-xl font-bold text-gray-900">{formatCurrency(Number(deal.budget))}</div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Expected Return</div>
-                  <div className="text-xl font-bold text-green-600">18.5%</div>
+                  <div className="text-sm text-gray-600 mb-1">Properties</div>
+                  <div className="text-xl font-bold text-blue-600">{Number(deal.propertyCount) || 0}</div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Timeline</div>
-                  <div className="text-xl font-bold text-gray-900">24 months</div>
+                  <div className="text-sm text-gray-600 mb-1">Acres</div>
+                  <div className="text-xl font-bold text-gray-900">{Number(deal.acres || 0).toFixed(1)}</div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 mb-1">Risk Level</div>
-                  <div className="text-xl font-bold text-yellow-600">Medium</div>
+                  <div className="text-sm text-gray-600 mb-1">Tasks</div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {Number(deal.pendingTasks) || 0} / {Number(deal.taskCount) || 0}
+                  </div>
                 </div>
               </div>
+              {deal.description && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="text-sm text-gray-600 mb-1">Description</div>
+                  <p className="text-gray-900">{deal.description}</p>
+                </div>
+              )}
             </div>
           </SectionCard>
 
-          {/* 2. Properties */}
-          <SectionCard
-            id="properties"
-            icon="🏢"
-            title="Properties"
-            dealId={dealId}
-          >
+          <SectionCard id="properties" icon="🏢" title="Properties" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 3. Financial Analysis */}
           <SectionCard
             id="financial-analysis"
             icon="💰"
-            title="Financial Analysis"
+            title={`Financial Analysis${hasFinancialPro ? ' (Pro)' : ''}`}
             dealId={dealId}
           >
+            {financialModuleLoading ? (
+              <div className="animate-pulse py-8">
+                <div className="h-4 bg-gray-200 rounded w-1/3 mx-auto"></div>
+              </div>
+            ) : (
+              <FinancialAnalysisSection
+                deal={deal}
+                enhanced={hasFinancialPro}
+                onToggleModule={() => navigate('/settings/modules')}
+              />
+            )}
+          </SectionCard>
+
+          <SectionCard id="strategy" icon="🎯" title="Strategy" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 4. Strategy */}
-          <SectionCard
-            id="strategy"
-            icon="🎯"
-            title="Strategy"
-            dealId={dealId}
-          >
+          <SectionCard id="due-diligence" icon="✅" title="Due Diligence" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 5. Due Diligence */}
-          <SectionCard
-            id="due-diligence"
-            icon="✅"
-            title="Due Diligence"
-            dealId={dealId}
-          >
+          <SectionCard id="market-analysis" icon="📈" title="Market Analysis" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 6. Market Analysis */}
-          <SectionCard
-            id="market-analysis"
-            icon="📈"
-            title="Market Analysis"
-            dealId={dealId}
-          >
-            {null}
-          </SectionCard>
-
-          {/* 7. Development (conditional) */}
-          {deal.isDevelopment && (
-            <SectionCard
-              id="development"
-              icon="🏗️"
-              title="Development"
-              dealId={dealId}
-            >
+          {isDevelopment && (
+            <SectionCard id="development" icon="🏗️" title="Development" dealId={dealId}>
               {null}
             </SectionCard>
           )}
 
-          {/* 8. Documents */}
-          <SectionCard
-            id="documents"
-            icon="📄"
-            title="Documents"
-            dealId={dealId}
-          >
+          <SectionCard id="documents" icon="📄" title="Documents" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 9. Collaboration */}
-          <SectionCard
-            id="collaboration"
-            icon="👥"
-            title="Collaboration"
-            dealId={dealId}
-          >
+          <SectionCard id="collaboration" icon="👥" title="Collaboration" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 10. Activity Feed */}
-          <SectionCard
-            id="activity-feed"
-            icon="📝"
-            title="Activity Feed"
-            dealId={dealId}
-          >
+          <SectionCard id="activity-feed" icon="📝" title="Activity Feed" dealId={dealId}>
             {null}
           </SectionCard>
         </div>
