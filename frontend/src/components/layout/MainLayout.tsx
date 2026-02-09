@@ -143,6 +143,8 @@ export const MainLayout: React.FC = () => {
                     hasSubItems
                     isExpanded={expandedSections.email}
                     onToggle={() => toggleSection('email')}
+                    path="/dashboard/email"
+                    isActive={isActivePrefix('/dashboard/email')}
                     layerConfig={{
                       sourceType: 'email',
                       layerType: 'pin',
@@ -184,14 +186,40 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
 
-                  {/* PIPELINE - Direct link */}
+                  {/* PIPELINE - Expandable */}
                   <SidebarItem
                     icon="📊"
                     label="Pipeline"
                     count={12}
+                    hasSubItems
+                    isExpanded={expandedSections.pipeline}
+                    onToggle={() => toggleSection('pipeline')}
                     path="/deals"
-                    isActive={isActive('/deals') || isActivePrefix('/deals')}
+                    isActive={isActivePrefix('/deals')}
                   />
+                  
+                  {expandedSections.pipeline && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="🔄"
+                        label="Active"
+                        path="/deals/active"
+                        isActive={isActive('/deals/active')}
+                      />
+                      <SidebarItem
+                        icon="✅"
+                        label="Closed"
+                        path="/deals/closed"
+                        isActive={isActive('/deals/closed')}
+                      />
+                      <SidebarItem
+                        icon="📈"
+                        label="Grid View"
+                        path="/deals/grid"
+                        isActive={isActive('/deals/grid')}
+                      />
+                    </div>
+                  )}
                   
                   {/* ASSETS OWNED - Expandable */}
                   <SidebarItem
@@ -252,6 +280,8 @@ export const MainLayout: React.FC = () => {
                     hasSubItems
                     isExpanded={expandedSections.market}
                     onToggle={() => toggleSection('market')}
+                    path="/market-data"
+                    isActive={isActivePrefix('/market-data')}
                     layerConfig={{
                       sourceType: 'market',
                       layerType: 'overlay',
@@ -300,6 +330,8 @@ export const MainLayout: React.FC = () => {
                     hasSubItems
                     isExpanded={expandedSections.news}
                     onToggle={() => toggleSection('news')}
+                    path="/news-intel"
+                    isActive={isActivePrefix('/news-intel')}
                     layerConfig={{
                       sourceType: 'news',
                       layerType: 'heatmap',

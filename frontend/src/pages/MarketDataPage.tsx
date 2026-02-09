@@ -7,13 +7,21 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'overview' | 'comparables' | 'demographics' | 'supply-demand';
+
+function getMarketViewFromPath(pathname: string): ViewType {
+  if (pathname.endsWith('/comparables')) return 'comparables';
+  if (pathname.endsWith('/demographics')) return 'demographics';
+  if (pathname.endsWith('/supply-demand')) return 'supply-demand';
+  return 'overview';
+}
 
 // Mock data
 const mockMarketMetrics = {
@@ -58,18 +66,11 @@ const mockComps = [
 ];
 
 export function MarketDataPage() {
-  const [activeView, setActiveView] = useState<ViewType>('overview');
+  const location = useLocation();
+  const activeView = getMarketViewFromPath(location.pathname);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
-
-  // Define views
-  const views: ViewItem[] = [
-    { id: 'overview', label: 'Overview', icon: '📊' },
-    { id: 'comparables', label: 'Comps', icon: '🏘️' },
-    { id: 'demographics', label: 'Demographics', icon: '👥' },
-    { id: 'supply-demand', label: 'Supply', icon: '📈' },
-  ];
 
   // Initialize map
   useEffect(() => {
@@ -310,10 +311,8 @@ export function MarketDataPage() {
   return (
     <ThreePanelLayout
       storageKey="market-data"
-      views={views}
-      activeView={activeView}
-      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
-      renderContent={renderContent}
+      showViewsPanel={false}
+      renderContent={() => renderContent(activeView)}
       renderMap={renderMap}
     />
   );
