@@ -321,4 +321,9 @@ export const MODULE_METADATA: Record<ModuleName, { name: string; description: st
     icon: '👥',
     description: 'Team collaboration and permissions',
   },
+  'portfolio-dashboard': {
+    name: 'Portfolio Dashboard',
+    icon: '📊',
+    description: 'Portfolio-level analytics and reporting dashboard',
+  },
 };

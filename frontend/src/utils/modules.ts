@@ -28,7 +28,8 @@ export type ModuleName =
   | 'budget-vs-actual'
   | 'investor-reporting'
   | 'disposition-analysis'
-  | 'deal-team';
+  | 'deal-team'
+  | 'portfolio-dashboard';
 
 export type BundleName = 
   | 'flipper'
@@ -224,7 +225,8 @@ export function getModulePricing(moduleName: ModuleName) {
     'budget-vs-actual': { price: 34, tier: 'portfolio' },
     'investor-reporting': { price: 49, tier: 'portfolio' },
     'disposition-analysis': { price: 34, tier: 'portfolio' },
-    'deal-team': { price: 0, tier: 'core' }
+    'deal-team': { price: 0, tier: 'core' },
+    'portfolio-dashboard': { price: 39, tier: 'portfolio' }
   };
 
   return pricing[moduleName] || { price: 0, tier: 'unknown' };
