@@ -64,12 +64,11 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   showViewsPanel = true,
   defaultContentWidth = 550,
   minContentWidth = 400,
-  maxContentWidth = 800,
+  maxContentWidth = 1400,
   onNewMap,
 }) => {
   const hasViewsPanel = showViewsPanel && views && views.length > 0;
   
-  // Initialize panel visibility from localStorage
   const [showViews, setShowViews] = useState(() => {
     if (!hasViewsPanel) return false;
     const saved = localStorage.getItem(`${storageKey}-show-views`);
@@ -91,6 +90,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
     return saved ? parseInt(saved) : defaultContentWidth;
   });
   
+  const [isContentMaximized, setIsContentMaximized] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
 
   // Save panel states to localStorage
@@ -101,13 +101,21 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
     localStorage.setItem(`${storageKey}-show-map`, JSON.stringify(showMap));
   }, [contentWidth, showViews, showContent, showMap, storageKey]);
   
-  // Ensure at least one panel is visible (map or content)
   useEffect(() => {
     if (!showContent && !showMap) {
-      // If both are hidden, show the map
       setShowMap(true);
     }
   }, [showContent, showMap]);
+
+  const toggleMaximizeContent = () => {
+    if (isContentMaximized) {
+      setIsContentMaximized(false);
+      setShowMap(true);
+    } else {
+      setIsContentMaximized(true);
+      setShowMap(false);
+    }
+  };
 
   // Handle resize drag
   useEffect(() => {
@@ -181,16 +189,40 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
       {showContent && (
         <>
           <div
-            className="bg-gray-50 overflow-y-auto flex-shrink-0 border-r border-gray-200"
-            style={{ width: showMap ? `${contentWidth}px` : 'calc(100% - 80px)' }}
+            className={`bg-gray-50 overflow-y-auto border-r border-gray-200 ${
+              isContentMaximized || !showMap ? 'flex-1' : 'flex-shrink-0'
+            }`}
+            style={!isContentMaximized && showMap ? { width: `${contentWidth}px` } : undefined}
           >
-            <div className="p-4">
+            <div className="flex items-center justify-end px-4 pt-2 pb-0">
+              <button
+                onClick={toggleMaximizeContent}
+                className={`p-1.5 rounded-md text-xs transition-colors ${
+                  isContentMaximized
+                    ? 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200'
+                }`}
+                title={isContentMaximized ? 'Restore content panel' : 'Maximize content panel'}
+              >
+                {isContentMaximized ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="4" y="4" width="9" height="9" rx="1" />
+                    <path d="M4 10H2a1 1 0 01-1-1V2a1 1 0 011-1h7a1 1 0 011 1v2" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="1" y="1" width="12" height="12" rx="1" />
+                  </svg>
+                )}
+              </button>
+            </div>
+            <div className="p-4 pt-1">
               {renderContent(activeView)}
             </div>
           </div>
 
           {/* Resize Handle */}
-          {showMap && (
+          {showMap && !isContentMaximized && (
             <div
               className="w-1 bg-gray-200 hover:bg-blue-500 cursor-col-resize flex-shrink-0 transition-colors"
               onMouseDown={() => setIsResizing(true)}
@@ -236,7 +268,12 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         </button>
         
         <button
-          onClick={() => setShowMap(!showMap)}
+          onClick={() => {
+            if (!showMap) {
+              setIsContentMaximized(false);
+            }
+            setShowMap(!showMap);
+          }}
           className={`px-3 py-1.5 rounded-lg shadow-md text-xs font-medium transition-colors ${
             showMap
               ? 'bg-blue-600 text-white hover:bg-blue-700'
