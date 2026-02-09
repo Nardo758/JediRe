@@ -417,10 +417,8 @@ export function AssetsOwnedPage() {
   return (
     <ThreePanelLayout
       storageKey="assets"
-      views={views}
-      activeView={activeView}
-      onViewChange={handleViewChange}
-      renderContent={renderContent}
+      showViewsPanel={false}
+      renderContent={() => renderContent(activeView)}
       renderMap={renderMap}
     />
   );
