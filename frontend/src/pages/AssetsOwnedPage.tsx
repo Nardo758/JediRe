@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
 import { apiClient } from '../services/api.client';
@@ -10,6 +10,12 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 type ViewType = 'all' | 'performance' | 'documents';
+
+function getViewFromPath(pathname: string): ViewType {
+  if (pathname.endsWith('/performance')) return 'performance';
+  if (pathname.endsWith('/documents')) return 'documents';
+  return 'all';
+}
 
 interface Asset {
   id: string;
@@ -42,10 +48,16 @@ interface Asset {
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<ViewType>('all');
+  const activeView = getViewFromPath(location.pathname);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+
+  const handleViewChange = (viewId: string) => {
+    if (viewId === 'all') navigate('/assets-owned');
+    else navigate(`/assets-owned/${viewId}`);
+  };
 
   useEffect(() => {
     loadAssets();
@@ -407,7 +419,7 @@ export function AssetsOwnedPage() {
       storageKey="assets"
       views={views}
       activeView={activeView}
-      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
+      onViewChange={handleViewChange}
       renderContent={renderContent}
       renderMap={renderMap}
     />
