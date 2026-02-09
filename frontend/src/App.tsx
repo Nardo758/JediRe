@@ -17,7 +17,6 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
-import { AssetsOwnedGridPage } from './pages/AssetsOwnedGridPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
@@ -49,9 +48,9 @@ function AppContent() {
           <Route path="/market-data/supply-demand" element={<MarketDataPage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
-          <Route path="/assets-owned/performance" element={<AssetsOwnedPage />} />
-          <Route path="/assets-owned/documents" element={<AssetsOwnedPage />} />
-          <Route path="/assets-owned/grid" element={<AssetsOwnedGridPage />} />
+          <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
