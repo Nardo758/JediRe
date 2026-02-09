@@ -23,16 +23,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SectionCard } from '../components/deal/SectionCard';
-
-// Mock deal interface - replace with actual type
-interface Deal {
-  id: string;
-  name: string;
-  type: string;
-  strategy: string;
-  stage: string;
-  isDevelopment?: boolean;
-}
+import { ModuleSuggestionModal } from '../components/deal/ModuleSuggestionModal';
+import { DocumentsSection, CollaborationSection, ActivityFeedSection } from '../components/deal/sections';
+import { Deal } from '../types';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -41,10 +34,20 @@ export const DealPage: React.FC = () => {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showModuleSuggestions, setShowModuleSuggestions] = useState(false);
 
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
+      
+      // Check if we should show module suggestions
+      const dismissed = localStorage.getItem(`deal-${dealId}-suggestions-dismissed`);
+      if (!dismissed) {
+        // Wait for deal to load before showing modal
+        setTimeout(() => {
+          setShowModuleSuggestions(true);
+        }, 800);
+      }
     }
   }, [dealId]);
 
@@ -62,11 +65,20 @@ export const DealPage: React.FC = () => {
         setDeal({
           id,
           name: 'Riverside Apartments',
-          type: 'Multifamily',
-          strategy: 'Value-Add',
+          projectType: 'Multifamily',
+          tier: 'tier1',
+          status: 'active',
+          budget: 2500000,
+          boundary: null,
+          acres: 15.5,
+          propertyCount: 12,
+          pendingTasks: 3,
+          createdAt: new Date().toISOString(),
           stage: 'Due Diligence',
+          dealType: 'Value-Add Acquisition',
+          dealValue: 2500000,
           isDevelopment: false,
-        });
+        } as Deal);
         setLoading(false);
       }, 500);
     } catch (err) {
@@ -142,11 +154,11 @@ export const DealPage: React.FC = () => {
                 <h1 className="text-2xl font-bold text-gray-900">{deal.name}</h1>
                 <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
                   <span className="flex items-center gap-1">
-                    <span className="font-medium">Type:</span> {deal.type}
+                    <span className="font-medium">Type:</span> {deal.projectType}
                   </span>
                   <span className="text-gray-300">•</span>
                   <span className="flex items-center gap-1">
-                    <span className="font-medium">Strategy:</span> {deal.strategy}
+                    <span className="font-medium">Strategy:</span> {deal.dealType}
                   </span>
                   <span className="text-gray-300">•</span>
                   <span className="flex items-center gap-1">
@@ -283,7 +295,7 @@ export const DealPage: React.FC = () => {
             title="Documents"
             dealId={dealId}
           >
-            {null}
+            <DocumentsSection deal={deal} />
           </SectionCard>
 
           {/* 9. Collaboration */}
@@ -293,7 +305,7 @@ export const DealPage: React.FC = () => {
             title="Collaboration"
             dealId={dealId}
           >
-            {null}
+            <CollaborationSection deal={deal} />
           </SectionCard>
 
           {/* 10. Activity Feed */}
@@ -303,10 +315,23 @@ export const DealPage: React.FC = () => {
             title="Activity Feed"
             dealId={dealId}
           >
-            {null}
+            <ActivityFeedSection deal={deal} />
           </SectionCard>
         </div>
       </div>
+
+      {/* Module Suggestion Modal */}
+      {deal && (
+        <ModuleSuggestionModal
+          isOpen={showModuleSuggestions}
+          onClose={() => setShowModuleSuggestions(false)}
+          dealId={deal.id}
+          dealType={deal.projectType}
+          dealStrategy={deal.dealType || 'Standard'}
+          userBundle="flipper" // TODO: Get from user context/store
+          userModules={[]} // TODO: Get from user context/store
+        />
+      )}
     </div>
   );
 };

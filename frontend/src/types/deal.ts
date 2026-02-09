@@ -45,4 +45,7 @@ export interface Deal {
   
   // Activity
   activities?: import('./index').DealActivity[];
+  
+  // Development
+  isDevelopment?: boolean;
 }
