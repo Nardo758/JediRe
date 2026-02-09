@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DataGrid } from '../components/grid/DataGrid';
 import { ColumnDef, OwnedAsset, GridSort } from '../types/grid';
-import axios from 'axios';
+import { apiClient } from '../services/api.client';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -31,7 +31,7 @@ export function AssetsOwnedGridPage() {
         params.append('sort', JSON.stringify(sort));
       }
       
-      const response = await axios.get(`${API_URL}/grid/owned?${params.toString()}`);
+      const response = await apiClient.get(`${API_URL}/grid/owned?${params.toString()}`);
       setAssets(response.data.assets || []);
     } catch (err) {
       console.error('Failed to load assets:', err);
@@ -47,7 +47,7 @@ export function AssetsOwnedGridPage() {
 
   const handleExport = async () => {
     try {
-      const response = await axios.post(
+      const response = await apiClient.post(
         `${API_URL}/grid/export`,
         {
           type: 'owned',
