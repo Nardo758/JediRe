@@ -213,10 +213,10 @@ export const MainLayout: React.FC = () => {
                         isActive={isActive('/deals/closed')}
                       />
                       <SidebarItem
-                        icon="📈"
-                        label="Grid View"
-                        path="/deals/grid"
-                        isActive={isActive('/deals/grid')}
+                        icon="📋"
+                        label="Kanban View"
+                        path="/deals/kanban"
+                        isActive={isActive('/deals/kanban')}
                       />
                     </div>
                   )}
