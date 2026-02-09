@@ -6,7 +6,7 @@
  * Map: Deal boundaries + email locations
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
@@ -34,6 +34,10 @@ export function EmailPage() {
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedEmail, setSelectedEmail] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDealOnly, setFilterDealOnly] = useState(false);
+  const [filterUnreadOnly, setFilterUnreadOnly] = useState(false);
+  const [filterHasAttachment, setFilterHasAttachment] = useState(false);
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -202,46 +206,134 @@ export function EmailPage() {
     return date.toLocaleDateString();
   };
 
-  // Content renderer
+  const filteredEmails = useMemo(() => {
+    let result = emails;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (e) =>
+          (e.subject || '').toLowerCase().includes(q) ||
+          (e.from_name || '').toLowerCase().includes(q) ||
+          (e.from_address || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (filterDealOnly) {
+      result = result.filter((e) => e.deal_id);
+    }
+    if (filterUnreadOnly) {
+      result = result.filter((e) => !e.is_read);
+    }
+    if (filterHasAttachment) {
+      result = result.filter((e) => e.attachment_count && e.attachment_count > 0);
+    }
+
+    return result;
+  }, [emails, searchQuery, filterDealOnly, filterUnreadOnly, filterHasAttachment]);
+
+  const activeFilterCount = [filterDealOnly, filterUnreadOnly, filterHasAttachment].filter(Boolean).length;
+
   const renderContent = (viewId: string) => {
     if (loading) {
       return <div className="text-center py-8 text-gray-500">Loading emails...</div>;
     }
 
-    // Stats card
-    const statsCard = stats && (
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Inbox Stats</h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <div className="text-gray-600">Total</div>
-            <div className="font-semibold text-lg">{stats.total}</div>
+    const viewLabel =
+      activeView === 'sent' ? 'Sent' :
+      activeView === 'drafts' ? 'Drafts' :
+      activeView === 'flagged' ? 'Flagged' : 'Inbox';
+
+    const searchAndFilters = (
+      <div className="mb-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={`Search ${viewLabel.toLowerCase()}...`}
+              className="w-full px-3 py-2 pl-9 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          <div>
-            <div className="text-gray-600">Unread</div>
-            <div className="font-semibold text-lg text-blue-600">{stats.unread}</div>
-          </div>
-          <div>
-            <div className="text-gray-600">Flagged</div>
-            <div className="font-semibold text-lg text-yellow-600">{stats.flagged}</div>
-          </div>
-          <div>
-            <div className="text-gray-600">Deal-related</div>
-            <div className="font-semibold text-lg text-green-600">{stats.deal_related}</div>
-          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setFilterUnreadOnly(!filterUnreadOnly)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              filterUnreadOnly
+                ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
+            }`}
+          >
+            Unread {stats ? `(${stats.unread})` : ''}
+          </button>
+          <button
+            onClick={() => setFilterDealOnly(!filterDealOnly)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              filterDealOnly
+                ? 'bg-green-100 text-green-700 border border-green-300'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
+            }`}
+          >
+            Deal-linked {stats ? `(${stats.deal_related})` : ''}
+          </button>
+          <button
+            onClick={() => setFilterHasAttachment(!filterHasAttachment)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              filterHasAttachment
+                ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-transparent'
+            }`}
+          >
+            📎 Attachments
+          </button>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setFilterDealOnly(false);
+                setFilterUnreadOnly(false);
+                setFilterHasAttachment(false);
+                setSearchQuery('');
+              }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-gray-500">
+          <span>{filteredEmails.length} of {emails.length} emails</span>
+          {stats && (
+            <div className="flex items-center gap-3">
+              <span>{stats.total} total</span>
+              <span className="text-blue-600">{stats.unread} unread</span>
+              <span className="text-yellow-600">{stats.flagged} flagged</span>
+            </div>
+          )}
         </div>
       </div>
     );
 
-    // Email list
-    const emailList = emails.length === 0 ? (
+    const emailList = filteredEmails.length === 0 ? (
       <div className="text-center py-8 text-gray-500">
         <div className="text-4xl mb-2">📧</div>
-        <div>No emails found</div>
+        <div>{searchQuery || activeFilterCount > 0 ? 'No emails match your filters' : 'No emails found'}</div>
       </div>
     ) : (
       <div className="space-y-2">
-        {emails.map((email) => (
+        {filteredEmails.map((email) => (
           <div
             key={email.id}
             onClick={() => handleEmailClick(email)}
@@ -300,7 +392,7 @@ export function EmailPage() {
 
     return (
       <>
-        {statsCard}
+        {searchAndFilters}
         {emailList}
       </>
     );
