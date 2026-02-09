@@ -207,15 +207,6 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
             );
           })}
 
-          <button
-            onClick={onNewConfig}
-            className="flex items-center gap-1 px-2 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors whitespace-nowrap"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            <span>New Map</span>
-          </button>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
