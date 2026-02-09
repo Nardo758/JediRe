@@ -366,25 +366,25 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Population</div>
               <div className="text-lg font-bold text-gray-900">
-                {previewStats.population.toLocaleString()}
+                {(previewStats.population ?? 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Existing Units</div>
               <div className="text-lg font-bold text-gray-900">
-                {previewStats.existing_units.toLocaleString()}
+                {(previewStats.existing_units ?? 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Pipeline Units</div>
               <div className="text-lg font-bold text-gray-900">
-                {previewStats.pipeline_units.toLocaleString()}
+                {(previewStats.pipeline_units ?? 0).toLocaleString()}
               </div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Avg Rent</div>
               <div className="text-lg font-bold text-gray-900">
-                ${previewStats.avg_rent.toLocaleString()}
+                ${(previewStats.avg_rent ?? 0).toLocaleString()}
               </div>
             </div>
           </div>
