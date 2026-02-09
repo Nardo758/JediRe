@@ -1,54 +1,25 @@
 /**
- * Pipeline Page (Deals) - Using ThreePanelLayout
+ * Pipeline Page (Deals) - Kanban Board with Map
  * 
- * Views: All, Active, Qualified, Due Diligence, Closing, Closed
- * Content: Deal cards with tier badges
+ * Full-width Kanban board showing all deal stages
+ * Content: Draggable deal cards organized by stage
  * Map: Deal boundaries color-coded by tier
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
-type ViewType = 'all' | 'active' | 'qualified' | 'due_diligence' | 'closing' | 'closed';
-
-const stageLabels: Record<string, string> = {
-  lead: 'Lead',
-  qualified: 'Qualified',
-  due_diligence: 'Due Diligence',
-  under_contract: 'Under Contract',
-  closing: 'Closing',
-  closed: 'Closed',
-};
-
-const tierColors: Record<string, { bg: string; text: string; border: string }> = {
-  basic: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' },
-  pro: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-  enterprise: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-};
-
 export function DealsPage() {
   const navigate = useNavigate();
-  const { deals, fetchDeals, isLoading } = useDealStore();
-  
-  const [activeView, setActiveView] = useState<ViewType>('all');
+  const { deals, fetchDeals, updateDeal, isLoading } = useDealStore();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-
-  // Define views
-  const views: ViewItem[] = [
-    { id: 'all', label: 'All', icon: '📊', count: deals.length },
-    { id: 'active', label: 'Active', icon: '🟢' },
-    { id: 'qualified', label: 'Qualified', icon: '🔍' },
-    { id: 'due_diligence', label: 'Due D.', icon: '📝' },
-    { id: 'closing', label: 'Closing', icon: '🏁' },
-    { id: 'closed', label: 'Closed', icon: '✅' },
-  ];
 
   // Load deals on mount
   useEffect(() => {
@@ -158,27 +129,47 @@ export function DealsPage() {
     });
   };
 
-  // Filter deals by view
-  const filteredDeals = deals.filter((deal) => {
-    if (activeView === 'all') return true;
-    if (activeView === 'active') return ['lead', 'qualified', 'due_diligence'].includes(deal.status);
-    return deal.status === activeView;
-  });
+  // Handle deal stage change
+  const handleDealMove = async (dealId: string, newStage: string) => {
+    try {
+      await updateDeal(dealId, { status: newStage });
+      // Optionally show a success toast
+    } catch (error) {
+      console.error('Failed to update deal:', error);
+      // Optionally show an error toast
+    }
+  };
+
+  const stages = [
+    { id: 'lead', label: 'Watching', color: 'bg-gray-500' },
+    { id: 'qualified', label: 'Analyzing', color: 'bg-blue-500' },
+    { id: 'due_diligence', label: 'Due Diligence', color: 'bg-yellow-500' },
+    { id: 'under_contract', label: 'Offer', color: 'bg-purple-500' },
+    { id: 'closing', label: 'Closing', color: 'bg-green-500' },
+  ];
+
+  const [draggedDeal, setDraggedDeal] = React.useState<any>(null);
+
+  const getDealsForStage = (stageId: string) => deals.filter(d => d.status === stageId);
 
   // Content renderer
-  const renderContent = (viewId: string) => {
+  const renderContent = () => {
     if (isLoading) {
-      return <div className="text-center py-8 text-gray-500">Loading deals...</div>;
+      return (
+        <div className="h-full flex items-center justify-center text-gray-500">
+          Loading deals...
+        </div>
+      );
     }
 
-    if (filteredDeals.length === 0) {
+    if (deals.length === 0) {
       return (
-        <div className="text-center py-8 text-gray-500">
-          <div className="text-4xl mb-2">📊</div>
-          <div>No deals found</div>
+        <div className="h-full flex flex-col items-center justify-center text-gray-500">
+          <div className="text-6xl mb-4">📊</div>
+          <div className="text-xl mb-2">No deals found</div>
+          <p className="text-sm mb-6">Create your first deal to get started</p>
           <button
-            onClick={() => navigate('/dashboard')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
           >
             + Create Deal
           </button>
@@ -187,66 +178,86 @@ export function DealsPage() {
     }
 
     return (
-      <div className="space-y-3">
-        {filteredDeals.map((deal) => {
-          const tierStyle = tierColors[deal.tier] || tierColors.basic;
-          
-          return (
-            <div
-              key={deal.id}
-              onClick={() => navigate(`/deals/${deal.id}`)}
-              className={`bg-white rounded-lg border-2 ${tierStyle.border} p-4 cursor-pointer hover:shadow-md transition-shadow`}
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${tierStyle.bg} ${tierStyle.text}`}>
-                      {deal.tier.toUpperCase()}
-                    </span>
-                    <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                      {stageLabels[deal.status] || deal.status}
-                    </span>
+      <div className="h-full overflow-x-auto">
+        <div className="flex gap-4 h-full p-6 min-w-max">
+          {stages.map(stage => {
+            const stageDeals = getDealsForStage(stage.id);
+            
+            return (
+              <div
+                key={stage.id}
+                className="w-80 bg-gray-200 rounded-xl p-4"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  if (draggedDeal) {
+                    handleDealMove(draggedDeal.id, stage.id);
+                    setDraggedDeal(null);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${stage.color}`} />
+                    <h3 className="font-semibold text-gray-900">{stage.label}</h3>
                   </div>
-                  <h3 className="font-semibold text-gray-900">{deal.name}</h3>
+                  <span className="text-sm text-gray-500 bg-white px-2 py-0.5 rounded">
+                    {stageDeals.length}
+                  </span>
                 </div>
-              </div>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <div className="text-gray-600">Type</div>
-                  <div className="font-medium capitalize">{deal.projectType?.replace('_', ' ')}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Status</div>
-                  <div className="font-medium capitalize">{deal.status}</div>
-                </div>
-                {deal.boundary && (
-                  <div>
-                    <div className="text-gray-600">Area</div>
-                    <div className="font-medium">
-                      {(deal.boundary as any).area || '-'} acres
+                <div className="space-y-3">
+                  {stageDeals.map(deal => (
+                    <div
+                      key={deal.id}
+                      draggable
+                      onDragStart={() => setDraggedDeal(deal)}
+                      onClick={() => navigate(`/deals/${deal.id}`)}
+                      className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 cursor-move hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <h4 className="font-medium text-gray-900">{deal.name}</h4>
+                          {deal.propertyAddress && (
+                            <p className="text-sm text-gray-500 mt-1">
+                              {deal.propertyAddress}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-sm mb-3">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          deal.tier === 'basic' ? 'bg-yellow-100 text-yellow-700' :
+                          deal.tier === 'pro' ? 'bg-blue-100 text-blue-700' :
+                          'bg-green-100 text-green-700'
+                        }`}>
+                          {deal.tier.toUpperCase()}
+                        </span>
+                        {deal.projectType && (
+                          <span className="text-xs text-gray-500 capitalize">
+                            {deal.projectType.replace('_', ' ')}
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>
+                          {new Date(deal.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                )}
-                <div>
-                  <div className="text-gray-600">Created</div>
-                  <div className="font-medium">
-                    {new Date(deal.createdAt).toLocaleDateString()}
-                  </div>
+                  ))}
+
+                  {stageDeals.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-300 rounded-lg">
+                      Drop deals here
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Footer */}
-              {deal.propertyAddress && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 line-clamp-2">{deal.propertyAddress}</p>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -280,11 +291,12 @@ export function DealsPage() {
   return (
     <ThreePanelLayout
       storageKey="pipeline"
-      views={views}
-      activeView={activeView}
-      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
+      showViewsPanel={false}
       renderContent={renderContent}
       renderMap={renderMap}
+      defaultContentWidth={1000}
+      minContentWidth={800}
+      maxContentWidth={1400}
     />
   );
 }

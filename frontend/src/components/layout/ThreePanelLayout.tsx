@@ -27,19 +27,22 @@ export interface ThreePanelLayoutProps {
   storageKey: string;
   
   /** View items for Panel 1 sidebar */
-  views: ViewItem[];
+  views?: ViewItem[];
   
   /** Currently active view ID */
-  activeView: string;
+  activeView?: string;
   
   /** Callback when view changes */
-  onViewChange: (viewId: string) => void;
+  onViewChange?: (viewId: string) => void;
   
   /** Content to render in Panel 2 */
-  renderContent: (viewId: string) => ReactNode;
+  renderContent: (viewId?: string) => ReactNode;
   
   /** Map container for Panel 3 */
   renderMap: () => ReactNode;
+  
+  /** Optional: Show views panel (default: true if views provided) */
+  showViewsPanel?: boolean;
   
   /** Optional: Initial panel widths */
   defaultContentWidth?: number;
@@ -54,11 +57,13 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   onViewChange,
   renderContent,
   renderMap,
+  showViewsPanel = true,
   defaultContentWidth = 550,
   minContentWidth = 400,
   maxContentWidth = 800,
 }) => {
-  const [showViews, setShowViews] = useState(true);
+  const hasViewsPanel = showViewsPanel && views && views.length > 0;
+  const [showViews, setShowViews] = useState(hasViewsPanel);
   const [showContent, setShowContent] = useState(true);
   const [showMap, setShowMap] = useState(true);
   
@@ -111,7 +116,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   return (
     <div className="h-full flex relative">
       {/* Panel 1: Views Sidebar */}
-      {showViews && (
+      {hasViewsPanel && showViews && views && onViewChange && activeView && (
         <aside className="w-20 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
           <div className="p-2">
             <nav className="space-y-1">
@@ -172,17 +177,19 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
 
       {/* Toggle Controls (Top-Right) */}
       <div className="absolute top-3 right-3 flex gap-2 z-20">
-        <button
-          onClick={() => setShowViews(!showViews)}
-          className={`px-3 py-1.5 rounded-lg shadow-md text-xs font-medium transition-colors ${
-            showViews
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-          }`}
-          title={showViews ? 'Hide views panel' : 'Show views panel'}
-        >
-          {showViews ? '◀ Views' : '▶ Views'}
-        </button>
+        {hasViewsPanel && (
+          <button
+            onClick={() => setShowViews(!showViews)}
+            className={`px-3 py-1.5 rounded-lg shadow-md text-xs font-medium transition-colors ${
+              showViews
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+            }`}
+            title={showViews ? 'Hide views panel' : 'Show views panel'}
+          >
+            {showViews ? '◀ Views' : '▶ Views'}
+          </button>
+        )}
         
         <button
           onClick={() => setShowContent(!showContent)}
