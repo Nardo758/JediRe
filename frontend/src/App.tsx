@@ -22,6 +22,13 @@ import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureCo
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
 
+// V2 Pages (ThreePanelLayout)
+import NewsIntelligencePageV2 from './pages/NewsIntelligencePageV2';
+import EmailPageV2 from './pages/EmailPageV2';
+import DealsPageV2 from './pages/DealsPageV2';
+import AssetsOwnedPageV2 from './pages/AssetsOwnedPageV2';
+import MarketDataPageV2 from './pages/MarketDataPageV2';
+
 function AppContent() {
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
 
@@ -62,6 +69,14 @@ function AppContent() {
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModuleMarketplacePage />} />
+          
+          {/* V2 Pages (ThreePanelLayout) - For Testing */}
+          <Route path="/news-v2" element={<NewsIntelligencePageV2 />} />
+          <Route path="/email-v2" element={<EmailPageV2 />} />
+          <Route path="/deals-v2" element={<DealsPageV2 />} />
+          <Route path="/assets-v2" element={<AssetsOwnedPageV2 />} />
+          <Route path="/market-data-v2" element={<MarketDataPageV2 />} />
+          
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Routes>
