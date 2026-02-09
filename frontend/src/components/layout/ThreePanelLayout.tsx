@@ -13,7 +13,7 @@
  * - Responsive controls
  */
 
-import React, { useState, useEffect, ReactNode } from 'react';
+import React, { useState, useEffect, useRef, ReactNode } from 'react';
 import { HorizontalBar } from '../map/HorizontalBar';
 
 export interface ViewItem {
@@ -92,6 +92,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   
   const [isContentMaximized, setIsContentMaximized] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Save panel states to localStorage
   useEffect(() => {
@@ -122,12 +123,10 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
       
-      // Calculate new width based on mouse position
-      // Account for views panel width if visible
-      const viewsWidth = showViews ? 80 : 0;
+      const contentLeft = contentRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = Math.max(
         minContentWidth,
-        Math.min(maxContentWidth, e.clientX - viewsWidth)
+        Math.min(maxContentWidth, e.clientX - contentLeft)
       );
       setContentWidth(newWidth);
     };
@@ -149,7 +148,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing, showViews, minContentWidth, maxContentWidth]);
+  }, [isResizing, minContentWidth, maxContentWidth]);
 
   return (
     <div className="h-full flex flex-col">
@@ -189,6 +188,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
       {showContent && (
         <>
           <div
+            ref={contentRef}
             className={`bg-gray-50 overflow-y-auto border-r border-gray-200 ${
               isContentMaximized || !showMap ? 'flex-1' : 'flex-shrink-0'
             }`}

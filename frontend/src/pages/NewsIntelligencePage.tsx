@@ -49,15 +49,18 @@ export function NewsIntelligencePage() {
     { id: 'amenities', label: 'Amenities', icon: '🏪' },
   ];
 
-  // Load data on mount
+  const prevCategory = useRef(selectedCategory);
+
   useEffect(() => {
     fetchDeals();
     loadData();
   }, []);
 
-  // Load events when category changes
   useEffect(() => {
-    loadEvents();
+    if (prevCategory.current !== selectedCategory) {
+      prevCategory.current = selectedCategory;
+      loadEvents();
+    }
   }, [selectedCategory]);
 
   // Initialize map

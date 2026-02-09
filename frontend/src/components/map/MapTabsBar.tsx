@@ -25,8 +25,12 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadConfigs();
-  }, []);
+    if (user) {
+      loadConfigs();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
