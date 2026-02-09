@@ -7,7 +7,6 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
@@ -18,18 +17,10 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'inbox' | 'sent' | 'drafts' | 'flagged';
 
-function getEmailViewFromPath(pathname: string): ViewType {
-  if (pathname.endsWith('/sent')) return 'sent';
-  if (pathname.endsWith('/drafts')) return 'drafts';
-  if (pathname.endsWith('/flagged')) return 'flagged';
-  return 'inbox';
-}
-
 export function EmailPage() {
   const { deals, fetchDeals } = useDealStore();
-  const location = useLocation();
   
-  const activeView = getEmailViewFromPath(location.pathname);
+  const [activeView, setActiveView] = useState<ViewType>('inbox');
   const [emails, setEmails] = useState<Email[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -234,18 +225,35 @@ export function EmailPage() {
 
   const activeFilterCount = [filterDealOnly, filterUnreadOnly, filterHasAttachment].filter(Boolean).length;
 
-  const renderContent = (viewId: string) => {
-    if (loading) {
-      return <div className="text-center py-8 text-gray-500">Loading emails...</div>;
-    }
+  const viewTabs: { id: ViewType; label: string; icon: string }[] = [
+    { id: 'inbox', label: 'Inbox', icon: '📥' },
+    { id: 'sent', label: 'Sent', icon: '📤' },
+    { id: 'drafts', label: 'Drafts', icon: '📝' },
+    { id: 'flagged', label: 'Flagged', icon: '🚩' },
+  ];
 
-    const viewLabel =
-      activeView === 'sent' ? 'Sent' :
-      activeView === 'drafts' ? 'Drafts' :
-      activeView === 'flagged' ? 'Flagged' : 'Inbox';
+  const renderContent = () => {
+    const viewLabel = viewTabs.find(t => t.id === activeView)?.label || 'Inbox';
 
-    const searchAndFilters = (
-      <div className="mb-4 space-y-3">
+    const tabsAndFilters = (
+      <div className="space-y-3 mb-4">
+        <div className="flex items-center border-b border-gray-200">
+          {viewTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveView(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeView === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <input
@@ -392,8 +400,10 @@ export function EmailPage() {
 
     return (
       <>
-        {searchAndFilters}
-        {emailList}
+        {tabsAndFilters}
+        {loading ? (
+          <div className="text-center py-8 text-gray-500">Loading emails...</div>
+        ) : emailList}
       </>
     );
   };
@@ -407,7 +417,7 @@ export function EmailPage() {
     <ThreePanelLayout
       storageKey="email"
       showViewsPanel={false}
-      renderContent={() => renderContent(activeView)}
+      renderContent={renderContent}
       renderMap={renderMap}
     />
   );

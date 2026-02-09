@@ -135,14 +135,11 @@ export const MainLayout: React.FC = () => {
                     isActive={isActive('/dashboard')}
                   />
 
-                  {/* EMAIL - Expandable */}
+                  {/* EMAIL */}
                   <SidebarItem
                     icon="📧"
                     label="Email"
                     count={5}
-                    hasSubItems
-                    isExpanded={expandedSections.email}
-                    onToggle={() => toggleSection('email')}
                     path="/dashboard/email"
                     isActive={isActivePrefix('/dashboard/email')}
                     layerConfig={{
@@ -156,35 +153,6 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
-                  
-                  {expandedSections.email && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="📥"
-                        label="Inbox"
-                        path="/dashboard/email"
-                        isActive={isActive('/dashboard/email')}
-                      />
-                      <SidebarItem
-                        icon="📤"
-                        label="Sent"
-                        path="/dashboard/email/sent"
-                        isActive={isActive('/dashboard/email/sent')}
-                      />
-                      <SidebarItem
-                        icon="📝"
-                        label="Drafts"
-                        path="/dashboard/email/drafts"
-                        isActive={isActive('/dashboard/email/drafts')}
-                      />
-                      <SidebarItem
-                        icon="🚩"
-                        label="Flagged"
-                        path="/dashboard/email/flagged"
-                        isActive={isActive('/dashboard/email/flagged')}
-                      />
-                    </div>
-                  )}
 
                   {/* PIPELINE - Expandable */}
                   <SidebarItem
