@@ -51,7 +51,8 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
   const handleClick = () => {
     if (hasSubItems && onToggle) {
       onToggle();
-    } else if (path) {
+    }
+    if (path) {
       navigate(path);
     }
   };
