@@ -229,32 +229,32 @@ export function NewsIntelligencePage() {
               className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
             >
               <div className="flex items-start justify-between mb-2">
-                <h3 className="font-semibold text-gray-900 flex-1">{event.headline}</h3>
+                <h3 className="font-semibold text-gray-900 flex-1">{event.event_type}</h3>
                 <span
                   className={`px-2 py-1 text-xs font-medium rounded whitespace-nowrap ml-2 ${
-                    event.severity === 'high'
+                    event.impact_severity === 'high' || event.impact_severity === 'critical'
                       ? 'bg-orange-100 text-orange-700'
-                      : event.severity === 'moderate'
+                      : event.impact_severity === 'moderate' || event.impact_severity === 'significant'
                       ? 'bg-yellow-100 text-yellow-700'
                       : 'bg-blue-100 text-blue-700'
                   }`}
                 >
-                  {event.severity === 'high'
+                  {event.impact_severity === 'high' || event.impact_severity === 'critical'
                     ? '⚠️ High Impact'
-                    : event.severity === 'moderate'
+                    : event.impact_severity === 'moderate' || event.impact_severity === 'significant'
                     ? '⚡ Moderate'
                     : 'ℹ️ Low Impact'}
                 </span>
               </div>
 
-              <div className="text-sm text-gray-600 mb-2">{event.summary}</div>
+              <div className="text-sm text-gray-600 mb-2">{event.location_raw}</div>
 
               <div className="flex items-center gap-3 text-xs text-gray-500">
-                <span>📍 {event.location}</span>
+                <span>📍 {event.city}, {event.state}</span>
                 <span>•</span>
                 <span>{event.source_type === 'email_private' ? '🔵 Email Intel' : 'Public'}</span>
                 <span>•</span>
-                <span>{new Date(event.created_at).toLocaleDateString()}</span>
+                <span>{new Date(event.published_at).toLocaleDateString()}</span>
               </div>
             </div>
           ))

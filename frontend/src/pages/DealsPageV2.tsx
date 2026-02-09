@@ -216,11 +216,11 @@ export function DealsPage() {
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <div className="text-gray-600">Type</div>
-                  <div className="font-medium capitalize">{deal.deal_type?.replace('_', ' ')}</div>
+                  <div className="font-medium capitalize">{deal.projectType?.replace('_', ' ')}</div>
                 </div>
                 <div>
-                  <div className="text-gray-600">Category</div>
-                  <div className="font-medium capitalize">{deal.deal_category}</div>
+                  <div className="text-gray-600">Status</div>
+                  <div className="font-medium capitalize">{deal.status}</div>
                 </div>
                 {deal.boundary && (
                   <div>
@@ -233,15 +233,15 @@ export function DealsPage() {
                 <div>
                   <div className="text-gray-600">Created</div>
                   <div className="font-medium">
-                    {new Date(deal.created_at).toLocaleDateString()}
+                    {new Date(deal.createdAt).toLocaleDateString()}
                   </div>
                 </div>
               </div>
 
               {/* Footer */}
-              {deal.description && (
+              {deal.propertyAddress && (
                 <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-sm text-gray-600 line-clamp-2">{deal.description}</p>
+                  <p className="text-sm text-gray-600 line-clamp-2">{deal.propertyAddress}</p>
                 </div>
               )}
             </div>
