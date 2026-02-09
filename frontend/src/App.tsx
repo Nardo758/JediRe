@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
 import { DealView } from './pages/DealView';
+import { DealPage } from './pages/DealPage';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
 import { NewsIntelligencePage } from './pages/NewsIntelligencePage';
@@ -17,6 +18,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+import { ModulesPage } from './pages/settings/ModulesPage';
 import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
@@ -59,6 +61,7 @@ function AppContent() {
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/tasks" element={<TasksPage />} />
@@ -66,7 +69,8 @@ function AppContent() {
           <Route path="/team" element={<TeamPage />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/settings/modules" element={<ModuleMarketplacePage />} />
+          <Route path="/settings/modules" element={<ModulesPage />} />
+          <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
           
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
