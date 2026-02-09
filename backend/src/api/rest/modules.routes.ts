@@ -5,7 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from '../../utils/logger';
-import { db } from '../../database/connection';
+import db from '../../database/connection';
 
 const router = Router();
 
@@ -15,7 +15,7 @@ const router = Router();
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id || 'demo-user'; // TODO: Get from auth
+    const userId = (req as any).user?.userId;
 
     // Get all module definitions
     const modules = await db.query(`
@@ -108,7 +108,7 @@ router.patch('/:slug/toggle', async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
     const { enabled } = req.body;
-    const userId = (req as any).user?.id || 'demo-user'; // TODO: Get from auth
+    const userId = (req as any).user?.userId;
 
     // Check if module exists
     const moduleExists = await db.query(
@@ -157,7 +157,7 @@ router.patch('/:slug/toggle', async (req: Request, res: Response) => {
  */
 router.get('/enabled', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id || 'demo-user'; // TODO: Get from auth
+    const userId = (req as any).user?.userId;
 
     const result = await db.query(`
       SELECT module_slug
@@ -181,7 +181,7 @@ router.get('/enabled', async (req: Request, res: Response) => {
 router.post('/:slug/purchase', async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
-    const userId = (req as any).user?.id || 'demo-user'; // TODO: Get from auth
+    const userId = (req as any).user?.userId;
     
     // TODO: Create Stripe checkout session
     // For now, just return success (development mode)
