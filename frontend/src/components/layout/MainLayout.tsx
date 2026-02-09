@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
@@ -83,6 +83,12 @@ export const MainLayout: React.FC = () => {
       }
     }
   };
+
+  useEffect(() => {
+    const handler = () => setIsWarMapsOpen(true);
+    window.addEventListener('open-war-maps', handler);
+    return () => window.removeEventListener('open-war-maps', handler);
+  }, []);
 
   // Handle War Maps creation
   const handleWarMapsCreated = (newLayers: MapLayer[]) => {
