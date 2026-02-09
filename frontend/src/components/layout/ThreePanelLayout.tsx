@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, ReactNode } from 'react';
+import { HorizontalBar } from '../map/HorizontalBar';
 
 export interface ViewItem {
   id: string;
@@ -114,7 +115,9 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   }, [isResizing, showViews, minContentWidth, maxContentWidth]);
 
   return (
-    <div className="h-full flex relative">
+    <div className="h-full flex flex-col">
+      <HorizontalBar />
+      <div className="flex-1 flex relative min-h-0">
       {/* Panel 1: Views Sidebar */}
       {hasViewsPanel && showViews && views && onViewChange && activeView && (
         <aside className="w-20 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
@@ -214,6 +217,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         >
           {showMap ? 'Map ▶' : '◀ Map'}
         </button>
+      </div>
       </div>
     </div>
   );
