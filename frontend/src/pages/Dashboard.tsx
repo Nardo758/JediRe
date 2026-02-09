@@ -7,7 +7,7 @@ import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { useMapLayers } from '../contexts/MapLayersContext';
 import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
-import { HorizontalBar } from '../components/map/HorizontalBar';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { Button } from '../components/shared/Button';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
@@ -29,10 +29,8 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     fetchDeals();
     
-    // Check if we should open create deal modal from navigation state
     if (location.state?.openCreateDeal) {
       setIsCreateModalOpen(true);
-      // Clear the state to prevent reopening on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location]);
@@ -48,7 +46,6 @@ export const Dashboard: React.FC = () => {
         zoom: 11
       });
 
-      // Initialize MapboxDraw
       draw.current = new MapboxDraw({
         displayControlsDefault: false,
         controls: {
@@ -60,21 +57,17 @@ export const Dashboard: React.FC = () => {
       map.current.addControl(draw.current, 'top-left');
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-      // Listen for drawing events
       map.current.on('draw.create', (e: any) => {
         const geometry = e.features[0].geometry;
-        console.log('[Dashboard] Polygon created:', geometry);
         saveDrawing(geometry);
       });
 
       map.current.on('draw.update', (e: any) => {
         const geometry = e.features[0].geometry;
-        console.log('[Dashboard] Polygon updated:', geometry);
         saveDrawing(geometry);
       });
 
       map.current.on('draw.delete', () => {
-        console.log('[Dashboard] Polygon deleted');
         saveDrawing(null as any);
       });
 
@@ -90,20 +83,13 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Handle drawing mode activation
   useEffect(() => {
     if (!map.current || !draw.current) return;
 
     if (isDrawing) {
-      console.log('[Dashboard] Activating drawing mode');
-      
-      // Clear any existing drawings
       draw.current.deleteAll();
-      
-      // Start polygon drawing mode
       draw.current.changeMode('draw_polygon');
       
-      // Center map on property location if provided
       if (centerPoint) {
         map.current.flyTo({
           center: centerPoint,
@@ -111,40 +97,31 @@ export const Dashboard: React.FC = () => {
           duration: 1500,
         });
         
-        // Add marker at property location
         new mapboxgl.Marker({ color: '#3B82F6' })
           .setLngLat(centerPoint)
           .addTo(map.current);
       }
     } else {
-      console.log('[Dashboard] Deactivating drawing mode');
-      
-      // Exit drawing mode
       if (draw.current) {
         draw.current.changeMode('simple_select');
       }
     }
   }, [isDrawing, centerPoint]);
 
-  // Render map layers when they change
   useEffect(() => {
     if (!map.current) return;
 
     const activeLayerIds = layers.filter(l => l.active).map(l => l.id);
     const currentLayerIds = Array.from(layerMarkers.current.keys());
 
-    // Add new active layers
     activeLayerIds.forEach(layerId => {
       if (!currentLayerIds.includes(layerId)) {
-        console.log(`[Dashboard] Adding layer: ${layerId}`);
         fetchAndRenderLayer(layerId);
       }
     });
 
-    // Remove inactive layers
     currentLayerIds.forEach(layerId => {
       if (!activeLayerIds.includes(layerId)) {
-        console.log(`[Dashboard] Removing layer: ${layerId}`);
         removeLayer(layerId);
       }
     });
@@ -154,7 +131,6 @@ export const Dashboard: React.FC = () => {
     if (!map.current) return;
 
     try {
-      console.log(`[Dashboard] Fetching data for layer: ${layerId}`);
       const response = await fetch(`/api/v1/layers/${layerId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}` || '',
@@ -168,32 +144,24 @@ export const Dashboard: React.FC = () => {
       const data = await response.json();
 
       if (!data.success || !data.locations) {
-        console.warn(`[Dashboard] No locations for layer: ${layerId}`);
         return;
       }
 
-      console.log(`[Dashboard] Rendering ${data.locations.length} markers for layer: ${layerId}`);
-      
-      // Create markers
       const markers: mapboxgl.Marker[] = data.locations.map((loc: any) => {
-        // Create custom marker element
         const el = document.createElement('div');
         el.className = 'custom-map-marker';
         el.style.cursor = 'pointer';
         el.style.fontSize = '24px';
         
-        // Set icon based on layer type
         const icon = getLayerIcon(layerId);
         el.innerHTML = icon;
 
-        // Create popup
         const popup = new mapboxgl.Popup({
           offset: 25,
           closeButton: true,
           closeOnClick: false,
         }).setHTML(loc.popupHTML);
 
-        // Create marker
         const marker = new mapboxgl.Marker(el)
           .setLngLat([loc.lng, loc.lat])
           .setPopup(popup)
@@ -202,7 +170,6 @@ export const Dashboard: React.FC = () => {
         return marker;
       });
 
-      // Store markers for later removal
       layerMarkers.current.set(layerId, markers);
 
     } catch (error) {
@@ -213,7 +180,6 @@ export const Dashboard: React.FC = () => {
   const removeLayer = (layerId: string) => {
     const markers = layerMarkers.current.get(layerId);
     if (markers) {
-      console.log(`[Dashboard] Removing ${markers.length} markers for layer: ${layerId}`);
       markers.forEach(marker => marker.remove());
       layerMarkers.current.delete(layerId);
     }
@@ -232,13 +198,11 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // Update map when deals change
   useEffect(() => {
     if (!map.current || !Array.isArray(deals) || !deals.length) return;
 
     const m = map.current;
 
-    // Wait for map to load
     if (!m.loaded()) {
       m.on('load', () => addDealsToMap(m, deals));
     } else {
@@ -247,14 +211,12 @@ export const Dashboard: React.FC = () => {
   }, [deals]);
 
   const addDealsToMap = (m: mapboxgl.Map, deals: any[]) => {
-    // Remove existing sources and layers
     if (m.getSource('deals')) {
       if (m.getLayer('deal-fills')) m.removeLayer('deal-fills');
       if (m.getLayer('deal-borders')) m.removeLayer('deal-borders');
       m.removeSource('deals');
     }
 
-    // Create GeoJSON from deals (only include deals with valid GeoJSON boundaries)
     const geojson = {
       type: 'FeatureCollection',
       features: deals
@@ -271,13 +233,11 @@ export const Dashboard: React.FC = () => {
         }))
     };
 
-    // Add source
     m.addSource('deals', {
       type: 'geojson',
       data: geojson as any
     });
 
-    // Add fill layer
     m.addLayer({
       id: 'deal-fills',
       type: 'fill',
@@ -286,16 +246,15 @@ export const Dashboard: React.FC = () => {
         'fill-color': [
           'match',
           ['get', 'tier'],
-          'basic', '#fbbf24', // yellow
-          'pro', '#3b82f6',   // blue
-          'enterprise', '#10b981', // green
-          '#6b7280' // default gray
+          'basic', '#fbbf24',
+          'pro', '#3b82f6',
+          'enterprise', '#10b981',
+          '#6b7280'
         ],
         'fill-opacity': 0.3
       }
     });
 
-    // Add border layer
     m.addLayer({
       id: 'deal-borders',
       type: 'line',
@@ -313,7 +272,6 @@ export const Dashboard: React.FC = () => {
       }
     });
 
-    // Add click handler
     m.on('click', 'deal-fills', (e) => {
       if (e.features && e.features[0]) {
         const dealId = e.features[0].properties.id;
@@ -321,7 +279,6 @@ export const Dashboard: React.FC = () => {
       }
     });
 
-    // Change cursor on hover
     m.on('mouseenter', 'deal-fills', () => {
       m.getCanvas().style.cursor = 'pointer';
     });
@@ -329,7 +286,6 @@ export const Dashboard: React.FC = () => {
       m.getCanvas().style.cursor = '';
     });
 
-    // Fit map to show all deals
     if (deals.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       let hasValidBounds = false;
@@ -359,125 +315,123 @@ export const Dashboard: React.FC = () => {
     fetchDeals();
   };
 
-  return (
-    <>
-    <div className="h-full flex flex-col">
-      {/* Horizontal Bar */}
-      <HorizontalBar />
+  const renderContent = () => (
+    <div>
+      <h2 className="text-sm font-semibold text-gray-700 mb-3">MY DEALS</h2>
       
-      <div className="flex-1 flex min-h-0">
-        {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
-          <div className="p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">MY DEALS</h2>
-            
-            {isLoading ? (
-              <div className="text-center py-8 text-gray-500">Loading...</div>
-            ) : !Array.isArray(deals) || deals.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No deals yet</p>
-                <Button onClick={() => setIsCreateModalOpen(true)} size="sm">
-                  Create Your First Deal
-                </Button>
+      {isLoading ? (
+        <div className="text-center py-8 text-gray-500">Loading...</div>
+      ) : !Array.isArray(deals) || deals.length === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-gray-500 mb-4">No deals yet</p>
+          <Button onClick={() => setIsCreateModalOpen(true)} size="sm">
+            Create Your First Deal
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {deals.map(deal => (
+            <a
+              key={deal.id}
+              href={`/deals/${deal.id}`}
+              className="block p-4 rounded-lg hover:bg-gray-50 transition border border-gray-200 bg-white"
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{
+                    backgroundColor: 
+                      deal.tier === 'basic' ? '#fbbf24' :
+                      deal.tier === 'pro' ? '#3b82f6' :
+                      deal.tier === 'enterprise' ? '#10b981' : '#6b7280'
+                  }}
+                />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 truncate">
+                    {deal.name}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {deal.projectType} • {(deal.acres || 0).toFixed(1)} acres
+                  </p>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                    <span>{deal.propertyCount} properties</span>
+                    {deal.pendingTasks > 0 && (
+                      <span>{deal.pendingTasks} tasks</span>
+                    )}
+                  </div>
+                </div>
+                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {deals.map(deal => (
-                  <a
-                    key={deal.id}
-                    href={`/deals/${deal.id}`}
-                    className="block p-4 rounded-lg hover:bg-gray-50 transition border border-gray-200"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{
-                          backgroundColor: 
-                            deal.tier === 'basic' ? '#fbbf24' :
-                            deal.tier === 'pro' ? '#3b82f6' :
-                            deal.tier === 'enterprise' ? '#10b981' : '#6b7280'
-                        }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {deal.name}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {deal.projectType} • {(deal.acres || 0).toFixed(1)} acres
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                          <span>{deal.propertyCount} properties</span>
-                          {deal.pendingTasks > 0 && (
-                            <span>{deal.pendingTasks} tasks</span>
-                          )}
-                        </div>
-                      </div>
-                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            )}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {Array.isArray(deals) && deals.length > 0 && (
+        <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Quick Stats</h3>
+          <div className="space-y-1 text-sm">
+            <div className="flex items-center justify-between gap-6">
+              <span className="text-gray-600">Active Deals:</span>
+              <span className="font-semibold">{deals.length}</span>
+            </div>
+            <div className="flex items-center justify-between gap-6">
+              <span className="text-gray-600">Total Pipeline:</span>
+              <span className="font-semibold">
+                ${deals.reduce((sum, d) => sum + (d.budget || 0), 0).toLocaleString()}
+              </span>
+            </div>
           </div>
         </div>
+      )}
+    </div>
+  );
 
-        {/* Map */}
-        <div className="flex-1 relative">
-          <div ref={mapContainer} className="absolute inset-0" />
-          
-          {/* Drawing Control Panel */}
-          {isDrawing && (
-            <DrawingControlPanel
-              onComplete={() => {
-                console.log('[Dashboard] Drawing complete');
-                stopDrawing();
-              }}
-              onCancel={() => {
-                console.log('[Dashboard] Drawing cancelled');
-                if (draw.current) {
-                  draw.current.deleteAll();
-                }
-                stopDrawing();
-              }}
-            />
-          )}
-          
-          {mapError && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-              <div className="text-center p-8">
-                <div className="text-6xl mb-4">🗺️</div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-2">Map View</h3>
-                <p className="text-sm text-gray-500">Map requires a Mapbox token to display.</p>
-                <p className="text-xs text-gray-400 mt-1">Set VITE_MAPBOX_TOKEN in environment variables.</p>
-              </div>
-            </div>
-          )}
-          
-          {/* Quick stats overlay */}
-          {Array.isArray(deals) && deals.length > 0 && (
-            <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Quick Stats</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-gray-600">Active Deals:</span>
-                  <span className="font-semibold">{deals.length}</span>
-                </div>
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-gray-600">Total Pipeline:</span>
-                  <span className="font-semibold">
-                    ${deals.reduce((sum, d) => sum + (d.budget || 0), 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+  const renderMap = () => (
+    <div className="absolute inset-0">
+      <div ref={mapContainer} className="absolute inset-0" />
+      
+      {isDrawing && (
+        <DrawingControlPanel
+          onComplete={() => {
+            stopDrawing();
+          }}
+          onCancel={() => {
+            if (draw.current) {
+              draw.current.deleteAll();
+            }
+            stopDrawing();
+          }}
+        />
+      )}
+      
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div className="text-center p-8">
+            <div className="text-6xl mb-4">🗺️</div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">Map View</h3>
+            <p className="text-sm text-gray-500">Map requires a Mapbox token to display.</p>
+            <p className="text-xs text-gray-400 mt-1">Set VITE_MAPBOX_TOKEN in environment variables.</p>
+          </div>
         </div>
-      </div>
-      </div>
+      )}
+    </div>
+  );
 
-      {/* Create Deal Modal */}
+  return (
+    <>
+      <ThreePanelLayout
+        storageKey="dashboard"
+        showViewsPanel={false}
+        renderContent={renderContent}
+        renderMap={renderMap}
+        defaultContentWidth={400}
+        minContentWidth={300}
+        maxContentWidth={600}
+      />
+
       <CreateDealModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
