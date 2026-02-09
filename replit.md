@@ -202,6 +202,14 @@ Key variables are set automatically:
 - `email_labels` - Email label/folder system
 
 ## Recent Changes
+- 2026-02-09: Module System wiring (fully functional)
+  - Created module_definitions (28 modules, 7 categories) and user_module_settings tables
+  - Backend: GET /api/v1/modules (list), GET /api/v1/modules/enabled, PATCH /api/v1/modules/:slug/toggle, POST /api/v1/modules/:slug/purchase
+  - Frontend: hasModule() utility with 60s cache + in-flight dedup, useModuleCheck() hook
+  - DealPage wired to real GET /api/v1/deals/:dealId with loading/404 handling
+  - FinancialAnalysisSection conditionally renders Basic vs Enhanced based on module state
+  - ModulesPage toggles call API and invalidate cache for consistency
+  - Auth: modules router uses requireAuth middleware, req.user.userId matches JWT payload
 - 2026-02-08: News Intelligence system integration
   - 6 backend endpoints: events (list/detail), dashboard, alerts (list/update), network intelligence
   - Mounted via newsRouter in index.replit.ts at /api/v1/news/*
