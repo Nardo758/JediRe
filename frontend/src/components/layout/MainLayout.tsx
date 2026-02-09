@@ -243,12 +243,6 @@ export const MainLayout: React.FC = () => {
                     isActive={isActive('/team')}
                   />
                   
-                  <SidebarItem
-                    icon="⚙️"
-                    label="Settings"
-                    path="/settings"
-                    isActive={isActive('/settings')}
-                  />
                 </div>
               </nav>
             </div>
