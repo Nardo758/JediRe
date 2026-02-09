@@ -17,9 +17,12 @@ export function SettingsPage() {
           <button className="w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg">
             Subscription
           </button>
-          <button className="w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg">
+          <a 
+            href="/settings/modules"
+            className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
+          >
             AI Modules
-          </button>
+          </a>
           <button className="w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg">
             Integrations
           </button>
