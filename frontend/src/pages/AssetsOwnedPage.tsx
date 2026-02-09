@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
+import { DataGrid } from '../components/grid/DataGrid';
+import { ColumnDef, OwnedAsset, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -9,93 +11,196 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type ViewType = 'all' | 'performance' | 'documents';
-
-function getViewFromPath(pathname: string): ViewType {
-  if (pathname.endsWith('/performance')) return 'performance';
-  if (pathname.endsWith('/documents')) return 'documents';
-  return 'all';
-}
-
-interface Asset {
-  id: string;
-  property_name: string;
-  address: string;
-  asset_type: string;
-  acquisition_date: string;
-  hold_period: number;
-  actual_noi: number;
-  proforma_noi: number;
-  noi_variance: number;
-  actual_occupancy: number;
-  proforma_occupancy: number;
-  occupancy_variance: number;
-  actual_avg_rent: number;
-  proforma_rent: number;
-  rent_variance: number;
-  current_irr: number;
-  projected_irr: number;
-  coc_return: number;
-  equity_multiple: number;
-  total_distributions: number;
-  actual_opex_ratio: number;
-  actual_capex: number;
-  proforma_capex: number;
-  loan_maturity_date: string;
-  months_to_maturity: number;
-  refi_risk_flag: boolean;
-}
-
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assets, setAssets] = useState<OwnedAsset[]>([]);
   const [loading, setLoading] = useState(true);
-  const activeView = getViewFromPath(location.pathname);
+  const [error, setError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
-
-  const handleViewChange = (viewId: string) => {
-    if (viewId === 'all') navigate('/assets-owned');
-    else navigate(`/assets-owned/${viewId}`);
-  };
 
   useEffect(() => {
     loadAssets();
   }, []);
 
-  const loadAssets = async () => {
+  const loadAssets = async (sort?: GridSort) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`${API_URL}/grid/owned`);
+      setError(null);
+      const params = new URLSearchParams();
+      if (sort) {
+        params.append('sort', JSON.stringify(sort));
+      }
+      const response = await apiClient.get(`${API_URL}/grid/owned?${params.toString()}`);
       setAssets(response.data.assets || []);
     } catch (err) {
       console.error('Failed to load assets:', err);
+      setError('Failed to load assets data');
     } finally {
       setLoading(false);
     }
   };
 
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markers = useRef<mapboxgl.Marker[]>([]);
+  const handleSort = (sort: GridSort) => {
+    loadAssets(sort);
+  };
 
-  const views: ViewItem[] = [
-    { id: 'all', label: 'All', icon: '🏢', count: assets.length },
-    { id: 'performance', label: 'Performance', icon: '📊' },
-    { id: 'documents', label: 'Documents', icon: '📄' },
+  const handleExport = async () => {
+    try {
+      const response = await apiClient.post(
+        `${API_URL}/grid/export`,
+        { type: 'owned', data: assets },
+        { responseType: 'blob' }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `assets_owned_grid_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+  };
+
+  const handleRowClick = (row: OwnedAsset) => {
+    setSelectedAsset(row.id);
+    navigate(`/deals/${row.id}`);
+  };
+
+  const formatCurrency = (value: any) =>
+    value !== null && value !== undefined
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0,
+        }).format(Number(value))
+      : '—';
+
+  const formatPercent = (value: any) =>
+    value !== null && value !== undefined ? `${Number(value).toFixed(1)}%` : '—';
+
+  const formatDate = (value: string | null) =>
+    value ? new Date(value).toLocaleDateString() : '—';
+
+  const renderVariance = (variance: number | null) => {
+    if (variance === null || variance === undefined) return <span className="text-gray-400">—</span>;
+    const num = Number(variance);
+    const isPositive = num > 0;
+    const colorClass = Math.abs(num) < 5
+      ? 'text-gray-900'
+      : isPositive
+      ? 'text-green-600'
+      : 'text-red-600';
+    return (
+      <span className={`font-medium ${colorClass}`}>
+        {isPositive ? '+' : ''}{num.toFixed(1)}%
+      </span>
+    );
+  };
+
+  const getPerformanceBadge = (noi_variance: number | null) => {
+    if (noi_variance === null || noi_variance === undefined) return null;
+    const v = Number(noi_variance);
+    if (v > 5) {
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">Outperforming</span>;
+    } else if (v < -10) {
+      return <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">Underperforming</span>;
+    }
+    return <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full font-medium">On Track</span>;
+  };
+
+  const columns: ColumnDef[] = [
+    {
+      key: 'property_name',
+      label: 'Property',
+      sortable: true,
+      filterable: true,
+      width: 200,
+      render: (value, row) => (
+        <div>
+          <div className="font-medium text-gray-900">{value || '—'}</div>
+          <div className="mt-1">{getPerformanceBadge(row.noi_variance)}</div>
+        </div>
+      ),
+    },
+    { key: 'address', label: 'Address', sortable: true, filterable: true, width: 180,
+      render: (value) => <span className="text-sm text-gray-600">{value || '—'}</span>
+    },
+    { key: 'asset_type', label: 'Type', sortable: true, filterable: true, width: 120 },
+    { key: 'acquisition_date', label: 'Acquired', sortable: true, filterable: true, width: 110, format: formatDate },
+    { key: 'hold_period', label: 'Hold (mo)', sortable: true, filterable: true, width: 90, align: 'right',
+      render: (value) => <span className="text-gray-900">{value || 0}mo</span>
+    },
+    { key: 'actual_noi', label: 'NOI (Actual)', sortable: true, filterable: true, width: 120, align: 'right', format: formatCurrency },
+    { key: 'proforma_noi', label: 'NOI (Pro Forma)', sortable: true, filterable: true, width: 130, align: 'right', format: formatCurrency },
+    { key: 'noi_variance', label: 'NOI Var', sortable: true, filterable: true, width: 90, align: 'right',
+      render: (value) => renderVariance(value)
+    },
+    { key: 'actual_occupancy', label: 'Occ (Actual)', sortable: true, filterable: true, width: 100, align: 'right',
+      render: (value) => value !== null ? `${Number(value).toFixed(1)}%` : '—'
+    },
+    { key: 'proforma_occupancy', label: 'Occ (PF)', sortable: true, filterable: true, width: 90, align: 'right',
+      render: (value) => value !== null ? `${Number(value).toFixed(1)}%` : '—'
+    },
+    { key: 'occupancy_variance', label: 'Occ Var', sortable: true, filterable: true, width: 80, align: 'right',
+      render: (value) => renderVariance(value)
+    },
+    { key: 'actual_avg_rent', label: 'Rent (Actual)', sortable: true, filterable: true, width: 110, align: 'right', format: formatCurrency },
+    { key: 'proforma_rent', label: 'Rent (PF)', sortable: true, filterable: true, width: 110, align: 'right', format: formatCurrency },
+    { key: 'rent_variance', label: 'Rent Var', sortable: true, filterable: true, width: 90, align: 'right',
+      render: (value) => renderVariance(value)
+    },
+    { key: 'current_irr', label: 'IRR (Current)', sortable: true, filterable: true, width: 110, align: 'right',
+      render: (value, row) => (
+        <div>
+          <div className="font-medium text-gray-900">{formatPercent(value)}</div>
+          {row.projected_irr && value && (
+            <div className="text-xs text-gray-500">vs {formatPercent(row.projected_irr)}</div>
+          )}
+        </div>
+      ),
+    },
+    { key: 'projected_irr', label: 'IRR (Projected)', sortable: true, filterable: true, width: 110, align: 'right', format: formatPercent },
+    { key: 'coc_return', label: 'CoC Return', sortable: true, filterable: true, width: 100, align: 'right', format: formatPercent },
+    { key: 'equity_multiple', label: 'Equity Multiple', sortable: true, filterable: true, width: 120, align: 'right',
+      render: (value) => value !== null && value !== undefined ? `${Number(value).toFixed(2)}x` : '—'
+    },
+    { key: 'total_distributions', label: 'Distributions', sortable: true, filterable: true, width: 130, align: 'right', format: formatCurrency },
+    { key: 'actual_opex_ratio', label: 'Opex Ratio', sortable: true, filterable: true, width: 100, align: 'right', format: formatPercent },
+    { key: 'actual_capex', label: 'Capex', sortable: true, filterable: true, width: 120, align: 'right',
+      render: (value, row) => (
+        <div>
+          <div className="font-medium text-gray-900">{formatCurrency(value)}</div>
+          {row.proforma_capex && (
+            <div className="text-xs text-gray-500">vs {formatCurrency(row.proforma_capex)}</div>
+          )}
+        </div>
+      ),
+    },
+    { key: 'loan_maturity_date', label: 'Loan Maturity', sortable: true, filterable: true, width: 120,
+      render: (value, row) => (
+        <div>
+          <div className="text-gray-900">{formatDate(value)}</div>
+          {row.refi_risk_flag && (
+            <div className="text-xs text-orange-600 font-medium mt-1">Refi Risk</div>
+          )}
+        </div>
+      ),
+    },
+    { key: 'months_to_maturity', label: 'Months', sortable: true, filterable: true, width: 80, align: 'right',
+      render: (value) => value !== null && value !== undefined ? (
+        <span className={Number(value) < 12 ? 'text-orange-600 font-semibold' : 'text-gray-900'}>
+          {value}mo
+        </span>
+      ) : '—'
+    },
   ];
 
-  const totals = {
-    totalUnits: assets.length,
-    avgOccupancy: assets.length > 0
-      ? (assets.reduce((sum, a) => sum + (Number(a.actual_occupancy) || 0), 0) / assets.length).toFixed(1)
-      : '0.0',
-    totalNOI: assets.reduce((sum, a) => sum + (Number(a.actual_noi) || 0), 0),
-    avgIRR: assets.length > 0
-      ? (assets.reduce((sum, a) => sum + (Number(a.current_irr) || 0), 0) / assets.length).toFixed(1)
-      : '0.0',
-    totalDistributions: assets.reduce((sum, a) => sum + (Number(a.total_distributions) || 0), 0),
-  };
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -120,8 +225,8 @@ export function AssetsOwnedPage() {
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
 
-    markers.current.forEach((m) => m.remove());
-    markers.current = [];
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
 
     assets.forEach((asset) => {
       const el = document.createElement('div');
@@ -149,263 +254,35 @@ export function AssetsOwnedPage() {
         .addTo(map.current!);
 
       el.addEventListener('click', () => setSelectedAsset(asset.id));
-      markers.current.push(marker);
+      markersRef.current.push(marker);
     });
   }, [assets]);
 
-  const formatCurrency = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return '—';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  const formatPercent = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return '—';
-    return `${Number(value).toFixed(1)}%`;
-  };
-
-  const renderVariance = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return <span className="text-gray-400">—</span>;
-    const num = Number(value);
-    const isPositive = num > 0;
-    const colorClass = Math.abs(num) < 5
-      ? 'text-gray-900'
-      : isPositive
-      ? 'text-green-600'
-      : 'text-red-600';
-    return (
-      <span className={`font-medium ${colorClass}`}>
-        {isPositive ? '+' : ''}{num.toFixed(1)}%
-      </span>
-    );
-  };
-
-  const getPerformanceBadge = (noiVariance: number | null | undefined) => {
-    if (noiVariance === null || noiVariance === undefined) return null;
-    const v = Number(noiVariance);
-    if (v > 5) {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">Outperforming</span>;
-    } else if (v < -10) {
-      return <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">Underperforming</span>;
-    }
-    return <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full font-medium">On Track</span>;
-  };
-
-  const renderContent = (viewId: string) => {
-    if (loading) {
+  const renderContent = () => {
+    if (error) {
       return (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      );
-    }
-
-    if (assets.length === 0) {
-      return (
-        <div className="text-center py-12 text-gray-500">
-          <div className="text-4xl mb-2">🏢</div>
-          <div>No owned assets found</div>
-        </div>
-      );
-    }
-
-    if (viewId === 'performance') {
-      return (
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <div className="text-sm text-gray-600">Assets</div>
-                <div className="text-2xl font-bold text-gray-900">{assets.length}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Avg Occupancy</div>
-                <div className="text-2xl font-bold text-green-600">{totals.avgOccupancy}%</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Total NOI</div>
-                <div className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(totals.totalNOI)}
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-100">
-              <div>
-                <div className="text-sm text-gray-600">Avg IRR</div>
-                <div className="text-xl font-bold text-purple-600">{totals.avgIRR}%</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Total Distributions</div>
-                <div className="text-xl font-bold text-gray-900">{formatCurrency(totals.totalDistributions)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h3 className="font-semibold text-gray-900">Asset Performance</h3>
-            {assets.map((asset) => (
-              <div
-                key={asset.id}
-                onClick={() => setSelectedAsset(asset.id)}
-                className={`bg-white rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${
-                  selectedAsset === asset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="font-medium text-gray-900">{asset.property_name}</div>
-                  {getPerformanceBadge(asset.noi_variance)}
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">NOI (Actual vs PF)</span>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatCurrency(asset.actual_noi)}</span>
-                      <span className="text-gray-400 mx-1">vs</span>
-                      <span className="text-gray-500">{formatCurrency(asset.proforma_noi)}</span>
-                      <span className="ml-2">{renderVariance(asset.noi_variance)}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Occupancy</span>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatPercent(asset.actual_occupancy)}</span>
-                      <span className="text-gray-400 mx-1">vs</span>
-                      <span className="text-gray-500">{formatPercent(asset.proforma_occupancy)}</span>
-                      <span className="ml-2">{renderVariance(asset.occupancy_variance)}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">IRR</span>
-                    <div className="text-right">
-                      <span className="font-semibold">{formatPercent(asset.current_irr)}</span>
-                      <span className="text-gray-400 mx-1">vs</span>
-                      <span className="text-gray-500">{formatPercent(asset.projected_irr)}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">CoC / Equity Multiple</span>
-                    <span className="font-semibold">
-                      {formatPercent(asset.coc_return)} / {Number(asset.equity_multiple || 0).toFixed(2)}x
-                    </span>
-                  </div>
-                  {asset.refi_risk_flag && (
-                    <div className="flex items-center gap-1 text-orange-600 font-medium mt-1">
-                      <span>Refi Risk</span>
-                      <span className="text-gray-500 font-normal">
-                        ({asset.months_to_maturity}mo to maturity)
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (viewId === 'documents') {
-      return (
-        <div className="text-center py-8 text-gray-500">
-          <div className="text-4xl mb-2">📄</div>
-          <div>Documents view coming soon</div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-4 text-white">
-          <h3 className="font-semibold mb-3">Portfolio</h3>
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <div>
-              <div className="opacity-90">Assets</div>
-              <div className="text-2xl font-bold">{assets.length}</div>
-            </div>
-            <div>
-              <div className="opacity-90">Avg Occ.</div>
-              <div className="text-2xl font-bold">{totals.avgOccupancy}%</div>
-            </div>
-            <div>
-              <div className="opacity-90">Total NOI</div>
-              <div className="text-2xl font-bold">{formatCurrency(totals.totalNOI)}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">Owned Assets</h3>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 m-4">
+          <p className="text-red-800">{error}</p>
           <button
-            onClick={() => navigate('/assets-owned/grid')}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            onClick={() => loadAssets()}
+            className="mt-2 text-red-600 hover:text-red-800 font-medium"
           >
-            Grid View
+            Retry
           </button>
         </div>
+      );
+    }
 
-        <div className="space-y-3">
-          {assets.map((asset) => (
-            <div
-              key={asset.id}
-              onClick={() => setSelectedAsset(asset.id)}
-              className={`bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow ${
-                selectedAsset === asset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{asset.property_name}</h3>
-                  <p className="text-sm text-gray-600">{asset.address || 'Atlanta, GA'}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
-                    {asset.asset_type || 'Multifamily'}
-                  </span>
-                  {getPerformanceBadge(asset.noi_variance)}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <div className="text-gray-600">Occupancy</div>
-                  <div className="font-semibold text-lg text-green-600">
-                    {formatPercent(asset.actual_occupancy)}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-600">NOI</div>
-                  <div className="font-semibold text-lg">{formatCurrency(asset.actual_noi)}</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">IRR</div>
-                  <div className="font-semibold text-lg text-purple-600">
-                    {formatPercent(asset.current_irr)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <div className="text-gray-600">Hold Period</div>
-                  <div className="font-semibold">{asset.hold_period || 0}mo</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">Equity Multiple</div>
-                  <div className="font-semibold">{asset.equity_multiple ? Number(asset.equity_multiple).toFixed(2) : '—'}x</div>
-                </div>
-                <div>
-                  <div className="text-gray-600">CoC Return</div>
-                  <div className="font-semibold">{formatPercent(asset.coc_return)}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+    return (
+      <div className="h-full">
+        <DataGrid
+          columns={columns}
+          data={assets}
+          onRowClick={handleRowClick}
+          onSort={handleSort}
+          onExport={handleExport}
+          loading={loading}
+        />
       </div>
     );
   };
@@ -418,7 +295,7 @@ export function AssetsOwnedPage() {
     <ThreePanelLayout
       storageKey="assets"
       showViewsPanel={false}
-      renderContent={() => renderContent(activeView)}
+      renderContent={renderContent}
       renderMap={renderMap}
     />
   );

@@ -183,14 +183,11 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
                   
-                  {/* ASSETS OWNED - Expandable */}
+                  {/* ASSETS OWNED */}
                   <SidebarItem
                     icon="🏢"
                     label="Assets Owned"
                     count={23}
-                    hasSubItems
-                    isExpanded={expandedSections.assets}
-                    onToggle={() => toggleSection('assets')}
                     path="/assets-owned"
                     isActive={isActivePrefix('/assets-owned')}
                     layerConfig={{
@@ -204,29 +201,6 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
-                  
-                  {expandedSections.assets && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="📊"
-                        label="Performance"
-                        path="/assets-owned/performance"
-                        isActive={isActive('/assets-owned/performance')}
-                      />
-                      <SidebarItem
-                        icon="📄"
-                        label="Documents"
-                        path="/assets-owned/documents"
-                        isActive={isActive('/assets-owned/documents')}
-                      />
-                      <SidebarItem
-                        icon="📈"
-                        label="Grid View"
-                        path="/assets-owned/grid"
-                        isActive={isActive('/assets-owned/grid')}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* INTELLIGENCE */}
