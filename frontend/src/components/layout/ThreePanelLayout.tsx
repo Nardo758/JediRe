@@ -68,9 +68,23 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   onNewMap,
 }) => {
   const hasViewsPanel = showViewsPanel && views && views.length > 0;
-  const [showViews, setShowViews] = useState(hasViewsPanel);
-  const [showContent, setShowContent] = useState(true);
-  const [showMap, setShowMap] = useState(true);
+  
+  // Initialize panel visibility from localStorage
+  const [showViews, setShowViews] = useState(() => {
+    if (!hasViewsPanel) return false;
+    const saved = localStorage.getItem(`${storageKey}-show-views`);
+    return saved ? JSON.parse(saved) : true;
+  });
+  
+  const [showContent, setShowContent] = useState(() => {
+    const saved = localStorage.getItem(`${storageKey}-show-content`);
+    return saved ? JSON.parse(saved) : true;
+  });
+  
+  const [showMap, setShowMap] = useState(() => {
+    const saved = localStorage.getItem(`${storageKey}-show-map`);
+    return saved ? JSON.parse(saved) : true;
+  });
   
   const [contentWidth, setContentWidth] = useState(() => {
     const saved = localStorage.getItem(`${storageKey}-content-width`);
@@ -79,10 +93,21 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   
   const [isResizing, setIsResizing] = useState(false);
 
-  // Save content width to localStorage
+  // Save panel states to localStorage
   useEffect(() => {
     localStorage.setItem(`${storageKey}-content-width`, contentWidth.toString());
-  }, [contentWidth, storageKey]);
+    localStorage.setItem(`${storageKey}-show-views`, JSON.stringify(showViews));
+    localStorage.setItem(`${storageKey}-show-content`, JSON.stringify(showContent));
+    localStorage.setItem(`${storageKey}-show-map`, JSON.stringify(showMap));
+  }, [contentWidth, showViews, showContent, showMap, storageKey]);
+  
+  // Ensure at least one panel is visible (map or content)
+  useEffect(() => {
+    if (!showContent && !showMap) {
+      // If both are hidden, show the map
+      setShowMap(true);
+    }
+  }, [showContent, showMap]);
 
   // Handle resize drag
   useEffect(() => {
@@ -157,7 +182,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         <>
           <div
             className="bg-gray-50 overflow-y-auto flex-shrink-0 border-r border-gray-200"
-            style={{ width: showMap ? `${contentWidth}px` : '100%' }}
+            style={{ width: showMap ? `${contentWidth}px` : 'calc(100% - 80px)' }}
           >
             <div className="p-4">
               {renderContent(activeView)}
