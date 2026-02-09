@@ -11,7 +11,11 @@ interface CustomMap {
   active: boolean;
 }
 
-export function HorizontalBar() {
+interface HorizontalBarProps {
+  onNewMap?: () => void;
+}
+
+export function HorizontalBar({ onNewMap }: HorizontalBarProps) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [warMapsActive, setWarMapsActive] = useState(false);
@@ -63,8 +67,11 @@ export function HorizontalBar() {
   };
 
   const handleCreateMap = () => {
-    // TODO: Implement create map modal
-    console.log('Create Map clicked');
+    if (onNewMap) {
+      onNewMap();
+    } else {
+      window.dispatchEvent(new CustomEvent('open-war-maps'));
+    }
   };
 
   return (

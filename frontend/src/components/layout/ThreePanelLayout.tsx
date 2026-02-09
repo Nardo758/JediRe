@@ -49,6 +49,9 @@ export interface ThreePanelLayoutProps {
   defaultContentWidth?: number;
   minContentWidth?: number;
   maxContentWidth?: number;
+  
+  /** Optional: Callback for creating a new map */
+  onNewMap?: () => void;
 }
 
 export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
@@ -62,6 +65,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   defaultContentWidth = 550,
   minContentWidth = 400,
   maxContentWidth = 800,
+  onNewMap,
 }) => {
   const hasViewsPanel = showViewsPanel && views && views.length > 0;
   const [showViews, setShowViews] = useState(hasViewsPanel);
@@ -116,7 +120,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
 
   return (
     <div className="h-full flex flex-col">
-      <HorizontalBar />
+      <HorizontalBar onNewMap={onNewMap} />
       <div className="flex-1 flex relative min-h-0">
       {/* Panel 1: Views Sidebar */}
       {hasViewsPanel && showViews && views && onViewChange && activeView && (
