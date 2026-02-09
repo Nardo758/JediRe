@@ -189,13 +189,10 @@ export const MainLayout: React.FC = () => {
                     Intelligence
                   </h3>
                   
-                  {/* MARKET DATA - Expandable */}
+                  {/* MARKET DATA */}
                   <SidebarItem
                     icon="📈"
                     label="Market Data"
-                    hasSubItems
-                    isExpanded={expandedSections.market}
-                    onToggle={() => toggleSection('market')}
                     path="/market-data"
                     isActive={isActivePrefix('/market-data')}
                     layerConfig={{
@@ -209,43 +206,11 @@ export const MainLayout: React.FC = () => {
                     onShowOnMap={handleShowOnMap}
                   />
                   
-                  {expandedSections.market && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="📊"
-                        label="Trends"
-                        path="/market-data"
-                        isActive={isActive('/market-data')}
-                      />
-                      <SidebarItem
-                        icon="🔄"
-                        label="Comparables"
-                        path="/market-data/comparables"
-                        isActive={isActive('/market-data/comparables')}
-                      />
-                      <SidebarItem
-                        icon="👥"
-                        label="Demographics"
-                        path="/market-data/demographics"
-                        isActive={isActive('/market-data/demographics')}
-                      />
-                      <SidebarItem
-                        icon="📦"
-                        label="Supply & Demand"
-                        path="/market-data/supply-demand"
-                        isActive={isActive('/market-data/supply-demand')}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* NEWS INTEL - Expandable */}
+                  {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"
                     label="News Intel"
                     count={3}
-                    hasSubItems
-                    isExpanded={expandedSections.news}
-                    onToggle={() => toggleSection('news')}
                     path="/news-intel"
                     isActive={isActivePrefix('/news-intel')}
                     layerConfig={{
@@ -259,35 +224,6 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
-                  
-                  {expandedSections.news && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="📋"
-                        label="Event Feed"
-                        path="/news-intel"
-                        isActive={isActive('/news-intel')}
-                      />
-                      <SidebarItem
-                        icon="📊"
-                        label="Market Dashboard"
-                        path="/news-intel/dashboard"
-                        isActive={isActive('/news-intel/dashboard')}
-                      />
-                      <SidebarItem
-                        icon="🔗"
-                        label="Network Intel"
-                        path="/news-intel/network"
-                        isActive={isActive('/news-intel/network')}
-                      />
-                      <SidebarItem
-                        icon="🔔"
-                        label="Alerts"
-                        path="/news-intel/alerts"
-                        isActive={isActive('/news-intel/alerts')}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Other sections */}

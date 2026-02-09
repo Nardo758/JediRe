@@ -7,7 +7,6 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -16,12 +15,12 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'overview' | 'comparables' | 'demographics' | 'supply-demand';
 
-function getMarketViewFromPath(pathname: string): ViewType {
-  if (pathname.endsWith('/comparables')) return 'comparables';
-  if (pathname.endsWith('/demographics')) return 'demographics';
-  if (pathname.endsWith('/supply-demand')) return 'supply-demand';
-  return 'overview';
-}
+const marketTabs: { id: ViewType; label: string; icon: string }[] = [
+  { id: 'overview', label: 'Trends', icon: '📊' },
+  { id: 'comparables', label: 'Comparables', icon: '🔄' },
+  { id: 'demographics', label: 'Demographics', icon: '👥' },
+  { id: 'supply-demand', label: 'Supply & Demand', icon: '📦' },
+];
 
 // Mock data
 const mockMarketMetrics = {
@@ -66,8 +65,7 @@ const mockComps = [
 ];
 
 export function MarketDataPage() {
-  const location = useLocation();
-  const activeView = getMarketViewFromPath(location.pathname);
+  const [activeView, setActiveView] = useState<ViewType>('overview');
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
@@ -132,8 +130,7 @@ export function MarketDataPage() {
     }).format(value);
   };
 
-  // Content renderer
-  const renderContent = (viewId: string) => {
+  const renderViewContent = (viewId: string) => {
     if (viewId === 'overview') {
       return (
         <div className="space-y-4">
@@ -303,7 +300,30 @@ export function MarketDataPage() {
     return null;
   };
 
-  // Map renderer
+  const renderContent = () => (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+        {marketTabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeView === tab.id
+                ? 'bg-blue-100 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-auto p-4">
+        {renderViewContent(activeView)}
+      </div>
+    </div>
+  );
+
   const renderMap = () => (
     <div ref={mapContainer} className="absolute inset-0" />
   );
@@ -312,7 +332,7 @@ export function MarketDataPage() {
     <ThreePanelLayout
       storageKey="market-data"
       showViewsPanel={false}
-      renderContent={() => renderContent(activeView)}
+      renderContent={renderContent}
       renderMap={renderMap}
     />
   );
