@@ -29,6 +29,7 @@ import trafficAiRoutes from './traffic-ai.routes';
 import layersRoutes from './layers.routes';
 import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
+import modulesRoutes from './modules.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -109,6 +110,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Grid View routes (Pipeline & Assets Owned grids)
   app.use(`${API_PREFIX}/grid`, gridRoutes);
+
+  // Module System routes (Settings > Modules page)
+  app.use(`${API_PREFIX}/modules`, modulesRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
