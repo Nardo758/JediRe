@@ -40,10 +40,10 @@ function AppContent() {
           <Route path="/dashboard/email/sent" element={<EmailPage />} />
           <Route path="/dashboard/email/drafts" element={<EmailPage />} />
           <Route path="/dashboard/email/flagged" element={<EmailPage />} />
-          <Route path="/dashboard/news" element={<NewsIntelligencePage />} />
-          <Route path="/dashboard/news/dashboard" element={<NewsIntelligencePage />} />
-          <Route path="/dashboard/news/network" element={<NewsIntelligencePage />} />
-          <Route path="/dashboard/news/alerts" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/dashboard" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/network" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/alerts" element={<NewsIntelligencePage />} />
           <Route path="/market-data" element={<MarketDataPage />} />
           <Route path="/market-data/comparables" element={<MarketDataPage />} />
           <Route path="/market-data/demographics" element={<MarketDataPage />} />
