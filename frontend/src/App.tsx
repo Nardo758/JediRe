@@ -17,7 +17,6 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
-import DealPipelinePage from './pages/DealPipelinePage';
 import { AssetsOwnedGridPage } from './pages/AssetsOwnedGridPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
@@ -55,7 +54,7 @@ function AppContent() {
           <Route path="/assets-owned/grid" element={<AssetsOwnedGridPage />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/deals" element={<DealsPage />} />
-          <Route path="/deals/kanban" element={<DealPipelinePage />} />
+          <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<DealsPage />} />
           <Route path="/deals/closed" element={<DealsPage />} />

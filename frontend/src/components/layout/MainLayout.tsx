@@ -212,12 +212,6 @@ export const MainLayout: React.FC = () => {
                         path="/deals/closed"
                         isActive={isActive('/deals/closed')}
                       />
-                      <SidebarItem
-                        icon="📋"
-                        label="Kanban View"
-                        path="/deals/kanban"
-                        isActive={isActive('/deals/kanban')}
-                      />
                     </div>
                   )}
                   
