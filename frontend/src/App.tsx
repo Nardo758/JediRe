@@ -17,6 +17,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
@@ -34,6 +35,7 @@ function AppContent() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
           <Route path="/dashboard/email" element={<EmailPage />} />
           <Route path="/dashboard/email/sent" element={<EmailPage />} />
           <Route path="/dashboard/email/drafts" element={<EmailPage />} />
