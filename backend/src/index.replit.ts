@@ -989,6 +989,9 @@ import trafficAiRoutes from './api/rest/traffic-ai.routes';
 import mapConfigsRouter from './api/rest/map-configs.routes';
 import gridRouter from './api/rest/grid.routes';
 import modulesRouter from './api/rest/modules.routes';
+import financialModelsRouter from './api/rest/financial-models.routes';
+import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
+import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 
 app.use('/api/v1/news', newsRouter);
 app.use('/api/v1/trade-areas', tradeAreasRoutes);
@@ -999,6 +1002,9 @@ app.use('/api/v1/deals', geographicContextRoutes);
 app.use('/api/v1/map-configs', mapConfigsRouter);
 app.use('/api/v1/grid', gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
+app.use('/api/v1/financial-models', financialModelsRouter);
+app.use('/api/v1/strategy-analyses', strategyAnalysesRouter);
+app.use('/api/v1/dd-checklists', ddChecklistsRouter);
 
 // ============================================
 // Zoning & Property Analysis Endpoints
