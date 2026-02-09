@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../../services/api.client';
 import { ModuleCard } from '../../components/settings/ModuleCard';
+import { invalidateModuleCache } from '../../utils/modules';
 
 interface ModuleDefinition {
   slug: string;
@@ -114,10 +115,10 @@ export function ModulesPage() {
         }))
       );
 
-      // Make API call
       await apiClient.patch(`/api/v1/modules/${moduleSlug}/toggle`, {
         enabled: !currentEnabled,
       });
+      invalidateModuleCache();
     } catch (err) {
       console.error('Failed to toggle module:', err);
       // Revert optimistic update

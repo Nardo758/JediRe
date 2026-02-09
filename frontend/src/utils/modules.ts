@@ -1,8 +1,4 @@
-/**
- * Module Management Utilities
- * 
- * Functions for checking and managing user module subscriptions
- */
+import { apiClient } from '../services/api.client';
 
 export type ModuleName = 
   | 'financial-modeling-pro'
@@ -46,56 +42,76 @@ export interface UserSubscription {
   expiresAt?: string;
 }
 
-/**
- * Check if a user has access to a specific module
- * 
- * @param userId - User ID to check
- * @param moduleName - Name of the module to check
- * @returns true if user has access, false otherwise
- * 
- * @example
- * const hasAccess = checkModule(userId, 'financial-modeling-pro');
- * if (hasAccess) {
- *   // Show enhanced features
- * }
- */
-export function checkModule(userId: string | undefined, moduleName: ModuleName): boolean {
-  if (!userId) return false;
+let cachedModules: Set<string> | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60_000;
+let fetchPromise: Promise<Set<string>> | null = null;
 
-  // TODO: Implement actual module checking logic
-  // This should:
-  // 1. Fetch user subscription from API or context
-  // 2. Check if module is in user's active modules
-  // 3. Check if user's bundle includes this module
-  // 4. Verify subscription is not expired
-  
-  // For now, return false (all modules locked)
-  // Replace this with actual implementation:
-  
-  // Example implementation:
-  // const subscription = getUserSubscription(userId);
-  // if (!subscription) return false;
-  // 
-  // // Check direct module access
-  // if (subscription.modules.includes(moduleName)) return true;
-  // 
-  // // Check bundle access
-  // if (subscription.bundle) {
-  //   const bundleModules = getBundleModules(subscription.bundle);
-  //   if (bundleModules.includes(moduleName)) return true;
-  // }
-  // 
-  // return false;
+async function fetchEnabledModules(): Promise<Set<string>> {
+  if (cachedModules && Date.now() - cacheTimestamp < CACHE_TTL) {
+    return cachedModules;
+  }
 
-  return false;
+  if (fetchPromise) return fetchPromise;
+
+  fetchPromise = apiClient
+    .get<{ modules: string[] }>('/api/v1/modules/enabled')
+    .then((res) => {
+      const moduleSet = new Set(res.data.modules);
+      cachedModules = moduleSet;
+      cacheTimestamp = Date.now();
+      fetchPromise = null;
+      return moduleSet;
+    })
+    .catch((err) => {
+      console.error('Failed to fetch enabled modules:', err);
+      fetchPromise = null;
+      return cachedModules || new Set<string>();
+    });
+
+  return fetchPromise;
 }
 
-/**
- * Get all modules included in a bundle
- * 
- * @param bundleName - Name of the bundle
- * @returns Array of module names included in the bundle
- */
+export async function hasModule(moduleName: ModuleName): Promise<boolean> {
+  const modules = await fetchEnabledModules();
+  return modules.has(moduleName);
+}
+
+export function invalidateModuleCache(): void {
+  cachedModules = null;
+  cacheTimestamp = 0;
+  fetchPromise = null;
+}
+
+export function checkModule(userId: string | undefined, moduleName: ModuleName): boolean {
+  if (!userId) return false;
+  if (!cachedModules) return false;
+  return cachedModules.has(moduleName);
+}
+
+export function useModuleCheck(moduleName: ModuleName): {
+  loading: boolean;
+  enabled: boolean;
+} {
+  const [loading, setLoading] = useState(true);
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    hasModule(moduleName).then((result) => {
+      if (!cancelled) {
+        setEnabled(result);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [moduleName]);
+
+  return { loading, enabled };
+}
+
+import { useState, useEffect } from 'react';
+
 export function getBundleModules(bundleName: BundleName): ModuleName[] {
   const bundles: Record<BundleName, ModuleName[]> = {
     'flipper': [
@@ -107,7 +123,6 @@ export function getBundleModules(bundleName: BundleName): ModuleName[] {
       'risk-analysis'
     ],
     'developer': [
-      // All Flipper modules plus:
       'strategy-arbitrage',
       'financial-modeling-pro',
       'returns-calculator',
@@ -122,7 +137,6 @@ export function getBundleModules(bundleName: BundleName): ModuleName[] {
       'environmental'
     ],
     'portfolio-manager': [
-      // All 27 premium modules
       'strategy-arbitrage',
       'financial-modeling-pro',
       'returns-calculator',
@@ -156,12 +170,6 @@ export function getBundleModules(bundleName: BundleName): ModuleName[] {
   return bundles[bundleName] || [];
 }
 
-/**
- * Get bundle pricing information
- * 
- * @param bundleName - Name of the bundle
- * @returns Pricing information for the bundle
- */
 export function getBundlePricing(bundleName: BundleName) {
   const pricing = {
     'flipper': {
@@ -187,12 +195,6 @@ export function getBundlePricing(bundleName: BundleName) {
   return pricing[bundleName];
 }
 
-/**
- * Get module pricing information
- * 
- * @param moduleName - Name of the module
- * @returns Pricing information for the module
- */
 export function getModulePricing(moduleName: ModuleName) {
   const pricing: Record<ModuleName, { price: number; tier: string }> = {
     'strategy-arbitrage': { price: 0, tier: 'core' },
@@ -228,28 +230,19 @@ export function getModulePricing(moduleName: ModuleName) {
   return pricing[moduleName] || { price: 0, tier: 'unknown' };
 }
 
-/**
- * Calculate recommended bundle for a set of desired modules
- * 
- * @param desiredModules - Array of module names user wants
- * @returns Recommended bundle or null if individual modules are better
- */
 export function recommendBundle(desiredModules: ModuleName[]): BundleName | null {
   if (desiredModules.length < 3) return null;
 
-  // Calculate cost of individual modules
   const individualCost = desiredModules.reduce((total, module) => {
     return total + getModulePricing(module).price;
   }, 0);
 
-  // Check each bundle
   const bundles: BundleName[] = ['flipper', 'developer', 'portfolio-manager'];
   
   for (const bundle of bundles) {
     const bundleModules = getBundleModules(bundle);
     const bundlePrice = getBundlePricing(bundle).price;
     
-    // If bundle includes all desired modules and is cheaper, recommend it
     const includesAll = desiredModules.every(m => bundleModules.includes(m));
     if (includesAll && bundlePrice < individualCost) {
       return bundle;

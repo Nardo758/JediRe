@@ -30,6 +30,14 @@ export interface Deal {
   expectedCloseDate?: string;
   actualCloseDate?: string;
   notes?: string;
+  description?: string;
+  address?: string;
+  dealCategory?: string;
+  developmentType?: string;
+  targetUnits?: number;
+  timelineStart?: string;
+  timelineEnd?: string;
+  projectIntent?: string;
   
   // Pipeline tracking
   taskCount?: number;
