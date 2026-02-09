@@ -217,6 +217,11 @@ Key variables are set automatically:
   - ModuleSuggestionModal: contextual module recommendations based on deal type + strategy
   - moduleSuggestions.ts: maps deal type/strategy combos to recommended modules
   - Added 'portfolio-dashboard' to ModuleName type union
+- 2026-02-09: Fix Create Deal address autocomplete
+  - Replaced Google Places API (no API key) with Mapbox geocoding autocomplete
+  - Uses existing VITE_MAPBOX_TOKEN for address suggestions with debounced search
+  - Keyboard navigation (arrow keys, enter, escape) and click-outside-to-close
+  - Auto-advances to next step when address is selected from dropdown
 - 2026-02-08: News Intelligence system integration
   - 6 backend endpoints: events (list/detail), dashboard, alerts (list/update), network intelligence
   - Mounted via newsRouter in index.replit.ts at /api/v1/news/*

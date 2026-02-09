@@ -383,7 +383,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
                 />
                 <p className="text-xs text-gray-500 mt-2">
-                  ✨ Powered by Google - Select from dropdown for instant validation
+                  Start typing and select from the dropdown to validate the address
                 </p>
               </div>
             </div>
