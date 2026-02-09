@@ -9,6 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import { MoreVertical, MapPin, DollarSign, Clock } from 'lucide-react';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -151,6 +152,28 @@ export function DealsPage() {
   const [draggedDeal, setDraggedDeal] = React.useState<any>(null);
 
   const getDealsForStage = (stageId: string) => deals.filter(d => d.status === stageId);
+  
+  const formatCurrency = (n: number) => new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: 'USD', 
+    maximumFractionDigits: 0 
+  }).format(n);
+  
+  const getDaysInStage = (createdAt: string) => {
+    const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24));
+    return days;
+  };
+  
+  const getStrategyColor = (strategy?: string) => {
+    const colors: Record<string, string> = {
+      'build_to_sell': 'bg-green-100 text-green-700',
+      'flip': 'bg-blue-100 text-blue-700',
+      'rental': 'bg-purple-100 text-purple-700',
+      'airbnb': 'bg-orange-100 text-orange-700',
+      'development': 'bg-pink-100 text-pink-700',
+    };
+    return colors[strategy || ''] || 'bg-gray-100 text-gray-700';
+  };
 
   // Content renderer
   const renderContent = () => {
@@ -218,31 +241,40 @@ export function DealsPage() {
                         <div>
                           <h4 className="font-medium text-gray-900">{deal.name}</h4>
                           {deal.propertyAddress && (
-                            <p className="text-sm text-gray-500 mt-1">
-                              {deal.propertyAddress}
+                            <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                              <MapPin className="w-3 h-3" /> {deal.propertyAddress}
                             </p>
                           )}
                         </div>
+                        <button 
+                          className="text-gray-400 hover:text-gray-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Add menu actions
+                          }}
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
                       </div>
                       
                       <div className="flex items-center justify-between text-sm mb-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          deal.tier === 'basic' ? 'bg-yellow-100 text-yellow-700' :
-                          deal.tier === 'pro' ? 'bg-blue-100 text-blue-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                          {deal.tier.toUpperCase()}
+                        <span className="text-gray-900 font-semibold flex items-center gap-1">
+                          <DollarSign className="w-4 h-4" />
+                          {deal.estimatedValue ? formatCurrency(deal.estimatedValue) : 'TBD'}
                         </span>
                         {deal.projectType && (
-                          <span className="text-xs text-gray-500 capitalize">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStrategyColor(deal.projectType)}`}>
                             {deal.projectType.replace('_', ' ')}
                           </span>
                         )}
                       </div>
                       
                       <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>
-                          {new Date(deal.createdAt).toLocaleDateString()}
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {getDaysInStage(deal.createdAt)}d in stage
+                        </span>
+                        <span className="font-semibold text-gray-700">
+                          Score: {deal.tier === 'enterprise' ? '94' : deal.tier === 'pro' ? '88' : '78'}
                         </span>
                       </div>
                     </div>
