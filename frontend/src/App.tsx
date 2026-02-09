@@ -57,8 +57,8 @@ function AppContent() {
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
-          <Route path="/deals/active" element={<DealsPage />} />
-          <Route path="/deals/closed" element={<DealsPage />} />
+          <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/tasks" element={<TasksPage />} />
