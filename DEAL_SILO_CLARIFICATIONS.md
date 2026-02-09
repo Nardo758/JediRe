@@ -416,6 +416,7 @@ if (supportsModules(deal)) {
 - Should ALL sections always be visible (with upsell if module inactive)?
 - Or should inactive module sections be hidden entirely?
 - **Recommendation:** Show all sections, upsell in inactive ones (creates demand)
+- **LEON'S ANSWER:** ✅ Show all sections (easier build than conditional show/hide)
 
 **2. Module Data Storage:**
 - Store module-enhanced data in same tables or separate?
@@ -423,10 +424,12 @@ if (supportsModules(deal)) {
   - Cleaner separation
   - Easier to add/remove modules
   - Better performance (no nullable columns bloat)
+- **LEON'S ANSWER:** ✅ Separate tables
 
 **3. Mobile Experience:**
 - How should sections work on mobile? Accordion? Tabs?
 - **Recommendation:** Accordion (expandable sections) works best on mobile
+- **LEON'S ANSWER:** ✅ Expandable (accordion)
 
 **4. Module Suggestions:**
 - Should we still auto-suggest modules on deal creation based on type/strategy?
@@ -436,15 +439,60 @@ if (supportsModules(deal)) {
   - [✓] Market Signals
   - [✓] DD Suite
   - [Activate Recommended]  [Skip]
+- **LEON'S ANSWER:** ✅ OK (auto-suggest with popup)
 
 ---
 
-## Next Steps
+## Leon's Final Decisions Summary
 
-**Awaiting confirmation from Leon:**
-1. Is this revised understanding correct?
-2. Answers to the 4 clarification questions above
-3. Priority: Start with Settings > Modules page or Deal page redesign?
+**Date:** February 9, 2026, 2:43 PM EST
+
+All questions answered. Ready to proceed with implementation.
+
+**Architecture Confirmed:**
+1. ✅ All sections always visible (upsell for inactive modules)
+2. ✅ Separate database tables per module
+3. ✅ Expandable/accordion sections for mobile
+4. ✅ Auto-suggest modules on deal creation (one-time popup)
+5. ✅ Map panel: OFF by default
+6. ✅ Back navigation: Always Grid view
+7. ✅ Data migration: Phased with feature flags
+8. ✅ Module system: Contextual tools embedded in sections, NOT navigation items
+
+---
+
+## Next Steps - APPROVED TO BUILD
+
+**Priority 1: Settings > Modules Page (Week 1)**
+- [ ] Build module marketplace UI
+- [ ] Checkbox toggles for each module
+- [ ] Bundle display (Flipper/Developer/Portfolio Manager)
+- [ ] Upsell flows for inactive modules
+- [ ] user_module_settings table + API
+
+**Priority 2: Deal Page Redesign (Week 2)**
+- [ ] Single comprehensive page at /deals/:dealId
+- [ ] Expandable sections (accordion):
+  - [ ] Overview (always visible)
+  - [ ] Properties (always visible)
+  - [ ] Financial Analysis (basic + pro)
+  - [ ] Strategy (basic + pro)
+  - [ ] Due Diligence (basic + pro)
+  - [ ] Market Analysis (basic + pro)
+  - [ ] Development (conditional, basic + pro)
+  - [ ] Documents (always visible)
+  - [ ] Collaboration (basic + pro)
+  - [ ] Activity Feed (always visible)
+
+**Priority 3: First Module Enhancements (Week 3)**
+- [ ] Financial Modeling Pro features
+- [ ] Strategy Arbitrage Engine features
+- [ ] Upsell CTAs for inactive modules
+
+**Priority 4: Module Suggestion Popup (Week 3)**
+- [ ] One-time popup on deal creation
+- [ ] Based on product type + strategy
+- [ ] [Activate Recommended] or [Skip] options
 
 **Once confirmed:**
 - Update COMPLETE_PLATFORM_WIREFRAME.md with revised module system
