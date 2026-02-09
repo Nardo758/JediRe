@@ -11,12 +11,15 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
+type TabType = 'grid' | 'performance' | 'documents';
+
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
   const [assets, setAssets] = useState<OwnedAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('grid');
 
   useEffect(() => {
     loadAssets();
@@ -258,6 +261,124 @@ export function AssetsOwnedPage() {
     });
   }, [assets]);
 
+  const totals = {
+    totalAssets: assets.length,
+    avgOccupancy: assets.length > 0
+      ? (assets.reduce((sum, a) => sum + (Number(a.actual_occupancy) || 0), 0) / assets.length).toFixed(1)
+      : '0.0',
+    totalNOI: assets.reduce((sum, a) => sum + (Number(a.actual_noi) || 0), 0),
+    avgIRR: assets.length > 0
+      ? (assets.reduce((sum, a) => sum + (Number(a.current_irr) || 0), 0) / assets.length).toFixed(1)
+      : '0.0',
+    totalDistributions: assets.reduce((sum, a) => sum + (Number(a.total_distributions) || 0), 0),
+  };
+
+  const tabs: { id: TabType; label: string; icon: string }[] = [
+    { id: 'grid', label: 'Grid View', icon: '📊' },
+    { id: 'performance', label: 'Performance', icon: '📈' },
+    { id: 'documents', label: 'Documents', icon: '📄' },
+  ];
+
+  const renderPerformanceView = () => (
+    <div className="space-y-4 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <h3 className="font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <div className="text-sm text-gray-600">Assets</div>
+            <div className="text-2xl font-bold text-gray-900">{totals.totalAssets}</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Avg Occupancy</div>
+            <div className="text-2xl font-bold text-green-600">{totals.avgOccupancy}%</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Total NOI</div>
+            <div className="text-2xl font-bold text-blue-600">{formatCurrency(totals.totalNOI)}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-100">
+          <div>
+            <div className="text-sm text-gray-600">Avg IRR</div>
+            <div className="text-xl font-bold text-purple-600">{totals.avgIRR}%</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-600">Total Distributions</div>
+            <div className="text-xl font-bold text-gray-900">{formatCurrency(totals.totalDistributions)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="font-semibold text-gray-900">Asset Performance</h3>
+        {assets.map((asset) => (
+          <div
+            key={asset.id}
+            onClick={() => setSelectedAsset(asset.id)}
+            className={`bg-white rounded-lg border p-3 cursor-pointer hover:shadow-md transition-shadow ${
+              selectedAsset === asset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+            }`}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <div className="font-medium text-gray-900">{asset.property_name}</div>
+              {getPerformanceBadge(asset.noi_variance)}
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">NOI (Actual vs PF)</span>
+                <div className="text-right">
+                  <span className="font-semibold">{formatCurrency(asset.actual_noi)}</span>
+                  <span className="text-gray-400 mx-1">vs</span>
+                  <span className="text-gray-500">{formatCurrency(asset.proforma_noi)}</span>
+                  <span className="ml-2">{renderVariance(asset.noi_variance)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Occupancy</span>
+                <div className="text-right">
+                  <span className="font-semibold">{formatPercent(asset.actual_occupancy)}</span>
+                  <span className="text-gray-400 mx-1">vs</span>
+                  <span className="text-gray-500">{formatPercent(asset.proforma_occupancy)}</span>
+                  <span className="ml-2">{renderVariance(asset.occupancy_variance)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">IRR</span>
+                <div className="text-right">
+                  <span className="font-semibold">{formatPercent(asset.current_irr)}</span>
+                  <span className="text-gray-400 mx-1">vs</span>
+                  <span className="text-gray-500">{formatPercent(asset.projected_irr)}</span>
+                </div>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">CoC / Equity Multiple</span>
+                <span className="font-semibold">
+                  {formatPercent(asset.coc_return)} / {Number(asset.equity_multiple || 0).toFixed(2)}x
+                </span>
+              </div>
+              {asset.refi_risk_flag && (
+                <div className="flex items-center gap-1 text-orange-600 font-medium mt-1">
+                  <span>Refi Risk</span>
+                  <span className="text-gray-500 font-normal">
+                    ({asset.months_to_maturity}mo to maturity)
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderDocumentsView = () => (
+    <div className="text-center py-12 text-gray-500">
+      <div className="text-4xl mb-2">📄</div>
+      <div className="font-medium">Documents</div>
+      <div className="text-sm mt-1">Property documents and files coming soon</div>
+    </div>
+  );
+
   const renderContent = () => {
     if (error) {
       return (
@@ -274,15 +395,50 @@ export function AssetsOwnedPage() {
     }
 
     return (
-      <div className="h-full">
-        <DataGrid
-          columns={columns}
-          data={assets}
-          onRowClick={handleRowClick}
-          onSort={handleSort}
-          onExport={handleExport}
-          loading={loading}
-        />
+      <div className="h-full flex flex-col">
+        <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+          <div className="ml-auto text-xs text-gray-500">{assets.length} assets</div>
+        </div>
+
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'grid' && (
+            <DataGrid
+              columns={columns}
+              data={assets}
+              onRowClick={handleRowClick}
+              onSort={handleSort}
+              onExport={handleExport}
+              loading={loading}
+            />
+          )}
+          {activeTab === 'performance' && (
+            loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : assets.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <div className="text-4xl mb-2">🏢</div>
+                <div>No owned assets found</div>
+              </div>
+            ) : renderPerformanceView()
+          )}
+          {activeTab === 'documents' && renderDocumentsView()}
+        </div>
       </div>
     );
   };
