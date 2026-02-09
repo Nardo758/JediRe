@@ -75,17 +75,17 @@ export function PipelineGridPage() {
   };
 
   // Format helpers
-  const formatCurrency = (value: number | null) =>
+  const formatCurrency = (value: any) =>
     value !== null && value !== undefined
       ? new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: 'USD', 
           maximumFractionDigits: 0 
-        }).format(value)
+        }).format(Number(value))
       : '—';
 
-  const formatPercent = (value: number | null) =>
-    value !== null && value !== undefined ? `${value}%` : '—';
+  const formatPercent = (value: any) =>
+    value !== null && value !== undefined ? `${Number(value).toFixed(1)}%` : '—';
 
   const formatDate = (value: string | null) =>
     value ? new Date(value).toLocaleDateString() : '—';
@@ -155,7 +155,7 @@ export function PipelineGridPage() {
         <div>
           <div className="font-medium text-gray-900">{formatPercent(value)}</div>
           {row.broker_projected_irr && value && value > row.broker_projected_irr && (
-            <div className="text-xs text-green-600">+{(value - row.broker_projected_irr).toFixed(1)}%</div>
+            <div className="text-xs text-green-600">+{(Number(value) - Number(row.broker_projected_irr)).toFixed(1)}%</div>
           )}
         </div>
       )

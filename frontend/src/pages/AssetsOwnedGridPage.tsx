@@ -75,17 +75,17 @@ export function AssetsOwnedGridPage() {
   };
 
   // Format helpers
-  const formatCurrency = (value: number | null) =>
+  const formatCurrency = (value: any) =>
     value !== null && value !== undefined
       ? new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: 'USD', 
           maximumFractionDigits: 0 
-        }).format(value)
+        }).format(Number(value))
       : '—';
 
-  const formatPercent = (value: number | null) =>
-    value !== null && value !== undefined ? `${value.toFixed(1)}%` : '—';
+  const formatPercent = (value: any) =>
+    value !== null && value !== undefined ? `${Number(value).toFixed(1)}%` : '—';
 
   const formatDate = (value: string | null) =>
     value ? new Date(value).toLocaleDateString() : '—';
@@ -93,9 +93,9 @@ export function AssetsOwnedGridPage() {
   // Variance renderer with color coding
   const renderVariance = (variance: number | null, label?: string) => {
     if (variance === null || variance === undefined) return <span className="text-gray-400">—</span>;
-    
-    const isPositive = variance > 0;
-    const colorClass = Math.abs(variance) < 5 
+    const num = Number(variance);
+    const isPositive = num > 0;
+    const colorClass = Math.abs(num) < 5 
       ? 'text-gray-900' 
       : isPositive 
       ? 'text-green-600' 
@@ -103,7 +103,7 @@ export function AssetsOwnedGridPage() {
     
     return (
       <span className={`font-medium ${colorClass}`}>
-        {isPositive ? '+' : ''}{variance.toFixed(1)}%
+        {isPositive ? '+' : ''}{num.toFixed(1)}%
         {label && <span className="text-xs ml-1 text-gray-500">{label}</span>}
       </span>
     );
@@ -111,11 +111,11 @@ export function AssetsOwnedGridPage() {
 
   // Performance badge
   const getPerformanceBadge = (noi_variance: number | null) => {
-    if (noi_variance === null) return null;
-    
-    if (noi_variance > 5) {
+    if (noi_variance === null || noi_variance === undefined) return null;
+    const v = Number(noi_variance);
+    if (v > 5) {
       return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">🟢 Outperforming</span>;
-    } else if (noi_variance < -10) {
+    } else if (v < -10) {
       return <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">🔴 Underperforming</span>;
     } else {
       return <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full font-medium">🟡 On Track</span>;
@@ -155,10 +155,10 @@ export function AssetsOwnedGridPage() {
     },
     
     { key: 'actual_occupancy', label: 'Occ (Actual)', sortable: true, filterable: true, width: 100, align: 'right',
-      render: (value) => value !== null ? `${value.toFixed(1)}%` : '—'
+      render: (value) => value !== null ? `${Number(value).toFixed(1)}%` : '—'
     },
     { key: 'proforma_occupancy', label: 'Occ (PF)', sortable: true, filterable: true, width: 90, align: 'right',
-      render: (value) => value !== null ? `${value.toFixed(1)}%` : '—'
+      render: (value) => value !== null ? `${Number(value).toFixed(1)}%` : '—'
     },
     { key: 'occupancy_variance', label: 'Occ Var', sortable: true, filterable: true, width: 80, align: 'right',
       render: (value) => renderVariance(value)
@@ -184,7 +184,7 @@ export function AssetsOwnedGridPage() {
     { key: 'projected_irr', label: 'IRR (Projected)', sortable: true, filterable: true, width: 110, align: 'right', format: formatPercent },
     { key: 'coc_return', label: 'CoC Return', sortable: true, filterable: true, width: 100, align: 'right', format: formatPercent },
     { key: 'equity_multiple', label: 'Equity Multiple', sortable: true, filterable: true, width: 120, align: 'right',
-      render: (value) => value !== null && value !== undefined ? `${value.toFixed(2)}x` : '—'
+      render: (value) => value !== null && value !== undefined ? `${Number(value).toFixed(2)}x` : '—'
     },
     { key: 'total_distributions', label: 'Distributions', sortable: true, filterable: true, width: 130, align: 'right', format: formatCurrency },
 
@@ -214,7 +214,7 @@ export function AssetsOwnedGridPage() {
     },
     { key: 'months_to_maturity', label: 'Months', sortable: true, filterable: true, width: 80, align: 'right',
       render: (value) => value !== null && value !== undefined ? (
-        <span className={value < 12 ? 'text-orange-600 font-semibold' : 'text-gray-900'}>
+        <span className={Number(value) < 12 ? 'text-orange-600 font-semibold' : 'text-gray-900'}>
           {value}mo
         </span>
       ) : '—'
