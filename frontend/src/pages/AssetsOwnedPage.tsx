@@ -1,341 +1,293 @@
-import React, { useState } from 'react';
+/**
+ * Assets Owned Page - Using ThreePanelLayout
+ * 
+ * Views: All, Performance, Documents
+ * Content: Asset cards with occupancy/NOI metrics
+ * Map: Asset markers with performance indicators
+ */
 
-interface Property {
-  id: string;
-  name: string;
-  address: string;
-  class: string;
-  units: number;
-  occupancy: number;
-  avgRent: number;
-  noi: number;
-  noiTarget: number;
-  leaseExpirations: number;
-  renewalRate: number;
-}
+import React, { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
-export function AssetsOwnedPage({ view = 'portfolio' }: { view?: string }) {
-  const [viewMode, setViewMode] = useState<'map' | 'grid'>('grid');
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
-  const properties: Property[] = [
-    {
-      id: '1',
-      name: 'Midtown Towers',
-      address: '123 Peachtree St, Atlanta, GA',
-      class: 'A+',
-      units: 250,
-      occupancy: 94,
-      avgRent: 2100,
-      noi: 4200000,
-      noiTarget: 4000000,
-      leaseExpirations: 12,
-      renewalRate: 68
-    },
-    {
-      id: '2',
-      name: 'Buckhead Plaza',
-      address: '456 Pharr Rd, Atlanta, GA',
-      class: 'A',
-      units: 180,
-      occupancy: 91,
-      avgRent: 1950,
-      noi: 3100000,
-      noiTarget: 3200000,
-      leaseExpirations: 8,
-      renewalRate: 72
-    },
-    {
-      id: '3',
-      name: 'Virginia Highlands Lofts',
-      address: '789 N Highland Ave, Atlanta, GA',
-      class: 'B+',
-      units: 120,
-      occupancy: 88,
-      avgRent: 1600,
-      noi: 1800000,
-      noiTarget: 1900000,
-      leaseExpirations: 15,
-      renewalRate: 65
-    }
+type ViewType = 'all' | 'performance' | 'documents';
+
+// Mock data - replace with real API calls
+const mockAssets = [
+  {
+    id: 1,
+    name: 'Midtown Tower',
+    units: 250,
+    occupancy: 94,
+    noi: 2100000,
+    class: 'A+',
+    location: { lat: 33.7838, lng: -84.3853 },
+    address: '1000 Peachtree St NE, Atlanta, GA',
+  },
+  {
+    id: 2,
+    name: 'Buckhead Place',
+    units: 180,
+    occupancy: 91,
+    noi: 1500000,
+    class: 'A',
+    location: { lat: 33.8398, lng: -84.3692 },
+    address: '3400 Peachtree Rd NE, Atlanta, GA',
+  },
+  {
+    id: 3,
+    name: 'Virginia Highland Apartments',
+    units: 120,
+    occupancy: 96,
+    noi: 980000,
+    class: 'B+',
+    location: { lat: 33.7844, lng: -84.3522 },
+    address: '1000 N Highland Ave NE, Atlanta, GA',
+  },
+];
+
+export function AssetsOwnedPage() {
+  const [activeView, setActiveView] = useState<ViewType>('all');
+  const [assets, setAssets] = useState(mockAssets);
+  const [selectedAsset, setSelectedAsset] = useState<number | null>(null);
+  
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const markers = useRef<mapboxgl.Marker[]>([]);
+
+  // Define views
+  const views: ViewItem[] = [
+    { id: 'all', label: 'All', icon: '🏢', count: assets.length },
+    { id: 'performance', label: 'Performance', icon: '📊' },
+    { id: 'documents', label: 'Documents', icon: '📄' },
   ];
 
-  const portfolioTotals = {
-    totalUnits: properties.reduce((sum, p) => sum + p.units, 0),
-    avgOccupancy: Math.round(
-      properties.reduce((sum, p) => sum + p.occupancy, 0) / properties.length
-    ),
-    totalNOI: properties.reduce((sum, p) => sum + p.noi, 0),
-    avgRenewalRate: Math.round(
-      properties.reduce((sum, p) => sum + p.renewalRate, 0) / properties.length
-    )
+  // Portfolio totals
+  const totals = {
+    totalUnits: assets.reduce((sum, a) => sum + a.units, 0),
+    avgOccupancy: (assets.reduce((sum, a) => sum + a.occupancy, 0) / assets.length).toFixed(1),
+    totalNOI: assets.reduce((sum, a) => sum + a.noi, 0),
   };
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/light-v11',
+      center: [-84.388, 33.7838],
+      zoom: 11,
+    });
+
+    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
+
+  // Add asset markers to map
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+
+    // Clear existing markers
+    markers.current.forEach((m) => m.remove());
+    markers.current = [];
+
+    // Add new markers
+    assets.forEach((asset) => {
+      const el = document.createElement('div');
+      el.className = 'asset-marker';
+      el.innerHTML = '🏢';
+      el.style.fontSize = '24px';
+      el.style.cursor = 'pointer';
+
+      const marker = new mapboxgl.Marker(el)
+        .setLngLat([asset.location.lng, asset.location.lat])
+        .setPopup(
+          new mapboxgl.Popup().setHTML(`
+            <div class="p-2">
+              <h3 class="font-semibold">${asset.name}</h3>
+              <div class="text-sm text-gray-600 mt-1">
+                <div>${asset.units} units • ${asset.occupancy}% occupied</div>
+                <div>Class ${asset.class}</div>
+              </div>
+            </div>
+          `)
+        )
+        .addTo(map.current!);
+
+      el.addEventListener('click', () => setSelectedAsset(asset.id));
+      
+      markers.current.push(marker);
+    });
+  }, [assets]);
 
   const formatCurrency = (value: number) => {
-    if (value >= 1000000) {
-      return `$${(value / 1000000).toFixed(1)}M`;
-    }
-    return `$${(value / 1000).toFixed(0)}K`;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
   };
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              🏢 Assets Owned
-            </h1>
-            <p className="text-gray-600">
-              Your portfolio management + intelligence contribution layer
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('map')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'map'
-                    ? 'bg-white text-gray-900 shadow'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                🗺️ Map View
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-white text-gray-900 shadow'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                📊 Grid View
-              </button>
-            </div>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
-              + Add Property
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Portfolio KPIs */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Total Units</div>
-          <div className="text-3xl font-bold text-gray-900">
-            {portfolioTotals.totalUnits.toLocaleString()}
-          </div>
-          <div className="text-sm text-gray-500 mt-1">
-            {properties.length} properties
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Avg Occupancy</div>
-          <div className="text-3xl font-bold text-green-600">
-            {portfolioTotals.avgOccupancy}%
-          </div>
-          <div className="text-sm text-gray-500 mt-1">vs 89% market avg</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Total NOI</div>
-          <div className="text-3xl font-bold text-blue-600">
-            {formatCurrency(portfolioTotals.totalNOI)}
-          </div>
-          <div className="text-sm text-green-600 mt-1">+5.2% vs budget</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Avg Renewal Rate</div>
-          <div className="text-3xl font-bold text-yellow-600">
-            {portfolioTotals.avgRenewalRate}%
-          </div>
-          <div className="text-sm text-gray-500 mt-1">vs 72% market avg</div>
-        </div>
-      </div>
-
-      {/* Grid View */}
-      {viewMode === 'grid' && (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Portfolio Properties</h2>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  id="assets-search"
-                  name="assetsSearch"
-                  placeholder="Search properties..."
-                  aria-label="Search properties"
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <select id="assets-building-class" name="assetsBuildingClass" aria-label="Filter by building class" className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>All Classes</option>
-                  <option>Class A+</option>
-                  <option>Class A</option>
-                  <option>Class B+</option>
-                  <option>Class B</option>
-                </select>
+  // Content renderer
+  const renderContent = (viewId: string) => {
+    if (viewId === 'performance') {
+      return (
+        <div className="space-y-4">
+          {/* Portfolio KPIs */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-sm text-gray-600">Total Units</div>
+                <div className="text-2xl font-bold text-gray-900">{totals.totalUnits}</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Avg Occupancy</div>
+                <div className="text-2xl font-bold text-green-600">{totals.avgOccupancy}%</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Total NOI</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {formatCurrency(totals.totalNOI)}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Property
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Class
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Units
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Occupancy
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Avg Rent
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    NOI
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Lease Intel
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {properties.map((property) => (
-                  <tr key={property.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {property.name}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {property.address}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
-                        {property.class}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {property.units}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <span
-                          className={`text-sm font-medium ${
-                            property.occupancy >= 90
-                              ? 'text-green-600'
-                              : property.occupancy >= 85
-                              ? 'text-yellow-600'
-                              : 'text-red-600'
-                          }`}
-                        >
-                          {property.occupancy}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ${property.avgRent.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {formatCurrency(property.noi)}
-                        </div>
-                        <div
-                          className={`text-xs ${
-                            property.noi >= property.noiTarget
-                              ? 'text-green-600'
-                              : 'text-red-600'
-                          }`}
-                        >
-                          {property.noi >= property.noiTarget ? '+' : ''}
-                          {(
-                            ((property.noi - property.noiTarget) /
-                              property.noiTarget) *
-                            100
-                          ).toFixed(1)}
-                          % vs budget
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm">
-                        <div className="text-gray-900">
-                          {property.leaseExpirations} exp. next 60d
-                        </div>
-                        <div
-                          className={`text-xs ${
-                            property.renewalRate >= 70
-                              ? 'text-green-600'
-                              : 'text-yellow-600'
-                          }`}
-                        >
-                          {property.renewalRate}% renewal rate
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900">
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* Performance Details */}
+          <div className="space-y-3">
+            <h3 className="font-semibold text-gray-900">Asset Performance</h3>
+            {assets.map((asset) => (
+              <div
+                key={asset.id}
+                className={`bg-white rounded-lg border p-3 ${
+                  selectedAsset === asset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+                }`}
+              >
+                <div className="font-medium text-gray-900 mb-2">{asset.name}</div>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Occupancy</span>
+                    <span className="font-semibold text-green-600">{asset.occupancy}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">NOI</span>
+                    <span className="font-semibold">{formatCurrency(asset.noi)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">NOI per Unit</span>
+                    <span className="font-semibold">
+                      {formatCurrency(asset.noi / asset.units)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
+      );
+    }
 
-      {/* Map View Placeholder */}
-      {viewMode === 'map' && (
-        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-          <div className="text-6xl mb-4">🗺️</div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            Map View Coming Soon
-          </h3>
-          <p className="text-gray-600 mb-6">
-            Properties will appear as markers on the central map canvas
-          </p>
-          <button
-            onClick={() => setViewMode('grid')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
-          >
-            Switch to Grid View
-          </button>
+    if (viewId === 'documents') {
+      return (
+        <div className="text-center py-8 text-gray-500">
+          <div className="text-4xl mb-2">📄</div>
+          <div>Documents view coming soon</div>
         </div>
-      )}
+      );
+    }
 
-      {/* Info Box */}
-      <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl">💡</span>
-          <div>
-            <h3 className="font-semibold text-green-900 mb-1">
-              How Assets Owned Layer Works
-            </h3>
-            <p className="text-sm text-green-800">
-              Your portfolio data feeds into modules (Strategy Arbitrage uses your actual
-              expense ratios, Comp Analysis includes your properties as comps). Your
-              anonymized data also enriches the Market Data Layer, creating a network
-              effect - more users = better intelligence for everyone.
-            </p>
+    // All view
+    return (
+      <div className="space-y-4">
+        {/* Portfolio Summary */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-4 text-white">
+          <h3 className="font-semibold mb-3">Portfolio</h3>
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <div className="opacity-90">Assets</div>
+              <div className="text-2xl font-bold">{assets.length}</div>
+            </div>
+            <div>
+              <div className="opacity-90">Units</div>
+              <div className="text-2xl font-bold">{totals.totalUnits}</div>
+            </div>
+            <div>
+              <div className="opacity-90">Avg Occ.</div>
+              <div className="text-2xl font-bold">{totals.avgOccupancy}%</div>
+            </div>
           </div>
+        </div>
+
+        {/* Asset Cards */}
+        <div className="space-y-3">
+          {assets.map((asset) => (
+            <div
+              key={asset.id}
+              onClick={() => setSelectedAsset(asset.id)}
+              className={`bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow ${
+                selectedAsset === asset.id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+              }`}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{asset.name}</h3>
+                  <p className="text-sm text-gray-600">{asset.address}</p>
+                </div>
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                  Class {asset.class}
+                </span>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <div className="text-gray-600">Units</div>
+                  <div className="font-semibold text-lg">{asset.units}</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Occupancy</div>
+                  <div className="font-semibold text-lg text-green-600">{asset.occupancy}%</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">NOI</div>
+                  <div className="font-semibold text-lg">{formatCurrency(asset.noi)}</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-    </div>
+    );
+  };
+
+  // Map renderer
+  const renderMap = () => (
+    <div ref={mapContainer} className="absolute inset-0" />
+  );
+
+  return (
+    <ThreePanelLayout
+      storageKey="assets"
+      views={views}
+      activeView={activeView}
+      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
+      renderContent={renderContent}
+      renderMap={renderMap}
+    />
   );
 }
+
+export default AssetsOwnedPage;

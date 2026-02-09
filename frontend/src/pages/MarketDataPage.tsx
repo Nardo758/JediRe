@@ -1,225 +1,322 @@
-import React from 'react';
+/**
+ * Market Data Page - Using ThreePanelLayout
+ * 
+ * Views: Overview, Comparables, Demographics, Supply/Demand
+ * Content: Charts, tables, market metrics
+ * Map: Data overlays, heat maps, comp markers
+ */
 
-interface Submarket {
-  id: string;
-  name: string;
-  location: string;
-  rentTrend: string;
-  rentTrendValue: number;
-  supply: string;
-  supplyPercent: number;
-  jediScore: number;
-  status: 'strong' | 'moderate' | 'weak';
-}
+import React, { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
-export function MarketDataPage({ view = 'trends' }: { view?: string }) {
-  const submarkets: Submarket[] = [
-    {
-      id: '1',
-      name: 'Buckhead',
-      location: 'Atlanta, GA',
-      rentTrend: '+4.2% YoY',
-      rentTrendValue: 4.2,
-      supply: '68% of capacity',
-      supplyPercent: 68,
-      jediScore: 85,
-      status: 'strong'
-    },
-    {
-      id: '2',
-      name: 'Midtown',
-      location: 'Atlanta, GA',
-      rentTrend: '+6.1% YoY',
-      rentTrendValue: 6.1,
-      supply: '92% of capacity',
-      supplyPercent: 92,
-      jediScore: 72,
-      status: 'moderate'
-    },
-    {
-      id: '3',
-      name: 'Virginia Highland',
-      location: 'Atlanta, GA',
-      rentTrend: '+2.8% YoY',
-      rentTrendValue: 2.8,
-      supply: '81% of capacity',
-      supplyPercent: 81,
-      jediScore: 68,
-      status: 'moderate'
-    }
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+
+type ViewType = 'overview' | 'comparables' | 'demographics' | 'supply-demand';
+
+// Mock data
+const mockMarketMetrics = {
+  avgRent: 1850,
+  avgRentGrowth: 5.2,
+  vacancyRate: 6.8,
+  absorption: 420,
+  medianIncome: 68500,
+  population: 506811,
+  deliveries: 2800,
+  pipeline: 4200,
+};
+
+const mockComps = [
+  {
+    id: 1,
+    name: 'Park Avenue Apartments',
+    units: 240,
+    rent: 1920,
+    occupancy: 95,
+    location: { lat: 33.7838, lng: -84.3853 },
+    distance: 0.8,
+  },
+  {
+    id: 2,
+    name: 'Skyline Towers',
+    units: 180,
+    rent: 2100,
+    occupancy: 92,
+    location: { lat: 33.7900, lng: -84.3800 },
+    distance: 1.2,
+  },
+  {
+    id: 3,
+    name: 'Riverside Commons',
+    units: 320,
+    rent: 1750,
+    occupancy: 97,
+    location: { lat: 33.7750, lng: -84.3900 },
+    distance: 1.5,
+  },
+];
+
+export function MarketDataPage() {
+  const [activeView, setActiveView] = useState<ViewType>('overview');
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const markers = useRef<mapboxgl.Marker[]>([]);
+
+  // Define views
+  const views: ViewItem[] = [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'comparables', label: 'Comps', icon: '🏘️' },
+    { id: 'demographics', label: 'Demographics', icon: '👥' },
+    { id: 'supply-demand', label: 'Supply', icon: '📈' },
   ];
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'strong':
-        return 'text-green-600 bg-green-50';
-      case 'moderate':
-        return 'text-yellow-600 bg-yellow-50';
-      case 'weak':
-        return 'text-red-600 bg-red-50';
-      default:
-        return 'text-gray-600 bg-gray-50';
-    }
-  };
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/light-v11',
+      center: [-84.388, 33.7838],
+      zoom: 11,
+    });
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              📊 Market Data Intelligence
-            </h1>
-            <p className="text-gray-600">
-              Platform-wide market intelligence that auto-links to your deals by geography
-            </p>
-          </div>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
-            + Add Submarket
-          </button>
-        </div>
-      </div>
+    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-      {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Tracked Submarkets</div>
-          <div className="text-3xl font-bold text-gray-900">
-            {submarkets.length}
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Avg Rent Growth</div>
-          <div className="text-3xl font-bold text-green-600">+4.4%</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Avg Supply Level</div>
-          <div className="text-3xl font-bold text-yellow-600">80%</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="text-sm text-gray-600 mb-1">Avg JEDI Score</div>
-          <div className="text-3xl font-bold text-blue-600">75</div>
-        </div>
-      </div>
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
+  }, []);
 
-      {/* Tracked Submarkets */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Tracked Submarkets</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Submarkets are auto-tracked when you create deals or own properties in these areas
-          </p>
-        </div>
+  // Add comp markers when in comparables view
+  useEffect(() => {
+    if (!map.current || activeView !== 'comparables') return;
 
-        <div className="divide-y divide-gray-200">
-          {submarkets.map((submarket) => (
-            <div
-              key={submarket.id}
-              className="p-6 hover:bg-gray-50 transition-colors cursor-pointer"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {submarket.name}
-                    </h3>
-                    <span className="text-sm text-gray-500">
-                      {submarket.location}
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(
-                        submarket.status
-                      )}`}
-                    >
-                      {submarket.status.toUpperCase()}
-                    </span>
-                  </div>
+    // Clear existing markers
+    markers.current.forEach((m) => m.remove());
+    markers.current = [];
 
-                  <div className="flex items-center gap-6 text-sm">
-                    <div>
-                      <span className="text-gray-600">Rent Trend: </span>
-                      <span
-                        className={`font-semibold ${
-                          submarket.rentTrendValue > 4
-                            ? 'text-green-600'
-                            : 'text-yellow-600'
-                        }`}
-                      >
-                        {submarket.rentTrend}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Supply: </span>
-                      <span className="font-semibold text-gray-900">
-                        {submarket.supply}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">JEDI Score: </span>
-                      <span
-                        className={`font-semibold ${getScoreColor(
-                          submarket.jediScore
-                        )}`}
-                      >
-                        {submarket.jediScore}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="ml-4 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                  View Details →
-                </button>
-              </div>
-
-              {/* Progress Bar - Supply */}
-              <div className="mt-4">
-                <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                  <span>Supply Capacity</span>
-                  <span>{submarket.supplyPercent}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      submarket.supplyPercent > 85
-                        ? 'bg-red-500'
-                        : submarket.supplyPercent > 70
-                        ? 'bg-yellow-500'
-                        : 'bg-green-500'
-                    }`}
-                    style={{ width: `${submarket.supplyPercent}%` }}
-                  ></div>
-                </div>
+    // Add comp markers
+    mockComps.forEach((comp) => {
+      const marker = new mapboxgl.Marker({ color: '#3b82f6' })
+        .setLngLat([comp.location.lng, comp.location.lat])
+        .setPopup(
+          new mapboxgl.Popup().setHTML(`
+            <div class="p-2">
+              <h3 class="font-semibold">${comp.name}</h3>
+              <div class="text-sm text-gray-600 mt-1">
+                <div>${comp.units} units • $${comp.rent}/mo</div>
+                <div>${comp.occupancy}% occupied</div>
+                <div>${comp.distance} mi away</div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+          `)
+        )
+        .addTo(map.current!);
 
-      {/* Info Box */}
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <span className="text-2xl">💡</span>
-          <div>
-            <h3 className="font-semibold text-blue-900 mb-1">
-              How Market Data Layer Works
-            </h3>
-            <p className="text-sm text-blue-800">
-              When you create a deal with a boundary, the platform automatically finds
-              relevant submarket data and links it to your deal. This intelligence feeds
-              into Strategy Arbitrage, Comp Analysis, and other modules to give you
-              data-driven insights.
-            </p>
+      markers.current.push(marker);
+    });
+  }, [activeView]);
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // Content renderer
+  const renderContent = (viewId: string) => {
+    if (viewId === 'overview') {
+      return (
+        <div className="space-y-4">
+          {/* Market KPIs */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Market Overview</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm text-gray-600">Avg Rent</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(mockMarketMetrics.avgRent)}
+                </div>
+                <div className="text-xs text-green-600">
+                  +{mockMarketMetrics.avgRentGrowth}% YoY
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Vacancy Rate</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {mockMarketMetrics.vacancyRate}%
+                </div>
+                <div className="text-xs text-gray-500">Healthy market</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Absorption</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {mockMarketMetrics.absorption}
+                </div>
+                <div className="text-xs text-gray-500">units/quarter</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Deliveries</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {mockMarketMetrics.deliveries.toLocaleString()}
+                </div>
+                <div className="text-xs text-gray-500">units this year</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Market Trends */}
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Key Trends</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-green-500">▲</span>
+                <span>Rents growing faster than MSA average</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-yellow-500">●</span>
+                <span>Supply pipeline elevated but manageable</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-green-500">▲</span>
+                <span>Strong employment growth in tech sector</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      );
+    }
+
+    if (viewId === 'comparables') {
+      return (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Comparable Properties</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              3 comparable properties within 2 miles
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {mockComps.map((comp) => (
+              <div
+                key={comp.id}
+                className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{comp.name}</h4>
+                    <p className="text-xs text-gray-600">{comp.distance} mi away</p>
+                  </div>
+                  <span className="text-lg">🏢</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <div className="text-gray-600">Units</div>
+                    <div className="font-semibold">{comp.units}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Rent</div>
+                    <div className="font-semibold">${comp.rent}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-600">Occ.</div>
+                    <div className="font-semibold">{comp.occupancy}%</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (viewId === 'demographics') {
+      return (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Demographics</h3>
+            <div className="space-y-3">
+              <div>
+                <div className="text-sm text-gray-600">Population</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {mockMarketMetrics.population.toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Median Income</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {formatCurrency(mockMarketMetrics.medianIncome)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600">Renter Percentage</div>
+                <div className="text-2xl font-bold text-blue-600">58%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (viewId === 'supply-demand') {
+      return (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900 mb-3">Supply & Demand</h3>
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Pipeline</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {mockMarketMetrics.pipeline.toLocaleString()} units
+                </div>
+                <div className="text-xs text-gray-500">Under construction</div>
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-1">Annual Absorption</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {(mockMarketMetrics.absorption * 4).toLocaleString()} units
+                </div>
+                <div className="text-xs text-gray-500">Based on quarterly avg</div>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
+                <strong className="text-yellow-900">Note:</strong>
+                <span className="text-yellow-700 ml-1">
+                  Supply pipeline represents ~1.5 years of absorption
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // Map renderer
+  const renderMap = () => (
+    <div ref={mapContainer} className="absolute inset-0" />
+  );
+
+  return (
+    <ThreePanelLayout
+      storageKey="market-data"
+      views={views}
+      activeView={activeView}
+      onViewChange={(viewId) => setActiveView(viewId as ViewType)}
+      renderContent={renderContent}
+      renderMap={renderMap}
+    />
   );
 }
+
+export default MarketDataPage;
