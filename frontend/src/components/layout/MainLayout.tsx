@@ -184,53 +184,22 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
 
-                  {/* PIPELINE - Expandable */}
+                  {/* PIPELINE - Direct link */}
                   <SidebarItem
                     icon="📊"
                     label="Pipeline"
                     count={12}
-                    hasSubItems
-                    isExpanded={expandedSections.pipeline}
-                    onToggle={() => toggleSection('pipeline')}
+                    path="/deals"
+                    isActive={isActive('/deals') || isActivePrefix('/deals')}
                   />
                   
-                  {expandedSections.pipeline && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="📋"
-                        label="Kanban Board"
-                        path="/deals"
-                        isActive={isActive('/deals')}
-                      />
-                      <SidebarItem
-                        icon="📑"
-                        label="Grid View"
-                        path="/deals/grid"
-                        isActive={isActive('/deals/grid')}
-                      />
-                      <SidebarItem
-                        icon="✅"
-                        label="Active Deals"
-                        path="/deals/active"
-                        isActive={isActive('/deals/active')}
-                      />
-                      <SidebarItem
-                        icon="🏁"
-                        label="Closed Deals"
-                        path="/deals/closed"
-                        isActive={isActive('/deals/closed')}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* ASSETS OWNED - Expandable */}
+                  {/* ASSETS OWNED - Direct link */}
                   <SidebarItem
                     icon="🏢"
                     label="Assets Owned"
                     count={23}
-                    hasSubItems
-                    isExpanded={expandedSections.assets}
-                    onToggle={() => toggleSection('assets')}
+                    path="/assets"
+                    isActive={isActive('/assets') || isActivePrefix('/assets')}
                     layerConfig={{
                       sourceType: 'assets',
                       layerType: 'pin',
@@ -242,29 +211,6 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
-                  
-                  {expandedSections.assets && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="🏠"
-                        label="Portfolio"
-                        path="/assets-owned"
-                        isActive={isActive('/assets-owned')}
-                      />
-                      <SidebarItem
-                        icon="📈"
-                        label="Performance"
-                        path="/assets-owned/performance"
-                        isActive={isActive('/assets-owned/performance')}
-                      />
-                      <SidebarItem
-                        icon="📄"
-                        label="Documents"
-                        path="/assets-owned/documents"
-                        isActive={isActive('/assets-owned/documents')}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* INTELLIGENCE */}
