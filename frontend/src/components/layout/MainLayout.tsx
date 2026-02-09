@@ -193,13 +193,16 @@ export const MainLayout: React.FC = () => {
                     isActive={isActive('/deals') || isActivePrefix('/deals')}
                   />
                   
-                  {/* ASSETS OWNED - Direct link */}
+                  {/* ASSETS OWNED - Expandable */}
                   <SidebarItem
                     icon="🏢"
                     label="Assets Owned"
                     count={23}
+                    hasSubItems
+                    isExpanded={expandedSections.assets}
+                    onToggle={() => toggleSection('assets')}
                     path="/assets-owned"
-                    isActive={isActive('/assets-owned') || isActivePrefix('/assets-owned')}
+                    isActive={isActivePrefix('/assets-owned')}
                     layerConfig={{
                       sourceType: 'assets',
                       layerType: 'pin',
@@ -211,6 +214,35 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
+                  
+                  {expandedSections.assets && (
+                    <div className="ml-4 space-y-1">
+                      <SidebarItem
+                        icon="📋"
+                        label="All"
+                        path="/assets-owned"
+                        isActive={isActive('/assets-owned')}
+                      />
+                      <SidebarItem
+                        icon="📊"
+                        label="Performance"
+                        path="/assets-owned/performance"
+                        isActive={isActive('/assets-owned/performance')}
+                      />
+                      <SidebarItem
+                        icon="📄"
+                        label="Documents"
+                        path="/assets-owned/documents"
+                        isActive={isActive('/assets-owned/documents')}
+                      />
+                      <SidebarItem
+                        icon="📈"
+                        label="Grid View"
+                        path="/assets-owned/grid"
+                        isActive={isActive('/assets-owned/grid')}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* INTELLIGENCE */}
