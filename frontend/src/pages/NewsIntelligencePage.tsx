@@ -7,7 +7,6 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
@@ -18,18 +17,17 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
-function getNewsViewFromPath(pathname: string): ViewType {
-  if (pathname.endsWith('/dashboard')) return 'dashboard';
-  if (pathname.endsWith('/network')) return 'network';
-  if (pathname.endsWith('/alerts')) return 'alerts';
-  return 'feed';
-}
+const tabs: { id: ViewType; label: string; icon: string }[] = [
+  { id: 'feed', label: 'Event Feed', icon: '📋' },
+  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'network', label: 'Network', icon: '🔗' },
+  { id: 'alerts', label: 'Alerts', icon: '🔔' },
+];
 
 export function NewsIntelligencePage() {
   const { deals, fetchDeals } = useDealStore();
-  const location = useLocation();
   
-  const activeView = getNewsViewFromPath(location.pathname);
+  const [activeView, setActiveView] = useState<ViewType>('feed');
   const [selectedCategory, setSelectedCategory] = useState('all');
   
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -368,9 +366,8 @@ export function NewsIntelligencePage() {
     </div>
   );
 
-  // Content renderer for ThreePanelLayout
-  const renderContent = (viewId: string) => {
-    switch (viewId) {
+  const renderViewContent = () => {
+    switch (activeView) {
       case 'feed':
         return renderEventFeed();
       case 'dashboard':
@@ -383,6 +380,36 @@ export function NewsIntelligencePage() {
         return null;
     }
   };
+
+  const renderContent = () => (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeView === tab.id
+                ? 'bg-blue-100 text-blue-700'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+        {activeView === 'alerts' && unreadAlertCount > 0 && (
+          <div className="ml-auto text-xs text-gray-500">{unreadAlertCount} unread</div>
+        )}
+        {activeView === 'feed' && (
+          <div className="ml-auto text-xs text-gray-500">{events.length} events</div>
+        )}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        {renderViewContent()}
+      </div>
+    </div>
+  );
 
   // Map renderer for ThreePanelLayout
   const renderMap = () => (
@@ -414,7 +441,7 @@ export function NewsIntelligencePage() {
     <ThreePanelLayout
       storageKey="news"
       showViewsPanel={false}
-      renderContent={() => renderContent(activeView)}
+      renderContent={renderContent}
       renderMap={renderMap}
     />
   );

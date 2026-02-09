@@ -41,13 +41,13 @@ function AppContent() {
           <Route path="/dashboard/email/drafts" element={<EmailPage />} />
           <Route path="/dashboard/email/flagged" element={<EmailPage />} />
           <Route path="/news-intel" element={<NewsIntelligencePage />} />
-          <Route path="/news-intel/dashboard" element={<NewsIntelligencePage />} />
-          <Route path="/news-intel/network" element={<NewsIntelligencePage />} />
-          <Route path="/news-intel/alerts" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
           <Route path="/market-data" element={<MarketDataPage />} />
-          <Route path="/market-data/comparables" element={<MarketDataPage />} />
-          <Route path="/market-data/demographics" element={<MarketDataPage />} />
-          <Route path="/market-data/supply-demand" element={<MarketDataPage />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
