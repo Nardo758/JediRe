@@ -210,6 +210,13 @@ Key variables are set automatically:
   - FinancialAnalysisSection conditionally renders Basic vs Enhanced based on module state
   - ModulesPage toggles call API and invalidate cache for consistency
   - Auth: modules router uses requireAuth middleware, req.user.userId matches JWT payload
+- 2026-02-09: Data persistence layer + Module Suggestion system
+  - 3 new backend route files: financial-models, strategy-analyses, dd-checklists
+  - 4 new DB tables: financial_models, strategy_analyses, dd_checklists, dd_tasks
+  - 3 frontend services: financialModels.service, strategyAnalysis.service, ddChecklist.service
+  - ModuleSuggestionModal: contextual module recommendations based on deal type + strategy
+  - moduleSuggestions.ts: maps deal type/strategy combos to recommended modules
+  - Added 'portfolio-dashboard' to ModuleName type union
 - 2026-02-08: News Intelligence system integration
   - 6 backend endpoints: events (list/detail), dashboard, alerts (list/update), network intelligence
   - Mounted via newsRouter in index.replit.ts at /api/v1/news/*
