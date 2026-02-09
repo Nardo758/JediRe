@@ -154,34 +154,14 @@ export const MainLayout: React.FC = () => {
                     onShowOnMap={handleShowOnMap}
                   />
 
-                  {/* PIPELINE - Expandable */}
+                  {/* PIPELINE */}
                   <SidebarItem
                     icon="📊"
                     label="Pipeline"
                     count={12}
-                    hasSubItems
-                    isExpanded={expandedSections.pipeline}
-                    onToggle={() => toggleSection('pipeline')}
                     path="/deals"
                     isActive={isActivePrefix('/deals')}
                   />
-                  
-                  {expandedSections.pipeline && (
-                    <div className="ml-4 space-y-1">
-                      <SidebarItem
-                        icon="🔄"
-                        label="Active"
-                        path="/deals/active"
-                        isActive={isActive('/deals/active')}
-                      />
-                      <SidebarItem
-                        icon="✅"
-                        label="Closed"
-                        path="/deals/closed"
-                        isActive={isActive('/deals/closed')}
-                      />
-                    </div>
-                  )}
                   
                   {/* ASSETS OWNED */}
                   <SidebarItem

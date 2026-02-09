@@ -19,6 +19,8 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
+type TabType = 'all' | 'active' | 'closed';
+
 const formatCurrency = (value: any) =>
   value !== null && value !== undefined
     ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Number(value))
@@ -216,6 +218,19 @@ export function DealsPage() {
   const [gridDeals, setGridDeals] = useState<PipelineDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('all');
+
+  const tabs: { id: TabType; label: string; icon: string }[] = [
+    { id: 'all', label: 'All Deals', icon: '📊' },
+    { id: 'active', label: 'Active', icon: '🔄' },
+    { id: 'closed', label: 'Closed', icon: '✅' },
+  ];
+
+  const filteredDeals = activeTab === 'all'
+    ? gridDeals
+    : activeTab === 'active'
+    ? gridDeals.filter((d) => d.pipeline_stage !== 'Closed' && d.pipeline_stage !== 'Dead')
+    : gridDeals.filter((d) => d.pipeline_stage === 'Closed' || d.pipeline_stage === 'Dead');
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -355,10 +370,28 @@ export function DealsPage() {
 
     return (
       <div className="h-full flex flex-col">
-        <div className="flex-1 overflow-auto p-2">
+        <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                activeTab === tab.id
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+          <div className="ml-auto text-xs text-gray-500">{filteredDeals.length} deals</div>
+        </div>
+
+        <div className="flex-1 overflow-hidden">
           <DataGrid
             columns={columns}
-            data={gridDeals}
+            data={filteredDeals}
             onRowClick={handleRowClick}
             onSort={handleSort}
             onExport={handleExport}
