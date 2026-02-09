@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout, ViewItem } from '../components/layout/ThreePanelLayout';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -50,6 +51,7 @@ const mockAssets = [
 ];
 
 export function AssetsOwnedPage() {
+  const navigate = useNavigate();
   const [activeView, setActiveView] = useState<ViewType>('all');
   const [assets, setAssets] = useState(mockAssets);
   const [selectedAsset, setSelectedAsset] = useState<number | null>(null);
@@ -141,9 +143,8 @@ export function AssetsOwnedPage() {
 
   // Content renderer
   const renderContent = (viewId: string) => {
-    if (viewId === 'performance') {
-      return (
-        <div className="space-y-4">
+    const content = viewId === 'performance' ? (
+      <div className="space-y-4">
           {/* Portfolio KPIs */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-3">Portfolio Summary</h3>
