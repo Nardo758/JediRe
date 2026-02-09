@@ -291,26 +291,26 @@ export const MainLayout: React.FC = () => {
                       <SidebarItem
                         icon="📋"
                         label="Event Feed"
-                        path="/dashboard/news"
-                        isActive={isActive('/dashboard/news')}
+                        path="/news-intel"
+                        isActive={isActive('/news-intel')}
                       />
                       <SidebarItem
                         icon="📊"
                         label="Market Dashboard"
-                        path="/dashboard/news/dashboard"
-                        isActive={isActive('/dashboard/news/dashboard')}
+                        path="/news-intel/dashboard"
+                        isActive={isActive('/news-intel/dashboard')}
                       />
                       <SidebarItem
                         icon="🔗"
                         label="Network Intel"
-                        path="/dashboard/news/network"
-                        isActive={isActive('/dashboard/news/network')}
+                        path="/news-intel/network"
+                        isActive={isActive('/news-intel/network')}
                       />
                       <SidebarItem
                         icon="🔔"
                         label="Alerts"
-                        path="/dashboard/news/alerts"
-                        isActive={isActive('/dashboard/news/alerts')}
+                        path="/news-intel/alerts"
+                        isActive={isActive('/news-intel/alerts')}
                       />
                     </div>
                   )}
