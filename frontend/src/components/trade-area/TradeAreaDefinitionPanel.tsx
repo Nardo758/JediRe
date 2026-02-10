@@ -90,8 +90,8 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   const handleGenerateAI = async () => {
     setIsGenerating(true);
     try {
-      // Use radius as hint for AI (how far to look)
-      await generateTrafficInformedBoundary(propertyLat, propertyLng, radiusMiles);
+      // Always use 5 miles as default (per user feedback - AI should just work automatically)
+      await generateTrafficInformedBoundary(propertyLat, propertyLng, 5);
     } catch (error: any) {
       alert(`Failed to generate AI boundary: ${error.message || 'Unknown error'}`);
     } finally {
@@ -253,29 +253,8 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
                 <p className="text-sm text-purple-700 mb-3">
                   Our AI analyzes multiple drive-time scenarios, traffic patterns, and
                   commute corridors to generate an intelligent competitive boundary.
+                  Starting with a smart 5-mile search radius.
                 </p>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-purple-900 mb-2">
-                    Search Radius Hint: {radiusMiles} miles
-                  </label>
-                  <input
-                    id="ai-radius-hint"
-                    name="aiRadiusHint"
-                    type="range"
-                    min="1"
-                    max="10"
-                    step="0.5"
-                    value={radiusMiles}
-                    onChange={(e) => setRadiusMiles(parseFloat(e.target.value))}
-                    aria-label="AI search radius hint in miles"
-                    className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <div className="flex justify-between text-xs text-purple-600 mt-1">
-                    <span>1 mi</span>
-                    <span>5 mi</span>
-                    <span>10 mi</span>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -291,7 +270,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
           {draftGeometry && (
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-800">
-                ✓ AI-powered boundary generated and ready to save
+                ✓ AI-powered boundary generated (5-mile radius). You can refine this later in deal settings.
               </p>
             </div>
           )}
