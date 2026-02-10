@@ -5,8 +5,6 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { useMapLayers } from '../contexts/MapLayersContext';
-// CreateDealModal is deprecated - now using CreateDealPage at /deals/create
-// import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { Button } from '../components/shared/Button';
@@ -21,7 +19,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 export const Dashboard: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { deals, fetchDeals, isLoading} = useDealStore();
+  const { deals, fetchDeals, isLoading } = useDealStore();
   const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
   const { layers } = useMapLayers();
   const [mapError, setMapError] = useState<string | null>(null);
@@ -33,7 +31,6 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     fetchDeals();
     
-    // Redirect to create page if requested
     if (location.state?.openCreateDeal) {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
@@ -317,8 +314,14 @@ export const Dashboard: React.FC = () => {
   };
 
   const renderContent = () => {
-    const hotDeals = deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14);
-    
+    const hotDeals = Array.isArray(deals) ? deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14) : [];
+    const pipelineValue = Array.isArray(deals) ? deals.reduce((sum, d) => sum + (d.budget || 0), 0) : 0;
+    const activeDeals = Array.isArray(deals) ? deals.filter(d => !['POST_CLOSE', 'ARCHIVED', 'MARKET_NOTE'].includes(d.state || '')) : [];
+    const portfolioAssets = Array.isArray(deals) ? deals.filter(d => d.dealCategory === 'portfolio' && d.state === 'POST_CLOSE') : [];
+    const avgDays = Array.isArray(deals) && deals.length > 0 
+      ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length) 
+      : 0;
+
     return (
       <div className="space-y-4">
         {/* KPI Cards - Top Row */}
@@ -326,7 +329,7 @@ export const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
             <div className="text-2xl font-bold text-gray-900">
-              ${(deals.reduce((sum, d) => sum + (d.budget || 0), 0) / 1000000).toFixed(1)}M
+              ${(pipelineValue / 1000000).toFixed(1)}M
             </div>
             <div className="text-xs text-gray-500 mt-1">{deals.length} deals</div>
           </div>
@@ -334,7 +337,7 @@ export const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-xs font-medium text-gray-600 mb-1">Active Deals</div>
             <div className="text-2xl font-bold text-blue-600">
-              {deals.filter(d => !['POST_CLOSE', 'ARCHIVED', 'MARKET_NOTE'].includes(d.state || '')).length}
+              {activeDeals.length}
             </div>
             <div className="text-xs text-gray-500 mt-1">in progress</div>
           </div>
@@ -342,7 +345,7 @@ export const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-xs font-medium text-gray-600 mb-1">Portfolio Assets</div>
             <div className="text-2xl font-bold text-green-600">
-              {deals.filter(d => d.dealCategory === 'portfolio' && d.state === 'POST_CLOSE').length}
+              {portfolioAssets.length}
             </div>
             <div className="text-xs text-gray-500 mt-1">owned</div>
           </div>
@@ -350,7 +353,7 @@ export const Dashboard: React.FC = () => {
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-xs font-medium text-gray-600 mb-1">Avg Days/Deal</div>
             <div className="text-2xl font-bold text-gray-900">
-              {deals.length > 0 ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length) : 0}
+              {avgDays}
             </div>
             <div className="text-xs text-red-600 mt-1 font-medium">{hotDeals.length} need attention</div>
           </div>
@@ -365,89 +368,133 @@ export const Dashboard: React.FC = () => {
 
           {/* Right Column - Deals (60% - 3 cols) */}
           <div className="col-span-3">
-            <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
-          {Array.isArray(deals) && deals.length > 0 && (
-            <Button onClick={() => navigate('/deals/create')} size="sm" variant="secondary">
-              + New
-            </Button>
-          )}
-        </div>
-        
-        {isLoading ? (
-          <div className="text-center py-12 text-gray-500">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
-            <p>Loading deals...</p>
-          </div>
-        ) : !Array.isArray(deals) || deals.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <div className="text-6xl mb-4">🏢</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No deals yet</h3>
-            <p className="text-gray-500 mb-6 max-w-sm mx-auto">
-              Create your first deal to get started with JEDI RE. Track properties, run analysis, and close deals faster.
-            </p>
-            <Button onClick={() => navigate('/deals/create')} size="md">
-              Create Deal
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* Hot Deals Alert */}
-            {(() => {
-              const hotDeals = deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14);
-              return hotDeals.length > 0 ? (
-                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-orange-800">
-                    <span className="text-lg">🔥</span>
-                    <span className="font-semibold">
-                      {hotDeals.length} deal{hotDeals.length > 1 ? 's' : ''} need{hotDeals.length === 1 ? 's' : ''} attention
-                    </span>
-                  </div>
-                </div>
-              ) : null;
-            })()}
-
-            {/* Deals List */}
-            <div className="space-y-2 mb-4">
-              {deals.map(deal => (
-                <DealCard key={deal.id} deal={deal} />
-              ))}
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
+              {Array.isArray(deals) && deals.length > 0 && (
+                <Button onClick={() => navigate('/deals/create')} size="sm" variant="secondary">
+                  + New
+                </Button>
+              )}
             </div>
+            
+            {isLoading ? (
+              <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-gray-200">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                <p className="text-sm">Loading deals...</p>
+              </div>
+            ) : !Array.isArray(deals) || deals.length === 0 ? (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                <div className="text-4xl mb-3">🏢</div>
+                <h3 className="text-base font-semibold text-gray-900 mb-2">No deals yet</h3>
+                <p className="text-sm text-gray-500 mb-4 max-w-sm mx-auto">
+                  Create your first deal to get started
+                </p>
+                <Button onClick={() => navigate('/deals/create')} size="sm">
+                  Create Deal
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Hot Deals Alert */}
+                {hotDeals.length > 0 && (
+                  <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-orange-800">
+                      <span className="text-base">🔥</span>
+                      <span className="font-semibold">
+                        {hotDeals.length} deal{hotDeals.length > 1 ? 's' : ''} need attention
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-            {/* Quick Stats */}
-            <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <div className="text-gray-600 mb-1">Active Deals</div>
-                  <div className="text-2xl font-bold text-gray-900">{deals.length}</div>
+                {/* Deals List - Compact */}
+                <div className="space-y-2">
+                  {deals.slice(0, 6).map(deal => (
+                    <DealCard key={deal.id} deal={deal} />
+                  ))}
                 </div>
-                <div>
-                  <div className="text-gray-600 mb-1">Total Pipeline</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    ${(deals.reduce((sum, d) => sum + (d.budget || 0), 0) / 1000000).toFixed(1)}M
+                
+                {deals.length > 6 && (
+                  <div className="mt-3 text-center">
+                    <Button onClick={() => navigate('/deals')} size="sm" variant="secondary">
+                      View All {deals.length} Deals →
+                    </Button>
                   </div>
-                </div>
-                <div>
-                  <div className="text-gray-600 mb-1">Hot Deals</div>
-                  <div className="text-2xl font-bold text-red-600">
-                    {deals.filter(d => d.triageStatus === 'Hot').length}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-gray-600 mb-1">Avg Days/Deal</div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length)}
-                  </div>
-                </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Row - Portfolio Assets + Quick Actions */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Portfolio Assets (3 cols) */}
+          <div className="col-span-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">PORTFOLIO ASSETS</h2>
+              <Button onClick={() => navigate('/assets-owned')} size="sm" variant="secondary">
+                View All →
+              </Button>
+            </div>
+            <AssetsSection />
+          </div>
+
+          {/* Quick Actions (2 cols) */}
+          <div className="col-span-2">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">QUICK ACTIONS</h2>
+            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+              <Button 
+                onClick={() => navigate('/deals/create')}
+                className="w-full"
+                size="md"
+              >
+                + Create New Deal
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/properties')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                🔍 Search Properties
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/market-data')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                📊 Market Analysis
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/news-intel')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                📰 News Intelligence
+              </Button>
+              
+              <div className="pt-3 border-t border-gray-200">
+                <div className="text-xs text-gray-600 mb-2">Need help?</div>
+                <Button 
+                  onClick={() => window.open('/help', '_blank')}
+                  className="w-full text-sm"
+                  variant="secondary"
+                  size="sm"
+                >
+                  View User Guide
+                </Button>
               </div>
             </div>
-          </>
-        )}
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderMap = () => (
     <div className="absolute inset-0">
