@@ -4,12 +4,13 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Map from 'react-map-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useMapDrawingStore } from '../stores/mapDrawingStore';
-import { CreateDealModal } from '../components/deal/CreateDealModal';
+// CreateDealModal is deprecated - now using CreateDealPage at /deals/create
+// import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { LayerRenderer } from '../components/map/LayerRenderer';
 import { LayersPanel } from '../components/map/LayersPanel';
@@ -23,11 +24,11 @@ const DEFAULT_MAP_ID = 'default'; // TODO: Get from user's active map
 
 export const DashboardV2: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { deals, fetchDeals, isLoading } = useDealStore();
   const { isDrawing, centerPoint, saveDrawing } = useMapDrawingStore();
   
   const [layers, setLayers] = useState<MapLayer[]>([]);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewState, setViewState] = useState({
     longitude: -84.388,
     latitude: 33.749,
@@ -41,12 +42,12 @@ export const DashboardV2: React.FC = () => {
   useEffect(() => {
     fetchDeals();
     
-    // Check if we should open create deal modal from navigation state
+    // Redirect to create page if requested
     if (location.state?.openCreateDeal) {
-      setIsCreateModalOpen(true);
+      navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
-  }, [location]);
+  }, [location, navigate]);
 
   // Fetch layers for current map
   useEffect(() => {
@@ -283,18 +284,6 @@ export const DashboardV2: React.FC = () => {
 
       {/* Drawing Control Panel (shows when drawing) */}
       {isDrawing && <DrawingControlPanel />}
-
-      {/* Create Deal Modal */}
-      {isCreateModalOpen && (
-        <CreateDealModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={() => {
-            setIsCreateModalOpen(false);
-            fetchDeals();
-          }}
-        />
-      )}
 
       {/* Loading Overlay */}
       {isLoading && (

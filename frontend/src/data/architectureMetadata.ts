@@ -32,14 +32,14 @@ export const architectureMetadata: Record<string, ArchitectureInfo> = {
   createDeal: {
     page: 'Create Deal',
     frontend: {
-      component: 'CreateDealModal.tsx + MapBuilder.tsx',
+      component: 'CreateDealPage.tsx (full-screen, progressive reveal)',
       state: 'Zustand (dealStore)',
-      apis: ['POST /api/v1/deals', 'GET /api/v1/properties/within-boundary'],
+      apis: ['POST /api/v1/deals', 'GET /api/v1/submarkets/lookup', 'POST /api/v1/deals/:id/geographic-context'],
     },
     backend: {
       service: 'DealsService',
-      database: ['deals table', 'deal_properties table', 'properties table'],
-      features: ['Polygon drawing validation', 'Property boundary intersection', 'Area calculation'],
+      database: ['deals table', 'deal_properties table', 'properties table', 'submarkets', 'msa'],
+      features: ['Progressive reveal UX', 'Polygon drawing validation', 'Geographic context linking', 'Trade area definition'],
     },
   },
   

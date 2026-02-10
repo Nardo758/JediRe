@@ -7,6 +7,7 @@ import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
 import { DealView } from './pages/DealView';
 import { DealPage } from './pages/DealPage';
+import { CreateDealPage } from './pages/CreateDealPage';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
 import { NewsIntelligencePage } from './pages/NewsIntelligencePage';
@@ -57,6 +58,7 @@ function AppContent() {
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/deals" element={<DealsPage />} />
+          <Route path="/deals/create" element={<CreateDealPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
