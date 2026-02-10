@@ -316,19 +316,56 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const renderContent = () => (
-    <div className="space-y-6">
-      {/* Key Findings Section */}
-      <KeyFindingsSection />
+  const renderContent = () => {
+    const hotDeals = deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14);
+    
+    return (
+      <div className="space-y-4">
+        {/* KPI Cards - Top Row */}
+        <div className="grid grid-cols-4 gap-3">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
+            <div className="text-2xl font-bold text-gray-900">
+              ${(deals.reduce((sum, d) => sum + (d.budget || 0), 0) / 1000000).toFixed(1)}M
+            </div>
+            <div className="text-xs text-gray-500 mt-1">{deals.length} deals</div>
+          </div>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Active Deals</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {deals.filter(d => !['POST_CLOSE', 'ARCHIVED', 'MARKET_NOTE'].includes(d.state || '')).length}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">in progress</div>
+          </div>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Portfolio Assets</div>
+            <div className="text-2xl font-bold text-green-600">
+              {deals.filter(d => d.dealCategory === 'portfolio' && d.state === 'POST_CLOSE').length}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">owned</div>
+          </div>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Avg Days/Deal</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {deals.length > 0 ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length) : 0}
+            </div>
+            <div className="text-xs text-red-600 mt-1 font-medium">{hotDeals.length} need attention</div>
+          </div>
+        </div>
 
-      {/* Assets Section */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">MY PORTFOLIO</h2>
-        <AssetsSection />
-      </div>
+        {/* Two-Column Layout */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Left Column - Intelligence (40% - 2 cols) */}
+          <div className="col-span-2">
+            <KeyFindingsSection />
+          </div>
 
-      {/* Deals Section */}
-      <div>
+          {/* Right Column - Deals (60% - 3 cols) */}
+          <div className="col-span-3">
+            <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
           {Array.isArray(deals) && deals.length > 0 && (

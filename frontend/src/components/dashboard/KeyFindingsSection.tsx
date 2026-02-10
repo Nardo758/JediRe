@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 interface Finding {
   id: string;
-  type: 'news' | 'property' | 'market' | 'deal';
+  type: 'news' | 'market' | 'insight' | 'action';
   priority: 'urgent' | 'important' | 'info';
   title: string;
   description: string;
@@ -14,33 +14,37 @@ interface Finding {
 
 interface FindingsData {
   news: Finding[];
-  properties: Finding[];
   market: Finding[];
-  deals: Finding[];
+  insights: Finding[];
+  actions: Finding[];
 }
 
-type CategoryKey = 'news' | 'properties' | 'market' | 'deals';
+type CategoryKey = 'news' | 'market' | 'insights' | 'actions';
 
 const CATEGORY_CONFIG = {
   news: {
     label: 'News Intelligence',
     icon: '📰',
     emptyMessage: 'No recent news in your deal areas',
-  },
-  properties: {
-    label: 'Property Alerts',
-    icon: '🏢',
-    emptyMessage: 'No property alerts at the moment',
+    description: 'External market events and developments',
   },
   market: {
     label: 'Market Signals',
-    icon: '📈',
+    icon: '📊',
     emptyMessage: 'No significant market changes detected',
+    description: 'Submarket trends and competitive intelligence',
   },
-  deals: {
-    label: 'Deal Alerts',
+  insights: {
+    label: 'AI Insights',
+    icon: '🤖',
+    emptyMessage: 'No new AI insights at the moment',
+    description: 'Platform-generated recommendations and opportunities',
+  },
+  actions: {
+    label: 'Action Items',
     icon: '⚠️',
-    emptyMessage: 'All deals are on track',
+    emptyMessage: 'All caught up! No pending actions.',
+    description: 'Things that need your attention',
   },
 };
 
@@ -72,9 +76,9 @@ export const KeyFindingsSection: React.FC = () => {
   const navigate = useNavigate();
   const [findings, setFindings] = useState<FindingsData>({
     news: [],
-    properties: [],
     market: [],
-    deals: [],
+    insights: [],
+    actions: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,9 +107,9 @@ export const KeyFindingsSection: React.FC = () => {
       if (data.success) {
         setFindings(data.data);
         
-        // Auto-select first category with findings
-        const firstWithData = (['news', 'properties', 'market', 'deals'] as CategoryKey[])
-          .find(key => data.data[key]?.length > 0);
+        // Auto-select first category with findings (prioritize actions > insights > news > market)
+        const priorityOrder: CategoryKey[] = ['actions', 'insights', 'news', 'market'];
+        const firstWithData = priorityOrder.find(key => data.data[key]?.length > 0);
         if (firstWithData) {
           setActiveTab(firstWithData);
         }
@@ -136,8 +140,8 @@ export const KeyFindingsSection: React.FC = () => {
     return date.toLocaleDateString();
   };
 
-  const totalFindings = findings.news.length + findings.properties.length + 
-                        findings.market.length + findings.deals.length;
+  const totalFindings = findings.news.length + findings.market.length + 
+                        findings.insights.length + findings.actions.length;
 
   const activeFindings = findings[activeTab] || [];
 
@@ -306,9 +310,9 @@ export const KeyFindingsSection: React.FC = () => {
                   onClick={() => {
                     // Navigate to dedicated page for this category
                     if (activeTab === 'news') navigate('/news-intel');
-                    else if (activeTab === 'properties') navigate('/properties');
                     else if (activeTab === 'market') navigate('/market-data');
-                    else if (activeTab === 'deals') navigate('/deals');
+                    else if (activeTab === 'insights') navigate('/insights');
+                    else if (activeTab === 'actions') navigate('/deals');
                   }}
                   className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                 >
