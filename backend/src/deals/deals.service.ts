@@ -150,12 +150,28 @@ export class DealsService {
         d.tier,
         d.status,
         d.budget,
+        d.address,
         ST_AsGeoJSON(d.boundary)::json AS boundary,
         ST_Area(d.boundary::geography) / 4046.86 AS acres,
         d.created_at,
         d.updated_at,
+        d.state,
+        d.triage_status,
+        d.triage_score,
+        d.signal_confidence,
+        d.triaged_at,
+        d.state_data,
         COUNT(DISTINCT dp.property_id) AS property_count,
-        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status != 'completed') AS pending_tasks
+        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status != 'completed') AS pending_tasks,
+        COALESCE(
+          EXTRACT(DAY FROM NOW() - COALESCE(
+            (SELECT transitioned_at FROM state_transitions 
+             WHERE deal_id = d.id AND to_state = d.state 
+             ORDER BY transitioned_at DESC LIMIT 1),
+            d.created_at
+          ))::INTEGER,
+          0
+        ) AS days_in_station
       FROM deals d
       LEFT JOIN deal_properties dp ON d.id = dp.deal_id
       LEFT JOIN deal_tasks dt ON d.id = dt.deal_id

@@ -1,5 +1,19 @@
 // Unified Deal type for entire application
 
+export type DealState =
+  | 'SIGNAL_INTAKE'
+  | 'TRIAGE'
+  | 'INTELLIGENCE_ASSEMBLY'
+  | 'UNDERWRITING'
+  | 'DEAL_PACKAGING'
+  | 'EXECUTION'
+  | 'POST_CLOSE'
+  | 'MARKET_NOTE'
+  | 'STALLED'
+  | 'ARCHIVED';
+
+export type TriageStatus = 'Hot' | 'Warm' | 'Watch' | 'Pass';
+
 export interface Deal {
   // Core fields (JEDI RE)
   id: string;
@@ -13,6 +27,15 @@ export interface Deal {
   propertyCount: number;
   pendingTasks: number;
   createdAt: string;
+  
+  // State Machine
+  state?: DealState;
+  triageStatus?: TriageStatus;
+  triageScore?: number;
+  signalConfidence?: number;
+  triagedAt?: string;
+  stateData?: any;
+  daysInStation?: number;
   
   // User/ownership
   userId?: string;

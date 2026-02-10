@@ -10,6 +10,9 @@ import { useMapLayers } from '../contexts/MapLayersContext';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { Button } from '../components/shared/Button';
+import { AssetsSection } from '../components/dashboard/AssetsSection';
+import { KeyFindingsSection } from '../components/dashboard/KeyFindingsSection';
+import { DealCard } from '../components/deal/DealCard';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -314,76 +317,98 @@ export const Dashboard: React.FC = () => {
   };
 
   const renderContent = () => (
-    <div>
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">MY DEALS</h2>
-      
-      {isLoading ? (
-        <div className="text-center py-8 text-gray-500">Loading...</div>
-      ) : !Array.isArray(deals) || deals.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500 mb-4">No deals yet</p>
-          <Button onClick={() => navigate('/deals/create')} size="sm">
-            Create Your First Deal
-          </Button>
+    <div className="space-y-6">
+      {/* Key Findings Section */}
+      <KeyFindingsSection />
+
+      {/* Assets Section */}
+      <div>
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">MY PORTFOLIO</h2>
+        <AssetsSection />
+      </div>
+
+      {/* Deals Section */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
+          {Array.isArray(deals) && deals.length > 0 && (
+            <Button onClick={() => navigate('/deals/create')} size="sm" variant="secondary">
+              + New
+            </Button>
+          )}
         </div>
-      ) : (
-        <div className="space-y-2">
-          {deals.map(deal => (
-            <a
-              key={deal.id}
-              href={`/deals/${deal.id}`}
-              className="block p-4 rounded-lg hover:bg-gray-50 transition border border-gray-200 bg-white"
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0"
-                  style={{
-                    backgroundColor: 
-                      deal.tier === 'basic' ? '#fbbf24' :
-                      deal.tier === 'pro' ? '#3b82f6' :
-                      deal.tier === 'enterprise' ? '#10b981' : '#6b7280'
-                  }}
-                />
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-gray-900 truncate">
-                    {deal.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {deal.projectType} • {(deal.acres || 0).toFixed(1)} acres
-                  </p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                    <span>{deal.propertyCount} properties</span>
-                    {deal.pendingTasks > 0 && (
-                      <span>{deal.pendingTasks} tasks</span>
-                    )}
+        
+        {isLoading ? (
+          <div className="text-center py-12 text-gray-500">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+            <p>Loading deals...</p>
+          </div>
+        ) : !Array.isArray(deals) || deals.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+            <div className="text-6xl mb-4">🏢</div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No deals yet</h3>
+            <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+              Create your first deal to get started with JEDI RE. Track properties, run analysis, and close deals faster.
+            </p>
+            <Button onClick={() => navigate('/deals/create')} size="md">
+              Create Deal
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Hot Deals Alert */}
+            {(() => {
+              const hotDeals = deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14);
+              return hotDeals.length > 0 ? (
+                <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-orange-800">
+                    <span className="text-lg">🔥</span>
+                    <span className="font-semibold">
+                      {hotDeals.length} deal{hotDeals.length > 1 ? 's' : ''} need{hotDeals.length === 1 ? 's' : ''} attention
+                    </span>
                   </div>
                 </div>
-                <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
+              ) : null;
+            })()}
 
-      {Array.isArray(deals) && deals.length > 0 && (
-        <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Quick Stats</h3>
-          <div className="space-y-1 text-sm">
-            <div className="flex items-center justify-between gap-6">
-              <span className="text-gray-600">Active Deals:</span>
-              <span className="font-semibold">{deals.length}</span>
+            {/* Deals List */}
+            <div className="space-y-2 mb-4">
+              {deals.map(deal => (
+                <DealCard key={deal.id} deal={deal} />
+              ))}
             </div>
-            <div className="flex items-center justify-between gap-6">
-              <span className="text-gray-600">Total Pipeline:</span>
-              <span className="font-semibold">
-                ${deals.reduce((sum, d) => sum + (d.budget || 0), 0).toLocaleString()}
-              </span>
+
+            {/* Quick Stats */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-gray-600 mb-1">Active Deals</div>
+                  <div className="text-2xl font-bold text-gray-900">{deals.length}</div>
+                </div>
+                <div>
+                  <div className="text-gray-600 mb-1">Total Pipeline</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    ${(deals.reduce((sum, d) => sum + (d.budget || 0), 0) / 1000000).toFixed(1)}M
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-600 mb-1">Hot Deals</div>
+                  <div className="text-2xl font-bold text-red-600">
+                    {deals.filter(d => d.triageStatus === 'Hot').length}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-600 mb-1">Avg Days/Deal</div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length)}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 
