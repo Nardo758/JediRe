@@ -89,7 +89,7 @@ export const ddChecklistService = {
    */
   async updateTaskStatus(
     taskId: string,
-    status: 'pending' | 'in_progress' | 'complete' | 'blocked'
+    status: 'pending' | 'in-progress' | 'in_progress' | 'complete' | 'blocked'
   ): Promise<{ success: boolean; data: DDTask }> {
     try {
       const response = await apiClient.patch(`/api/v1/dd-checklists/tasks/${taskId}`, {
@@ -186,7 +186,7 @@ export const ddChecklistService = {
    */
   async bulkUpdateStatus(
     taskIds: string[],
-    status: 'pending' | 'in_progress' | 'complete' | 'blocked'
+    status: 'pending' | 'in-progress' | 'in_progress' | 'complete' | 'blocked'
   ): Promise<void> {
     try {
       const promises = taskIds.map(id => this.updateTaskStatus(id, status));

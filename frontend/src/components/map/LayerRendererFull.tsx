@@ -3,7 +3,7 @@
  * Supports all 5 layer types: pin, bubble, heatmap, boundary, overlay
  */
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Marker, Popup, Source, Layer as MapLayer } from 'react-map-gl';
 import {
   MapLayer as LayerConfig,
