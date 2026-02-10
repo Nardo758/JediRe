@@ -35,7 +35,7 @@ export class GmailSyncService {
     this.oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/api/v1/gmail/callback'
+      process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/v1/gmail/callback'
     );
   }
 
@@ -298,9 +298,8 @@ export class GmailSyncService {
           const body = this.extractBody(fullMessage.data.payload!);
           const receivedAt = new Date(parseInt(fullMessage.data.internalDate || '0'));
 
-          // Check if email already exists
           const existingResult = await query(
-            'SELECT id FROM emails WHERE account_id = $1 AND provider_message_id = $2',
+            'SELECT id FROM emails WHERE email_account_id = $1 AND external_id = $2',
             [accountId, message.id]
           );
 
@@ -309,18 +308,16 @@ export class GmailSyncService {
             continue;
           }
 
-          // Store email
           await query(
             `INSERT INTO emails (
-              account_id, user_id, provider, provider_message_id, thread_id,
-              subject, from_email, from_name, to_emails, cc_emails,
-              body_text, body_html, snippet, received_at,
-              is_read, has_attachments, labels, raw_data
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+              email_account_id, user_id, external_id, thread_id,
+              subject, from_address, from_name, to_addresses, cc_addresses,
+              body_text, body_html, body_preview, received_at,
+              is_read, has_attachments
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
             [
               accountId,
               account.user_id,
-              'google',
               message.id,
               fullMessage.data.threadId,
               headers.subject,
@@ -333,9 +330,7 @@ export class GmailSyncService {
               fullMessage.data.snippet,
               receivedAt,
               fullMessage.data.labelIds?.includes('UNREAD') ? false : true,
-              false, // has_attachments - simplified for now
-              fullMessage.data.labelIds || [],
-              JSON.stringify(fullMessage.data),
+              false,
             ]
           );
 
