@@ -44,7 +44,17 @@ export const AssetsSection: React.FC = () => {
       const response = await apiClient.get(`${API_URL}/dashboard/assets`);
       
       if (response.data.success) {
-        setAssets(response.data.assets || []);
+        const parsed = (response.data.assets || []).map((a: any) => ({
+          ...a,
+          units: Number(a.units) || 0,
+          occupancy_rate: Number(a.occupancy_rate) || 0,
+          noi: Number(a.noi) || 0,
+          budget_noi: Number(a.budget_noi) || 0,
+          monthly_cash_flow: Number(a.monthly_cash_flow) || 0,
+          budget_variance: Number(a.budget_variance) || 0,
+          coc_return: Number(a.coc_return) || 0,
+        }));
+        setAssets(parsed);
         setSummary(response.data.summary || null);
       } else {
         throw new Error('Failed to load assets');
