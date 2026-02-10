@@ -12,6 +12,7 @@ import { Pool } from 'pg';
 import path from 'path';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 import { generateAccessToken } from './auth/jwt';
+import { emailSyncScheduler } from './services/email-sync-scheduler';
 
 dotenv.config();
 
@@ -1561,11 +1562,9 @@ httpServer.listen(PORT, () => {
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
   
-  // Start email sync scheduler
   try {
-    const { emailSyncScheduler } = require('./services/email-sync-scheduler');
-    emailSyncScheduler.start(15); // Sync every 15 minutes
-    console.log('✉️  Email sync scheduler started (every 15 minutes)');
+    emailSyncScheduler.start(15);
+    console.log('Email sync scheduler started (every 15 minutes)');
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
@@ -1575,9 +1574,7 @@ httpServer.listen(PORT, () => {
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
   
-  // Stop email sync scheduler
   try {
-    const { emailSyncScheduler } = require('./services/email-sync-scheduler');
     emailSyncScheduler.stop();
     console.log('Email sync scheduler stopped');
   } catch (error) {
