@@ -59,6 +59,13 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     }
   }, [definitionMethod]);
   
+  // Auto-activate drawing mode when custom draw is selected
+  useEffect(() => {
+    if (definitionMethod === 'custom_draw' && onCustomDraw) {
+      onCustomDraw();
+    }
+  }, [definitionMethod, onCustomDraw]);
+  
   // Generate radius circle
   const handleGenerateRadius = async () => {
     setIsGenerating(true);
@@ -159,7 +166,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
                 {method === 'radius' && '1-10 mile circle'}
                 {method === 'drive_time' && '5-20 minute isochrone'}
                 {method === 'traffic_informed' && 'AI-generated boundary'}
-                {method === 'custom_draw' && 'Draw your own'}
+                {method === 'custom_draw' && 'Define precise boundaries for accurate property analysis, competitive intel, and market sizing'}
               </p>
             </button>
           ))}
@@ -274,30 +281,6 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
               </p>
             </div>
           )}
-        </div>
-      )}
-
-      {definitionMethod === 'custom_draw' && (
-        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl">✏️</span>
-            <div>
-              <h3 className="font-semibold text-blue-900 mb-1">
-                Draw Custom Boundary
-              </h3>
-              <p className="text-sm text-blue-700 mb-3">
-                <strong>Look at the map:</strong> Use the drawing tools outlined in red at the top of the map.
-                Click the polygon tool to start, click points to draw your boundary, then double-click to finish.
-                Your drawing will be automatically saved.
-              </p>
-              <button 
-                onClick={onCustomDraw || onSkip}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
-              >
-                ✏️ Start Drawing
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
