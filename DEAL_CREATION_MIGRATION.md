@@ -53,35 +53,41 @@ Successfully migrated from a modal-based deal creation flow to a full-screen, pr
 - 60% right panel (map, always visible)
 - Clean, spacious design
 
-### 2. Progressive Reveal (6 Steps) ✅
-**Step 1: Deal Category**
-- Portfolio vs Pipeline
-- Large, clear selection cards
+### 2. Progressive Reveal (6 Steps - 3 Sections) ✅
 
-**Step 2: Development Type**
-- New Development vs Existing Property
-- Only shown after category selected
+**SECTION 1: SETUP**
+- **Step 1: Deal Category**
+  - Portfolio vs Pipeline
+  - Large, clear selection cards
+  
+- **Step 2: Development Type**
+  - New Development vs Existing Property
+  - Only shown after category selected
 
-**Step 3: Property Address**
-- Google Places autocomplete
-- Only shown after type selected
-- Auto-advances on address selection
+**SECTION 2: DETAILS**
+- **Step 3: Deal Details**
+  - Deal name (required)
+  - Description (optional)
+  - Shows setup summary
 
-**Step 4: Trade Area (Optional)**
-- Define custom trade area
-- Uses existing TradeAreaDefinitionPanel
-- Skippable with system defaults
-
-**Step 5: Boundary (Optional, New Dev Only)**
-- Drawing tools active on map
-- Real-time feedback
-- Skippable (uses point location)
-- Only shown for new developments
-
-**Step 6: Details**
-- Deal name (required)
-- Description (optional)
-- Summary of all selections
+**SECTION 3: LOCATION**
+- **Step 4: Property Address**
+  - Google Places autocomplete
+  - Auto-advances on address selection
+  - Activates map
+  
+- **Step 5: Trade Area (Optional)**
+  - Define custom trade area
+  - Uses existing TradeAreaDefinitionPanel
+  - Skippable with system defaults
+  - Auto-submits for existing properties
+  
+- **Step 6: Boundary (Optional, New Dev Only)**
+  - Drawing tools active on map
+  - Real-time feedback
+  - Skippable (uses point location)
+  - Only shown for new developments
+  - Submits on completion/skip
 
 ### 3. NO Subscription Tier Selection ✅
 - Removed tier picker from UI
@@ -110,15 +116,26 @@ Successfully migrated from a modal-based deal creation flow to a full-screen, pr
 ```
 Dashboard → Click "Create Deal" → /deals/create
 
+SECTION 1: SETUP
 1. "What type of deal?" → Select Portfolio/Pipeline
 2. "New or existing?" → Select New/Existing
-3. "Where is it?" → Enter address (map updates)
-4. "Define trade area?" → [Optional] Draw or skip
-5. "Draw boundary?" → [Optional, New Only] Draw or skip
-6. "Name it?" → Enter details → Create
+
+SECTION 2: DETAILS
+3. "Tell us about it" → Enter name + description
+
+SECTION 3: LOCATION
+4. "Where is it?" → Enter address (map activates & zooms)
+5. "Define trade area?" → [Optional] Draw or skip
+6. "Draw boundary?" → [Optional, New Only] Draw or skip → Create
 
 → Auto-route to /deals or /assets-owned
 ```
+
+**Why this order?**
+- Get basics first (category, type, name)
+- Then go to map for ALL location work in one flow
+- User enters address → immediately sees map → can work with map tools
+- More natural progression: setup → details → location
 
 ## Technical Details
 

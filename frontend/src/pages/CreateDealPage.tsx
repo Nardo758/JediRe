@@ -340,7 +340,13 @@ export const CreateDealPage: React.FC = () => {
           <div className="max-w-2xl mx-auto p-8">
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
-              <p className="text-gray-600">Step {currentStep} of {STEPS.BOUNDARY}</p>
+              <p className="text-gray-600">
+                Step {currentStep} of {STEPS.BOUNDARY} • {
+                  currentStep <= STEPS.TYPE ? 'Setup' :
+                  currentStep === STEPS.DETAILS ? 'Deal Details' :
+                  'Location'
+                }
+              </p>
             </div>
 
             {/* Progress Indicator */}
@@ -656,7 +662,7 @@ export const CreateDealPage: React.FC = () => {
           <div ref={mapContainer} className="absolute inset-0" />
           
           {/* Map Instructions Overlay */}
-          {currentStep < STEPS.ADDRESS && (
+          {!coordinates && (
             <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none">
               <div className="bg-white rounded-xl p-8 shadow-2xl max-w-md text-center">
                 <div className="text-6xl mb-4">🗺️</div>
@@ -664,7 +670,7 @@ export const CreateDealPage: React.FC = () => {
                   Map Preview
                 </h3>
                 <p className="text-gray-600">
-                  The map will show your property location once you enter an address.
+                  The map will show your property location once you enter an address in Step 4.
                 </p>
               </div>
             </div>

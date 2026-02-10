@@ -14,13 +14,19 @@ Successfully built and integrated a full-screen deal creation page to replace th
 - Fixed header with "Back to Dashboard" button
 - Clean, spacious design with no sidebar
 
-**Progressive Reveal Flow (6 Steps):**
-1. **Deal Category** - Portfolio vs Pipeline (large card selection)
-2. **Development Type** - New vs Existing (only after category selected)
-3. **Property Address** - Google Places autocomplete (auto-advances)
-4. **Trade Area** - Optional custom definition (skippable)
-5. **Boundary** - Optional drawing for new dev only (skippable)
-6. **Details** - Name + description with summary
+**Progressive Reveal Flow (6 Steps in 3 Sections):**
+
+**SECTION 1: Setup**
+1. **Deal Category** - Portfolio vs Pipeline
+2. **Development Type** - New vs Existing
+
+**SECTION 2: Details**
+3. **Deal Details** - Name + description (with setup summary)
+
+**SECTION 3: Location** (all map work together)
+4. **Property Address** - Google Places (activates map)
+5. **Trade Area** - Optional custom definition (skippable)
+6. **Boundary** - Optional drawing for new dev only (skippable)
 
 **Key Features:**
 - ✅ Progressive reveal: Only one question at a time
