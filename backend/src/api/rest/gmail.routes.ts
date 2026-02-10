@@ -78,11 +78,13 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       logger.error('Background sync failed:', error);
     });
 
-    const redirectUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5000'}/settings/email?connected=true`;
+    const baseUrl = process.env.CORS_ORIGIN || `${req.protocol}://${req.get('host')}`;
+    const redirectUrl = `${baseUrl}/settings/email?connected=true`;
     res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Gmail callback error:', error);
-    const redirectUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5000'}/settings/email?error=auth_failed`;
+    const baseUrl = process.env.CORS_ORIGIN || `${req.protocol}://${req.get('host')}`;
+    const redirectUrl = `${baseUrl}/settings/email?error=auth_failed`;
     res.redirect(redirectUrl);
   }
 });
