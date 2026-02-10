@@ -262,18 +262,15 @@ export const DealPage: React.FC = () => {
       {/* Module Suggestion Modal */}
       {showModuleSuggestions && (
         <ModuleSuggestionModal
-          deal={deal}
+          isOpen={showModuleSuggestions}
           onClose={() => {
             setShowModuleSuggestions(false);
-            localStorage.setItem(`deal-${dealId}-suggestions-dismissed`, 'true');
-          }}
-          onActivate={(moduleSlugs) => {
-            console.log('Activating modules:', moduleSlugs);
-            // TODO: Call API to activate modules
             invalidateModuleCache();
-            setShowModuleSuggestions(false);
             localStorage.setItem(`deal-${dealId}-suggestions-dismissed`, 'true');
           }}
+          dealId={dealId!}
+          dealType={(deal as any).dealCategory || (deal as any).deal_category || 'multifamily'}
+          dealStrategy={(deal as any).developmentType || (deal as any).development_type || 'value-add'}
         />
       )}
     </div>

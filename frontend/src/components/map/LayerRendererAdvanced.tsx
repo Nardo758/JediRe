@@ -3,7 +3,7 @@
  * Supports pin, boundary, and heatmap layers
  */
 
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Marker, Popup, Source, Layer as MapLayer } from 'react-map-gl';
 import { MapLayer as LayerConfig, LayerDataPoint, PinStyle, BoundaryStyle, HeatmapStyle } from '../../types/layers';
 import { layersService } from '../../services/layers.service';

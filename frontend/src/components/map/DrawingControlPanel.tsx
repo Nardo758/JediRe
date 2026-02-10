@@ -3,14 +3,10 @@ import { useMapDrawingStore } from '../../stores/mapDrawingStore';
 import { Button } from '../shared/Button';
 
 interface DrawingControlPanelProps {
-  onComplete: () => void;
-  onCancel: () => void;
+  onComplete?: () => void;
+  onCancel?: () => void;
 }
 
-/**
- * Floating control panel for map drawing
- * Shows instructions and action buttons
- */
 export const DrawingControlPanel: React.FC<DrawingControlPanelProps> = ({
   onComplete,
   onCancel,

@@ -52,7 +52,7 @@ export const OverlayLayerRenderer: React.FC<OverlayLayerRendererProps> = ({
         id={`${layer.id}-fill`}
         type="fill"
         paint={{
-          'fill-color': colorExpression,
+          'fill-color': colorExpression as any,
           'fill-opacity': (style.opacity || 0.6) * layer.opacity
         }}
       />

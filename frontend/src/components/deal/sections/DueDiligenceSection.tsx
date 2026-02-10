@@ -218,7 +218,7 @@ export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDilig
     console.log('Learn more about DD Suite Pro');
   };
 
-  const updateTaskStatus = async (taskId: string, newStatus: 'pending' | 'in_progress' | 'complete' | 'blocked') => {
+  const updateTaskStatus = async (taskId: string, newStatus: 'pending' | 'in-progress' | 'complete' | 'blocked') => {
     if (!enhanced) return;
 
     setSyncing(true);
@@ -437,10 +437,9 @@ export function DueDiligenceSection({ deal, enhanced, onToggleModule }: DueDilig
                       <div 
                         key={task.id}
                         onClick={() => {
-                          // Cycle through statuses: pending → in_progress → complete → pending
-                          const statusCycle: Record<string, 'pending' | 'in_progress' | 'complete'> = {
-                            'pending': 'in_progress',
-                            'in_progress': 'complete',
+                          const statusCycle: Record<string, 'pending' | 'in-progress' | 'complete'> = {
+                            'pending': 'in-progress',
+                            'in-progress': 'complete',
                             'complete': 'pending',
                             'blocked': 'pending'
                           };

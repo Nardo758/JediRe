@@ -87,7 +87,7 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
                 {['small', 'medium', 'large'].map(size => (
                   <button
                     key={size}
-                    onClick={() => setStyle({ ...pinStyle, size })}
+                    onClick={() => setStyle({ ...pinStyle, size: size as 'small' | 'medium' | 'large' })}
                     className={`flex-1 py-2 px-4 rounded-lg border-2 capitalize transition-all ${
                       pinStyle.size === size
                         ? 'border-blue-600 bg-blue-50 text-blue-700'
