@@ -23,6 +23,220 @@ interface Finding {
 }
 
 /**
+ * Generate mock findings for demo/testing when database tables don't exist yet
+ */
+function generateMockFindings(): {
+  news: Finding[];
+  market: Finding[];
+  insights: Finding[];
+  actions: Finding[];
+} {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+
+  return {
+    news: [
+      {
+        id: 'news-1',
+        type: 'news',
+        priority: 'urgent',
+        title: 'Microsoft expanding Atlanta tech hub with 2,000 new jobs',
+        description: 'Major tech investment in Midtown and Buckhead areas. Expected to drive residential demand and rent growth in surrounding submarkets.',
+        timestamp: yesterday.toISOString(),
+        link: '/news-intel',
+        metadata: {
+          category: 'Employment',
+          affectedDeals: 3,
+          location: 'Midtown Atlanta'
+        }
+      },
+      {
+        id: 'news-2',
+        type: 'news',
+        priority: 'important',
+        title: 'New 500-unit luxury development announced in Buckhead',
+        description: 'Competitor project breaking ground Q2 2026. May impact absorption rates in your Buckhead Tower deal.',
+        timestamp: yesterday.toISOString(),
+        link: '/news-intel',
+        metadata: {
+          category: 'Development',
+          affectedDeals: 1,
+          location: 'Buckhead'
+        }
+      },
+      {
+        id: 'news-3',
+        type: 'news',
+        priority: 'info',
+        title: 'Atlanta Fed announces interest rate outlook',
+        description: 'Projected rate cuts in H2 2026 could improve deal economics. Consider accelerating acquisitions.',
+        timestamp: twoDaysAgo.toISOString(),
+        link: '/news-intel',
+        metadata: {
+          category: 'Economic',
+          affectedDeals: 5,
+          location: 'Metro Atlanta'
+        }
+      },
+      {
+        id: 'news-4',
+        type: 'news',
+        priority: 'important',
+        title: 'College Park seeing institutional investor activity',
+        description: 'Three major acquisitions in past 30 days. Competition heating up in workforce housing segment.',
+        timestamp: threeDaysAgo.toISOString(),
+        link: '/news-intel',
+        metadata: {
+          category: 'Transaction',
+          affectedDeals: 1,
+          location: 'College Park'
+        }
+      }
+    ],
+    market: [
+      {
+        id: 'market-1',
+        type: 'market',
+        priority: 'urgent',
+        title: 'Midtown rents up 12.3% in last quarter',
+        description: 'Submarket rents increased from $1,850 to $2,078. Strong demand driven by new corporate relocations.',
+        timestamp: yesterday.toISOString(),
+        link: '/market-data',
+        metadata: {
+          metric: 'rent',
+          change: 12.3
+        }
+      },
+      {
+        id: 'market-2',
+        type: 'market',
+        priority: 'important',
+        title: 'Buckhead occupancy dropped to 88.5%',
+        description: 'Down 4.2% from last quarter. New supply entering market - consider pricing adjustments.',
+        timestamp: twoDaysAgo.toISOString(),
+        link: '/market-data',
+        metadata: {
+          metric: 'occupancy',
+          change: -4.2
+        }
+      },
+      {
+        id: 'market-3',
+        type: 'market',
+        priority: 'info',
+        title: 'West Midtown absorption rate accelerating',
+        description: 'New units leasing 15% faster than 6-month average. Strong market momentum.',
+        timestamp: threeDaysAgo.toISOString(),
+        link: '/market-data',
+        metadata: {
+          metric: 'absorption',
+          change: 15.0
+        }
+      }
+    ],
+    insights: [
+      {
+        id: 'insight-1',
+        type: 'insight',
+        priority: 'urgent',
+        title: '🎯 Strong opportunity: Midtown Tower',
+        description: 'JEDI Score 87/100 - STRONG_OPPORTUNITY. Excellent location metrics, favorable market timing. Consider moving to full research.',
+        timestamp: yesterday.toISOString(),
+        link: '/deals',
+        metadata: {
+          jediScore: 87,
+          verdict: 'STRONG_OPPORTUNITY',
+          recommendationCount: 3
+        }
+      },
+      {
+        id: 'insight-2',
+        type: 'insight',
+        priority: 'important',
+        title: '💡 Good opportunity: College Park Workforce Housing',
+        description: 'JEDI Score 74/100 - OPPORTUNITY. Strong demand fundamentals, moderate competition. Review for pipeline inclusion.',
+        timestamp: yesterday.toISOString(),
+        link: '/deals',
+        metadata: {
+          jediScore: 74,
+          verdict: 'OPPORTUNITY',
+          recommendationCount: 2
+        }
+      },
+      {
+        id: 'insight-3',
+        type: 'insight',
+        priority: 'info',
+        title: '📊 Optimization suggestions available',
+        description: '4 recommendations to improve deal performance: rent optimization, expense reduction, capital improvements, refinancing timing.',
+        timestamp: twoDaysAgo.toISOString(),
+        link: '/deals',
+        metadata: {
+          recommendationCount: 4
+        }
+      },
+      {
+        id: 'insight-4',
+        type: 'insight',
+        priority: 'urgent',
+        title: '⚠️ Risk alert: Alpharetta Retail Center',
+        description: 'JEDI Score 42/100. Market fundamentals weakening, increased vacancy risk. Review immediately.',
+        timestamp: threeDaysAgo.toISOString(),
+        link: '/deals',
+        metadata: {
+          jediScore: 42,
+          verdict: 'CAUTION',
+          recommendationCount: 1
+        }
+      }
+    ],
+    actions: [
+      {
+        id: 'action-1',
+        type: 'action',
+        priority: 'urgent',
+        title: 'No recent updates: hhninjnj',
+        description: 'Deal has been inactive for 14+ days. Review status and next steps.',
+        timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+        link: '/deals',
+        metadata: {
+          state: 'TRIAGE',
+          daysInactive: 15
+        }
+      },
+      {
+        id: 'action-2',
+        type: 'action',
+        priority: 'important',
+        title: 'Decision needed: College Park Workforce Housing',
+        description: 'Triage complete. Review JEDI Score and decide: proceed to research, save as market note, or archive.',
+        timestamp: yesterday.toISOString(),
+        link: '/deals',
+        metadata: {
+          state: 'TRIAGE',
+          needsDecision: true
+        }
+      },
+      {
+        id: 'action-3',
+        type: 'action',
+        priority: 'info',
+        title: 'LOI expiring in 5 days',
+        description: 'Midtown Tower LOI expires Feb 14. Finalize terms or request extension.',
+        timestamp: twoDaysAgo.toISOString(),
+        link: '/deals',
+        metadata: {
+          state: 'UNDERWRITING',
+          deadline: 'Feb 14, 2026'
+        }
+      }
+    ]
+  };
+}
+
+/**
  * GET /api/v1/dashboard/findings
  * Get all key findings for the dashboard feed
  */
@@ -98,16 +312,18 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           };
         });
       } catch (error) {
-        // Table doesn't exist yet - return empty array
-        logger.error('News Intelligence table not found:', error);
-        results.news = [];
+        // Table doesn't exist yet - return mock data for demo
+        logger.error('News Intelligence table not found, using mock data:', error);
+        const mockData = generateMockFindings();
+        results.news = mockData.news;
       }
     }
 
     // Fetch Market Signals (submarket trends, occupancy/rent changes)
     if (!category || category === 'all' || category === 'market') {
-      // Query market_snapshots for significant changes in submarkets relevant to user's deals
-      const marketResult = await query(
+      try {
+        // Query market_snapshots for significant changes in submarkets relevant to user's deals
+        const marketResult = await query(
         `SELECT 
           d.id as deal_id,
           d.name as deal_name,
@@ -158,6 +374,12 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           },
         };
       });
+      } catch (error) {
+        // Market snapshots table or deals query failed - return mock data
+        logger.error('Market signals query failed, using mock data:', error);
+        const mockData = generateMockFindings();
+        results.market = mockData.market;
+      }
     }
 
     // Fetch AI Insights (platform-generated recommendations from JEDI analysis)
@@ -244,9 +466,10 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
         };
       });
       } catch (error) {
-        // analysis_results table doesn't exist yet - return empty array
-        logger.error('Analysis results table not found:', error);
-        results.insights = [];
+        // analysis_results table doesn't exist yet - return mock data for demo
+        logger.error('Analysis results table not found, using mock data:', error);
+        const mockData = generateMockFindings();
+        results.insights = mockData.insights;
       }
     }
 
@@ -304,9 +527,10 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           };
         });
       } catch (error) {
-        // Deal state queries might fail - return empty array
-        logger.error('Action items query failed:', error);
-        results.actions = [];
+        // Deal state queries might fail - return mock data for demo
+        logger.error('Action items query failed, using mock data:', error);
+        const mockData = generateMockFindings();
+        results.actions = mockData.actions;
       }
     }
 
