@@ -13,7 +13,7 @@ const router = Router();
 
 interface Finding {
   id: string;
-  type: 'news' | 'property' | 'market' | 'deal';
+  type: 'news' | 'market' | 'insight' | 'action';
   priority: 'urgent' | 'important' | 'info';
   title: string;
   description: string;
@@ -29,19 +29,19 @@ interface Finding {
 router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
-    const { category } = req.query; // 'news', 'properties', 'market', 'deals', or 'all'
+    const { category } = req.query; // 'news', 'market', 'insights', 'actions', or 'all'
 
     // Initialize results
     const results: {
       news: Finding[];
-      properties: Finding[];
       market: Finding[];
-      deals: Finding[];
+      insights: Finding[];
+      actions: Finding[];
     } = {
       news: [],
-      properties: [],
       market: [],
-      deals: [],
+      insights: [],
+      actions: [],
     };
 
     // Fetch News Intelligence findings
@@ -98,45 +98,9 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
       });
     }
 
-    // Fetch Property Alerts (AI-flagged opportunities)
-    if (!category || category === 'all' || category === 'properties') {
-      // Mock for now - will be replaced with actual AI flagging system
-      const propertyResult = await query(
-        `SELECT 
-          p.id,
-          p.address_line1,
-          p.city,
-          p.state,
-          p.property_type,
-          p.created_at,
-          p.metadata
-        FROM properties p
-        WHERE p.user_id = $1
-          AND p.created_at > NOW() - INTERVAL '30 days'
-        ORDER BY p.created_at DESC
-        LIMIT 5`,
-        [userId]
-      );
-
-      results.properties = propertyResult.rows.map(row => ({
-        id: row.id,
-        type: 'property',
-        priority: 'info', // AI will determine this based on scoring
-        title: `New opportunity: ${row.address_line1}`,
-        description: `${row.property_type} in ${row.city}, ${row.state}`,
-        timestamp: row.created_at,
-        link: `/properties/${row.id}`,
-        metadata: {
-          address: row.address_line1,
-          city: row.city,
-          state: row.state,
-          propertyType: row.property_type,
-        },
-      }));
-    }
-
-    // Fetch Market Signals (significant changes)
+    // Fetch Market Signals (submarket trends, occupancy/rent changes)
     if (!category || category === 'all' || category === 'market') {
+      // Query market_snapshots for significant changes in submarkets relevant to user's deals
       const marketResult = await query(
         `SELECT 
           d.id as deal_id,
@@ -190,9 +154,93 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
       });
     }
 
-    // Fetch Deal Alerts (stalled deals or requiring decisions)
-    if (!category || category === 'all' || category === 'deals') {
-      const dealsResult = await query(
+    // Fetch AI Insights (platform-generated recommendations from JEDI analysis)
+    if (!category || category === 'all' || category === 'insights') {
+      const insightsResult = await query(
+        `SELECT 
+          ar.id,
+          ar.deal_id,
+          d.name as deal_name,
+          d.address,
+          d.city,
+          d.state,
+          ar.jedi_score,
+          ar.verdict,
+          ar.recommendations,
+          ar.created_at,
+          ar.analysis_data
+        FROM analysis_results ar
+        JOIN deals d ON d.id = ar.deal_id
+        WHERE d.user_id = $1
+          AND ar.created_at > NOW() - INTERVAL '14 days'
+          AND (
+            -- High score opportunities not in pipeline yet
+            (ar.jedi_score >= 70 AND d.state IN ('SIGNAL_INTAKE', 'TRIAGE'))
+            -- Risk alerts on portfolio deals
+            OR (ar.jedi_score < 50 AND d.deal_category = 'portfolio')
+            -- Optimization opportunities
+            OR (ar.recommendations IS NOT NULL AND jsonb_array_length(ar.recommendations) > 0)
+          )
+        ORDER BY 
+          CASE 
+            WHEN ar.jedi_score >= 80 THEN 1
+            WHEN ar.jedi_score < 50 THEN 2
+            WHEN ar.jedi_score >= 70 THEN 3
+            ELSE 4
+          END,
+          ar.created_at DESC
+        LIMIT 5`,
+        [userId]
+      );
+
+      results.insights = insightsResult.rows.map(row => {
+        const score = row.jedi_score || 0;
+        let priority: 'urgent' | 'important' | 'info' = 'info';
+        let title = '';
+        let description = '';
+        
+        if (score >= 80) {
+          priority = 'urgent';
+          title = `🎯 Strong opportunity: ${row.deal_name}`;
+          description = `JEDI Score ${score}/100 - ${row.verdict}. Consider moving to full research.`;
+        } else if (score >= 70) {
+          priority = 'important';
+          title = `💡 Good opportunity: ${row.deal_name}`;
+          description = `JEDI Score ${score}/100. Review for pipeline inclusion.`;
+        } else if (score < 50 && row.deal_category === 'portfolio') {
+          priority = 'urgent';
+          title = `⚠️ Risk alert: ${row.deal_name}`;
+          description = `JEDI Score ${score}/100. Portfolio asset underperforming - review needed.`;
+        } else {
+          priority = 'info';
+          title = `📊 Analysis complete: ${row.deal_name}`;
+          const recs = row.recommendations || [];
+          description = recs.length > 0 
+            ? `${recs.length} optimization suggestions available`
+            : `JEDI Score ${score}/100`;
+        }
+
+        return {
+          id: row.id,
+          type: 'insight',
+          priority: priority,
+          title: title,
+          description: description,
+          timestamp: row.created_at,
+          link: `/deals/${row.deal_id}?tab=analysis`,
+          metadata: {
+            dealId: row.deal_id,
+            jediScore: score,
+            verdict: row.verdict,
+            recommendationCount: row.recommendations?.length || 0,
+          },
+        };
+      });
+    }
+
+    // Fetch Action Items (stalled deals, pending decisions, overdue tasks)
+    if (!category || category === 'all' || category === 'actions') {
+      const actionsResult = await query(
         `SELECT 
           d.id,
           d.name,
@@ -220,7 +268,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
         [userId]
       );
 
-      results.deals = dealsResult.rows.map(row => {
+      results.actions = actionsResult.rows.map(row => {
         let title = '';
         let description = '';
         let priority: 'urgent' | 'important' | 'info' = 'info';
@@ -245,7 +293,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
 
         return {
           id: row.id,
-          type: 'deal',
+          type: 'action',
           priority: priority,
           title: title,
           description: description,
