@@ -327,7 +327,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
         `SELECT 
           d.id as deal_id,
           d.name as deal_name,
-          d.city,
+          COALESCE(d.address, 'Unknown') as city,
           d.state,
           md.metric_type,
           md.current_value,
@@ -363,7 +363,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           type: 'market',
           priority: priority,
           title: `${row.metric_type} ${direction} ${Math.abs(row.change_pct).toFixed(1)}% in ${row.deal_name}`,
-          description: `Market ${row.metric_type} changed from $${row.previous_value} to $${row.current_value} in ${row.city}, ${row.state}`,
+          description: `Market ${row.metric_type} changed from $${row.previous_value} to $${row.current_value} near ${row.city}`,
           timestamp: row.updated_at,
           link: `/deals/${row.deal_id}?tab=market`,
           metadata: {
@@ -391,7 +391,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           ar.deal_id,
           d.name as deal_name,
           d.address,
-          d.city,
+          COALESCE(d.address, 'Unknown') as city,
           d.state,
           ar.jedi_score,
           ar.verdict,
