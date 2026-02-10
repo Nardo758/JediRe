@@ -20,6 +20,7 @@ import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
+import { EmailSettings } from './pages/settings/EmailSettings';
 import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
@@ -72,6 +73,7 @@ function AppContent() {
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModulesPage />} />
+          <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
           
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
