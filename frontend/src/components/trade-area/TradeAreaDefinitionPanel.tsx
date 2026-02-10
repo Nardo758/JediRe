@@ -286,7 +286,9 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
                 Draw Custom Boundary
               </h3>
               <p className="text-sm text-blue-700 mb-3">
-                Use the map on the right to draw your boundary. Click points to create a polygon, then double-click to finish.
+                <strong>Look at the map:</strong> Use the drawing tools outlined in red at the top of the map.
+                Click the polygon tool to start, click points to draw your boundary, then double-click to finish.
+                Your drawing will be automatically saved.
               </p>
               <button 
                 onClick={onCustomDraw || onSkip}
