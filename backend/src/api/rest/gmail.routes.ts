@@ -4,7 +4,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuth } from '../../middleware/auth';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { gmailSyncService } from '../../services/gmail-sync.service';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -12,11 +13,7 @@ import { AppError } from '../../middleware/errorHandler';
 
 const router = Router();
 
-/**
- * GET /api/v1/gmail/auth-url
- * Get Gmail OAuth authorization URL
- */
-router.get('/auth-url', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/auth-url', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
     const authUrl = gmailSyncService.getAuthUrl(userId);
@@ -33,10 +30,6 @@ router.get('/auth-url', requireAuth, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-/**
- * GET /api/v1/gmail/callback
- * OAuth callback endpoint
- */
 router.get('/callback', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { code, state } = req.query;
@@ -50,10 +43,8 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       throw new AppError(400, 'Invalid state parameter');
     }
 
-    // Exchange code for tokens
     const tokens = await gmailSyncService.exchangeCodeForTokens(code);
 
-    // Check if account already exists
     const existingResult = await query(
       'SELECT id FROM user_email_accounts WHERE user_id = $1 AND email_address = $2',
       [userId, tokens.email]
@@ -62,7 +53,6 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
     let accountId: string;
 
     if (existingResult.rows.length > 0) {
-      // Update existing account
       accountId = existingResult.rows[0].id;
       await query(
         `UPDATE user_email_accounts 
@@ -73,7 +63,6 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       );
       logger.info(`Gmail account reconnected: ${tokens.email}`);
     } else {
-      // Create new account
       const result = await query(
         `INSERT INTO user_email_accounts (
           user_id, provider, email_address, access_token, refresh_token, token_expires_at
@@ -85,12 +74,10 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       logger.info(`New Gmail account connected: ${tokens.email}`);
     }
 
-    // Trigger initial sync in background (don't wait)
     gmailSyncService.syncEmails(accountId, 50).catch(error => {
       logger.error('Background sync failed:', error);
     });
 
-    // Redirect to frontend settings page
     const redirectUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5000'}/settings/email?connected=true`;
     res.redirect(redirectUrl);
   } catch (error) {
@@ -100,11 +87,7 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
   }
 });
 
-/**
- * POST /api/v1/gmail/connect
- * Initiate Gmail connection (alternative to auth-url)
- */
-router.post('/connect', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.post('/connect', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
     const authUrl = gmailSyncService.getAuthUrl(userId);
@@ -122,11 +105,7 @@ router.post('/connect', requireAuth, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-/**
- * GET /api/v1/gmail/accounts
- * List connected Gmail accounts
- */
-router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/accounts', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
 
@@ -151,17 +130,12 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
-/**
- * GET /api/v1/gmail/sync
- * Manually trigger email sync for all accounts
- */
-router.get('/sync', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/sync', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
     const { accountId } = req.query;
 
     if (accountId) {
-      // Sync specific account
       const accountResult = await query(
         'SELECT id FROM user_email_accounts WHERE id = $1 AND user_id = $2',
         [accountId, userId]
@@ -182,14 +156,13 @@ router.get('/sync', requireAuth, async (req: AuthenticatedRequest, res: Response
         message: 'Email sync completed successfully',
       });
     } else {
-      // Sync all accounts for user
       const accountsResult = await query(
         'SELECT id FROM user_email_accounts WHERE user_id = $1 AND provider = $2 AND sync_enabled = true',
         [userId, 'google']
       );
 
       const accounts = accountsResult.rows;
-      const syncResults = [];
+      const syncResults: any[] = [];
 
       for (const account of accounts) {
         try {
@@ -221,16 +194,11 @@ router.get('/sync', requireAuth, async (req: AuthenticatedRequest, res: Response
   }
 });
 
-/**
- * POST /api/v1/gmail/sync/:accountId
- * Manually trigger sync for specific account
- */
-router.post('/sync/:accountId', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.post('/sync/:accountId', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const { accountId } = req.params;
     const userId = req.user!.userId;
 
-    // Verify account belongs to user
     const accountResult = await query(
       'SELECT id FROM user_email_accounts WHERE id = $1 AND user_id = $2',
       [accountId, userId]
@@ -256,16 +224,11 @@ router.post('/sync/:accountId', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
-/**
- * DELETE /api/v1/gmail/disconnect/:accountId
- * Disconnect Gmail account
- */
-router.delete('/disconnect/:accountId', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.delete('/disconnect/:accountId', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const { accountId } = req.params;
     const userId = req.user!.userId;
 
-    // Verify account belongs to user
     const accountResult = await query(
       'SELECT email_address FROM user_email_accounts WHERE id = $1 AND user_id = $2',
       [accountId, userId]
@@ -277,7 +240,6 @@ router.delete('/disconnect/:accountId', requireAuth, async (req: AuthenticatedRe
 
     const emailAddress = accountResult.rows[0].email_address;
 
-    // Delete account (cascade will handle related records)
     await query(
       'DELETE FROM user_email_accounts WHERE id = $1',
       [accountId]
@@ -295,17 +257,12 @@ router.delete('/disconnect/:accountId', requireAuth, async (req: AuthenticatedRe
   }
 });
 
-/**
- * PATCH /api/v1/gmail/accounts/:accountId
- * Update account settings
- */
-router.patch('/accounts/:accountId', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.patch('/accounts/:accountId', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const { accountId } = req.params;
     const userId = req.user!.userId;
     const { syncEnabled, syncFrequencyMinutes, isPrimary } = req.body;
 
-    // Verify account belongs to user
     const accountResult = await query(
       'SELECT id FROM user_email_accounts WHERE id = $1 AND user_id = $2',
       [accountId, userId]
@@ -315,7 +272,6 @@ router.patch('/accounts/:accountId', requireAuth, async (req: AuthenticatedReque
       throw new AppError(404, 'Account not found or access denied');
     }
 
-    // Build update query dynamically
     const updates: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
@@ -357,23 +313,19 @@ router.patch('/accounts/:accountId', requireAuth, async (req: AuthenticatedReque
   }
 });
 
-/**
- * GET /api/v1/gmail/emails
- * Get synced emails
- */
-router.get('/emails', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/emails', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
-    const { accountId, limit = 50, offset = 0, unreadOnly = false } = req.query;
+    const { accountId, limit = 50, offset = 0, unreadOnly = 'false' } = req.query;
 
     let queryStr = `
       SELECT 
-        e.id, e.subject, e.from_email, e.from_name, e.snippet,
-        e.received_at, e.is_read, e.is_important, e.is_starred,
-        e.has_attachments, e.labels, e.linked_deal_id,
+        e.id, e.subject, e.from_address as from_email, e.from_name, e.body_preview as snippet,
+        e.received_at, e.is_read, e.is_flagged as is_important, e.is_flagged as is_starred,
+        e.has_attachments, e.deal_id as linked_deal_id,
         a.email_address as account_email
       FROM emails e
-      JOIN user_email_accounts a ON e.account_id = a.id
+      JOIN user_email_accounts a ON e.email_account_id::text = a.id::text
       WHERE e.user_id = $1
     `;
 
@@ -381,11 +333,11 @@ router.get('/emails', requireAuth, async (req: AuthenticatedRequest, res: Respon
     let paramCount = 2;
 
     if (accountId) {
-      queryStr += ` AND e.account_id = $${paramCount++}`;
+      queryStr += ` AND e.email_account_id = $${paramCount++}`;
       values.push(accountId);
     }
 
-    if (unreadOnly === 'true' || unreadOnly === true) {
+    if (unreadOnly === 'true') {
       queryStr += ` AND e.is_read = false`;
     }
 
@@ -394,16 +346,15 @@ router.get('/emails', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
     const result = await query(queryStr, values);
 
-    // Get total count
     let countQuery = 'SELECT COUNT(*) FROM emails WHERE user_id = $1';
     const countValues: any[] = [userId];
     
     if (accountId) {
-      countQuery += ' AND account_id = $2';
+      countQuery += ' AND email_account_id = $2';
       countValues.push(accountId);
     }
     
-    if (unreadOnly === 'true' || unreadOnly === true) {
+    if (unreadOnly === 'true') {
       countQuery += ' AND is_read = false';
     }
 
@@ -426,11 +377,7 @@ router.get('/emails', requireAuth, async (req: AuthenticatedRequest, res: Respon
   }
 });
 
-/**
- * GET /api/v1/gmail/sync-logs
- * Get sync history
- */
-router.get('/sync-logs', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+router.get('/sync-logs', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
     const { accountId, limit = 20 } = req.query;

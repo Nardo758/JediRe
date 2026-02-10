@@ -996,8 +996,10 @@ import financialModelsRouter from './api/rest/financial-models.routes';
 import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
 import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
+import gmailRouter from './api/rest/gmail.routes';
 
 app.use('/api/v1/dashboard', dashboardRouter);
+app.use('/api/v1/gmail', gmailRouter);
 app.use('/api/v1/news', newsRouter);
 app.use('/api/v1/trade-areas', tradeAreasRoutes);
 app.use('/api/v1/isochrone', isochroneRoutes);

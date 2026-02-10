@@ -17,6 +17,8 @@
     "@turf/helpers": "^7.3.4",
     "@turf/union": "^7.3.4",
     "@types/react-window": "^1.8.8",
+    "google-auth-library": "^10.5.0",
+    "googleapis": "^171.4.0",
     "react-virtualized-auto-sizer": "^2.0.2",
     "react-window": "^2.2.6",
     "socket.io-client": "^4.8.3"

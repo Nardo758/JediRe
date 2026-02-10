@@ -202,6 +202,13 @@ Key variables are set automatically:
 - `email_labels` - Email label/folder system
 
 ## Recent Changes
+- 2026-02-10: Google OAuth / Gmail integration wired up
+  - Installed googleapis and google-auth-library packages
+  - Gmail routes mounted at /api/v1/gmail (connect, callback, accounts, sync, emails, sync-logs)
+  - GmailSyncService uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL env vars
+  - Created user_email_accounts and email_sync_logs DB tables
+  - Sync service columns aligned with existing emails table schema
+  - OAuth callback URL: https://jedi-re.replit.app/api/v1/gmail/callback
 - 2026-02-09: Module System wiring (fully functional)
   - Created module_definitions (28 modules, 7 categories) and user_module_settings tables
   - Backend: GET /api/v1/modules (list), GET /api/v1/modules/enabled, PATCH /api/v1/modules/:slug/toggle, POST /api/v1/modules/:slug/purchase
