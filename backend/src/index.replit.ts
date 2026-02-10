@@ -420,13 +420,16 @@ app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) =>
     }
 
     const userTier = tier || 'basic';
+    const boundaryGeom = boundary.type === 'Point'
+      ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
+      : `ST_GeomFromGeoJSON($3)`;
     const result = await client.query(`
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
         deal_category, development_type, address, description
       )
-      VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
       RETURNING *
     `, [
       req.user!.userId,
