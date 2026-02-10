@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException 
 import { Pool } from 'pg';
 import { CreateDealDto, UpdateDealDto, DealQueryDto } from './dto';
 import { DealAnalysisService } from '../services/dealAnalysis';
+import { DealTriageService } from '../services/DealTriageService';
 
 @Injectable()
 export class DealsService {
@@ -83,6 +84,11 @@ export class DealsService {
 
     // Log activity
     await this.logActivity(deal.id, userId, 'created', `Deal created: ${dto.name}`);
+
+    // Auto-triage the deal (async, don't block response)
+    this.autoTriageDeal(deal.id).catch(error => {
+      console.error(`[AutoTriage] Failed for deal ${deal.id}:`, error);
+    });
 
     return {
       ...deal,
@@ -677,5 +683,69 @@ export class DealsService {
        VALUES ($1, $2, $3, $4, $5)`,
       [dealId, userId, actionType, description, JSON.stringify(metadata)]
     );
+  }
+
+  /**
+   * Auto-triage deal (called after creation)
+   */
+  private async autoTriageDeal(dealId: string): Promise<void> {
+    try {
+      console.log(`[AutoTriage] Starting auto-triage for deal ${dealId}`);
+      
+      const triageService = new DealTriageService(this.db);
+      const result = await triageService.triageDeal(dealId);
+      
+      console.log(`[AutoTriage] Completed: ${result.score}/50 (${result.status})`);
+    } catch (error) {
+      console.error(`[AutoTriage] Error:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Manually trigger triage for a deal
+   */
+  async triageDeal(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const triageService = new DealTriageService(this.db);
+    const result = await triageService.triageDeal(dealId);
+
+    return result;
+  }
+
+  /**
+   * Get triage result for a deal
+   */
+  async getTriageResult(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const result = await this.db.query(
+      `SELECT 
+        triage_result,
+        triage_status,
+        triage_score,
+        triaged_at
+      FROM deals
+      WHERE id = $1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException('Deal not found');
+    }
+
+    const row = result.rows[0];
+
+    if (!row.triage_result) {
+      throw new NotFoundException('Deal has not been triaged yet');
+    }
+
+    return {
+      ...row.triage_result,
+      status: row.triage_status,
+      score: row.triage_score,
+      triagedAt: row.triaged_at,
+    };
   }
 }
