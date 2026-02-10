@@ -77,7 +77,8 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   const handleGenerateDriveTime = async () => {
     setIsGenerating(true);
     try {
-      await generateDriveTimeIsochrone(propertyLat, propertyLng, driveTimeMinutes, driveTimeProfile);
+      // Always use 'driving' profile (walking removed per user feedback)
+      await generateDriveTimeIsochrone(propertyLat, propertyLng, driveTimeMinutes, 'driving');
     } catch (error: any) {
       alert(`Failed to generate drive-time boundary: ${error.message || 'Unknown error'}`);
     } finally {
@@ -213,60 +214,24 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
         <div className="mb-6 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Drive Time
+              Drive Time (minutes)
             </label>
-            <div className="flex gap-2">
-              {[5, 10, 15, 20].map((minutes) => (
-                <button
-                  key={minutes}
-                  onClick={() => setDriveTimeMinutes(minutes)}
-                  className={`
-                    flex-1 px-4 py-2 rounded-lg border-2 transition-all
-                    ${driveTimeMinutes === minutes
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                    }
-                  `}
-                >
-                  {minutes} min
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Travel Mode
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setDriveTimeProfile('driving')}
-                className={`
-                  flex-1 px-4 py-2 rounded-lg border-2 transition-all
-                  ${driveTimeProfile === 'driving'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                  }
-                `}
-              >
-                🚗 Driving
-              </button>
-              <button
-                onClick={() => setDriveTimeProfile('walking')}
-                className={`
-                  flex-1 px-4 py-2 rounded-lg border-2 transition-all
-                  ${driveTimeProfile === 'walking'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                  }
-                `}
-              >
-                🚶 Walking
-              </button>
-            </div>
+            <input
+              type="number"
+              min="1"
+              max="60"
+              value={driveTimeMinutes}
+              onChange={(e) => setDriveTimeMinutes(parseInt(e.target.value) || 10)}
+              placeholder="e.g., 10"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter drive time in minutes (typically 5-20 minutes for trade areas)
+            </p>
           </div>
           <div className="flex justify-center">
             <button
-              onClick={handleGenerateDriveTime}
+              onClick={() => handleGenerateDriveTime()}
               disabled={isGenerating}
               className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-green-300 transition-colors font-semibold"
             >
