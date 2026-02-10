@@ -46,56 +46,62 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
 
     // Fetch News Intelligence findings
     if (!category || category === 'all' || category === 'news') {
-      const newsResult = await query(
-        `SELECT 
-          ne.id,
-          ne.event_type,
-          ne.event_category,
-          ne.impact_severity,
-          ne.location_raw,
-          ne.extracted_data,
-          ne.published_at,
-          COUNT(DISTINCT negi.deal_id) as affected_deals
-        FROM news_events ne
-        LEFT JOIN news_event_geo_impacts negi ON negi.event_id = ne.id
-        LEFT JOIN deals d ON d.id = negi.deal_id
-        WHERE (ne.source_type = 'public' OR ne.source_user_id = $1)
-          AND ne.published_at > NOW() - INTERVAL '7 days'
-          AND (d.user_id = $1 OR d.user_id IS NULL)
-        GROUP BY ne.id
-        HAVING COUNT(DISTINCT negi.deal_id) > 0 OR ne.impact_severity IN ('high', 'critical')
-        ORDER BY 
-          CASE ne.impact_severity 
-            WHEN 'critical' THEN 1 
-            WHEN 'high' THEN 2 
-            WHEN 'significant' THEN 3 
-            ELSE 4 
-          END,
-          ne.published_at DESC
-        LIMIT 5`,
-        [userId]
-      );
+      try {
+        const newsResult = await query(
+          `SELECT 
+            ne.id,
+            ne.event_type,
+            ne.event_category,
+            ne.impact_severity,
+            ne.location_raw,
+            ne.extracted_data,
+            ne.published_at,
+            COUNT(DISTINCT negi.deal_id) as affected_deals
+          FROM news_events ne
+          LEFT JOIN news_event_geo_impacts negi ON negi.event_id = ne.id
+          LEFT JOIN deals d ON d.id = negi.deal_id
+          WHERE (ne.source_type = 'public' OR ne.source_user_id = $1)
+            AND ne.published_at > NOW() - INTERVAL '7 days'
+            AND (d.user_id = $1 OR d.user_id IS NULL)
+          GROUP BY ne.id
+          HAVING COUNT(DISTINCT negi.deal_id) > 0 OR ne.impact_severity IN ('high', 'critical')
+          ORDER BY 
+            CASE ne.impact_severity 
+              WHEN 'critical' THEN 1 
+              WHEN 'high' THEN 2 
+              WHEN 'significant' THEN 3 
+              ELSE 4 
+            END,
+            ne.published_at DESC
+          LIMIT 5`,
+          [userId]
+        );
 
-      results.news = newsResult.rows.map(row => {
-        const extractedData = row.extracted_data || {};
-        const description = extractedData.summary || 
-          `${formatEventType(row.event_type)} in ${row.location_raw}`;
-        
-        return {
-          id: row.id,
-          type: 'news',
-          priority: getPriorityFromSeverity(row.impact_severity),
-          title: extractedData.headline || formatEventType(row.event_type),
-          description: description.substring(0, 150) + (description.length > 150 ? '...' : ''),
-          timestamp: row.published_at,
-          link: `/news-intel?event=${row.id}`,
-          metadata: {
-            category: row.event_category,
-            affectedDeals: row.affected_deals,
-            location: row.location_raw,
-          },
-        };
-      });
+        results.news = newsResult.rows.map(row => {
+          const extractedData = row.extracted_data || {};
+          const description = extractedData.summary || 
+            `${formatEventType(row.event_type)} in ${row.location_raw}`;
+          
+          return {
+            id: row.id,
+            type: 'news',
+            priority: getPriorityFromSeverity(row.impact_severity),
+            title: extractedData.headline || formatEventType(row.event_type),
+            description: description.substring(0, 150) + (description.length > 150 ? '...' : ''),
+            timestamp: row.published_at,
+            link: `/news-intel?event=${row.id}`,
+            metadata: {
+              category: row.event_category,
+              affectedDeals: row.affected_deals,
+              location: row.location_raw,
+            },
+          };
+        });
+      } catch (error) {
+        // Table doesn't exist yet - return empty array
+        logger.error('News Intelligence table not found:', error);
+        results.news = [];
+      }
     }
 
     // Fetch Market Signals (submarket trends, occupancy/rent changes)
@@ -156,7 +162,8 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
 
     // Fetch AI Insights (platform-generated recommendations from JEDI analysis)
     if (!category || category === 'all' || category === 'insights') {
-      const insightsResult = await query(
+      try {
+        const insightsResult = await query(
         `SELECT 
           ar.id,
           ar.deal_id,
@@ -236,75 +243,71 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           },
         };
       });
+      } catch (error) {
+        // analysis_results table doesn't exist yet - return empty array
+        logger.error('Analysis results table not found:', error);
+        results.insights = [];
+      }
     }
 
     // Fetch Action Items (stalled deals, pending decisions, overdue tasks)
     if (!category || category === 'all' || category === 'actions') {
-      const actionsResult = await query(
-        `SELECT 
-          d.id,
-          d.name,
-          d.status,
-          d.updated_at,
-          d.metadata,
-          COUNT(t.id) as pending_tasks
-        FROM deals d
-        LEFT JOIN tasks t ON t.deal_id = d.id AND t.status != 'completed'
-        WHERE d.user_id = $1
-          AND (
-            d.status IN ('STALLED', 'PENDING_DECISION')
-            OR (d.updated_at < NOW() - INTERVAL '14 days' AND d.status NOT IN ('CLOSED', 'PASSED'))
-            OR COUNT(t.id) FILTER (WHERE t.due_date < NOW() AND t.status != 'completed') > 0
-          )
-        GROUP BY d.id
-        ORDER BY 
-          CASE d.status 
-            WHEN 'STALLED' THEN 1 
-            WHEN 'PENDING_DECISION' THEN 2 
-            ELSE 3 
-          END,
-          d.updated_at ASC
-        LIMIT 5`,
-        [userId]
-      );
+      try {
+        const actionsResult = await query(
+          `SELECT 
+            d.id,
+            d.name,
+            d.state,
+            d.updated_at
+          FROM deals d
+          WHERE d.user_id = $1
+            AND (
+              d.state IN ('STALLED')
+              OR (d.updated_at < NOW() - INTERVAL '14 days' AND d.state NOT IN ('POST_CLOSE', 'ARCHIVED'))
+            )
+          ORDER BY 
+            CASE d.state 
+              WHEN 'STALLED' THEN 1 
+              ELSE 2 
+            END,
+            d.updated_at ASC
+          LIMIT 5`,
+          [userId]
+        );
 
-      results.actions = actionsResult.rows.map(row => {
-        let title = '';
-        let description = '';
-        let priority: 'urgent' | 'important' | 'info' = 'info';
+        results.actions = actionsResult.rows.map(row => {
+          let title = '';
+          let description = '';
+          let priority: 'urgent' | 'important' | 'info' = 'info';
 
-        if (row.status === 'STALLED') {
-          title = `Deal stalled: ${row.name}`;
-          description = 'No activity in 14+ days. Review status and next steps.';
-          priority = 'urgent';
-        } else if (row.status === 'PENDING_DECISION') {
-          title = `Decision needed: ${row.name}`;
-          description = 'Deal awaiting your decision to proceed.';
-          priority = 'urgent';
-        } else if (row.pending_tasks > 0) {
-          title = `${row.pending_tasks} overdue tasks: ${row.name}`;
-          description = 'Tasks are past due. Review and update progress.';
-          priority = 'important';
-        } else {
-          title = `No recent updates: ${row.name}`;
-          description = 'Deal has been inactive for 14+ days.';
-          priority = 'info';
-        }
+          if (row.state === 'STALLED') {
+            title = `Deal stalled: ${row.name}`;
+            description = 'No activity in 14+ days. Review status and next steps.';
+            priority = 'urgent';
+          } else {
+            title = `No recent updates: ${row.name}`;
+            description = 'Deal has been inactive for 14+ days.';
+            priority = 'info';
+          }
 
-        return {
-          id: row.id,
-          type: 'action',
-          priority: priority,
-          title: title,
-          description: description,
-          timestamp: row.updated_at,
-          link: `/deals/${row.id}`,
-          metadata: {
-            status: row.status,
-            pendingTasks: row.pending_tasks,
-          },
-        };
-      });
+          return {
+            id: row.id,
+            type: 'action',
+            priority: priority,
+            title: title,
+            description: description,
+            timestamp: row.updated_at,
+            link: `/deals/${row.id}`,
+            metadata: {
+              state: row.state,
+            },
+          };
+        });
+      } catch (error) {
+        // Deal state queries might fail - return empty array
+        logger.error('Action items query failed:', error);
+        results.actions = [];
+      }
     }
 
     // Return all findings
