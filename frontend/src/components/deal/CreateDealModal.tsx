@@ -1,3 +1,13 @@
+/**
+ * @deprecated This modal has been replaced by CreateDealPage (full-screen experience)
+ * 
+ * Route: /deals/create
+ * File: frontend/src/pages/CreateDealPage.tsx
+ * 
+ * This file is kept for reference but should not be used in new code.
+ * All deal creation should now use the full-screen CreateDealPage instead.
+ */
+
 import React, { useState, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useDealStore } from '../../stores/dealStore';

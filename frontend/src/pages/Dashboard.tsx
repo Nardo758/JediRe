@@ -5,7 +5,8 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { useMapLayers } from '../contexts/MapLayersContext';
-import { CreateDealModal } from '../components/deal/CreateDealModal';
+// CreateDealModal is deprecated - now using CreateDealPage at /deals/create
+// import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { Button } from '../components/shared/Button';
@@ -20,7 +21,6 @@ export const Dashboard: React.FC = () => {
   const { deals, fetchDeals, isLoading} = useDealStore();
   const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
   const { layers } = useMapLayers();
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -30,11 +30,12 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     fetchDeals();
     
+    // Redirect to create page if requested
     if (location.state?.openCreateDeal) {
-      setIsCreateModalOpen(true);
+      navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
-  }, [location]);
+  }, [location, navigate]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -312,18 +313,6 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleDealCreated = (deal: any) => {
-    fetchDeals();
-    
-    // Navigate based on deal category
-    if (deal.deal_category === 'pipeline') {
-      navigate('/deals'); // Pipeline grid view
-    } else if (deal.deal_category === 'portfolio') {
-      navigate('/assets-owned'); // Assets Owned page
-    }
-    // If no category or unknown, stay on dashboard
-  };
-
   const renderContent = () => (
     <div>
       <h2 className="text-sm font-semibold text-gray-700 mb-3">MY DEALS</h2>
@@ -333,7 +322,7 @@ export const Dashboard: React.FC = () => {
       ) : !Array.isArray(deals) || deals.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-gray-500 mb-4">No deals yet</p>
-          <Button onClick={() => setIsCreateModalOpen(true)} size="sm">
+          <Button onClick={() => navigate('/deals/create')} size="sm">
             Create Your First Deal
           </Button>
         </div>
@@ -430,22 +419,14 @@ export const Dashboard: React.FC = () => {
   );
 
   return (
-    <>
-      <ThreePanelLayout
-        storageKey="dashboard"
-        showViewsPanel={false}
-        renderContent={renderContent}
-        renderMap={renderMap}
-        defaultContentWidth={400}
-        minContentWidth={300}
-        maxContentWidth={600}
-      />
-
-      <CreateDealModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onDealCreated={handleDealCreated}
-      />
-    </>
+    <ThreePanelLayout
+      storageKey="dashboard"
+      showViewsPanel={false}
+      renderContent={renderContent}
+      renderMap={renderMap}
+      defaultContentWidth={400}
+      minContentWidth={300}
+      maxContentWidth={600}
+    />
   );
 };

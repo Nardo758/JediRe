@@ -4,12 +4,13 @@
  */
 
 import { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Map from 'react-map-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useMapDrawingStore } from '../stores/mapDrawingStore';
-import { CreateDealModal } from '../components/deal/CreateDealModal';
+// CreateDealModal is deprecated - now using CreateDealPage at /deals/create
+// import { CreateDealModal } from '../components/deal/CreateDealModal';
 import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
 import { LayerRendererFull } from '../components/map/LayerRendererFull';
 import { LayersPanel } from '../components/map/LayersPanel';
@@ -26,12 +27,12 @@ const DEFAULT_MAP_ID = 'default';
 
 export const DashboardV3: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { deals, fetchDeals, isLoading } = useDealStore();
   const { isDrawing, centerPoint, saveDrawing } = useMapDrawingStore();
   
   const [layers, setLayers] = useState<MapLayer[]>([]);
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
   const [viewState, setViewState] = useState({
     longitude: -84.388,
@@ -47,11 +48,12 @@ export const DashboardV3: React.FC = () => {
   useEffect(() => {
     fetchDeals();
     
+    // Redirect to create page if requested
     if (location.state?.openCreateDeal) {
-      setIsCreateModalOpen(true);
+      navigate('/deals/create');
       window.history.replaceState({}, document.title);
     }
-  }, [location]);
+  }, [location, navigate]);
 
   // Load default map configuration
   useEffect(() => {
@@ -287,18 +289,6 @@ export const DashboardV3: React.FC = () => {
           mapId={DEFAULT_MAP_ID}
           existingLayers={layers}
           onLayersCreated={handleWarMapsCreated}
-        />
-      )}
-
-      {/* Create Deal Modal */}
-      {isCreateModalOpen && (
-        <CreateDealModal
-          isOpen={isCreateModalOpen}
-          onClose={() => setIsCreateModalOpen(false)}
-          onSuccess={() => {
-            setIsCreateModalOpen(false);
-            fetchDeals();
-          }}
         />
       )}
 
