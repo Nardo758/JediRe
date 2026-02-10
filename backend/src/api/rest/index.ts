@@ -33,6 +33,7 @@ import modulesRoutes from './modules.routes';
 import financialModelsRoutes from './financial-models.routes';
 import strategyAnalysesRoutes from './strategy-analyses.routes';
 import ddChecklistsRoutes from './dd-checklists.routes';
+import dashboardRoutes from './dashboard.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -40,6 +41,9 @@ const API_PREFIX = '/api/v1';
 export function setupRESTRoutes(app: Application): void {
   // Authentication routes
   app.use(`${API_PREFIX}/auth`, authRoutes);
+
+  // Dashboard routes
+  app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 
   // User preferences routes
   app.use(`${API_PREFIX}/preferences`, preferencesRoutes);

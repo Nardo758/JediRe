@@ -19,6 +19,24 @@ interface DealStore {
   deleteDeal: (dealId: string) => Promise<void>;
 }
 
+// Transform snake_case backend fields to camelCase frontend fields
+const transformDeal = (deal: any): Deal => {
+  return {
+    ...deal,
+    projectType: deal.project_type || deal.projectType,
+    propertyCount: deal.property_count || deal.propertyCount || 0,
+    pendingTasks: deal.pending_tasks || deal.pendingTasks || 0,
+    createdAt: deal.created_at || deal.createdAt,
+    updatedAt: deal.updated_at || deal.updatedAt,
+    triageStatus: deal.triage_status || deal.triageStatus,
+    triageScore: deal.triage_score || deal.triageScore,
+    signalConfidence: deal.signal_confidence || deal.signalConfidence,
+    triagedAt: deal.triaged_at || deal.triagedAt,
+    stateData: deal.state_data || deal.stateData,
+    daysInStation: deal.days_in_station || deal.daysInStation || 0,
+  };
+};
+
 export const useDealStore = create<DealStore>((set, get) => ({
   // Initial state
   deals: [],
@@ -35,8 +53,9 @@ export const useDealStore = create<DealStore>((set, get) => ({
       const response = await api.deals.list();
       const data = response.data;
       const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
+      const transformedDeals = dealsList.map(transformDeal);
       set({ 
-        deals: dealsList,
+        deals: transformedDeals,
         isLoading: false 
       });
     } catch (error: any) {
@@ -55,8 +74,9 @@ export const useDealStore = create<DealStore>((set, get) => ({
       const response = await api.deals.get(dealId);
       const data = response.data;
       const deal = data?.deal || data;
+      const transformedDeal = transformDeal(deal);
       set({ 
-        selectedDeal: deal,
+        selectedDeal: transformedDeal,
         selectedDealId: dealId,
         isLoading: false 
       });
@@ -88,13 +108,14 @@ export const useDealStore = create<DealStore>((set, get) => ({
       const response = await api.deals.create(dealData);
       const respData = response.data;
       const newDeal = respData?.deal || respData;
+      const transformedDeal = transformDeal(newDeal);
       
       set((state) => ({ 
-        deals: [newDeal, ...state.deals],
+        deals: [transformedDeal, ...state.deals],
         isLoading: false 
       }));
       
-      return newDeal;
+      return transformedDeal;
     } catch (error: any) {
       set({ 
         error: error.response?.data?.message || error.message || 'Failed to create deal',
