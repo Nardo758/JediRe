@@ -21,6 +21,7 @@ import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
 import emailRoutes from './email.routes';
 import inboxRoutes from './inbox.routes';
+import gmailRoutes from './gmail.routes';
 import newsRoutes from './news.routes';
 import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
@@ -89,6 +90,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Email routes (Email AI Integration)
   app.use(`${API_PREFIX}/emails`, emailRoutes);
+
+  // Gmail routes (Gmail Sync Integration)
+  app.use(`${API_PREFIX}/gmail`, gmailRoutes);
 
   // Inbox routes (Email Management)
   app.use(`${API_PREFIX}/inbox`, inboxRoutes);

@@ -1558,11 +1558,30 @@ httpServer.listen(PORT, () => {
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
+  
+  // Start email sync scheduler
+  try {
+    const { emailSyncScheduler } = require('./services/email-sync-scheduler');
+    emailSyncScheduler.start(15); // Sync every 15 minutes
+    console.log('✉️  Email sync scheduler started (every 15 minutes)');
+  } catch (error) {
+    console.error('Failed to start email sync scheduler:', error);
+  }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  
+  // Stop email sync scheduler
+  try {
+    const { emailSyncScheduler } = require('./services/email-sync-scheduler');
+    emailSyncScheduler.stop();
+    console.log('Email sync scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping email sync scheduler:', error);
+  }
+  
   await pool.end();
   httpServer.close(() => {
     console.log('Server closed');
