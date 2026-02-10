@@ -25,9 +25,9 @@ syntax = "typescript"
 start = "typescript-language-server --stdio"
 
 [deployment]
-run = ["npm", "run", "start"]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
+run = ["npm", "run", "start"]
 
 [agent]
 expertMode = true
