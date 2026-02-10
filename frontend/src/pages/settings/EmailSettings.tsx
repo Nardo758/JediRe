@@ -4,9 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ThreePanelLayout, ViewItem } from '../../components/layout/ThreePanelLayout';
 import { apiClient } from '../../services/api.client';
-import { MapContainer } from '../../components/map/MapContainer';
 
 interface EmailAccount {
   id: string;
@@ -19,33 +17,13 @@ interface EmailAccount {
   updated_at: string;
 }
 
-interface SyncLog {
-  id: string;
-  sync_started_at: string;
-  sync_completed_at: string | null;
-  sync_status: 'running' | 'success' | 'failed';
-  messages_fetched: number;
-  messages_stored: number;
-  messages_skipped: number;
-  error_message: string | null;
-  email_address: string;
-}
-
 export function EmailSettings() {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
-  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState('accounts');
-
-  const views: ViewItem[] = [
-    { id: 'accounts', label: 'Accounts', icon: '📧', count: accounts.length },
-    { id: 'sync', label: 'Sync History', icon: '🔄' },
-  ];
 
   useEffect(() => {
     loadAccounts();
-    loadSyncLogs();
     
     // Check for connection success/error in URL
     const params = new URLSearchParams(window.location.search);
@@ -70,17 +48,6 @@ export function EmailSettings() {
       console.error('Failed to load email accounts:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadSyncLogs = async () => {
-    try {
-      const response = await apiClient.get<{ success: boolean; data: SyncLog[] }>(
-        '/api/v1/gmail/sync-logs'
-      );
-      setSyncLogs(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to load sync logs:', error);
     }
   };
 
@@ -114,7 +81,6 @@ export function EmailSettings() {
           `Sync complete!\n\nFetched: ${fetched}\nStored: ${stored}\nSkipped: ${skipped}`
         );
         await loadAccounts();
-        await loadSyncLogs();
       }
     } catch (error) {
       console.error('Sync failed:', error);
@@ -133,7 +99,6 @@ export function EmailSettings() {
       await apiClient.delete(`/api/v1/gmail/disconnect/${accountId}`);
       alert('Account disconnected successfully');
       await loadAccounts();
-      await loadSyncLogs();
     } catch (error) {
       console.error('Failed to disconnect account:', error);
       alert('Failed to disconnect account. Please try again.');
@@ -161,8 +126,7 @@ export function EmailSettings() {
       );
     }
 
-    if (activeView === 'accounts') {
-      return (
+    return (
         <div className="space-y-6">
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -298,92 +262,13 @@ export function EmailSettings() {
           )}
         </div>
       );
-    }
-
-    if (activeView === 'sync') {
-      return (
-        <div className="space-y-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Sync History</h2>
-
-            {syncLogs.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                No sync history yet
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {syncLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <div className="font-medium text-gray-900">{log.email_address}</div>
-                        <div className="text-sm text-gray-600">
-                          {new Date(log.sync_started_at).toLocaleString()}
-                        </div>
-                      </div>
-                      <span
-                        className={`px-2 py-1 text-xs font-medium rounded ${
-                          log.sync_status === 'success'
-                            ? 'bg-green-100 text-green-700'
-                            : log.sync_status === 'failed'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {log.sync_status}
-                      </span>
-                    </div>
-
-                    {log.sync_status === 'success' && (
-                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
-                        <div>Fetched: <span className="font-medium text-gray-900">{log.messages_fetched}</span></div>
-                        <div>Stored: <span className="font-medium text-gray-900">{log.messages_stored}</span></div>
-                        <div>Skipped: <span className="font-medium text-gray-900">{log.messages_skipped}</span></div>
-                      </div>
-                    )}
-
-                    {log.error_message && (
-                      <div className="mt-2 text-sm text-red-600">
-                        Error: {log.error_message}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    return null;
   };
 
-  const renderMap = () => {
-    return (
-      <div className="h-full bg-gray-100 flex items-center justify-center text-gray-500">
-        <div className="text-center">
-          <div className="text-6xl mb-4">🗺️</div>
-          <p>Email settings don't require a map view</p>
-        </div>
-      </div>
-    );
-  };
-
+  // Just render content directly (no ThreePanelLayout when embedded in Settings)
   return (
-    <ThreePanelLayout
-      storageKey="email-settings"
-      views={views}
-      activeView={activeView}
-      onViewChange={setActiveView}
-      renderContent={renderContent}
-      renderMap={renderMap}
-      defaultContentWidth={900}
-      maxContentWidth={1400}
-    />
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      {renderContent()}
+    </div>
   );
 }
 
