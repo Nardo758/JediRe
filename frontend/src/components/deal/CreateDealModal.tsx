@@ -19,12 +19,9 @@ type DealCategory = 'portfolio' | 'pipeline';
 type DevelopmentType = 'new' | 'existing';
 
 const STEPS = {
-  CATEGORY: 1,
-  TYPE: 2,
-  ADDRESS: 3,
-  TRADE_AREA: 4,
-  BOUNDARY: 5,
-  DETAILS: 6,
+  SETUP: 1,           // Category + Type + Address
+  LOCATION: 2,        // Trade Area (optional) + Boundary (optional)
+  DETAILS: 3,         // Name, description, tier
 } as const;
 
 export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClose, onDealCreated }) => {
@@ -32,7 +29,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   const { startDrawing, drawnGeometry, clearDrawing } = useMapDrawingStore();
   
   // Wizard state
-  const [currentStep, setCurrentStep] = useState<number>(STEPS.CATEGORY);
+  const [currentStep, setCurrentStep] = useState<number>(STEPS.SETUP);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [address, setAddress] = useState('');
@@ -47,15 +44,18 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
+  
+  // Location step sub-state
+  const [showTradeArea, setShowTradeArea] = useState(true);
+  const [showBoundary, setShowBoundary] = useState(false);
 
-  // Trigger drawing mode when reaching boundary step
+  // Trigger drawing mode when reaching boundary sub-step
   useEffect(() => {
-    if (currentStep === STEPS.BOUNDARY && developmentType === 'new') {
+    if (currentStep === STEPS.LOCATION && showBoundary && developmentType === 'new') {
       console.log('[CreateDeal] Starting drawing mode');
-      // Activate drawing on Dashboard map
       startDrawing('boundary', coordinates || undefined);
     }
-  }, [currentStep, developmentType, coordinates]);
+  }, [showBoundary, developmentType, coordinates]);
   
   // Sync drawn boundary from shared store
   useEffect(() => {
@@ -95,7 +95,6 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
           }
         } catch (err) {
           console.error('Failed to lookup submarket:', err);
-          // Continue even if lookup fails
         }
         
         // For existing properties, set point geometry
@@ -106,8 +105,10 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
           });
         }
         
-        // Advance to trade area step
-        setCurrentStep(STEPS.TRADE_AREA);
+        // Advance to location step
+        setCurrentStep(STEPS.LOCATION);
+        setShowTradeArea(true);
+        setShowBoundary(false);
       } else {
         setError('Address not found. Please try a different address.');
       }
@@ -123,7 +124,39 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
 
   const handleBack = () => {
     setError(null);
-    setCurrentStep((prev) => prev - 1);
+    if (currentStep === STEPS.LOCATION && showBoundary) {
+      // Go back to trade area within location step
+      setShowBoundary(false);
+      setShowTradeArea(true);
+      clearDrawing();
+    } else {
+      setCurrentStep((prev) => prev - 1);
+      if (currentStep === STEPS.LOCATION) {
+        setShowTradeArea(true);
+        setShowBoundary(false);
+      }
+    }
+  };
+
+  const handleSkipTradeArea = () => {
+    setTradeAreaId(null);
+    // Skip to boundary step if new development, otherwise skip to details
+    if (developmentType === 'new') {
+      setShowTradeArea(false);
+      setShowBoundary(true);
+    } else {
+      // Existing property: skip entire location step
+      setCurrentStep(STEPS.DETAILS);
+    }
+  };
+
+  const handleSkipBoundary = () => {
+    // Skip boundary drawing - system will use point location
+    setBoundary({
+      type: 'Point',
+      coordinates: coordinates!,
+    });
+    setCurrentStep(STEPS.DETAILS);
   };
 
   const handleSubmit = async () => {
@@ -160,7 +193,6 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
           });
         } catch (contextErr) {
           console.error('Failed to link geographic context:', contextErr);
-          // Don't fail the whole deal creation if context linking fails
         }
       }
       
@@ -171,11 +203,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
   };
 
   const handleClose = () => {
-    // Clear drawing state
     clearDrawing();
-    
-    // Reset all state
-    setCurrentStep(STEPS.CATEGORY);
+    setCurrentStep(STEPS.SETUP);
     setDealCategory(null);
     setDevelopmentType(null);
     setAddress('');
@@ -188,13 +217,15 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
     setTradeAreaId(null);
     setSubmarketId(null);
     setMsaId(null);
+    setShowTradeArea(true);
+    setShowBoundary(false);
     onClose();
   };
 
   if (!isOpen) return null;
 
   // Minimize modal when in drawing mode
-  const isDrawingMode = currentStep === STEPS.BOUNDARY && developmentType === 'new';
+  const isDrawingMode = currentStep === STEPS.LOCATION && showBoundary && developmentType === 'new';
 
   return (
     <div className={`fixed inset-0 z-50 ${isDrawingMode ? '' : 'bg-black bg-opacity-50 flex items-center justify-center'}`}>
@@ -223,17 +254,14 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         <div className="px-6 py-3 bg-gray-50">
           <div className="flex items-center justify-between">
             {[
-              { num: STEPS.CATEGORY, label: 'Category' },
-              { num: STEPS.TYPE, label: 'Type' },
-              { num: STEPS.ADDRESS, label: 'Address' },
-              { num: STEPS.TRADE_AREA, label: 'Trade Area' },
-              { num: STEPS.BOUNDARY, label: 'Boundary' },
+              { num: STEPS.SETUP, label: 'Setup' },
+              { num: STEPS.LOCATION, label: 'Location (Optional)' },
               { num: STEPS.DETAILS, label: 'Details' },
             ].map((step, idx) => (
               <React.Fragment key={step.num}>
-                <div className="flex flex-col items-center">
+                <div className="flex flex-col items-center flex-1">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                       currentStep >= step.num
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-200 text-gray-400'
@@ -241,11 +269,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   >
                     {step.num}
                   </div>
-                  <span className="text-xs mt-1 text-gray-600">{step.label}</span>
+                  <span className="text-xs mt-2 text-center text-gray-600 font-medium">{step.label}</span>
                 </div>
-                {idx < 4 && (
+                {idx < 2 && (
                   <div
-                    className={`flex-1 h-1 mx-2 ${
+                    className={`flex-1 h-1 mx-2 mb-6 transition-all ${
                       currentStep > step.num ? 'bg-blue-600' : 'bg-gray-200'
                     }`}
                   />
@@ -257,183 +285,170 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
 
         {/* Content */}
         <div className="px-6 py-6 min-h-[400px]">
-          {/* Step 1: Category */}
-          {currentStep === STEPS.CATEGORY && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                How do you want to categorize this deal?
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    setDealCategory('portfolio');
-                    handleNext();
-                  }}
-                  className={`p-6 border-2 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition ${
-                    dealCategory === 'portfolio' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">📁</div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Add to Portfolio</h4>
-                  <p className="text-sm text-gray-600">
-                    Properties you currently own or manage
-                  </p>
-                </button>
-                <button
-                  onClick={() => {
-                    setDealCategory('pipeline');
-                    handleNext();
-                  }}
-                  className={`p-6 border-2 rounded-lg hover:border-green-500 hover:bg-green-50 transition ${
-                    dealCategory === 'pipeline' ? 'border-green-500 bg-green-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">📊</div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Add to Pipeline</h4>
-                  <p className="text-sm text-gray-600">
-                    Deals you're prospecting or analyzing
-                  </p>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Development Type */}
-          {currentStep === STEPS.TYPE && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                What type of development is this?
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    setDevelopmentType('new');
-                    handleNext();
-                  }}
-                  className={`p-6 border-2 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition ${
-                    developmentType === 'new' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">🏗️</div>
-                  <h4 className="font-semibold text-gray-900 mb-2">New Development</h4>
-                  <p className="text-sm text-gray-600">
-                    Vacant land or ground-up construction
-                  </p>
-                </button>
-                <button
-                  onClick={() => {
-                    setDevelopmentType('existing');
-                    handleNext();
-                  }}
-                  className={`p-6 border-2 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition ${
-                    developmentType === 'existing' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">🏢</div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Existing Property</h4>
-                  <p className="text-sm text-gray-600">
-                    Existing building or developed property
-                  </p>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Address */}
-          {currentStep === STEPS.ADDRESS && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                What's the property address?
-              </h3>
+          {/* Step 1: Setup (Category + Type + Address) */}
+          {currentStep === STEPS.SETUP && (
+            <div className="space-y-6">
+              {/* Category Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Street Address
-                </label>
-                <GooglePlacesInput
-                  id="create-deal-address"
-                  name="address"
-                  value={address}
-                  onChange={(value, coords) => {
-                    setAddress(value);
-                    // If coordinates provided (user selected from dropdown), auto-advance
-                    if (coords) {
-                      setCoordinates(coords);
-                      setError(null);
-                      
-                      // Lookup submarket and MSA
-                      const [lng, lat] = coords;
-                      api.get('/submarkets/lookup', { params: { lat, lng } })
-                        .then((res) => {
-                          if (res.data.success) {
-                            setSubmarketId(res.data.data.id);
-                            setMsaId(res.data.data.msa_id);
-                          }
-                        })
-                        .catch((err) => console.error('Submarket lookup failed:', err));
-                      
-                      // Set boundary for existing properties
-                      if (developmentType === 'existing') {
-                        setBoundary({ type: 'Point', coordinates: coords });
-                      }
-                      
-                      // Auto-advance
-                      setCurrentStep(STEPS.TRADE_AREA);
-                    }
-                  }}
-                  placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Start typing and select from the dropdown to validate the address
-                </p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  1. Deal Category
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setDealCategory('portfolio')}
+                    className={`p-4 border-2 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition ${
+                      dealCategory === 'portfolio' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="text-3xl mb-2">📁</div>
+                    <h4 className="font-semibold text-gray-900 text-sm mb-1">Portfolio</h4>
+                    <p className="text-xs text-gray-600">Properties you own or manage</p>
+                  </button>
+                  <button
+                    onClick={() => setDealCategory('pipeline')}
+                    className={`p-4 border-2 rounded-lg hover:border-green-500 hover:bg-green-50 transition ${
+                      dealCategory === 'pipeline' ? 'border-green-500 bg-green-50' : 'border-gray-200'
+                    }`}
+                  >
+                    <div className="text-3xl mb-2">📊</div>
+                    <h4 className="font-semibold text-gray-900 text-sm mb-1">Pipeline</h4>
+                    <p className="text-xs text-gray-600">Deals you're prospecting</p>
+                  </button>
+                </div>
               </div>
+
+              {/* Development Type (shown after category selected) */}
+              {dealCategory && (
+                <div className="animate-fadeIn">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    2. Development Type
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setDevelopmentType('new')}
+                      className={`p-4 border-2 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition ${
+                        developmentType === 'new' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="text-3xl mb-2">🏗️</div>
+                      <h4 className="font-semibold text-gray-900 text-sm mb-1">New Development</h4>
+                      <p className="text-xs text-gray-600">Ground-up construction</p>
+                    </button>
+                    <button
+                      onClick={() => setDevelopmentType('existing')}
+                      className={`p-4 border-2 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition ${
+                        developmentType === 'existing' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
+                      }`}
+                    >
+                      <div className="text-3xl mb-2">🏢</div>
+                      <h4 className="font-semibold text-gray-900 text-sm mb-1">Existing Property</h4>
+                      <p className="text-xs text-gray-600">Existing building</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Address (shown after type selected) */}
+              {dealCategory && developmentType && (
+                <div className="animate-fadeIn">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    3. Property Address
+                  </h3>
+                  <div>
+                    <GooglePlacesInput
+                      id="create-deal-address"
+                      name="address"
+                      value={address}
+                      onChange={(value, coords) => {
+                        setAddress(value);
+                        if (coords) {
+                          setCoordinates(coords);
+                          setError(null);
+                          
+                          const [lng, lat] = coords;
+                          api.get('/submarkets/lookup', { params: { lat, lng } })
+                            .then((res) => {
+                              if (res.data.success) {
+                                setSubmarketId(res.data.data.id);
+                                setMsaId(res.data.data.msa_id);
+                              }
+                            })
+                            .catch((err) => console.error('Submarket lookup failed:', err));
+                          
+                          if (developmentType === 'existing') {
+                            setBoundary({ type: 'Point', coordinates: coords });
+                          }
+                          
+                          // Auto-advance to location step
+                          setCurrentStep(STEPS.LOCATION);
+                          setShowTradeArea(true);
+                          setShowBoundary(false);
+                        }
+                      }}
+                      placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      Start typing and select from dropdown, or enter manually and click "Locate on Map"
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Step 4: Trade Area Definition */}
-          {currentStep === STEPS.TRADE_AREA && coordinates && (
+          {/* Step 2: Location (Trade Area + Boundary - both optional) */}
+          {currentStep === STEPS.LOCATION && coordinates && (
             <div>
-              <TradeAreaDefinitionPanel
-                propertyLat={coordinates[1]}
-                propertyLng={coordinates[0]}
-                onSave={(id) => {
-                  setTradeAreaId(id);
-                  // For new dev: go to boundary drawing
-                  // For existing: skip boundary verification (redundant)
-                  if (developmentType === 'new') {
-                    setCurrentStep(STEPS.BOUNDARY);
-                  } else {
-                    setCurrentStep(STEPS.DETAILS); // Skip boundary step
-                  }
-                }}
-                onSkip={() => {
-                  // User skipped trade area definition
-                  // For new dev: go to boundary drawing
-                  // For existing: skip boundary verification (already verified at address step)
-                  if (developmentType === 'new') {
-                    setCurrentStep(STEPS.BOUNDARY);
-                  } else {
-                    setCurrentStep(STEPS.DETAILS); // Skip boundary step entirely
-                  }
-                }}
-                onCustomDraw={() => {
-                  // User wants to draw custom boundary on map
-                  setCurrentStep(STEPS.BOUNDARY);
-                }}
-              />
-            </div>
-          )}
+              {showTradeArea && (
+                <div>
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Define Trade Area <span className="text-sm font-normal text-gray-500">(Optional)</span>
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Define the geographic area you want to analyze, or skip to use system defaults.
+                    </p>
+                  </div>
+                  <TradeAreaDefinitionPanel
+                    propertyLat={coordinates[1]}
+                    propertyLng={coordinates[0]}
+                    onSave={(id) => {
+                      setTradeAreaId(id);
+                      if (developmentType === 'new') {
+                        setShowTradeArea(false);
+                        setShowBoundary(true);
+                      } else {
+                        setCurrentStep(STEPS.DETAILS);
+                      }
+                    }}
+                    onSkip={handleSkipTradeArea}
+                    onCustomDraw={() => {
+                      setShowTradeArea(false);
+                      setShowBoundary(true);
+                    }}
+                  />
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      onClick={handleSkipTradeArea}
+                      className="bg-gray-200 hover:bg-gray-300 text-gray-700"
+                    >
+                      ⏭️ Skip - System will define later
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-          {/* Step 5: Boundary */}
-          {currentStep === STEPS.BOUNDARY && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                {developmentType === 'new'
-                  ? 'Draw Property Boundary on Map'
-                  : 'Verify property location'}
-              </h3>
-              
-              {developmentType === 'new' ? (
-                <>
+              {showBoundary && developmentType === 'new' && (
+                <div className="space-y-4">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      Draw Property Boundary <span className="text-sm font-normal text-gray-500">(Optional)</span>
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-3">
+                      Draw the exact property boundary on the map, or skip to use the address point.
+                    </p>
+                  </div>
+                  
                   <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg text-center">
                     <div className="text-6xl mb-4">🗺️</div>
                     <h4 className="text-lg font-semibold text-blue-900 mb-2">
@@ -450,41 +465,37 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   </div>
                   
                   {!boundary && (
-                    <div className="flex justify-center mt-4">
+                    <div className="flex justify-center mt-4 gap-3">
                       <button
                         onClick={() => {
-                          console.log('[MANUAL] Starting drawing mode');
-                          console.log('[MANUAL] developmentType:', developmentType);
-                          console.log('[MANUAL] currentStep:', currentStep);
-                          console.log('[MANUAL] coordinates:', coordinates);
                           startDrawing('boundary', coordinates || undefined);
                         }}
                         className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold"
                       >
-                        🗺️ Start Drawing Property Boundary
+                        🗺️ Start Drawing
                       </button>
+                      <Button
+                        onClick={handleSkipBoundary}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-700"
+                      >
+                        ⏭️ Skip - Use point location
+                      </Button>
                     </div>
                   )}
                   
-                  {boundary && (
+                  {boundary && boundary.type !== 'Point' && (
                     <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
                       <p className="text-sm text-green-800 font-semibold text-center">
                         ✓ Boundary drawn successfully! Click "Continue" below.
                       </p>
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                  <p className="text-sm text-gray-700">
-                    Location verified for existing property.
-                  </p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Step 5: Details */}
+          {/* Step 3: Details */}
           {currentStep === STEPS.DETAILS && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -551,6 +562,14 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   <p>
                     <strong>Address:</strong> {address}
                   </p>
+                  <p>
+                    <strong>Trade Area:</strong>{' '}
+                    {tradeAreaId ? 'Custom defined' : 'System default'}
+                  </p>
+                  <p>
+                    <strong>Boundary:</strong>{' '}
+                    {boundary?.type === 'Point' ? 'Point location' : 'Custom drawn'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -567,7 +586,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
         {/* Footer */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <div>
-            {currentStep > STEPS.CATEGORY && (
+            {(currentStep > STEPS.SETUP || (currentStep === STEPS.LOCATION && showBoundary)) && (
               <Button onClick={handleBack} disabled={isLoading}>
                 ← Back
               </Button>
@@ -577,16 +596,13 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
             <Button onClick={handleClose} disabled={isLoading}>
               Cancel
             </Button>
-            {currentStep === STEPS.ADDRESS && (
-              <Button onClick={handleGeocodeAddress} disabled={isLoading || !address.trim()}>
+            {currentStep === STEPS.SETUP && address.trim() && !coordinates && (
+              <Button onClick={handleGeocodeAddress} disabled={isLoading}>
                 Locate on Map →
               </Button>
             )}
-            {currentStep === STEPS.BOUNDARY && (
-              <Button 
-                onClick={handleNext} 
-                disabled={isLoading || (developmentType === 'new' && !boundary)}
-              >
+            {currentStep === STEPS.LOCATION && showBoundary && developmentType === 'new' && boundary && boundary.type !== 'Point' && (
+              <Button onClick={() => setCurrentStep(STEPS.DETAILS)} disabled={isLoading}>
                 Continue →
               </Button>
             )}

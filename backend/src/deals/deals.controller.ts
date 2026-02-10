@@ -184,4 +184,22 @@ export class DealsController {
   async getKeyMoments(@Request() req, @Param('id') id: string) {
     return this.dealsService.getKeyMoments(id, req.user.userId);
   }
+
+  /**
+   * POST /api/v1/deals/:id/triage
+   * Run auto-triage on a deal
+   */
+  @Post(':id/triage')
+  async triageDeal(@Request() req, @Param('id') id: string) {
+    return this.dealsService.triageDeal(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/triage
+   * Get triage result for a deal
+   */
+  @Get(':id/triage')
+  async getTriageResult(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getTriageResult(id, req.user.userId);
+  }
 }
