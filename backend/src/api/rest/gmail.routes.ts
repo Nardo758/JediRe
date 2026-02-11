@@ -13,10 +13,66 @@ import { AppError } from '../../middleware/errorHandler';
 
 const router = Router();
 
+interface GmailOAuthStatePayload {
+  userId: string;
+  callbackUrl?: string;
+}
+
+function getRequestOrigin(req: Request): string {
+  const forwardedProtoHeader = req.headers['x-forwarded-proto'];
+  const forwardedHostHeader = req.headers['x-forwarded-host'];
+  const forwardedProto = Array.isArray(forwardedProtoHeader)
+    ? forwardedProtoHeader[0]
+    : forwardedProtoHeader;
+  const forwardedHost = Array.isArray(forwardedHostHeader)
+    ? forwardedHostHeader[0]
+    : forwardedHostHeader;
+
+  const protocol = (forwardedProto || req.protocol || 'https').split(',')[0].trim();
+  const host = (forwardedHost || req.get('host') || '').split(',')[0].trim();
+
+  if (!host) {
+    throw new AppError(500, 'Unable to determine request host for OAuth callback');
+  }
+
+  return `${protocol}://${host}`;
+}
+
+function resolveGmailCallbackUrl(req: Request): string {
+  return process.env.GOOGLE_GMAIL_CALLBACK_URL
+    || process.env.GOOGLE_REDIRECT_URI
+    || process.env.GOOGLE_CALLBACK_URL
+    || `${getRequestOrigin(req)}/api/v1/gmail/callback`;
+}
+
+function encodeState(payload: GmailOAuthStatePayload): string {
+  return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64url');
+}
+
+function decodeState(state?: string): GmailOAuthStatePayload | null {
+  if (!state) return null;
+
+  try {
+    const decoded = Buffer.from(state, 'base64url').toString('utf-8');
+    const parsed = JSON.parse(decoded) as GmailOAuthStatePayload;
+
+    if (!parsed?.userId || typeof parsed.userId !== 'string') {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    // Backward compatibility for older flows where state only included userId.
+    return { userId: state };
+  }
+}
+
 router.get('/auth-url', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
-    const authUrl = gmailSyncService.getAuthUrl(userId);
+    const callbackUrl = resolveGmailCallbackUrl(req);
+    const state = encodeState({ userId, callbackUrl });
+    const authUrl = gmailSyncService.getAuthUrl(state, callbackUrl);
 
     res.json({
       success: true,
@@ -38,15 +94,18 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       throw new AppError(400, 'Authorization code required');
     }
 
-    const userId = state as string;
+    const parsedState = decodeState(typeof state === 'string' ? state : undefined);
+    const userId = parsedState?.userId;
+    const callbackUrl = parsedState?.callbackUrl;
+
     if (!userId) {
       throw new AppError(400, 'Invalid state parameter');
     }
 
-    const tokens = await gmailSyncService.exchangeCodeForTokens(code);
+    const tokens = await gmailSyncService.exchangeCodeForTokens(code, callbackUrl);
 
     const existingResult = await query(
-      'SELECT id FROM user_email_accounts WHERE user_id = $1 AND email_address = $2',
+      'SELECT id, refresh_token FROM user_email_accounts WHERE user_id = $1 AND email_address = $2',
       [userId, tokens.email]
     );
 
@@ -54,12 +113,13 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
 
     if (existingResult.rows.length > 0) {
       accountId = existingResult.rows[0].id;
+      const refreshToken = tokens.refreshToken || existingResult.rows[0].refresh_token || null;
       await query(
         `UPDATE user_email_accounts 
          SET access_token = $1, refresh_token = $2, token_expires_at = $3, 
              sync_enabled = true, updated_at = NOW()
          WHERE id = $4`,
-        [tokens.accessToken, tokens.refreshToken, tokens.expiresAt, accountId]
+        [tokens.accessToken, refreshToken, tokens.expiresAt, accountId]
       );
       logger.info(`Gmail account reconnected: ${tokens.email}`);
     } else {
@@ -74,17 +134,21 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
       logger.info(`New Gmail account connected: ${tokens.email}`);
     }
 
+    if (tokens.grantedScopes.length > 0) {
+      logger.info(`Gmail OAuth scopes granted for ${tokens.email}: ${tokens.grantedScopes.join(', ')}`);
+    }
+
     gmailSyncService.syncEmails(accountId, 50).catch(error => {
       logger.error('Background sync failed:', error);
     });
 
-    const baseUrl = process.env.CORS_ORIGIN || `${req.protocol}://${req.get('host')}`;
+    const baseUrl = process.env.CORS_ORIGIN || getRequestOrigin(req);
     const redirectUrl = `${baseUrl}/settings/email?connected=true`;
     res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Gmail callback error:', error);
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    const baseUrl = process.env.CORS_ORIGIN || `${req.protocol}://${req.get('host')}`;
+    const baseUrl = process.env.CORS_ORIGIN || getRequestOrigin(req);
     const redirectUrl = `${baseUrl}/settings/email?error=auth_failed&detail=${encodeURIComponent(errorMsg)}`;
     res.redirect(redirectUrl);
   }
@@ -93,7 +157,9 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
 router.post('/connect', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;
-    const authUrl = gmailSyncService.getAuthUrl(userId);
+    const callbackUrl = resolveGmailCallbackUrl(req);
+    const state = encodeState({ userId, callbackUrl });
+    const authUrl = gmailSyncService.getAuthUrl(state, callbackUrl);
 
     res.json({
       success: true,
