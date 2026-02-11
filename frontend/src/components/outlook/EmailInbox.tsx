@@ -6,9 +6,11 @@
 import { useState, useEffect } from 'react';
 import { 
   Mail, Search, RefreshCw, Inbox, Send, Archive, Trash2, 
-  Star, Paperclip, ChevronRight, Loader, Link as LinkIcon
+  Star, Paperclip, ChevronRight, Loader, Link as LinkIcon,
+  Building2, MapPin, CheckCircle, XCircle, Eye
 } from 'lucide-react';
 import axios from 'axios';
+import ExtractionBadges from './ExtractionBadges';
 
 interface Email {
   id: string;
@@ -21,6 +23,12 @@ interface Email {
   bodyPreview: string;
   hasAttachments: boolean;
   isRead: boolean;
+  // Extraction data
+  hasPropertyExtraction?: boolean;
+  hasNewsExtraction?: boolean;
+  propertyStatus?: 'auto-created' | 'requires-review' | 'rejected' | 'pending';
+  extractionId?: string;
+  pinId?: string;
 }
 
 interface EmailInboxProps {
@@ -157,10 +165,103 @@ export default function EmailInbox({
     onEmailSelect?.(email);
   };
 
+  // Load extraction data for emails
+  const loadExtractionData = async (emailIds: string[]) => {
+    try {
+      // Batch fetch extractions for all emails
+      const extractionPromises = emailIds.map(emailId =>
+        axios.get(`${apiUrl}/email-extractions/${emailId}`, {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        }).catch(() => null) // Ignore errors for individual emails
+      );
+
+      const extractionResults = await Promise.all(extractionPromises);
+
+      // Update emails with extraction data
+      setEmails(prev => prev.map((email, idx) => {
+        const extraction = extractionResults[idx]?.data?.data;
+        if (!extraction) return email;
+
+        return {
+          ...email,
+          hasPropertyExtraction: extraction.propertyExtractions?.length > 0,
+          hasNewsExtraction: !!extraction.newsExtraction,
+          propertyStatus: extraction.propertyExtractions?.[0]?.status || 'pending',
+          extractionId: extraction.propertyExtractions?.[0]?.id,
+          pinId: extraction.propertyExtractions?.[0]?.pin_id,
+        };
+      }));
+    } catch (err) {
+      console.error('Error loading extraction data:', err);
+    }
+  };
+
+  // Approve property extraction
+  const approveExtraction = async (extractionId: string, emailId: string) => {
+    try {
+      const response = await axios.post(
+        `${apiUrl}/email-extractions/properties/${extractionId}/approve`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        }
+      );
+
+      // Update email status
+      setEmails(prev => prev.map(email =>
+        email.id === emailId
+          ? { ...email, propertyStatus: 'auto-created', pinId: response.data.data.pinId }
+          : email
+      ));
+
+      alert('Property pin created successfully!');
+    } catch (err: any) {
+      console.error('Error approving extraction:', err);
+      alert(err.response?.data?.message || 'Failed to approve extraction');
+    }
+  };
+
+  // Reject property extraction
+  const rejectExtraction = async (extractionId: string, emailId: string) => {
+    try {
+      await axios.post(
+        `${apiUrl}/email-extractions/properties/${extractionId}/reject`,
+        { reason: 'User rejected from inbox' },
+        {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        }
+      );
+
+      // Update email status
+      setEmails(prev => prev.map(email =>
+        email.id === emailId
+          ? { ...email, propertyStatus: 'rejected' }
+          : email
+      ));
+    } catch (err: any) {
+      console.error('Error rejecting extraction:', err);
+      alert(err.response?.data?.message || 'Failed to reject extraction');
+    }
+  };
+
+  // View extraction details
+  const viewExtractionDetails = (emailId: string) => {
+    // Open modal or navigate to details page
+    window.open(`/extractions/${emailId}`, '_blank');
+  };
+
   // Load inbox on mount
   useEffect(() => {
     loadInbox();
   }, []);
+
+  // Load extraction data when emails change
+  useEffect(() => {
+    if (emails.length > 0) {
+      const emailIds = emails.map(e => e.id);
+      loadExtractionData(emailIds);
+    }
+  }, [emails.length]);
 
   if (loading && emails.length === 0) {
     return (
@@ -263,14 +364,78 @@ export default function EmailInbox({
                   </p>
 
                   {/* Badges */}
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {email.hasAttachments && (
                       <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                         <Paperclip className="w-3 h-3" />
                         Attachment
                       </span>
                     )}
+                    
+                    {/* Extraction Badges */}
+                    <ExtractionBadges
+                      hasPropertyExtraction={email.hasPropertyExtraction || false}
+                      hasNewsExtraction={email.hasNewsExtraction || false}
+                      propertyStatus={email.propertyStatus}
+                      compact
+                    />
                   </div>
+
+                  {/* Extraction Actions */}
+                  {(email.hasPropertyExtraction || email.hasNewsExtraction) && (
+                    <div className="flex items-center gap-2 mt-2">
+                      {email.propertyStatus === 'requires-review' && email.extractionId && (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              approveExtraction(email.extractionId!, email.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded transition-colors"
+                            title="Approve and create pin"
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            Approve
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              rejectExtraction(email.extractionId!, email.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white text-xs font-medium rounded transition-colors"
+                            title="Reject extraction"
+                          >
+                            <XCircle className="w-3 h-3" />
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {email.pinId && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`/map?pin=${email.pinId}`, '_blank');
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded transition-colors"
+                          title="View on map"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          View
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewExtractionDetails(email.id);
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-medium rounded transition-colors"
+                        title="View extraction details"
+                      >
+                        <Eye className="w-3 h-3" />
+                        Details
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}

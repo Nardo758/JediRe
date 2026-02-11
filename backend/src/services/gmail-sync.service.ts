@@ -9,6 +9,9 @@ import { OAuth2Client } from 'google-auth-library';
 import { logger } from '../utils/logger';
 import { query } from '../database/connection';
 import { AppError } from '../middleware/errorHandler';
+import { classifyEmail } from './email-classification.service';
+import { processEmailForProperty } from './email-property-automation.service';
+import { processEmailForNews } from './email-news-extraction.service';
 
 interface GmailMessage {
   id: string;
@@ -427,13 +430,14 @@ export class GmailSyncService {
             continue;
           }
 
-          await query(
+          const emailResult = await query(
             `INSERT INTO emails (
               email_account_id, user_id, external_id, thread_id,
               subject, from_address, from_name, to_addresses, cc_addresses,
               body_text, body_html, body_preview, received_at,
               is_read, has_attachments
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            RETURNING id`,
             [
               accountId,
               account.user_id,
@@ -453,7 +457,26 @@ export class GmailSyncService {
             ]
           );
 
+          const emailId = emailResult.rows[0].id;
           stored++;
+
+          // ========================================
+          // AUTO-EXTRACTION PIPELINE
+          // ========================================
+          // Classify email and extract property/news data
+          try {
+            await this.processEmailExtractions(
+              emailId,
+              headers.subject,
+              body.text || body.html,
+              headers.from.email,
+              receivedAt,
+              account.user_id
+            );
+          } catch (extractionError) {
+            // Log but don't fail the sync
+            logger.warn(`Email extraction failed for ${emailId}:`, extractionError);
+          }
         } catch (error) {
           logger.error(`Error processing message ${message.id}:`, error);
         }
@@ -573,6 +596,98 @@ export class GmailSyncService {
     });
 
     logger.info(`Email sent via Gmail account ${accountId}`);
+  }
+
+  /**
+   * Process email extractions (property + news)
+   * Called after storing each email during sync
+   */
+  private async processEmailExtractions(
+    emailId: string,
+    subject: string,
+    body: string,
+    from: string,
+    receivedAt: Date,
+    userId: string
+  ): Promise<void> {
+    // Classify email first
+    const classification = await classifyEmail({
+      subject,
+      body,
+      from,
+      snippet: body.substring(0, 500),
+    });
+
+    logger.debug('Email classified', {
+      emailId,
+      classification: classification.classification,
+      confidence: classification.confidence,
+    });
+
+    // Skip low-confidence general correspondence
+    if (classification.classification === 'general' && classification.confidence < 0.3) {
+      logger.debug('Skipping general correspondence email', { emailId });
+      return;
+    }
+
+    // Extract property if detected
+    if (classification.containsProperty) {
+      logger.info('Processing property extraction', { emailId, subject });
+      
+      const propertyResult = await processEmailForProperty(
+        {
+          id: emailId,
+          subject,
+          from: { name: '', address: from },
+          bodyPreview: body.substring(0, 500),
+          body: { content: body },
+          receivedDateTime: receivedAt.toISOString(),
+        },
+        userId
+      );
+
+      if (propertyResult.success) {
+        logger.info('Property extracted successfully', {
+          emailId,
+          decision: propertyResult.decision,
+          pinId: propertyResult.pinId,
+          extractionId: propertyResult.extractionId,
+        });
+      }
+    }
+
+    // Extract news if detected
+    if (classification.containsNews) {
+      logger.info('Processing news extraction', { emailId, subject });
+      
+      const newsResult = await processEmailForNews(
+        emailId,
+        subject,
+        body,
+        from,
+        receivedAt,
+        userId
+      );
+
+      if (newsResult.success) {
+        logger.info('News extracted successfully', {
+          emailId,
+          newsItemId: newsResult.newsItemId,
+        });
+      }
+    }
+
+    // Update email with classification metadata
+    await query(
+      `UPDATE emails 
+       SET raw_data = jsonb_set(
+         COALESCE(raw_data, '{}'::jsonb),
+         '{classification}',
+         $2::jsonb
+       )
+       WHERE id = $1`,
+      [emailId, JSON.stringify(classification)]
+    );
   }
 }
 

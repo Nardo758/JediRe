@@ -13,6 +13,7 @@ import llmRoutes from './llm.routes';
 import microsoftRoutes from './microsoft.routes';
 import preferencesRoutes from './preferences.routes';
 import extractionsRoutes from './extractions.routes';
+import emailExtractionsRoutes from './email-extractions.routes';
 import mapsRoutes from './maps.routes';
 import proposalsRoutes from './proposals.routes';
 import notificationsRoutes from './notifications.routes';
@@ -36,6 +37,8 @@ import financialModelsRoutes from './financial-models.routes';
 import strategyAnalysesRoutes from './strategy-analyses.routes';
 import ddChecklistsRoutes from './dd-checklists.routes';
 import dashboardRoutes from './dashboard.routes';
+import demandRoutes from './demand.routes';
+import jediRoutes from './jedi.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -52,6 +55,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Property extraction routes
   app.use(`${API_PREFIX}/extractions`, extractionsRoutes);
+
+  // Email extraction routes (Property + News from emails)
+  app.use(`${API_PREFIX}/email-extractions`, emailExtractionsRoutes);
 
   // Maps & pins routes
   app.use(`${API_PREFIX}/maps`, mapsRoutes);
@@ -110,6 +116,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Geography routes (Complete Geographic Assignment Engine)
   app.use(`${API_PREFIX}/geography`, geographyRoutes);
+
+  // Demand Signal routes (JEDI RE Phase 1, Week 2 - Housing Demand Projections)
+  app.use(`${API_PREFIX}/demand`, demandRoutes);
+
+  // JEDI Score & Alerts routes (JEDI RE Phase 1, Week 3 - Score Integration + Alert System)
+  app.use(`${API_PREFIX}/jedi`, jediRoutes);
 
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
