@@ -25,6 +25,7 @@ import gmailRoutes from './gmail.routes';
 import newsRoutes from './news.routes';
 import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
+import geographyRoutes from './geography.routes';
 import isochroneRoutes from './isochrone.routes';
 import trafficAiRoutes from './traffic-ai.routes';
 import layersRoutes from './layers.routes';
@@ -106,6 +107,9 @@ export function setupRESTRoutes(app: Application): void {
   // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
   app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
   app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
+
+  // Geography routes (Complete Geographic Assignment Engine)
+  app.use(`${API_PREFIX}/geography`, geographyRoutes);
 
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
