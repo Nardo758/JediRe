@@ -79,7 +79,9 @@ Add to `.env`:
 # Google OAuth (Gmail Sync)
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/gmail/callback
+GOOGLE_GMAIL_CALLBACK_URL=http://localhost:4000/api/v1/gmail/callback
+# Legacy fallback variable (supported for compatibility):
+GOOGLE_REDIRECT_URI=http://localhost:4000/api/v1/gmail/callback
 
 # Frontend URL (for OAuth redirects)
 CORS_ORIGIN=http://localhost:5000
@@ -87,7 +89,7 @@ CORS_ORIGIN=http://localhost:5000
 
 For Replit deployment:
 ```bash
-GOOGLE_REDIRECT_URI=https://your-app.replit.app/api/v1/gmail/callback
+GOOGLE_GMAIL_CALLBACK_URL=https://your-app.replit.app/api/v1/gmail/callback
 CORS_ORIGIN=https://your-app.replit.app
 ```
 
@@ -230,6 +232,12 @@ The email sync scheduler will start automatically when the backend starts.
 - Access token expired and refresh failed
 - Check Google Cloud Console credentials
 - Verify redirect URI matches exactly
+
+### "Google auth failed: Unauthorized" after consent
+- Verify your OAuth client type is **Web application** (not Desktop)
+- Confirm `GOOGLE_GMAIL_CALLBACK_URL` exactly matches Google authorized redirect URI
+- Ensure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are from the same OAuth client
+- Re-run connect flow (authorization codes are single-use and short-lived)
 
 ### Emails not syncing
 - Check sync scheduler is running (logs on startup)
