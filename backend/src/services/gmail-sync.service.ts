@@ -164,13 +164,6 @@ export class GmailSyncService {
   /**
    * Exchange authorization code for tokens
    */
-  async exchangeCodeForTokens(code: string): Promise<{
-    accessToken: string;
-    refreshToken: string | null;
-    expiresAt: Date;
-    email: string;
-    grantedScopes: string[];
-  }>;
   async exchangeCodeForTokens(code: string, callbackUrl?: string): Promise<{
     accessToken: string;
     refreshToken: string | null;
