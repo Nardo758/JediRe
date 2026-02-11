@@ -83,8 +83,9 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
     res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Gmail callback error:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     const baseUrl = process.env.CORS_ORIGIN || `${req.protocol}://${req.get('host')}`;
-    const redirectUrl = `${baseUrl}/settings/email?error=auth_failed`;
+    const redirectUrl = `${baseUrl}/settings/email?error=auth_failed&detail=${encodeURIComponent(errorMsg)}`;
     res.redirect(redirectUrl);
   }
 });
