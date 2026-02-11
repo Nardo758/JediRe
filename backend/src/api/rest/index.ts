@@ -38,7 +38,11 @@ import strategyAnalysesRoutes from './strategy-analyses.routes';
 import ddChecklistsRoutes from './dd-checklists.routes';
 import dashboardRoutes from './dashboard.routes';
 import demandRoutes from './demand.routes';
+import supplyRoutes from './supply.routes';
 import jediRoutes from './jedi.routes';
+import riskRoutes from './risk.routes';
+import proformaRoutes from './proforma.routes';
+import auditRoutes from './audit.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -120,8 +124,17 @@ export function setupRESTRoutes(app: Application): void {
   // Demand Signal routes (JEDI RE Phase 1, Week 2 - Housing Demand Projections)
   app.use(`${API_PREFIX}/demand`, demandRoutes);
 
+  // Supply Signal routes (JEDI RE Phase 2, Component 2 - Construction Pipeline Tracking)
+  app.use(`${API_PREFIX}/supply`, supplyRoutes);
+
   // JEDI Score & Alerts routes (JEDI RE Phase 1, Week 3 - Score Integration + Alert System)
   app.use(`${API_PREFIX}/jedi`, jediRoutes);
+
+  // Risk Scoring routes (JEDI RE Phase 2, Component 3 - Supply Risk + Demand Risk)
+  app.use(`${API_PREFIX}/risk`, riskRoutes);
+
+  // Pro Forma Adjustments routes (JEDI RE Phase 2, Component 1 - News → Financial Model Integration)
+  app.use(`${API_PREFIX}/proforma`, proformaRoutes);
 
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
