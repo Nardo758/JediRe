@@ -79,7 +79,9 @@ Add to `.env`:
 # Google OAuth (Gmail Sync)
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/gmail/callback
+GOOGLE_GMAIL_CALLBACK_URL=http://localhost:4000/api/v1/gmail/callback
+# Legacy fallback variable (supported for compatibility):
+GOOGLE_REDIRECT_URI=http://localhost:4000/api/v1/gmail/callback
 
 # Frontend URL (for OAuth redirects)
 CORS_ORIGIN=http://localhost:5000
@@ -87,7 +89,7 @@ CORS_ORIGIN=http://localhost:5000
 
 For Replit deployment:
 ```bash
-GOOGLE_REDIRECT_URI=https://your-app.replit.app/api/v1/gmail/callback
+GOOGLE_GMAIL_CALLBACK_URL=https://your-app.replit.app/api/v1/gmail/callback
 CORS_ORIGIN=https://your-app.replit.app
 ```
 
@@ -158,6 +160,13 @@ The email sync scheduler will start automatically when the backend starts.
 
 **GET /api/v1/gmail/callback**
 - OAuth callback handler (redirects to frontend)
+
+**GET /api/v1/gmail/oauth-diagnostics**
+- Protected diagnostics endpoint for OAuth troubleshooting
+- Query params:
+  - `detail` (optional): raw OAuth error detail string
+  - `statusCode` (optional): numeric status code
+- Returns effective callback URLs, env configuration status, and parsed troubleshooting guidance
 
 ### Account Management
 
@@ -231,6 +240,12 @@ The email sync scheduler will start automatically when the backend starts.
 - Check Google Cloud Console credentials
 - Verify redirect URI matches exactly
 
+### "Google auth failed: Unauthorized" after consent
+- Verify your OAuth client type is **Web application** (not Desktop)
+- Confirm `GOOGLE_GMAIL_CALLBACK_URL` exactly matches Google authorized redirect URI
+- Ensure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are from the same OAuth client
+- Re-run connect flow (authorization codes are single-use and short-lived)
+
 ### Emails not syncing
 - Check sync scheduler is running (logs on startup)
 - Verify account has `sync_enabled = true`
@@ -300,6 +315,10 @@ The email sync scheduler will start automatically when the backend starts.
 ```bash
 # Get auth URL
 curl http://localhost:3000/api/v1/gmail/auth-url \
+  -H "Authorization: Bearer YOUR_JWT"
+
+# Inspect OAuth diagnostics
+curl "http://localhost:3000/api/v1/gmail/oauth-diagnostics?detail=Google%20auth%20failed%20(401)%3A%20Unauthorized" \
   -H "Authorization: Bearer YOUR_JWT"
 
 # List accounts

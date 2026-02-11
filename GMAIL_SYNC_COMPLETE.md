@@ -181,7 +181,7 @@ Lines Removed: 0
    ```
    GOOGLE_CLIENT_ID=...
    GOOGLE_CLIENT_SECRET=...
-   GOOGLE_REDIRECT_URI=https://your-app.replit.app/api/v1/gmail/callback
+   GOOGLE_GMAIL_CALLBACK_URL=https://your-app.replit.app/api/v1/gmail/callback
    CORS_ORIGIN=https://your-app.replit.app
    ```
 

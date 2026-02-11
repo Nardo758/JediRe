@@ -30,25 +30,111 @@ interface EmailAccount {
 
 export class GmailSyncService {
   private _oauth2Client: OAuth2Client | null = null;
+  private static readonly REQUIRED_SCOPES = new Set([
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/userinfo.email',
+  ]);
+
+  private resolveCallbackUrl(overrideCallbackUrl?: string): string {
+    const callbackUrl = overrideCallbackUrl
+      || process.env.GOOGLE_GMAIL_CALLBACK_URL
+      || process.env.GOOGLE_REDIRECT_URI
+      || process.env.GOOGLE_CALLBACK_URL;
+
+    if (!callbackUrl) {
+      logger.error(
+        'Missing Gmail OAuth redirect URI env vars: GOOGLE_GMAIL_CALLBACK_URL | GOOGLE_REDIRECT_URI | GOOGLE_CALLBACK_URL'
+      );
+      throw new AppError(
+        500,
+        'Google OAuth not configured: set GOOGLE_GMAIL_CALLBACK_URL (or GOOGLE_REDIRECT_URI / GOOGLE_CALLBACK_URL)'
+      );
+    }
+
+    return callbackUrl;
+  }
+
+  private createOAuthClient(overrideCallbackUrl?: string): OAuth2Client {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const callbackUrl = this.resolveCallbackUrl(overrideCallbackUrl);
+
+    if (!clientId || !clientSecret) {
+      const missing = [
+        !clientId && 'GOOGLE_CLIENT_ID',
+        !clientSecret && 'GOOGLE_CLIENT_SECRET',
+      ].filter(Boolean).join(', ');
+      logger.error(`Missing Google OAuth env vars: ${missing}`);
+      throw new AppError(500, `Google OAuth not configured: missing ${missing}`);
+    }
+
+    return new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+  }
+
+  private getExpiryDate(expiryDate?: number | null): Date {
+    // Google returns expiry_date as an absolute Unix ms timestamp.
+    if (typeof expiryDate === 'number' && Number.isFinite(expiryDate) && expiryDate > 0) {
+      return expiryDate > 10_000_000_000
+        ? new Date(expiryDate)
+        : new Date(Date.now() + expiryDate);
+    }
+
+    return new Date(Date.now() + 3600000);
+  }
+
+  private parseGrantedScopes(scopeValue?: string | null): string[] {
+    if (!scopeValue) return [];
+    return scopeValue
+      .split(/\s+/)
+      .map(scope => scope.trim())
+      .filter(Boolean);
+  }
+
+  private validateGrantedScopes(grantedScopes: string[]): void {
+    if (grantedScopes.length === 0) {
+      // Some token responses omit scope when unchanged; skip strict validation in that case.
+      return;
+    }
+
+    const missingScopes = [...GmailSyncService.REQUIRED_SCOPES].filter(
+      scope => !grantedScopes.includes(scope)
+    );
+
+    if (missingScopes.length > 0) {
+      throw new AppError(
+        400,
+        `Google permissions missing required scopes: ${missingScopes.join(', ')}. Reconnect Gmail and approve all requested permissions.`
+      );
+    }
+  }
+
+  private getOAuthErrorMessage(statusCode: number | string, detail: string): string {
+    const detailLower = detail.toLowerCase();
+
+    if (detailLower.includes('redirect_uri_mismatch')) {
+      return `Google auth failed (${statusCode}): redirect URI mismatch. Ensure GOOGLE_GMAIL_CALLBACK_URL matches the exact authorized redirect URI in Google Cloud Console.`;
+    }
+
+    if (detailLower.includes('unauthorized_client') || detailLower.includes('unauthorized') || statusCode === 401) {
+      return `Google auth failed (${statusCode}): unauthorized client. Verify client ID/secret, use a Web Application OAuth client, and confirm the Gmail callback URI is authorized.`;
+    }
+
+    if (detailLower.includes('invalid_client')) {
+      return `Google auth failed (${statusCode}): invalid OAuth client credentials. Verify GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.`;
+    }
+
+    if (detailLower.includes('invalid_grant')) {
+      return `Google auth failed (${statusCode}): authorization code is invalid or expired. Start the Gmail connection flow again.`;
+    }
+
+    return `Google auth failed (${statusCode}): ${detail}`;
+  }
 
   private get oauth2Client(): OAuth2Client {
     if (!this._oauth2Client) {
-      const clientId = process.env.GOOGLE_CLIENT_ID;
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-      const callbackUrl = process.env.GOOGLE_CALLBACK_URL;
-
-      if (!clientId || !clientSecret || !callbackUrl) {
-        const missing = [
-          !clientId && 'GOOGLE_CLIENT_ID',
-          !clientSecret && 'GOOGLE_CLIENT_SECRET',
-          !callbackUrl && 'GOOGLE_CALLBACK_URL',
-        ].filter(Boolean).join(', ');
-        logger.error(`Missing Google OAuth env vars: ${missing}`);
-        throw new AppError(500, `Google OAuth not configured: missing ${missing}`);
-      }
-
+      const callbackUrl = this.resolveCallbackUrl();
       logger.info(`Initializing Google OAuth2 client with callback: ${callbackUrl}`);
-      this._oauth2Client = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+      this._oauth2Client = this.createOAuthClient(callbackUrl);
     }
     return this._oauth2Client;
   }
@@ -56,7 +142,9 @@ export class GmailSyncService {
   /**
    * Get authorization URL for Gmail OAuth
    */
-  getAuthUrl(state?: string): string {
+  getAuthUrl(state?: string, callbackUrl?: string): string {
+    const oauthClient = this.createOAuthClient(callbackUrl);
+
     const scopes = [
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.send',
@@ -64,10 +152,11 @@ export class GmailSyncService {
       'https://www.googleapis.com/auth/userinfo.profile',
     ];
 
-    return this.oauth2Client.generateAuthUrl({
+    return oauthClient.generateAuthUrl({
       access_type: 'offline',
       scope: scopes,
       prompt: 'consent',
+      include_granted_scopes: true,
       state,
     });
   }
@@ -75,29 +164,17 @@ export class GmailSyncService {
   /**
    * Exchange authorization code for tokens
    */
-  async exchangeCodeForTokens(code: string): Promise<{
+  async exchangeCodeForTokens(code: string, callbackUrl?: string): Promise<{
     accessToken: string;
-    refreshToken: string;
+    refreshToken: string | null;
     expiresAt: Date;
     email: string;
+    grantedScopes: string[];
   }> {
     try {
-      const clientId = process.env.GOOGLE_CLIENT_ID;
-      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-      const callbackUrl = process.env.GOOGLE_CALLBACK_URL;
-
-      if (!clientId || !clientSecret || !callbackUrl) {
-        const missing = [
-          !clientId && 'GOOGLE_CLIENT_ID',
-          !clientSecret && 'GOOGLE_CLIENT_SECRET',
-          !callbackUrl && 'GOOGLE_CALLBACK_URL',
-        ].filter(Boolean).join(', ');
-        logger.error(`Missing Google OAuth env vars: ${missing}`);
-        throw new AppError(500, `Google OAuth not configured: missing ${missing}`);
-      }
-
-      logger.info(`Token exchange using callback URL: ${callbackUrl}`);
-      const tempClient = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+      const resolvedCallbackUrl = this.resolveCallbackUrl(callbackUrl);
+      logger.info(`Token exchange using callback URL: ${resolvedCallbackUrl}`);
+      const tempClient = this.createOAuthClient(resolvedCallbackUrl);
       const { tokens } = await tempClient.getToken(code);
       
       if (!tokens.access_token) {
@@ -113,15 +190,22 @@ export class GmailSyncService {
         throw new AppError(500, 'No email found in Google account');
       }
 
-      const expiresAt = new Date(Date.now() + (tokens.expiry_date || 3600000));
+      const grantedScopes = this.parseGrantedScopes(tokens.scope);
+      this.validateGrantedScopes(grantedScopes);
+      const expiresAt = this.getExpiryDate(tokens.expiry_date);
 
       return {
         accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token || '',
+        refreshToken: tokens.refresh_token ?? null,
         expiresAt,
         email,
+        grantedScopes,
       };
     } catch (error: any) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+
       const gaxiosData = error?.response?.data;
       const detail = gaxiosData?.error_description 
         || gaxiosData?.error 
@@ -129,7 +213,7 @@ export class GmailSyncService {
         || 'Unknown error';
       const statusCode = error?.response?.status || error?.code || 'N/A';
       logger.error(`Google token exchange failed [${statusCode}]:`, detail, JSON.stringify(gaxiosData || {}));
-      throw new AppError(500, `Google auth failed (${statusCode}): ${detail}`);
+      throw new AppError(500, this.getOAuthErrorMessage(statusCode, detail));
     }
   }
 
@@ -148,7 +232,7 @@ export class GmailSyncService {
         throw new AppError(500, 'No access token received from refresh');
       }
 
-      const expiresAt = new Date(Date.now() + (credentials.expiry_date || 3600000));
+      const expiresAt = this.getExpiryDate(credentials.expiry_date);
 
       return {
         accessToken: credentials.access_token,
