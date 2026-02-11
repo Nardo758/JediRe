@@ -93,9 +93,14 @@ export class GmailSyncService {
         email,
       };
     } catch (error: any) {
-      const detail = error?.response?.data?.error_description || error?.message || 'Unknown error';
-      logger.error('Error exchanging code for tokens:', detail, error);
-      throw new AppError(500, `Google auth failed: ${detail}`);
+      const gaxiosData = error?.response?.data;
+      const detail = gaxiosData?.error_description 
+        || gaxiosData?.error 
+        || error?.message 
+        || 'Unknown error';
+      const statusCode = error?.response?.status || error?.code || 'N/A';
+      logger.error(`Google token exchange failed [${statusCode}]:`, detail, JSON.stringify(gaxiosData || {}));
+      throw new AppError(500, `Google auth failed (${statusCode}): ${detail}`);
     }
   }
 
