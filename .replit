@@ -26,8 +26,8 @@ start = "typescript-language-server --stdio"
 
 [deployment]
 deploymentTarget = "autoscale"
-build = ["npm", "run", "build"]
-run = ["npm", "run", "start"]
+build = ["bash", "-c", "cd frontend && npm run build && cd ../backend && npx tsc -p tsconfig.json"]
+run = ["bash", "-c", "cd backend && node dist/index.replit.js"]
 
 [agent]
 expertMode = true
