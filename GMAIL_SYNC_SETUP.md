@@ -161,6 +161,13 @@ The email sync scheduler will start automatically when the backend starts.
 **GET /api/v1/gmail/callback**
 - OAuth callback handler (redirects to frontend)
 
+**GET /api/v1/gmail/oauth-diagnostics**
+- Protected diagnostics endpoint for OAuth troubleshooting
+- Query params:
+  - `detail` (optional): raw OAuth error detail string
+  - `statusCode` (optional): numeric status code
+- Returns effective callback URLs, env configuration status, and parsed troubleshooting guidance
+
 ### Account Management
 
 **GET /api/v1/gmail/accounts**
@@ -308,6 +315,10 @@ The email sync scheduler will start automatically when the backend starts.
 ```bash
 # Get auth URL
 curl http://localhost:3000/api/v1/gmail/auth-url \
+  -H "Authorization: Bearer YOUR_JWT"
+
+# Inspect OAuth diagnostics
+curl "http://localhost:3000/api/v1/gmail/oauth-diagnostics?detail=Google%20auth%20failed%20(401)%3A%20Unauthorized" \
   -H "Authorization: Bearer YOUR_JWT"
 
 # List accounts
