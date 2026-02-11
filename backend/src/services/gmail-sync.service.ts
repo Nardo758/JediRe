@@ -29,14 +29,28 @@ interface EmailAccount {
 }
 
 export class GmailSyncService {
-  private oauth2Client: OAuth2Client;
-  
-  constructor() {
-    this.oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/v1/gmail/callback'
-    );
+  private _oauth2Client: OAuth2Client | null = null;
+
+  private get oauth2Client(): OAuth2Client {
+    if (!this._oauth2Client) {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      const callbackUrl = process.env.GOOGLE_CALLBACK_URL;
+
+      if (!clientId || !clientSecret || !callbackUrl) {
+        const missing = [
+          !clientId && 'GOOGLE_CLIENT_ID',
+          !clientSecret && 'GOOGLE_CLIENT_SECRET',
+          !callbackUrl && 'GOOGLE_CALLBACK_URL',
+        ].filter(Boolean).join(', ');
+        logger.error(`Missing Google OAuth env vars: ${missing}`);
+        throw new AppError(500, `Google OAuth not configured: missing ${missing}`);
+      }
+
+      logger.info(`Initializing Google OAuth2 client with callback: ${callbackUrl}`);
+      this._oauth2Client = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+    }
+    return this._oauth2Client;
   }
 
   /**
@@ -68,15 +82,30 @@ export class GmailSyncService {
     email: string;
   }> {
     try {
-      const { tokens } = await this.oauth2Client.getToken(code);
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      const callbackUrl = process.env.GOOGLE_CALLBACK_URL;
+
+      if (!clientId || !clientSecret || !callbackUrl) {
+        const missing = [
+          !clientId && 'GOOGLE_CLIENT_ID',
+          !clientSecret && 'GOOGLE_CLIENT_SECRET',
+          !callbackUrl && 'GOOGLE_CALLBACK_URL',
+        ].filter(Boolean).join(', ');
+        logger.error(`Missing Google OAuth env vars: ${missing}`);
+        throw new AppError(500, `Google OAuth not configured: missing ${missing}`);
+      }
+
+      logger.info(`Token exchange using callback URL: ${callbackUrl}`);
+      const tempClient = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+      const { tokens } = await tempClient.getToken(code);
       
       if (!tokens.access_token) {
         throw new AppError(500, 'No access token received from Google');
       }
 
-      // Get user info to retrieve email
-      this.oauth2Client.setCredentials(tokens);
-      const oauth2 = google.oauth2({ version: 'v2', auth: this.oauth2Client });
+      tempClient.setCredentials(tokens);
+      const oauth2 = google.oauth2({ version: 'v2', auth: tempClient });
       const userInfo = await oauth2.userinfo.get();
       
       const email = userInfo.data.email;
