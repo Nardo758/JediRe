@@ -92,9 +92,10 @@ export class GmailSyncService {
         expiresAt,
         email,
       };
-    } catch (error) {
-      logger.error('Error exchanging code for tokens:', error);
-      throw new AppError(500, 'Failed to authenticate with Google');
+    } catch (error: any) {
+      const detail = error?.response?.data?.error_description || error?.message || 'Unknown error';
+      logger.error('Error exchanging code for tokens:', detail, error);
+      throw new AppError(500, `Google auth failed: ${detail}`);
     }
   }
 
