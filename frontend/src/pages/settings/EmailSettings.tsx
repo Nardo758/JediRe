@@ -32,7 +32,8 @@ export function EmailSettings() {
       window.history.replaceState({}, '', window.location.pathname);
     }
     if (params.get('error') === 'auth_failed') {
-      alert('Failed to connect Gmail account. Please try again.');
+      const detail = params.get('detail') || '';
+      alert(`Failed to connect Gmail account: ${detail || 'Please try again.'}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
