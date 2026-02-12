@@ -339,10 +339,10 @@ router.get('/impact/:dealId', async (req: Request, res: Response) => {
  */
 router.post('/aggregate/:tradeAreaId', async (req: Request, res: Response) => {
   try {
-    const tradeAreaId = parseInt(req.params.tradeAreaId);
+    const tradeAreaId = req.params.tradeAreaId;
     const { quarter } = req.body;
     
-    if (isNaN(tradeAreaId) || !quarter) {
+    if (!tradeAreaId || !quarter) {
       return res.status(400).json({
         success: false,
         error: 'Invalid trade area ID or missing quarter'

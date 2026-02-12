@@ -79,7 +79,7 @@ export interface DemandProjection {
 }
 
 export interface TradeAreaDemandForecast {
-  tradeAreaId: number;
+  tradeAreaId: string;
   tradeAreaName: string;
   quarter: string;
   totalUnitsProjected: number;
@@ -400,7 +400,7 @@ class DemandSignalService {
   /**
    * Aggregate demand for a trade area
    */
-  async aggregateTradeAreaDemand(tradeAreaId: number, quarter: string): Promise<void> {
+  async aggregateTradeAreaDemand(tradeAreaId: string, quarter: string): Promise<void> {
     // Get all demand events affecting this trade area
     const result = await query(
       `SELECT 
@@ -506,7 +506,7 @@ class DemandSignalService {
    * Get demand forecast for trade area
    */
   async getTradeAreaForecast(
-    tradeAreaId: number,
+    tradeAreaId: string,
     startQuarter?: string,
     endQuarter?: string
   ): Promise<TradeAreaDemandForecast[]> {

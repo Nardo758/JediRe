@@ -22,13 +22,13 @@ export interface GeographicAssignment {
   msa_name?: string;
   submarket_id: number | null;
   submarket_name?: string;
-  trade_area_ids: number[];
+  trade_area_ids: string[];
   trade_area_impacts?: TradeAreaImpact[];
   geocoded?: GeocodingResult;
 }
 
 export interface TradeAreaImpact {
-  trade_area_id: number;
+  trade_area_id: string;
   trade_area_name: string;
   impact_type: 'direct' | 'proximity' | 'sector' | 'metro';
   distance_miles: number;
@@ -347,7 +347,7 @@ class GeographicAssignmentService {
    * Factors: Proximity (30%), Sector (30%), Absorption (25%), Temporal (15%)
    */
   private async calculateTradeAreaImpact(
-    tradeAreaId: number,
+    tradeAreaId: string,
     tradeAreaName: string,
     eventLocation: { lat: number; lng: number },
     distanceMiles: number,
