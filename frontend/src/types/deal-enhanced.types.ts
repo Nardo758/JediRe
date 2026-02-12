@@ -96,7 +96,35 @@ export const DEAL_SECTIONS: DealSection[] = [
     title: 'Overview',
     icon: '📊',
     defaultExpanded: true,
-    description: 'High-level deal summary, map, quick stats, and actions'
+    description: 'Property-specific details, metrics, and performance summary'
+  },
+  {
+    id: 'market-competition',
+    title: 'Market Competition',
+    icon: '🏆',
+    isPremium: true,
+    description: 'Competitive analysis, comparable properties, market positioning'
+  },
+  {
+    id: 'supply-tracking',
+    title: 'Supply Tracking',
+    icon: '📦',
+    isPremium: true,
+    description: 'Pipeline monitoring, new construction, supply impact analysis'
+  },
+  {
+    id: 'debt-market',
+    title: 'Debt Market',
+    icon: '💳',
+    isPremium: true,
+    description: 'Interest rates, lending conditions, financing options tracking'
+  },
+  {
+    id: 'ai-agent',
+    title: 'AI Agent (Opus)',
+    icon: '🤖',
+    isPremium: true,
+    description: 'Claude Opus-powered deal analysis and recommendations'
   },
   {
     id: 'financial',
@@ -110,7 +138,7 @@ export const DEAL_SECTIONS: DealSection[] = [
     title: 'Strategy & Arbitrage',
     icon: '🎯',
     isPremium: true,
-    description: 'Deal strategy, arbitrage opportunities, value-add strategies'
+    description: 'Deal strategies including custom strategies and debt strategy builder'
   },
   {
     id: 'due-diligence',
@@ -129,7 +157,7 @@ export const DEAL_SECTIONS: DealSection[] = [
     title: 'Market Analysis',
     icon: '📈',
     isPremium: true,
-    description: 'Market trends, demographics, supply/demand, competitive analysis'
+    description: 'Market trends, demographics, supply/demand analysis'
   },
   {
     id: 'documents',
