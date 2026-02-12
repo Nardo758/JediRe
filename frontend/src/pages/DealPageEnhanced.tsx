@@ -9,12 +9,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { DealSection } from '../components/deal/DealSection';
 import {
   OverviewSection,
-  MarketCompetitionSection,
+  CompetitionSection,
   SupplyTrackingSection,
   DebtMarketSection,
+  DebtSection,
   AIAgentSection,
   FinancialSection,
   StrategySection,
+  ExitSection,
   DueDiligenceSection,
   PropertiesSection,
   MarketSection,
@@ -199,7 +201,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Market Competition"
               isPremium={true}
             >
-              <MarketCompetitionSection deal={deal} />
+              <CompetitionSection deal={deal} />
             </DealSection>
           </div>
 
@@ -215,15 +217,19 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 4. Debt Market */}
+          {/* 4. Debt & Financing */}
           <div id="section-debt-market">
             <DealSection
               id="debt-market"
               icon="💳"
-              title="Debt Market"
+              title="Debt & Financing"
               isPremium={true}
             >
-              <DebtMarketSection deal={deal} />
+              <DebtSection 
+                deal={deal} 
+                isPremium={isPremium}
+                dealStatus={deal.status || 'pipeline'}
+              />
             </DealSection>
           </div>
 
@@ -263,7 +269,19 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 8. Due Diligence */}
+          {/* 8. Exit Strategy */}
+          <div id="section-exit">
+            <DealSection
+              id="exit"
+              icon="🚪"
+              title="Exit Strategy"
+              isPremium={true}
+            >
+              <ExitSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 9. Due Diligence */}
           <div id="section-due-diligence">
             <DealSection
               id="due-diligence"
@@ -274,7 +292,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 9. Properties */}
+          {/* 10. Properties */}
           <div id="section-properties">
             <DealSection
               id="properties"
@@ -285,7 +303,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 10. Market Analysis */}
+          {/* 11. Market Analysis */}
           <div id="section-market">
             <DealSection
               id="market"
@@ -297,7 +315,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 7. Documents */}
+          {/* 12. Documents */}
           <div id="section-documents">
             <DealSection
               id="documents"
@@ -308,7 +326,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 8. Team & Communications */}
+          {/* 13. Team & Communications */}
           <div id="section-team">
             <DealSection
               id="team"
@@ -319,7 +337,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 9. Deal Context Tracker */}
+          {/* 14. Deal Context Tracker */}
           <div id="section-context-tracker">
             <DealSection
               id="context-tracker"
@@ -330,7 +348,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 10. Notes & Comments */}
+          {/* 15. Notes & Comments */}
           <div id="section-notes">
             <DealSection
               id="notes"

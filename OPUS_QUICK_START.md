@@ -1,236 +1,304 @@
-# Opus Integration - Quick Start
+# Opus Quick Start - 5 Minutes to Analysis
 
-Get AI-powered deal analysis running in 5 minutes.
+**Get AI-powered deal analysis running in 5 minutes**
 
-## Step 1: Install Dependencies
+---
+
+## Step 1: Install SDK (30 seconds)
 
 ```bash
-cd frontend
+cd jedire/frontend
 npm install @anthropic-ai/sdk
 ```
 
-## Step 2: Environment Setup
+---
 
-Add to `frontend/.env`:
+## Step 2: Get API Key (2 minutes)
+
+1. Go to [console.anthropic.com](https://console.anthropic.com)
+2. Sign up / Log in
+3. Navigate to **API Keys**
+4. Click **Create Key**
+5. Copy the key (starts with `sk-ant-api03-...`)
+
+---
+
+## Step 3: Configure Environment (30 seconds)
+
+Create or edit `jedire/frontend/.env`:
 
 ```bash
-# For production/live API
-VITE_ANTHROPIC_API_KEY=sk-ant-api03-your-key-here
-
-# Or leave blank to use mock mode for development
+VITE_ANTHROPIC_API_KEY=sk-ant-api03-...paste-your-key-here...
 ```
 
-## Step 3: Use Mock Mode (Recommended for Development)
+**Important**: Don't commit this file to git!
 
-No API key needed! Just use the mock service:
+---
 
-```typescript
-import { opusMockService } from './services/opus.mock.service';
+## Step 4: Test with Mock Data (1 minute)
 
-// Instant results, no API costs
-const analysis = await opusMockService.analyzeAcquisition(dealContext);
-```
-
-## Step 4: Basic Integration
-
-Add to any deal page component:
+Create a test file `jedire/frontend/src/test-opus.ts`:
 
 ```typescript
-import { opusMockService } from '../services/opus.mock.service';
-import type { OpusDealContext, OpusRecommendationResult } from '../types/opus.types';
+import { opusService } from './services/opus.service';
+import { buildOpusContext } from './services/opus.context.builder';
 
-const [analysis, setAnalysis] = useState<OpusRecommendationResult | null>(null);
+// Enable mock mode (no API calls)
+opusService.updateConfig({ useMockData: true });
 
-const analyzeDeal = async () => {
-  // Build context from your deal data
-  const context: OpusDealContext = {
-    dealId: deal.id,
-    dealName: deal.name,
-    status: 'pipeline',
-    overview: {
-      propertySpecs: {
-        address: deal.address,
-        propertyType: deal.propertyType,
-        units: deal.units,
-        // ... more specs
-      },
-      metrics: {
-        purchasePrice: deal.price,
-        capRate: deal.capRate,
-        // ... more metrics
-      }
-    },
-    // Add financial, competition, supply data as available
-    financial: deal.financial ? {
-      proForma: {
-        revenue: { grossRent: deal.grossRent },
-        expenses: { operating: deal.opex },
-        noi: deal.noi
-      }
-    } : undefined
+// Test analysis
+async function testOpus() {
+  const mockDeal = {
+    id: 'test-1',
+    name: 'Sunnyvale Gardens Apartments',
+    status: 'PIPELINE',
+    dealValue: 12500000,
+    capRate: 6.2,
+    units: 120,
+    propertyAddress: '123 Main St, Sunnyvale, CA'
   };
 
-  // Get analysis
-  const result = await opusMockService.analyzeAcquisition(context);
-  setAnalysis(result);
-};
-
-// Display results
-{analysis && (
-  <div>
-    <h3>Score: {analysis.score}/10</h3>
-    <p>Recommendation: {analysis.recommendation}</p>
-    <p>{analysis.reasoning}</p>
-    
-    <h4>Key Insights:</h4>
-    <ul>
-      {analysis.keyInsights.map(insight => <li>{insight}</li>)}
-    </ul>
-    
-    <h4>Risks ({analysis.risks.length}):</h4>
-    {analysis.risks.map(risk => (
-      <div>
-        <strong>{risk.category}:</strong> {risk.description}
-        <br />
-        <em>Mitigation: {risk.mitigation}</em>
-      </div>
-    ))}
-  </div>
-)}
-```
-
-## Step 5: Example Component
-
-See complete working example:
-
-```typescript
-import OpusIntegrationExample from './components/OpusIntegrationExample';
-
-<OpusIntegrationExample deal={deal} useMockData={true} />
-```
-
-## What You Get
-
-### Acquisition Analysis
-- **Score**: 0-10 rating
-- **Recommendation**: strong-buy, buy, hold, pass, strong-pass
-- **Key Insights**: Top 3-5 critical points
-- **Risks**: Identified risks with mitigation strategies
-- **Opportunities**: Value-add and optimization opportunities
-- **Action Items**: Prioritized next steps
-
-### Performance Analysis (Owned Assets)
-- **Score**: Current performance rating
-- **Recommendation**: optimize, hold-asset, sell
-- **Optimization Opportunities**: Revenue and expense improvements
-- **Performance Insights**: Strengths and weaknesses
-- **Action Items**: Improvement priorities
-
-### Chat Interface
-```typescript
-const response = await opusMockService.chat({
-  dealId: deal.id,
-  message: 'What are the biggest risks?',
-  sessionId: sessionId
-});
-
-console.log(response.message.content);
-```
-
-## Progressive Enhancement
-
-Start simple, add more data over time:
-
-**Minimal** (works with just this):
-```typescript
-{
-  dealId, dealName, status,
-  overview: { propertySpecs, metrics }
+  const context = buildOpusContext(mockDeal);
+  
+  console.log('Context completeness:', context.dataCompleteness + '%');
+  
+  const analysis = await opusService.analyzeAcquisition(context);
+  
+  console.log('\n=== ANALYSIS RESULTS ===');
+  console.log('Recommendation:', analysis.recommendation);
+  console.log('Score:', analysis.score, '/ 10');
+  console.log('Confidence:', analysis.confidence + '%');
+  console.log('\nKey Insights:');
+  analysis.keyInsights.forEach((insight, i) => {
+    console.log(`  ${i + 1}. ${insight}`);
+  });
+  console.log('\nRisks:', analysis.risks.length);
+  console.log('Opportunities:', analysis.opportunities.length);
+  console.log('Action Items:', analysis.actionItems.length);
 }
+
+testOpus().catch(console.error);
 ```
 
-**Better** (add financial):
-```typescript
-{
-  ...,
-  financial: { proForma }
-}
+Run it:
+```bash
+npx tsx src/test-opus.ts
 ```
 
-**Best** (full context):
-```typescript
-{
-  ...,
-  competition: { comps, marketPosition },
-  supply: { pipelineProjects, impactAnalysis },
-  debt: { currentRates, lendingConditions },
-  market: { demographics, trends }
-}
-```
+You should see analysis results in console! ✅
 
-More data = better analysis & higher confidence!
+---
 
-## Switching to Live API
+## Step 5: Switch to Real API (30 seconds)
 
-When ready for production:
-
-1. Get Anthropic API key from https://console.anthropic.com
-2. Add to `.env`: `VITE_ANTHROPIC_API_KEY=sk-ant-...`
-3. Switch to real service:
+Once you have an API key configured:
 
 ```typescript
-import { opusService } from '../services/opus.service';
+// Remove or comment out mock mode
+// opusService.updateConfig({ useMockData: true });
 
-// Will use API key from environment
+// Service will automatically use real API
 const analysis = await opusService.analyzeAcquisition(context);
-
-// Check costs
-const metrics = opusService.getUsageMetrics();
-console.log(`Cost: $${metrics.totalCost.toFixed(2)}`);
 ```
 
-## Cost Reference
+**Cost**: ~$0.15 per analysis with standard data
 
-Claude Opus (production):
-- ~$0.20-$0.40 per analysis
-- ~$0.05-$0.15 per chat message
+---
 
-Mock service (development):
-- $0 always
-- Instant responses
-- Realistic data
+## Step 6: Build Your First UI Component (30 minutes)
 
-## Troubleshooting
+```typescript
+import { useState } from 'react';
+import { opusService } from '@/services/opus.service';
+import { buildOpusContext } from '@/services/opus.context.builder';
 
-**"API key missing"**
-→ Use mock mode or add `VITE_ANTHROPIC_API_KEY` to `.env`
+export function DealAnalysis({ deal }) {
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-**"Insufficient data"**
-→ Add at least `overview` with `propertySpecs` and `metrics`
+  async function analyze() {
+    setLoading(true);
+    try {
+      const context = buildOpusContext(deal);
+      const result = await opusService.analyzeAcquisition(context);
+      setAnalysis(result);
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-**Low confidence score**
-→ Add more tab data (financial, competition, supply)
+  return (
+    <div className="p-6">
+      <button onClick={analyze} disabled={loading}>
+        {loading ? 'Analyzing...' : '🤖 Run AI Analysis'}
+      </button>
 
-**Mock responses too generic**
-→ Mock service generates realistic data - good for testing UI, use real API for actual analysis
+      {analysis && (
+        <div className="mt-6 space-y-4">
+          {/* Score Card */}
+          <div className="card bg-white p-6 rounded-lg shadow">
+            <div className="text-5xl font-bold text-blue-600">
+              {analysis.score}/10
+            </div>
+            <div className="text-xl font-semibold mt-2">
+              {analysis.recommendation.replace('-', ' ').toUpperCase()}
+            </div>
+            <div className="text-sm text-gray-500 mt-1">
+              {analysis.confidence}% confidence
+            </div>
+          </div>
+
+          {/* Executive Summary */}
+          <div className="card bg-white p-6 rounded-lg shadow">
+            <h3 className="font-bold text-lg mb-2">Executive Summary</h3>
+            <p className="text-gray-700">{analysis.executiveSummary}</p>
+          </div>
+
+          {/* Key Insights */}
+          <div className="card bg-white p-6 rounded-lg shadow">
+            <h3 className="font-bold text-lg mb-3">Key Insights</h3>
+            <ul className="space-y-2">
+              {analysis.keyInsights.map((insight, i) => (
+                <li key={i} className="flex items-start">
+                  <span className="text-blue-500 mr-2">💡</span>
+                  <span>{insight}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Risks */}
+          <div className="card bg-white p-6 rounded-lg shadow">
+            <h3 className="font-bold text-lg mb-3">
+              Risks ({analysis.risks.length})
+            </h3>
+            <div className="space-y-3">
+              {analysis.risks.map(risk => (
+                <div key={risk.id} className="border-l-4 border-red-500 pl-3">
+                  <div className="font-semibold text-gray-900">
+                    {risk.category}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {risk.description}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {risk.level} risk • {risk.probability}% probability
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Opportunities */}
+          <div className="card bg-white p-6 rounded-lg shadow">
+            <h3 className="font-bold text-lg mb-3">
+              Opportunities ({analysis.opportunities.length})
+            </h3>
+            <div className="space-y-3">
+              {analysis.opportunities.map(opp => (
+                <div key={opp.id} className="border-l-4 border-green-500 pl-3">
+                  <div className="font-semibold text-gray-900">
+                    {opp.type}
+                  </div>
+                  <div className="text-sm text-gray-700">
+                    {opp.description}
+                  </div>
+                  {opp.potentialValue && (
+                    <div className="text-xs text-green-600 mt-1">
+                      Value: ${opp.potentialValue.toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+## That's It! 🎉
+
+You now have:
+- ✅ AI-powered deal analysis
+- ✅ Risk identification
+- ✅ Opportunity detection
+- ✅ Action item planning
+
+---
 
 ## Next Steps
 
-1. ✅ Start with mock service
-2. ✅ Build deal context gathering
-3. ✅ Create UI for analysis results
-4. ✅ Add chat interface
-5. ✅ Switch to real API when ready
-6. ✅ Monitor costs and usage
+### Learn More
+- **Full Documentation**: `jedire/docs/OPUS_INTEGRATION.md`
+- **Type Reference**: `jedire/frontend/src/types/opus.README.md`
+- **Examples**: See docs for chat interface, risk dashboard, etc.
 
-See `OPUS_INTEGRATION_GUIDE.md` for complete documentation.
+### Add Features
+- Chat interface for deal Q&A
+- Risk dashboard
+- Opportunity tracker
+- Performance analysis for owned assets
+- Usage metrics display
 
-## File Reference
+### Optimize
+- Cache analyses to reduce API costs
+- Add data validation before analysis
+- Track usage with `opusService.getUsageMetrics()`
+- Implement rate limiting for users
 
-- Types: `frontend/src/types/opus.types.ts`
-- Service: `frontend/src/services/opus.service.ts`
-- Mock: `frontend/src/services/opus.mock.service.ts`
-- Example: `frontend/src/components/OpusIntegrationExample.tsx`
-- Guide: `OPUS_INTEGRATION_GUIDE.md`
+---
 
-Ready to build! 🚀
+## Troubleshooting
+
+### "API key missing"
+- Check `.env` file exists in `frontend/`
+- Verify key starts with `sk-ant-api03-`
+- Restart dev server after adding `.env`
+
+### "Insufficient data"
+```typescript
+// Check data completeness
+const context = buildOpusContext(deal);
+console.log('Completeness:', context.dataCompleteness);
+
+// Add more tab data
+const context = buildOpusContext(deal, {
+  overview: getOverviewData(),
+  financial: getFinancialData(),
+  competition: getCompData()
+});
+```
+
+### Mock mode not working
+```typescript
+// Make sure you're calling updateConfig before analysis
+opusService.updateConfig({ useMockData: true });
+```
+
+---
+
+## Cost Estimates
+
+| Usage Level | Analyses/Month | Chat Messages | Monthly Cost |
+|-------------|----------------|---------------|--------------|
+| Light       | 50             | 200           | ~$15         |
+| Medium      | 200            | 500           | ~$40         |
+| Heavy       | 500            | 1000          | ~$90         |
+
+**Per Analysis**: $0.08 - $0.30 depending on data completeness
+
+---
+
+## Support
+
+**Questions?** Check the full documentation at `jedire/docs/OPUS_INTEGRATION.md`
+
+**Ready to build!** 🚀
