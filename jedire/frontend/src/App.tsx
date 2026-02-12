@@ -39,6 +39,13 @@ function AppContent() {
     <>
       <Routes>
         <Route path="/login" element={<AuthPage />} />
+        
+        {/* Showcase Routes (No Layout) */}
+        <Route path="/showcase" element={<ShowcaseLandingPage />} />
+        <Route path="/showcase/deal/:dealId" element={<DealShowcasePage />} />
+        <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
+        <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
+        
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/map" element={<MapPage />} />
@@ -69,6 +76,7 @@ function AppContent() {
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
+          <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/tasks" element={<TasksPage />} />
