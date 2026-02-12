@@ -3,9 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useDealStore } from '../stores/dealStore';
 import { DealSidebar } from '../components/deal/DealSidebar';
 import { DealMapView } from '../components/deal/DealMapView';
-import { DealProperties } from '../components/deal/DealProperties';
 import { DealStrategy } from '../components/deal/DealStrategy';
-import { DealPipeline } from '../components/deal/DealPipeline';
 import { DealContextTracker } from '../components/deal/DealContextTracker';
 import { GeographicScopeTabs } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
@@ -115,8 +113,6 @@ export const DealView: React.FC = () => {
         );
       case 'strategy':
         return <DealStrategy dealId={selectedDeal.id} />;
-      case 'pipeline':
-        return <DealPipeline dealId={selectedDeal.id} />;
       case 'context':
         return <DealContextTracker dealId={selectedDeal.id} />;
       case 'market-competition':

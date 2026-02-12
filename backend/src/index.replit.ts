@@ -1559,7 +1559,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // ============================================
 // Start Server
 // ============================================
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
