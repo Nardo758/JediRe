@@ -4,7 +4,6 @@ import { DealSidebarProps } from '../../types';
 const moduleIcons: Record<string, string> = {
   map: '🗺️',
   overview: '📊',
-  properties: '🏢',
   financial: '💰',
   strategy: '🎯',
   'due-diligence': '✅',
@@ -13,13 +12,11 @@ const moduleIcons: Record<string, string> = {
   team: '👥',
   context: '🧭',
   notes: '💬',
-  pipeline: '📉',
 };
 
 const moduleLabels: Record<string, string> = {
   map: 'Map View',
   overview: 'Overview',
-  properties: 'Properties',
   financial: 'Financial Analysis',
   strategy: 'Strategy & Arbitrage',
   'due-diligence': 'Due Diligence',
@@ -28,13 +25,11 @@ const moduleLabels: Record<string, string> = {
   team: 'Team & Comms',
   context: 'Context Tracker',
   notes: 'Notes & Comments',
-  pipeline: 'Pipeline',
 };
 
 const moduleOrder = [
   'map',
   'overview',
-  'properties',
   'financial',
   'strategy',
   'due-diligence',
@@ -43,7 +38,6 @@ const moduleOrder = [
   'team',
   'context',
   'notes',
-  'pipeline',
 ];
 
 export const DealSidebar: React.FC<DealSidebarProps> = ({
