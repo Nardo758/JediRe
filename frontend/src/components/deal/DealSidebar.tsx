@@ -3,22 +3,38 @@ import { DealSidebarProps } from '../../types';
 
 const moduleIcons = {
   map: '🗺️',
+  overview: '📊',
+  marketCompetition: '🏆',
+  supplyTracking: '📦',
+  debtMarket: '💳',
+  aiAgent: '🤖',
+  financial: '💰',
+  strategy: '🎯',
+  dueDiligence: '✅',
   properties: '🏢',
-  strategy: '📈',
-  market: '📉',
-  pipeline: '💰',
-  reports: '📊',
-  team: '👥'
+  market: '📈',
+  documents: '📄',
+  team: '👥',
+  contextTracker: '🧭',
+  notes: '💬'
 };
 
 const moduleLabels = {
   map: 'Map View',
+  overview: 'Overview',
+  marketCompetition: 'Market Competition',
+  supplyTracking: 'Supply Tracking',
+  debtMarket: 'Debt Market',
+  aiAgent: 'AI Agent (Opus)',
+  financial: 'Financial Analysis',
+  strategy: 'Strategy & Arbitrage',
+  dueDiligence: 'Due Diligence',
   properties: 'Properties',
-  strategy: 'Strategy',
-  market: 'Market Intel',
-  pipeline: 'Pipeline',
-  reports: 'Reports',
-  team: 'Team'
+  market: 'Market Analysis',
+  documents: 'Documents',
+  team: 'Team & Comms',
+  contextTracker: 'Context Tracker',
+  notes: 'Notes & Comments'
 };
 
 export const DealSidebar: React.FC<DealSidebarProps> = ({
@@ -34,15 +50,15 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
 
   const getModuleUpgradeMessage = (moduleName: string) => {
     if (deal.tier === 'basic') {
-      if (['strategy', 'market'].includes(moduleName)) {
+      if (['marketCompetition', 'supplyTracking', 'debtMarket', 'aiAgent', 'financial', 'strategy', 'market'].includes(moduleName)) {
         return 'Upgrade to Pro';
       }
-      if (['reports', 'team'].includes(moduleName)) {
+      if (['team'].includes(moduleName)) {
         return 'Upgrade to Enterprise';
       }
     }
     if (deal.tier === 'pro') {
-      if (['reports', 'team'].includes(moduleName)) {
+      if (['team'].includes(moduleName)) {
         return 'Upgrade to Enterprise';
       }
     }
