@@ -11,6 +11,18 @@ import { GeographicScopeTabs } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
+import {
+  OverviewSection,
+  FinancialSection,
+  StrategySection,
+  DueDiligenceSection,
+  PropertiesSection,
+  MarketSection,
+  DocumentsSection,
+  TeamSection,
+  ContextTrackerSection,
+  NotesSection,
+} from '../components/deal/sections';
 
 export const DealView: React.FC = () => {
   const { id, module } = useParams<{ id: string; module?: string }>();
@@ -32,7 +44,6 @@ export const DealView: React.FC = () => {
     }
   }, [id]);
 
-  // Update current module when URL param changes
   useEffect(() => {
     if (module) {
       setCurrentModule(module);
@@ -61,7 +72,6 @@ export const DealView: React.FC = () => {
       const response = await api.deals.geographicContext(dealId);
       const context = response.data.data;
       
-      // Transform API response to match GeographicScopeTabs format
       const stats: any = {};
       
       if (context.trade_area?.stats) {
@@ -88,9 +98,12 @@ export const DealView: React.FC = () => {
       setGeographicStats(stats);
     } catch (err) {
       console.error('Failed to fetch geographic context:', err);
-      // Set null to fall back to empty state
       setGeographicStats(null);
     }
+  };
+
+  const handleModuleUpgrade = () => {
+    navigate('/settings/modules');
   };
 
   const renderModule = () => {
@@ -99,20 +112,68 @@ export const DealView: React.FC = () => {
     switch (currentModule) {
       case 'map':
         return <DealMapView deal={selectedDeal} />;
+      case 'overview':
+        return (
+          <div className="p-6">
+            <OverviewSection deal={selectedDeal as any} />
+          </div>
+        );
       case 'properties':
-        return <DealProperties dealId={selectedDeal.id} />;
+        return (
+          <div className="p-6">
+            <PropertiesSection deal={selectedDeal as any} />
+          </div>
+        );
+      case 'financial':
+        return (
+          <div className="p-6">
+            <FinancialSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
       case 'strategy':
-        return <DealStrategy dealId={selectedDeal.id} />;
+        return (
+          <div className="p-6">
+            <StrategySection deal={selectedDeal as any} enhanced={false} onToggleModule={handleModuleUpgrade} />
+          </div>
+        );
+      case 'due-diligence':
+        return (
+          <div className="p-6">
+            <DueDiligenceSection deal={selectedDeal as any} enhanced={false} onToggleModule={handleModuleUpgrade} />
+          </div>
+        );
+      case 'market':
+        return (
+          <div className="p-6">
+            <MarketSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
+      case 'documents':
+        return (
+          <div className="p-6">
+            <DocumentsSection deal={selectedDeal as any} />
+          </div>
+        );
+      case 'team':
+        return (
+          <div className="p-6">
+            <TeamSection deal={selectedDeal as any} />
+          </div>
+        );
+      case 'context':
+        return (
+          <div className="p-6">
+            <ContextTrackerSection deal={selectedDeal as any} />
+          </div>
+        );
+      case 'notes':
+        return (
+          <div className="p-6">
+            <NotesSection deal={selectedDeal as any} />
+          </div>
+        );
       case 'pipeline':
         return <DealPipeline dealId={selectedDeal.id} />;
-      case 'context':
-        return <DealContextTracker dealId={selectedDeal.id} />;
-      case 'market':
-        return <div className="p-6">Market Intelligence (Coming Soon)</div>;
-      case 'reports':
-        return <div className="p-6">Reports (Coming Soon)</div>;
-      case 'team':
-        return <div className="p-6">Team Collaboration (Coming Soon)</div>;
       default:
         return <div className="p-6">Module not found</div>;
     }
@@ -196,7 +257,6 @@ export const DealView: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Quick stats */}
             <div className="flex items-center gap-4 text-sm">
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount || 0}</div>
@@ -237,7 +297,6 @@ export const DealView: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Deal Modules */}
         <DealSidebar
           deal={selectedDeal}
           modules={modules}
@@ -245,7 +304,6 @@ export const DealView: React.FC = () => {
           onModuleChange={setCurrentModule}
         />
 
-        {/* Main Content Area */}
         <div className="flex-1 overflow-auto bg-gray-50">
           {renderModule()}
         </div>
