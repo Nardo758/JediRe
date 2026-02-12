@@ -123,10 +123,10 @@ export const MainLayout: React.FC = () => {
               </div>
 
               <nav className="space-y-1">
-                {/* DASHBOARD */}
+                {/* CONTROL PANEL */}
                 <div className="mb-4">
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Dashboard
+                    Control Panel
                   </h3>
                   
                   <SidebarItem
@@ -224,6 +224,20 @@ export const MainLayout: React.FC = () => {
                       }
                     }}
                     onShowOnMap={handleShowOnMap}
+                  />
+                </div>
+
+                {/* TOOLS */}
+                <div className="mb-4">
+                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Tools
+                  </h3>
+                  
+                  <SidebarItem
+                    icon="🎯"
+                    label="Tasks"
+                    path="/tasks"
+                    isActive={isActive('/tasks')}
                   />
                 </div>
 
