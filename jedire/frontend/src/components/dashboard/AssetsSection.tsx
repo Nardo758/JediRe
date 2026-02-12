@@ -177,7 +177,7 @@ export const AssetsSection: React.FC = () => {
           {assets.map((asset) => (
             <div
               key={asset.deal_id}
-              onClick={() => navigate(`/deals/${asset.deal_id}`)}
+              onClick={() => navigate(`/deals/${asset.deal_id}/view`)}
               className="bg-white rounded-lg border border-gray-200 p-3 hover:shadow-md transition cursor-pointer"
             >
               {/* Header */}
