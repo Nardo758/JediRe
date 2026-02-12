@@ -1,0 +1,49 @@
+MISSING PAGES - CATEGORIZED
+CRITICAL FOR LAUNCH (Should add):
+
+Property Comparison Page - Side-by-side comparison of multiple properties
+Advanced Analytics Dashboard - Portfolio performance, ROI tracking, market trends
+Alert/Watchlist Management - Detailed alert configuration beyond notifications center
+Team Management Dashboard - Add/remove team members, permissions (for Pro/Enterprise)
+Deal Pipeline/Tracker - Track properties through stages (Watching → Analyzing → Offer → Closing)
+Payment Method Management - Detailed view of cards, invoices, payment history
+Integration Connections - Connect QuickBooks, Sheets, Salesforce, etc.
+Calculator Tools Page - Standalone ROI, mortgage, cash-on-cash calculators
+404 Error Page - User-friendly "page not found"
+Email Confirmation Pages - Verify email, reset password success, etc.
+
+IMPORTANT FOR GROWTH (Should consider):
+
+Referral Program Dashboard - Track referrals, earnings, share links
+Affiliate/Partner Portal - For real estate agents, brokers referring clients
+Market Reports Library - Browse/download generated market analysis PDFs
+Educational Resources/Academy - Video courses, certifications, training
+Community Forum - User discussions, Q&A, networking
+Webinars/Events Page - Upcoming training sessions, workshops
+Customer Success Stories - Detailed testimonials beyond case studies
+Press/Media Kit - Logos, screenshots, press releases for journalists
+Partner Directory - Find contractors, lenders, agents in network
+Integrations Marketplace - Browse available integrations
+
+NICE TO HAVE (Enhancement):
+
+Investor Profile Deep Dive - Detailed questionnaire, preferences, goals
+Social Proof/Reviews Aggregator - All testimonials, G2, Capterra reviews
+Changelog/Product Updates - What's new, upcoming features
+Sitemap Page - SEO and user navigation
+Cookie Preferences Center - GDPR-compliant cookie management
+Accessibility Statement - WCAG compliance details
+DMCA/Copyright Notice - Content protection
+Unsubscribe/Email Preferences - Manage email types
+Maintenance Mode Page - "We'll be back soon"
+System Status Archive - Historical uptime data
+
+EMAIL/TRANSACTIONAL (Often overlooked):
+
+Welcome Email Series - Onboarding email sequence
+Password Reset Page - Secure reset flow
+Email Verification Page - Confirm email address
+Payment Success/Failure Pages - Transaction confirmations
+Cancellation Confirmation - "Sorry to see you go"
+Reactivation Pages - Win back canceled users
+Upgrade Success - Celebrate plan upgrades

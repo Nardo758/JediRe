@@ -1,0 +1,126 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ JediRe                     [Features][Pricing][About][Blog]  [Login][Sign Up]│
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                    CASE STUDIES HERO                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │         Real Investors, Real Results                                    ││
+│  │         See how investors are using JediRe to find opportunities        ││
+│  │         worth millions                                                  ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+│                    FILTERS                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ [All] [Flippers] [Rental Investors] [Developers] [Funds]               ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+│                    FEATURED CASE STUDY                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │  ⭐ FEATURED SUCCESS STORY                                              ││
+│  │                                                                         ││
+│  │  ┌──────────────────────────┐                                          ││
+│  │  │                          │  How Sarah Built a $2.1M Portfolio        ││
+│  │  │  [Photo: Sarah]          │  in 18 Months Using Strategy Arbitrage   ││
+│  │  │                          │                                           ││
+│  │  │                          │  Investor Profile:                        ││
+│  │  └──────────────────────────┘  • Sarah Johnson                         ││
+│  │                                 • Active Flipper → Portfolio Investor   ││
+│  │                                 • Atlanta, GA                           ││
+│  │                                 • 18 months with JediRe                 ││
+│  │                                                                         ││
+│  │  The Challenge:                                                         ││
+│  │  Sarah was an active flipper doing 8-10 deals per year with decent     ││
+│  │  returns (15-20% ROI). She wanted to scale but didn't have time to     ││
+│  │  analyze more properties manually.                                      ││
+│  │                                                                         ││
+│  │  The JediRe Solution:                                                   ││
+│  │  Using strategy arbitrage analysis, Sarah discovered that 40% of       ││
+│  │  properties she was flipping would generate higher long-term returns   ││
+│  │  as rentals. She shifted strategy on key properties.                   ││
+│  │                                                                         ││
+│  │  Key Wins:                                                              ││
+│  │  • Found 23 properties with >15% arbitrage opportunities               ││
+│  │  • Built 12-property rental portfolio while continuing to flip         ││
+│  │  • Increased overall ROI from 18% to 31%                               ││
+│  │  • Reduced analysis time from 3 hours to 15 minutes per property       ││
+│  │                                                                         ││
+│  │  The Numbers:                                                           ││
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   ││
+│  │  │ $2.1M       │  │ 23          │  │ 31%         │  │ $42K        │   ││
+│  │  │ Portfolio   │  │ Properties  │  │ Avg ROI     │  │ Extra Profit│   ││
+│  │  │ Value       │  │ Acquired    │  │             │  │ Per Deal    │   ││
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   ││
+│  │                                                                         ││
+│  │  "JediRe showed me I was leaving money on the table. The strategy      ││
+│  │   arbitrage feature alone has generated an extra $400K in value        ││
+│  │   I would have completely missed."                                     ││
+│  │   - Sarah Johnson                                                       ││
+│  │                                                                         ││
+│  │  [Read Full Case Study →]        [Watch Video Testimonial →]           ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+│                    MORE CASE STUDIES                                        │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │                                                                         ││
+│  │  ┌────────────┐  ┌────────────────────────────────────────────────┐    ││
+│  │  │            │  │ REAL ESTATE FUND                                │    ││
+│  │  │  [Photo:   │  │ From $5M to $24M AUM in 2 Years                │    ││
+│  │  │   Mike]    │  │                                                │    ││
+│  │  │            │  │ How Chen Capital used JediRe to identify       │    ││
+│  │  └────────────┘  │ undervalued properties at scale                │    ││
+│  │                  │                                                │    ││
+│  │                  │ • $24M assets under management                 │    ││
+│  │                  │ • 67 properties analyzed per week              │    ││
+│  │                  │ • 28% average IRR                              │    ││
+│  │                  │                                                │    ││
+│  │                  │ [Read Case Study →]                            │    ││
+│  │                  └────────────────────────────────────────────────┘    ││
+│  │                                                                         ││
+│  │  ┌────────────┐  ┌────────────────────────────────────────────────┐    ││
+│  │  │            │  │ LAND DEVELOPER                                  │    ││
+│  │  │  [Photo:   │  │ Finding Entitled Land Before the Market        │    ││
+│  │  │   David]   │  │                                                │    ││
+│  │  │            │  │ Development Agent identified 12 pre-approved   │    ││
+│  │  └────────────┘  │ parcels saving 18 months of entitlement work   │    ││
+│  │                  │                                                │    ││
+│  │                  │ • $3.2M saved in entitlement costs             │    ││
+│  │                  │ • 18-month timeline reduction                  │    ││
+│  │                  │ • 4 projects underway                          │    ││
+│  │                  │                                                │    ││
+│  │                  │ [Read Case Study →]                            │    ││
+│  │                  └────────────────────────────────────────────────┘    ││
+│  │                                                                         ││
+│  │  ┌────────────┐  ┌────────────────────────────────────────────────┐    ││
+│  │  │            │  │ AIRBNB OPERATOR                                 │    ││
+│  │  │  [Photo:   │  │ Converted 8 Rentals to STRs, Doubled NOI       │    ││
+│  │  │   Lisa]    │  │                                                │    ││
+│  │  │            │  │ Cash Flow Agent identified rent gap arbitrage  │    ││
+│  │  └────────────┘  │ between traditional rental and Airbnb          │    ││
+│  │                  │                                                │    ││
+│  │                  │ • $127K additional annual NOI                  │    ││
+│  │                  │ • 8 successful conversions                     │    ││
+│  │                  │ • 92% average occupancy                        │    ││
+│  │                  │                                                │    ││
+│  │                  │ [Read Case Study →]                            │    ││
+│  │                  └────────────────────────────────────────────────┘    ││
+│  │                                                                         ││
+│  │  [View All Case Studies →]                                              ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+│                    RESULTS SUMMARY                                          │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │  Collective Impact Across All Case Studies                              ││
+│  │                                                                         ││
+│  │  $127M              847                18.4%              95%            ││
+│  │  Total Value        Properties         Avg ROI            Would          ││
+│  │  Created            Acquired           Increase           Recommend      ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+│                    YOUR SUCCESS STORY                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │         Ready to Write Your Own Success Story?                          ││
+│  │         [Start Your Free 30-Day Trial]                                  ││
+│  │                                                                         ││
+│  │         Or [Schedule a Personalized Demo]                               ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘

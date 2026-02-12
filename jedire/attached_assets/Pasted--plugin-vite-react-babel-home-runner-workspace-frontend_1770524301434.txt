@@ -1,0 +1,59 @@
+[plugin:vite:react-babel] /home/runner/workspace/frontend/src/components/deal/CreateDealModal.tsx: Unexpected keyword 'const'. (176:6)
+  179 |         tier,
+/home/runner/workspace/frontend/src/components/deal/CreateDealModal.tsx:176:6
+174|      try {
+175|        const newDeal = await createDeal({
+176|        const result = await createDeal({
+   |        ^
+177|          name: dealName,
+178|          description,
+    at constructor (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:365:19)
+    at TypeScriptParserMixin.raise (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:6599:19)
+    at TypeScriptParserMixin.checkReservedWord (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12224:12)
+    at TypeScriptParserMixin.checkReservedWord (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9310:13)
+    at TypeScriptParserMixin.parseObjectProperty (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11954:12)
+    at TypeScriptParserMixin.parseObjPropValue (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11978:100)
+    at TypeScriptParserMixin.parseObjPropValue (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9744:18)
+    at TypeScriptParserMixin.parsePropertyDefinition (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11915:17)
+    at TypeScriptParserMixin.parseObjectLike (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11832:21)
+    at TypeScriptParserMixin.parseExprAtom (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11339:23)
+    at TypeScriptParserMixin.parseExprAtom (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:4764:20)
+    at TypeScriptParserMixin.parseExprSubscripts (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11081:23)
+    at TypeScriptParserMixin.parseUpdate (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11066:21)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11046:23)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9837:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10899:61)
+    at TypeScriptParserMixin.parseExprOps (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10904:23)
+    at TypeScriptParserMixin.parseMaybeConditional (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10881:23)
+    at TypeScriptParserMixin.parseMaybeAssign (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10831:21)
+    at TypeScriptParserMixin.parseMaybeAssign (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9786:20)
+    at /home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10800:39
+    at TypeScriptParserMixin.allowInAnd (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12426:12)
+    at TypeScriptParserMixin.parseMaybeAssignAllowIn (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10800:17)
+    at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12493:17)
+    at TypeScriptParserMixin.parseExprListItem (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12175:18)
+    at TypeScriptParserMixin.parseCallExpressionArguments (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11252:22)
+    at TypeScriptParserMixin.parseCoverCallAndAsyncArrowHead (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11186:29)
+    at TypeScriptParserMixin.parseSubscript (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11120:19)
+    at TypeScriptParserMixin.parseSubscript (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9272:18)
+    at TypeScriptParserMixin.parseSubscripts (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11094:19)
+    at TypeScriptParserMixin.parseExprSubscripts (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11085:17)
+    at TypeScriptParserMixin.parseUpdate (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11066:21)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11046:23)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9837:18)
+    at TypeScriptParserMixin.parseAwait (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12278:28)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:11015:25)
+    at TypeScriptParserMixin.parseMaybeUnary (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9837:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10899:61)
+    at TypeScriptParserMixin.parseExprOps (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10904:23)
+    at TypeScriptParserMixin.parseMaybeConditional (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10881:23)
+    at TypeScriptParserMixin.parseMaybeAssign (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10831:21)
+    at TypeScriptParserMixin.parseMaybeAssign (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9786:20)
+    at /home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10800:39
+    at TypeScriptParserMixin.allowInAnd (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12421:16)
+    at TypeScriptParserMixin.parseMaybeAssignAllowIn (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10800:17)
+    at TypeScriptParserMixin.parseVar (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13384:91)
+    at TypeScriptParserMixin.parseVarStatement (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13230:10)
+    at TypeScriptParserMixin.parseVarStatement (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9408:31)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12851:23)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9508:18

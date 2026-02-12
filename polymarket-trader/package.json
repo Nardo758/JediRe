@@ -1,0 +1,41 @@
+{
+  "name": "polymarket-trader",
+  "version": "1.0.0",
+  "description": "Production-ready Polymarket arbitrage trading bot for Clawdbot",
+  "main": "dist/monitor.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/monitor-v2.js",
+    "monitor": "node dist/monitor.js",
+    "monitor-v2": "node dist/monitor-v2.js",
+    "dashboard": "tsc && node dist/dashboard-server.js",
+    "dev": "tsc && node dist/monitor-v2.js",
+    "test": "tsc && node dist/test.js",
+    "test-quick": "node dist/test.js",
+    "test-grok": "tsc && node dist/test-grok-strategy.js"
+  },
+  "keywords": [
+    "polymarket",
+    "trading",
+    "arbitrage",
+    "prediction-markets"
+  ],
+  "author": "Clawdbot",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "axios": "^1.6.0",
+    "ethers": "^6.0.0",
+    "express": "^4.18.0",
+    "node-cron": "^3.0.0",
+    "openai": "^4.0.0",
+    "socket.io": "^4.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.0.0",
+    "@types/node-cron": "^3.0.0",
+    "typescript": "^5.0.0"
+  }
+}
