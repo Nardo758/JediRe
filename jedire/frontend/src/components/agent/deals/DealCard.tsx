@@ -11,7 +11,10 @@ interface DealCardProps {
 const dealTypeConfig: Record<DealType, { label: string; color: string; icon: typeof Home }> = {
   buyer: { label: 'Buyer', color: 'bg-blue-100 text-blue-700', icon: Home },
   seller: { label: 'Seller', color: 'bg-green-100 text-green-700', icon: TrendingUp },
+  dual: { label: 'Dual', color: 'bg-indigo-100 text-indigo-700', icon: Home },
   both: { label: 'Both', color: 'bg-purple-100 text-purple-700', icon: TrendingDown },
+  referral: { label: 'Referral', color: 'bg-orange-100 text-orange-700', icon: User },
+  lease: { label: 'Lease', color: 'bg-cyan-100 text-cyan-700', icon: DollarSign },
 };
 
 const priorityConfig = {

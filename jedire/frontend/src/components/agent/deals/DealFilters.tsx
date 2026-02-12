@@ -110,8 +110,11 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
           {/* Sort */}
           <div className="flex items-center gap-2">
             <select
+              id="deal-filter-sort-by"
+              name="sortBy"
               value={filters.sortBy}
               onChange={(e) => onChange({ ...filters, sortBy: e.target.value as any })}
+              aria-label="Sort by"
               className="text-xs border border-gray-300 rounded px-2 py-1"
             >
               {sortOptions.map(opt => (
@@ -188,11 +191,14 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
               Client
             </label>
             <select
+              id="deal-filter-client"
+              name="clientId"
               value={filters.clientId || ''}
               onChange={(e) => onChange({ 
                 ...filters, 
                 clientId: e.target.value || undefined 
               })}
+              aria-label="Filter by client"
               className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2"
             >
               <option value="">All Clients</option>
@@ -212,16 +218,22 @@ export default function DealFilters({ filters, onChange, clients }: DealFiltersP
             </label>
             <div className="grid grid-cols-2 gap-2">
               <input
+                id="deal-filter-date-from"
+                name="dateFrom"
                 type="date"
                 value={filters.dateFrom || ''}
                 onChange={(e) => onChange({ ...filters, dateFrom: e.target.value || undefined })}
+                aria-label="Expected close date from"
                 className="text-sm border border-gray-300 rounded-lg px-3 py-2"
                 placeholder="From"
               />
               <input
+                id="deal-filter-date-to"
+                name="dateTo"
                 type="date"
                 value={filters.dateTo || ''}
                 onChange={(e) => onChange({ ...filters, dateTo: e.target.value || undefined })}
+                aria-label="Expected close date to"
                 className="text-sm border border-gray-300 rounded-lg px-3 py-2"
                 placeholder="To"
               />

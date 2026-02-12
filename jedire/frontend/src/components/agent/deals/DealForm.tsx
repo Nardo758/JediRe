@@ -98,8 +98,11 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Client <span className="text-red-500">*</span>
           </label>
           <select
+            id="deal-client"
+            name="clientId"
             value={formData.clientId}
             onChange={(e) => updateField('clientId', e.target.value)}
+            aria-label="Client"
             className={`w-full border rounded-lg px-3 py-2 ${
               errors.clientId ? 'border-red-500' : 'border-gray-300'
             }`}
@@ -123,10 +126,13 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Property Address <span className="text-red-500">*</span>
           </label>
           <input
+            id="deal-property-address"
+            name="propertyAddress"
             type="text"
             value={formData.propertyAddress}
             onChange={(e) => updateField('propertyAddress', e.target.value)}
             placeholder="123 Main St, Austin, TX 78701"
+            aria-label="Property address"
             className={`w-full border rounded-lg px-3 py-2 ${
               errors.propertyAddress ? 'border-red-500' : 'border-gray-300'
             }`}
@@ -155,11 +161,13 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                 `}
               >
                 <input
+                  id={`deal-type-${type}`}
                   type="radio"
                   name="dealType"
                   value={type}
                   checked={formData.dealType === type}
                   onChange={(e) => updateField('dealType', e.target.value as DealType)}
+                  aria-label={`Deal type: ${type}`}
                   className="sr-only"
                   disabled={isSubmitting}
                 />
@@ -178,10 +186,13 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
               <input
+                id="deal-value"
+                name="dealValue"
                 type="number"
                 value={formData.dealValue || ''}
                 onChange={(e) => updateField('dealValue', parseFloat(e.target.value) || 0)}
                 placeholder="500000"
+                aria-label="Deal value"
                 className={`w-full border rounded-lg pl-8 pr-3 py-2 ${
                   errors.dealValue ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -201,10 +212,13 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             </label>
             <div className="relative">
               <input
+                id="deal-commission-rate"
+                name="commissionRate"
                 type="number"
                 value={formData.commissionRate || ''}
                 onChange={(e) => updateField('commissionRate', parseFloat(e.target.value) || 0)}
                 placeholder="3"
+                aria-label="Commission rate"
                 className={`w-full border rounded-lg px-3 py-2 pr-8 ${
                   errors.commissionRate ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -235,9 +249,12 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Expected Close Date
           </label>
           <input
+            id="deal-expected-close-date"
+            name="expectedCloseDate"
             type="date"
             value={formData.expectedCloseDate || ''}
             onChange={(e) => updateField('expectedCloseDate', e.target.value || null)}
+            aria-label="Expected close date"
             className="w-full border border-gray-300 rounded-lg px-3 py-2"
             disabled={isSubmitting}
           />
@@ -261,11 +278,13 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
                 `}
               >
                 <input
+                  id={`deal-priority-${priority}`}
                   type="radio"
                   name="priority"
                   value={priority}
                   checked={formData.priority === priority}
                   onChange={(e) => updateField('priority', e.target.value as DealPriority)}
+                  aria-label={`Priority: ${priority}`}
                   className="sr-only"
                   disabled={isSubmitting}
                 />
@@ -281,9 +300,12 @@ export default function DealForm({ deal, clients, onSubmit, onCancel }: DealForm
             Notes
           </label>
           <textarea
+            id="deal-notes"
+            name="notes"
             value={formData.notes || ''}
             onChange={(e) => updateField('notes', e.target.value)}
             placeholder="Additional notes about this deal..."
+            aria-label="Deal notes"
             rows={4}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 resize-none"
             disabled={isSubmitting}

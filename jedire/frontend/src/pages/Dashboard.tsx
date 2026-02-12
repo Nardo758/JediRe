@@ -1,35 +1,81 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
-import { CreateDealModal } from '../components/deal/CreateDealModal';
+import { useMapDrawingStore } from '../stores/mapDrawingStore';
+import { useMapLayers } from '../contexts/MapLayersContext';
+import { DrawingControlPanel } from '../components/map/DrawingControlPanel';
+import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { Button } from '../components/shared/Button';
+import { AssetsSection } from '../components/dashboard/AssetsSection';
+import { KeyFindingsSection } from '../components/dashboard/KeyFindingsSection';
+import { DealCard } from '../components/deal/DealCard';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 export const Dashboard: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { deals, fetchDeals, isLoading } = useDealStore();
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const { isDrawing, centerPoint, saveDrawing, stopDrawing } = useMapDrawingStore();
+  const { layers } = useMapLayers();
+  const [mapError, setMapError] = useState<string | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const draw = useRef<MapboxDraw | null>(null);
+  const layerMarkers = useRef<Map<string, mapboxgl.Marker[]>>(new Map());
 
   useEffect(() => {
     fetchDeals();
-  }, []);
+    
+    if (location.state?.openCreateDeal) {
+      navigate('/deals/create');
+      window.history.replaceState({}, document.title);
+    }
+  }, [location, navigate]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    // Initialize map
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-84.388, 33.749], // Atlanta default
-      zoom: 11
-    });
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [-84.388, 33.749],
+        zoom: 11
+      });
 
-    // Add navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      draw.current = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: true,
+          trash: true,
+        },
+      });
+
+      map.current.addControl(draw.current, 'top-left');
+      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+      map.current.on('draw.create', (e: any) => {
+        const geometry = e.features[0].geometry;
+        saveDrawing(geometry);
+      });
+
+      map.current.on('draw.update', (e: any) => {
+        const geometry = e.features[0].geometry;
+        saveDrawing(geometry);
+      });
+
+      map.current.on('draw.delete', () => {
+        saveDrawing(null as any);
+      });
+
+    } catch (err: any) {
+      setMapError(err.message || 'Failed to initialize map');
+    }
 
     return () => {
       if (map.current) {
@@ -39,13 +85,126 @@ export const Dashboard: React.FC = () => {
     };
   }, []);
 
-  // Update map when deals change
   useEffect(() => {
-    if (!map.current || !deals.length) return;
+    if (!map.current || !draw.current) return;
+
+    if (isDrawing) {
+      draw.current.deleteAll();
+      draw.current.changeMode('draw_polygon');
+      
+      if (centerPoint) {
+        map.current.flyTo({
+          center: centerPoint,
+          zoom: 16,
+          duration: 1500,
+        });
+        
+        new mapboxgl.Marker({ color: '#3B82F6' })
+          .setLngLat(centerPoint)
+          .addTo(map.current);
+      }
+    } else {
+      if (draw.current) {
+        draw.current.changeMode('simple_select');
+      }
+    }
+  }, [isDrawing, centerPoint]);
+
+  useEffect(() => {
+    if (!map.current) return;
+
+    const activeLayerIds = layers.filter(l => l.active).map(l => l.id);
+    const currentLayerIds = Array.from(layerMarkers.current.keys());
+
+    activeLayerIds.forEach(layerId => {
+      if (!currentLayerIds.includes(layerId)) {
+        fetchAndRenderLayer(layerId);
+      }
+    });
+
+    currentLayerIds.forEach(layerId => {
+      if (!activeLayerIds.includes(layerId)) {
+        removeLayer(layerId);
+      }
+    });
+  }, [layers]);
+
+  const fetchAndRenderLayer = async (layerId: string) => {
+    if (!map.current) return;
+
+    try {
+      const response = await fetch(`/api/v1/layers/${layerId}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}` || '',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch layer: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.success || !data.locations) {
+        return;
+      }
+
+      const markers: mapboxgl.Marker[] = data.locations.map((loc: any) => {
+        const el = document.createElement('div');
+        el.className = 'custom-map-marker';
+        el.style.cursor = 'pointer';
+        el.style.fontSize = '24px';
+        
+        const icon = getLayerIcon(layerId);
+        el.innerHTML = icon;
+
+        const popup = new mapboxgl.Popup({
+          offset: 25,
+          closeButton: true,
+          closeOnClick: false,
+        }).setHTML(loc.popupHTML);
+
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([loc.lng, loc.lat])
+          .setPopup(popup)
+          .addTo(map.current!);
+
+        return marker;
+      });
+
+      layerMarkers.current.set(layerId, markers);
+
+    } catch (error) {
+      console.error(`[Dashboard] Error rendering layer ${layerId}:`, error);
+    }
+  };
+
+  const removeLayer = (layerId: string) => {
+    const markers = layerMarkers.current.get(layerId);
+    if (markers) {
+      markers.forEach(marker => marker.remove());
+      layerMarkers.current.delete(layerId);
+    }
+  };
+
+  const getLayerIcon = (layerId: string): string => {
+    switch (layerId) {
+      case 'news-intelligence':
+        return '📰';
+      case 'assets-owned':
+        return '🏢';
+      case 'pipeline':
+        return '📊';
+      default:
+        return '📍';
+    }
+  };
+
+  useEffect(() => {
+    if (!map.current || !Array.isArray(deals) || !deals.length) return;
 
     const m = map.current;
 
-    // Wait for map to load
     if (!m.loaded()) {
       m.on('load', () => addDealsToMap(m, deals));
     } else {
@@ -54,35 +213,33 @@ export const Dashboard: React.FC = () => {
   }, [deals]);
 
   const addDealsToMap = (m: mapboxgl.Map, deals: any[]) => {
-    // Remove existing sources and layers
     if (m.getSource('deals')) {
       if (m.getLayer('deal-fills')) m.removeLayer('deal-fills');
       if (m.getLayer('deal-borders')) m.removeLayer('deal-borders');
       m.removeSource('deals');
     }
 
-    // Create GeoJSON from deals
     const geojson = {
       type: 'FeatureCollection',
-      features: deals.map(deal => ({
-        type: 'Feature',
-        geometry: deal.boundary,
-        properties: {
-          id: deal.id,
-          name: deal.name,
-          tier: deal.tier,
-          projectType: deal.projectType
-        }
-      }))
+      features: deals
+        .filter(deal => deal.boundary && deal.boundary.type && deal.boundary.coordinates)
+        .map(deal => ({
+          type: 'Feature',
+          geometry: deal.boundary,
+          properties: {
+            id: deal.id,
+            name: deal.name,
+            tier: deal.tier,
+            projectType: deal.projectType
+          }
+        }))
     };
 
-    // Add source
     m.addSource('deals', {
       type: 'geojson',
       data: geojson as any
     });
 
-    // Add fill layer
     m.addLayer({
       id: 'deal-fills',
       type: 'fill',
@@ -91,16 +248,15 @@ export const Dashboard: React.FC = () => {
         'fill-color': [
           'match',
           ['get', 'tier'],
-          'basic', '#fbbf24', // yellow
-          'pro', '#3b82f6',   // blue
-          'enterprise', '#10b981', // green
-          '#6b7280' // default gray
+          'basic', '#fbbf24',
+          'pro', '#3b82f6',
+          'enterprise', '#10b981',
+          '#6b7280'
         ],
         'fill-opacity': 0.3
       }
     });
 
-    // Add border layer
     m.addLayer({
       id: 'deal-borders',
       type: 'line',
@@ -118,7 +274,6 @@ export const Dashboard: React.FC = () => {
       }
     });
 
-    // Add click handler
     m.on('click', 'deal-fills', (e) => {
       if (e.features && e.features[0]) {
         const dealId = e.features[0].properties.id;
@@ -126,7 +281,6 @@ export const Dashboard: React.FC = () => {
       }
     });
 
-    // Change cursor on hover
     m.on('mouseenter', 'deal-fills', () => {
       m.getCanvas().style.cursor = 'pointer';
     });
@@ -134,153 +288,254 @@ export const Dashboard: React.FC = () => {
       m.getCanvas().style.cursor = '';
     });
 
-    // Fit map to show all deals
     if (deals.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
+      let hasValidBounds = false;
       deals.forEach(deal => {
-        if (deal.boundary && deal.boundary.coordinates) {
+        if (deal.boundary && deal.boundary.type === 'Polygon' && deal.boundary.coordinates) {
           deal.boundary.coordinates[0].forEach((coord: number[]) => {
-            bounds.extend(coord as [number, number]);
+            if (Array.isArray(coord) && coord.length >= 2) {
+              bounds.extend(coord as [number, number]);
+              hasValidBounds = true;
+            }
           });
+        } else if (deal.boundary && deal.boundary.type === 'Point' && deal.boundary.coordinates) {
+          const coord = deal.boundary.coordinates;
+          if (Array.isArray(coord) && coord.length >= 2) {
+            bounds.extend(coord as [number, number]);
+            hasValidBounds = true;
+          }
         }
       });
-      m.fitBounds(bounds, { padding: 50 });
+      if (hasValidBounds) {
+        m.fitBounds(bounds, { padding: 50 });
+      }
     }
   };
 
-  const handleDealCreated = (deal: any) => {
-    fetchDeals();
-  };
+  const renderContent = () => {
+    const hotDeals = Array.isArray(deals) ? deals.filter(d => d.triageStatus === 'Hot' || (d.daysInStation || 0) > 14) : [];
+    const pipelineValue = Array.isArray(deals) ? deals.reduce((sum, d) => sum + (d.budget || 0), 0) : 0;
+    const activeDeals = Array.isArray(deals) ? deals.filter(d => !['POST_CLOSE', 'ARCHIVED', 'MARKET_NOTE'].includes(d.state || '')) : [];
+    const portfolioAssets = Array.isArray(deals) ? deals.filter(d => d.dealCategory === 'portfolio' && d.state === 'POST_CLOSE') : [];
+    const avgDays = Array.isArray(deals) && deals.length > 0 
+      ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length) 
+      : 0;
 
-  return (
-    <div className="h-screen flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Portfolio Overview</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {deals.length} {deals.length === 1 ? 'deal' : 'deals'} active
-            </p>
+    return (
+      <div className="space-y-4">
+        {/* KPI Cards - Top Row */}
+        <div className="grid grid-cols-4 gap-3">
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
+            <div className="text-2xl font-bold text-gray-900">
+              ${(pipelineValue / 1000000).toFixed(1)}M
+            </div>
+            <div className="text-xs text-gray-500 mt-1">{deals.length} deals</div>
           </div>
-          <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Create New Deal
-          </Button>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Active Deals</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {activeDeals.length}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">in progress</div>
+          </div>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Portfolio Assets</div>
+            <div className="text-2xl font-bold text-green-600">
+              {portfolioAssets.length}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">owned</div>
+          </div>
+          
+          <div className="bg-white rounded-lg border border-gray-200 p-4">
+            <div className="text-xs font-medium text-gray-600 mb-1">Avg Days/Deal</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {avgDays}
+            </div>
+            <div className="text-xs text-red-600 mt-1 font-medium">{hotDeals.length} need attention</div>
+          </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 flex">
-        {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 overflow-y-auto">
-          <div className="p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">MY DEALS</h2>
+        {/* Two-Column Layout */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Left Column - Intelligence (40% - 2 cols) */}
+          <div className="col-span-2">
+            <KeyFindingsSection />
+          </div>
+
+          {/* Right Column - Deals (60% - 3 cols) */}
+          <div className="col-span-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
+              {Array.isArray(deals) && deals.length > 0 && (
+                <Button onClick={() => navigate('/deals/create')} size="sm" variant="secondary">
+                  + New
+                </Button>
+              )}
+            </div>
             
             {isLoading ? (
-              <div className="text-center py-8 text-gray-500">Loading...</div>
-            ) : deals.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">No deals yet</p>
-                <Button onClick={() => setIsCreateModalOpen(true)} size="sm">
-                  Create Your First Deal
+              <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-gray-200">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+                <p className="text-sm">Loading deals...</p>
+              </div>
+            ) : !Array.isArray(deals) || deals.length === 0 ? (
+              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+                <div className="text-4xl mb-3">🏢</div>
+                <h3 className="text-base font-semibold text-gray-900 mb-2">No deals yet</h3>
+                <p className="text-sm text-gray-500 mb-4 max-w-sm mx-auto">
+                  Create your first deal to get started
+                </p>
+                <Button onClick={() => navigate('/deals/create')} size="sm">
+                  Create Deal
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                {deals.map(deal => (
-                  <a
-                    key={deal.id}
-                    href={`/deals/${deal.id}`}
-                    className="block p-4 rounded-lg hover:bg-gray-50 transition border border-gray-200"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{
-                          backgroundColor: 
-                            deal.tier === 'basic' ? '#fbbf24' :
-                            deal.tier === 'pro' ? '#3b82f6' :
-                            deal.tier === 'enterprise' ? '#10b981' : '#6b7280'
-                        }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">
-                          {deal.name}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          {deal.projectType} • {deal.acres.toFixed(1)} acres
-                        </p>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                          <span>{deal.propertyCount} properties</span>
-                          {deal.pendingTasks > 0 && (
-                            <span>{deal.pendingTasks} tasks</span>
-                          )}
-                        </div>
-                      </div>
-                      <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+              <>
+                {/* Hot Deals Alert */}
+                {hotDeals.length > 0 && (
+                  <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-orange-800">
+                      <span className="text-base">🔥</span>
+                      <span className="font-semibold">
+                        {hotDeals.length} deal{hotDeals.length > 1 ? 's' : ''} need attention
+                      </span>
                     </div>
-                  </a>
-                ))}
-              </div>
+                  </div>
+                )}
+
+                {/* Deals List - Compact */}
+                <div className="space-y-2">
+                  {deals.slice(0, 6).map(deal => (
+                    <DealCard key={deal.id} deal={deal} />
+                  ))}
+                </div>
+                
+                {deals.length > 6 && (
+                  <div className="mt-3 text-center">
+                    <Button onClick={() => navigate('/deals')} size="sm" variant="secondary">
+                      View All {deals.length} Deals →
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
+        </div>
 
-          {/* Platform modules */}
-          <div className="p-4 border-t border-gray-200 mt-auto">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">PLATFORM</h2>
-            <div className="space-y-1">
-              <a href="/inbox" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                📧 Communication Hub
-              </a>
-              <a href="/team" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                👥 Team Management
-              </a>
-              <a href="/settings" className="block px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm text-gray-700">
-                ⚙️ Settings
-              </a>
+        {/* Bottom Row - Portfolio Assets + Quick Actions */}
+        <div className="grid grid-cols-5 gap-4">
+          {/* Portfolio Assets (3 cols) */}
+          <div className="col-span-3">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">PORTFOLIO ASSETS</h2>
+              <Button onClick={() => navigate('/assets-owned')} size="sm" variant="secondary">
+                View All →
+              </Button>
+            </div>
+            <AssetsSection />
+          </div>
+
+          {/* Quick Actions (2 cols) */}
+          <div className="col-span-2">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">QUICK ACTIONS</h2>
+            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+              <Button 
+                onClick={() => navigate('/deals/create')}
+                className="w-full"
+                size="md"
+              >
+                + Create New Deal
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/properties')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                🔍 Search Properties
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/market-data')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                📊 Market Analysis
+              </Button>
+              
+              <Button 
+                onClick={() => navigate('/news-intel')}
+                className="w-full"
+                variant="secondary"
+                size="md"
+              >
+                📰 News Intelligence
+              </Button>
+              
+              <div className="pt-3 border-t border-gray-200">
+                <div className="text-xs text-gray-600 mb-2">Need help?</div>
+                <Button 
+                  onClick={() => window.open('/help', '_blank')}
+                  className="w-full text-sm"
+                  variant="secondary"
+                  size="sm"
+                >
+                  View User Guide
+                </Button>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Map */}
-        <div className="flex-1 relative">
-          <div ref={mapContainer} className="absolute inset-0" />
-          
-          {/* Quick stats overlay */}
-          {deals.length > 0 && (
-            <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Quick Stats</h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-gray-600">Active Deals:</span>
-                  <span className="font-semibold">{deals.length}</span>
-                </div>
-                <div className="flex items-center justify-between gap-6">
-                  <span className="text-gray-600">Total Pipeline:</span>
-                  <span className="font-semibold">
-                    ${deals.reduce((sum, d) => sum + (d.budget || 0), 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
+    );
+  };
 
-      {/* Create Deal Modal */}
-      <CreateDealModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onDealCreated={handleDealCreated}
-      />
+  const renderMap = () => (
+    <div className="absolute inset-0">
+      <div ref={mapContainer} className="absolute inset-0" />
+      
+      {isDrawing && (
+        <DrawingControlPanel
+          onComplete={() => {
+            stopDrawing();
+          }}
+          onCancel={() => {
+            if (draw.current) {
+              draw.current.deleteAll();
+            }
+            stopDrawing();
+          }}
+        />
+      )}
+      
+      {mapError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div className="text-center p-8">
+            <div className="text-6xl mb-4">🗺️</div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">Map View</h3>
+            <p className="text-sm text-gray-500">Map requires a Mapbox token to display.</p>
+            <p className="text-xs text-gray-400 mt-1">Set VITE_MAPBOX_TOKEN in environment variables.</p>
+          </div>
+        </div>
+      )}
     </div>
+  );
+
+  return (
+    <ThreePanelLayout
+      storageKey="dashboard"
+      showViewsPanel={false}
+      renderContent={renderContent}
+      renderMap={renderMap}
+      defaultContentWidth={400}
+      minContentWidth={300}
+      maxContentWidth={600}
+    />
   );
 };

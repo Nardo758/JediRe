@@ -146,17 +146,12 @@ export class DealsController {
 
   /**
    * POST /api/v1/deals/:id/analysis/trigger
-   * Trigger new analysis (async job)
+   * Trigger new analysis
    */
   @Post(':id/analysis/trigger')
   async triggerAnalysis(@Request() req, @Param('id') id: string) {
-    // TODO: Queue analysis job
-    // For now, return job accepted
-    return {
-      jobId: `job-${Date.now()}`,
-      status: 'queued',
-      message: 'Analysis job queued. Check back in a few minutes.'
-    };
+    const result = await this.dealsService.triggerAnalysis(id, req.user.userId);
+    return result;
   }
 
   /**
@@ -170,5 +165,41 @@ export class DealsController {
     @Query('limit') limit?: number,
   ) {
     return this.dealsService.getActivity(id, req.user.userId, limit);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/timeline
+   * Get timeline events for a deal
+   */
+  @Get(':id/timeline')
+  async getTimeline(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getTimeline(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/key-moments
+   * Get key moments for a deal
+   */
+  @Get(':id/key-moments')
+  async getKeyMoments(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getKeyMoments(id, req.user.userId);
+  }
+
+  /**
+   * POST /api/v1/deals/:id/triage
+   * Run auto-triage on a deal
+   */
+  @Post(':id/triage')
+  async triageDeal(@Request() req, @Param('id') id: string) {
+    return this.dealsService.triageDeal(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/triage
+   * Get triage result for a deal
+   */
+  @Get(':id/triage')
+  async getTriageResult(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getTriageResult(id, req.user.userId);
   }
 }

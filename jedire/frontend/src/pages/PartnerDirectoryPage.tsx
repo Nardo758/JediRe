@@ -62,16 +62,22 @@ export default function PartnerDirectoryPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="partner-search"
+              name="partnerSearch"
               type="text"
               placeholder="Search partners..."
+              aria-label="Search partners"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <select
+            id="partner-type-filter"
+            name="partnerTypeFilter"
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
+            aria-label="Filter by partner type"
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             {types.map(t => (

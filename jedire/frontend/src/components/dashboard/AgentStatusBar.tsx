@@ -1,83 +1,60 @@
-import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import React from 'react';
 
-interface AgentStatus {
-  name: string;
-  icon: string;
-  confidence: number;
-  status: 'green' | 'yellow' | 'red';
-}
-
-interface AgentStatusBarProps {
-  agents?: AgentStatus[];
-  alert?: string;
-}
-
-const defaultAgents: AgentStatus[] = [
-  { name: 'Supply', icon: '🏠', confidence: 92, status: 'green' },
-  { name: 'Demand', icon: '📈', confidence: 88, status: 'green' },
-  { name: 'News', icon: '📰', confidence: 75, status: 'yellow' },
-  { name: 'Debt', icon: '💰', confidence: 91, status: 'green' },
-  { name: 'SF Str', icon: '🏘️', confidence: 95, status: 'green' },
-  { name: 'Cash', icon: '💵', confidence: 89, status: 'green' },
-];
-
-export default function AgentStatusBar({ agents = defaultAgents, alert }: AgentStatusBarProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  const getStatusColor = (status: 'green' | 'yellow' | 'red') => {
-    switch (status) {
-      case 'green': return 'bg-green-500';
-      case 'yellow': return 'bg-yellow-500';
-      case 'red': return 'bg-red-500';
-    }
-  };
-
-  const getStatusBg = (status: 'green' | 'yellow' | 'red') => {
-    switch (status) {
-      case 'green': return 'bg-green-50 border-green-200';
-      case 'yellow': return 'bg-yellow-50 border-yellow-200';
-      case 'red': return 'bg-red-50 border-red-200';
-    }
-  };
+export function AgentStatusBar() {
+  const agents = [
+    { name: 'Supply', status: 'completed', progress: 100, emoji: '📦' },
+    { name: 'Demand', status: 'running', progress: 78, emoji: '📈' },
+    { name: 'News', status: 'completed', progress: 100, emoji: '📰' },
+    { name: 'Debt', status: 'idle', progress: 0, emoji: '🏦' },
+    { name: 'SF Strategy', status: 'running', progress: 45, emoji: '🎯' },
+    { name: 'Cash', status: 'idle', progress: 0, emoji: '💰' },
+  ];
 
   return (
-    <div className="bg-white border-t border-gray-200">
-      <div className="px-6 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Agent Status</span>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-xs text-blue-600 hover:text-blue-700"
-          >
-            {expanded ? 'Collapse' : 'Details'}
-          </button>
+    <div className="bg-white border-t border-gray-200 px-6 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-700">🤖 Agent Status:</span>
         </div>
         
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-6">
           {agents.map((agent) => (
-            <div
-              key={agent.name}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${getStatusBg(agent.status)} transition-all`}
-            >
-              <span className="text-base">{agent.icon}</span>
-              <div className="flex flex-col">
-                <span className="text-xs font-medium text-gray-700">{agent.name}</span>
-                <div className="flex items-center gap-1">
-                  <div className={`w-2 h-2 rounded-full ${getStatusColor(agent.status)}`} />
-                  <span className="text-xs font-bold text-gray-800">{agent.confidence}%</span>
+            <div key={agent.name} className="flex items-center gap-2">
+              <span>{agent.emoji}</span>
+              <div>
+                <div className="text-xs font-medium text-gray-700">{agent.name}</div>
+                <div className="flex items-center gap-2">
+                  {agent.status === 'completed' && (
+                    <span className="text-xs text-green-600">✓ Complete</span>
+                  )}
+                  {agent.status === 'running' && (
+                    <>
+                      <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-600 rounded-full transition-all"
+                          style={{ width: `${agent.progress}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs text-blue-600">{agent.progress}%</span>
+                    </>
+                  )}
+                  {agent.status === 'idle' && (
+                    <span className="text-xs text-gray-400">Idle</span>
+                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
 
-        {alert && (
-          <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm text-red-700">{alert}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button className="px-3 py-1 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50">
+            View All
+          </button>
+          <button className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+            Manage Agents
+          </button>
+        </div>
       </div>
     </div>
   );

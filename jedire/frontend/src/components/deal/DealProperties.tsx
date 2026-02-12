@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Property } from '../../types';
 import { PropertyCard } from '../property/PropertyCard';
+import { calculateNegotiationPower } from '../../utils/leaseIntel';
+import { api } from '../../services/api.client';
 
 interface DealPropertiesProps {
   dealId: string;
@@ -9,6 +11,7 @@ interface DealPropertiesProps {
 export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   
   // Filters
@@ -25,18 +28,21 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
   const fetchProperties = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const params = new URLSearchParams();
-      if (filters.class) params.append('class', filters.class);
-      if (filters.minRent) params.append('minRent', filters.minRent);
-      if (filters.maxRent) params.append('maxRent', filters.maxRent);
-      if (filters.beds) params.append('beds', filters.beds);
+      const filterParams: any = {};
+      if (filters.class) filterParams.class = filters.class;
+      if (filters.minRent) filterParams.minRent = parseInt(filters.minRent);
+      if (filters.maxRent) filterParams.maxRent = parseInt(filters.maxRent);
+      if (filters.beds) filterParams.beds = parseInt(filters.beds);
 
-      const response = await fetch(`/api/v1/deals/${dealId}/properties?${params}`);
-      const data = await response.json();
-      setProperties(data);
-    } catch (error) {
-      console.error('Failed to fetch properties:', error);
+      const response = await api.deals.properties(dealId, filterParams);
+      setProperties(response.data || []);
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to fetch properties';
+      setError(errorMsg);
+      console.error('Failed to fetch properties:', err);
     } finally {
       setIsLoading(false);
     }
@@ -84,8 +90,11 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Class
               </label>
               <select
+                id="dealPropertyClass"
+                name="dealPropertyClass"
                 value={filters.class}
                 onChange={(e) => handleFilterChange('class', e.target.value)}
+                aria-label="Property class filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               >
                 <option value="">All Classes</option>
@@ -103,10 +112,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Min Rent
               </label>
               <input
+                id="dealMinRent"
+                name="dealMinRent"
                 type="number"
                 value={filters.minRent}
                 onChange={(e) => handleFilterChange('minRent', e.target.value)}
                 placeholder="$1000"
+                aria-label="Minimum rent filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -116,10 +128,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Max Rent
               </label>
               <input
+                id="dealMaxRent"
+                name="dealMaxRent"
                 type="number"
                 value={filters.maxRent}
                 onChange={(e) => handleFilterChange('maxRent', e.target.value)}
                 placeholder="$3000"
+                aria-label="Maximum rent filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -129,8 +144,11 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 Bedrooms
               </label>
               <select
+                id="dealBedrooms"
+                name="dealBedrooms"
                 value={filters.beds}
                 onChange={(e) => handleFilterChange('beds', e.target.value)}
+                aria-label="Bedrooms filter"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               >
                 <option value="">Any</option>
@@ -145,18 +163,39 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
         {/* Property List */}
         <div className="flex-1 overflow-y-auto p-6">
-          {isLoading ? (
+          {error ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">⚠️</div>
+              <p className="text-gray-900 font-semibold mb-2">Failed to load properties</p>
+              <p className="text-gray-600 mb-4">{error}</p>
+              <button
+                onClick={fetchProperties}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : isLoading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-600">Loading properties...</p>
             </div>
           ) : properties.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-600">
+              <div className="text-6xl mb-4">🏢</div>
+              <p className="text-gray-600 font-semibold mb-2">
                 {hasActiveFilters 
                   ? 'No properties match your filters'
                   : 'No properties found in this boundary'}
               </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-blue-600 hover:text-blue-700 text-sm"
+                >
+                  Clear filters to see all properties
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -277,6 +316,84 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-1">Notes</h4>
                   <p className="text-sm text-gray-600">{selectedProperty.notes}</p>
+                </div>
+              )}
+
+              {(selectedProperty.lease_expiration_date || selectedProperty.current_lease_amount) && (
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Lease Intelligence</h4>
+                  <div className="space-y-3">
+                    {selectedProperty.lease_expiration_date && (
+                      <div>
+                        <div className="text-xs text-gray-500">Lease Expiration</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {new Date(selectedProperty.lease_expiration_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.lease_start_date && (
+                      <div>
+                        <div className="text-xs text-gray-500">Lease Start</div>
+                        <div className="text-sm text-gray-900">
+                          {new Date(selectedProperty.lease_start_date).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.current_lease_amount && (
+                      <div>
+                        <div className="text-xs text-gray-500">Current Lease Amount</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          ${selectedProperty.current_lease_amount.toLocaleString()}/mo
+                        </div>
+                      </div>
+                    )}
+                    {selectedProperty.renewal_status && (
+                      <div>
+                        <div className="text-xs text-gray-500">Renewal Status</div>
+                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
+                          selectedProperty.renewal_status === 'renewed' ? 'bg-green-100 text-green-800' :
+                          selectedProperty.renewal_status === 'expiring' ? 'bg-red-100 text-red-800' :
+                          selectedProperty.renewal_status === 'month_to_month' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {selectedProperty.renewal_status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+                    {selectedProperty.lease_expiration_date && (() => {
+                      const neg = calculateNegotiationPower(selectedProperty);
+                      return neg.signal !== 'low' ? (
+                        <div className={`p-3 rounded-lg ${
+                          neg.signal === 'high' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
+                        }`}>
+                          <div className={`text-sm font-semibold ${
+                            neg.signal === 'high' ? 'text-green-800' : 'text-yellow-800'
+                          }`}>
+                            {neg.signal === 'high' ? 'High' : 'Moderate'} Negotiation Power
+                          </div>
+                          <div className={`text-xs mt-1 ${
+                            neg.signal === 'high' ? 'text-green-700' : 'text-yellow-700'
+                          }`}>
+                            {neg.reason}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            Score: {neg.score}/100
+                          </div>
+                        </div>
+                      ) : null;
+                    })()}
+                    {selectedProperty.current_lease_amount && selectedProperty.rent && selectedProperty.current_lease_amount < selectedProperty.rent && (
+                      <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+                        <div className="text-sm font-semibold text-green-800">
+                          Below Market Rent
+                        </div>
+                        <div className="text-xs text-green-700 mt-1">
+                          ${(selectedProperty.rent - selectedProperty.current_lease_amount).toLocaleString()}/mo gap
+                          (${((selectedProperty.rent - selectedProperty.current_lease_amount) * 12).toLocaleString()}/yr upside)
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

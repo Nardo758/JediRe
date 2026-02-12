@@ -196,8 +196,11 @@ export default function CareersPage() {
           <div className="flex flex-wrap gap-4 mb-8">
             <div className="relative">
               <select
+                id="careers-department-filter"
+                name="careersDepartmentFilter"
                 value={selectedDepartment}
                 onChange={(e) => setSelectedDepartment(e.target.value)}
+                aria-label="Filter by department"
                 className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-10 text-sm focus:ring-2 focus:ring-blue-500"
               >
                 {departments.map(dept => (
@@ -209,8 +212,11 @@ export default function CareersPage() {
             
             <div className="relative">
               <select
+                id="careers-location-filter"
+                name="careersLocationFilter"
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
+                aria-label="Filter by location"
                 className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-10 text-sm focus:ring-2 focus:ring-blue-500"
               >
                 {locations.map(loc => (

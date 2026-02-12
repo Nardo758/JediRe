@@ -1,19 +1,6 @@
 import { create } from 'zustand';
-import { apiClient } from '../api/client';
-
-interface Deal {
-  id: string;
-  name: string;
-  projectType: string;
-  tier: string;
-  status: string;
-  budget: number;
-  boundary: any;
-  acres: number;
-  propertyCount: number;
-  pendingTasks: number;
-  createdAt: string;
-}
+import { api } from '../services/api.client';
+import type { Deal } from '../types/deal';
 
 interface DealStore {
   // State
@@ -32,6 +19,24 @@ interface DealStore {
   deleteDeal: (dealId: string) => Promise<void>;
 }
 
+// Transform snake_case backend fields to camelCase frontend fields
+const transformDeal = (deal: any): Deal => {
+  return {
+    ...deal,
+    projectType: deal.project_type || deal.projectType,
+    propertyCount: deal.property_count || deal.propertyCount || 0,
+    pendingTasks: deal.pending_tasks || deal.pendingTasks || 0,
+    createdAt: deal.created_at || deal.createdAt,
+    updatedAt: deal.updated_at || deal.updatedAt,
+    triageStatus: deal.triage_status || deal.triageStatus,
+    triageScore: deal.triage_score || deal.triageScore,
+    signalConfidence: deal.signal_confidence || deal.signalConfidence,
+    triagedAt: deal.triaged_at || deal.triagedAt,
+    stateData: deal.state_data || deal.stateData,
+    daysInStation: deal.days_in_station || deal.daysInStation || 0,
+  };
+};
+
 export const useDealStore = create<DealStore>((set, get) => ({
   // Initial state
   deals: [],
@@ -45,14 +50,17 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get('/api/v1/deals');
+      const response = await api.deals.list();
+      const data = response.data;
+      const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
+      const transformedDeals = dealsList.map(transformDeal);
       set({ 
-        deals: response.data.deals,
+        deals: transformedDeals,
         isLoading: false 
       });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to fetch deals',
+        error: error.response?.data?.message || error.message || 'Failed to fetch deals',
         isLoading: false 
       });
     }
@@ -63,15 +71,18 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.get(`/api/v1/deals/${dealId}`);
+      const response = await api.deals.get(dealId);
+      const data = response.data;
+      const deal = data?.deal || data;
+      const transformedDeal = transformDeal(deal);
       set({ 
-        selectedDeal: response.data,
+        selectedDeal: transformedDeal,
         selectedDealId: dealId,
         isLoading: false 
       });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to fetch deal',
+        error: error.response?.data?.message || error.message || 'Failed to fetch deal',
         isLoading: false 
       });
     }
@@ -94,18 +105,20 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const response = await apiClient.post('/api/v1/deals', dealData);
-      const newDeal = response.data;
+      const response = await api.deals.create(dealData);
+      const respData = response.data;
+      const newDeal = respData?.deal || respData;
+      const transformedDeal = transformDeal(newDeal);
       
       set((state) => ({ 
-        deals: [newDeal, ...state.deals],
+        deals: [transformedDeal, ...state.deals],
         isLoading: false 
       }));
       
-      return newDeal;
+      return transformedDeal;
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to create deal',
+        error: error.response?.data?.message || error.message || 'Failed to create deal',
         isLoading: false 
       });
       throw error;
@@ -117,7 +130,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.patch(`/api/v1/deals/${dealId}`, updates);
+      await api.deals.update(dealId, updates);
       
       // Refresh deal list
       await get().fetchDeals();
@@ -130,7 +143,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       set({ isLoading: false });
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to update deal',
+        error: error.response?.data?.message || error.message || 'Failed to update deal',
         isLoading: false 
       });
       throw error;
@@ -142,7 +155,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      await apiClient.delete(`/api/v1/deals/${dealId}`);
+      await api.deals.delete(dealId);
       
       set((state) => ({ 
         deals: state.deals.filter(d => d.id !== dealId),
@@ -152,7 +165,7 @@ export const useDealStore = create<DealStore>((set, get) => ({
       }));
     } catch (error: any) {
       set({ 
-        error: error.message || 'Failed to delete deal',
+        error: error.response?.data?.message || error.message || 'Failed to delete deal',
         isLoading: false 
       });
       throw error;

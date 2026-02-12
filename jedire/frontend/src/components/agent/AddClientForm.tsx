@@ -128,12 +128,14 @@ export default function AddClientForm({ isOpen, onClose, onSuccess, editClient }
               <input
                 type="text"
                 id="name"
+                name="clientName"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.name ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="John Doe"
+                aria-label="Client full name"
                 disabled={loading}
               />
             </div>
@@ -154,12 +156,14 @@ export default function AddClientForm({ isOpen, onClose, onSuccess, editClient }
               <input
                 type="email"
                 id="email"
+                name="clientEmail"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.email ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="john@example.com"
+                aria-label="Client email address"
                 disabled={loading}
               />
             </div>
@@ -180,12 +184,14 @@ export default function AddClientForm({ isOpen, onClose, onSuccess, editClient }
               <input
                 type="tel"
                 id="phone"
+                name="clientPhone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.phone ? 'border-red-500' : 'border-gray-300'
                 }`}
                 placeholder="+1 (555) 123-4567"
+                aria-label="Client phone number"
                 disabled={loading}
               />
             </div>
@@ -259,11 +265,13 @@ export default function AddClientForm({ isOpen, onClose, onSuccess, editClient }
               </div>
               <textarea
                 id="notes"
+                name="clientNotes"
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={4}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 placeholder="Any additional notes about this client..."
+                aria-label="Client notes"
                 disabled={loading}
               />
             </div>

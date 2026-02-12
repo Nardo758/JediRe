@@ -99,6 +99,9 @@ export default function InvestorProfilePage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Investment Budget</label>
                 <select
+                  id="investor-budget"
+                  name="investorBudget"
+                  aria-label="Investment budget range"
                   value={profile.budget}
                   onChange={(e) => setProfile({ ...profile, budget: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -114,6 +117,9 @@ export default function InvestorProfilePage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Investment Timeline</label>
                 <select
+                  id="investor-timeline"
+                  name="investorTimeline"
+                  aria-label="Investment timeline"
                   value={profile.timeline}
                   onChange={(e) => setProfile({ ...profile, timeline: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"

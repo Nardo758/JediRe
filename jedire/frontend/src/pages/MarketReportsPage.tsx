@@ -78,16 +78,22 @@ export default function MarketReportsPage() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="market-reports-search"
+              name="marketReportsSearch"
               type="text"
               placeholder="Search reports..."
+              aria-label="Search reports"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <select
+            id="market-reports-filter"
+            name="marketReportsFilter"
             value={selectedMarket}
             onChange={(e) => setSelectedMarket(e.target.value)}
+            aria-label="Filter by market"
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
           >
             {markets.map(m => (

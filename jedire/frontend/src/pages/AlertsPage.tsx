@@ -138,14 +138,17 @@ export default function AlertsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Alert Name</label>
                   <input
+                    id="alert-name"
+                    name="alertName"
                     type="text"
                     placeholder="e.g., Austin Under $400k"
+                    aria-label="Alert name"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Alert Type</label>
-                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <select id="alert-type" name="alertType" aria-label="Alert type" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     <option>New Listing</option>
                     <option>Price Drop</option>
                     <option>Score Change</option>
@@ -154,7 +157,7 @@ export default function AlertsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Market</label>
-                  <select className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <select id="alert-market" name="alertMarket" aria-label="Market" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                     <option>Austin, TX</option>
                     <option>Dallas, TX</option>
                     <option>Houston, TX</option>
@@ -165,16 +168,22 @@ export default function AlertsPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Min Price</label>
                     <input
+                      id="alert-min-price"
+                      name="alertMinPrice"
                       type="number"
                       placeholder="$0"
+                      aria-label="Minimum price"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Max Price</label>
                     <input
+                      id="alert-max-price"
+                      name="alertMaxPrice"
                       type="number"
                       placeholder="$500,000"
+                      aria-label="Maximum price"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -182,10 +191,13 @@ export default function AlertsPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Score</label>
                   <input
+                    id="alert-min-score"
+                    name="alertMinScore"
                     type="range"
                     min="0"
                     max="100"
                     defaultValue="70"
+                    aria-label="Minimum score"
                     className="w-full"
                   />
                   <div className="flex justify-between text-xs text-gray-500">

@@ -1,0 +1,80 @@
+Fix all remaining console issues in JEDI RE (CSP, Form Accessibility, CORB):
+
+## PRIORITY 1: CSP Violations (Fix in vite.config.ts)
+
+File: frontend/vite.config.ts
+
+Update the server config to add CSP headers:
+
+server: {
+  host: '0.0.0.0',
+  port: 5000,
+  strictPort: true,
+  allowedHosts: true,
+  headers: {
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com https://events.mapbox.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com; img-src 'self' data: blob: https: https://api.mapbox.com; font-src 'self' data: https:; connect-src 'self' https://api.mapbox.com https://events.mapbox.com ws: wss:; worker-src 'self' blob:;"
+  },
+  proxy: {
+    // ... keep existing proxy config
+  }
+}
+
+## PRIORITY 2: Form Accessibility (179 fields need id/name/label)
+
+Transform all input/textarea/select elements:
+
+Priority files:
+1. frontend/src/components/map/HorizontalBar.tsx
+2. frontend/src/components/deal/CreateDealModal.tsx
+3. frontend/src/pages/NewsIntelligencePage.tsx
+4. frontend/src/pages/Dashboard.tsx
+5. Any component with form inputs
+
+Pattern to fix:
+<input type="text" placeholder="Search" />
+
+Should become:
+<input 
+  id="search-input" 
+  name="search" 
+  type="text" 
+  placeholder="Search"
+  aria-label="Search deals and properties"
+/>
+
+For grouped inputs, add proper labels:
+<div>
+  <label htmlFor="deal-name" className="block text-sm font-medium">Deal Name</label>
+  <input id="deal-name" name="dealName" type="text" />
+</div>
+
+## PRIORITY 3: CORB Issues (Add CORS to backend)
+
+1. Check if cors is installed:
+   cd backend && npm list cors
+
+2. If missing, install:
+   npm install cors @types/cors
+
+3. Update backend/src/index.replit.ts (or index.ts):
+   
+   Add import at top:
+   import cors from 'cors';
+   
+   Add middleware before routes:
+   app.use(cors({
+     origin: ['http://localhost:5000', 'https://*.replit.dev', 'https://*.replit.app'],
+     credentials: true,
+     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+   }));
+
+4. Restart backend after changes
+
+## Verification Steps:
+
+1. Restart dev server: npm run dev (frontend)
+2. Restart backend server
+3. Check browser console - all errors should be gone or significantly reduced
+4. Test forms still work (Create Deal, Search, Filters)
+
+Report final error count after completion.

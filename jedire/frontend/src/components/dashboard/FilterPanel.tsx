@@ -24,10 +24,13 @@ export default function FilterPanel() {
         </label>
         <div className="flex gap-2 items-center">
           <input
+            id="filter-panel-min-score"
+            name="filterPanelMinScore"
             type="number"
             min="0"
             max="100"
             placeholder="Min"
+            aria-label="Minimum opportunity score"
             value={localFilters.minScore || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, minScore: Number(e.target.value) })
@@ -36,10 +39,13 @@ export default function FilterPanel() {
           />
           <span className="text-gray-500">to</span>
           <input
+            id="filter-panel-max-score"
+            name="filterPanelMaxScore"
             type="number"
             min="0"
             max="100"
             placeholder="Max"
+            aria-label="Maximum opportunity score"
             value={localFilters.maxScore || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, maxScore: Number(e.target.value) })
@@ -56,8 +62,11 @@ export default function FilterPanel() {
         </label>
         <div className="flex gap-2 items-center">
           <input
+            id="filter-panel-min-price"
+            name="filterPanelMinPrice"
             type="number"
             placeholder="Min"
+            aria-label="Minimum price"
             value={localFilters.minPrice || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, minPrice: Number(e.target.value) })
@@ -66,8 +75,11 @@ export default function FilterPanel() {
           />
           <span className="text-gray-500">to</span>
           <input
+            id="filter-panel-max-price"
+            name="filterPanelMaxPrice"
             type="number"
             placeholder="Max"
+            aria-label="Maximum price"
             value={localFilters.maxPrice || ''}
             onChange={(e) =>
               setLocalFilters({ ...localFilters, maxPrice: Number(e.target.value) })
@@ -86,6 +98,8 @@ export default function FilterPanel() {
           {['Miami', 'Tampa', 'Orlando', 'Jacksonville', 'Fort Lauderdale'].map((city) => (
             <label key={city} className="flex items-center gap-2 text-sm">
               <input
+                id={`filter-panel-city-${city.toLowerCase().replace(/\s+/g, '-')}`}
+                name={`filterPanelCity${city.replace(/\s+/g, '')}`}
                 type="checkbox"
                 checked={localFilters.municipalities?.includes(city) || false}
                 onChange={(e) => {
@@ -97,6 +111,7 @@ export default function FilterPanel() {
                       : current.filter((m) => m !== city),
                   });
                 }}
+                aria-label={`Filter by ${city}`}
                 className="rounded text-primary-600 focus:ring-primary-500"
               />
               <span>{city}</span>

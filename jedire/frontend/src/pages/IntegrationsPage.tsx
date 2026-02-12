@@ -69,6 +69,9 @@ export default function IntegrationsPage() {
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
           <input
             type="text"
+            id="integrations-search"
+            name="integrationsSearch"
+            aria-label="Search integrations"
             placeholder="Search integrations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

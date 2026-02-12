@@ -10,6 +10,9 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import path from 'path';
+import { requireAuth, AuthenticatedRequest } from './middleware/auth';
+import { generateAccessToken } from './auth/jwt';
+import { emailSyncScheduler } from './services/email-sync-scheduler';
 
 dotenv.config();
 
@@ -23,7 +26,7 @@ const io = new Server(httpServer, {
   }
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 // Database connection
 const pool = new Pool({
@@ -32,8 +35,15 @@ const pool = new Pool({
 });
 
 // Middleware
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || ['http://localhost:5000', /\.replit\.dev$/, /\.replit\.app$/],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -44,11 +54,17 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// Health Check Endpoint
+// Health Check Endpoint (lightweight - no DB query)
 // ============================================
-app.get('/health', async (req, res) => {
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/health/full', async (req, res) => {
   try {
-    // Check database connection
     const result = await pool.query('SELECT NOW()');
     
     res.json({
@@ -160,13 +176,14 @@ app.get('/api/v1/properties', async (req, res) => {
   }
 });
 
-// Get user alerts
-app.get('/api/v1/alerts/:userId', async (req, res) => {
+// Get user alerts (requires authentication)
+app.get('/api/v1/alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user!.userId;
     const limit = parseInt(req.query.limit as string) || 20;
     
-    const result = await pool.query(
+    const client = req.dbClient || pool;
+    const result = await client.query(
       `SELECT * FROM alerts 
        WHERE user_id = $1 
        ORDER BY created_at DESC 
@@ -191,13 +208,15 @@ app.get('/api/v1/alerts/:userId', async (req, res) => {
 app.post('/api/v1/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });
     
-    // For demo: check against demo user
+    // For demo: accept demo credentials
     if (email === 'demo@jedire.com' && password === 'demo123') {
       const result = await pool.query(
         'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE email = $1',
         [email]
       );
+      console.log('Demo user query result rows:', result.rows.length);
       
       if (result.rows.length > 0) {
         const dbUser = result.rows[0];
@@ -211,15 +230,22 @@ app.post('/api/v1/auth/login', async (req, res) => {
             modules: dbUser.enabled_modules || ['supply']
           }
         };
+        const token = generateAccessToken({
+          userId: dbUser.id,
+          email: dbUser.email,
+          role: dbUser.role || 'user'
+        });
+        console.log('Demo login successful, token generated');
         res.json({
           success: true,
           user,
-          token: 'demo-token-' + Date.now()
+          token
         });
         return;
       }
     }
     
+    console.log('Login failed: credentials did not match or user not found');
     res.status(401).json({
       success: false,
       error: 'Invalid credentials'
@@ -232,6 +258,761 @@ app.post('/api/v1/auth/login', async (req, res) => {
     });
   }
 });
+
+// Get current user profile
+app.get('/api/v1/auth/me', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const result = await pool.query(
+      'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    
+    const dbUser = result.rows[0];
+    res.json({
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.full_name || 'User',
+      role: dbUser.role || 'user',
+      subscription: {
+        plan: dbUser.subscription_tier || 'free',
+        modules: dbUser.enabled_modules || ['supply']
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// ============================================
+// Deals CRUD Endpoints
+// ============================================
+
+// List all deals for the authenticated user
+app.get('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(`
+      SELECT 
+        d.*,
+        ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+        (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+        CASE 
+          WHEN d.boundary IS NOT NULL THEN 
+            ST_Area(d.boundary::geography) / 4046.86
+          ELSE 0
+        END as acres
+      FROM deals d
+      WHERE d.user_id = $1 AND d.archived_at IS NULL
+      ORDER BY d.created_at DESC
+    `, [req.user!.userId]);
+
+    res.json({
+      success: true,
+      deals: result.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type,
+        projectIntent: row.project_intent,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        boundary: row.boundary_geojson,
+        targetUnits: row.target_units,
+        timelineStart: row.timeline_start,
+        timelineEnd: row.timeline_end,
+        acres: parseFloat(row.acres) || 0,
+        propertyCount: row.propertyCount || 0,
+        pendingTasks: row.pendingTasks || 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        description: row.description,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching deals:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch deals' });
+  }
+});
+
+// Get a single deal
+app.get('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(`
+      SELECT 
+        d.*,
+        ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+        (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+        (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
+        (SELECT dp2.stage FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "pipelineStage",
+        (SELECT EXTRACT(DAY FROM NOW() - dp2.entered_stage_at)::int FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "daysInStage",
+        CASE 
+          WHEN d.boundary IS NOT NULL THEN 
+            ST_Area(d.boundary::geography) / 4046.86
+          ELSE 0
+        END as acres
+      FROM deals d
+      WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
+    `, [req.params.id, req.user!.userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      deal: {
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type || 'multifamily',
+        projectIntent: row.project_intent,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        boundary: row.boundary_geojson,
+        targetUnits: row.target_units,
+        timelineStart: row.timeline_start,
+        timelineEnd: row.timeline_end,
+        acres: parseFloat(row.acres) || 0,
+        propertyCount: row.propertyCount || 0,
+        pendingTasks: row.pendingTasks || 0,
+        taskCount: row.taskCount || 0,
+        pipelineStage: row.pipelineStage || null,
+        daysInStage: row.daysInStage || 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        description: row.description,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch deal' });
+  }
+});
+
+// Create a new deal
+app.post('/api/v1/deals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const {
+      name, boundary, projectType, projectIntent, targetUnits,
+      budget, timelineStart, timelineEnd, tier,
+      deal_category, development_type, address, description
+    } = req.body;
+
+    if (!name || !boundary) {
+      return res.status(400).json({ success: false, error: 'Name and boundary are required' });
+    }
+
+    const userTier = tier || 'basic';
+    const boundaryGeom = boundary.type === 'Point'
+      ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
+      : `ST_GeomFromGeoJSON($3)`;
+    const result = await client.query(`
+      INSERT INTO deals (
+        user_id, name, boundary, project_type, project_intent,
+        target_units, budget, timeline_start, timeline_end, tier, status,
+        deal_category, development_type, address, description
+      )
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      RETURNING *
+    `, [
+      req.user!.userId,
+      name,
+      JSON.stringify(boundary),
+      projectType || 'multifamily',
+      projectIntent || null,
+      targetUnits || null,
+      budget || null,
+      timelineStart || null,
+      timelineEnd || null,
+      userTier,
+      deal_category || 'pipeline',
+      development_type || 'new',
+      address || null,
+      description || null,
+    ]);
+
+    const row = result.rows[0];
+    res.status(201).json({
+      success: true,
+      deal: {
+        id: row.id,
+        name: row.name,
+        projectType: row.project_type,
+        tier: row.tier || 'basic',
+        status: row.status,
+        budget: parseFloat(row.budget) || 0,
+        acres: 0,
+        propertyCount: 0,
+        pendingTasks: 0,
+        dealCategory: row.deal_category,
+        developmentType: row.development_type,
+        address: row.address,
+        createdAt: row.created_at,
+      }
+    });
+  } catch (error) {
+    console.error('Error creating deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to create deal' });
+  }
+});
+
+// Update a deal
+app.patch('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const updates = req.body;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const allowedFields: Record<string, string> = {
+      name: 'name', projectType: 'project_type', projectIntent: 'project_intent',
+      targetUnits: 'target_units', budget: 'budget', status: 'status',
+      timelineStart: 'timeline_start', timelineEnd: 'timeline_end',
+      description: 'description', address: 'address',
+    };
+
+    const setClauses: string[] = ['updated_at = NOW()'];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    for (const [key, dbCol] of Object.entries(allowedFields)) {
+      if (updates[key] !== undefined) {
+        setClauses.push(`${dbCol} = $${paramIndex}`);
+        values.push(updates[key]);
+        paramIndex++;
+      }
+    }
+
+    values.push(dealId);
+    const result = await client.query(
+      `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    res.json({ success: true, deal: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to update deal' });
+  }
+});
+
+// Delete (archive) a deal
+app.delete('/api/v1/deals/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const result = await client.query(
+      'UPDATE deals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND archived_at IS NULL RETURNING id',
+      [dealId, req.user!.userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    res.json({ success: true, message: 'Deal archived' });
+  } catch (error) {
+    console.error('Error deleting deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete deal' });
+  }
+});
+
+// Get deal modules
+app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const result = await client.query(
+      'SELECT * FROM deal_modules WHERE deal_id = $1',
+      [dealId]
+    );
+
+    const modules = result.rows.length > 0 ? result.rows : [
+      { module_name: 'map', enabled: true, config: {} },
+      { module_name: 'properties', enabled: true, config: {} },
+      { module_name: 'strategy', enabled: true, config: {} },
+      { module_name: 'pipeline', enabled: true, config: {} },
+      { module_name: 'market', enabled: false, config: {} },
+      { module_name: 'reports', enabled: false, config: {} },
+      { module_name: 'team', enabled: false, config: {} },
+    ];
+
+    res.json({ success: true, data: modules });
+  } catch (error) {
+    console.error('Error fetching deal modules:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch modules' });
+  }
+});
+
+// Get deal activity feed
+app.get('/api/v1/deals/:id/activity', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    try {
+      const result = await client.query(
+        `SELECT id, deal_id, user_id, action_type, entity_type, entity_id, description, metadata, created_at
+         FROM deal_activity
+         WHERE deal_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [dealId, limit]
+      );
+
+      const activities = result.rows.map((row: any) => ({
+        id: row.id,
+        dealId: row.deal_id,
+        userId: row.user_id,
+        activityType: row.action_type || 'note_added',
+        description: row.description || '',
+        metadata: row.metadata || {},
+        createdAt: row.created_at,
+      }));
+
+      res.json({ success: true, data: activities, count: activities.length });
+    } catch (dbError: any) {
+      if (dbError.code === '42P01' || dbError.code === '22P02') {
+        res.json({ success: true, data: [], count: 0 });
+      } else {
+        throw dbError;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching deal activity:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch activity' });
+  }
+});
+
+// Get deal timeline
+app.get('/api/v1/deals/:id/timeline', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+
+    try {
+      const result = await client.query(
+        `SELECT id, deal_id, action_type, description, metadata, created_at
+         FROM deal_activity
+         WHERE deal_id = $1
+         ORDER BY created_at ASC`,
+        [dealId]
+      );
+
+      const now = new Date();
+      const eventsByDate: Record<string, any[]> = {};
+
+      for (const row of result.rows) {
+        const dateKey = new Date(row.created_at).toISOString().split('T')[0];
+        if (!eventsByDate[dateKey]) {
+          eventsByDate[dateKey] = [];
+        }
+        eventsByDate[dateKey].push({
+          id: row.id,
+          description: row.description || row.action_type,
+          activityType: row.action_type || 'note_added',
+          createdAt: row.created_at,
+        });
+      }
+
+      const timeline = Object.entries(eventsByDate).map(([date, activities]) => ({
+        date,
+        title: `${activities.length} activit${activities.length === 1 ? 'y' : 'ies'}`,
+        type: new Date(date) < now ? 'past' : new Date(date).toDateString() === now.toDateString() ? 'current' : 'future',
+        completed: new Date(date) < now,
+        activities,
+      }));
+
+      res.json({ success: true, data: timeline });
+    } catch (dbError: any) {
+      if (dbError.code === '42P01' || dbError.code === '22P02') {
+        res.json({ success: true, data: [] });
+      } else {
+        throw dbError;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching deal timeline:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch timeline' });
+  }
+});
+
+// Get deal key moments
+app.get('/api/v1/deals/:id/key-moments', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+
+    try {
+      const result = await client.query(
+        `SELECT id, deal_id, action_type, description, metadata, created_at
+         FROM deal_activity
+         WHERE deal_id = $1
+           AND action_type IN ('milestone_hit', 'status_change', 'risk_flagged', 'financial_update')
+         ORDER BY created_at DESC`,
+        [dealId]
+      );
+
+      const momentTypeMap: Record<string, string> = {
+        milestone_hit: 'milestone',
+        status_change: 'decision',
+        risk_flagged: 'risk',
+        financial_update: 'achievement',
+      };
+      const importanceMap: Record<string, string> = {
+        milestone_hit: 'high',
+        status_change: 'medium',
+        risk_flagged: 'critical',
+        financial_update: 'medium',
+      };
+
+      const moments = result.rows.map((row: any) => ({
+        id: row.id,
+        dealId: row.deal_id,
+        title: row.description || row.action_type,
+        description: row.description || '',
+        momentType: momentTypeMap[row.action_type] || 'milestone',
+        date: row.created_at,
+        importance: importanceMap[row.action_type] || 'medium',
+        metadata: row.metadata || {},
+      }));
+
+      res.json({ success: true, data: moments });
+    } catch (dbError: any) {
+      if (dbError.code === '42P01' || dbError.code === '22P02') {
+        res.json({ success: true, data: [] });
+      } else {
+        throw dbError;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching deal key moments:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch key moments' });
+  }
+});
+
+// ============================================
+// Tasks Endpoints
+// ============================================
+
+const taskStore: any[] = [
+  {
+    id: 1, title: 'Review Phase I Environmental Report',
+    description: 'Review the Phase I Environmental Site Assessment for potential contamination issues',
+    category: 'due_diligence', priority: 'high', status: 'todo', dealId: 1,
+    assignedToId: 1, createdById: 1, source: 'manual', tags: ['environmental', 'urgent'],
+    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 2, title: 'Submit Rent Roll to Lender',
+    description: 'Prepare and submit current rent roll to lender for financing review',
+    category: 'financing', priority: 'medium', status: 'in_progress', dealId: 1,
+    assignedToId: 1, createdById: 1, source: 'email_ai', tags: ['financing', 'documentation'],
+    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 3, title: 'Schedule Property Tour',
+    description: 'Coordinate with broker to schedule property walkthrough',
+    category: 'due_diligence', priority: 'medium', status: 'todo', dealId: 1,
+    assignedToId: 1, createdById: 1, source: 'manual', tags: ['site-visit'],
+    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  },
+];
+let nextTaskId = 4;
+
+app.get('/api/v1/tasks', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { status, dealId, category, priority } = req.query;
+    let filtered = [...taskStore];
+    if (status) filtered = filtered.filter(t => t.status === status);
+    if (dealId) filtered = filtered.filter(t => t.dealId === parseInt(dealId as string));
+    if (category) filtered = filtered.filter(t => t.category === category);
+    if (priority) filtered = filtered.filter(t => t.priority === priority);
+
+    const priorityOrder: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+    filtered.sort((a, b) => (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0));
+
+    res.json({ success: true, data: filtered, count: filtered.length });
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch tasks' });
+  }
+});
+
+app.get('/api/v1/tasks/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const byStatus = {
+      todo: taskStore.filter(t => t.status === 'todo').length,
+      in_progress: taskStore.filter(t => t.status === 'in_progress').length,
+      blocked: taskStore.filter(t => t.status === 'blocked').length,
+      done: taskStore.filter(t => t.status === 'done').length,
+      cancelled: taskStore.filter(t => t.status === 'cancelled').length,
+    };
+    res.json({
+      success: true,
+      data: {
+        total: taskStore.length,
+        byStatus,
+        overdue: taskStore.filter(t => t.dueDate && new Date(t.dueDate) < today && t.status !== 'done').length,
+        dueToday: taskStore.filter(t => t.dueDate && new Date(t.dueDate).toDateString() === today.toDateString()).length,
+        dueSoon: taskStore.filter(t => t.dueDate && new Date(t.dueDate) > today && new Date(t.dueDate) < new Date(today.getTime() + 7 * 86400000)).length,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching task stats:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch task stats' });
+  }
+});
+
+app.post('/api/v1/tasks', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { title, description, category, priority = 'medium', status = 'todo', dealId, dueDate, source = 'manual', tags = [] } = req.body;
+    if (!title || !category) {
+      return res.status(400).json({ success: false, error: 'Title and category are required' });
+    }
+    const newTask = {
+      id: nextTaskId++, title, description, category, priority, status,
+      dealId: dealId ? parseInt(dealId) : undefined,
+      assignedToId: req.user!.userId, createdById: req.user!.userId,
+      dueDate, source, tags,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    };
+    taskStore.push(newTask);
+    res.status(201).json({ success: true, data: newTask });
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ success: false, error: 'Failed to create task' });
+  }
+});
+
+app.patch('/api/v1/tasks/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const idx = taskStore.findIndex(t => t.id === parseInt(req.params.id));
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Task not found' });
+    const updates = req.body;
+    if (updates.status === 'done' && taskStore[idx].status !== 'done') {
+      updates.completedAt = new Date().toISOString();
+    }
+    taskStore[idx] = { ...taskStore[idx], ...updates, updatedAt: new Date().toISOString() };
+    res.json({ success: true, data: taskStore[idx] });
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ success: false, error: 'Failed to update task' });
+  }
+});
+
+app.delete('/api/v1/tasks/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const idx = taskStore.findIndex(t => t.id === parseInt(req.params.id));
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Task not found' });
+    taskStore.splice(idx, 1);
+    res.json({ success: true, message: 'Task deleted' });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete task' });
+  }
+});
+
+// ============================================
+// Inbox / Email Endpoints
+// ============================================
+
+app.get('/api/v1/inbox', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const unreadOnly = req.query.unread_only === 'true';
+    const search = req.query.search as string;
+
+    let whereConditions = ['e.user_id = $1'];
+    const params: any[] = [userId];
+    let paramIndex = 2;
+
+    if (unreadOnly) {
+      whereConditions.push('e.is_read = FALSE');
+    }
+    if (search) {
+      whereConditions.push(`(e.subject ILIKE $${paramIndex} OR e.from_name ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    params.push(limit);
+    params.push(offset);
+
+    const result = await pool.query(
+      `SELECT e.*, d.name as deal_name,
+        (SELECT COUNT(*) FROM email_attachments ea WHERE ea.email_id = e.id) as attachment_count
+       FROM emails e
+       LEFT JOIN deals d ON e.deal_id = d.id
+       WHERE ${whereConditions.join(' AND ')}
+       ORDER BY e.received_at DESC
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      params
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    if (error.code === '42P01') {
+      res.json({ success: true, data: [] });
+    } else {
+      console.error('Error fetching inbox:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch emails' });
+    }
+  }
+});
+
+app.get('/api/v1/inbox/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const result = await pool.query(
+      `SELECT 
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE NOT is_read)::int as unread,
+        COUNT(*) FILTER (WHERE is_flagged)::int as flagged,
+        COUNT(*) FILTER (WHERE deal_id IS NOT NULL)::int as deal_related,
+        COUNT(*) FILTER (WHERE has_attachments)::int as with_attachments
+       FROM emails WHERE user_id = $1 AND NOT is_archived`,
+      [userId]
+    );
+    res.json({ success: true, data: result.rows[0] || { total: 0, unread: 0, flagged: 0, deal_related: 0, with_attachments: 0 } });
+  } catch (error: any) {
+    if (error.code === '42P01') {
+      res.json({ success: true, data: { total: 0, unread: 0, flagged: 0, deal_related: 0, with_attachments: 0 } });
+    } else {
+      console.error('Error fetching inbox stats:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+    }
+  }
+});
+
+app.get('/api/v1/inbox/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const emailId = parseInt(req.params.id);
+    const result = await pool.query(
+      `SELECT e.*, d.name as deal_name FROM emails e LEFT JOIN deals d ON e.deal_id = d.id WHERE e.id = $1 AND e.user_id = $2`,
+      [emailId, userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Email not found' });
+    }
+    const attachments = await pool.query('SELECT * FROM email_attachments WHERE email_id = $1', [emailId]);
+    const email = { ...result.rows[0], attachments: attachments.rows };
+    res.json({ success: true, data: email });
+  } catch (error: any) {
+    console.error('Error fetching email:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch email' });
+  }
+});
+
+app.patch('/api/v1/inbox/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const emailId = parseInt(req.params.id);
+    const updates = req.body;
+    const setClauses: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    for (const [key, value] of Object.entries(updates)) {
+      if (['is_read', 'is_flagged', 'is_archived', 'deal_id'].includes(key)) {
+        setClauses.push(`${key} = $${paramIndex}`);
+        params.push(value);
+        paramIndex++;
+      }
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+
+    params.push(emailId, userId);
+    await pool.query(
+      `UPDATE emails SET ${setClauses.join(', ')} WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}`,
+      params
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating email:', error);
+    res.status(500).json({ success: false, error: 'Failed to update email' });
+  }
+});
+
+// ============================================
+// News Intelligence Endpoints
+// ============================================
+import newsRouter from './api/rest/news.routes';
+import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import geographicContextRoutes from './api/rest/geographic-context.routes';
+import isochroneRoutes from './api/rest/isochrone.routes';
+import trafficAiRoutes from './api/rest/traffic-ai.routes';
+import mapConfigsRouter from './api/rest/map-configs.routes';
+import gridRouter from './api/rest/grid.routes';
+import modulesRouter from './api/rest/modules.routes';
+import financialModelsRouter from './api/rest/financial-models.routes';
+import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
+import ddChecklistsRouter from './api/rest/dd-checklists.routes';
+import dashboardRouter from './api/rest/dashboard.routes';
+import gmailRouter from './api/rest/gmail.routes';
+
+app.use('/api/v1/dashboard', dashboardRouter);
+app.use('/api/v1/gmail', gmailRouter);
+app.use('/api/v1/news', newsRouter);
+app.use('/api/v1/trade-areas', tradeAreasRoutes);
+app.use('/api/v1/isochrone', isochroneRoutes);
+app.use('/api/v1/traffic-ai', trafficAiRoutes);
+app.use('/api/v1', geographicContextRoutes);
+app.use('/api/v1/deals', geographicContextRoutes);
+app.use('/api/v1/map-configs', mapConfigsRouter);
+app.use('/api/v1/grid', gridRouter);
+app.use('/api/v1/modules', requireAuth, modulesRouter);
+app.use('/api/v1/financial-models', financialModelsRouter);
+app.use('/api/v1/strategy-analyses', strategyAnalysesRouter);
+app.use('/api/v1/dd-checklists', ddChecklistsRouter);
 
 // ============================================
 // Zoning & Property Analysis Endpoints
@@ -515,6 +1296,100 @@ app.post('/api/v1/analyze', async (req, res) => {
 });
 
 // ============================================
+// Lease Analysis Endpoint
+// ============================================
+
+app.get('/api/v1/deals/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const dealId = req.params.id;
+    const client = req.dbClient || pool;
+
+    const dealCheck = await client.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const result = await client.query(`
+      SELECT 
+        p.*,
+        p.lease_expiration_date,
+        p.current_lease_amount,
+        p.lease_start_date,
+        p.renewal_status
+      FROM properties p
+      JOIN deals d ON d.id = $1
+      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+    `, [dealId]);
+
+    const properties = result.rows;
+    const now = new Date();
+    const next30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const next90Days = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+    const expiringNext30 = properties.filter((p: any) =>
+      p.lease_expiration_date &&
+      new Date(p.lease_expiration_date) <= next30Days &&
+      new Date(p.lease_expiration_date) >= now
+    ).length;
+
+    const expiringNext90 = properties.filter((p: any) =>
+      p.lease_expiration_date &&
+      new Date(p.lease_expiration_date) <= next90Days &&
+      new Date(p.lease_expiration_date) >= now
+    ).length;
+
+    const totalUnits = properties.length;
+    const rolloverRiskScore = totalUnits > 0 ? Math.round((expiringNext90 / totalUnits) * 100) : 0;
+
+    const belowMarketUnits = properties.filter((p: any) =>
+      p.current_lease_amount && p.rent && p.current_lease_amount < p.rent
+    );
+
+    const totalRentGap = belowMarketUnits.reduce((sum: number, p: any) =>
+      sum + (p.rent - p.current_lease_amount), 0
+    );
+
+    const annualOpportunity = totalRentGap * 12;
+
+    const timeline: Record<string, number> = {};
+    for (let i = 0; i < 12; i++) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + i + 1, 0);
+      const monthKey = monthStart.toISOString().slice(0, 7);
+
+      timeline[monthKey] = properties.filter((p: any) => {
+        if (!p.lease_expiration_date) return false;
+        const expDate = new Date(p.lease_expiration_date);
+        return expDate >= monthStart && expDate <= monthEnd;
+      }).length;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        totalUnits,
+        expiringNext30,
+        expiringNext90,
+        rolloverRiskScore,
+        rolloverRiskLevel: rolloverRiskScore > 40 ? 'high' : rolloverRiskScore > 20 ? 'medium' : 'low',
+        rentGapOpportunity: {
+          unitsBelow: belowMarketUnits.length,
+          monthlyGap: Math.round(totalRentGap),
+          annualUpside: Math.round(annualOpportunity)
+        },
+        expirationTimeline: timeline
+      }
+    });
+  } catch (error) {
+    console.error('Lease analysis error:', error);
+    res.status(500).json({ success: false, error: 'Lease analysis failed' });
+  }
+});
+
+// ============================================
 // WebSocket Handlers
 // ============================================
 
@@ -559,7 +1434,7 @@ io.on('connection', (socket) => {
 // Serve Frontend in Production
 // ============================================
 if (isProduction) {
-  const frontendPath = path.join(__dirname, 'public');
+  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
   console.log(`Serving static files from: ${frontendPath}`);
   app.use(express.static(frontendPath));
   app.get('*', (req, res, next) => {
@@ -590,17 +1465,27 @@ const microsoftConfig = {
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
 
-// Check Microsoft integration status
-app.get('/api/v1/microsoft/status', (req, res) => {
+// Check Microsoft integration status (requires auth to check user connection)
+app.get('/api/v1/microsoft/status', requireAuth, async (req: AuthenticatedRequest, res) => {
   const configured = !!(microsoftConfig.clientId && microsoftConfig.clientSecret);
-  res.json({
-    configured,
-    connected: false
-  });
+  let connected = false;
+  
+  try {
+    const client = req.dbClient || pool;
+    const result = await client.query(
+      'SELECT id FROM microsoft_accounts WHERE user_id = $1 AND is_active = true LIMIT 1',
+      [req.user!.userId]
+    );
+    connected = result.rows.length > 0;
+  } catch (error) {
+    console.error('Error checking Microsoft connection:', error);
+  }
+  
+  res.json({ configured, connected });
 });
 
-// Get Microsoft OAuth authorization URL
-app.get('/api/v1/microsoft/auth/url', (req, res) => {
+// Get Microsoft OAuth authorization URL (requires auth)
+app.get('/api/v1/microsoft/auth/url', requireAuth, (req: AuthenticatedRequest, res) => {
   if (!microsoftConfig.clientId) {
     return res.status(500).json({ success: false, error: 'Microsoft not configured' });
   }
@@ -676,11 +1561,26 @@ httpServer.listen(PORT, () => {
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
+  
+  try {
+    emailSyncScheduler.start(15);
+    console.log('Email sync scheduler started (every 15 minutes)');
+  } catch (error) {
+    console.error('Failed to start email sync scheduler:', error);
+  }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  
+  try {
+    emailSyncScheduler.stop();
+    console.log('Email sync scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping email sync scheduler:', error);
+  }
+  
   await pool.end();
   httpServer.close(() => {
     console.log('Server closed');

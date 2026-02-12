@@ -1,270 +1,255 @@
-// ============================================================================
-// JEDI RE - TypeScript Type Definitions
-// ============================================================================
+// Central type exports
+export * from './deal';
+export * from './analysis';
 
+// User type
 export interface User {
   id: string;
   email: string;
-  name: string;
-  tier: 'basic' | 'pro' | 'enterprise';
-  maxDeals: number;
-  createdAt: string;
+  name?: string;
+  subscription?: any;
+  role?: string;
 }
 
-export interface Deal {
+// Search result
+export interface SearchResult {
   id: string;
-  userId: string;
+  title: string;
+  description: string;
+  type: string;
+  properties?: any[];
+}
+
+// Zoning
+export interface ZoningInsight {
+  id: string;
+  zone: string;
+  description: string;
+  reasoning?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  districtCode?: string;
+  districtName?: string;
+  maxUnits?: number;
+  maxGfaSqft?: number;
+  maxHeightFt?: number;
+  maxStories?: number;
+  setbacks?: {
+    front?: number;
+    side?: number;
+    rear?: number;
+    frontFt?: number;
+    sideFt?: number;
+    rearFt?: number;
+  };
+  parkingRequired?: number;
+  buildableEnvelope?: any;
+}
+
+// Lead
+export interface Lead {
+  id: string;
   name: string;
-  projectType: 'multifamily' | 'mixed_use' | 'office' | 'retail' | 'industrial' | 'land';
-  projectIntent?: string;
-  targetUnits?: number;
-  budget?: number;
-  timelineStart?: string;
-  timelineEnd?: string;
-  status: 'active' | 'archived' | 'closed';
-  tier: 'basic' | 'pro' | 'enterprise';
-  boundary: GeoJSONPolygon;
-  acres: number;
-  center?: GeoJSONPoint;
-  pipelineStage?: string;
-  daysInStage?: number;
-  propertyCount: number;
-  emailCount: number;
-  taskCount: number;
-  completedTasks: number;
+  email: string;
+  phone?: string;
+  source?: string;
+  status?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  message?: string;
+  propertyInterest?: string;
+  assignedAgent?: string;
+  createdAt?: string;
+  lastContact?: string;
+  notes?: string;
+}
+
+// Commission
+export interface Commission {
+  id: string;
+  dealId?: string;
+  amount?: number;
+  rate?: number;
+  status: string;
+  propertyAddress?: string;
+  dealType?: string;
+  dealValue?: number;
+  commissionRate?: number;
+  splitPercentage?: number;
+  grossCommission?: number;
+  netCommission?: number;
+  datePaid?: string;
+  createdAt?: string;
+}
+
+export interface CommissionSummary {
+  total: number;
+  pending: number;
+  paid: number;
+  count: number;
+  ytdTotal?: number;
+  mtdTotal?: number;
+  pendingTotal?: number;
+  commissionsByType?: {
+    sale: number;
+    lease: number;
+    rental: number;
+  };
+}
+
+// Map filter
+export interface MapFilter {
+  bounds?: any;
+  propertyType?: string;
+  priceRange?: [number, number];
+  minScore?: number;
+  maxScore?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  municipalities?: string[];
+}
+
+export type ModuleType = 'map' | 'properties' | 'strategy' | 'pipeline' | 'market' | 'reports' | 'team' | 'zoning' | 'supply' | 'cashflow' | 'news' | 'email' | 'tasks' | 'demand' | 'events';
+
+// Collaboration
+export interface CollaborationUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  role?: string;
+  color?: string;
+  cursor?: {
+    lat: number;
+    lng: number;
+  };
+}
+
+export interface WebSocketMessage {
+  type: string;
+  payload: any;
+  timestamp: number;
+}
+
+// Annotation
+export interface Annotation {
+  id: string;
+  propertyId: string;
+  userId: string;
+  userName?: string;
+  content: string;
+  text?: string;
+  type?: string;
   createdAt: string;
-  updatedAt: string;
 }
 
-export interface DealModule {
-  moduleName: 'map' | 'properties' | 'strategy' | 'market' | 'pipeline' | 'reports' | 'team';
-  isEnabled: boolean;
-  settings: Record<string, any>;
+// Supply Insight
+export interface SupplyInsight {
+  activeListings?: number;
+  inventoryTrend?: 'increasing' | 'decreasing' | 'stable';
+  daysOnMarket?: number;
+  absorptionRate: number;
+  comparableProperties?: number;
+  medianPrice?: number;
+  reasoning?: string;
 }
 
+// Cash Flow Insight
+export interface CashFlowInsight {
+  netOperatingIncome?: number;
+  estimatedRent?: number;
+  operatingExpenses?: number;
+  capRate?: number;
+  cashOnCashReturn?: number;
+  breakEvenOccupancy?: number;
+  scenarios?: {
+    name: string;
+    noi: number;
+    capRate: number;
+    cashOnCash: number;
+    purchasePrice?: number;
+    downPayment?: number;
+    interestRate?: number;
+    monthlyPayment?: number;
+    monthlyCashFlow?: number;
+    annualReturn?: number;
+  }[];
+  reasoning?: string;
+}
+
+// Property
 export interface Property {
   id: string;
   address: string;
+  city: string;
+  state: string;
+  zip: string;
   lat: number;
   lng: number;
   rent: number;
-  beds?: number;
-  baths?: number;
-  sqft?: number;
-  class?: 'A' | 'A+' | 'B' | 'B+' | 'C' | 'C+';
+  beds: number;
+  baths: number;
+  sqft: number;
+  class?: string;
+  building_class?: string;
+  lease_expiration_date?: string;
+  current_lease_amount?: number;
+  lease_start_date?: string;
+  renewal_status?: string;
   yearBuilt?: number;
-  amenities?: string[];
-  photos?: string[];
   comparableScore?: number;
-  relationship?: 'comparable' | 'target' | 'competitor' | 'other';
+  amenities?: string[];
   notes?: string;
-  distanceMiles?: number;
+  coordinates?: { lat: number; lng: number };
+  isPinned?: boolean;
+  opportunityScore?: number;
+  currentUse?: string;
+  lotSizeSqft?: number;
+  municipality?: string;
+  districtCode?: string;
+  zoning?: ZoningInsight;
+  supply?: SupplyInsight;
+  cashFlow?: CashFlowInsight;
+  annotations?: Annotation[];
 }
 
-export interface DealProperty {
-  id: string;
-  dealId: string;
-  propertyId: string;
-  relationship: 'comparable' | 'target' | 'competitor' | 'other';
-  notes?: string;
-  linkedBy: 'auto' | 'manual';
-  confidenceScore?: number;
-  createdAt: string;
+// Agent Deal types
+export type DealType = 'buyer' | 'seller' | 'dual' | 'both' | 'referral' | 'lease';
+export type DealPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type DealStage = 'lead' | 'qualified' | 'prospecting' | 'contacted' | 'proposal' | 'negotiation' | 'under_contract' | 'closed' | 'lost';
+
+export interface DealFormData {
+  clientId: string;
+  propertyAddress: string;
+  dealType: string;
+  dealValue: number;
+  commissionRate: number;
+  expectedCloseDate: string | null;
+  priority: string;
+  notes: string;
 }
 
-export interface Email {
+export interface Client {
   id: string;
-  from: string;
-  to: string;
-  subject: string;
-  body: string;
-  parsedEntities?: {
-    addresses?: string[];
-    contacts?: string[];
-    dealReferences?: string[];
-    intent?: string;
-    sentiment?: 'positive' | 'neutral' | 'negative';
-    actionItems?: string[];
-  };
-  createdAt: string;
-}
-
-export interface DealEmail {
-  id: string;
-  dealId: string;
-  emailId: string;
-  confidenceScore: number;
-  linkedBy: 'ai' | 'manual';
-  createdAt: string;
-}
-
-export interface DealAnnotation {
-  id: string;
-  dealId: string;
-  type: 'marker' | 'polygon' | 'line' | 'text' | 'circle';
-  geometry: GeoJSONGeometry;
-  icon?: string;
-  color?: string;
-  label?: string;
-  content?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DealPipeline {
-  id: string;
-  dealId: string;
-  stage: 'lead' | 'qualified' | 'due_diligence' | 'under_contract' | 'closing' | 'closed' | 'post_close';
-  enteredStageAt: string;
-  daysInStage: number;
-  notes?: string;
-  stageHistory: Array<{
-    stage: string;
-    timestamp: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DealTask {
-  id: string;
-  dealId: string;
-  title: string;
-  description?: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
-  assignedTo?: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  dueDate?: string;
-  createdAt: string;
-  updatedAt: string;
-  completedAt?: string;
+  name: string;
+  email: string;
+  phone?: string;
+  type?: string;
+  status?: string;
 }
 
 export interface DealActivity {
   id: string;
   dealId: string;
+  type: string;
+  description: string;
   userId?: string;
   userName?: string;
-  userEmail?: string;
-  actionType: string;
-  entityType?: string;
-  entityId?: string;
-  description: string;
-  metadata?: Record<string, any>;
   createdAt: string;
 }
 
-export interface AnalysisResult {
-  id: string;
-  dealId?: string;
-  type: 'signal' | 'capacity' | 'imbalance' | 'jedi';
-  inputData: Record<string, any>;
-  outputData: {
-    score?: number;
-    verdict?: string;
-    confidence?: number;
-    signals?: any;
-    capacity?: any;
-    imbalance?: any;
-    recommendations?: string[];
-  };
-  confidence: number;
-  createdAt: string;
-}
-
-// GeoJSON Types
-export interface GeoJSONPoint {
-  type: 'Point';
-  coordinates: [number, number]; // [lng, lat]
-}
-
-export interface GeoJSONPolygon {
-  type: 'Polygon';
-  coordinates: number[][][]; // [[[lng, lat], ...]]
-}
-
-export interface GeoJSONGeometry {
-  type: 'Point' | 'LineString' | 'Polygon' | 'MultiPoint' | 'MultiLineString' | 'MultiPolygon';
-  coordinates: any;
-}
-
-// API Response Types
-export interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-  message?: string;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  pages: number;
-  limit: number;
-  offset: number;
-}
-
-// API Request Types
-export interface CreateDealRequest {
-  name: string;
-  boundary: GeoJSONPolygon;
-  projectType: Deal['projectType'];
-  projectIntent?: string;
-  targetUnits?: number;
-  budget?: number;
-  timelineStart?: string;
-  timelineEnd?: string;
-}
-
-export interface UpdateDealRequest {
-  name?: string;
-  boundary?: GeoJSONPolygon;
-  projectIntent?: string;
-  budget?: number;
-  status?: Deal['status'];
-}
-
-export interface PropertySearchFilters {
-  class?: string;
-  minRent?: number;
-  maxRent?: number;
-  beds?: number;
-  baths?: number;
-  limit?: number;
-  offset?: number;
-}
-
-// Component Props Types
-export interface DealViewProps {
-  dealId: string;
-}
-
-export interface PropertyListProps {
-  dealId: string;
-  properties: Property[];
-  onPropertyClick: (property: Property) => void;
-}
-
-export interface PropertyCardProps {
-  property: Property;
-  onClick?: () => void;
-}
-
-export interface MapViewProps {
-  deal: Deal;
-  properties?: Property[];
-  annotations?: DealAnnotation[];
-  onBoundaryUpdate?: (boundary: GeoJSONPolygon) => void;
-}
-
-export interface StrategyAnalysisProps {
-  dealId: string;
-  analysis?: AnalysisResult;
-}
-
+// Deal Sidebar Props
 export interface DealSidebarProps {
-  deal: Deal;
-  modules: DealModule[];
+  deal: any;
+  modules: any[];
   currentModule: string;
   onModuleChange: (module: string) => void;
 }

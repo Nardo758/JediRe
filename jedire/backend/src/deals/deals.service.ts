@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { CreateDealDto, UpdateDealDto, DealQueryDto } from './dto';
+import { DealAnalysisService } from '../services/dealAnalysis';
+import { DealTriageService } from '../services/DealTriageService';
 
 @Injectable()
 export class DealsService {
@@ -50,9 +52,10 @@ export class DealsService {
     const result = await this.db.query(
       `INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
-        target_units, budget, timeline_start, timeline_end, tier
-      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10)
-      RETURNING id, name, project_type, tier, created_at`,
+        target_units, budget, timeline_start, timeline_end, tier,
+        deal_category, development_type, address, description
+      ) VALUES ($1, $2, ST_GeomFromGeoJSON($3), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id, name, project_type, tier, deal_category, development_type, address, created_at`,
       [
         userId,
         dto.name,
@@ -63,7 +66,11 @@ export class DealsService {
         dto.budget,
         dto.timelineStart,
         dto.timelineEnd,
-        tier
+        dto.tier || tier,
+        dto.deal_category,
+        dto.development_type,
+        dto.address,
+        dto.description || null
       ]
     );
 
@@ -77,6 +84,11 @@ export class DealsService {
 
     // Log activity
     await this.logActivity(deal.id, userId, 'created', `Deal created: ${dto.name}`);
+
+    // Auto-triage the deal (async, don't block response)
+    this.autoTriageDeal(deal.id).catch(error => {
+      console.error(`[AutoTriage] Failed for deal ${deal.id}:`, error);
+    });
 
     return {
       ...deal,
@@ -138,12 +150,28 @@ export class DealsService {
         d.tier,
         d.status,
         d.budget,
+        d.address,
         ST_AsGeoJSON(d.boundary)::json AS boundary,
         ST_Area(d.boundary::geography) / 4046.86 AS acres,
         d.created_at,
         d.updated_at,
+        d.state,
+        d.triage_status,
+        d.triage_score,
+        d.signal_confidence,
+        d.triaged_at,
+        d.state_data,
         COUNT(DISTINCT dp.property_id) AS property_count,
-        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status != 'completed') AS pending_tasks
+        COUNT(DISTINCT dt.id) FILTER (WHERE dt.status != 'completed') AS pending_tasks,
+        COALESCE(
+          EXTRACT(DAY FROM NOW() - COALESCE(
+            (SELECT transitioned_at FROM state_transitions 
+             WHERE deal_id = d.id AND to_state = d.state 
+             ORDER BY transitioned_at DESC LIMIT 1),
+            d.created_at
+          ))::INTEGER,
+          0
+        ) AS days_in_station
       FROM deals d
       LEFT JOIN deal_properties dp ON d.id = dp.deal_id
       LEFT JOIN deal_tasks dt ON d.id = dt.deal_id
@@ -474,6 +502,131 @@ export class DealsService {
   }
 
   /**
+   * Get timeline events for a deal
+   */
+  async getTimeline(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get activities grouped by date
+    const result = await this.db.query(
+      `SELECT 
+        DATE(da.created_at) as event_date,
+        json_agg(
+          json_build_object(
+            'id', da.id,
+            'dealId', da.deal_id,
+            'userId', da.user_id,
+            'activityType', da.action_type,
+            'description', da.description,
+            'metadata', da.metadata,
+            'createdAt', da.created_at,
+            'user', json_build_object(
+              'id', u.id,
+              'name', u.name,
+              'email', u.email
+            )
+          ) ORDER BY da.created_at DESC
+        ) as activities
+      FROM deal_activity da
+      LEFT JOIN users u ON da.user_id = u.id
+      WHERE da.deal_id = $1
+      GROUP BY DATE(da.created_at)
+      ORDER BY DATE(da.created_at) DESC
+      LIMIT 30`,
+      [dealId]
+    );
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const events = result.rows.map(row => {
+      const eventDate = new Date(row.event_date);
+      eventDate.setHours(0, 0, 0, 0);
+      
+      let type: 'past' | 'current' | 'future' = 'past';
+      if (eventDate.getTime() === today.getTime()) {
+        type = 'current';
+      } else if (eventDate > today) {
+        type = 'future';
+      }
+
+      return {
+        date: row.event_date,
+        title: `${row.activities.length} activities`,
+        type,
+        completed: type === 'past',
+        activities: row.activities,
+      };
+    });
+
+    return events;
+  }
+
+  /**
+   * Get key moments for a deal
+   */
+  async getKeyMoments(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get critical activities that are key moments
+    const result = await this.db.query(
+      `SELECT 
+        da.*,
+        u.name AS user_name,
+        u.email AS user_email
+      FROM deal_activity da
+      LEFT JOIN users u ON da.user_id = u.id
+      WHERE da.deal_id = $1
+        AND da.action_type IN (
+          'milestone_hit',
+          'deal_created',
+          'status_change',
+          'risk_flagged',
+          'analysis_triggered',
+          'financial_update'
+        )
+      ORDER BY da.created_at DESC
+      LIMIT 20`,
+      [dealId]
+    );
+
+    const moments = result.rows.map(row => {
+      let momentType: 'milestone' | 'decision' | 'risk' | 'achievement' = 'milestone';
+      let importance: 'low' | 'medium' | 'high' | 'critical' = 'medium';
+
+      if (row.action_type === 'risk_flagged') {
+        momentType = 'risk';
+        importance = 'high';
+      } else if (row.action_type === 'milestone_hit') {
+        momentType = 'milestone';
+        importance = 'high';
+      } else if (row.action_type === 'deal_created') {
+        momentType = 'achievement';
+        importance = 'critical';
+      } else if (row.action_type === 'status_change') {
+        momentType = 'decision';
+        importance = 'medium';
+      } else if (row.action_type === 'analysis_triggered') {
+        momentType = 'achievement';
+        importance = 'medium';
+      }
+
+      return {
+        id: row.id,
+        dealId: row.deal_id,
+        title: row.action_type.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+        description: row.description,
+        momentType,
+        importance,
+        date: row.created_at,
+        metadata: row.metadata,
+      };
+    });
+
+    return moments;
+  }
+
+  /**
    * Helper: Verify user owns deal
    */
   private async verifyOwnership(dealId: string, userId: string) {
@@ -488,6 +641,56 @@ export class DealsService {
   }
 
   /**
+   * Trigger analysis for a deal
+   */
+  async triggerAnalysis(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    // Get deal details
+    const dealResult = await this.db.query(
+      `SELECT id, name, boundary, target_units, budget
+       FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    if (dealResult.rows.length === 0) {
+      throw new NotFoundException('Deal not found');
+    }
+
+    const deal = dealResult.rows[0];
+
+    // Convert PostGIS geometry to GeoJSON
+    const boundaryResult = await this.db.query(
+      `SELECT ST_AsGeoJSON(boundary) AS boundary_geojson
+       FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    const boundaryGeoJSON = JSON.parse(boundaryResult.rows[0].boundary_geojson);
+
+    // Run analysis
+    const analysisService = new DealAnalysisService(this.db);
+    const result = await analysisService.analyzeDeal({
+      dealId: deal.id,
+      dealName: deal.name,
+      boundary: boundaryGeoJSON,
+      targetUnits: deal.target_units,
+      budget: deal.budget,
+    });
+
+    // Log activity
+    await this.logActivity(
+      dealId,
+      userId,
+      'analysis_triggered',
+      `JEDI Score analysis completed: ${result.jediScore}/100 (${result.verdict})`,
+      { jediScore: result.jediScore, verdict: result.verdict }
+    );
+
+    return result;
+  }
+
+  /**
    * Helper: Log activity
    */
   private async logActivity(dealId: string, userId: string, actionType: string, description: string, metadata: any = {}) {
@@ -496,5 +699,69 @@ export class DealsService {
        VALUES ($1, $2, $3, $4, $5)`,
       [dealId, userId, actionType, description, JSON.stringify(metadata)]
     );
+  }
+
+  /**
+   * Auto-triage deal (called after creation)
+   */
+  private async autoTriageDeal(dealId: string): Promise<void> {
+    try {
+      console.log(`[AutoTriage] Starting auto-triage for deal ${dealId}`);
+      
+      const triageService = new DealTriageService(this.db);
+      const result = await triageService.triageDeal(dealId);
+      
+      console.log(`[AutoTriage] Completed: ${result.score}/50 (${result.status})`);
+    } catch (error) {
+      console.error(`[AutoTriage] Error:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Manually trigger triage for a deal
+   */
+  async triageDeal(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const triageService = new DealTriageService(this.db);
+    const result = await triageService.triageDeal(dealId);
+
+    return result;
+  }
+
+  /**
+   * Get triage result for a deal
+   */
+  async getTriageResult(dealId: string, userId: string) {
+    await this.verifyOwnership(dealId, userId);
+
+    const result = await this.db.query(
+      `SELECT 
+        triage_result,
+        triage_status,
+        triage_score,
+        triaged_at
+      FROM deals
+      WHERE id = $1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException('Deal not found');
+    }
+
+    const row = result.rows[0];
+
+    if (!row.triage_result) {
+      throw new NotFoundException('Deal has not been triaged yet');
+    }
+
+    return {
+      ...row.triage_result,
+      status: row.triage_status,
+      score: row.triage_score,
+      triagedAt: row.triaged_at,
+    };
   }
 }

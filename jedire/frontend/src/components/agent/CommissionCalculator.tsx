@@ -114,9 +114,12 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
+                id="commission-deal-value"
+                name="dealValue"
                 type="number"
                 value={dealValue}
                 onChange={(e) => setDealValue(e.target.value)}
+                aria-label="Deal value"
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
                 placeholder="500000"
                 min="0"
@@ -131,9 +134,12 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               Commission Rate (%)
             </label>
             <input
+              id="commission-rate"
+              name="commissionRate"
               type="number"
               value={commissionRate}
               onChange={(e) => setCommissionRate(e.target.value)}
+              aria-label="Commission rate percentage"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
               placeholder="3"
               min="0"
@@ -141,9 +147,12 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               step="0.1"
             />
             <input
+              id="commission-rate-slider"
+              name="commissionRateSlider"
               type="range"
               value={commissionRate}
               onChange={(e) => setCommissionRate(e.target.value)}
+              aria-label="Commission rate slider"
               min="0"
               max="10"
               step="0.1"
@@ -157,9 +166,12 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               Your Split (%)
             </label>
             <input
+              id="commission-split-percentage"
+              name="splitPercentage"
               type="number"
               value={splitPercentage}
               onChange={(e) => setSplitPercentage(e.target.value)}
+              aria-label="Your split percentage"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
               placeholder="50"
               min="0"
@@ -167,9 +179,12 @@ export default function CommissionCalculator({ onSave }: CommissionCalculatorPro
               step="1"
             />
             <input
+              id="commission-split-slider"
+              name="splitPercentageSlider"
               type="range"
               value={splitPercentage}
               onChange={(e) => setSplitPercentage(e.target.value)}
+              aria-label="Your split percentage slider"
               min="0"
               max="100"
               step="1"

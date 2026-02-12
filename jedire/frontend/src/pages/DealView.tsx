@@ -6,30 +6,90 @@ import { DealMapView } from '../components/deal/DealMapView';
 import { DealProperties } from '../components/deal/DealProperties';
 import { DealStrategy } from '../components/deal/DealStrategy';
 import { DealPipeline } from '../components/deal/DealPipeline';
+import { DealContextTracker } from '../components/deal/DealContextTracker';
+import { GeographicScopeTabs } from '../components/trade-area';
+import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
+import { api } from '../services/api.client';
 
 export const DealView: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id, module } = useParams<{ id: string; module?: string }>();
   const navigate = useNavigate();
-  const { selectedDeal, fetchDealById, isLoading } = useDealStore();
-  const [currentModule, setCurrentModule] = useState('map');
+  const { selectedDeal, fetchDealById, isLoading, error } = useDealStore();
+  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
+  const [currentModule, setCurrentModule] = useState(module || 'map');
   const [modules, setModules] = useState<any[]>([]);
+  const [modulesLoading, setModulesLoading] = useState(false);
+  const [modulesError, setModulesError] = useState<string | null>(null);
+  const [geographicStats, setGeographicStats] = useState<any>(null);
 
   useEffect(() => {
     if (id) {
       fetchDealById(id);
-      // Fetch modules
       fetchModules(id);
+      loadTradeAreaForDeal(parseInt(id));
+      fetchGeographicContext(id);
     }
   }, [id]);
 
+  // Update current module when URL param changes
+  useEffect(() => {
+    if (module) {
+      setCurrentModule(module);
+    }
+  }, [module]);
+
   const fetchModules = async (dealId: string) => {
+    setModulesLoading(true);
+    setModulesError(null);
+    
     try {
-      const response = await fetch(`/api/v1/deals/${dealId}/modules`);
-      const data = await response.json();
-      setModules(data);
-    } catch (error) {
-      console.error('Failed to fetch modules:', error);
+      const response = await api.deals.modules(dealId);
+      const data = response.data;
+      setModules(Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []));
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.message || 'Failed to fetch modules';
+      setModulesError(errorMsg);
+      console.error('Failed to fetch modules:', err);
+    } finally {
+      setModulesLoading(false);
+    }
+  };
+
+  const fetchGeographicContext = async (dealId: string) => {
+    try {
+      const response = await api.deals.geographicContext(dealId);
+      const context = response.data.data;
+      
+      // Transform API response to match GeographicScopeTabs format
+      const stats: any = {};
+      
+      if (context.trade_area?.stats) {
+        stats.trade_area = {
+          occupancy: context.trade_area.stats.occupancy,
+          avg_rent: context.trade_area.stats.avg_rent,
+        };
+      }
+      
+      if (context.submarket?.stats) {
+        stats.submarket = {
+          occupancy: context.submarket.stats.avg_occupancy,
+          avg_rent: context.submarket.stats.avg_rent,
+        };
+      }
+      
+      if (context.msa?.stats) {
+        stats.msa = {
+          occupancy: context.msa.stats.avg_occupancy,
+          avg_rent: context.msa.stats.avg_rent,
+        };
+      }
+      
+      setGeographicStats(stats);
+    } catch (err) {
+      console.error('Failed to fetch geographic context:', err);
+      // Set null to fall back to empty state
+      setGeographicStats(null);
     }
   };
 
@@ -45,6 +105,8 @@ export const DealView: React.FC = () => {
         return <DealStrategy dealId={selectedDeal.id} />;
       case 'pipeline':
         return <DealPipeline dealId={selectedDeal.id} />;
+      case 'context':
+        return <DealContextTracker dealId={selectedDeal.id} />;
       case 'market':
         return <div className="p-6">Market Intelligence (Coming Soon)</div>;
       case 'reports':
@@ -56,7 +118,7 @@ export const DealView: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !selectedDeal) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
@@ -67,11 +129,28 @@ export const DealView: React.FC = () => {
     );
   }
 
+  if (error && !selectedDeal) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <p className="text-gray-900 font-semibold mb-2">Failed to load deal</p>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={() => navigate('/dashboard')}>
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!selectedDeal) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Deal not found</p>
+          <div className="text-6xl mb-4">🔍</div>
+          <p className="text-gray-900 font-semibold mb-2">Deal not found</p>
+          <p className="text-gray-600 mb-4">This deal may have been deleted or you don't have access.</p>
           <Button onClick={() => navigate('/dashboard')}>
             Back to Dashboard
           </Button>
@@ -106,11 +185,11 @@ export const DealView: React.FC = () => {
                            selectedDeal.tier === 'pro' ? '#1e40af' : '#065f46'
                   }}
                 >
-                  {selectedDeal.tier.toUpperCase()}
+                  {(selectedDeal.tier || 'basic').toUpperCase()}
                 </span>
               </div>
               <p className="text-sm text-gray-600 mt-1">
-                {selectedDeal.projectType} • {selectedDeal.acres.toFixed(1)} acres
+                {selectedDeal.projectType || 'multifamily'} • {(selectedDeal.acres || 0).toFixed(1)} acres
                 {selectedDeal.budget && ` • $${(selectedDeal.budget / 1000000).toFixed(1)}M budget`}
               </p>
             </div>
@@ -120,11 +199,11 @@ export const DealView: React.FC = () => {
             {/* Quick stats */}
             <div className="flex items-center gap-4 text-sm">
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount}</div>
+                <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount || 0}</div>
                 <div className="text-xs text-gray-600">Properties</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.taskCount}</div>
+                <div className="text-2xl font-bold text-gray-900">{selectedDeal.taskCount || 0}</div>
                 <div className="text-xs text-gray-600">Tasks</div>
               </div>
               {selectedDeal.pipelineStage && (
@@ -144,6 +223,16 @@ export const DealView: React.FC = () => {
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Geographic Scope Tabs */}
+      <div className="px-6 py-4 border-b border-gray-200">
+        <GeographicScopeTabs
+          activeScope={activeScope}
+          onChange={setScope}
+          tradeAreaEnabled={!!geographicStats?.trade_area}
+          stats={geographicStats || {}}
+        />
       </div>
 
       {/* Main Content */}

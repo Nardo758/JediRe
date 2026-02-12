@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/authStore';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+const WS_URL = import.meta.env.VITE_WS_URL || window.location.origin;
 
 export function useWebSocket() {
   const [socket, setSocket] = useState<Socket | null>(null);

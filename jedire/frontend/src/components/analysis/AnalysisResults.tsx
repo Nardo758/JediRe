@@ -88,7 +88,7 @@ export default function AnalysisResults() {
     }
   };
 
-  const getVerdictConfig = (verdict: VerdictType) => {
+  const getVerdictConfig = (verdict: VerdictType | string) => {
     switch (verdict) {
       case 'STRONG_OPPORTUNITY':
         return {
@@ -138,19 +138,21 @@ export default function AnalysisResults() {
     }
   };
 
-  const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 0.7) {
+  const getConfidenceBadge = (confidence: number | string) => {
+    const val = Number(confidence) || 0;
+    if (val >= 0.7) {
       return 'bg-green-100 text-green-800 border-green-300';
-    } else if (confidence >= 0.4) {
+    } else if (val >= 0.4) {
       return 'bg-yellow-100 text-yellow-800 border-yellow-300';
     } else {
       return 'bg-red-100 text-red-800 border-red-300';
     }
   };
 
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 0.7) return 'HIGH';
-    if (confidence >= 0.4) return 'MEDIUM';
+  const getConfidenceLabel = (confidence: number | string) => {
+    const val = Number(confidence) || 0;
+    if (val >= 0.7) return 'HIGH';
+    if (val >= 0.4) return 'MEDIUM';
     return 'LOW';
   };
 
@@ -175,8 +177,11 @@ export default function AnalysisResults() {
               Atlanta Neighborhood *
             </label>
             <select
+              id="analysisNeighborhood"
+              name="analysisNeighborhood"
               value={input.name}
               onChange={(e) => setInput({ ...input, name: e.target.value })}
+              aria-label="Atlanta neighborhood"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               required
             >
@@ -197,10 +202,13 @@ export default function AnalysisResults() {
                 Population *
               </label>
               <input
+                id="analysisPopulation"
+                name="analysisPopulation"
                 type="number"
                 placeholder="e.g., 50000"
                 value={input.population || ''}
                 onChange={(e) => setInput({ ...input, population: parseInt(e.target.value) || 0 })}
+                aria-label="Population"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
@@ -212,10 +220,13 @@ export default function AnalysisResults() {
                 Existing Units *
               </label>
               <input
+                id="analysisExistingUnits"
+                name="analysisExistingUnits"
                 type="number"
                 placeholder="e.g., 20000"
                 value={input.existing_units || ''}
                 onChange={(e) => setInput({ ...input, existing_units: parseInt(e.target.value) || 0 })}
+                aria-label="Existing units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               />
@@ -227,10 +238,13 @@ export default function AnalysisResults() {
                 Median Income
               </label>
               <input
+                id="analysisMedianIncome"
+                name="analysisMedianIncome"
                 type="number"
                 placeholder="e.g., 65000"
                 value={input.median_income || ''}
                 onChange={(e) => setInput({ ...input, median_income: parseInt(e.target.value) || 0 })}
+                aria-label="Median income"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -244,10 +258,13 @@ export default function AnalysisResults() {
                 Pipeline Units
               </label>
               <input
+                id="analysisPipelineUnits"
+                name="analysisPipelineUnits"
                 type="number"
                 placeholder="e.g., 500"
                 value={input.pipeline_units || ''}
                 onChange={(e) => setInput({ ...input, pipeline_units: parseInt(e.target.value) || 0 })}
+                aria-label="Pipeline units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">Units under construction</p>
@@ -259,10 +276,13 @@ export default function AnalysisResults() {
                 Future Permitted
               </label>
               <input
+                id="analysisFuturePermitted"
+                name="analysisFuturePermitted"
                 type="number"
                 placeholder="e.g., 200"
                 value={input.future_permitted_units || ''}
                 onChange={(e) => setInput({ ...input, future_permitted_units: parseInt(e.target.value) || 0 })}
+                aria-label="Future permitted units"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <p className="text-xs text-gray-500 mt-1">Permitted but not started</p>
@@ -274,10 +294,13 @@ export default function AnalysisResults() {
                 Employment
               </label>
               <input
+                id="analysisEmployment"
+                name="analysisEmployment"
                 type="number"
                 placeholder="e.g., 70000"
                 value={input.employment || ''}
                 onChange={(e) => setInput({ ...input, employment: parseInt(e.target.value) || 0 })}
+                aria-label="Employment"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>

@@ -153,6 +153,8 @@ export default function ClientList() {
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="clientSearchInput"
+              name="clientSearchInput"
               type="text"
               value={searchQuery}
               onChange={(e) => {
@@ -160,6 +162,7 @@ export default function ClientList() {
                 setCurrentPage(1);
               }}
               placeholder="Search clients by name, email, or phone..."
+              aria-label="Search clients"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>

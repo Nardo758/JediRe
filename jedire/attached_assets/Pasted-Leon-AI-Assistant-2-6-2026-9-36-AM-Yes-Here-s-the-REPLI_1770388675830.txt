@@ -1,0 +1,368 @@
+Leon AI Assistant, [2/6/2026 9:36 AM]
+Yes! Here's the REPLIT_SCHEMA.sql for the complete deal-centric architecture. This will set up all 10 tables plus helper functions for the deal view system:
+
+Copy and run this SQL in your Replit database:
+
+-- ============================================================================
+-- JEDI RE - Deal-Centric Schema for Replit PostgreSQL
+-- Run this entire file on Replit to set up all tables
+-- ============================================================================
+
+-- Enable PostGIS extension (if not already enabled)
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- ============================================================================
+-- 1. DEALS TABLE (Core entity)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  boundary GEOMETRY(POLYGON, 4326) NOT NULL,
+  project_type VARCHAR(50) NOT NULL,
+  project_intent TEXT,
+  target_units INTEGER,
+  budget NUMERIC(15, 2),
+  timeline_start DATE,
+  timeline_end DATE,
+  status VARCHAR(50) DEFAULT 'active',
+  tier VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  archived_at TIMESTAMP
+);
+
+CREATE INDEX idx_deals_user_id ON deals(user_id);
+CREATE INDEX idx_deals_status ON deals(status);
+CREATE INDEX idx_deals_boundary ON deals USING GIST(boundary);
+
+-- ============================================================================
+-- 2. DEAL MODULES (Feature toggles per deal)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deal_modules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  module_name VARCHAR(50) NOT NULL,
+  is_enabled BOOLEAN DEFAULT true,
+  settings JSONB DEFAULT '{}',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(deal_id, module_name)
+);
+
+CREATE INDEX idx_deal_modules_deal_id ON deal_modules(deal_id);
+
+-- ============================================================================
+-- 3. DEAL PROPERTIES (Link properties to deals)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deal_properties (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  relationship VARCHAR(50) NOT NULL,
+  notes TEXT,
+  linked_by VARCHAR(20) DEFAULT 'auto',
+  confidence_score DECIMAL(3,2),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(deal_id, property_id)
+);
+
+CREATE INDEX idx_deal_properties_deal_id ON deal_properties(deal_id);
+CREATE INDEX idx_deal_properties_property_id ON deal_properties(property_id);
+
+-- ============================================================================
+-- 4. DEAL EMAILS (Link emails to deals via AI)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deal_emails (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  email_id UUID NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+  confidence_score DECIMAL(3,2) NOT NULL,
+  linked_by VARCHAR(20) DEFAULT 'ai',
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(deal_id, email_id)
+);
+
+CREATE INDEX idx_deal_emails_deal_id ON deal_emails(deal_id);
+CREATE INDEX idx_deal_emails_email_id ON deal_emails(email_id);
+
+-- ============================================================================
+-- 5. DEAL ANNOTATIONS (Map markers, notes, custom overlays)
+-- ============================================================================
+
+Leon AI Assistant, [2/6/2026 9:36 AM]
+CREATE TABLE IF NOT EXISTS deal_annotations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  type VARCHAR(50) NOT NULL,
+  geometry GEOMETRY(GEOMETRY, 4326) NOT NULL,
+  icon VARCHAR(100),
+  color VARCHAR(20) DEFAULT '#3b82f6',
+  label VARCHAR(255),
+  content TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_deal_annotations_deal_id ON deal_annotations(deal_id);
+CREATE INDEX idx_deal_annotations_geometry ON deal_annotations USING GIST(geometry);
+
+-- ============================================================================
+-- 6. DEAL PIPELINE (Track deal progression)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deal_pipeline (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  stage VARCHAR(50) NOT NULL,
+  entered_stage_at TIMESTAMP DEFAULT NOW(),
+  notes TEXT,
+  stage_history JSONB DEFAULT '[]',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_deal_pipeline_deal_id ON deal_pipeline(deal_id);
+CREATE INDEX idx_deal_pipeline_stage ON deal_pipeline(stage);
+
+-- ============================================================================
+-- 7. DEAL TASKS (To-do items per deal)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS deal_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  status VARCHAR(50) DEFAULT 'pending',
+  assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
+  priority VARCHAR(20) DEFAULT 'medium',
+  due_date DATE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+
+CREATE INDEX idx_deal_tasks_deal_id ON deal_tasks(deal_id);
+CREATE INDEX idx_deal_tasks_status ON deal_tasks(status);
+
+-- ============================================================================
+-- 8. SUBSCRIPTIONS (User tier management)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+  tier VARCHAR(20) NOT NULL DEFAULT 'basic',
+  max_deals INTEGER NOT NULL DEFAULT 5,
+  stripe_customer_id VARCHAR(255) UNIQUE,
+  stripe_subscription_id VARCHAR(255) UNIQUE,
+  status VARCHAR(50) DEFAULT 'active',
+  current_period_start TIMESTAMP,
+  current_period_end TIMESTAMP,
+  cancel_at_period_end BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
+CREATE INDEX idx_subscriptions_tier ON subscriptions(tier);
+
+-- ============================================================================
+-- 9. TEAM MEMBERS (Enterprise feature - multi-user access)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS team_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  team_id UUID NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  deal_access JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, team_id)
+);
+
+CREATE INDEX idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX idx_team_members_team_id ON team_members(team_id);
+
+-- ============================================================================
+-- 10. DEAL ACTIVITY (Track all deal activity)
+-- ============================================================================
+
+Leon AI Assistant, [2/6/2026 9:37 AM]
+CREATE TABLE IF NOT EXISTS deal_activity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  action_type VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(50),
+  entity_id UUID,
+  description TEXT NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_deal_activity_deal_id ON deal_activity(deal_id);
+CREATE INDEX idx_deal_activity_created_at ON deal_activity(created_at DESC);
+
+-- ============================================================================
+-- 11. UPDATE EXISTING TABLES (if needed)
+-- ============================================================================
+
+-- Link analysis results to deals (add column if not exists)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name='analysis_results' AND column_name='deal_id') 
+  THEN
+    ALTER TABLE analysis_results ADD COLUMN deal_id UUID REFERENCES deals(id) ON DELETE SET NULL;
+    CREATE INDEX idx_analysis_results_deal_id ON analysis_results(deal_id);
+  END IF;
+END $$;
+
+-- ============================================================================
+-- 12. HELPER FUNCTIONS
+-- ============================================================================
+
+-- Function: Get properties within deal boundary
+CREATE OR REPLACE FUNCTION get_deal_properties(p_deal_id UUID)
+RETURNS TABLE (
+  id UUID,
+  address VARCHAR,
+  lat DECIMAL,
+  lng DECIMAL,
+  rent NUMERIC,
+  comparable_score DECIMAL
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    p.id,
+    p.address,
+    p.lat,
+    p.lng,
+    p.rent,
+    COALESCE(dp.confidence_score, 0) AS comparable_score
+  FROM properties p
+  JOIN deals d ON d.id = p_deal_id
+  LEFT JOIN deal_properties dp ON dp.property_id = p.id AND dp.deal_id = p_deal_id
+  WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat));
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Count user's active deals
+CREATE OR REPLACE FUNCTION count_user_deals(p_user_id UUID)
+RETURNS INTEGER AS $$
+  SELECT COUNT(*)::INTEGER
+  FROM deals
+  WHERE user_id = p_user_id
+    AND status = 'active';
+$$ LANGUAGE sql;
+
+-- Function: Check if user can create deal (tier limit)
+CREATE OR REPLACE FUNCTION can_create_deal(p_user_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+  v_current_deals INTEGER;
+  v_max_deals INTEGER;
+BEGIN
+  SELECT count_user_deals(p_user_id) INTO v_current_deals;
+  
+  SELECT COALESCE(s.max_deals, 5) INTO v_max_deals
+  FROM users u
+  LEFT JOIN subscriptions s ON u.id = s.user_id
+  WHERE u.id = p_user_id;
+  
+  RETURN v_current_deals < v_max_deals;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- 13. TRIGGERS
+-- ============================================================================
+
+-- Trigger: Update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_deals_updated_at ON deals;
+CREATE TRIGGER update_deals_updated_at BEFORE UPDATE ON deals
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_deal_modules_updated_at ON deal_modules;
+CREATE TRIGGER update_deal_modules_updated_at BEFORE UPDATE ON deal_modules
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_deal_properties_updated_at ON deal_properties;
+CREATE TRIGGER update_deal_properties_updated_at BEFORE UPDATE ON deal_properties
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger: Log deal activity on creation
+CREATE OR REPLACE FUNCTION log_deal_created()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO deal_activity (deal_id, user_id, action_type, description)
+  VALUES (NEW.id, NEW.user_id, 'created', 'Deal created: ' || NEW.name);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_log_deal_created ON deals;
+
+Leon AI Assistant, [2/6/2026 9:37 AM]
+CREATE TRIGGER trigger_log_deal_created AFTER INSERT ON deals
+  FOR EACH ROW EXECUTE FUNCTION log_deal_created();
+
+-- ============================================================================
+-- 14. SEED DEFAULT SUBSCRIPTION (for existing users)
+-- ============================================================================
+
+-- Give all existing users without a subscription a basic tier
+INSERT INTO subscriptions (user_id, tier, max_deals, status)
+SELECT id, 'basic', 5, 'active'
+FROM users
+WHERE NOT EXISTS (
+  SELECT 1 FROM subscriptions WHERE subscriptions.user_id = users.id
+)
+ON CONFLICT (user_id) DO NOTHING;
+
+-- ============================================================================
+-- SCHEMA SETUP COMPLETE
+-- ============================================================================
+
+-- Verify tables created
+SELECT 
+  'deals' AS table_name, COUNT(*) AS row_count FROM deals
+UNION ALL
+SELECT 'deal_modules', COUNT(*) FROM deal_modules
+UNION ALL
+SELECT 'deal_properties', COUNT(*) FROM deal_properties
+UNION ALL
+SELECT 'deal_emails', COUNT(*) FROM deal_emails
+UNION ALL
+SELECT 'deal_annotations', COUNT(*) FROM deal_annotations
+UNION ALL
+SELECT 'deal_pipeline', COUNT(*) FROM deal_pipeline
+UNION ALL
+SELECT 'deal_tasks', COUNT(*) FROM deal_tasks
+UNION ALL
+SELECT 'subscriptions', COUNT(*) FROM subscriptions
+UNION ALL
+SELECT 'team_members', COUNT(*) FROM team_members
+UNION ALL
+SELECT 'deal_activity', COUNT(*) FROM deal_activity;
+
+-- Done!
+SELECT 'Deal-centric schema successfully created!' AS status;
+
+This creates:
+
+• 10 new tables (deals, modules, properties, pipeline, tasks, etc.)
+• 3 helper functions (property search, deal counting, tier limits)
+• PostGIS spatial indexes for boundary queries
+• Triggers for activity logging
+• Default subscriptions for existing users
+After running this, your deal view system will be fully operational! 🚀

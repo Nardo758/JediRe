@@ -1,6 +1,7 @@
 run = "cd backend && npm run dev"
 language = "nodejs"
 entrypoint = "backend/src/index.ts"
+modules = ["nodejs-20", "postgresql-16"]
 
 [env]
 PORT = "3000"
@@ -24,5 +25,45 @@ syntax = "typescript"
 start = "typescript-language-server --stdio"
 
 [deployment]
-run = ["sh", "-c", "cd backend && npm run build && npm start"]
-deploymentTarget = "cloudrun"
+deploymentTarget = "autoscale"
+build = ["bash", "-c", "cd /home/runner/workspace/frontend && npm run build && cd /home/runner/workspace/backend && npx tsc -p tsconfig.json"]
+run = ["bash", "-c", "cd /home/runner/workspace/backend && node dist/index.replit.js"]
+
+[agent]
+expertMode = true
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 4000
+externalPort = 80
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "JediRe"
+
+[[workflows.workflow]]
+name = "JediRe"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./start.sh"
+waitForPort = 5000
