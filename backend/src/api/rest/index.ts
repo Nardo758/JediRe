@@ -136,6 +136,9 @@ export function setupRESTRoutes(app: Application): void {
   // Pro Forma Adjustments routes (JEDI RE Phase 2, Component 1 - News → Financial Model Integration)
   app.use(`${API_PREFIX}/proforma`, proformaRoutes);
 
+  // Audit Trail routes (JEDI RE Phase 2, Component 4 - Evidence Chain Auditability)
+  app.use(`${API_PREFIX}/audit`, auditRoutes);
+
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
 
