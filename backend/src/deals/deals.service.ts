@@ -100,10 +100,10 @@ export class DealsService {
    * Initialize modules for a deal based on subscription tier
    */
   private async initializeModules(dealId: string, tier: string) {
-    const modulesByTier = {
-      basic: ['map', 'properties', 'pipeline'],
-      pro: ['map', 'properties', 'pipeline', 'strategy', 'market'],
-      enterprise: ['map', 'properties', 'pipeline', 'strategy', 'market', 'reports', 'team']
+    const modulesByTier: Record<string, string[]> = {
+      basic: ['map', 'overview', 'context', 'notes', 'documents', 'due-diligence'],
+      pro: ['map', 'overview', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'due-diligence', 'market', 'documents', 'context', 'notes'],
+      enterprise: ['map', 'overview', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'due-diligence', 'market', 'documents', 'team', 'context', 'notes']
     };
 
     const modules = modulesByTier[tier] || modulesByTier.basic;
@@ -314,12 +314,19 @@ export class DealsService {
        ORDER BY 
          CASE module_name
            WHEN 'map' THEN 1
-           WHEN 'properties' THEN 2
-           WHEN 'strategy' THEN 3
-           WHEN 'market' THEN 4
-           WHEN 'pipeline' THEN 5
-           WHEN 'reports' THEN 6
-           WHEN 'team' THEN 7
+           WHEN 'overview' THEN 2
+           WHEN 'market-competition' THEN 3
+           WHEN 'supply-tracking' THEN 4
+           WHEN 'debt-market' THEN 5
+           WHEN 'ai-agent' THEN 6
+           WHEN 'financial' THEN 7
+           WHEN 'strategy' THEN 8
+           WHEN 'due-diligence' THEN 9
+           WHEN 'market' THEN 10
+           WHEN 'documents' THEN 11
+           WHEN 'team' THEN 12
+           WHEN 'context' THEN 13
+           WHEN 'notes' THEN 14
            ELSE 99
          END`,
       [dealId]

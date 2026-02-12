@@ -18,7 +18,8 @@ interface AIAgentSectionProps {
  * Build Opus deal context from deal data
  * Extracts data from all available tabs and formats for Opus API
  */
-const buildDealContext = (deal: Deal, mode: 'acquisition' | 'performance'): OpusDealContext => {
+const buildDealContext = (dealTyped: Deal, mode: 'acquisition' | 'performance'): any => {
+  const deal = dealTyped as any;
   return {
     dealId: deal.id,
     dealName: deal.name,
