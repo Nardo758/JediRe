@@ -1,6 +1,7 @@
 // Central type exports
 export * from './deal';
 export * from './analysis';
+export * from './opus.types';
 
 // User type
 export interface User {
