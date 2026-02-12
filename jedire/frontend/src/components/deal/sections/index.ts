@@ -1,9 +1,16 @@
+export { OverviewSection } from './OverviewSection';
+export { FinancialSection } from './FinancialSection';
 export { StrategySection } from './StrategySection';
 export { DueDiligenceSection } from './DueDiligenceSection';
 export { ModuleUpsellBanner } from './ModuleUpsellBanner';
 export { PropertiesSection } from './PropertiesSection';
+export { MarketSection } from './MarketSection';
 export { MarketAnalysisSection } from './MarketAnalysisSection';
 export { DocumentsSection } from './DocumentsSection';
+export { TeamSection } from './TeamSection';
+export { ContextTrackerSection } from './ContextTrackerSection';
+export { NotesSection } from './NotesSection';
 export { CollaborationSection } from './CollaborationSection';
 export { ActivityFeedSection } from './ActivityFeedSection';
 export { DevelopmentSection } from './DevelopmentSection';
+export { FinancialAnalysisSection } from './FinancialAnalysisSection';
