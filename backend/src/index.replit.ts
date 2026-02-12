@@ -550,7 +550,7 @@ app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedReque
     const dealId = req.params.id;
 
     const dealCheck = await client.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      'SELECT id, status FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, req.user!.userId]
     );
 
@@ -563,7 +563,10 @@ app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedReque
       [dealId]
     );
 
-    const modules = result.rows.length > 0 ? result.rows : [
+    const dealStatus = dealCheck.rows[0]?.status;
+    const isOwned = dealStatus === 'owned' || dealStatus === 'closed_won';
+
+    const pipelineModules = [
       { module_name: 'map', is_enabled: true, config: {} },
       { module_name: 'overview', is_enabled: true, config: {} },
       { module_name: 'market-competition', is_enabled: true, config: {} },
@@ -575,10 +578,26 @@ app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedReque
       { module_name: 'due-diligence', is_enabled: true, config: {} },
       { module_name: 'market', is_enabled: true, config: {} },
       { module_name: 'documents', is_enabled: true, config: {} },
+      { module_name: 'context', is_enabled: true, config: {} },
+      { module_name: 'notes', is_enabled: true, config: {} },
+    ];
+
+    const assetModules = [
+      { module_name: 'map', is_enabled: true, config: {} },
+      { module_name: 'overview', is_enabled: true, config: {} },
+      { module_name: 'performance', is_enabled: true, config: {} },
+      { module_name: 'financial', is_enabled: true, config: {} },
+      { module_name: 'asset-management', is_enabled: true, config: {} },
+      { module_name: 'capital-plan', is_enabled: true, config: {} },
+      { module_name: 'market', is_enabled: true, config: {} },
+      { module_name: 'strategy', is_enabled: true, config: {} },
+      { module_name: 'documents', is_enabled: true, config: {} },
       { module_name: 'team', is_enabled: false, config: {} },
       { module_name: 'context', is_enabled: true, config: {} },
       { module_name: 'notes', is_enabled: true, config: {} },
     ];
+
+    const modules = result.rows.length > 0 ? result.rows : (isOwned ? assetModules : pipelineModules);
 
     res.json({ success: true, data: modules });
   } catch (error) {

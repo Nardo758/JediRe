@@ -19,7 +19,7 @@ export interface DealModeResult {
  * - owned status → Performance mode
  */
 export const useDealMode = (deal: Deal): DealModeResult => {
-  const mode: DealMode = deal.status === 'owned' ? 'performance' : 'acquisition';
+  const mode: DealMode = (deal.status === 'owned' || deal.status === 'closed_won') ? 'performance' : 'acquisition';
   
   return {
     mode,

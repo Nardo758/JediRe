@@ -15,7 +15,10 @@ const moduleIcons: Record<string, string> = {
   documents: '📄',
   team: '👥',
   context: '🧭',
-  notes: '💬'
+  notes: '💬',
+  performance: '📉',
+  'capital-plan': '🏗️',
+  'asset-management': '🔧',
 };
 
 const moduleLabels: Record<string, string> = {
@@ -32,8 +35,23 @@ const moduleLabels: Record<string, string> = {
   documents: 'Documents',
   team: 'Team & Comms',
   context: 'Context Tracker',
-  notes: 'Notes & Comments'
+  notes: 'Notes & Comments',
+  performance: 'Performance Tracking',
+  'capital-plan': 'Capital Plan',
+  'asset-management': 'Asset Management',
 };
+
+const PIPELINE_MODULES = [
+  'map', 'overview', 'market-competition', 'supply-tracking', 'debt-market',
+  'ai-agent', 'financial', 'strategy', 'due-diligence', 'market',
+  'documents', 'context', 'notes'
+];
+
+const ASSET_MODULES = [
+  'map', 'overview', 'performance', 'financial', 'asset-management',
+  'capital-plan', 'market', 'strategy', 'documents', 'team',
+  'context', 'notes'
+];
 
 const PRO_MODULES = ['market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'market'];
 const ENTERPRISE_MODULES = ['team'];
@@ -44,6 +62,9 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   currentModule,
   onModuleChange
 }) => {
+  const isOwned = deal.status === 'owned' || deal.status === 'closed_won';
+  const visibleModules = isOwned ? ASSET_MODULES : PIPELINE_MODULES;
+
   const isModuleEnabled = (moduleName: string) => {
     const module = modules.find(m =>
       m.moduleName === moduleName ||
@@ -75,11 +96,11 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
       <div className="flex-1 overflow-y-auto p-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Deal Modules
+          {isOwned ? 'Asset Modules' : 'Deal Modules'}
         </h3>
         
         <div className="space-y-1">
-          {Object.keys(moduleIcons).map(moduleName => {
+          {visibleModules.map(moduleName => {
             const enabled = isModuleEnabled(moduleName);
             const upgradeMsg = getModuleUpgradeMessage(moduleName);
             const isActive = currentModule === moduleName;
@@ -99,10 +120,10 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
                   }
                 `}
               >
-                <span className="text-xl">{moduleIcons[moduleName]}</span>
+                <span className="text-xl">{moduleIcons[moduleName] || '📋'}</span>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">{moduleLabels[moduleName]}</span>
+                    <span className="text-sm">{moduleLabels[moduleName] || moduleName}</span>
                     {!enabled && upgradeMsg && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -119,6 +140,13 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
 
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <div className="text-xs text-gray-600 space-y-1">
+          {isOwned && (
+            <div className="flex justify-between mb-2">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                Owned Asset
+              </span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Created:</span>
             <span className="font-medium">

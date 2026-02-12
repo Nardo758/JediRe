@@ -116,23 +116,29 @@ export const DealView: React.FC = () => {
       case 'context':
         return <DealContextTracker dealId={selectedDeal.id} />;
       case 'market-competition':
-        return <div className="p-6">Market Competition (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Market Competition</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'supply-tracking':
-        return <div className="p-6">Supply Tracking (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Supply Tracking</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'debt-market':
-        return <div className="p-6">Debt Market (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Debt Market</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'financial':
-        return <div className="p-6">Financial Analysis (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Financial Analysis</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'market':
-        return <div className="p-6">Market Analysis (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Market Analysis</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'due-diligence':
-        return <div className="p-6">Due Diligence (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Due Diligence</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'documents':
-        return <div className="p-6">Documents (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Documents</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'team':
-        return <div className="p-6">Team & Comms (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Team & Comms</h2><p className="text-gray-500">Coming Soon</p></div>;
       case 'notes':
-        return <div className="p-6">Notes & Comments (Coming Soon)</div>;
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Notes & Comments</h2><p className="text-gray-500">Coming Soon</p></div>;
+      case 'performance':
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Performance Tracking</h2><p className="text-gray-500">Track actual vs pro forma performance across NOI, occupancy, and rent metrics.</p></div>;
+      case 'capital-plan':
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Capital Plan</h2><p className="text-gray-500">Manage capex budgets, renovation schedules, and capital improvement tracking.</p></div>;
+      case 'asset-management':
+        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Asset Management</h2><p className="text-gray-500">Operational health monitoring, maintenance schedules, and vendor management.</p></div>;
       default:
         return <div className="p-6">Module not found</div>;
     }
