@@ -1008,6 +1008,438 @@ export class RiskScoringService {
         return 'Monitor';
     }
   }
+
+  // ============================================================================
+  // PHASE 3 RISK CATEGORIES (Regulatory, Market, Execution, Climate)
+  // ============================================================================
+
+  /**
+   * Calculate Regulatory Risk Score (0-100)
+   * 
+   * Formula: Base 50 + Sum(Active Events × Stage Probability)
+   * 
+   * Stage Probability Weighting:
+   * - Proposed: 25%
+   * - Committee: 50%
+   * - Vote Pending: 75%
+   * - Enacted: 100%
+   * 
+   * Event Types:
+   * - Rent control: High impact
+   * - STR restrictions: Moderate-High impact
+   * - Zoning changes: Variable (upzone = opportunity, downzone = risk)
+   * - Tax policy: Moderate impact
+   * - Inclusionary zoning: Low-Moderate impact
+   */
+  async calculateRegulatoryRisk(tradeAreaId: string): Promise<any> {
+    // Get active regulatory events
+    const eventsResult = await query(
+      `SELECT 
+         id,
+         legislation_name,
+         legislation_type,
+         legislation_stage,
+         stage_probability,
+         risk_score_impact,
+         severity,
+         effective_date
+       FROM regulatory_risk_events
+       WHERE trade_area_id = $1
+         AND is_active = TRUE
+       ORDER BY risk_score_impact DESC`,
+      [tradeAreaId]
+    );
+
+    const events = eventsResult.rows;
+
+    // Calculate weighted risk impact
+    let totalRiskImpact = 0;
+    events.forEach(event => {
+      const weightedImpact = parseFloat(event.risk_score_impact) * (parseFloat(event.stage_probability) / 100);
+      totalRiskImpact += weightedImpact;
+    });
+
+    // Base score starts at 50 (neutral)
+    const baseScore = 50.0 + totalRiskImpact;
+    
+    // Cap at 0-100
+    const finalScore = Math.max(0, Math.min(100, baseScore));
+
+    return {
+      baseScore: parseFloat(baseScore.toFixed(2)),
+      finalScore: parseFloat(finalScore.toFixed(2)),
+      activeEvents: events.length,
+      totalRiskImpact: parseFloat(totalRiskImpact.toFixed(2)),
+      events: events.map(e => ({
+        id: e.id,
+        name: e.legislation_name,
+        type: e.legislation_type,
+        stage: e.legislation_stage,
+        stageProbability: parseFloat(e.stage_probability),
+        impact: parseFloat(e.risk_score_impact),
+        severity: e.severity,
+        effectiveDate: e.effective_date,
+      })),
+    };
+  }
+
+  /**
+   * Calculate Market Risk Score (0-100)
+   * 
+   * Formula: Interest Rate Sensitivity + Liquidity Risk + Recession Probability
+   * 
+   * Components:
+   * - Cap Rate Expansion: +100 bps IR = +50-75 bps cap rate
+   * - DSCR Stress Test: Impact of +200 bps on debt service coverage
+   * - Liquidity Risk: Transaction volume, days on market
+   * - Credit Availability: Lending standards, LTV requirements
+   * - Recession Indicators: Yield curve, unemployment, leading indicators
+   */
+  async calculateMarketRisk(tradeAreaId: string): Promise<any> {
+    // Get latest market indicators
+    const indicatorsResult = await query(
+      `SELECT *
+       FROM market_risk_indicators
+       WHERE trade_area_id = $1
+       ORDER BY as_of_date DESC
+       LIMIT 1`,
+      [tradeAreaId]
+    );
+
+    if (indicatorsResult.rows.length === 0) {
+      // No data - return neutral score
+      return {
+        baseScore: 50.0,
+        finalScore: 50.0,
+        hasData: false,
+        message: 'No market risk data available',
+      };
+    }
+
+    const indicators = indicatorsResult.rows[0];
+
+    // Use base market risk score from indicators table
+    const baseScore = parseFloat(indicators.base_market_risk_score) || 50.0;
+    
+    // Get interest rate scenarios
+    const scenariosResult = await query(
+      `SELECT 
+         scenario_name,
+         rate_change_bps,
+         cap_rate_impact_bps,
+         value_impact_pct,
+         dscr_impact,
+         probability,
+         risk_score_contribution
+       FROM interest_rate_scenarios
+       WHERE trade_area_id = $1
+       ORDER BY probability DESC`,
+      [tradeAreaId]
+    );
+
+    const scenarios = scenariosResult.rows.map(s => ({
+      name: s.scenario_name,
+      rateChangeBps: parseFloat(s.rate_change_bps),
+      capRateImpactBps: parseFloat(s.cap_rate_impact_bps),
+      valueImpactPct: parseFloat(s.value_impact_pct),
+      dscrImpact: parseFloat(s.dscr_impact),
+      probability: parseFloat(s.probability),
+      riskContribution: parseFloat(s.risk_score_contribution),
+    }));
+
+    const finalScore = baseScore;
+
+    return {
+      baseScore: parseFloat(baseScore.toFixed(2)),
+      finalScore: parseFloat(finalScore.toFixed(2)),
+      hasData: true,
+      asOfDate: indicators.as_of_date,
+      indicators: {
+        current10YrTreasury: parseFloat(indicators.current_10yr_treasury),
+        currentCapRate: parseFloat(indicators.current_cap_rate),
+        capRateExpansionBps: parseFloat(indicators.estimated_cap_rate_expansion),
+        currentDSCR: parseFloat(indicators.current_dscr),
+        stressedDSCR: parseFloat(indicators.stressed_dscr),
+        dscrBuffer: parseFloat(indicators.dscr_buffer),
+        transactionVolumeIndex: parseFloat(indicators.transaction_volume_index),
+        daysOnMarketAvg: parseInt(indicators.days_on_market_avg),
+        recessionProbability: parseFloat(indicators.recession_probability),
+        yieldCurveSpread: parseFloat(indicators.yield_curve_spread),
+        unemploymentRate: parseFloat(indicators.unemployment_rate),
+      },
+      scenarios,
+    };
+  }
+
+  /**
+   * Calculate Execution Risk Score (0-100)
+   * 
+   * Formula: Cost Contingency Adequacy + Historical Overrun Rate + Market Conditions
+   * 
+   * Components:
+   * - Contingency Budget: 10% = low risk, 5% = high risk
+   * - Historical Overruns: By jurisdiction and project type
+   * - Labor Market: Contractor availability, wage inflation
+   * - Material Supply: Lead times, price volatility, tariff exposure
+   * - Contractor Risk: Failure rates, bonding availability
+   */
+  async calculateExecutionRisk(tradeAreaId: string): Promise<any> {
+    // Get latest execution risk factors
+    const factorsResult = await query(
+      `SELECT *
+       FROM execution_risk_factors
+       WHERE trade_area_id = $1
+       ORDER BY as_of_date DESC
+       LIMIT 1`,
+      [tradeAreaId]
+    );
+
+    if (factorsResult.rows.length === 0) {
+      // No data - return neutral score
+      return {
+        baseScore: 50.0,
+        finalScore: 50.0,
+        hasData: false,
+        message: 'No execution risk data available',
+      };
+    }
+
+    const factors = factorsResult.rows[0];
+
+    // Use base execution risk score from factors table
+    const baseScore = parseFloat(factors.base_execution_risk_score) || 50.0;
+
+    // Get construction cost trends
+    const costTrendsResult = await query(
+      `SELECT 
+         period_month,
+         overall_cost_index,
+         labor_cost_index,
+         material_cost_index,
+         avg_permit_approval_days,
+         avg_material_lead_days
+       FROM construction_cost_tracking
+       WHERE trade_area_id = $1
+       ORDER BY period_month DESC
+       LIMIT 12`,
+      [tradeAreaId]
+    );
+
+    const costTrends = costTrendsResult.rows.map(ct => ({
+      month: ct.period_month,
+      overallCostIndex: parseFloat(ct.overall_cost_index),
+      laborCostIndex: parseFloat(ct.labor_cost_index),
+      materialCostIndex: parseFloat(ct.material_cost_index),
+      permitApprovalDays: parseInt(ct.avg_permit_approval_days),
+      materialLeadDays: parseInt(ct.avg_material_lead_days),
+    }));
+
+    const finalScore = baseScore;
+
+    return {
+      baseScore: parseFloat(baseScore.toFixed(2)),
+      finalScore: parseFloat(finalScore.toFixed(2)),
+      hasData: true,
+      asOfDate: factors.as_of_date,
+      factors: {
+        projectType: factors.project_type,
+        estimatedCost: parseFloat(factors.estimated_project_cost),
+        contingencyPct: parseFloat(factors.contingency_pct),
+        costInflationYoY: parseFloat(factors.cost_inflation_yoy),
+        laborAvailability: factors.labor_availability,
+        contractorAvailability: factors.contractor_availability,
+        wageInflationYoY: parseFloat(factors.wage_inflation_yoy),
+        skilledLaborShortage: factors.skilled_labor_shortage,
+        materialLeadTimesAvg: parseInt(factors.material_lead_times_avg),
+        materialPriceVolatility: factors.material_price_volatility,
+        tariffExposure: factors.tariff_exposure,
+        contractorFailureRate: parseFloat(factors.contractor_failure_rate),
+        historicalCostOverrunPct: parseFloat(factors.historical_cost_overrun_pct),
+        historicalScheduleOverrunDays: parseInt(factors.historical_schedule_overrun_days),
+      },
+      costTrends,
+    };
+  }
+
+  /**
+   * Calculate Climate/Physical Risk Score (0-100)
+   * 
+   * Formula: Flood Risk + Wildfire Risk + Hurricane Risk + Insurance Impact
+   * 
+   * Components:
+   * - FEMA Flood Zone: A/AE/V = high risk, X = low risk
+   * - Wildfire Proximity: WUI classification, distance to perimeters
+   * - Hurricane Exposure: Wind zone, storm surge risk
+   * - Insurance Availability: Carrier withdrawals, premium trends
+   * - 30-Year Climate Projection: Sea level rise, temperature extremes
+   */
+  async calculateClimateRisk(tradeAreaId: string): Promise<any> {
+    // Get latest climate risk assessment
+    const assessmentResult = await query(
+      `SELECT *
+       FROM climate_risk_assessments
+       WHERE trade_area_id = $1
+       ORDER BY assessment_date DESC
+       LIMIT 1`,
+      [tradeAreaId]
+    );
+
+    if (assessmentResult.rows.length === 0) {
+      // No data - return neutral score
+      return {
+        baseScore: 50.0,
+        finalScore: 50.0,
+        hasData: false,
+        message: 'No climate risk data available',
+      };
+    }
+
+    const assessment = assessmentResult.rows[0];
+
+    // Use base climate risk score from assessment
+    const baseScore = parseFloat(assessment.base_climate_risk_score) || 50.0;
+
+    // Get historical natural disaster events
+    const disasterEventsResult = await query(
+      `SELECT 
+         event_type,
+         event_name,
+         event_date,
+         severity,
+         estimated_damage_usd,
+         properties_affected
+       FROM natural_disaster_events
+       WHERE trade_area_id = $1
+       ORDER BY event_date DESC
+       LIMIT 10`,
+      [tradeAreaId]
+    );
+
+    const disasterHistory = disasterEventsResult.rows.map(de => ({
+      type: de.event_type,
+      name: de.event_name,
+      date: de.event_date,
+      severity: de.severity,
+      estimatedDamage: parseFloat(de.estimated_damage_usd),
+      propertiesAffected: parseInt(de.properties_affected),
+    }));
+
+    const finalScore = baseScore;
+
+    return {
+      baseScore: parseFloat(baseScore.toFixed(2)),
+      finalScore: parseFloat(finalScore.toFixed(2)),
+      hasData: true,
+      assessmentDate: assessment.assessment_date,
+      floodRisk: {
+        femaZone: assessment.fema_flood_zone,
+        zoneDescription: assessment.fema_zone_description,
+        baseFloodElevation: parseFloat(assessment.base_flood_elevation),
+        propertyElevation: parseFloat(assessment.property_elevation),
+        elevationBuffer: parseFloat(assessment.elevation_buffer),
+        riskLevel: assessment.flood_risk_level,
+        eventCount10Yr: parseInt(assessment.flood_event_count_10yr),
+      },
+      wildfireRisk: {
+        hazardZone: assessment.wildfire_hazard_zone,
+        wuiClassification: assessment.wui_classification,
+        distanceToFireMiles: parseFloat(assessment.distance_to_fire_perimeter_miles),
+        riskLevel: assessment.wildfire_risk_level,
+      },
+      hurricaneRisk: {
+        zone: parseInt(assessment.hurricane_zone),
+        windDesignSpeed: parseInt(assessment.wind_design_speed),
+        stormSurgeRisk: assessment.storm_surge_risk_level,
+      },
+      earthquakeRisk: {
+        seismicZone: assessment.seismic_zone,
+        riskLevel: assessment.earthquake_risk_level,
+      },
+      seaLevelRise: {
+        distanceToCoastMiles: parseFloat(assessment.current_distance_to_coast_miles),
+        projectedRise30YrFeet: parseFloat(assessment.sea_level_rise_30yr_feet),
+        impactLevel: assessment.slr_impact_level,
+      },
+      insurance: {
+        availability: assessment.insurance_availability,
+        carrierWithdrawals: assessment.insurance_carrier_withdrawals,
+        premiumTrend: assessment.insurance_premium_trend,
+        estimatedAnnualPremium: parseFloat(assessment.estimated_annual_premium),
+      },
+      disasterHistory,
+    };
+  }
+
+  /**
+   * Update composite risk calculation to use all 6 categories
+   * (Overrides the placeholder version from Phase 2)
+   */
+  async calculateCompositeRisk(tradeAreaId: string): Promise<CompositeRiskProfile> {
+    // Calculate all 6 category scores
+    const supplyCalc = await this.calculateSupplyRisk(tradeAreaId);
+    const demandCalc = await this.calculateDemandRisk(tradeAreaId);
+    const regulatoryCalc = await this.calculateRegulatoryRisk(tradeAreaId);
+    const marketCalc = await this.calculateMarketRisk(tradeAreaId);
+    const executionCalc = await this.calculateExecutionRisk(tradeAreaId);
+    const climateCalc = await this.calculateClimateRisk(tradeAreaId);
+
+    const supplyRisk = supplyCalc.finalScore;
+    const demandRisk = demandCalc.finalScore;
+    const regulatoryRisk = regulatoryCalc.finalScore;
+    const marketRisk = marketCalc.finalScore;
+    const executionRisk = executionCalc.finalScore;
+    const climateRisk = climateCalc.finalScore;
+
+    // Array of all scores with category names
+    const scores = [
+      { category: 'supply', score: supplyRisk },
+      { category: 'demand', score: demandRisk },
+      { category: 'regulatory', score: regulatoryRisk },
+      { category: 'market', score: marketRisk },
+      { category: 'execution', score: executionRisk },
+      { category: 'climate', score: climateRisk },
+    ];
+
+    // Sort by score descending
+    scores.sort((a, b) => b.score - a.score);
+
+    const highest = scores[0];
+    const secondHighest = scores[1];
+    const remaining = scores.slice(2);
+    const avgRemaining = remaining.reduce((sum, s) => sum + s.score, 0) / remaining.length;
+
+    // Calculate composite score
+    // Formula: (Highest × 0.40) + (Second × 0.25) + (Avg Remaining × 0.35)
+    const compositeScore = 
+      (highest.score * 0.40) +
+      (secondHighest.score * 0.25) +
+      (avgRemaining * 0.35);
+
+    // Classify risk level
+    const riskLevel = this.classifyRiskLevel(compositeScore);
+
+    const profile: CompositeRiskProfile = {
+      tradeAreaId,
+      supplyRisk,
+      demandRisk,
+      regulatoryRisk,
+      marketRisk,
+      executionRisk,
+      climateRisk,
+      compositeScore: parseFloat(compositeScore.toFixed(2)),
+      highestCategory: highest.category,
+      highestCategoryScore: highest.score,
+      secondHighestCategory: secondHighest.category,
+      secondHighestCategoryScore: secondHighest.score,
+      riskLevel,
+      calculatedAt: new Date(),
+    };
+
+    // Save composite profile to database
+    await this.saveCompositeRiskProfile(profile);
+
+    return profile;
+  }
 }
 
 // ============================================================================

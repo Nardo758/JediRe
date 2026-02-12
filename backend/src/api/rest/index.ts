@@ -43,6 +43,9 @@ import jediRoutes from './jedi.routes';
 import riskRoutes from './risk.routes';
 import proformaRoutes from './proforma.routes';
 import auditRoutes from './audit.routes';
+import scenariosRoutes from './scenarios.routes';
+import credibilityRoutes from './credibility.routes';
+import eventsRoutes from './events.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -138,6 +141,15 @@ export function setupRESTRoutes(app: Application): void {
 
   // Audit Trail routes (JEDI RE Phase 2, Component 4 - Evidence Chain Auditability)
   app.use(`${API_PREFIX}/audit`, auditRoutes);
+
+  // Scenario Generation routes (JEDI RE Phase 3, Component 2 - Evidence-Based Scenario Generation)
+  app.use(`${API_PREFIX}/scenarios`, scenariosRoutes);
+
+  // Source Credibility routes (JEDI RE Phase 3, Component 4 - Source Credibility Learning)
+  app.use(`${API_PREFIX}/credibility`, credibilityRoutes);
+
+  // Events routes (JEDI RE Phase 3, Component 3 - Kafka Event Bus Monitoring)
+  app.use(`${API_PREFIX}/events`, eventsRoutes);
 
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);

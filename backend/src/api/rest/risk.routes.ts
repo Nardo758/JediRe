@@ -633,4 +633,226 @@ router.get('/categories', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/risk/trade-area/:id/regulatory
+ * Get regulatory risk details for a trade area
+ */
+router.get('/trade-area/:id/regulatory', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Calculate regulatory risk
+    const regulatoryRisk = await riskScoringService.calculateRegulatoryRisk(id);
+
+    // Get zoning changes
+    const zoningResult = await query(
+      `SELECT 
+         id, address, current_zoning, proposed_zoning, zoning_change_type,
+         impact_type, risk_score_impact, status, hearing_date, effective_date
+       FROM zoning_changes
+       WHERE trade_area_id = $1
+       ORDER BY hearing_date DESC NULLS LAST`,
+      [id]
+    );
+
+    // Get tax policy changes
+    const taxResult = await query(
+      `SELECT 
+         id, tax_type, jurisdiction_name, previous_rate, new_rate, rate_change_pct,
+         estimated_annual_cost_impact, effective_date, description
+       FROM tax_policy_changes
+       WHERE trade_area_id = $1
+       ORDER BY effective_date DESC`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        regulatoryRisk,
+        zoningChanges: zoningResult.rows,
+        taxPolicyChanges: taxResult.rows,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching regulatory risk:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch regulatory risk',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/risk/trade-area/:id/market
+ * Get market risk details for a trade area
+ */
+router.get('/trade-area/:id/market', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Calculate market risk
+    const marketRisk = await riskScoringService.calculateMarketRisk(id);
+
+    // Get historical market indicators (last 12 months)
+    const historyResult = await query(
+      `SELECT 
+         as_of_date,
+         current_10yr_treasury,
+         current_cap_rate,
+         estimated_cap_rate_expansion,
+         current_dscr,
+         transaction_volume_index,
+         recession_probability
+       FROM market_risk_indicators
+       WHERE trade_area_id = $1
+       ORDER BY as_of_date DESC
+       LIMIT 12`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        marketRisk,
+        historicalIndicators: historyResult.rows,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching market risk:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch market risk',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/risk/trade-area/:id/execution
+ * Get execution risk details for a trade area
+ */
+router.get('/trade-area/:id/execution', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Calculate execution risk
+    const executionRisk = await riskScoringService.calculateExecutionRisk(id);
+
+    res.json({
+      success: true,
+      data: {
+        executionRisk,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching execution risk:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch execution risk',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/risk/trade-area/:id/climate
+ * Get climate risk details for a trade area
+ */
+router.get('/trade-area/:id/climate', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Calculate climate risk
+    const climateRisk = await riskScoringService.calculateClimateRisk(id);
+
+    res.json({
+      success: true,
+      data: {
+        climateRisk,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching climate risk:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch climate risk',
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/risk/comprehensive/:dealId
+ * Get comprehensive risk assessment for a deal (all 6 categories)
+ */
+router.get('/comprehensive/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Get trade areas for this deal
+    const tradeAreasResult = await query(
+      `SELECT ta.id, ta.name
+       FROM trade_areas ta
+       JOIN properties p ON p.id = ta.property_id
+       WHERE p.deal_id = $1`,
+      [dealId]
+    );
+
+    if (tradeAreasResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No trade areas found for this deal',
+      });
+    }
+
+    // Calculate all 6 category risks for each trade area
+    const tradeAreaRisks = await Promise.all(
+      tradeAreasResult.rows.map(async (ta) => {
+        const composite = await riskScoringService.calculateCompositeRisk(ta.id);
+        const supply = await riskScoringService.calculateSupplyRisk(ta.id);
+        const demand = await riskScoringService.calculateDemandRisk(ta.id);
+        const regulatory = await riskScoringService.calculateRegulatoryRisk(ta.id);
+        const market = await riskScoringService.calculateMarketRisk(ta.id);
+        const execution = await riskScoringService.calculateExecutionRisk(ta.id);
+        const climate = await riskScoringService.calculateClimateRisk(ta.id);
+
+        return {
+          tradeAreaId: ta.id,
+          tradeAreaName: ta.name,
+          composite,
+          categories: {
+            supply,
+            demand,
+            regulatory,
+            market,
+            execution,
+            climate,
+          },
+        };
+      })
+    );
+
+    // Calculate deal-level composite (average of trade areas)
+    const avgComposite = tradeAreaRisks.reduce((sum, ta) => sum + ta.composite.compositeScore, 0) / tradeAreaRisks.length;
+
+    res.json({
+      success: true,
+      data: {
+        dealId,
+        compositeRiskScore: parseFloat(avgComposite.toFixed(2)),
+        tradeAreaRisks,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching comprehensive risk:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch comprehensive risk',
+      message: error.message,
+    });
+  }
+});
+
 export default router;

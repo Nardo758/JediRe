@@ -11,6 +11,8 @@
 
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { kafkaProducer } from './kafka/kafka-producer.service';
+import { DemandSignalMessage, KAFKA_TOPICS } from './kafka/event-schemas';
 
 export interface DemandEventInput {
   newsEventId: string;
@@ -184,7 +186,7 @@ class DemandSignalService {
     });
     
     // Step 7: Generate quarterly projections
-    await this.generateProjections(
+    const projections = await this.generateProjections(
       demandEvent.id,
       totalUnits,
       incomeStrat,
@@ -193,7 +195,89 @@ class DemandSignalService {
       eventType.demand_direction
     );
     
+    // Step 8: Publish demand signal event to Kafka
+    await this.publishDemandSignal(demandEvent, eventType, input, projections);
+    
     return this.formatDemandEvent(demandEvent);
+  }
+  
+  /**
+   * Publish demand signal to Kafka event bus
+   */
+  private async publishDemandSignal(
+    demandEvent: any,
+    eventType: any,
+    input: DemandEventInput,
+    projections: any[]
+  ): Promise<void> {
+    try {
+      // Build quarterly phasing object
+      const quarterlyPhasing: Record<string, number> = {};
+      projections.forEach(p => {
+        quarterlyPhasing[p.quarter] = p.units_projected;
+      });
+      
+      // Get trade area ID from geographic context
+      const tradeAreaId = await this.getTradeAreaId(input.msaId, input.submarketId);
+      
+      const demandSignal: DemandSignalMessage = {
+        eventId: demandEvent.id,
+        eventType: 'demand_calculated',
+        timestamp: new Date().toISOString(),
+        signalId: demandEvent.id,
+        tradeAreaId: tradeAreaId || 'unknown',
+        housingUnitsNeeded: parseFloat(demandEvent.total_units),
+        absorptionRateMonthly: parseFloat(demandEvent.total_units) / 12, // Simplified
+        quarterlyPhasing,
+        confidenceScore: demandEvent.confidence_score,
+        triggeringEventId: input.newsEventId,
+        calculationMethod: `${eventType.category}:${eventType.event_type}`,
+        assumedOccupancyRate: 0.95, // Default assumption
+        assumedHouseholdSize: 2.5,  // Default assumption
+      };
+      
+      await kafkaProducer.publish(
+        KAFKA_TOPICS.DEMAND_SIGNALS,
+        demandSignal,
+        {
+          key: tradeAreaId || demandEvent.id,
+          publishedBy: 'demand-signal-service',
+        }
+      );
+      
+      logger.info('Published demand signal to Kafka', {
+        eventId: demandEvent.id,
+        tradeAreaId,
+        units: demandEvent.total_units,
+      });
+    } catch (error) {
+      logger.error('Failed to publish demand signal to Kafka:', error);
+      // Don't throw - Kafka failure shouldn't break demand calculation
+    }
+  }
+  
+  /**
+   * Get trade area ID from geographic context
+   */
+  private async getTradeAreaId(msaId?: number, submarketId?: number): Promise<string | null> {
+    if (!msaId && !submarketId) {
+      return null;
+    }
+    
+    try {
+      const result = await query(
+        `SELECT id FROM trade_areas 
+         WHERE (msa_id = $1 OR $1 IS NULL)
+           AND (submarket_id = $2 OR $2 IS NULL)
+         LIMIT 1`,
+        [msaId, submarketId]
+      );
+      
+      return result.rows.length > 0 ? result.rows[0].id : null;
+    } catch (error) {
+      logger.error('Error getting trade area ID:', error);
+      return null;
+    }
   }
   
   /**
@@ -340,7 +424,7 @@ class DemandSignalService {
     publishedAt: Date,
     phasingTemplate: string,
     demandDirection: string
-  ): Promise<void> {
+  ): Promise<any[]> {
     // Get phasing template
     const templateResult = await query(
       `SELECT phase_distribution FROM demand_phasing_templates WHERE name = $1`,
@@ -387,6 +471,13 @@ class DemandSignalService {
         ]
       );
       
+      // Track projection for return
+      projections.push({
+        quarter: quarterCursor,
+        units_projected: adjustedUnits,
+        phase_pct: phasePct,
+      });
+      
       quarterCursor = this.incrementQuarter(quarterCursor);
     }
     
@@ -395,6 +486,8 @@ class DemandSignalService {
       quarters: Object.keys(phaseDistribution).length,
       totalUnits
     });
+    
+    return projections;
   }
   
   /**
