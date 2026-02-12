@@ -239,13 +239,6 @@ export const MainLayout: React.FC = () => {
                     path="/tasks"
                     isActive={isActive('/tasks')}
                   />
-                  
-                  <SidebarItem
-                    icon="🎨"
-                    label="Feature Showcase"
-                    path="/showcase"
-                    isActive={isActivePrefix('/showcase')}
-                  />
                 </div>
 
                 {/* Other sections */}
