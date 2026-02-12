@@ -1,6 +1,6 @@
 /**
  * Enhanced Deal Page - JEDI RE
- * Complete deal page with 10 collapsible sections
+ * Complete deal page with 14 collapsible sections
  * SKELETON STRUCTURE ONLY - sections to be built individually
  */
 
@@ -9,6 +9,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { DealSection } from '../components/deal/DealSection';
 import {
   OverviewSection,
+  MarketCompetitionSection,
+  SupplyTrackingSection,
+  DebtMarketSection,
+  AIAgentSection,
   FinancialSection,
   StrategySection,
   DueDiligenceSection,
@@ -171,7 +175,7 @@ export const DealPageEnhanced: React.FC = () => {
         </div>
       </div>
 
-      {/* Scrollable content with 10 sections */}
+      {/* Scrollable content with 14 sections */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-6 space-y-4">
           
@@ -187,7 +191,55 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 2. Financial Analysis */}
+          {/* 2. Market Competition */}
+          <div id="section-market-competition">
+            <DealSection
+              id="market-competition"
+              icon="🏆"
+              title="Market Competition"
+              isPremium={true}
+            >
+              <MarketCompetitionSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 3. Supply Tracking */}
+          <div id="section-supply-tracking">
+            <DealSection
+              id="supply-tracking"
+              icon="📦"
+              title="Supply Tracking"
+              isPremium={true}
+            >
+              <SupplyTrackingSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 4. Debt Market */}
+          <div id="section-debt-market">
+            <DealSection
+              id="debt-market"
+              icon="💳"
+              title="Debt Market"
+              isPremium={true}
+            >
+              <DebtMarketSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 5. AI Agent (Opus) */}
+          <div id="section-ai-agent">
+            <DealSection
+              id="ai-agent"
+              icon="🤖"
+              title="AI Agent (Opus)"
+              isPremium={true}
+            >
+              <AIAgentSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 6. Financial Analysis */}
           <div id="section-financial">
             <DealSection
               id="financial"
@@ -199,7 +251,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 3. Strategy & Arbitrage */}
+          {/* 7. Strategy & Arbitrage */}
           <div id="section-strategy">
             <DealSection
               id="strategy"
@@ -211,7 +263,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 4. Due Diligence */}
+          {/* 8. Due Diligence */}
           <div id="section-due-diligence">
             <DealSection
               id="due-diligence"
@@ -222,7 +274,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 5. Properties */}
+          {/* 9. Properties */}
           <div id="section-properties">
             <DealSection
               id="properties"
@@ -233,7 +285,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 6. Market Analysis */}
+          {/* 10. Market Analysis */}
           <div id="section-market">
             <DealSection
               id="market"

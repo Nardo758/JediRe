@@ -4,6 +4,10 @@
  */
 
 export { OverviewSection } from './OverviewSection';
+export { MarketCompetitionSection } from './MarketCompetitionSection';
+export { SupplyTrackingSection } from './SupplyTrackingSection';
+export { DebtMarketSection } from './DebtMarketSection';
+export { AIAgentSection } from './AIAgentSection';
 export { FinancialSection } from './FinancialSection';
 export { StrategySection } from './StrategySection';
 export { DueDiligenceSection } from './DueDiligenceSection';
