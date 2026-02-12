@@ -21,7 +21,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace/jedire && bash start.sh"
+args = "bash start.sh"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -41,5 +41,5 @@ externalPort = 3002
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["bash", "-c", "cd /home/runner/workspace/jedire && NODE_ENV=production PORT=5000 node backend/dist/index.replit.js"]
-build = ["bash", "-c", "export NODE_OPTIONS='--max-old-space-size=2048' && cd /home/runner/workspace/jedire/frontend && npm install --legacy-peer-deps && npx vite build && cd /home/runner/workspace/jedire/backend && npx tsc --skipLibCheck"]
+run = ["bash", "-c", "NODE_ENV=production PORT=5000 node backend/dist/index.replit.js"]
+build = ["bash", "-c", "export NODE_OPTIONS='--max-old-space-size=2048' && cd frontend && npm install --legacy-peer-deps && npx vite build && cd ../backend && npx tsc --skipLibCheck"]
