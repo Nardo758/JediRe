@@ -46,7 +46,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd /home/runner/workspace/jedire && bash start.sh"
+args = "bash start.sh"
 waitForPort = 5000
 
 [userenv]
