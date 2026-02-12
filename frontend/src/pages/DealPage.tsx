@@ -7,6 +7,8 @@ import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
 import { useModuleCheck, invalidateModuleCache } from '../utils/modules';
 import { FinancialAnalysisSection } from '../components/deal/sections/FinancialAnalysisSection';
+import { StrategySection } from '../components/deal/sections/StrategySection';
+import { ExitSection } from '../components/deal/sections/ExitSection';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -228,37 +230,42 @@ export const DealPage: React.FC = () => {
 
           {/* 4. Strategy */}
           <SectionCard id="strategy" icon="🎯" title="Strategy" dealId={dealId}>
-            {null}
+            <StrategySection deal={deal} />
           </SectionCard>
 
-          {/* 5. Due Diligence */}
+          {/* 5. Exit Strategy */}
+          <SectionCard id="exit" icon="🚪" title="Exit Strategy" dealId={dealId}>
+            <ExitSection deal={deal} />
+          </SectionCard>
+
+          {/* 6. Due Diligence */}
           <SectionCard id="dd" icon="✅" title="Due Diligence" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 6. Market Analysis */}
+          {/* 7. Market Analysis */}
           <SectionCard id="market" icon="📈" title="Market Analysis" dealId={dealId}>
             {null}
           </SectionCard>
 
-          {/* 7. Development (conditional) */}
+          {/* 8. Development (conditional) */}
           {deal.isDevelopment && (
             <SectionCard id="development" icon="🏗️" title="Development" dealId={dealId}>
               {null}
             </SectionCard>
           )}
 
-          {/* 8. Documents */}
+          {/* 9. Documents */}
           <SectionCard id="documents" icon="📄" title="Documents" dealId={dealId}>
             <DocumentsSection deal={deal} />
           </SectionCard>
 
-          {/* 9. Collaboration */}
+          {/* 10. Collaboration */}
           <SectionCard id="collaboration" icon="👥" title="Collaboration" dealId={dealId}>
             <CollaborationSection deal={deal} />
           </SectionCard>
 
-          {/* 10. Activity Feed */}
+          {/* 11. Activity Feed */}
           <SectionCard id="activity-feed" icon="📝" title="Activity Feed" dealId={dealId}>
             <ActivityFeedSection deal={deal} />
           </SectionCard>

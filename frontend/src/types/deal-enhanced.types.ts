@@ -141,6 +141,13 @@ export const DEAL_SECTIONS: DealSection[] = [
     description: 'Deal strategies including custom strategies and debt strategy builder'
   },
   {
+    id: 'exit',
+    title: 'Exit Strategy',
+    icon: '🚪',
+    isPremium: true,
+    description: 'Exit planning, scenarios, timing analysis, broker recommendations, and market readiness'
+  },
+  {
     id: 'due-diligence',
     title: 'Due Diligence',
     icon: '✅',
