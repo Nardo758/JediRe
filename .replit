@@ -2,3 +2,40 @@ modules = ["nodejs-20"]
 
 [agent]
 expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "JediRe"
+
+[[workflows.workflow]]
+name = "JediRe"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/jedire && bash start.sh"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 3000
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "export NODE_ENV=production && export PORT=5000 && cd /home/runner/workspace/jedire && node backend/dist/index.replit.js"]
+build = ["bash", "-c", "export NODE_OPTIONS='--max-old-space-size=2048' && cd /home/runner/workspace/jedire/frontend && npm install --legacy-peer-deps && npx vite build && cd /home/runner/workspace/jedire/backend && npx tsc --skipLibCheck"]

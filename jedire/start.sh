@@ -33,4 +33,5 @@ BACKEND_PID=$!
 
 # Start frontend immediately (don't wait for backend)
 cd "$WORKSPACE/frontend"
+export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS='.replit.dev,.repl.co,.worf.replit.dev,.kirk.replit.dev,.picard.replit.dev'
 exec npx vite --host 0.0.0.0 --port 5000

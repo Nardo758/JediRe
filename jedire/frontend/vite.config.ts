@@ -13,7 +13,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5000,
     strictPort: true,
-    allowedHosts: true as any,
+    allowedHosts: ['.replit.dev', '.repl.co', '.worf.replit.dev', '.kirk.replit.dev', '.picard.replit.dev'],
     headers: {
       'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com https://events.mapbox.com; style-src 'self' 'unsafe-inline' https://api.mapbox.com; img-src 'self' data: blob: https: https://api.mapbox.com; font-src 'self' data: https:; connect-src 'self' https://api.mapbox.com https://events.mapbox.com ws: wss:; worker-src 'self' blob:;"
     },
