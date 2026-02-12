@@ -143,6 +143,12 @@ export const DealPage: React.FC = () => {
           {/* Right: Action buttons */}
           <div className="flex items-center gap-3">
             <button
+              className="px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-300 rounded-lg hover:bg-purple-100 transition-colors"
+              onClick={() => navigate(`/deals/${dealId}/enhanced`)}
+            >
+              ✨ Enhanced View
+            </button>
+            <button
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               onClick={() => console.log('Export deal')}
             >
