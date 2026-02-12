@@ -4,7 +4,7 @@ entrypoint = "backend/src/index.ts"
 modules = ["nodejs-20", "postgresql-16"]
 
 [env]
-PORT = "3000"
+PORT = "5000"
 NODE_ENV = "development"
 
 [nix]
@@ -31,14 +31,6 @@ run = ["bash", "-c", "cd /home/runner/workspace/backend && node dist/index.repli
 
 [agent]
 expertMode = true
-
-[[ports]]
-localPort = 3000
-externalPort = 3000
-
-[[ports]]
-localPort = 4000
-externalPort = 80
 
 [[ports]]
 localPort = 5000

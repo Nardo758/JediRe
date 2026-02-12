@@ -1552,11 +1552,12 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // ============================================
 // Start Server
 // ============================================
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
   console.log(`Server running on port ${PORT}`);
+  console.log(`Server bound to 0.0.0.0:${PORT} (accessible externally)`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API base: http://localhost:${PORT}/api/v1`);
