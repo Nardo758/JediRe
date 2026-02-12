@@ -1,50 +1,72 @@
-# JediRe - Real Estate Intelligence Platform
+# JEDI RE - Real Estate Intelligence Platform
 
 ## Overview
-JediRe is a full-stack real estate intelligence platform designed to provide comprehensive real estate intelligence. It offers address-based property analysis, zoning lookup, and development potential calculation. The platform aims to centralize data, automate insights, and facilitate collaborative deal management for real estate professionals. Its core capabilities include advanced mapping, property analysis, deal pipeline management, and integration with external data sources for a holistic view of market opportunities.
+
+This is Leon D's development workspace containing multiple projects, with **JEDI RE** as the primary active project. JEDI RE is a B2B real estate intelligence platform that uses AI-powered analysis engines to help investors and developers source deals, analyze zoning, and score market opportunities. The platform uses a "map-agnostic" architecture that avoids expensive GIS infrastructure by letting users bring their own maps while the system focuses on intelligence processing.
+
+Secondary projects in this workspace include **Traveloure** (travel booking platform with AI itinerary generation), an **Apartment Locator AI** (consumer search platform), and an **Agent Dashboard** (real estate agent CRM with client management).
+
+The workspace also contains an AI assistant persona called "RocketMan" that maintains continuity through markdown-based memory files.
 
 ## User Preferences
-No explicit user preferences were provided in the original `replit.md` file. The agent should assume standard development practices and focus on delivering a functional and well-structured codebase.
+
+Preferred communication style: Simple, everyday language.
 
 ## System Architecture
-JediRe is built with a React frontend, an Express and GraphQL backend, and a PostgreSQL database.
 
-**Frontend (React + Vite):**
-- **UI Components:** Includes dedicated components for authentication, maps, dashboards, and property details.
-- **State Management:** Utilizes Zustand for managing application state, including properties, selected property, map state, filters, active modules, and collaborators.
-- **UI/UX Decisions:**
-    - Features a `FiltersBar` for strategy, score, timeline, and module filtering.
-    - `AgentStatusBar` provides real-time agent confidence indicators.
-    - `QuickInsights` displays actionable market intelligence.
-    - `PropertyBubble` on the map is color-coded by strategy and sized by score, with a red ring indicating arbitrage opportunities.
-    - `PropertyDetail` view includes `StrategyCard` for different investment strategies (Build-to-Sell, Flip, Rental, Airbnb) with ROI metrics, and `AgentInsights` with per-property agent analysis and confidence scores.
-- **Collaboration:** Supports real-time collaboration features like `CollaboratorCursor` and `AnnotationSection` with WebSocket events for presence, cursor movement, property pinning, and annotation synchronization.
+### JEDI RE (Primary Project)
 
-**Backend (Express + GraphQL):**
-- **API:** Provides both RESTful and GraphQL endpoints for data access and manipulation.
-- **Authentication:** Handles user authentication and authorization.
-- **Services:** Key services include geocoding, zoning lookup, and analysis.
-- **Module System:** A flexible module system allows toggling and purchasing features per deal.
-- **Data Persistence:** Implemented with a deal-centric architecture using PostgreSQL, including tables for users, properties, deals, deal modules, annotations, and various intelligence data.
-- **Zoning Intelligence:**
-    - Address-based property analysis using Nominatim for geocoding.
-    - Point-in-polygon zoning lookup using GeoJSON boundaries.
-    - Development potential calculator (max units, GFA, opportunity score).
+**Problem:** Real estate investors are overwhelmed with data but lack synthesized, actionable intelligence.
 
-**Database (PostgreSQL):**
-- **Schema:** Designed with a deal-centric approach.
-    - **Core Tables:** `users`, `properties`, `deals`, `deal_modules`, `deal_properties`, `deal_emails`, `deal_annotations`, `deal_pipeline`, `deal_tasks`, `deal_activity`, `subscriptions`, `team_members`.
-    - **Zoning Tables:** `zoning_districts`, `zoning_district_boundaries`.
-    - **Geographic Hierarchy:** `msas`, `submarkets`, `geographic_relationships`, `trade_area_event_impacts`.
-    - **Demand Signals:** `demand_event_types`, `demand_events`, `demand_projections`, `trade_area_demand_forecast`, `demand_phasing_templates`.
-    - **JEDI Score:** `jedi_score_history`, `deal_alerts`, `alert_configurations`, `demand_signal_weights`.
-    - **News Intelligence:** `news_events`, `news_event_geo_impacts`, `news_alerts`, `news_contact_credibility`, `news_sources`, `news_event_corroboration`.
-    - **Email/Inbox:** `email_accounts`, `emails`, `email_attachments`, `email_labels`.
-- **Spatial Data:** Utilizes PostGIS for geographical queries and spatial indexing.
+**Architecture:** Express + GraphQL + WebSocket backend with Python geospatial engines, designed as a lightweight map-agnostic system.
+
+- **Backend (99% complete):** Node.js/TypeScript with Express, GraphQL resolvers, WebSocket handlers, and 15+ REST route modules (~6,315 lines TypeScript across 47 files). The backend intentionally supports running without a database for development flexibility.
+- **Python Integration:** Seamless TypeScript-to-Python bridge (<200ms latency) powering GeoPandas analysis, PostGIS spatial queries, and 245 zoning code definitions. Core engines include Signal Processing (Kalman filtering, FFT), Carrying Capacity (ecological supply analysis), and Imbalance Detection.
+- **Frontend (40-65% complete):** React with Mapbox integration. 164+ components defined including MapBuilder with drawing tools, CreateDealModal wizard, three-panel layout, and grid views. Components are partially wired to backend APIs.
+- **Database:** PostgreSQL with optional TimescaleDB. Schema uses Drizzle ORM (config at `drizzle.config.ts`, schema at `shared/schema.ts`). 13+ migrations covering map layers, configurations, agent dashboard tables. Database is intentionally optional for dev mode.
+- **JEDI Score Engine:** 5-signal scoring system (0-100) with demand integration, alert system (Green/Yellow/Red), and score history tracking.
+- **Map Layer System:** Photoshop-like layer architecture with 5 layer types, drag-drop reordering, War Maps composer, bubble/heatmap/choropleth renderers.
+- **CoStar Integration:** 26 years of historical market timeseries data parsed and fed through signal processing pipeline.
+
+**Key Design Decision:** Map-agnostic approach reduces infrastructure costs from $50-100K/year to $5-10K/year by storing only zoning rules and intelligence data, not full parcel geometries.
+
+### Agent Dashboard (CRM Module)
+
+- **Schema:** 5 Drizzle ORM tables — `agent_clients`, `agent_deals`, `agent_leads`, `agent_activities`, `agent_commission_templates`
+- **Frontend:** 5 React components (AgentDashboard, ClientList, ClientCard, ClientFilters, AddClientForm) totaling ~1,550 LOC
+- **Backend:** REST API routes for financial models, strategy analyses, and due diligence checklists
+
+### Traveloure (Travel Platform)
+
+- **Backend:** Django/Python with Django REST Framework
+- **AI:** Claude/Anthropic API for itinerary generation
+- **Payments:** Stripe Connect marketplace with provider splits
+- **Services:** BookingBot orchestrator, availability management, pricing engine, affiliate link generation
+- **Frontend:** React with planning modals, itinerary views, expert registration
+
+### Tech Stack Summary
+
+| Layer | Technology |
+|-------|-----------|
+| Backend Runtime | Node.js + Express (JEDI RE), Django (Traveloure) |
+| API Layer | REST + GraphQL + WebSocket |
+| Database | PostgreSQL (Drizzle ORM), optional TimescaleDB |
+| ORM/Migrations | Drizzle Kit with `shared/schema.ts` |
+| Python Engines | GeoPandas, NumPy/SciPy (signal processing), PostGIS |
+| Frontend | React + TypeScript + Mapbox |
+| Payments | Stripe Connect |
+| AI | Claude/Anthropic API |
+| Testing | Puppeteer (E2E for Traveloure), manual testing elsewhere |
 
 ## External Dependencies
-- **PostgreSQL:** Primary database for all application data.
-- **Nominatim API:** Used for geocoding addresses (free service).
-- **Mapbox:** Utilized for geocoding autocomplete in the frontend.
-- **Microsoft OAuth:** Integration for syncing emails and calendar events (e.g., Outlook, Gmail).
-- **Google OAuth / Gmail API:** For Gmail integration, including connecting accounts, syncing emails, and managing mailboxes.
+
+- **PostgreSQL** — Primary database. Drizzle ORM configured in `drizzle.config.ts` pointing to `shared/schema.ts`. Connection via `DATABASE_URL` environment variable. TimescaleDB extension used for time-series data in JEDI RE.
+- **Stripe** — Payment processing via Stripe Connect for marketplace payments (Traveloure). Requires `STRIPE_SECRET_KEY` environment variable.
+- **Anthropic/Claude API** — AI itinerary generation for Traveloure. Requires `ANTHROPIC_API_KEY` environment variable.
+- **Mapbox** — Map rendering for JEDI RE frontend. Requires Mapbox access token.
+- **CoStar** — Real estate market data (26 years of Atlanta timeseries integrated via Excel parser). API access pending.
+- **Census API** — Demographics data (population, income, employment) for submarket profiling.
+- **Google Trends** — Search demand proxy via pytrends library.
+- **Puppeteer** — Browser automation for testing (listed in root `package.json`).
+- **Affiliate Partners** — Booking.com, Viator, GetYourGuide, OpenTable, Resy, Skyscanner (Traveloure affiliate links).
+- **Python Dependencies** — GeoPandas, NumPy, SciPy, pandas, openpyxl for data processing engines.

@@ -1,0 +1,582 @@
+# Development Capacity Analyzer - Design Document
+**The Killer Feature: Predictive Supply Intelligence**
+
+## Strategic Value
+
+### What Competitors Show:
+- **CoStar:** Announced pipeline (0-2 years)
+- **Reonomy:** Ownership data
+- **Yardi Matrix:** Historical absorption
+
+### What JEDI RE Shows:
+- **Total development capacity** (10-year forecast)
+- **Supply timing risk** (when will market saturate?)
+- **Development probability** (what's likely vs theoretical)
+- **Assemblage opportunities** (adjacent parcels)
+
+**This automates a $50K land-use consulting engagement.**
+
+---
+
+## The Core Insight: Supply Timing Risk
+
+Example comparison:
+
+### Submarket A:
+- Pipeline: 2,000 units (under construction + permitted)
+- Remaining capacity: 500 units
+- **Analysis:** Supply pressure peaks in 18 months, then constrained
+- **Verdict:** SHORT-TERM RISK, LONG-TERM OPPORTUNITY
+
+### Submarket B:
+- Pipeline: 800 units
+- Remaining capacity: 4,000 units
+- **Analysis:** Low near-term pressure, but massive capacity overhang
+- **Verdict:** SHORT-TERM SAFE, LONG-TERM DANGER
+
+**Most investors only see Submarket B as "safer" because pipeline is smaller.**  
+**JEDI RE reveals the opposite - B could flood if economics improve.**
+
+---
+
+## The Hard Problems (and Solutions)
+
+### 1. Zoning Interpretation Is Messy
+
+**The Reality:**
+- Base zoning (R-5, MF-2, etc.)
+- Overlay districts (historic, transit corridors)
+- Conditional use permits (higher density)
+- Planned developments (negotiated densities)
+- Variance history (establishes precedent)
+- Pending rezoning applications
+
+**Solution: Zoning Rules Engine + AI Interpreter**
+
+```python
+class ZoningRulesEngine:
+    def calculate_max_units(self, parcel):
+        """Calculate with full rule hierarchy"""
+        
+        # 1. Base zoning
+        base_units = self.apply_base_zoning(parcel)
+        
+        # 2. Overlay districts (can modify base)
+        overlay_units = self.apply_overlays(parcel)
+        max_units = max(base_units, overlay_units)
+        
+        # 3. Conditional use (if applicable)
+        if parcel.has_conditional_use:
+            max_units = self.apply_conditional_use(parcel, max_units)
+        
+        # 4. Planned development (overrides everything)
+        if parcel.is_planned_development:
+            max_units = parcel.pd_approved_units
+        
+        # 5. Variance precedent
+        if parcel.has_variance_history:
+            max_units = max(max_units, parcel.variance_max_units)
+        
+        return max_units
+    
+    def interpret_zoning_code(self, city, code_text):
+        """Use LLM to parse zoning ordinances"""
+        prompt = f"""
+        Parse this zoning code for {city}:
+        
+        {code_text}
+        
+        Extract:
+        - Density per acre OR
+        - Floor Area Ratio (FAR) OR  
+        - Minimum lot size per unit
+        - Height limits
+        - Setback requirements
+        - Parking requirements
+        
+        Return as structured JSON.
+        """
+        
+        return self.llm.parse(prompt)
+```
+
+### 2. Developable ≠ Will Be Developed
+
+**The Problem:**  
+Theoretical capacity ignores reality (recent reno, owner intent, contamination, assemblage required).
+
+**Solution: Development Probability Scoring**
+
+```python
+class DevelopmentProbability:
+    def score_probability(self, parcel):
+        """Calculate probability of development (0-1)"""
+        
+        score = 1.0  # Start at 100%
+        
+        # Factor 1: Building age (older = more likely)
+        if parcel.year_built:
+            age = 2026 - parcel.year_built
+            if age < 10:
+                score *= 0.2  # Recently built, unlikely
+            elif age < 30:
+                score *= 0.5  # Mid-age, possible
+            elif age < 50:
+                score *= 0.8  # Aging, probable
+            # else: age 50+, score stays high
+        
+        # Factor 2: Recent renovation
+        if parcel.year_renovated:
+            years_since_reno = 2026 - parcel.year_renovated
+            if years_since_reno < 5:
+                score *= 0.3  # Just renovated, unlikely
+        
+        # Factor 3: Recent ownership change (signals intent)
+        if parcel.last_sale_date:
+            months_since_sale = months_diff(2026, parcel.last_sale_date)
+            if months_since_sale < 12:
+                score *= 1.3  # Recent purchase, higher probability
+        
+        # Factor 4: Current use intensity vs zoning potential
+        intensity_gap = (parcel.max_units - parcel.current_units) / parcel.max_units
+        if intensity_gap < 0.2:
+            score *= 0.4  # Already close to max, unlikely to redevelop
+        elif intensity_gap > 0.7:
+            score *= 1.2  # Significantly underbuilt, prime candidate
+        
+        # Factor 5: Comparable redevelopment activity nearby
+        nearby_redevs = count_recent_redevelopments(parcel.lat, parcel.lon, radius=0.5)
+        if nearby_redevs > 3:
+            score *= 1.3  # Hot area, more likely
+        elif nearby_redevs == 0:
+            score *= 0.7  # No precedent, less likely
+        
+        # Factor 6: Owner type (institutional = less likely, individual = more likely)
+        if parcel.owner_type == 'REIT' or parcel.owner_type == 'Institutional':
+            score *= 0.6  # Institutions hold long-term
+        elif parcel.owner_type == 'Individual':
+            score *= 1.2  # Individuals more likely to sell
+        
+        # Factor 7: Environmental issues
+        if parcel.has_environmental_issues:
+            score *= 0.3
+        
+        # Factor 8: Assemblage required
+        if parcel.requires_assemblage:
+            score *= 0.5  # Harder to execute
+        
+        return min(1.0, score)  # Cap at 100%
+```
+
+**Weighted Capacity Formula:**
+```python
+effective_capacity = theoretical_capacity × probability_score
+
+# Example:
+# Parcel: 200 units theoretical capacity
+# Age: 45 years (score 0.8)
+# Recent sale: Yes (score 1.3)
+# Underbuilt: 80% gap (score 1.2)
+# Nearby activity: 5 redevelopments (score 1.3)
+# 
+# Probability = 0.8 × 1.3 × 1.2 × 1.3 = 1.62 → capped at 1.0
+# Effective capacity = 200 × 1.0 = 200 units (high confidence)
+
+# vs. recently renovated parcel:
+# Age: 8 years (score 0.2)
+# Renovated: 3 years ago (score 0.3)
+# Probability = 0.2 × 0.3 = 0.06
+# Effective capacity = 200 × 0.06 = 12 units (very unlikely)
+```
+
+### 3. Data Fragmentation
+
+**The Reality:**
+
+| Data Type | Source | Coverage | Cost |
+|-----------|--------|----------|------|
+| Parcel boundaries | County GIS / Regrid | Good | Free-$$ |
+| Zoning designation | Municipal GIS | Spotty | Free-$$ |
+| Zoning rules | Municipal code | Manual | Time |
+| Building footprints | OSM / Microsoft | Good | Free |
+| Existing units | Tax assessor / CoStar | Good | $$ |
+
+**Solution: Hybrid Data Strategy**
+
+**Phase 1A: Single City Bootstrap (Atlanta)**
+- Download Atlanta parcel GIS (free from city)
+- Manually parse Atlanta zoning ordinance (1-2 days work)
+- Build rules engine for Atlanta's codes
+- Prove concept works for Buckhead
+
+**Phase 1B: Core Cities Expansion**
+- Hire VA to parse zoning codes for 10 cities ($500-1000)
+- Build standardized rules database
+- Cities: Atlanta, Austin, Charlotte, Tampa, Nashville, Orlando, Raleigh, Dallas, Houston, Phoenix
+
+**Phase 2: Automation**
+- LLM-based zoning code parser (auto-extract rules from PDFs)
+- Scale to 50+ cities
+
+**Data Stack:**
+```python
+# Data sources by priority
+sources = {
+    'parcels': [
+        {'provider': 'County GIS', 'cost': 'Free', 'priority': 1},
+        {'provider': 'Regrid', 'cost': '$$$', 'priority': 2}
+    ],
+    'zoning': [
+        {'provider': 'Municipal GIS', 'cost': 'Free', 'priority': 1},
+        {'provider': 'Manual parsing', 'cost': 'Time', 'priority': 2}
+    ],
+    'buildings': [
+        {'provider': 'Microsoft Building Footprints', 'cost': 'Free', 'priority': 1},
+        {'provider': 'OpenStreetMap', 'cost': 'Free', 'priority': 2}
+    ],
+    'existing_units': [
+        {'provider': 'CoStar', 'cost': '$$$', 'priority': 1},
+        {'provider': 'Tax Assessor', 'cost': 'Free', 'priority': 2},
+        {'provider': 'Estimated from sqft', 'cost': 'Free', 'priority': 3}
+    ]
+}
+```
+
+---
+
+## Database Schema
+
+```sql
+-- Parcels table (core data)
+CREATE TABLE parcels (
+    id SERIAL PRIMARY KEY,
+    submarket_id INTEGER REFERENCES submarkets(id),
+    
+    -- Identification
+    parcel_id VARCHAR(50),  -- City parcel ID (APN)
+    county VARCHAR(100),
+    
+    -- Geographic
+    boundary GEOGRAPHY(POLYGON, 4326),
+    centroid_lat DECIMAL(10, 8),
+    centroid_lon DECIMAL(11, 8),
+    lot_size_sqft DECIMAL(12, 2),
+    acres DECIMAL(10, 4),
+    
+    -- Zoning
+    zoning_code VARCHAR(20),
+    zoning_description TEXT,
+    overlay_districts TEXT[],  -- Array of overlay zones
+    
+    -- Current development
+    existing_units INTEGER DEFAULT 0,
+    existing_sqft DECIMAL(12, 2),
+    existing_use VARCHAR(100),
+    year_built INTEGER,
+    year_renovated INTEGER,
+    building_condition VARCHAR(20),  -- 'Excellent', 'Good', 'Fair', 'Poor'
+    
+    -- Ownership
+    owner_name VARCHAR(255),
+    owner_type VARCHAR(50),  -- 'Individual', 'LLC', 'REIT', 'Institutional', etc.
+    last_sale_date DATE,
+    last_sale_price DECIMAL(15, 2),
+    
+    -- Constraints
+    has_environmental_issues BOOLEAN DEFAULT FALSE,
+    is_historic_district BOOLEAN DEFAULT FALSE,
+    requires_assemblage BOOLEAN DEFAULT FALSE,
+    assemblage_parcel_ids TEXT[],  -- Related parcels for assemblage
+    
+    -- Calculated capacity
+    theoretical_max_units INTEGER,
+    development_probability DECIMAL(4, 3),  -- 0-1 score
+    effective_capacity INTEGER,  -- theoretical × probability
+    capacity_category VARCHAR(50),  -- 'vacant', 'underbuilt', 'built_out', 'assemblage'
+    
+    -- Metadata
+    data_sources JSONB,  -- Track which sources were used
+    last_analyzed TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_parcels_submarket ON parcels(submarket_id);
+CREATE INDEX idx_parcels_capacity ON parcels(effective_capacity DESC) WHERE effective_capacity > 0;
+CREATE INDEX idx_parcels_zoning ON parcels(zoning_code);
+CREATE INDEX idx_parcels_location ON parcels USING GIST(boundary);
+
+
+-- Zoning rules table (one row per zoning code per city)
+CREATE TABLE zoning_rules (
+    id SERIAL PRIMARY KEY,
+    city VARCHAR(100),
+    state VARCHAR(2),
+    zoning_code VARCHAR(20),
+    zoning_name VARCHAR(255),
+    
+    -- Rule type and primary calculation method
+    rule_type VARCHAR(50),  -- 'density_based', 'far_based', 'lot_size', 'hybrid'
+    
+    -- Density rules (units per acre)
+    min_density_per_acre DECIMAL(8, 2),
+    max_density_per_acre DECIMAL(8, 2),
+    
+    -- FAR rules
+    max_far DECIMAL(4, 2),
+    avg_unit_size_sqft INTEGER,
+    
+    -- Lot size rules
+    min_lot_per_unit INTEGER,
+    
+    -- Additional constraints
+    max_height_feet INTEGER,
+    max_stories INTEGER,
+    min_setback_feet INTEGER,
+    max_coverage_pct DECIMAL(5, 2),
+    parking_per_unit DECIMAL(3, 1),
+    
+    -- Conditional use allowances
+    conditional_use_allowed BOOLEAN DEFAULT FALSE,
+    conditional_max_density DECIMAL(8, 2),
+    
+    -- Metadata
+    ordinance_reference TEXT,
+    last_updated DATE,
+    source_url TEXT,
+    parsed_by VARCHAR(50),  -- 'Manual', 'LLM', 'API'
+    confidence_score DECIMAL(3, 2),  -- How confident in this parse (0-1)
+    
+    UNIQUE(city, state, zoning_code)
+);
+
+CREATE INDEX idx_zoning_city_state ON zoning_rules(city, state);
+
+
+-- Development probability factors (for audit trail)
+CREATE TABLE parcel_probability_factors (
+    id SERIAL PRIMARY KEY,
+    parcel_id INTEGER REFERENCES parcels(id),
+    calculated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Individual factor scores
+    age_score DECIMAL(4, 3),
+    renovation_score DECIMAL(4, 3),
+    ownership_score DECIMAL(4, 3),
+    intensity_gap_score DECIMAL(4, 3),
+    nearby_activity_score DECIMAL(4, 3),
+    owner_type_score DECIMAL(4, 3),
+    environmental_score DECIMAL(4, 3),
+    assemblage_score DECIMAL(4, 3),
+    
+    -- Final probability
+    final_probability DECIMAL(4, 3),
+    
+    -- Explanation (for transparency)
+    explanation TEXT
+);
+
+
+-- Assemblage opportunities (groups of adjacent parcels)
+CREATE TABLE assemblage_opportunities (
+    id SERIAL PRIMARY KEY,
+    submarket_id INTEGER REFERENCES submarkets(id),
+    
+    -- Parcels in this assemblage
+    parcel_ids INTEGER[],
+    
+    -- Combined metrics
+    total_acres DECIMAL(10, 4),
+    combined_zoning VARCHAR(20),  -- Dominant zoning
+    combined_capacity INTEGER,
+    
+    -- Feasibility
+    same_owner BOOLEAN,
+    owner_count INTEGER,
+    assemblage_difficulty VARCHAR(20),  -- 'Easy', 'Moderate', 'Difficult'
+    estimated_probability DECIMAL(4, 3),
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## Enhanced Supply Signal Output
+
+```json
+{
+  "supply_signal": {
+    "short_term": {
+      "existing_units": 11240,
+      "under_construction": 1840,
+      "permitted": 420,
+      "total": 13500,
+      "timeline": "0-2 years"
+    },
+    "long_term_capacity": {
+      "vacant_developable": {
+        "theoretical": 2400,
+        "probability_weighted": 1920,
+        "parcels": 45
+      },
+      "underbuilt_redevelopment": {
+        "theoretical": 3200,
+        "probability_weighted": 1280,
+        "parcels": 78
+      },
+      "assemblage_opportunities": {
+        "theoretical": 800,
+        "probability_weighted": 240,
+        "opportunities": 12
+      },
+      "total_theoretical": 6400,
+      "total_effective": 3440,
+      "timeline": "2-10 years"
+    },
+    "total_forecast": {
+      "2_year": 13500,
+      "5_year": 15420,
+      "10_year": 16940
+    },
+    "supply_timing_risk": {
+      "near_term_pressure": "MODERATE",
+      "long_term_overhang": "HIGH",
+      "saturation_timeline": "6.8 years at current absorption",
+      "verdict": "SHORT_TERM_SAFE_LONG_TERM_RISK"
+    }
+  }
+}
+```
+
+---
+
+## UI Enhancement
+
+### New Tab: "Development Capacity Map"
+
+**Map View:**
+- Color-coded parcels:
+  - 🟢 **Dark Green:** Vacant, high probability (score > 0.7)
+  - 🟢 **Light Green:** Vacant, moderate probability (0.4-0.7)
+  - 🟡 **Yellow:** Underbuilt, redevelopment potential
+  - 🟠 **Orange:** Assemblage opportunity
+  - 🔴 **Red:** Built out (no capacity)
+  - ⚪ **Gray:** Excluded (historic, environmental)
+
+**Filters:**
+- Minimum capacity (e.g., "Show parcels with 20+ unit potential")
+- Probability threshold (e.g., "Only show >50% probability")
+- Capacity type (vacant / underbuilt / assemblage)
+
+**Click a parcel →**  Shows popup:
+```
+Parcel: 14-25-207-003
+Address: 234 Peachtree Rd
+
+Current: 12 units (built 1987)
+Zoning: MF-3 (Medium Density Multi-Family)
+Max Allowed: 84 units
+Development Capacity: 72 units
+
+Probability Score: 78%
+  • Age: 39 years ✓
+  • Recent sale: 2024 ✓
+  • Underbuilt: 86% gap ✓
+  • Nearby activity: 4 redevelopments ✓
+
+Effective Capacity: 56 units
+Category: High-priority redevelopment
+```
+
+**Table View:**  
+Top redevelopment opportunities ranked by effective capacity.
+
+---
+
+## Implementation Phases
+
+### Phase 1A: Atlanta Proof of Concept (1 week)
+**Goal:** Prove this works for one city
+
+1. **Data acquisition:**
+   - Download Fulton County parcel GIS (free)
+   - Download Atlanta zoning GIS layer
+   - Get Atlanta zoning ordinance PDF
+
+2. **Rules engine:**
+   - Manually parse Atlanta zoning codes (R-1 through MF-5)
+   - Build calculation functions
+   - Store in zoning_rules table
+
+3. **Analysis:**
+   - Calculate capacity for all Buckhead parcels
+   - Score development probability
+   - Generate capacity map
+
+4. **Validation:**
+   - Compare results to known redevelopment sites
+   - Adjust probability model
+
+**Deliverable:** Working capacity map for Buckhead
+
+### Phase 1B: Core Cities Expansion (2-3 weeks)
+5. Add 9 more cities (Austin, Charlotte, Tampa, etc.)
+6. Hire VA to parse zoning codes
+7. Standardize rules across cities
+
+### Phase 1C: Platform Integration (1 week)
+8. Add capacity to Supply Signal output
+9. Build interactive map UI
+10. Add "Development Opportunities" alert system
+
+### Phase 2: Automation (ongoing)
+11. Build LLM zoning code parser
+12. Auto-update when ordinances change
+13. Scale to 50+ cities
+
+---
+
+## Success Metrics
+
+**MVP (Phase 1A - Buckhead):**
+- [ ] 95%+ parcel coverage
+- [ ] Zoning rules for 15+ zoning codes
+- [ ] Probability scoring for all parcels
+- [ ] Validation against 10+ known redevelopment sites
+
+**Full Platform:**
+- [ ] 10 cities covered
+- [ ] 80%+ accuracy on development probability
+- [ ] Users report this as "most valuable feature"
+
+---
+
+## Why This Wins
+
+**1. Nobody else has this at scale**  
+CoStar shows announced deals. You show total capacity.
+
+**2. It answers the #1 question sophisticated investors ask:**  
+"Will this market get oversupplied in 5 years?"
+
+**3. It's defensible**  
+Hard to replicate. Requires:
+- Parcel database
+- Zoning rules engine
+- Probability model
+- City-by-city knowledge
+
+**4. It enables new use cases:**
+- **Developers:** Where are the best redevelopment sites?
+- **Lenders:** What's the long-term supply risk?
+- **Investors:** Should I underwrite 5-year or 10-year hold?
+
+---
+
+**This is the feature that makes JEDI RE worth $100/month/user instead of $30.**
+
+---
+
+**Created:** 2026-02-03 00:15 EST  
+**Priority:** CRITICAL - Build before Phase 2  
+**Target:** Phase 1A complete by Feb 9

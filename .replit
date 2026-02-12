@@ -1,40 +1,7 @@
-run = "cd backend && npm run dev"
-language = "nodejs"
-entrypoint = "backend/src/index.ts"
-modules = ["nodejs-20", "postgresql-16"]
-
-[env]
-PORT = "5000"
-NODE_ENV = "development"
-
-[nix]
-channel = "stable-23_05"
-
-[packager]
-language = "nodejs"
-
-[packager.features]
-packageSearch = true
-guessImports = true
-
-[languages.typescript]
-pattern = "**/*.ts"
-syntax = "typescript"
-
-[languages.typescript.languageServer]
-start = "typescript-language-server --stdio"
-
-[deployment]
-deploymentTarget = "autoscale"
-build = ["bash", "-c", "cd /home/runner/workspace/frontend && npm run build && cd /home/runner/workspace/backend && npx tsc -p tsconfig.json"]
-run = ["bash", "-c", "cd /home/runner/workspace/backend && node dist/index.replit.js"]
+modules = ["nodejs-20"]
 
 [agent]
 expertMode = true
-
-[[ports]]
-localPort = 5000
-externalPort = 80
 
 [workflows]
 runButton = "Project"
@@ -52,10 +19,27 @@ args = "JediRe"
 name = "JediRe"
 author = "agent"
 
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/jedire && bash start.sh"
+waitForPort = 5000
+
 [workflows.workflow.metadata]
 outputType = "webview"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "./start.sh"
-waitForPort = 5000
+[[ports]]
+localPort = 3000
+externalPort = 3001
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3002
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-c", "cd /home/runner/workspace/jedire && NODE_ENV=production PORT=5000 node backend/dist/index.replit.js"]
+build = ["bash", "-c", "export NODE_OPTIONS='--max-old-space-size=2048' && cd /home/runner/workspace/jedire/frontend && npm install --legacy-peer-deps && npx vite build && cd /home/runner/workspace/jedire/backend && npx tsc --skipLibCheck"]

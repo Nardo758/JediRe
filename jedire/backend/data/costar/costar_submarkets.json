@@ -1,0 +1,1272 @@
+{
+  "metadata": {
+    "source": "CoStar",
+    "market": "Atlanta, GA",
+    "total_properties": 359,
+    "total_submarkets": 90,
+    "total_units": 120432,
+    "generated": "2026-02-05T10:31:03.521847"
+  },
+  "submarkets": {
+    "outer_gwinnett_county": {
+      "name": "Outer Gwinnett County",
+      "total_units": 9842,
+      "avg_effective_rent": 1786.53,
+      "avg_asking_rent": 1819.54,
+      "avg_vacancy_pct": 13.61,
+      "property_count": 31,
+      "building_class_distribution": {
+        "A": 53.1,
+        "B": 46.9,
+        "C": 0.0
+      },
+      "quality_score": 2.53
+    },
+    "outlying_henry_county": {
+      "name": "Outlying Henry County",
+      "total_units": 7146,
+      "avg_effective_rent": 1708.86,
+      "avg_asking_rent": 1782.41,
+      "avg_vacancy_pct": 23.45,
+      "property_count": 22,
+      "building_class_distribution": {
+        "A": 37.5,
+        "B": 62.5,
+        "C": 0.0
+      },
+      "quality_score": 2.38
+    },
+    "duluth": {
+      "name": "Duluth",
+      "total_units": 5601,
+      "avg_effective_rent": 1669.27,
+      "avg_asking_rent": 1758.87,
+      "avg_vacancy_pct": 16.09,
+      "property_count": 19,
+      "building_class_distribution": {
+        "A": 55.0,
+        "B": 45.0,
+        "C": 0.0
+      },
+      "quality_score": 2.55
+    },
+    "forsyth_county": {
+      "name": "Forsyth County",
+      "total_units": 4859,
+      "avg_effective_rent": 1868.25,
+      "avg_asking_rent": 1911.59,
+      "avg_vacancy_pct": 10.05,
+      "property_count": 9,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "cherokee_county": {
+      "name": "Cherokee County",
+      "total_units": 4844,
+      "avg_effective_rent": 1830.2,
+      "avg_asking_rent": 1916.21,
+      "avg_vacancy_pct": 29.88,
+      "property_count": 17,
+      "building_class_distribution": {
+        "A": 35.3,
+        "B": 64.7,
+        "C": 0.0
+      },
+      "quality_score": 2.35
+    },
+    "bartow_county": {
+      "name": "Bartow County",
+      "total_units": 4219,
+      "avg_effective_rent": 1592.77,
+      "avg_asking_rent": 1622.07,
+      "avg_vacancy_pct": 15.61,
+      "property_count": 15,
+      "building_class_distribution": {
+        "A": 40.0,
+        "B": 60.0,
+        "C": 0.0
+      },
+      "quality_score": 2.4
+    },
+    "central_midtown": {
+      "name": "Central Midtown",
+      "total_units": 3946,
+      "avg_effective_rent": 2975.46,
+      "avg_asking_rent": 3083.35,
+      "avg_vacancy_pct": 19.15,
+      "property_count": 10,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "perimeter_center": {
+      "name": "Perimeter Center",
+      "total_units": 3685,
+      "avg_effective_rent": 2148.0,
+      "avg_asking_rent": 2170.0,
+      "avg_vacancy_pct": 10.99,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "south_fulton": {
+      "name": "South Fulton",
+      "total_units": 3661,
+      "avg_effective_rent": 1898.72,
+      "avg_asking_rent": 1973.08,
+      "avg_vacancy_pct": 23.87,
+      "property_count": 13,
+      "building_class_distribution": {
+        "A": 46.2,
+        "B": 53.8,
+        "C": 0.0
+      },
+      "quality_score": 2.46
+    },
+    "downtown_duluth": {
+      "name": "Downtown Duluth",
+      "total_units": 3528,
+      "avg_effective_rent": 1762.81,
+      "avg_asking_rent": 1840.81,
+      "avg_vacancy_pct": 11.48,
+      "property_count": 9,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "upper_west_side": {
+      "name": "Upper West Side",
+      "total_units": 3433,
+      "avg_effective_rent": 1867.92,
+      "avg_asking_rent": 1898.84,
+      "avg_vacancy_pct": 13.32,
+      "property_count": 10,
+      "building_class_distribution": {
+        "A": 80.0,
+        "B": 20.0,
+        "C": 0.0
+      },
+      "quality_score": 2.8
+    },
+    "outlying_douglas_county": {
+      "name": "Outlying Douglas County",
+      "total_units": 3177,
+      "avg_effective_rent": 1661.65,
+      "avg_asking_rent": 1730.17,
+      "avg_vacancy_pct": 30.54,
+      "property_count": 9,
+      "building_class_distribution": {
+        "A": 33.3,
+        "B": 66.7,
+        "C": 0.0
+      },
+      "quality_score": 2.33
+    },
+    "kennesaw": {
+      "name": "Kennesaw",
+      "total_units": 2883,
+      "avg_effective_rent": 1843.89,
+      "avg_asking_rent": 1942.36,
+      "avg_vacancy_pct": 17.78,
+      "property_count": 10,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "bankhead": {
+      "name": "Bankhead",
+      "total_units": 2300,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "home_park": {
+      "name": "Home Park",
+      "total_units": 2283,
+      "avg_effective_rent": 2277.74,
+      "avg_asking_rent": 2352.77,
+      "avg_vacancy_pct": 8.47,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "outlying_fulton_county": {
+      "name": "Outlying Fulton County",
+      "total_units": 2256,
+      "avg_effective_rent": 2102.0,
+      "avg_asking_rent": 2111.0,
+      "avg_vacancy_pct": 10.6,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 25.0,
+        "B": 75.0,
+        "C": 0.0
+      },
+      "quality_score": 2.25
+    },
+    "newton_county": {
+      "name": "Newton County",
+      "total_units": 2094,
+      "avg_effective_rent": 1667.98,
+      "avg_asking_rent": 1797.39,
+      "avg_vacancy_pct": 39.3,
+      "property_count": 7,
+      "building_class_distribution": {
+        "A": 42.9,
+        "B": 57.1,
+        "C": 0.0
+      },
+      "quality_score": 2.43
+    },
+    "chosewood_park": {
+      "name": "Chosewood Park",
+      "total_units": 2019,
+      "avg_effective_rent": 1513.0,
+      "avg_asking_rent": 1528.0,
+      "avg_vacancy_pct": 10.77,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "near-in_cobb": {
+      "name": "Near-In Cobb",
+      "total_units": 1898,
+      "avg_effective_rent": 1863.31,
+      "avg_asking_rent": 1897.62,
+      "avg_vacancy_pct": 18.12,
+      "property_count": 6,
+      "building_class_distribution": {
+        "A": 83.3,
+        "B": 0.0,
+        "C": 16.7
+      },
+      "quality_score": 2.67
+    },
+    "cumberland": {
+      "name": "Cumberland",
+      "total_units": 1798,
+      "avg_effective_rent": 2041.93,
+      "avg_asking_rent": 2056.79,
+      "avg_vacancy_pct": 11.14,
+      "property_count": 6,
+      "building_class_distribution": {
+        "A": 83.3,
+        "B": 16.7,
+        "C": 0.0
+      },
+      "quality_score": 2.83
+    },
+    "arts_district": {
+      "name": "Arts District",
+      "total_units": 1733,
+      "avg_effective_rent": 2874.85,
+      "avg_asking_rent": 2889.85,
+      "avg_vacancy_pct": 16.04,
+      "property_count": 5,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "aerotropolis": {
+      "name": "Aerotropolis",
+      "total_units": 1659,
+      "avg_effective_rent": 2247.25,
+      "avg_asking_rent": 2257.13,
+      "avg_vacancy_pct": 10.5,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "tuxedo_park": {
+      "name": "Tuxedo Park",
+      "total_units": 1586,
+      "avg_effective_rent": 2833.29,
+      "avg_asking_rent": 2851.19,
+      "avg_vacancy_pct": 6.29,
+      "property_count": 5,
+      "building_class_distribution": {
+        "A": 80.0,
+        "B": 20.0,
+        "C": 0.0
+      },
+      "quality_score": 2.8
+    },
+    "barrow_county": {
+      "name": "Barrow County",
+      "total_units": 1580,
+      "avg_effective_rent": 1914.57,
+      "avg_asking_rent": 1986.51,
+      "avg_vacancy_pct": 31.12,
+      "property_count": 6,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "peachtree_corners": {
+      "name": "Peachtree Corners",
+      "total_units": 1551,
+      "avg_effective_rent": 1996.31,
+      "avg_asking_rent": 2215.68,
+      "avg_vacancy_pct": 18.03,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 80.0,
+        "B": 20.0,
+        "C": 0.0
+      },
+      "quality_score": 2.8
+    },
+    "outlying_coweta_county": {
+      "name": "Outlying Coweta County",
+      "total_units": 1480,
+      "avg_effective_rent": 1879.03,
+      "avg_asking_rent": 1895.0,
+      "avg_vacancy_pct": 9.54,
+      "property_count": 5,
+      "building_class_distribution": {
+        "A": 20.0,
+        "B": 80.0,
+        "C": 0.0
+      },
+      "quality_score": 2.2
+    },
+    "north_buckhead": {
+      "name": "North Buckhead",
+      "total_units": 1360,
+      "avg_effective_rent": 2546.5,
+      "avg_asking_rent": 2569.72,
+      "avg_vacancy_pct": 12.42,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "battery_park": {
+      "name": "Battery Park",
+      "total_units": 1272,
+      "avg_effective_rent": 2084.68,
+      "avg_asking_rent": 2120.96,
+      "avg_vacancy_pct": 13.35,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "reynoldstown": {
+      "name": "Reynoldstown",
+      "total_units": 1270,
+      "avg_effective_rent": 1980.17,
+      "avg_asking_rent": 2029.14,
+      "avg_vacancy_pct": 7.8,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "clayton_county": {
+      "name": "Clayton County",
+      "total_units": 1240,
+      "avg_effective_rent": 1575.06,
+      "avg_asking_rent": 1652.15,
+      "avg_vacancy_pct": 27.9,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "chamblee": {
+      "name": "Chamblee",
+      "total_units": 1196,
+      "avg_effective_rent": 2284.36,
+      "avg_asking_rent": 2323.18,
+      "avg_vacancy_pct": 17.42,
+      "property_count": 4,
+      "building_class_distribution": {
+        "A": 75.0,
+        "B": 25.0,
+        "C": 0.0
+      },
+      "quality_score": 2.75
+    },
+    "central_vinings": {
+      "name": "Central Vinings",
+      "total_units": 1047,
+      "avg_effective_rent": 2075.67,
+      "avg_asking_rent": 2089.69,
+      "avg_vacancy_pct": 7.89,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "doraville": {
+      "name": "Doraville",
+      "total_units": 973,
+      "avg_effective_rent": 1713.6,
+      "avg_asking_rent": 2015.22,
+      "avg_vacancy_pct": 20.63,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "north_druid_hills": {
+      "name": "North Druid Hills",
+      "total_units": 943,
+      "avg_effective_rent": 2250.6,
+      "avg_asking_rent": 2272.2,
+      "avg_vacancy_pct": 13.79,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "downtown_lawrenceville": {
+      "name": "Downtown Lawrenceville",
+      "total_units": 905,
+      "avg_effective_rent": 2249.0,
+      "avg_asking_rent": 2304.0,
+      "avg_vacancy_pct": 25.0,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 33.3,
+        "B": 66.7,
+        "C": 0.0
+      },
+      "quality_score": 2.33
+    },
+    "mableton": {
+      "name": "Mableton",
+      "total_units": 882,
+      "avg_effective_rent": 1809.0,
+      "avg_asking_rent": 1825.0,
+      "avg_vacancy_pct": 9.98,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 66.7,
+        "B": 33.3,
+        "C": 0.0
+      },
+      "quality_score": 2.67
+    },
+    "dawson_county": {
+      "name": "Dawson County",
+      "total_units": 870,
+      "avg_effective_rent": 2000.69,
+      "avg_asking_rent": 2015.69,
+      "avg_vacancy_pct": 11.95,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "carroll_county": {
+      "name": "Carroll County",
+      "total_units": 864,
+      "avg_effective_rent": 1564.0,
+      "avg_asking_rent": 1787.0,
+      "avg_vacancy_pct": 12.61,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 33.3,
+        "B": 66.7,
+        "C": 0.0
+      },
+      "quality_score": 2.33
+    },
+    "downtown_chamblee": {
+      "name": "Downtown Chamblee",
+      "total_units": 841,
+      "avg_effective_rent": 2015.92,
+      "avg_asking_rent": 2026.65,
+      "avg_vacancy_pct": 6.8,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "rockdale_county": {
+      "name": "Rockdale County",
+      "total_units": 779,
+      "avg_effective_rent": 1682.51,
+      "avg_asking_rent": 1711.38,
+      "avg_vacancy_pct": 12.32,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 33.3,
+        "B": 66.7,
+        "C": 0.0
+      },
+      "quality_score": 2.33
+    },
+    "fayette_county": {
+      "name": "Fayette County",
+      "total_units": 754,
+      "avg_effective_rent": 2047.5,
+      "avg_asking_rent": 2058.98,
+      "avg_vacancy_pct": 5.81,
+      "property_count": 3,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "northlake": {
+      "name": "Northlake",
+      "total_units": 737,
+      "avg_effective_rent": 1694.0,
+      "avg_asking_rent": 1848.0,
+      "avg_vacancy_pct": 9.14,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "old_fourth_ward": {
+      "name": "Old Fourth Ward",
+      "total_units": 725,
+      "avg_effective_rent": 2328.0,
+      "avg_asking_rent": 2339.0,
+      "avg_vacancy_pct": 7.13,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "dunwoody": {
+      "name": "Dunwoody",
+      "total_units": 703,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "kensington": {
+      "name": "Kensington",
+      "total_units": 676,
+      "avg_effective_rent": 1615.0,
+      "avg_asking_rent": 1630.0,
+      "avg_vacancy_pct": 32.63,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "southeast_dekalb": {
+      "name": "Southeast DeKalb",
+      "total_units": 674,
+      "avg_effective_rent": 1680.0,
+      "avg_asking_rent": 1696.0,
+      "avg_vacancy_pct": 17.96,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "decatur_heights": {
+      "name": "Decatur Heights",
+      "total_units": 667,
+      "avg_effective_rent": 2108.8,
+      "avg_asking_rent": 2127.87,
+      "avg_vacancy_pct": 11.99,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "buckhead_heights": {
+      "name": "Buckhead Heights",
+      "total_units": 666,
+      "avg_effective_rent": 2031.0,
+      "avg_asking_rent": 2031.0,
+      "avg_vacancy_pct": 15.26,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "centennial_park": {
+      "name": "Centennial Park",
+      "total_units": 666,
+      "avg_effective_rent": 1902.0,
+      "avg_asking_rent": 1921.0,
+      "avg_vacancy_pct": 12.25,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "north_brookhaven": {
+      "name": "North Brookhaven",
+      "total_units": 650,
+      "avg_effective_rent": 1918.0,
+      "avg_asking_rent": 1930.0,
+      "avg_vacancy_pct": 8.12,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "sandy_springs": {
+      "name": "Sandy Springs",
+      "total_units": 648,
+      "avg_effective_rent": 1721.0,
+      "avg_asking_rent": 2065.0,
+      "avg_vacancy_pct": 28.09,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "walton_county": {
+      "name": "Walton County",
+      "total_units": 611,
+      "avg_effective_rent": 1809.85,
+      "avg_asking_rent": 1834.38,
+      "avg_vacancy_pct": 10.8,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "loring_heights": {
+      "name": "Loring Heights",
+      "total_units": 594,
+      "avg_effective_rent": 2292.0,
+      "avg_asking_rent": 2398.0,
+      "avg_vacancy_pct": 20.48,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "summerhill": {
+      "name": "Summerhill",
+      "total_units": 591,
+      "avg_effective_rent": 1608.35,
+      "avg_asking_rent": 1621.41,
+      "avg_vacancy_pct": 7.28,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "east_cobb": {
+      "name": "East Cobb",
+      "total_units": 578,
+      "avg_effective_rent": 1865.0,
+      "avg_asking_rent": 1884.0,
+      "avg_vacancy_pct": 10.59,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "east_lake": {
+      "name": "East Lake",
+      "total_units": 564,
+      "avg_effective_rent": 1915.03,
+      "avg_asking_rent": 2056.3,
+      "avg_vacancy_pct": 36.7,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "southeast_marietta": {
+      "name": "Southeast Marietta",
+      "total_units": 536,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "sono": {
+      "name": "SoNo",
+      "total_units": 484,
+      "avg_effective_rent": 2052.0,
+      "avg_asking_rent": 2073.0,
+      "avg_vacancy_pct": 12.1,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "garden_hills": {
+      "name": "Garden Hills",
+      "total_units": 483,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "stone_mountain": {
+      "name": "Stone Mountain",
+      "total_units": 461,
+      "avg_effective_rent": 1668.95,
+      "avg_asking_rent": 1729.48,
+      "avg_vacancy_pct": 30.37,
+      "property_count": 2,
+      "building_class_distribution": {
+        "A": 50.0,
+        "B": 50.0,
+        "C": 0.0
+      },
+      "quality_score": 2.5
+    },
+    "peachtree_center": {
+      "name": "Peachtree Center",
+      "total_units": 400,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "downtown_kennesaw": {
+      "name": "Downtown Kennesaw",
+      "total_units": 396,
+      "avg_effective_rent": 1575.0,
+      "avg_asking_rent": 1591.0,
+      "avg_vacancy_pct": 28.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "atlantic_station": {
+      "name": "Atlantic Station",
+      "total_units": 376,
+      "avg_effective_rent": 3646.0,
+      "avg_asking_rent": 3845.0,
+      "avg_vacancy_pct": 37.77,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "english_avenue": {
+      "name": "English Avenue",
+      "total_units": 373,
+      "avg_effective_rent": 1744.0,
+      "avg_asking_rent": 2203.0,
+      "avg_vacancy_pct": 88.74,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "kirkwood": {
+      "name": "Kirkwood",
+      "total_units": 354,
+      "avg_effective_rent": 1783.0,
+      "avg_asking_rent": 1797.0,
+      "avg_vacancy_pct": 7.34,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "peoplestown": {
+      "name": "Peoplestown",
+      "total_units": 350,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 0,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "lindridge-martin_manor": {
+      "name": "Lindridge-Martin Manor",
+      "total_units": 339,
+      "avg_effective_rent": 1664.0,
+      "avg_asking_rent": 1967.0,
+      "avg_vacancy_pct": 84.96,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "centennial_yards": {
+      "name": "Centennial Yards",
+      "total_units": 305,
+      "avg_effective_rent": 2382.0,
+      "avg_asking_rent": 2511.0,
+      "avg_vacancy_pct": 74.1,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "darien_park": {
+      "name": "Darien Park",
+      "total_units": 300,
+      "avg_effective_rent": 1927.0,
+      "avg_asking_rent": 1939.0,
+      "avg_vacancy_pct": 4.67,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "brookhaven": {
+      "name": "Brookhaven",
+      "total_units": 291,
+      "avg_effective_rent": 2361.0,
+      "avg_asking_rent": 2438.0,
+      "avg_vacancy_pct": 6.53,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "buckhead_forest": {
+      "name": "Buckhead Forest",
+      "total_units": 291,
+      "avg_effective_rent": 2326.0,
+      "avg_asking_rent": 2338.0,
+      "avg_vacancy_pct": 8.25,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "downtown_sandy_springs": {
+      "name": "Downtown Sandy Springs",
+      "total_units": 291,
+      "avg_effective_rent": 2142.0,
+      "avg_asking_rent": 2152.0,
+      "avg_vacancy_pct": 2.75,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "downtown_norcross": {
+      "name": "Downtown Norcross",
+      "total_units": 290,
+      "avg_effective_rent": 1768.0,
+      "avg_asking_rent": 1780.0,
+      "avg_vacancy_pct": 5.86,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "scottdale": {
+      "name": "Scottdale",
+      "total_units": 290,
+      "avg_effective_rent": 1976.0,
+      "avg_asking_rent": 1996.0,
+      "avg_vacancy_pct": 9.66,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "oakland": {
+      "name": "Oakland",
+      "total_units": 278,
+      "avg_effective_rent": 1821.0,
+      "avg_asking_rent": 1839.0,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "norcross": {
+      "name": "Norcross",
+      "total_units": 276,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "sandtown": {
+      "name": "Sandtown",
+      "total_units": 273,
+      "avg_effective_rent": 1679.0,
+      "avg_asking_rent": 1679.0,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "southeast_atlanta": {
+      "name": "Southeast Atlanta",
+      "total_units": 262,
+      "avg_effective_rent": 1854.0,
+      "avg_asking_rent": 1873.0,
+      "avg_vacancy_pct": 19.85,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "brookwood": {
+      "name": "Brookwood",
+      "total_units": 257,
+      "avg_effective_rent": 2377.0,
+      "avg_asking_rent": 2400.0,
+      "avg_vacancy_pct": 8.95,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "downtown_alpharetta": {
+      "name": "Downtown Alpharetta",
+      "total_units": 255,
+      "avg_effective_rent": 2369.0,
+      "avg_asking_rent": 2387.0,
+      "avg_vacancy_pct": 16.86,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "west_end": {
+      "name": "West End",
+      "total_units": 250,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "grant_park": {
+      "name": "Grant Park",
+      "total_units": 247,
+      "avg_effective_rent": 1727.0,
+      "avg_asking_rent": 1736.0,
+      "avg_vacancy_pct": 3.64,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "paulding_county": {
+      "name": "Paulding County",
+      "total_units": 245,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "spalding_county": {
+      "name": "Spalding County",
+      "total_units": 225,
+      "avg_effective_rent": 1493.0,
+      "avg_asking_rent": 1493.0,
+      "avg_vacancy_pct": 48.0,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "pickens_county": {
+      "name": "Pickens County",
+      "total_units": 217,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "memorial_park": {
+      "name": "Memorial Park",
+      "total_units": 212,
+      "avg_effective_rent": 2169.0,
+      "avg_asking_rent": 2191.0,
+      "avg_vacancy_pct": 18.87,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "lenox": {
+      "name": "Lenox",
+      "total_units": 209,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "south_downtown_atlanta": {
+      "name": "South Downtown Atlanta",
+      "total_units": 205,
+      "avg_effective_rent": NaN,
+      "avg_asking_rent": NaN,
+      "avg_vacancy_pct": 10.79,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 0.0,
+        "B": 100.0,
+        "C": 0.0
+      },
+      "quality_score": 2.0
+    },
+    "west_paces": {
+      "name": "West Paces",
+      "total_units": 203,
+      "avg_effective_rent": 14202.0,
+      "avg_asking_rent": 14270.0,
+      "avg_vacancy_pct": 2.96,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    },
+    "ormewood_park": {
+      "name": "Ormewood Park",
+      "total_units": 201,
+      "avg_effective_rent": 2271.0,
+      "avg_asking_rent": 2291.0,
+      "avg_vacancy_pct": 8.46,
+      "property_count": 1,
+      "building_class_distribution": {
+        "A": 100.0,
+        "B": 0.0,
+        "C": 0.0
+      },
+      "quality_score": 3.0
+    }
+  }
+}

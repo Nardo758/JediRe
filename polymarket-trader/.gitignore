@@ -1,0 +1,32 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist/
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# Config with secrets (IMPORTANT!)
+config.json
+bot-state.json
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Keep example config
+!config.example.json

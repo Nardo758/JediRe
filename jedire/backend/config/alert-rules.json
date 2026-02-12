@@ -1,0 +1,224 @@
+{
+  "alertTypes": {
+    "imbalance_change": {
+      "name": "Market Imbalance Score Changed",
+      "description": "Triggers when demand/supply imbalance score crosses threshold",
+      "defaultThreshold": 70,
+      "validConditions": ["above", "below", "change"],
+      "valueRange": {
+        "min": 0,
+        "max": 100
+      },
+      "recommendedThresholds": {
+        "conservative": 80,
+        "moderate": 70,
+        "aggressive": 60
+      },
+      "cooldownMinutes": 60,
+      "priority": "high"
+    },
+    "rent_spike": {
+      "name": "Rent Increase Alert",
+      "description": "Triggers when average rent crosses threshold or changes by percentage",
+      "defaultThreshold": 2000,
+      "validConditions": ["above", "change"],
+      "valueRange": {
+        "min": 0,
+        "max": 10000
+      },
+      "recommendedThresholds": {
+        "conservative": 2500,
+        "moderate": 2000,
+        "aggressive": 1500
+      },
+      "cooldownMinutes": 1440,
+      "priority": "medium"
+    },
+    "vacancy_high": {
+      "name": "High Vacancy Alert",
+      "description": "Triggers when vacancy rate exceeds threshold (opportunity indicator)",
+      "defaultThreshold": 15,
+      "validConditions": ["above"],
+      "valueRange": {
+        "min": 0,
+        "max": 100
+      },
+      "recommendedThresholds": {
+        "conservative": 20,
+        "moderate": 15,
+        "aggressive": 10
+      },
+      "cooldownMinutes": 720,
+      "priority": "high"
+    },
+    "vacancy_low": {
+      "name": "Low Vacancy Alert",
+      "description": "Triggers when vacancy rate falls below threshold (tight market indicator)",
+      "defaultThreshold": 5,
+      "validConditions": ["below"],
+      "valueRange": {
+        "min": 0,
+        "max": 100
+      },
+      "recommendedThresholds": {
+        "conservative": 3,
+        "moderate": 5,
+        "aggressive": 7
+      },
+      "cooldownMinutes": 720,
+      "priority": "medium"
+    },
+    "opportunity_score": {
+      "name": "Investment Opportunity Score",
+      "description": "Triggers when ApartmentIQ opportunity score crosses threshold",
+      "defaultThreshold": 7.5,
+      "validConditions": ["above"],
+      "valueRange": {
+        "min": 0,
+        "max": 10
+      },
+      "recommendedThresholds": {
+        "conservative": 8.5,
+        "moderate": 7.5,
+        "aggressive": 6.5
+      },
+      "cooldownMinutes": 360,
+      "priority": "high"
+    },
+    "pipeline_delivery": {
+      "name": "New Supply Delivered",
+      "description": "Triggers when new units are delivered in market (supply pressure)",
+      "defaultThreshold": 500,
+      "validConditions": ["above"],
+      "valueRange": {
+        "min": 0,
+        "max": 10000
+      },
+      "recommendedThresholds": {
+        "conservative": 1000,
+        "moderate": 500,
+        "aggressive": 250
+      },
+      "cooldownMinutes": 10080,
+      "priority": "low"
+    }
+  },
+  "deliveryMethods": {
+    "email": {
+      "enabled": true,
+      "maxPerDay": 10,
+      "throttleMinutes": 60,
+      "requiresVerification": true
+    },
+    "sms": {
+      "enabled": false,
+      "maxPerDay": 5,
+      "throttleMinutes": 240,
+      "requiresVerification": true,
+      "cost": 0.01
+    },
+    "webhook": {
+      "enabled": true,
+      "maxPerDay": 100,
+      "throttleMinutes": 5,
+      "requiresVerification": false,
+      "timeoutSeconds": 10
+    }
+  },
+  "globalSettings": {
+    "maxAlertsPerUser": 20,
+    "maxAlertsPerSubmarket": 5,
+    "minCheckIntervalMinutes": 60,
+    "alertRetentionDays": 90,
+    "triggerHistoryRetentionDays": 365
+  },
+  "presets": {
+    "conservative_investor": {
+      "name": "Conservative Investor",
+      "description": "Lower frequency alerts for major market changes",
+      "alerts": [
+        {
+          "type": "imbalance_change",
+          "threshold": 80,
+          "condition": "above"
+        },
+        {
+          "type": "vacancy_high",
+          "threshold": 20,
+          "condition": "above"
+        }
+      ]
+    },
+    "active_trader": {
+      "name": "Active Trader",
+      "description": "Frequent alerts for quick opportunities",
+      "alerts": [
+        {
+          "type": "imbalance_change",
+          "threshold": 60,
+          "condition": "above"
+        },
+        {
+          "type": "opportunity_score",
+          "threshold": 6.5,
+          "condition": "above"
+        },
+        {
+          "type": "vacancy_high",
+          "threshold": 10,
+          "condition": "above"
+        },
+        {
+          "type": "rent_spike",
+          "threshold": 5,
+          "condition": "change"
+        }
+      ]
+    },
+    "market_watcher": {
+      "name": "Market Watcher",
+      "description": "Comprehensive market monitoring",
+      "alerts": [
+        {
+          "type": "imbalance_change",
+          "threshold": 70,
+          "condition": "above"
+        },
+        {
+          "type": "vacancy_high",
+          "threshold": 15,
+          "condition": "above"
+        },
+        {
+          "type": "vacancy_low",
+          "threshold": 5,
+          "condition": "below"
+        },
+        {
+          "type": "pipeline_delivery",
+          "threshold": 500,
+          "condition": "above"
+        }
+      ]
+    }
+  },
+  "notificationTemplates": {
+    "subject": {
+      "urgent": "🚨 URGENT: {submarketName} Market Alert - {alertType}",
+      "high": "⚠️ Market Alert: {submarketName} - {alertType}",
+      "medium": "📊 Market Update: {submarketName} - {alertType}",
+      "low": "ℹ️ Market Note: {submarketName} - {alertType}"
+    },
+    "greeting": {
+      "formal": "Dear {userName},",
+      "casual": "Hi {userName},",
+      "professional": "Hello {userName},"
+    }
+  },
+  "testMode": {
+    "enabled": false,
+    "sendToEmailOverride": null,
+    "logAllTriggers": true,
+    "skipActualDelivery": false
+  }
+}

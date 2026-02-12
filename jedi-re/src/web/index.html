@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JEDI RE - Submarket Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .traffic-light { width: 32px; height: 32px; border-radius: 50%; display: inline-block; }
+        .traffic-light-green { background: #10b981; box-shadow: 0 0 15px rgba(16,185,129,0.5); }
+        .traffic-light-yellow { background: #f59e0b; box-shadow: 0 0 15px rgba(245,158,11,0.5); }
+        .traffic-light-red { background: #ef4444; box-shadow: 0 0 15px rgba(239,68,68,0.5); }
+        .expand-btn { cursor: pointer; user-select: none; }
+        .expand-btn:hover { background-color: #f3f4f6; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">🚀 JEDI RE Analysis</h1>
+            <p class="text-gray-600 mt-2">Real Estate Intelligence - Supply-Demand Imbalance Detection</p>
+        </div>
+        
+        <!-- Select Submarket -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Select Submarket</h2>
+            <div class="flex gap-4">
+                <select id="submarket-select" class="flex-1 px-4 py-2 border rounded-lg">
+                    <option value="">Loading...</option>
+                </select>
+                <button onclick="analyzeSubmarket()" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
+                    Analyze
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden bg-white rounded-lg shadow p-12 text-center">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-gray-600">Running analysis engines...</p>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6">
+            <!-- Verdict Card -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800" id="submarket-name">Loading...</h2>
+                        <p class="text-gray-600">Investment Analysis</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div id="traffic-light" class="traffic-light"></div>
+                        <div>
+                            <div class="text-3xl font-bold text-gray-800" id="verdict-text">--</div>
+                            <div class="text-sm text-gray-500">Score: <span id="score" class="font-semibold">--</span>/100</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-600 mb-1">Demand</div>
+                        <div class="text-xl font-bold text-gray-800" id="demand-score">--</div>
+                        <div class="text-xs text-gray-500 mt-1" id="demand-text">--</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-600 mb-1">Supply</div>
+                        <div class="text-xl font-bold text-gray-800" id="supply-score">--</div>
+                        <div class="text-xs text-gray-500 mt-1" id="supply-text">--</div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-600 mb-1">Confidence</div>
+                        <div class="text-xl font-bold text-gray-800" id="confidence">--</div>
+                        <div class="text-xs text-gray-500 mt-1">Analysis reliability</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rent Trend Chart -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-xl font-semibold mb-4">📈 Rent Trend Analysis</h3>
+                <canvas id="rentChart" height="80"></canvas>
+                <p class="text-xs text-gray-500 mt-4">
+                    <strong>Method:</strong> Kalman filtering applied to remove noise and extract true market signal
+                </p>
+            </div>
+
+            <!-- Analysis Details -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="expand-btn p-6 flex items-center justify-between" onclick="toggleSection('details')">
+                    <h3 class="text-xl font-semibold">📊 Analysis Details</h3>
+                    <svg id="details-icon" class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+                <div id="details-content" class="hidden px-6 pb-6 space-y-6">
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-2">📊 Demand Signal</h4>
+                        <p class="text-gray-600 text-sm mb-2" id="demand-summary">--</p>
+                        <div class="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+                            <strong>Components:</strong>
+                            <ul class="list-disc list-inside mt-1">
+                                <li>Rent growth rate (annualized): <span id="rent-growth">--</span></li>
+                                <li>Net migration: <span id="migration">--</span></li>
+                                <li>Signal confidence: <span id="demand-conf">--</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-2">🏗️ Supply Signal</h4>
+                        <p class="text-gray-600 text-sm mb-2" id="supply-summary">--</p>
+                        <div class="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+                            <strong>Components:</strong>
+                            <ul class="list-disc list-inside mt-1">
+                                <li>Demand capacity: <span id="demand-cap">--</span> units</li>
+                                <li>Total supply: <span id="total-supply">--</span> units</li>
+                                <li>Saturation: <span id="saturation">--</span>%</li>
+                                <li>Time to equilibrium: <span id="equilibrium">--</span> quarters</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="font-semibold text-gray-700 mb-2">💡 Recommendation</h4>
+                        <p class="text-gray-600 text-sm bg-yellow-50 border border-yellow-200 p-3 rounded" id="recommendation">--</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-gray-700 mb-2">✅ Key Factors</h4>
+                            <ul id="key-factors" class="text-sm text-gray-600 space-y-1"></ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-gray-700 mb-2">⚠️ Risks</h4>
+                            <ul id="key-risks" class="text-sm text-gray-600 space-y-1"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Methodology -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="expand-btn p-6 flex items-center justify-between" onclick="toggleSection('methodology')">
+                    <h3 class="text-xl font-semibold">🔬 Methodology</h3>
+                    <svg id="methodology-icon" class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+                <div id="methodology-content" class="hidden px-6 pb-6 space-y-4 text-sm text-gray-600">
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">Signal Processing Engine</h4>
+                        <p>Applies Kalman filtering to remove noise from rent data and Fourier decomposition to separate trend from seasonal variation. Confidence scoring based on signal-to-noise ratio.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">Carrying Capacity Engine</h4>
+                        <p>Uses ecological principles to calculate sustainable supply levels. Demand capacity = (Population × 0.35) + (Job Growth × 0.8). Saturation = Total Supply / Demand Capacity.</p>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800 mb-2">Imbalance Detector</h4>
+                        <p>Synthesizes demand and supply signals into composite score (0-100) with weighted components: Demand (50%) + Supply (50%). Generates verdict based on threshold analysis.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Raw Data -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="expand-btn p-6 flex items-center justify-between" onclick="toggleSection('rawdata')">
+                    <h3 class="text-xl font-semibold">📋 Raw Data</h3>
+                    <svg id="rawdata-icon" class="w-6 h-6 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+                <div id="rawdata-content" class="hidden px-6 pb-6">
+                    <div class="flex justify-end mb-4">
+                        <button onclick="exportData()" class="px-4 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700">
+                            💾 Download CSV
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">Date</th>
+                                    <th class="px-4 py-2 text-right">Weighted Avg</th>
+                                    <th class="px-4 py-2 text-right">1 Bed</th>
+                                    <th class="px-4 py-2 text-right">2 Bed</th>
+                                    <th class="px-4 py-2 text-right">Occupancy</th>
+                                    <th class="px-4 py-2 text-right">Concessions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rent-table" class="divide-y divide-gray-200">
+                                <tr><td colspan="6" class="px-4 py-2 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api/v1';
+        let submarkets = [];
+        let currentAnalysis = null;
+        let currentRentData = null;
+        let rentChart = null;
+
+        // Load submarkets on page load
+        async function loadSubmarkets() {
+            try {
+                const res = await fetch(`${API_BASE}/submarkets`);
+                const data = await res.json();
+                submarkets = data.data;
+                
+                const select = document.getElementById('submarket-select');
+                select.innerHTML = submarkets.map(sm => 
+                    `<option value="${sm.id}">${sm.name}, ${sm.city}, ${sm.state}</option>`
+                ).join('');
+            } catch (err) {
+                console.error('Failed to load submarkets:', err);
+                document.getElementById('submarket-select').innerHTML = '<option>Error loading submarkets</option>';
+            }
+        }
+
+        async function analyzeSubmarket() {
+            const submarketId = document.getElementById('submarket-select').value;
+            if (!submarketId) return;
+
+            // Show loading
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+
+            try {
+                // Fetch analysis and rent data in parallel
+                const [analysisRes, rentsRes] = await Promise.all([
+                    fetch(`${API_BASE}/submarkets/${submarketId}/analysis`),
+                    fetch(`${API_BASE}/submarkets/${submarketId}/rents`)
+                ]);
+                
+                const analysisData = await analysisRes.json();
+                const rentsData = await rentsRes.json();
+                
+                if (!analysisData.success) throw new Error(analysisData.detail || 'Analysis failed');
+                if (!rentsData.success) throw new Error('Failed to load rent data');
+                
+                currentAnalysis = analysisData.data;
+                currentRentData = rentsData.data;
+                
+                displayResults(currentAnalysis);
+                displayRentChart(currentRentData);
+                displayRentTable(currentRentData);
+            } catch (err) {
+                console.error('Analysis failed:', err);
+                alert('Analysis failed: ' + err.message);
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+            }
+        }
+
+        function displayResults(data) {
+            document.getElementById('results').classList.remove('hidden');
+
+            // Submarket name
+            document.getElementById('submarket-name').textContent = 
+                `${data.submarket.name}, ${data.submarket.city}, ${data.submarket.state}`;
+
+            // Verdict and score
+            const verdict = data.verdict.replace(/_/g, ' ');
+            document.getElementById('verdict-text').textContent = verdict;
+            document.getElementById('score').textContent = data.composite_score;
+
+            // Traffic light
+            const light = document.getElementById('traffic-light');
+            light.className = 'traffic-light';
+            if (data.composite_score >= 70) light.classList.add('traffic-light-green');
+            else if (data.composite_score >= 40) light.classList.add('traffic-light-yellow');
+            else light.classList.add('traffic-light-red');
+
+            // Quick stats
+            document.getElementById('demand-score').textContent = data.demand_signal.score;
+            document.getElementById('demand-text').textContent = data.demand_signal.strength;
+            document.getElementById('supply-score').textContent = Math.round(data.supply_signal.saturation_pct) + '%';
+            document.getElementById('supply-text').textContent = data.supply_signal.verdict.replace(/_/g, ' ');
+            document.getElementById('confidence').textContent = Math.round(data.confidence * 100) + '%';
+
+            // Details
+            document.getElementById('demand-summary').textContent = data.demand_signal.summary;
+            document.getElementById('supply-summary').textContent = data.supply_signal.summary;
+            document.getElementById('recommendation').textContent = data.recommendation;
+
+            // Demand components
+            document.getElementById('rent-growth').textContent = (data.demand_signal.rent_growth_rate * 100).toFixed(1) + '%';
+            document.getElementById('migration').textContent = '+' + (data.supply_signal.demand_capacity * 0.0185).toFixed(0) + ' people/year';
+            document.getElementById('demand-conf').textContent = (data.demand_signal.confidence * 100).toFixed(0) + '%';
+
+            // Supply components
+            document.getElementById('demand-cap').textContent = data.supply_signal.demand_capacity.toLocaleString();
+            document.getElementById('total-supply').textContent = data.supply_signal.total_supply.toLocaleString();
+            document.getElementById('saturation').textContent = data.supply_signal.saturation_pct.toFixed(1);
+            document.getElementById('equilibrium').textContent = data.supply_signal.equilibrium_quarters;
+
+            // Key factors
+            const factorsList = document.getElementById('key-factors');
+            factorsList.innerHTML = data.key_factors.length 
+                ? data.key_factors.map(f => `<li>• ${f}</li>`).join('')
+                : '<li class="text-gray-400">No key factors identified</li>';
+
+            // Risks
+            const risksList = document.getElementById('key-risks');
+            risksList.innerHTML = data.risks.length
+                ? data.risks.map(r => `<li>• ${r}</li>`).join('')
+                : '<li class="text-gray-400">No significant risks identified</li>';
+        }
+
+        function displayRentChart(data) {
+            const ctx = document.getElementById('rentChart').getContext('2d');
+            
+            if (rentChart) rentChart.destroy();
+            
+            rentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        label: 'Weighted Average Rent',
+                        data: data.map(d => d.weighted_avg),
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => '$' + context.parsed.y.toFixed(0)
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                callback: (value) => '$' + value
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function displayRentTable(data) {
+            const tbody = document.getElementById('rent-table');
+            tbody.innerHTML = data.map(d => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2">${d.date}</td>
+                    <td class="px-4 py-2 text-right font-medium">$${d.weighted_avg ? d.weighted_avg.toFixed(0) : 'N/A'}</td>
+                    <td class="px-4 py-2 text-right">$${d.one_bed ? d.one_bed.toFixed(0) : 'N/A'}</td>
+                    <td class="px-4 py-2 text-right">$${d.two_bed ? d.two_bed.toFixed(0) : 'N/A'}</td>
+                    <td class="px-4 py-2 text-right">${d.occupancy ? d.occupancy.toFixed(1) + '%' : 'N/A'}</td>
+                    <td class="px-4 py-2 text-right">${d.concessions} weeks</td>
+                </tr>
+            `).join('');
+        }
+
+        function toggleSection(section) {
+            const content = document.getElementById(`${section}-content`);
+            const icon = document.getElementById(`${section}-icon`);
+            
+            content.classList.toggle('hidden');
+            icon.classList.toggle('rotate-180');
+        }
+
+        function exportData() {
+            if (!currentRentData) return;
+            
+            let csv = 'Date,Weighted Avg,1 Bed,2 Bed,Occupancy,Concessions\n';
+            currentRentData.forEach(d => {
+                csv += `${d.date},${d.weighted_avg || ''},${d.one_bed || ''},${d.two_bed || ''},${d.occupancy || ''},${d.concessions}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `jedi-re-${currentAnalysis.submarket.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        // Load submarkets on page load
+        loadSubmarkets();
+    </script>
+</body>
+</html>

@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leon's Project Kanban 🚀</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .column {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .column-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .column-title {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .card-count {
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            padding: 4px 12px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .cards {
+            min-height: 200px;
+        }
+
+        .card {
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            cursor: move;
+            transition: all 0.2s;
+        }
+
+        .card:hover {
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .card.dragging {
+            opacity: 0.5;
+            transform: rotate(2deg);
+        }
+
+        .card-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .card-desc {
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
+        .card-delete {
+            float: right;
+            color: #ff4444;
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+
+        .card-delete:hover {
+            opacity: 1;
+        }
+
+        .add-card-btn {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: 600;
+        }
+
+        .add-card-btn:hover {
+            background: #5568d3;
+        }
+
+        .add-card-form {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .add-card-form.active {
+            display: block;
+        }
+
+        .add-card-form input,
+        .add-card-form textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 8px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        .add-card-form textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .form-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-add {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-cancel {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .column.drag-over {
+            background: rgba(102, 126, 234, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Leon's Project Board</h1>
+        <p>Drag cards between columns to update status</p>
+    </div>
+
+    <div class="board">
+        <div class="column" data-status="backlog">
+            <div class="column-header">
+                <span class="column-title">📋 Backlog</span>
+                <span class="card-count">0</span>
+            </div>
+            <div class="cards"></div>
+            <button class="add-card-btn" onclick="showAddForm('backlog')">+ Add Card</button>
+            <div class="add-card-form" id="form-backlog">
+                <input type="text" placeholder="Project name" class="card-title-input">
+                <textarea placeholder="Description" class="card-desc-input"></textarea>
+                <div class="form-buttons">
+                    <button class="btn-add" onclick="addCard('backlog')">Add</button>
+                    <button class="btn-cancel" onclick="hideAddForm('backlog')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="column" data-status="todo">
+            <div class="column-header">
+                <span class="column-title">📝 To Do</span>
+                <span class="card-count">0</span>
+            </div>
+            <div class="cards"></div>
+            <button class="add-card-btn" onclick="showAddForm('todo')">+ Add Card</button>
+            <div class="add-card-form" id="form-todo">
+                <input type="text" placeholder="Project name" class="card-title-input">
+                <textarea placeholder="Description" class="card-desc-input"></textarea>
+                <div class="form-buttons">
+                    <button class="btn-add" onclick="addCard('todo')">Add</button>
+                    <button class="btn-cancel" onclick="hideAddForm('todo')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="column" data-status="in-progress">
+            <div class="column-header">
+                <span class="column-title">🚧 In Progress</span>
+                <span class="card-count">0</span>
+            </div>
+            <div class="cards"></div>
+            <button class="add-card-btn" onclick="showAddForm('in-progress')">+ Add Card</button>
+            <div class="add-card-form" id="form-in-progress">
+                <input type="text" placeholder="Project name" class="card-title-input">
+                <textarea placeholder="Description" class="card-desc-input"></textarea>
+                <div class="form-buttons">
+                    <button class="btn-add" onclick="addCard('in-progress')">Add</button>
+                    <button class="btn-cancel" onclick="hideAddForm('in-progress')">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="column" data-status="done">
+            <div class="column-header">
+                <span class="column-title">✅ Done</span>
+                <span class="card-count">0</span>
+            </div>
+            <div class="cards"></div>
+            <button class="add-card-btn" onclick="showAddForm('done')">+ Add Card</button>
+            <div class="add-card-form" id="form-done">
+                <input type="text" placeholder="Project name" class="card-title-input">
+                <textarea placeholder="Description" class="card-desc-input"></textarea>
+                <div class="form-buttons">
+                    <button class="btn-add" onclick="addCard('done')">Add</button>
+                    <button class="btn-cancel" onclick="hideAddForm('done')">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize data structure
+        let boardData = {
+            backlog: [],
+            todo: [],
+            'in-progress': [],
+            done: []
+        };
+
+        // Load from localStorage or use defaults
+        function loadBoard() {
+            const saved = localStorage.getItem('kanban-board');
+            if (saved) {
+                boardData = JSON.parse(saved);
+            } else {
+                // Initialize with Leon's current projects
+                boardData = {
+                    backlog: [],
+                    todo: [
+                        { id: Date.now() + 1, title: 'Florida Market Developments', desc: 'Identify and evaluate multifamily opportunities in Florida markets' }
+                    ],
+                    'in-progress': [
+                        { id: Date.now() + 2, title: 'OppGrid', desc: 'Real estate data aggregation platform - scrapers and data pipeline' },
+                        { id: Date.now() + 3, title: 'Traveloure', desc: 'Travel services platform development' },
+                        { id: Date.now() + 4, title: 'MAG Citadel', desc: 'Austin, TX multifamily development project' },
+                        { id: Date.now() + 5, title: 'Polymarket Trading Bot', desc: 'Automated trading system with dashboard and opportunity detection' }
+                    ],
+                    done: []
+                };
+                saveBoard();
+            }
+            renderBoard();
+        }
+
+        function saveBoard() {
+            localStorage.setItem('kanban-board', JSON.stringify(boardData));
+        }
+
+        function renderBoard() {
+            document.querySelectorAll('.column').forEach(column => {
+                const status = column.dataset.status;
+                const cardsContainer = column.querySelector('.cards');
+                const countBadge = column.querySelector('.card-count');
+                
+                cardsContainer.innerHTML = '';
+                const cards = boardData[status] || [];
+                
+                countBadge.textContent = cards.length;
+                
+                cards.forEach(card => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = 'card';
+                    cardEl.draggable = true;
+                    cardEl.dataset.cardId = card.id;
+                    cardEl.innerHTML = `
+                        <span class="card-delete" onclick="deleteCard('${status}', ${card.id})">×</span>
+                        <div class="card-title">${card.title}</div>
+                        <div class="card-desc">${card.desc || ''}</div>
+                    `;
+                    
+                    cardEl.addEventListener('dragstart', handleDragStart);
+                    cardEl.addEventListener('dragend', handleDragEnd);
+                    
+                    cardsContainer.appendChild(cardEl);
+                });
+            });
+
+            // Setup drop zones
+            document.querySelectorAll('.cards').forEach(container => {
+                container.addEventListener('dragover', handleDragOver);
+                container.addEventListener('drop', handleDrop);
+                container.addEventListener('dragleave', handleDragLeave);
+            });
+        }
+
+        let draggedCard = null;
+
+        function handleDragStart(e) {
+            draggedCard = e.target;
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            const column = e.target.closest('.column');
+            if (column) column.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            const column = e.target.closest('.column');
+            if (column) column.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const column = e.target.closest('.column');
+            column.classList.remove('drag-over');
+            
+            if (!draggedCard) return;
+            
+            const cardId = parseInt(draggedCard.dataset.cardId);
+            const newStatus = column.dataset.status;
+            
+            // Find and remove card from old status
+            let card;
+            for (let status in boardData) {
+                const index = boardData[status].findIndex(c => c.id === cardId);
+                if (index !== -1) {
+                    card = boardData[status].splice(index, 1)[0];
+                    break;
+                }
+            }
+            
+            // Add to new status
+            if (card) {
+                boardData[newStatus].push(card);
+                saveBoard();
+                renderBoard();
+            }
+        }
+
+        function showAddForm(status) {
+            document.getElementById(`form-${status}`).classList.add('active');
+        }
+
+        function hideAddForm(status) {
+            const form = document.getElementById(`form-${status}`);
+            form.classList.remove('active');
+            form.querySelector('.card-title-input').value = '';
+            form.querySelector('.card-desc-input').value = '';
+        }
+
+        function addCard(status) {
+            const form = document.getElementById(`form-${status}`);
+            const title = form.querySelector('.card-title-input').value.trim();
+            const desc = form.querySelector('.card-desc-input').value.trim();
+            
+            if (!title) {
+                alert('Please enter a project name');
+                return;
+            }
+            
+            const card = {
+                id: Date.now(),
+                title: title,
+                desc: desc
+            };
+            
+            boardData[status].push(card);
+            saveBoard();
+            renderBoard();
+            hideAddForm(status);
+        }
+
+        function deleteCard(status, cardId) {
+            if (confirm('Delete this card?')) {
+                const index = boardData[status].findIndex(c => c.id === cardId);
+                if (index !== -1) {
+                    boardData[status].splice(index, 1);
+                    saveBoard();
+                    renderBoard();
+                }
+            }
+        }
+
+        // Initialize on load
+        loadBoard();
+    </script>
+</body>
+</html>
