@@ -1,0 +1,54 @@
+/**
+ * Overview Section - Deal Page
+ * High-level summary, map, quick stats, and actions
+ */
+
+import React from 'react';
+import { PlaceholderContent } from '../PlaceholderContent';
+
+interface OverviewSectionProps {
+  deal: any;
+}
+
+export const OverviewSection: React.FC<OverviewSectionProps> = ({ deal }) => {
+  const wireframe = `
+┌────────────────────────────────────────────────────┐
+│  Quick Stats (3 cards)                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │Properties│  │  Budget  │  │  Status  │        │
+│  │    12    │  │   $45M   │  │  Active  │        │
+│  └──────────┘  └──────────┘  └──────────┘        │
+├────────────────────────────────────────────────────┤
+│  Map View (Interactive)                            │
+│  [Shows deal boundary, properties, nearby POIs]    │
+│                                                    │
+├────────────────────────────────────────────────────┤
+│  Quick Actions                                     │
+│  [Find Properties] [Run Analysis] [Generate Rpt]   │
+└────────────────────────────────────────────────────┘
+  `.trim();
+
+  return (
+    <PlaceholderContent
+      title="Overview Section"
+      description="This will display deal summary, interactive map, quick stats, and action buttons"
+      status="to-be-built"
+      icon="📊"
+      wireframe={wireframe}
+    >
+      <div className="space-y-3">
+        <h4 className="font-semibold text-gray-900">Features to Include:</h4>
+        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+          <li>Quick stats cards (properties, budget, timeline, team size)</li>
+          <li>Interactive map showing deal boundary and properties</li>
+          <li>Deal status timeline/progress bar</li>
+          <li>Quick action buttons (find properties, run analysis, etc.)</li>
+          <li>Recent activity summary</li>
+          <li>Key contacts/team members</li>
+        </ul>
+      </div>
+    </PlaceholderContent>
+  );
+};
+
+export default OverviewSection;
