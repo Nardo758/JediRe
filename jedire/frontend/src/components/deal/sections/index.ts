@@ -14,3 +14,7 @@ export { CollaborationSection } from './CollaborationSection';
 export { ActivityFeedSection } from './ActivityFeedSection';
 export { DevelopmentSection } from './DevelopmentSection';
 export { FinancialAnalysisSection } from './FinancialAnalysisSection';
+export { MarketCompetitionSection } from './MarketCompetitionSection';
+export { SupplyTrackingSection } from './SupplyTrackingSection';
+export { DebtMarketSection } from './DebtMarketSection';
+export { AIAgentSection } from './AIAgentSection';

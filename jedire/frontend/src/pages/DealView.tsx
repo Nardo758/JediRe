@@ -18,6 +18,10 @@ import {
   DueDiligenceSection,
   PropertiesSection,
   MarketSection,
+  MarketCompetitionSection,
+  SupplyTrackingSection,
+  DebtMarketSection,
+  AIAgentSection,
   DocumentsSection,
   TeamSection,
   ContextTrackerSection,
@@ -146,6 +150,30 @@ export const DealView: React.FC = () => {
         return (
           <div className="p-6">
             <MarketSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
+      case 'market-competition':
+        return (
+          <div className="p-6">
+            <MarketCompetitionSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
+      case 'supply-tracking':
+        return (
+          <div className="p-6">
+            <SupplyTrackingSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
+      case 'debt-market':
+        return (
+          <div className="p-6">
+            <DebtMarketSection deal={selectedDeal as any} isPremium={false} />
+          </div>
+        );
+      case 'ai-agent':
+        return (
+          <div className="p-6">
+            <AIAgentSection deal={selectedDeal as any} isPremium={false} />
           </div>
         );
       case 'documents':
