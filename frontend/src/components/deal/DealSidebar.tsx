@@ -1,39 +1,42 @@
 import React from 'react';
 import { DealSidebarProps } from '../../types';
 
-const moduleIcons = {
+const moduleIcons: Record<string, string> = {
   map: '🗺️',
   overview: '📊',
-  marketCompetition: '🏆',
-  supplyTracking: '📦',
-  debtMarket: '💳',
-  aiAgent: '🤖',
+  'market-competition': '🏆',
+  'supply-tracking': '📦',
+  'debt-market': '💳',
+  'ai-agent': '🤖',
   financial: '💰',
   strategy: '🎯',
-  dueDiligence: '✅',
+  'due-diligence': '✅',
   market: '📈',
   documents: '📄',
   team: '👥',
-  contextTracker: '🧭',
+  context: '🧭',
   notes: '💬'
 };
 
-const moduleLabels = {
+const moduleLabels: Record<string, string> = {
   map: 'Map View',
   overview: 'Overview',
-  marketCompetition: 'Market Competition',
-  supplyTracking: 'Supply Tracking',
-  debtMarket: 'Debt Market',
-  aiAgent: 'AI Agent (Opus)',
+  'market-competition': 'Market Competition',
+  'supply-tracking': 'Supply Tracking',
+  'debt-market': 'Debt Market',
+  'ai-agent': 'AI Agent (Opus)',
   financial: 'Financial Analysis',
   strategy: 'Strategy & Arbitrage',
-  dueDiligence: 'Due Diligence',
+  'due-diligence': 'Due Diligence',
   market: 'Market Analysis',
   documents: 'Documents',
   team: 'Team & Comms',
-  contextTracker: 'Context Tracker',
+  context: 'Context Tracker',
   notes: 'Notes & Comments'
 };
+
+const PRO_MODULES = ['market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'market'];
+const ENTERPRISE_MODULES = ['team'];
 
 export const DealSidebar: React.FC<DealSidebarProps> = ({
   deal,
@@ -42,23 +45,20 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   onModuleChange
 }) => {
   const isModuleEnabled = (moduleName: string) => {
-    const module = modules.find(m => m.moduleName === moduleName || m.module_name === moduleName);
+    const module = modules.find(m =>
+      m.moduleName === moduleName ||
+      m.module_name === moduleName
+    );
     return module?.isEnabled || module?.is_enabled || false;
   };
 
   const getModuleUpgradeMessage = (moduleName: string) => {
     if (deal.tier === 'basic') {
-      if (['marketCompetition', 'supplyTracking', 'debtMarket', 'aiAgent', 'financial', 'strategy', 'market'].includes(moduleName)) {
-        return 'Upgrade to Pro';
-      }
-      if (['team'].includes(moduleName)) {
-        return 'Upgrade to Enterprise';
-      }
+      if (PRO_MODULES.includes(moduleName)) return 'Upgrade to Pro';
+      if (ENTERPRISE_MODULES.includes(moduleName)) return 'Upgrade to Enterprise';
     }
     if (deal.tier === 'pro') {
-      if (['team'].includes(moduleName)) {
-        return 'Upgrade to Enterprise';
-      }
+      if (ENTERPRISE_MODULES.includes(moduleName)) return 'Upgrade to Enterprise';
     }
     return null;
   };
@@ -67,14 +67,12 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
     if (isModuleEnabled(moduleName)) {
       onModuleChange(moduleName);
     } else {
-      // Show upgrade prompt
       alert(getModuleUpgradeMessage(moduleName) || 'Module not available');
     }
   };
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
-      {/* Deal Modules */}
       <div className="flex-1 overflow-y-auto p-4">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
           Deal Modules
@@ -101,10 +99,10 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
                   }
                 `}
               >
-                <span className="text-xl">{moduleIcons[moduleName as keyof typeof moduleIcons]}</span>
+                <span className="text-xl">{moduleIcons[moduleName]}</span>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">{moduleLabels[moduleName as keyof typeof moduleLabels]}</span>
+                    <span className="text-sm">{moduleLabels[moduleName]}</span>
                     {!enabled && upgradeMsg && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -119,7 +117,6 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
         </div>
       </div>
 
-      {/* Deal Info Footer */}
       <div className="p-4 border-t border-gray-200 bg-gray-50">
         <div className="text-xs text-gray-600 space-y-1">
           <div className="flex justify-between">

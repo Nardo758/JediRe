@@ -564,13 +564,20 @@ app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedReque
     );
 
     const modules = result.rows.length > 0 ? result.rows : [
-      { module_name: 'map', enabled: true, config: {} },
-      { module_name: 'properties', enabled: true, config: {} },
-      { module_name: 'strategy', enabled: true, config: {} },
-      { module_name: 'pipeline', enabled: true, config: {} },
-      { module_name: 'market', enabled: false, config: {} },
-      { module_name: 'reports', enabled: false, config: {} },
-      { module_name: 'team', enabled: false, config: {} },
+      { module_name: 'map', is_enabled: true, config: {} },
+      { module_name: 'overview', is_enabled: true, config: {} },
+      { module_name: 'market-competition', is_enabled: true, config: {} },
+      { module_name: 'supply-tracking', is_enabled: true, config: {} },
+      { module_name: 'debt-market', is_enabled: true, config: {} },
+      { module_name: 'ai-agent', is_enabled: true, config: {} },
+      { module_name: 'financial', is_enabled: true, config: {} },
+      { module_name: 'strategy', is_enabled: true, config: {} },
+      { module_name: 'due-diligence', is_enabled: true, config: {} },
+      { module_name: 'market', is_enabled: true, config: {} },
+      { module_name: 'documents', is_enabled: true, config: {} },
+      { module_name: 'team', is_enabled: false, config: {} },
+      { module_name: 'context', is_enabled: true, config: {} },
+      { module_name: 'notes', is_enabled: true, config: {} },
     ];
 
     res.json({ success: true, data: modules });

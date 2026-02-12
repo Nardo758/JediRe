@@ -11,6 +11,8 @@ import { GeographicScopeTabs } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
+import { OverviewSection } from '../components/deal/sections/OverviewSection';
+import { AIAgentSection } from '../components/deal/sections/AIAgentSection';
 
 export const DealView: React.FC = () => {
   const { id, module } = useParams<{ id: string; module?: string }>();
@@ -99,18 +101,42 @@ export const DealView: React.FC = () => {
     switch (currentModule) {
       case 'map':
         return <DealMapView deal={selectedDeal} />;
+      case 'overview':
+        return (
+          <div className="p-6">
+            <OverviewSection deal={selectedDeal as any} />
+          </div>
+        );
+      case 'ai-agent':
+        return (
+          <div className="p-6">
+            <AIAgentSection deal={selectedDeal as any} useMockData={true} />
+          </div>
+        );
       case 'strategy':
         return <DealStrategy dealId={selectedDeal.id} />;
       case 'pipeline':
         return <DealPipeline dealId={selectedDeal.id} />;
       case 'context':
         return <DealContextTracker dealId={selectedDeal.id} />;
+      case 'market-competition':
+        return <div className="p-6">Market Competition (Coming Soon)</div>;
+      case 'supply-tracking':
+        return <div className="p-6">Supply Tracking (Coming Soon)</div>;
+      case 'debt-market':
+        return <div className="p-6">Debt Market (Coming Soon)</div>;
+      case 'financial':
+        return <div className="p-6">Financial Analysis (Coming Soon)</div>;
       case 'market':
-        return <div className="p-6">Market Intelligence (Coming Soon)</div>;
-      case 'reports':
-        return <div className="p-6">Reports (Coming Soon)</div>;
+        return <div className="p-6">Market Analysis (Coming Soon)</div>;
+      case 'due-diligence':
+        return <div className="p-6">Due Diligence (Coming Soon)</div>;
+      case 'documents':
+        return <div className="p-6">Documents (Coming Soon)</div>;
       case 'team':
-        return <div className="p-6">Team Collaboration (Coming Soon)</div>;
+        return <div className="p-6">Team & Comms (Coming Soon)</div>;
+      case 'notes':
+        return <div className="p-6">Notes & Comments (Coming Soon)</div>;
       default:
         return <div className="p-6">Module not found</div>;
     }
