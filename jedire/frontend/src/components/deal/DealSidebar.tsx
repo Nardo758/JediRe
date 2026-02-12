@@ -8,6 +8,10 @@ const moduleIcons: Record<string, string> = {
   strategy: '🎯',
   'due-diligence': '✅',
   market: '📈',
+  'market-competition': '🏆',
+  'supply-tracking': '📦',
+  'debt-market': '💳',
+  'ai-agent': '🤖',
   documents: '📄',
   team: '👥',
   context: '🧭',
@@ -21,6 +25,10 @@ const moduleLabels: Record<string, string> = {
   strategy: 'Strategy & Arbitrage',
   'due-diligence': 'Due Diligence',
   market: 'Market Analysis',
+  'market-competition': 'Market Competition',
+  'supply-tracking': 'Supply Tracking',
+  'debt-market': 'Debt Market',
+  'ai-agent': 'AI Agent (Opus)',
   documents: 'Documents',
   team: 'Team & Comms',
   context: 'Context Tracker',
@@ -34,6 +42,10 @@ const moduleOrder = [
   'strategy',
   'due-diligence',
   'market',
+  'market-competition',
+  'supply-tracking',
+  'debt-market',
+  'ai-agent',
   'documents',
   'team',
   'context',
@@ -54,7 +66,7 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
 
   const getModuleUpgradeMessage = (moduleName: string) => {
     if (deal.tier === 'basic') {
-      if (['strategy', 'market', 'financial'].includes(moduleName)) {
+      if (['strategy', 'market', 'financial', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent'].includes(moduleName)) {
         return 'Upgrade to Pro';
       }
       if (['pipeline', 'team'].includes(moduleName)) {
