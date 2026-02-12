@@ -99,8 +99,6 @@ export const DealView: React.FC = () => {
     switch (currentModule) {
       case 'map':
         return <DealMapView deal={selectedDeal} />;
-      case 'properties':
-        return <DealProperties dealId={selectedDeal.id} />;
       case 'strategy':
         return <DealStrategy dealId={selectedDeal.id} />;
       case 'pipeline':
@@ -196,31 +194,16 @@ export const DealView: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* Quick stats */}
-            <div className="flex items-center gap-4 text-sm">
+            {selectedDeal.pipelineStage && (
               <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.propertyCount || 0}</div>
-                <div className="text-xs text-gray-600">Properties</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-gray-900">{selectedDeal.taskCount || 0}</div>
-                <div className="text-xs text-gray-600">Tasks</div>
-              </div>
-              {selectedDeal.pipelineStage && (
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-gray-900">
-                    {selectedDeal.pipelineStage.replace('_', ' ')}
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {selectedDeal.daysInStage} days in stage
-                  </div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {selectedDeal.pipelineStage.replace('_', ' ')}
                 </div>
-              )}
-            </div>
-            
-            <Button variant="secondary" size="sm">
-              Settings
-            </Button>
+                <div className="text-xs text-gray-600">
+                  {selectedDeal.daysInStage} days in stage
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

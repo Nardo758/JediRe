@@ -215,13 +215,6 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         </div>
       </div>
 
-      {/* Property count */}
-      <div className="absolute top-20 right-4 bg-white rounded-lg shadow-lg px-4 py-2 z-10">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-gray-900">{properties.length}</div>
-          <div className="text-xs text-gray-600">Properties</div>
-        </div>
-      </div>
 
       {/* Selected property popup */}
       {selectedProperty && (
