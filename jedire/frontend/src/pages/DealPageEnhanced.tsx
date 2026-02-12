@@ -207,7 +207,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Strategy & Arbitrage"
               isPremium={true}
             >
-              <StrategySection deal={deal} isPremium={isPremium} />
+              <StrategySection deal={deal} enhanced={isPremium} onToggleModule={(slug) => console.log('Toggle module:', slug)} />
             </DealSection>
           </div>
 
@@ -218,7 +218,7 @@ export const DealPageEnhanced: React.FC = () => {
               icon="✅"
               title="Due Diligence"
             >
-              <DueDiligenceSection deal={deal} />
+              <DueDiligenceSection deal={deal} enhanced={isPremium} onToggleModule={(slug) => console.log('Toggle module:', slug)} />
             </DealSection>
           </div>
 

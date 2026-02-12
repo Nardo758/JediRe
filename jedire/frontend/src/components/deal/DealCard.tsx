@@ -39,7 +39,7 @@ export const DealCard: React.FC<DealCardProps> = ({ deal }) => {
   const isStale = daysInStation > 14;
   
   const handleClick = () => {
-    navigate(`/deals/${deal.id}`);
+    navigate(`/deals/${deal.id}/view`);
   };
 
   return (

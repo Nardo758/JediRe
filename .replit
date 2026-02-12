@@ -41,13 +41,13 @@ args = "JediRe"
 name = "JediRe"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "./start.sh"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/jedire && bash start.sh"
+waitForPort = 5000
 
 [userenv]
 
