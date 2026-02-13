@@ -47,6 +47,7 @@ import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import eventsRoutes from './events.routes';
 import filesRoutes from './files.routes';
+import documentsFilesRoutes from './documentsFiles.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
 import mapAnnotationsRoutes from './mapAnnotations.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
@@ -183,6 +184,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // File Management routes (Asset Map Intelligence - Note Attachments)
   app.use(`${API_PREFIX}`, filesRoutes);
+
+  // Unified Documents & Files routes (Deal-level file management)
+  app.use(`${API_PREFIX}`, documentsFilesRoutes);
 
   // Asset Map Intelligence routes (Notes, Replies, News Links, Real-time Sync)
   app.use(`${API_PREFIX}/assets`, assetMapIntelligenceRoutes);
