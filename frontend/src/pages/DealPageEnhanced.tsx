@@ -1,7 +1,7 @@
 /**
  * Enhanced Deal Page - JEDI RE
- * Complete deal page with 14 collapsible sections
- * SKELETON STRUCTURE ONLY - sections to be built individually
+ * Complete deal page with 15 collapsible sections
+ * Market Intelligence module consolidates Competition + Supply + Market
  */
 
 import React, { useEffect, useState } from 'react';
@@ -10,8 +10,7 @@ import { DealSection } from '../components/deal/DealSection';
 import {
   OverviewSection,
   MapViewSection,
-  CompetitionSection,
-  SupplyTrackingSection,
+  MarketIntelligenceSection,
   DebtMarketSection,
   DebtSection,
   AIAgentSection,
@@ -20,7 +19,6 @@ import {
   ExitSection,
   DueDiligenceSection,
   PropertiesSection,
-  MarketSection,
   DocumentsSection,
   TeamSection,
   ContextTrackerSection,
@@ -159,7 +157,7 @@ export const DealPageEnhanced: React.FC = () => {
           </div>
         </div>
 
-        {/* Section Quick Navigation - All 14 Tabs */}
+        {/* Section Quick Navigation - 15 Tabs (consolidated Market Intelligence) */}
         <div className="px-6 py-2 bg-black/10 overflow-x-auto">
           <div className="flex gap-2 text-xs text-blue-100">
             {[
@@ -168,9 +166,7 @@ export const DealPageEnhanced: React.FC = () => {
               { id: 'ai-agent', icon: '🤖', title: 'AI Agent' },
               { id: 'properties', icon: '🏢', title: 'Properties' },
               { id: 'financial', icon: '💰', title: 'Financial' },
-              { id: 'market', icon: '📈', title: 'Market' },
-              { id: 'competition', icon: '🏆', title: 'Competition' },
-              { id: 'supply', icon: '📦', title: 'Supply' },
+              { id: 'market-intelligence', icon: '📊', title: 'Market Intel' },
               { id: 'debt', icon: '💳', title: 'Debt' },
               { id: 'strategy', icon: '🎯', title: 'Strategy' },
               { id: 'exit', icon: '🚪', title: 'Exit' },
@@ -196,7 +192,7 @@ export const DealPageEnhanced: React.FC = () => {
         </div>
       </div>
 
-      {/* Scrollable content with 14 sections */}
+      {/* Scrollable content with 15 sections */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-6 space-y-4">
           
@@ -259,43 +255,19 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 6. Market Analysis */}
-          <div id="section-market">
+          {/* 6. Market Intelligence (UNIFIED: Competition + Supply + Market) */}
+          <div id="section-market-intelligence">
             <DealSection
-              id="market"
-              icon="📈"
-              title="Market Analysis"
+              id="market-intelligence"
+              icon="📊"
+              title="Market Intelligence"
               isPremium={true}
             >
-              <MarketSection deal={deal} isPremium={isPremium} />
+              <MarketIntelligenceSection deal={deal} isPremium={isPremium} />
             </DealSection>
           </div>
 
-          {/* 7. Market Competition */}
-          <div id="section-competition">
-            <DealSection
-              id="competition"
-              icon="🏆"
-              title="Market Competition"
-              isPremium={true}
-            >
-              <CompetitionSection deal={deal} />
-            </DealSection>
-          </div>
-
-          {/* 8. Supply Tracking */}
-          <div id="section-supply">
-            <DealSection
-              id="supply"
-              icon="📦"
-              title="Supply"
-              isPremium={true}
-            >
-              <SupplyTrackingSection deal={deal} />
-            </DealSection>
-          </div>
-
-          {/* 9. Debt & Financing */}
+          {/* 7. Debt & Financing */}
           <div id="section-debt">
             <DealSection
               id="debt"
@@ -311,7 +283,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 10. Strategy & Arbitrage */}
+          {/* 8. Strategy & Arbitrage */}
           <div id="section-strategy">
             <DealSection
               id="strategy"
@@ -323,7 +295,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 11. Exit Strategy */}
+          {/* 9. Exit Strategy */}
           <div id="section-exit">
             <DealSection
               id="exit"
@@ -335,7 +307,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 12. Due Diligence */}
+          {/* 10. Due Diligence */}
           <div id="section-due-diligence">
             <DealSection
               id="due-diligence"
@@ -346,7 +318,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 13. Documents */}
+          {/* 11. Documents */}
           <div id="section-documents">
             <DealSection
               id="documents"
@@ -357,7 +329,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 14. Team & Communications */}
+          {/* 12. Team & Communications */}
           <div id="section-team">
             <DealSection
               id="team"
@@ -368,7 +340,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 15. Deal Context Tracker */}
+          {/* 13. Deal Context Tracker */}
           <div id="section-context-tracker">
             <DealSection
               id="context-tracker"
@@ -379,7 +351,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 16. Notes & Comments */}
+          {/* 14. Notes & Comments */}
           <div id="section-notes">
             <DealSection
               id="notes"
@@ -390,7 +362,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 17. Timeline */}
+          {/* 15. Timeline */}
           <div id="section-timeline">
             <DealSection
               id="timeline"

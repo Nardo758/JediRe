@@ -18,6 +18,7 @@ export { ExitSection } from './ExitSection';
 export { DueDiligenceSection } from './DueDiligenceSection';
 export { PropertiesSection } from './PropertiesSection';
 export { MarketSection } from './MarketSection';
+export { MarketIntelligenceSection } from './MarketIntelligenceSection'; // UNIFIED: Competition + Supply + Market
 export { DocumentsSection } from './DocumentsSection';
 export { TeamSection } from './TeamSection';
 export { ContextTrackerSection } from './ContextTrackerSection';
