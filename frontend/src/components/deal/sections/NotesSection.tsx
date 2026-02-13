@@ -201,6 +201,49 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
         </div>
       )}
 
+      {/* Cross-Tab Navigation */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">Related Sections</h4>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-map-view');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors"
+          >
+            🗺️ View on Map
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-ai-agent');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-purple-600 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors"
+          >
+            🤖 Ask AI Agent
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-context-tracker');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg transition-colors"
+          >
+            🧭 View Context
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-documents');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-green-600 bg-white hover:bg-green-50 border border-green-200 rounded-lg transition-colors"
+          >
+            📄 View Documents
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 };

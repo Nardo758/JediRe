@@ -116,6 +116,49 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ deal }) => {
         />
       )}
 
+      {/* Cross-Tab Navigation */}
+      <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4 mt-6">
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">Related Sections</h4>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-strategy');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors"
+          >
+            🎯 View Strategy
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-exit');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-green-600 bg-white hover:bg-green-50 border border-green-200 rounded-lg transition-colors"
+          >
+            🚪 Exit Strategy
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-ai-agent');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-purple-600 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors"
+          >
+            🤖 Ask AI Agent
+          </button>
+          <button
+            onClick={() => {
+              const element = document.getElementById('section-debt-market');
+              element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg transition-colors"
+          >
+            💳 Debt & Financing
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 };

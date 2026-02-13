@@ -160,43 +160,68 @@ interface InteractiveMapProps {
 const InteractiveMap: React.FC<InteractiveMapProps> = ({ deal, mode }) => {
   const mapContext = mode === 'acquisition' 
     ? [
-        '• Deal boundary',
-        '• Property locations',
-        '• Nearby points of interest',
-        '• Submarket analysis'
+        '• Deal boundary & properties',
+        '• Competitive analysis',
+        '• Market demographics',
+        '• Points of interest'
       ]
     : [
-        '• Property boundary',
-        '• Competitive properties',
-        '• Market trends',
-        '• Trade area demographics'
+        '• Asset location & boundary',
+        '• Market comparables',
+        '• Trade area analysis',
+        '• Performance heatmaps'
       ];
+
+  const handleOpenMapView = () => {
+    // Scroll to the map view section if on enhanced page
+    const mapSection = document.getElementById('section-map-view');
+    if (mapSection) {
+      mapSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      // Or open the standalone map page
+      window.open(`/map?dealId=${deal.id}`, '_blank');
+    }
+  };
 
   return (
     <div className="lg:col-span-2">
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-all cursor-pointer group" onClick={handleOpenMapView}>
         <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
             <span>🗺️</span> Interactive Map
           </h3>
-          <button className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors">
-            View Full Screen
+          <button 
+            className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors"
+            onClick={(e) => { e.stopPropagation(); handleOpenMapView(); }}
+          >
+            Open Map View →
           </button>
         </div>
-        <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 h-96">
-          {/* Map placeholder - integrate with actual mapping system */}
-          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+        <div className="relative bg-gradient-to-br from-blue-50 via-purple-50 to-indigo-50 h-96">
+          {/* Map CTA - link to dedicated Map View module */}
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400 group-hover:scale-105 transition-transform">
             <div className="text-center">
-              <div className="text-6xl mb-4">🗺️</div>
-              <p className="text-sm font-medium text-gray-600">
-                {mode === 'acquisition' ? 'Deal Location Map' : 'Property & Market Context'}
+              <div className="text-6xl mb-4 animate-pulse">🗺️</div>
+              <p className="text-base font-semibold text-gray-700 mb-2">
+                {mode === 'acquisition' ? 'Deal Location Intelligence' : 'Asset Performance Map'}
               </p>
-              <ul className="text-xs mt-3 space-y-1 text-gray-500">
+              <p className="text-sm text-gray-500 mb-4">
+                Click to open full interactive map view
+              </p>
+              <ul className="text-xs mt-3 space-y-1 text-gray-600">
                 {mapContext.map((item, i) => (
-                  <li key={i}>{item}</li>
+                  <li key={i} className="flex items-center justify-center gap-2">
+                    <span className="text-green-500">✓</span>
+                    {item}
+                  </li>
                 ))}
               </ul>
-              <div className="mt-4 px-4 py-2 bg-white rounded-lg border border-gray-200 inline-block">
+              <div className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-lg inline-block shadow-lg hover:shadow-xl group-hover:bg-blue-700 transition-all">
+                <span className="text-sm font-semibold">
+                  Open Map View Module →
+                </span>
+              </div>
+              <div className="mt-4 px-4 py-2 bg-white rounded-lg border border-gray-200 inline-block shadow-sm">
                 <span className="text-xs font-medium text-gray-700">
                   📍 {deal.address || deal.propertyAddress || 'Loading location...'}
                 </span>

@@ -9,6 +9,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { DealSection } from '../components/deal/DealSection';
 import {
   OverviewSection,
+  MapViewSection,
   CompetitionSection,
   SupplyTrackingSection,
   DebtMarketSection,
@@ -23,9 +24,9 @@ import {
   DocumentsSection,
   TeamSection,
   ContextTrackerSection,
-  NotesSection
+  NotesSection,
+  TimelineSection
 } from '../components/deal/sections';
-import { DEAL_SECTIONS } from '../types/deal-enhanced.types';
 import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
 
@@ -158,15 +159,33 @@ export const DealPageEnhanced: React.FC = () => {
           </div>
         </div>
 
-        {/* Section Quick Navigation */}
+        {/* Section Quick Navigation - All 14 Tabs */}
         <div className="px-6 py-2 bg-black/10 overflow-x-auto">
           <div className="flex gap-2 text-xs text-blue-100">
-            {DEAL_SECTIONS.map(section => (
+            {[
+              { id: 'overview', icon: '📊', title: 'Overview' },
+              { id: 'map-view', icon: '🗺️', title: 'Map View' },
+              { id: 'ai-agent', icon: '🤖', title: 'AI Agent' },
+              { id: 'properties', icon: '🏢', title: 'Properties' },
+              { id: 'financial', icon: '💰', title: 'Financial' },
+              { id: 'market', icon: '📈', title: 'Market' },
+              { id: 'competition', icon: '🏆', title: 'Competition' },
+              { id: 'supply-tracking', icon: '📦', title: 'Supply' },
+              { id: 'debt-market', icon: '💳', title: 'Debt' },
+              { id: 'strategy', icon: '🎯', title: 'Strategy' },
+              { id: 'exit', icon: '🚪', title: 'Exit' },
+              { id: 'due-diligence', icon: '✅', title: 'DD' },
+              { id: 'documents', icon: '📄', title: 'Docs' },
+              { id: 'team', icon: '👥', title: 'Team' },
+              { id: 'context-tracker', icon: '🧭', title: 'Context' },
+              { id: 'notes', icon: '💬', title: 'Notes' },
+              { id: 'timeline', icon: '📅', title: 'Timeline' }
+            ].map(section => (
               <button
                 key={section.id}
                 onClick={() => {
                   const element = document.getElementById(`section-${section.id}`);
-                  element?.scrollIntoView({ behavior: 'smooth' });
+                  element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
                 className="px-3 py-1 hover:bg-white/20 rounded transition-colors whitespace-nowrap"
               >
@@ -193,10 +212,69 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 2. Market Competition */}
-          <div id="section-market-competition">
+          {/* 2. Map View - Asset Intelligence */}
+          <div id="section-map-view">
             <DealSection
-              id="market-competition"
+              id="map-view"
+              icon="🗺️"
+              title="Map View - Asset Intelligence"
+              isPremium={true}
+            >
+              <MapViewSection deal={deal} mode={deal.status === 'owned' ? 'performance' : 'acquisition'} />
+            </DealSection>
+          </div>
+
+          {/* 3. AI Agent (Opus) - Moved up for prominence */}
+          <div id="section-ai-agent">
+            <DealSection
+              id="ai-agent"
+              icon="🤖"
+              title="AI Agent (Opus)"
+              isPremium={true}
+            >
+              <AIAgentSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 4. Properties */}
+          <div id="section-properties">
+            <DealSection
+              id="properties"
+              icon="🏢"
+              title="Properties"
+            >
+              <PropertiesSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 5. Financial Analysis */}
+          <div id="section-financial">
+            <DealSection
+              id="financial"
+              icon="💰"
+              title="Financial Analysis"
+              isPremium={true}
+            >
+              <FinancialSection deal={deal} isPremium={isPremium} />
+            </DealSection>
+          </div>
+
+          {/* 6. Market Analysis */}
+          <div id="section-market">
+            <DealSection
+              id="market"
+              icon="📈"
+              title="Market Analysis"
+              isPremium={true}
+            >
+              <MarketSection deal={deal} isPremium={isPremium} />
+            </DealSection>
+          </div>
+
+          {/* 7. Market Competition */}
+          <div id="section-competition">
+            <DealSection
+              id="competition"
               icon="🏆"
               title="Market Competition"
               isPremium={true}
@@ -205,7 +283,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 3. Supply Tracking */}
+          {/* 8. Supply Tracking */}
           <div id="section-supply-tracking">
             <DealSection
               id="supply-tracking"
@@ -217,7 +295,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 4. Debt & Financing */}
+          {/* 9. Debt & Financing */}
           <div id="section-debt-market">
             <DealSection
               id="debt-market"
@@ -233,31 +311,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 5. AI Agent (Opus) */}
-          <div id="section-ai-agent">
-            <DealSection
-              id="ai-agent"
-              icon="🤖"
-              title="AI Agent (Opus)"
-              isPremium={true}
-            >
-              <AIAgentSection deal={deal} />
-            </DealSection>
-          </div>
-
-          {/* 6. Financial Analysis */}
-          <div id="section-financial">
-            <DealSection
-              id="financial"
-              icon="💰"
-              title="Financial Analysis"
-              isPremium={true}
-            >
-              <FinancialSection deal={deal} isPremium={isPremium} />
-            </DealSection>
-          </div>
-
-          {/* 7. Strategy & Arbitrage */}
+          {/* 10. Strategy & Arbitrage */}
           <div id="section-strategy">
             <DealSection
               id="strategy"
@@ -269,7 +323,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 8. Exit Strategy */}
+          {/* 11. Exit Strategy */}
           <div id="section-exit">
             <DealSection
               id="exit"
@@ -281,7 +335,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 9. Due Diligence */}
+          {/* 12. Due Diligence */}
           <div id="section-due-diligence">
             <DealSection
               id="due-diligence"
@@ -292,30 +346,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 10. Properties */}
-          <div id="section-properties">
-            <DealSection
-              id="properties"
-              icon="🏢"
-              title="Properties"
-            >
-              <PropertiesSection deal={deal} />
-            </DealSection>
-          </div>
-
-          {/* 11. Market Analysis */}
-          <div id="section-market">
-            <DealSection
-              id="market"
-              icon="📈"
-              title="Market Analysis"
-              isPremium={true}
-            >
-              <MarketSection deal={deal} isPremium={isPremium} />
-            </DealSection>
-          </div>
-
-          {/* 12. Documents */}
+          {/* 13. Documents */}
           <div id="section-documents">
             <DealSection
               id="documents"
@@ -326,7 +357,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 13. Team & Communications */}
+          {/* 14. Team & Communications */}
           <div id="section-team">
             <DealSection
               id="team"
@@ -337,7 +368,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 14. Deal Context Tracker */}
+          {/* 15. Deal Context Tracker */}
           <div id="section-context-tracker">
             <DealSection
               id="context-tracker"
@@ -348,7 +379,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 15. Notes & Comments */}
+          {/* 16. Notes & Comments */}
           <div id="section-notes">
             <DealSection
               id="notes"
@@ -356,6 +387,17 @@ export const DealPageEnhanced: React.FC = () => {
               title="Notes & Comments"
             >
               <NotesSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* 17. Timeline */}
+          <div id="section-timeline">
+            <DealSection
+              id="timeline"
+              icon="📅"
+              title="Deal Timeline"
+            >
+              <TimelineSection deal={deal} />
             </DealSection>
           </div>
 
