@@ -202,4 +202,23 @@ export class DealsController {
   async getTriageResult(@Request() req, @Param('id') id: string) {
     return this.dealsService.getTriageResult(id, req.user.userId);
   }
+
+  /**
+   * GET /api/v1/deals/:id/project-management/overview
+   * Get unified project management overview (consolidates timeline + DD)
+   */
+  @Get(':id/project-management/overview')
+  async getProjectManagementOverview(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getProjectManagementOverview(id, req.user.userId);
+  }
+
+  /**
+   * GET /api/v1/deals/:id/investment-strategy/overview
+   * Get unified investment strategy (consolidates strategy + exit)
+   * Returns: strategy type, execution status, projected exit timeline
+   */
+  @Get(':id/investment-strategy/overview')
+  async getInvestmentStrategyOverview(@Request() req, @Param('id') id: string) {
+    return this.dealsService.getInvestmentStrategyOverview(id, req.user.userId);
+  }
 }
