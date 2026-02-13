@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { SectionCard } from '../components/deal/SectionCard';
 import { ModuleSuggestionModal } from '../components/deal/ModuleSuggestionModal';
-import { DocumentsSection, CollaborationSection, ActivityFeedSection } from '../components/deal/sections';
+import { CollaborationSection, ActivityFeedSection } from '../components/deal/sections';
+import { DocumentsFilesSection } from '../components/deal/sections/DocumentsFilesSection';
 import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
 import { useModuleCheck, invalidateModuleCache } from '../utils/modules';
@@ -255,9 +256,9 @@ export const DealPage: React.FC = () => {
             </SectionCard>
           )}
 
-          {/* 9. Documents */}
-          <SectionCard id="documents" icon="📄" title="Documents" dealId={dealId}>
-            <DocumentsSection deal={deal} />
+          {/* 9. Documents & Files (Unified) */}
+          <SectionCard id="documents" icon="📁" title="Documents & Files" dealId={dealId}>
+            <DocumentsFilesSection deal={deal} />
           </SectionCard>
 
           {/* 10. Collaboration */}
