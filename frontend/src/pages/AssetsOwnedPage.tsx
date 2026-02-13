@@ -1,18 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { DataGrid } from '../components/grid/DataGrid';
 import { ColumnDef, OwnedAsset, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
-import AssetsMapView from '../components/assets/AssetsMapView';
-import 'mapbox-gl/dist/mapbox-gl.css';
-
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type TabType = 'grid' | 'performance' | 'documents' | 'map';
+type TabType = 'grid' | 'performance' | 'documents';
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
@@ -206,66 +201,6 @@ export function AssetsOwnedPage() {
     },
   ];
 
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
-
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return;
-
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [-84.388, 33.7838],
-      zoom: 11,
-    });
-
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return;
-
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    assets.forEach((asset) => {
-      const el = document.createElement('div');
-      el.className = 'asset-marker';
-      el.innerHTML = '🏢';
-      el.style.fontSize = '24px';
-      el.style.cursor = 'pointer';
-
-      const lat = 33.75 + Math.random() * 0.1;
-      const lng = -84.42 + Math.random() * 0.1;
-
-      const marker = new mapboxgl.Marker(el)
-        .setLngLat([lng, lat])
-        .setPopup(
-          new mapboxgl.Popup().setHTML(`
-            <div class="p-2">
-              <h3 class="font-semibold">${asset.property_name}</h3>
-              <div class="text-sm text-gray-600 mt-1">
-                <div>${Number(asset.actual_occupancy || 0).toFixed(1)}% occupied</div>
-                <div>NOI: ${formatCurrency(asset.actual_noi)}</div>
-              </div>
-            </div>
-          `)
-        )
-        .addTo(map.current!);
-
-      el.addEventListener('click', () => setSelectedAsset(asset.id));
-      markersRef.current.push(marker);
-    });
-  }, [assets]);
-
   const totals = {
     totalAssets: assets.length,
     avgOccupancy: assets.length > 0
@@ -286,7 +221,6 @@ export function AssetsOwnedPage() {
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'grid', label: 'Grid View', icon: '📊' },
-    { id: 'map', label: 'Map View', icon: '🗺️' },
     { id: 'performance', label: 'Performance', icon: '📈' },
     { id: 'documents', label: 'Documents', icon: '📄' },
   ];
@@ -437,26 +371,6 @@ export function AssetsOwnedPage() {
               loading={loading}
             />
           )}
-          {activeTab === 'map' && (
-            loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : assets.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <div className="text-4xl mb-2">🗺️</div>
-                <div>No owned assets to display on map</div>
-              </div>
-            ) : (
-              <AssetsMapView
-                assets={assets}
-                onAssetClick={(assetId) => {
-                  setSelectedAsset(assetId);
-                  navigate(`/deals/${assetId}`);
-                }}
-              />
-            )
-          )}
           {activeTab === 'performance' && (
             loading ? (
               <div className="flex items-center justify-center py-12">
@@ -475,16 +389,11 @@ export function AssetsOwnedPage() {
     );
   };
 
-  const renderMap = () => (
-    <div ref={mapContainer} className="absolute inset-0" />
-  );
-
   return (
     <ThreePanelLayout
       storageKey="assets"
       showViewsPanel={false}
       renderContent={renderContent}
-      renderMap={renderMap}
     />
   );
 }
