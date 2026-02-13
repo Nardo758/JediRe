@@ -4,6 +4,7 @@
  */
 
 export { OverviewSection } from './OverviewSection';
+export { MapViewSection } from './MapViewSection';
 export { CompetitionSection } from './CompetitionSection';
 export { MarketCompetitionSection } from './MarketCompetitionSection'; // Legacy placeholder
 export { SupplySection } from './SupplySection'; // New full-featured supply pipeline analysis
