@@ -1,25 +1,49 @@
 /**
  * Pipeline Grid Page
  * Comprehensive grid view for pipeline deals with 20+ tracking columns
+ * Includes Map View toggle for spatial visualization
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DataGrid } from '../components/grid/DataGrid';
 import { ColumnDef, PipelineDeal, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
+import PipelineMapView from '../components/pipeline/PipelineMapView';
+import { MapIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
+type ViewMode = 'grid' | 'map';
+
 export function PipelineGridPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Get view mode from URL or default to grid
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    (searchParams.get('view') as ViewMode) || 'grid'
+  );
 
   useEffect(() => {
     loadDeals();
   }, []);
+
+  // Sync view mode with URL
+  useEffect(() => {
+    const urlView = searchParams.get('view') as ViewMode;
+    if (urlView && urlView !== viewMode) {
+      setViewMode(urlView);
+    }
+  }, [searchParams]);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setSearchParams({ view: mode });
+  };
 
   const loadDeals = async (sort?: GridSort) => {
     try {
@@ -246,6 +270,34 @@ export function PipelineGridPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {/* View Mode Toggle */}
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => handleViewModeChange('grid')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all ${
+                  viewMode === 'grid'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <TableCellsIcon className="w-5 h-5" />
+                <span className="font-medium">Grid View</span>
+              </button>
+              <button
+                onClick={() => handleViewModeChange('map')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all ${
+                  viewMode === 'map'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <MapIcon className="w-5 h-5" />
+                <span className="font-medium">Map View</span>
+              </button>
+            </div>
+
+            <div className="h-8 w-px bg-gray-300" />
+
             <button
               onClick={() => navigate('/deals')}
               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
@@ -263,28 +315,52 @@ export function PipelineGridPage() {
       </div>
 
       {/* Content */}
-      <div className="p-6">
-        {error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">{error}</p>
-            <button
-              onClick={() => loadDeals()}
-              className="mt-2 text-red-600 hover:text-red-800 font-medium"
-            >
-              Retry
-            </button>
-          </div>
-        ) : (
-          <DataGrid
-            columns={columns}
-            data={deals}
-            onRowClick={handleRowClick}
-            onSort={handleSort}
-            onExport={handleExport}
-            loading={loading}
-          />
-        )}
-      </div>
+      {viewMode === 'grid' ? (
+        <div className="p-6">
+          {error ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800">{error}</p>
+              <button
+                onClick={() => loadDeals()}
+                className="mt-2 text-red-600 hover:text-red-800 font-medium"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <DataGrid
+              columns={columns}
+              data={deals}
+              onRowClick={handleRowClick}
+              onSort={handleSort}
+              onExport={handleExport}
+              loading={loading}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="h-[calc(100vh-5rem)]">
+          {error ? (
+            <div className="flex items-center justify-center h-full bg-gray-50">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md">
+                <p className="text-red-800">{error}</p>
+                <button
+                  onClick={() => loadDeals()}
+                  className="mt-2 text-red-600 hover:text-red-800 font-medium"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <PipelineMapView
+              deals={deals}
+              onDealClick={handleRowClick}
+              loading={loading}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

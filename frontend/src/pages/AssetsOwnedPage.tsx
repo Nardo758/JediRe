@@ -1,25 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { DataGrid } from '../components/grid/DataGrid';
 import { ColumnDef, OwnedAsset, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
+import AssetsMapView from '../components/assets/AssetsMapView';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type TabType = 'grid' | 'performance' | 'documents';
+type TabType = 'grid' | 'performance' | 'documents' | 'map';
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [assets, setAssets] = useState<OwnedAsset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('grid');
+  
+  // Get initial tab from URL or default to 'grid'
+  const initialTab = (searchParams.get('view') as TabType) || 'grid';
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   useEffect(() => {
     loadAssets();
@@ -273,8 +278,15 @@ export function AssetsOwnedPage() {
     totalDistributions: assets.reduce((sum, a) => sum + (Number(a.total_distributions) || 0), 0),
   };
 
+  // Sync tab changes to URL
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+    setSearchParams({ view: tab });
+  };
+
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'grid', label: 'Grid View', icon: '📊' },
+    { id: 'map', label: 'Map View', icon: '🗺️' },
     { id: 'performance', label: 'Performance', icon: '📈' },
     { id: 'documents', label: 'Documents', icon: '📄' },
   ];
@@ -400,7 +412,7 @@ export function AssetsOwnedPage() {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 activeTab === tab.id
                   ? 'bg-blue-100 text-blue-700'
@@ -424,6 +436,26 @@ export function AssetsOwnedPage() {
               onExport={handleExport}
               loading={loading}
             />
+          )}
+          {activeTab === 'map' && (
+            loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : assets.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <div className="text-4xl mb-2">🗺️</div>
+                <div>No owned assets to display on map</div>
+              </div>
+            ) : (
+              <AssetsMapView
+                assets={assets}
+                onAssetClick={(assetId) => {
+                  setSelectedAsset(assetId);
+                  navigate(`/deals/${assetId}`);
+                }}
+              />
+            )
           )}
           {activeTab === 'performance' && (
             loading ? (
