@@ -14,6 +14,8 @@ export type DealState =
 
 export type TriageStatus = 'Hot' | 'Warm' | 'Watch' | 'Pass';
 
+export type DealCategory = 'pipeline' | 'portfolio';
+
 export interface Deal {
   // Core fields (JEDI RE)
   id: string;
@@ -37,6 +39,9 @@ export interface Deal {
   stateData?: any;
   daysInStation?: number;
   
+  // Category (pipeline vs portfolio)
+  dealCategory?: DealCategory;
+  
   // User/ownership
   userId?: string;
   
@@ -55,7 +60,6 @@ export interface Deal {
   notes?: string;
   description?: string;
   address?: string;
-  dealCategory?: string;
   developmentType?: string;
   targetUnits?: number;
   timelineStart?: string;
