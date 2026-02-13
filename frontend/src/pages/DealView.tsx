@@ -103,7 +103,7 @@ export const DealView: React.FC = () => {
     }
   };
 
-  const isOwned = selectedDeal?.status === 'owned' || selectedDeal?.status === 'closed_won';
+  const isOwned = selectedDeal?.dealCategory === 'portfolio' || selectedDeal?.state === 'POST_CLOSE';
   const dealMode = isOwned ? 'performance' : 'acquisition';
 
   const renderModule = () => {

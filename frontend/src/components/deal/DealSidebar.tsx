@@ -48,7 +48,7 @@ const PIPELINE_MODULES = [
 ];
 
 const ASSET_MODULES = [
-  'map', 'overview', 'ai-agent', 'financial', 'market', 'strategy',
+  'overview', 'ai-agent', 'financial', 'market', 'competition', 'strategy',
   'exit', 'team', 'documents', 'timeline', 'notes', 'files', 'context'
 ];
 
@@ -61,8 +61,9 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   currentModule,
   onModuleChange
 }) => {
-  const isOwned = deal.status === 'owned' || deal.status === 'closed_won';
-  const visibleModules = isOwned ? ASSET_MODULES : PIPELINE_MODULES;
+  const isPortfolio = deal.dealCategory === 'portfolio' || (deal as any).state === 'POST_CLOSE';
+  const isOwned = isPortfolio;
+  const visibleModules = isPortfolio ? ASSET_MODULES : PIPELINE_MODULES;
 
   const isModuleEnabled = (moduleName: string) => {
     const module = modules.find(m =>

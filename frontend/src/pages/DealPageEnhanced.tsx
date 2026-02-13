@@ -220,7 +220,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Map View - Asset Intelligence"
               isPremium={true}
             >
-              <MapViewSection deal={deal} mode={deal.status === 'owned' ? 'performance' : 'acquisition'} />
+              <MapViewSection deal={deal} mode={deal.dealCategory === 'portfolio' || deal.state === 'POST_CLOSE' ? 'performance' : 'acquisition'} />
             </DealSection>
           </div>
 

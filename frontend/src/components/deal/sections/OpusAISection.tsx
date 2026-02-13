@@ -933,7 +933,7 @@ function buildDealContext(deal: Deal, role: AIRole): OpusDealContext {
   return {
     dealId: deal.id,
     dealName: deal.name,
-    status: deal.status === 'owned' ? 'owned' : 'pipeline',
+    status: (deal.dealCategory === 'portfolio' || (deal as any).state === 'POST_CLOSE') ? 'owned' : 'pipeline',
     
     // Overview data
     overview: {
