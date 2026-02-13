@@ -620,11 +620,11 @@ app.get('/api/v1/deals/:id/properties', requireAuth, async (req: AuthenticatedRe
     const offset = parseInt(req.query.offset as string) || 0;
 
     const result = await client.query(
-      `SELECT p.*, dp.added_at
+      `SELECT p.*, dp.created_at as added_at
        FROM deal_properties dp
        JOIN properties p ON dp.property_id = p.id
        WHERE dp.deal_id = $1
-       ORDER BY dp.added_at DESC
+       ORDER BY dp.created_at DESC
        LIMIT $2 OFFSET $3`,
       [dealId, limit, offset]
     );
