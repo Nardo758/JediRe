@@ -8,8 +8,8 @@ import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
 import { useModuleCheck, invalidateModuleCache } from '../utils/modules';
 import { FinancialAnalysisSection } from '../components/deal/sections/FinancialAnalysisSection';
-import { StrategySection } from '../components/deal/sections/StrategySection';
-import { ExitSection } from '../components/deal/sections/ExitSection';
+import { InvestmentStrategySection } from '../components/deal/sections/InvestmentStrategySection';
+import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -229,19 +229,14 @@ export const DealPage: React.FC = () => {
             />
           </SectionCard>
 
-          {/* 4. Strategy */}
-          <SectionCard id="strategy" icon="🎯" title="Strategy" dealId={dealId}>
-            <StrategySection deal={deal} />
+          {/* 4. Investment Strategy (Unified: Acquisition → Value Creation → Exit) */}
+          <SectionCard id="investment-strategy" icon="🎯" title="Investment Strategy" dealId={dealId}>
+            <InvestmentStrategySection deal={deal} />
           </SectionCard>
 
-          {/* 5. Exit Strategy */}
-          <SectionCard id="exit" icon="🚪" title="Exit Strategy" dealId={dealId}>
-            <ExitSection deal={deal} />
-          </SectionCard>
-
-          {/* 6. Due Diligence */}
-          <SectionCard id="dd" icon="✅" title="Due Diligence" dealId={dealId}>
-            {null}
+          {/* 6. Project Management (Unified Timeline + Due Diligence) */}
+          <SectionCard id="project-management" icon="📋" title="Project Management" dealId={dealId}>
+            <ProjectManagementSection deal={deal} />
           </SectionCard>
 
           {/* 7. Market Analysis */}
