@@ -26,6 +26,11 @@ export interface PipelineDeal {
   closing_date: string;
   dd_checklist_pct: number;
   created_at: string;
+  
+  // Map view coordinates (optional, for geocoding)
+  lat?: number;
+  lng?: number;
+  geocoded_at?: string;
 }
 
 export interface OwnedAsset {

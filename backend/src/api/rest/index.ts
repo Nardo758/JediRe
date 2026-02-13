@@ -48,6 +48,7 @@ import credibilityRoutes from './credibility.routes';
 import eventsRoutes from './events.routes';
 import filesRoutes from './files.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
+import mapAnnotationsRoutes from './mapAnnotations.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -186,6 +187,9 @@ export function setupRESTRoutes(app: Application): void {
   // Asset Map Intelligence routes (Notes, Replies, News Links, Real-time Sync)
   app.use(`${API_PREFIX}/assets`, assetMapIntelligenceRoutes);
   app.use(`${API_PREFIX}/note-categories`, noteCategoriesRoutes);
+
+  // Map Annotations routes (Drawing tools for Pipeline & Assets maps)
+  app.use(`${API_PREFIX}/map-annotations`, mapAnnotationsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
