@@ -52,8 +52,8 @@ const ASSET_MODULES = [
   'exit', 'team', 'documents', 'timeline', 'notes', 'files', 'context'
 ];
 
-const PRO_MODULES = ['competition', 'supply', 'debt', 'ai-agent', 'financial', 'strategy', 'market'];
-const ENTERPRISE_MODULES = ['team'];
+const PRO_MODULES: string[] = [];
+const ENTERPRISE_MODULES: string[] = [];
 
 export const DealSidebar: React.FC<DealSidebarProps> = ({
   deal,
