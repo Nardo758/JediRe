@@ -1,34 +1,37 @@
 /**
- * Deal Sections - Barrel Export
- * Export all section components for easier importing
+ * Deal Sections - Centralized Exports
+ * All deal page section components
  */
 
-export { OverviewSection } from './OverviewSection';
-export { MapViewSection } from './MapViewSection';
-export { CompetitionSection } from './CompetitionSection';
-export { MarketCompetitionSection } from './MarketCompetitionSection'; // Legacy placeholder
-export { SupplySection } from './SupplySection'; // New full-featured supply pipeline analysis
-export { SupplyTrackingSection } from './SupplyTrackingSection'; // Legacy placeholder
-export { DebtMarketSection } from './DebtMarketSection'; // Legacy placeholder
-export { DebtSection } from './DebtSection'; // New full-featured debt/financing section
-export { AIAgentSection } from './AIAgentSection';
-export { FinancialSection } from './FinancialSection';
-export { StrategySection } from './StrategySection';
-export { ExitSection } from './ExitSection';
-export { DueDiligenceSection } from './DueDiligenceSection';
-export { PropertiesSection } from './PropertiesSection';
-export { MarketSection } from './MarketSection';
-export { MarketIntelligenceSection } from './MarketIntelligenceSection'; // UNIFIED: Competition + Supply + Market
-export { DocumentsSection } from './DocumentsSection';
-export { TeamSection } from './TeamSection';
-export { ContextTrackerSection } from './ContextTrackerSection';
-export { NotesSection } from './NotesSection';
-export { TimelineSection } from './TimelineSection';
+// Existing sections
+export { default as OverviewSection } from './OverviewSection';
+export { default as TeamSection } from './TeamSection';
+export { default as FinancialSection } from './FinancialSection';
+export { default as FinancialAnalysisSection } from './FinancialAnalysisSection';
+export { default as PropertiesSection } from './PropertiesSection';
+export { default as MarketCompetitionSection } from './MarketCompetitionSection';
+export { default as TimelineSection } from './TimelineSection';
+export { default as DocumentsSection } from './DocumentsSection';
+export { default as FilesSection } from './FilesSection';
+export { default as DocumentsFilesSection } from './DocumentsFilesSection';
+export { default as CollaborationSection } from './CollaborationSection';
+export { default as StrategySection } from './StrategySection';
+export { default as DebtSection } from './DebtSection';
+export { default as CompetitionSection } from './CompetitionSection';
+export { default as DueDiligenceSection } from './DueDiligenceSection';
+export { default as ExitSection } from './ExitSection';
+export { default as AIAgentSection } from './AIAgentSection';
 
-// Legacy sections (if they exist)
-export * from './FinancialAnalysisSection';
-export * from './ActivityFeedSection';
-export * from './CollaborationSection';
+// New Coming Soon Modules (Feb 2024)
+export { default as FinancialModelingSection } from './FinancialModelingSection';
+export { default as ZoningEntitlementsSection } from './ZoningEntitlementsSection';
+export { default as EnvironmentalESGSection } from './EnvironmentalESGSection';
+export { default as CapitalEventsSection } from './CapitalEventsSection';
+export { default as RiskManagementSection } from './RiskManagementSection';
+export { default as VendorManagementSection } from './VendorManagementSection';
+export { default as MarketingLeasingSection } from './MarketingLeasingSection';
+export { default as LegalComplianceSection } from './LegalComplianceSection';
+export { default as ConstructionManagementSection } from './ConstructionManagementSection';
 
-// Files & Documents Section
-export { FilesSection } from './FilesSection';
+// Enhanced sections with 3D diagram
+export { default as PropertiesSectionEnhanced } from './PropertiesSectionEnhanced';
