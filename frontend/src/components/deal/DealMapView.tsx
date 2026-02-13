@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { Deal, Property } from '../../types';
+import { api } from '../../services/api.client';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -108,11 +109,11 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
 
   const fetchProperties = async () => {
     try {
-      const response = await fetch(`/api/v1/deals/${deal.id}/properties`);
-      const data = await response.json();
-      setProperties(data);
+      const response = await api.deals.properties(deal.id);
+      const data = response.data?.data || response.data || [];
+      setProperties(Array.isArray(data) ? data : []);
       
-      if (map.current && data.length > 0) {
+      if (map.current && Array.isArray(data) && data.length > 0) {
         addPropertiesToMap(map.current, data);
       }
     } catch (error) {
