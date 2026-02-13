@@ -4,56 +4,55 @@ import { DealSidebarProps } from '../../types';
 const moduleIcons: Record<string, string> = {
   map: '🗺️',
   overview: '📊',
-  'market-competition': '🏆',
-  'supply-tracking': '📦',
-  'debt-market': '💳',
-  'ai-agent': '🤖',
+  competition: '🏆',
+  supply: '📦',
+  market: '📈',
+  debt: '💳',
   financial: '💰',
   strategy: '🎯',
   'due-diligence': '✅',
-  market: '📈',
-  documents: '📄',
+  'ai-agent': '🤖',
   team: '👥',
-  context: '🧭',
+  documents: '📄',
+  timeline: '📅',
   notes: '💬',
-  performance: '📉',
-  'capital-plan': '🏗️',
-  'asset-management': '🔧',
+  files: '📁',
+  exit: '🚪',
+  context: '🧭',
 };
 
 const moduleLabels: Record<string, string> = {
   map: 'Map View',
   overview: 'Overview',
-  'market-competition': 'Market Competition',
-  'supply-tracking': 'Supply Tracking',
-  'debt-market': 'Debt Market',
-  'ai-agent': 'AI Agent (Opus)',
-  financial: 'Financial Analysis',
-  strategy: 'Strategy & Arbitrage',
+  competition: 'Competition',
+  supply: 'Supply',
+  market: 'Market',
+  debt: 'Debt',
+  financial: 'Financial',
+  strategy: 'Strategy',
   'due-diligence': 'Due Diligence',
-  market: 'Market Analysis',
+  'ai-agent': 'AI Agent',
+  team: 'Team',
   documents: 'Documents',
-  team: 'Team & Comms',
-  context: 'Context Tracker',
-  notes: 'Notes & Comments',
-  performance: 'Performance Tracking',
-  'capital-plan': 'Capital Plan',
-  'asset-management': 'Asset Management',
+  timeline: 'Timeline',
+  notes: 'Notes',
+  files: 'Files',
+  exit: 'Exit Analysis',
+  context: 'Context',
 };
 
 const PIPELINE_MODULES = [
-  'map', 'overview', 'market-competition', 'supply-tracking', 'debt-market',
-  'ai-agent', 'financial', 'strategy', 'due-diligence', 'market',
-  'documents', 'context', 'notes'
+  'map', 'overview', 'ai-agent', 'competition', 'supply', 'market', 'debt',
+  'financial', 'strategy', 'due-diligence', 'team', 'documents', 'timeline',
+  'notes', 'files', 'exit', 'context'
 ];
 
 const ASSET_MODULES = [
-  'map', 'overview', 'performance', 'financial', 'asset-management',
-  'capital-plan', 'market', 'strategy', 'documents', 'team',
-  'context', 'notes'
+  'map', 'overview', 'ai-agent', 'financial', 'market', 'strategy',
+  'exit', 'team', 'documents', 'timeline', 'notes', 'files', 'context'
 ];
 
-const PRO_MODULES = ['market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'market'];
+const PRO_MODULES = ['competition', 'supply', 'debt', 'ai-agent', 'financial', 'strategy', 'market'];
 const ENTERPRISE_MODULES = ['team'];
 
 export const DealSidebar: React.FC<DealSidebarProps> = ({

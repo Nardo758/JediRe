@@ -101,9 +101,9 @@ export class DealsService {
    */
   private async initializeModules(dealId: string, tier: string) {
     const modulesByTier: Record<string, string[]> = {
-      basic: ['map', 'overview', 'context', 'notes', 'documents', 'due-diligence'],
-      pro: ['map', 'overview', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'due-diligence', 'market', 'documents', 'context', 'notes'],
-      enterprise: ['map', 'overview', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent', 'financial', 'strategy', 'due-diligence', 'market', 'documents', 'team', 'context', 'notes']
+      basic: ['map', 'overview', 'context', 'notes', 'documents', 'due-diligence', 'timeline', 'files'],
+      pro: ['map', 'overview', 'ai-agent', 'competition', 'supply', 'market', 'debt', 'financial', 'strategy', 'due-diligence', 'documents', 'timeline', 'notes', 'files', 'exit', 'context'],
+      enterprise: ['map', 'overview', 'ai-agent', 'competition', 'supply', 'market', 'debt', 'financial', 'strategy', 'due-diligence', 'team', 'documents', 'timeline', 'notes', 'files', 'exit', 'context']
     };
 
     const modules = modulesByTier[tier] || modulesByTier.basic;
@@ -315,18 +315,21 @@ export class DealsService {
          CASE module_name
            WHEN 'map' THEN 1
            WHEN 'overview' THEN 2
-           WHEN 'market-competition' THEN 3
-           WHEN 'supply-tracking' THEN 4
-           WHEN 'debt-market' THEN 5
-           WHEN 'ai-agent' THEN 6
-           WHEN 'financial' THEN 7
-           WHEN 'strategy' THEN 8
-           WHEN 'due-diligence' THEN 9
-           WHEN 'market' THEN 10
-           WHEN 'documents' THEN 11
-           WHEN 'team' THEN 12
-           WHEN 'context' THEN 13
+           WHEN 'ai-agent' THEN 3
+           WHEN 'competition' THEN 4
+           WHEN 'supply' THEN 5
+           WHEN 'market' THEN 6
+           WHEN 'debt' THEN 7
+           WHEN 'financial' THEN 8
+           WHEN 'strategy' THEN 9
+           WHEN 'due-diligence' THEN 10
+           WHEN 'team' THEN 11
+           WHEN 'documents' THEN 12
+           WHEN 'timeline' THEN 13
            WHEN 'notes' THEN 14
+           WHEN 'files' THEN 15
+           WHEN 'exit' THEN 16
+           WHEN 'context' THEN 17
            ELSE 99
          END`,
       [dealId]
