@@ -99,22 +99,22 @@ export const DEAL_SECTIONS: DealSection[] = [
     description: 'Property-specific details, metrics, and performance summary'
   },
   {
-    id: 'market-competition',
-    title: 'Market Competition',
+    id: 'competition',
+    title: 'Competition',
     icon: '🏆',
     isPremium: true,
     description: 'Competitive analysis, comparable properties, market positioning'
   },
   {
-    id: 'supply-tracking',
-    title: 'Supply Tracking',
+    id: 'supply',
+    title: 'Supply',
     icon: '📦',
     isPremium: true,
     description: 'Pipeline monitoring, new construction, supply impact analysis'
   },
   {
-    id: 'debt-market',
-    title: 'Debt Market',
+    id: 'debt',
+    title: 'Debt',
     icon: '💳',
     isPremium: true,
     description: 'Interest rates, lending conditions, financing options tracking'

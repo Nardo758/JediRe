@@ -170,8 +170,8 @@ export const DealPageEnhanced: React.FC = () => {
               { id: 'financial', icon: '💰', title: 'Financial' },
               { id: 'market', icon: '📈', title: 'Market' },
               { id: 'competition', icon: '🏆', title: 'Competition' },
-              { id: 'supply-tracking', icon: '📦', title: 'Supply' },
-              { id: 'debt-market', icon: '💳', title: 'Debt' },
+              { id: 'supply', icon: '📦', title: 'Supply' },
+              { id: 'debt', icon: '💳', title: 'Debt' },
               { id: 'strategy', icon: '🎯', title: 'Strategy' },
               { id: 'exit', icon: '🚪', title: 'Exit' },
               { id: 'due-diligence', icon: '✅', title: 'DD' },
@@ -284,11 +284,11 @@ export const DealPageEnhanced: React.FC = () => {
           </div>
 
           {/* 8. Supply Tracking */}
-          <div id="section-supply-tracking">
+          <div id="section-supply">
             <DealSection
-              id="supply-tracking"
+              id="supply"
               icon="📦"
-              title="Supply Tracking"
+              title="Supply"
               isPremium={true}
             >
               <SupplyTrackingSection deal={deal} />
@@ -296,11 +296,11 @@ export const DealPageEnhanced: React.FC = () => {
           </div>
 
           {/* 9. Debt & Financing */}
-          <div id="section-debt-market">
+          <div id="section-debt">
             <DealSection
-              id="debt-market"
+              id="debt"
               icon="💳"
-              title="Debt & Financing"
+              title="Debt"
               isPremium={true}
             >
               <DebtSection 

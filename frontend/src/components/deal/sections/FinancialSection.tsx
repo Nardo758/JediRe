@@ -149,7 +149,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ deal }) => {
           </button>
           <button
             onClick={() => {
-              const element = document.getElementById('section-debt-market');
+              const element = document.getElementById('section-debt');
               element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
             className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg transition-colors"

@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useDealStore } from '../stores/dealStore';
 import { DealSidebar } from '../components/deal/DealSidebar';
 import { DealMapView } from '../components/deal/DealMapView';
-import { DealStrategy } from '../components/deal/DealStrategy';
 import { DealContextTracker } from '../components/deal/DealContextTracker';
 import { GeographicScopeTabs } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
@@ -11,6 +10,20 @@ import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
 import { OverviewSection } from '../components/deal/sections/OverviewSection';
 import { AIAgentSection } from '../components/deal/sections/AIAgentSection';
+import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
+import { SupplySection } from '../components/deal/sections/SupplySection';
+import { DebtSection } from '../components/deal/sections/DebtSection';
+import { FinancialSection } from '../components/deal/sections/FinancialSection';
+import { MarketSection } from '../components/deal/sections/MarketSection';
+import { StrategySection } from '../components/deal/sections/StrategySection';
+import { DueDiligenceSection } from '../components/deal/sections/DueDiligenceSection';
+import { TeamSection } from '../components/deal/sections/TeamSection';
+import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
+import { NotesSection } from '../components/deal/sections/NotesSection';
+import { TimelineSection } from '../components/deal/sections/TimelineSection';
+import { FilesSection } from '../components/deal/sections/FilesSection';
+import { ExitSection } from '../components/deal/sections/ExitSection';
+
 
 export const DealView: React.FC = () => {
   const { id, module } = useParams<{ id: string; module?: string }>();
@@ -32,7 +45,6 @@ export const DealView: React.FC = () => {
     }
   }, [id]);
 
-  // Update current module when URL param changes
   useEffect(() => {
     if (module) {
       setCurrentModule(module);
@@ -61,7 +73,6 @@ export const DealView: React.FC = () => {
       const response = await api.deals.geographicContext(dealId);
       const context = response.data.data;
       
-      // Transform API response to match GeographicScopeTabs format
       const stats: any = {};
       
       if (context.trade_area?.stats) {
@@ -88,13 +99,16 @@ export const DealView: React.FC = () => {
       setGeographicStats(stats);
     } catch (err) {
       console.error('Failed to fetch geographic context:', err);
-      // Set null to fall back to empty state
       setGeographicStats(null);
     }
   };
 
+  const isOwned = selectedDeal?.status === 'owned' || selectedDeal?.status === 'closed_won';
+  const dealMode = isOwned ? 'performance' : 'acquisition';
+
   const renderModule = () => {
     if (!selectedDeal) return null;
+    const deal = selectedDeal as any;
 
     switch (currentModule) {
       case 'map':
@@ -102,43 +116,95 @@ export const DealView: React.FC = () => {
       case 'overview':
         return (
           <div className="p-6">
-            <OverviewSection deal={selectedDeal as any} />
+            <OverviewSection deal={deal} />
           </div>
         );
       case 'ai-agent':
         return (
           <div className="p-6">
-            <AIAgentSection deal={selectedDeal as any} useMockData={true} />
+            <AIAgentSection deal={deal} useMockData={true} />
+          </div>
+        );
+      case 'competition':
+        return (
+          <div className="p-6">
+            <CompetitionSection deal={deal} />
+          </div>
+        );
+      case 'supply':
+        return (
+          <div className="p-6">
+            <SupplySection deal={deal} />
+          </div>
+        );
+      case 'debt':
+        return (
+          <div className="p-6">
+            <DebtSection deal={deal} />
+          </div>
+        );
+      case 'financial':
+        return (
+          <div className="p-6">
+            <FinancialSection deal={deal} />
+          </div>
+        );
+      case 'market':
+        return (
+          <div className="p-6">
+            <MarketSection deal={deal} />
           </div>
         );
       case 'strategy':
-        return <DealStrategy dealId={selectedDeal.id} />;
+        return (
+          <div className="p-6">
+            <StrategySection deal={deal} />
+          </div>
+        );
+      case 'due-diligence':
+        return (
+          <div className="p-6">
+            <DueDiligenceSection deal={deal} />
+          </div>
+        );
+      case 'team':
+        return (
+          <div className="p-6">
+            <TeamSection deal={deal} />
+          </div>
+        );
+      case 'documents':
+        return (
+          <div className="p-6">
+            <DocumentsSection deal={deal} />
+          </div>
+        );
+      case 'notes':
+        return (
+          <div className="p-6">
+            <NotesSection deal={deal} />
+          </div>
+        );
+      case 'timeline':
+        return (
+          <div className="p-6">
+            <TimelineSection deal={deal} />
+          </div>
+        );
+      case 'files':
+        return (
+          <div className="p-6">
+            <FilesSection deal={deal} />
+          </div>
+        );
+      case 'exit':
+        return (
+          <div className="p-6">
+            <ExitSection deal={deal} />
+          </div>
+        );
       case 'context':
         return <DealContextTracker dealId={selectedDeal.id} />;
-      case 'market-competition':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Market Competition</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'supply-tracking':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Supply Tracking</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'debt-market':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Debt Market</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'financial':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Financial Analysis</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'market':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Market Analysis</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'due-diligence':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Due Diligence</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'documents':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Documents</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'team':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Team & Comms</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'notes':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Notes & Comments</h2><p className="text-gray-500">Coming Soon</p></div>;
-      case 'performance':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Performance Tracking</h2><p className="text-gray-500">Track actual vs pro forma performance across NOI, occupancy, and rent metrics.</p></div>;
-      case 'capital-plan':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Capital Plan</h2><p className="text-gray-500">Manage capex budgets, renovation schedules, and capital improvement tracking.</p></div>;
-      case 'asset-management':
-        return <div className="p-6"><h2 className="text-xl font-bold mb-2">Asset Management</h2><p className="text-gray-500">Operational health monitoring, maintenance schedules, and vendor management.</p></div>;
       default:
         return <div className="p-6">Module not found</div>;
     }
@@ -159,7 +225,7 @@ export const DealView: React.FC = () => {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">⚠️</div>
+          <div className="text-6xl mb-4">&#9888;&#65039;</div>
           <p className="text-gray-900 font-semibold mb-2">Failed to load deal</p>
           <p className="text-gray-600 mb-4">{error}</p>
           <Button onClick={() => navigate('/dashboard')}>
@@ -174,7 +240,7 @@ export const DealView: React.FC = () => {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">🔍</div>
+          <div className="text-6xl mb-4">&#128269;</div>
           <p className="text-gray-900 font-semibold mb-2">Deal not found</p>
           <p className="text-gray-600 mb-4">This deal may have been deleted or you don't have access.</p>
           <Button onClick={() => navigate('/dashboard')}>
@@ -187,7 +253,6 @@ export const DealView: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -213,10 +278,15 @@ export const DealView: React.FC = () => {
                 >
                   {(selectedDeal.tier || 'basic').toUpperCase()}
                 </span>
+                {isOwned && (
+                  <span className="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                    OWNED
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-600 mt-1">
-                {selectedDeal.projectType || 'multifamily'} • {(selectedDeal.acres || 0).toFixed(1)} acres
-                {selectedDeal.budget && ` • $${(selectedDeal.budget / 1000000).toFixed(1)}M budget`}
+                {selectedDeal.projectType || 'multifamily'} &bull; {(selectedDeal.acres || 0).toFixed(1)} acres
+                {selectedDeal.budget && ` \u2022 $${(selectedDeal.budget / 1000000).toFixed(1)}M budget`}
               </p>
             </div>
           </div>
@@ -236,7 +306,6 @@ export const DealView: React.FC = () => {
         </div>
       </div>
 
-      {/* Geographic Scope Tabs */}
       <div className="px-6 py-4 border-b border-gray-200">
         <GeographicScopeTabs
           activeScope={activeScope}
@@ -246,9 +315,7 @@ export const DealView: React.FC = () => {
         />
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Deal Modules */}
         <DealSidebar
           deal={selectedDeal}
           modules={modules}
@@ -256,7 +323,6 @@ export const DealView: React.FC = () => {
           onModuleChange={setCurrentModule}
         />
 
-        {/* Main Content Area */}
         <div className="flex-1 overflow-auto bg-gray-50">
           {renderModule()}
         </div>
