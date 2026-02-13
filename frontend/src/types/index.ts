@@ -2,6 +2,7 @@
 export * from './deal';
 export * from './analysis';
 export * from './opus.types';
+export * from './asset';
 
 // User type
 export interface User {
