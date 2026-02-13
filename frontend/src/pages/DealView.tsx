@@ -40,7 +40,7 @@ export const DealView: React.FC = () => {
     if (id) {
       fetchDealById(id);
       fetchModules(id);
-      loadTradeAreaForDeal(parseInt(id));
+      loadTradeAreaForDeal(id);
       fetchGeographicContext(id);
     }
   }, [id]);

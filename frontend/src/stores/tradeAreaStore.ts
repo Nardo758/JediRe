@@ -25,7 +25,7 @@ interface TradeAreaStore {
   updateDraftGeometry: (geometry: GeoJSON.Polygon) => void;
   loadPreviewStats: (geometry: GeoJSON.Polygon) => Promise<void>;
   saveTradeArea: (name: string) => Promise<TradeArea>;
-  loadTradeAreaForDeal: (dealId: number) => Promise<void>;
+  loadTradeAreaForDeal: (dealId: string | number) => Promise<void>;
   clearDraft: () => void;
   setActiveTradeArea: (tradeArea: TradeArea | null) => void;
   

@@ -611,6 +611,31 @@ app.get('/api/v1/deals/:id/modules', requireAuth, async (req: AuthenticatedReque
   }
 });
 
+// Get deal properties
+app.get('/api/v1/deals/:id/properties', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const client = req.dbClient || pool;
+    const dealId = req.params.id;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const result = await client.query(
+      `SELECT p.*, dp.added_at
+       FROM deal_properties dp
+       JOIN properties p ON dp.property_id = p.id
+       WHERE dp.deal_id = $1
+       ORDER BY dp.added_at DESC
+       LIMIT $2 OFFSET $3`,
+      [dealId, limit, offset]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Error fetching deal properties:', error);
+    res.json({ success: true, data: [] });
+  }
+});
+
 // Get deal activity feed
 app.get('/api/v1/deals/:id/activity', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
