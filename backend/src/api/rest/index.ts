@@ -46,6 +46,8 @@ import auditRoutes from './audit.routes';
 import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import eventsRoutes from './events.routes';
+import filesRoutes from './files.routes';
+import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -177,6 +179,13 @@ export function setupRESTRoutes(app: Application): void {
 
   // Due Diligence Checklists routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/dd-checklists`, ddChecklistsRoutes);
+
+  // File Management routes (Asset Map Intelligence - Note Attachments)
+  app.use(`${API_PREFIX}`, filesRoutes);
+
+  // Asset Map Intelligence routes (Notes, Replies, News Links, Real-time Sync)
+  app.use(`${API_PREFIX}/assets`, assetMapIntelligenceRoutes);
+  app.use(`${API_PREFIX}/note-categories`, noteCategoriesRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

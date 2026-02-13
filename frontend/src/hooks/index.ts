@@ -8,3 +8,4 @@ export { useIsMobile } from './useIsMobile';
 export { useMarkerClustering } from './useMarkerClustering';
 export { useWebSocket } from './useWebSocket';
 export { useDealMode } from './useDealMode';
+export { useAssetUpdates, useAssetMapWebSocket } from './useAssetUpdates';
