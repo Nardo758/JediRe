@@ -133,11 +133,15 @@ if command -v python3 &> /dev/null; then
         
         source venv/bin/activate
         
+        # Explicitly unset any pip user flags
+        unset PIP_USER
+        export PIP_NO_USER_CONFIG=1
+        
         echo "  → Upgrading pip..."
         python -m pip install --upgrade pip -q
         
         echo "  → Installing agent dependencies..."
-        python -m pip install --no-user -r requirements.replit.txt
+        pip install --isolated --ignore-installed -r requirements.replit.txt
         
         # Use Replit-specific files
         if [ -f "config/settings.replit.py" ]; then
