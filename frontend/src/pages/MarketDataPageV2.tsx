@@ -19,6 +19,7 @@ import { MarketResearchLayout } from '../components/market-research/MarketResear
 import { HeroMetrics, MetricCard } from '../components/market-research/HeroMetrics';
 import { InsightCard } from '../components/market-research/InsightCard';
 import { SubmarketLeaderboard } from '../components/market-research/SubmarketLeaderboard';
+import { SubmarketPerformanceTable } from '../components/market-research/SubmarketPerformanceTable';
 
 type TabType = 'overview' | 'submarkets' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
 
@@ -413,15 +414,237 @@ function SubmarketsTab({
   selectedSubmarket: string; 
   onSubmarketChange: (id: string) => void;
 }) {
-  return (
-    <div>
-      <SubmarketLeaderboard
-        city="Atlanta"
-        submarkets={submarkets}
-        selectedSubmarket={selectedSubmarket}
-        onSubmarketChange={onSubmarketChange}
-      />
+  // Import mock data
+  const mockSubmarketData = [
+    {
+      id: 'buckhead',
+      name: 'Buckhead',
+      rank: 1,
+      totalUnits: 12504,
+      rents: { all: 1850, y2020plus: 2100, y2010s: 1920, y2000s: 1650, pre2000: 1480 },
+      occupancy: { all: 94.5, y2020plus: 96.2, y2010s: 94.8, y2000s: 93.1, pre2000: 91.5 },
+      demand: 250,
+      underConstruction: 425,
+      compositeScore: 88,
+      properties: [
+        { id: 'p1', name: 'Park Avenue Apartments', units: 240, yearBuilt: 2020, avgRent: 2100, occupancy: 96.2, owner: 'CPI LLC', distance: 0.8, propertyClass: 'A' as const },
+        { id: 'p2', name: 'Skyline Towers', units: 180, yearBuilt: 2018, avgRent: 1950, occupancy: 94.5, owner: 'Equity Residential', distance: 1.2, propertyClass: 'A' as const },
+        { id: 'p3', name: 'Riverside Commons', units: 320, yearBuilt: 2015, avgRent: 1850, occupancy: 93.8, owner: 'Greystar', distance: 1.5, propertyClass: 'A' as const },
+        { id: 'p4', name: 'Peachtree Heights', units: 156, yearBuilt: 2021, avgRent: 2250, occupancy: 97.1, owner: 'MAA', distance: 0.6, propertyClass: 'A' as const },
+        { id: 'p5', name: 'Buckhead Station', units: 280, yearBuilt: 2012, avgRent: 1780, occupancy: 92.4, owner: 'Camden', distance: 1.8, propertyClass: 'B' as const },
+        { id: 'p6', name: 'Lenox Village', units: 195, yearBuilt: 2008, avgRent: 1620, occupancy: 91.2, owner: 'Alliance Residential', distance: 2.1, propertyClass: 'B' as const },
+      ],
+    },
+    {
+      id: 'midtown',
+      name: 'Midtown',
+      rank: 2,
+      totalUnits: 14415,
+      rents: { all: 1780, y2020plus: 2050, y2010s: 1850, y2000s: 1600, pre2000: 1450 },
+      occupancy: { all: 92.3, y2020plus: 94.1, y2010s: 92.7, y2000s: 91.2, pre2000: 89.8 },
+      demand: 180,
+      underConstruction: 320,
+      compositeScore: 82,
+      properties: [
+        { id: 'p7', name: 'Metropolis at Midtown', units: 310, yearBuilt: 2019, avgRent: 2000, occupancy: 93.8, owner: 'Arium', distance: 0.5, propertyClass: 'A' as const },
+        { id: 'p8', name: 'Atlantic Station Lofts', units: 225, yearBuilt: 2016, avgRent: 1880, occupancy: 92.1, owner: 'JPI', distance: 0.9, propertyClass: 'A' as const },
+        { id: 'p9', name: 'Brickworks', units: 180, yearBuilt: 2013, avgRent: 1750, occupancy: 91.5, owner: 'Cortland', distance: 1.2, propertyClass: 'B' as const },
+        { id: 'p10', name: 'Tech Square Apartments', units: 265, yearBuilt: 2022, avgRent: 2180, occupancy: 95.2, owner: 'Asset Living', distance: 0.3, propertyClass: 'A' as const },
+        { id: 'p11', name: 'Colony Square', units: 142, yearBuilt: 2007, avgRent: 1590, occupancy: 89.7, owner: 'Post Properties', distance: 1.5, propertyClass: 'B' as const },
+      ],
+    },
+    {
+      id: 'sandy-springs',
+      name: 'Sandy Springs',
+      rank: 3,
+      totalUnits: 9204,
+      rents: { all: 1650, y2020plus: 1920, y2010s: 1720, y2000s: 1480, pre2000: 1350 },
+      occupancy: { all: 90.8, y2020plus: 93.2, y2010s: 90.5, y2000s: 89.1, pre2000: 88.2 },
+      demand: 120,
+      underConstruction: 245,
+      compositeScore: 74,
+      properties: [
+        { id: 'p12', name: 'Glenridge Heights', units: 198, yearBuilt: 2020, avgRent: 1900, occupancy: 92.8, owner: 'Lincoln Property', distance: 0.7, propertyClass: 'A' as const },
+        { id: 'p13', name: 'Perimeter Place', units: 285, yearBuilt: 2014, avgRent: 1750, occupancy: 90.3, owner: 'Related', distance: 1.3, propertyClass: 'B' as const },
+        { id: 'p14', name: 'Riverside Park', units: 156, yearBuilt: 2009, avgRent: 1520, occupancy: 88.9, owner: 'Fairfield Residential', distance: 1.9, propertyClass: 'B' as const },
+        { id: 'p15', name: 'Hammond Woods', units: 220, yearBuilt: 2017, avgRent: 1820, occupancy: 91.4, owner: 'BH Management', distance: 1.1, propertyClass: 'A' as const },
+      ],
+    },
+    {
+      id: 'downtown',
+      name: 'Downtown',
+      rank: 4,
+      totalUnits: 11892,
+      rents: { all: 1580, y2020plus: 1890, y2010s: 1650, y2000s: 1420, pre2000: 1280 },
+      occupancy: { all: 87.2, y2020plus: 90.5, y2010s: 88.1, y2000s: 85.8, pre2000: 83.4 },
+      demand: -45,
+      underConstruction: 580,
+      compositeScore: 62,
+      properties: [
+        { id: 'p16', name: 'Five Points Lofts', units: 175, yearBuilt: 2021, avgRent: 1950, occupancy: 91.2, owner: 'NRP', distance: 0.4, propertyClass: 'A' as const },
+        { id: 'p17', name: 'Centennial Tower', units: 310, yearBuilt: 2015, avgRent: 1680, occupancy: 88.5, owner: 'Wood Partners', distance: 0.8, propertyClass: 'A' as const },
+        { id: 'p18', name: 'Underground Atlanta Apartments', units: 142, yearBuilt: 2010, avgRent: 1520, occupancy: 85.3, owner: 'Mill Creek', distance: 1.2, propertyClass: 'B' as const },
+        { id: 'p19', name: 'Peachtree Center Residences', units: 228, yearBuilt: 2018, avgRent: 1750, occupancy: 89.1, owner: 'Crescent', distance: 0.6, propertyClass: 'A' as const },
+      ],
+    },
+    {
+      id: 'decatur',
+      name: 'Decatur',
+      rank: 5,
+      totalUnits: 6845,
+      rents: { all: 1620, y2020plus: 1880, y2010s: 1680, y2000s: 1450, pre2000: 1320 },
+      occupancy: { all: 91.5, y2020plus: 94.0, y2010s: 91.8, y2000s: 90.2, pre2000: 88.6 },
+      demand: 85,
+      underConstruction: 185,
+      compositeScore: 68,
+      properties: [
+        { id: 'p20', name: 'Decatur Square', units: 164, yearBuilt: 2019, avgRent: 1850, occupancy: 93.5, owner: 'Trammell Crow', distance: 0.5, propertyClass: 'A' as const },
+        { id: 'p21', name: 'Oakhurst Village', units: 118, yearBuilt: 2016, avgRent: 1720, occupancy: 91.2, owner: 'Pollack Shores', distance: 1.0, propertyClass: 'A' as const },
+        { id: 'p22', name: 'Agnes Scott Apartments', units: 195, yearBuilt: 2011, avgRent: 1580, occupancy: 89.8, owner: 'Benchmark', distance: 1.4, propertyClass: 'B' as const },
+      ],
+    },
+  ];
 
+  return (
+    <div className="space-y-6">
+      {/* Metro-wide Market Indicators */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-600 mb-1">Net Absorption</div>
+          <div className="text-2xl font-bold text-green-600">+420</div>
+          <div className="text-xs text-gray-500 mt-1">12-month</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-600 mb-1">Vacancy Rate</div>
+          <div className="text-2xl font-bold text-blue-600">6.8%</div>
+          <div className="text-xs text-gray-500 mt-1">Healthy demand</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-600 mb-1">Avg Rent</div>
+          <div className="text-2xl font-bold text-gray-900">$1,725</div>
+          <div className="text-xs text-green-600 mt-1">+5.2% YoY</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-600 mb-1">Pipeline (UC)</div>
+          <div className="text-2xl font-bold text-yellow-600">1,755</div>
+          <div className="text-xs text-gray-500 mt-1">Under construction</div>
+        </div>
+      </div>
+
+      {/* Performance Table with Property Grids */}
+      <SubmarketPerformanceTable submarkets={mockSubmarketData} />
+
+      {/* Charts Section */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="font-semibold text-gray-900 mb-4">Market Activity</h3>
+          <div className="h-64 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <Activity className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+              <p>Net Absorption + Deliveries + Vacancy</p>
+              <p className="text-sm text-gray-400 mt-1">Combo bar chart</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h3 className="font-semibold text-gray-900 mb-4">Under Construction by Submarket</h3>
+          <div className="h-64 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <Package className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+              <p>Pipeline by submarket</p>
+              <p className="text-sm text-gray-400 mt-1">Bar chart</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Transaction Tables */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Top Sales */}
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
+            <h3 className="font-semibold text-gray-900">Top Sales by SF</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Property</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 uppercase">Size (SF)</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 uppercase">Price</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Buyer/Seller</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Class</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">3500 Peachtree Rd</td>
+                  <td className="px-3 py-3 text-right text-gray-700">25,800</td>
+                  <td className="px-3 py-3 text-right font-semibold text-gray-900">$24.2M</td>
+                  <td className="px-3 py-3 text-gray-700 text-xs">CPI Phipps LLC / KC Life Insurance</td>
+                  <td className="px-3 py-3 text-center"><span className="px-2 py-1 rounded bg-green-100 text-green-800 text-xs font-bold">A</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">Park Avenue Complex</td>
+                  <td className="px-3 py-3 text-right text-gray-700">30,392</td>
+                  <td className="px-3 py-3 text-right font-semibold text-gray-900">$19.2M</td>
+                  <td className="px-3 py-3 text-gray-700 text-xs">Greystone / Gilco Development</td>
+                  <td className="px-3 py-3 text-center"><span className="px-2 py-1 rounded bg-green-100 text-green-800 text-xs font-bold">A</span></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">Multiple A2 locations</td>
+                  <td className="px-3 py-3 text-right text-gray-700">24,700</td>
+                  <td className="px-3 py-3 text-right font-semibold text-gray-900">$15.3M</td>
+                  <td className="px-3 py-3 text-gray-700 text-xs">Lincoln Prop / Westcore Properties</td>
+                  <td className="px-3 py-3 text-center"><span className="px-2 py-1 rounded bg-blue-100 text-blue-800 text-xs font-bold">B</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Top Leases */}
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
+            <h3 className="font-semibold text-gray-900">Top Leases by SF</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Property</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-gray-700 uppercase">Size (SF)</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Tenant</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Industry</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">1115 W Alameda Dr</td>
+                  <td className="px-3 py-3 text-right text-gray-700">479,207</td>
+                  <td className="px-3 py-3 text-gray-900 font-medium">Lucid Motors</td>
+                  <td className="px-3 py-3 text-gray-600 text-xs">Automotive</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">3405 E McQueen Rd</td>
+                  <td className="px-3 py-3 text-right text-gray-700">201,784</td>
+                  <td className="px-3 py-3 text-gray-900 font-medium">Amazon</td>
+                  <td className="px-3 py-3 text-gray-600 text-xs">E-Commerce</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium text-gray-900">2850 N Nevada St</td>
+                  <td className="px-3 py-3 text-right text-gray-700">184,484</td>
+                  <td className="px-3 py-3 text-gray-900 font-medium">Amazon</td>
+                  <td className="px-3 py-3 text-gray-600 text-xs">E-Commerce</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Insights */}
       <InsightCard
         title="SUBMARKET ANALYSIS"
         insights={[
@@ -429,9 +652,9 @@ function SubmarketsTab({
           'Midtown shows strong fundamentals with 82 score, balanced demand and moderate pipeline',
           'Downtown shows highest risk with elevated vacancy (8.5%) and heavy supply pipeline (58%)',
           'Sandy Springs and Decatur offer moderate opportunities with balanced metrics',
-          'Consider Buckhead or Midtown for lower-risk acquisitions; Downtown for value-add plays',
+          'Newer properties (2020+) command 15-20% rent premiums across all submarkets',
         ]}
-        recommendation="Focus acquisition efforts on Buckhead and Midtown submarkets for optimal risk-adjusted returns. Monitor Downtown for distressed opportunities."
+        recommendation="Focus acquisition efforts on Buckhead and Midtown submarkets for optimal risk-adjusted returns. Target properties built after 2015 for best rent performance. Monitor Downtown for distressed opportunities."
       />
     </div>
   );
