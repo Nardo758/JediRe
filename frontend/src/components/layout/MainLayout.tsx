@@ -107,11 +107,11 @@ export const MainLayout: React.FC = () => {
         {/* Sidebar */}
         <aside
           className={`bg-white border-r border-gray-200 overflow-y-auto transition-all duration-300 relative ${
-            sidebarOpen ? 'w-64' : 'w-0'
+            sidebarOpen ? 'w-96' : 'w-0'
           }`}
         >
           {sidebarOpen && (
-            <div className="p-4 w-64">
+            <div className="p-4 w-96">
               <div className="flex items-center justify-end mb-4">
                 <button
                   onClick={() => setSidebarOpen(false)}
