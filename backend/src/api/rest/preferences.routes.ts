@@ -233,4 +233,195 @@ router.delete('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/user/available-markets
+ * Get list of available markets for onboarding
+ */
+router.get('/user/available-markets', async (req: Request, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT name, display_name, state, metro_area, coverage_status, 
+              property_count, data_freshness
+       FROM available_markets 
+       WHERE enabled = true
+       ORDER BY 
+         CASE coverage_status 
+           WHEN 'active' THEN 1
+           WHEN 'beta' THEN 2
+           WHEN 'coming_soon' THEN 3
+         END,
+         display_name ASC`
+    );
+
+    res.json({
+      success: true,
+      markets: result.rows
+    });
+  } catch (error) {
+    logger.error('Error fetching available markets:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch available markets'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/user/property-types
+ * Get list of property types for onboarding
+ */
+router.get('/user/property-types', async (req: Request, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT type_key, display_name, description, icon
+       FROM property_types 
+       WHERE enabled = true
+       ORDER BY display_name ASC`
+    );
+
+    res.json({
+      success: true,
+      property_types: result.rows
+    });
+  } catch (error) {
+    logger.error('Error fetching property types:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch property types'
+    });
+  }
+});
+
+/**
+ * PUT /api/v1/user/preferences
+ * Update user market and property type preferences (for onboarding)
+ */
+router.put('/user/preferences', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const {
+      preferred_markets,
+      property_types,
+      primary_market,
+      primary_use_case,
+      onboarding_completed
+    } = req.body;
+
+    // Build SET clauses dynamically
+    const updates: string[] = [];
+    const values: any[] = [userId];
+    let paramCount = 1;
+
+    if (preferred_markets !== undefined) {
+      paramCount++;
+      updates.push(`preferred_markets = $${paramCount}`);
+      values.push(preferred_markets);
+    }
+
+    if (property_types !== undefined) {
+      paramCount++;
+      updates.push(`property_types = $${paramCount}`);
+      values.push(property_types);
+    }
+
+    if (primary_market !== undefined) {
+      paramCount++;
+      updates.push(`primary_market = $${paramCount}`);
+      values.push(primary_market);
+    }
+
+    if (primary_use_case !== undefined) {
+      paramCount++;
+      updates.push(`primary_use_case = $${paramCount}`);
+      values.push(primary_use_case);
+    }
+
+    if (onboarding_completed !== undefined) {
+      paramCount++;
+      updates.push(`onboarding_completed = $${paramCount}`);
+      values.push(onboarding_completed);
+      
+      if (onboarding_completed) {
+        updates.push(`preferences_set_at = CURRENT_TIMESTAMP`);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No fields to update'
+      });
+    }
+
+    const result = await query(
+      `UPDATE users 
+       SET ${updates.join(', ')}
+       WHERE id = $1
+       RETURNING id, preferred_markets, property_types, primary_market, 
+                 primary_use_case, onboarding_completed, preferences_set_at`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    logger.info('User preferences updated', { 
+      userId, 
+      onboardingCompleted: onboarding_completed 
+    });
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+      message: 'Preferences updated successfully'
+    });
+  } catch (error) {
+    logger.error('Error updating user preferences:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update preferences'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/user/preferences
+ * Get user's market and property type preferences
+ */
+router.get('/user/preferences', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+
+    const result = await query(
+      `SELECT preferred_markets, property_types, primary_market, 
+              primary_use_case, onboarding_completed, preferences_set_at
+       FROM users 
+       WHERE id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    logger.error('Error fetching user preferences:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch preferences'
+    });
+  }
+});
+
 export default router;
