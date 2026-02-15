@@ -197,7 +197,7 @@ export function NewsIntelligencePage() {
 
   // Render functions for each view
   const renderEventFeed = () => (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-4xl">
       {/* Category Filters */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         {categories.map((cat) => (
