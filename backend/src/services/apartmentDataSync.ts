@@ -6,6 +6,14 @@ interface SyncResult {
   marketSnapshot: boolean;
   rentComps: number;
   supplyPipeline: number;
+  absorptionRate: boolean;
+  trends: boolean;
+  submarkets: boolean;
+  userStats: boolean;
+  userActivity: boolean;
+  demandSignals: boolean;
+  searchTrends: boolean;
+  userPreferences: boolean;
   errors: string[];
   duration: number;
 }
@@ -90,6 +98,14 @@ export class ApartmentDataSyncService {
       marketSnapshot: false,
       rentComps: 0,
       supplyPipeline: 0,
+      absorptionRate: false,
+      trends: false,
+      submarkets: false,
+      userStats: false,
+      userActivity: false,
+      demandSignals: false,
+      searchTrends: false,
+      userPreferences: false,
       errors: [],
       duration: 0,
     };
@@ -97,11 +113,17 @@ export class ApartmentDataSyncService {
     console.log(`Starting full data sync for ${city}, ${state}...`);
 
     const syncTasks = [
-      this.syncProperties(city, state, result),
       this.syncMarketData(city, state, result),
+      this.syncTrends(city, result),
+      this.syncSubmarkets(city, result),
       this.syncRentComps(city, state, result),
       this.syncSupplyPipeline(city, state, result),
       this.syncAbsorptionRate(city, state, result),
+      this.syncUserStats(result),
+      this.syncUserActivity(result),
+      this.syncDemandSignals(result),
+      this.syncSearchTrends(result),
+      this.syncUserPreferences(result),
     ];
 
     await Promise.allSettled(syncTasks);
@@ -111,168 +133,41 @@ export class ApartmentDataSyncService {
     await this.logSync(city, state, result);
     
     console.log(`Data sync complete in ${result.duration}ms:`, {
-      properties: result.properties,
       marketSnapshot: result.marketSnapshot,
+      properties: result.properties,
       rentComps: result.rentComps,
       supplyPipeline: result.supplyPipeline,
+      absorptionRate: result.absorptionRate,
+      trends: result.trends,
+      submarkets: result.submarkets,
+      userStats: result.userStats,
+      userActivity: result.userActivity,
+      demandSignals: result.demandSignals,
+      searchTrends: result.searchTrends,
+      userPreferences: result.userPreferences,
       errors: result.errors.length,
     });
 
     return result;
   }
 
-  private async syncProperties(city: string, state: string, result: SyncResult): Promise<void> {
-    try {
-      console.log('Syncing properties...');
-      
-      const endpoints = [
-        `/api/jedi/market-data?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/admin/properties?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/properties?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/v1/properties?city=${encodeURIComponent(city)}`,
-        `/api/admin/properties`,
-        `/api/properties`,
-        `/api/v1/properties`,
-      ];
-
-      let properties: any[] = [];
-      
-      for (const endpoint of endpoints) {
-        try {
-          const responseData = await this.tryEndpoint(endpoint);
-          const data = responseData?.data || responseData?.properties || responseData;
-          
-          if (Array.isArray(data) && data.length > 0) {
-            properties = data;
-            console.log(`Found ${properties.length} properties from ${endpoint}`);
-            break;
-          }
-        } catch (e: any) {
-          console.log(`Endpoint ${endpoint} failed: ${e.response?.status || e.message}`);
-        }
-      }
-
-      for (const prop of properties) {
-        try {
-          await this.pool.query(`
-            INSERT INTO apartment_properties (
-              external_id, name, address, city, state, zip_code,
-              latitude, longitude, year_built, year_renovated,
-              property_class, building_type, management_company,
-              total_units, current_occupancy_percent, avg_days_to_lease,
-              unit_count, avg_rent, min_rent, max_rent,
-              concession_count, parking_fee_monthly, pet_rent_monthly,
-              application_fee, admin_fee, synced_at, updated_at
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6,
-              $7, $8, $9, $10,
-              $11, $12, $13,
-              $14, $15, $16,
-              $17, $18, $19, $20,
-              $21, $22, $23,
-              $24, $25, NOW(), NOW()
-            )
-            ON CONFLICT (external_id) DO UPDATE SET
-              name = EXCLUDED.name,
-              address = EXCLUDED.address,
-              city = EXCLUDED.city,
-              state = EXCLUDED.state,
-              zip_code = EXCLUDED.zip_code,
-              latitude = EXCLUDED.latitude,
-              longitude = EXCLUDED.longitude,
-              year_built = EXCLUDED.year_built,
-              year_renovated = EXCLUDED.year_renovated,
-              property_class = EXCLUDED.property_class,
-              building_type = EXCLUDED.building_type,
-              management_company = EXCLUDED.management_company,
-              total_units = EXCLUDED.total_units,
-              current_occupancy_percent = EXCLUDED.current_occupancy_percent,
-              avg_days_to_lease = EXCLUDED.avg_days_to_lease,
-              unit_count = EXCLUDED.unit_count,
-              avg_rent = EXCLUDED.avg_rent,
-              min_rent = EXCLUDED.min_rent,
-              max_rent = EXCLUDED.max_rent,
-              concession_count = EXCLUDED.concession_count,
-              parking_fee_monthly = EXCLUDED.parking_fee_monthly,
-              pet_rent_monthly = EXCLUDED.pet_rent_monthly,
-              application_fee = EXCLUDED.application_fee,
-              admin_fee = EXCLUDED.admin_fee,
-              synced_at = NOW(),
-              updated_at = NOW()
-          `, [
-            String(prop.id || prop.property_id || prop.external_id || `prop_${result.properties}`),
-            prop.name || prop.property_name || 'Unknown',
-            prop.address || prop.full_address || '',
-            prop.city || city,
-            prop.state || state,
-            prop.zip_code || prop.zip || prop.postal_code || null,
-            prop.latitude || prop.lat || null,
-            prop.longitude || prop.lng || prop.lon || null,
-            prop.year_built || null,
-            prop.year_renovated || null,
-            prop.property_class || prop.class || null,
-            prop.building_type || prop.type || null,
-            prop.management_company || prop.manager || null,
-            prop.total_units || prop.units || null,
-            prop.current_occupancy_percent || prop.occupancy || prop.occupancy_rate || null,
-            prop.avg_days_to_lease || null,
-            prop.unit_count || prop.total_units || prop.units || null,
-            prop.avg_rent || prop.average_rent || null,
-            prop.min_rent || prop.min_price || null,
-            prop.max_rent || prop.max_price || null,
-            prop.concession_count || prop.concessions || 0,
-            prop.parking_fee_monthly || prop.parking_fee || null,
-            prop.pet_rent_monthly || prop.pet_rent || null,
-            prop.application_fee || null,
-            prop.admin_fee || null,
-          ]);
-          result.properties++;
-        } catch (e: any) {
-          console.error(`Error inserting property ${prop.name}:`, e.message);
-        }
-      }
-    } catch (error: any) {
-      const msg = `Properties sync failed: ${error.message}`;
-      console.error(msg);
-      result.errors.push(msg);
-    }
-  }
-
   private async syncMarketData(city: string, state: string, result: SyncResult): Promise<void> {
     try {
-      console.log('Syncing market data...');
-      
-      const endpoints = [
-        `/api/jedi/market-data?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/v1/market-data?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/market-data?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-      ];
-
-      let marketData: any = null;
-      
-      for (const endpoint of endpoints) {
-        try {
-          const responseData = await this.tryEndpoint(endpoint);
-          marketData = responseData?.data || responseData;
-          if (marketData && (marketData.supply || marketData.pricing || marketData.total_properties)) {
-            console.log('Market data found from', endpoint);
-            break;
-          }
-          marketData = null;
-        } catch (e: any) {
-          console.log(`Market endpoint ${endpoint} failed: ${e.response?.status || e.message}`);
-        }
-      }
+      console.log(`[syncMarketData] Fetching market data for ${city}, ${state}...`);
+      const endpoint = `/api/jedi/market-data?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const marketData = responseData?.data || responseData;
 
       if (!marketData) {
-        result.errors.push('No market data endpoint responded');
+        result.errors.push('Market data endpoint returned empty response');
         return;
       }
 
-      const supply = marketData.supply || {};
-      const pricing = marketData.pricing || {};
-      const demand = marketData.demand || {};
-      const forecast = marketData.forecast || {};
+      console.log(`[syncMarketData] Received market data, storing snapshot...`);
+
+      const ms = marketData.market_summary || marketData;
+      const vacancy = ms.vacancy_rate ?? null;
+      const avgOccupancy = vacancy !== null ? (1 - vacancy) : null;
 
       await this.pool.query(`
         INSERT INTO apartment_market_snapshots (
@@ -316,61 +211,113 @@ export class ApartmentDataSyncService {
           synced_at = NOW()
       `, [
         city, state,
-        supply.total_properties || null,
-        supply.total_units || null,
-        supply.avg_occupancy || null,
-        supply.class_distribution?.a || null,
-        supply.class_distribution?.b || null,
-        supply.class_distribution?.c || null,
-        pricing.avg_rent_by_type?.Studio || pricing.avg_rent_by_type?.studio || null,
-        pricing.avg_rent_by_type?.['1BR'] || pricing.avg_rent_by_type?.['1br'] || null,
-        pricing.avg_rent_by_type?.['2BR'] || pricing.avg_rent_by_type?.['2br'] || null,
-        pricing.avg_rent_by_type?.['3BR'] || pricing.avg_rent_by_type?.['3br'] || null,
-        pricing.rent_growth_90d || null,
-        pricing.rent_growth_180d || null,
-        pricing.concession_rate || null,
-        pricing.avg_concession_value || null,
-        demand.total_renters || null,
-        demand.avg_budget || null,
-        demand.lease_expirations_90d || null,
-        forecast.units_delivering_30d || null,
-        forecast.units_delivering_60d || null,
-        forecast.units_delivering_90d || null,
+        ms.total_properties || marketData.total_properties || null,
+        ms.total_units || marketData.total_units || null,
+        avgOccupancy,
+        null,
+        null,
+        null,
+        ms.avg_rent_studio || null,
+        ms.avg_rent_1bed || null,
+        ms.avg_rent_2bed || null,
+        ms.avg_rent_3bed || null,
+        ms.rent_growth_rate_90d || null,
+        null,
+        ms.concessions_prevalence || ms.avg_concessions_pct || null,
+        ms.avg_savings_potential || null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
       ]);
       
       result.marketSnapshot = true;
+      console.log(`[syncMarketData] Market snapshot stored successfully`);
     } catch (error: any) {
       const msg = `Market data sync failed: ${error.message}`;
-      console.error(msg);
+      console.error(`[syncMarketData] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncTrends(city: string, result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncTrends] Fetching rent trends for ${city}...`);
+      const endpoint = `/api/jedi/trends?city=${encodeURIComponent(city)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('Trends endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_trends WHERE city = $1 AND snapshot_date = CURRENT_DATE`,
+        [city]
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_trends (city, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        [city, JSON.stringify(data)]
+      );
+
+      result.trends = true;
+      console.log(`[syncTrends] Trends data stored successfully for ${city}`);
+    } catch (error: any) {
+      const msg = `Trends sync failed: ${error.message}`;
+      console.error(`[syncTrends] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncSubmarkets(city: string, result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncSubmarkets] Fetching submarkets for ${city}...`);
+      const endpoint = `/api/jedi/submarkets?city=${encodeURIComponent(city)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('Submarkets endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_submarkets WHERE city = $1 AND snapshot_date = CURRENT_DATE`,
+        [city]
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_submarkets (city, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        [city, JSON.stringify(data)]
+      );
+
+      result.submarkets = true;
+      console.log(`[syncSubmarkets] Submarkets data stored successfully for ${city}`);
+    } catch (error: any) {
+      const msg = `Submarkets sync failed: ${error.message}`;
+      console.error(`[syncSubmarkets] ${msg}`);
       result.errors.push(msg);
     }
   }
 
   private async syncRentComps(city: string, state: string, result: SyncResult): Promise<void> {
     try {
-      console.log('Syncing rent comps...');
-      
-      const endpoints = [
-        `/api/jedi/rent-comps?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/v1/rent-comps?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/rent-comps?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-      ];
+      console.log(`[syncRentComps] Fetching rent comps for ${city}, ${state}...`);
+      const endpoint = `/api/jedi/rent-comps?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const comps = responseData?.data || responseData;
 
-      let comps: any[] = [];
-      
-      for (const endpoint of endpoints) {
-        try {
-          const responseData = await this.tryEndpoint(endpoint);
-          const data = responseData?.data || responseData;
-          if (Array.isArray(data) && data.length > 0) {
-            comps = data;
-            console.log(`Found ${comps.length} rent comps from ${endpoint}`);
-            break;
-          }
-        } catch (e: any) {
-          console.log(`Rent comps endpoint ${endpoint} failed: ${e.response?.status || e.message}`);
-        }
+      if (!Array.isArray(comps)) {
+        console.log(`[syncRentComps] Response is not an array, skipping`);
+        result.errors.push('Rent comps endpoint did not return an array');
+        return;
       }
+
+      console.log(`[syncRentComps] Received ${comps.length} rent comps, storing...`);
 
       await this.pool.query(`DELETE FROM apartment_rent_comps WHERE city = $1 AND state = $2`, [city, state]);
 
@@ -383,13 +330,13 @@ export class ApartmentDataSyncService {
               occupancy, year_built, property_class, concessions_active, synced_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
           `, [
-            comp.property_id || null,
+            comp.property_id || comp.id || null,
             comp.property_name || comp.name || '',
             comp.address || '',
             city,
             state,
-            comp.unit_type || null,
-            comp.square_feet || null,
+            comp.unit_type || comp.beds || null,
+            comp.square_feet || comp.sqft || null,
             comp.rent || null,
             comp.rent_per_sqft || null,
             comp.occupancy || null,
@@ -399,41 +346,32 @@ export class ApartmentDataSyncService {
           ]);
           result.rentComps++;
         } catch (e: any) {
-          console.error(`Error inserting rent comp:`, e.message);
+          console.error(`[syncRentComps] Error inserting rent comp: ${e.message}`);
         }
       }
+
+      console.log(`[syncRentComps] Stored ${result.rentComps} rent comps`);
     } catch (error: any) {
       const msg = `Rent comps sync failed: ${error.message}`;
-      console.error(msg);
+      console.error(`[syncRentComps] ${msg}`);
       result.errors.push(msg);
     }
   }
 
   private async syncSupplyPipeline(city: string, state: string, result: SyncResult): Promise<void> {
     try {
-      console.log('Syncing supply pipeline...');
-      
-      const endpoints = [
-        `/api/jedi/supply-pipeline?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}&days=365`,
-        `/api/v1/supply-pipeline?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/supply-pipeline?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-      ];
+      console.log(`[syncSupplyPipeline] Fetching supply pipeline for ${city}, ${state}...`);
+      const endpoint = `/api/jedi/supply-pipeline?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const pipeline = responseData?.data || responseData;
 
-      let pipeline: any[] = [];
-      
-      for (const endpoint of endpoints) {
-        try {
-          const responseData = await this.tryEndpoint(endpoint);
-          const data = responseData?.data || responseData;
-          if (Array.isArray(data) && data.length > 0) {
-            pipeline = data;
-            console.log(`Found ${pipeline.length} supply pipeline entries from ${endpoint}`);
-            break;
-          }
-        } catch (e: any) {
-          console.log(`Supply pipeline endpoint ${endpoint} failed: ${e.response?.status || e.message}`);
-        }
+      if (!Array.isArray(pipeline)) {
+        console.log(`[syncSupplyPipeline] Response is not an array, skipping`);
+        result.errors.push('Supply pipeline endpoint did not return an array');
+        return;
       }
+
+      console.log(`[syncSupplyPipeline] Received ${pipeline.length} pipeline entries, storing...`);
 
       await this.pool.query(`DELETE FROM apartment_supply_pipeline WHERE city = $1 AND state = $2`, [city, state]);
 
@@ -445,69 +383,225 @@ export class ApartmentDataSyncService {
               total_units, property_class, available_date, units_delivering, synced_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
           `, [
-            item.id || null,
-            item.name || '',
+            item.id || item.external_id || null,
+            item.name || item.property_name || '',
             item.address || '',
             city,
             state,
-            item.total_units || null,
+            item.total_units || item.unit_count || null,
             item.property_class || item.class || null,
-            item.available_date || null,
-            item.units_delivering || null,
+            item.available_date || item.year_built || null,
+            item.units_delivering || item.total_units || null,
           ]);
           result.supplyPipeline++;
         } catch (e: any) {
-          console.error(`Error inserting pipeline item:`, e.message);
+          console.error(`[syncSupplyPipeline] Error inserting pipeline item: ${e.message}`);
         }
       }
+
+      console.log(`[syncSupplyPipeline] Stored ${result.supplyPipeline} pipeline entries`);
     } catch (error: any) {
       const msg = `Supply pipeline sync failed: ${error.message}`;
-      console.error(msg);
+      console.error(`[syncSupplyPipeline] ${msg}`);
       result.errors.push(msg);
     }
   }
 
   private async syncAbsorptionRate(city: string, state: string, result: SyncResult): Promise<void> {
     try {
-      console.log('Syncing absorption rate...');
-      
-      const endpoints = [
-        `/api/jedi/absorption-rate?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-        `/api/v1/absorption-rate?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`,
-      ];
+      console.log(`[syncAbsorptionRate] Fetching absorption rate for ${city}, ${state}...`);
+      const endpoint = `/api/jedi/absorption-rate?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
 
-      for (const endpoint of endpoints) {
-        try {
-          const responseData = await this.tryEndpoint(endpoint);
-          const data = responseData?.data || responseData;
-          
-          if (data && (data.avg_days_to_lease !== undefined || data.monthly_absorption_rate !== undefined)) {
-            await this.pool.query(`
-              UPDATE apartment_market_snapshots 
-              SET avg_days_to_lease = $1, monthly_absorption_rate = $2
-              WHERE city = $3 AND state = $4 AND snapshot_date = CURRENT_DATE
-            `, [
-              data.avg_days_to_lease || null,
-              data.monthly_absorption_rate || null,
-              city,
-              state,
-            ]);
-            console.log('Absorption rate synced');
-            return;
-          }
-        } catch (e: any) {
-          console.log(`Absorption endpoint ${endpoint} failed: ${e.message}`);
-        }
+      if (!data) {
+        result.errors.push('Absorption rate endpoint returned empty response');
+        return;
       }
+
+      await this.pool.query(`
+        UPDATE apartment_market_snapshots 
+        SET avg_days_to_lease = $1, monthly_absorption_rate = $2
+        WHERE city = $3 AND state = $4 AND snapshot_date = CURRENT_DATE
+      `, [
+        data.avg_days_to_lease || null,
+        data.monthly_absorption_rate || null,
+        city,
+        state,
+      ]);
+
+      result.absorptionRate = true;
+      console.log(`[syncAbsorptionRate] Absorption rate stored successfully`);
     } catch (error: any) {
       const msg = `Absorption rate sync failed: ${error.message}`;
-      console.error(msg);
+      console.error(`[syncAbsorptionRate] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncUserStats(result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncUserStats] Fetching user stats...`);
+      const endpoint = `/api/jedi/user-stats`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('User stats endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_user_analytics WHERE analytics_type = $1 AND snapshot_date = CURRENT_DATE`,
+        ['user-stats']
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_user_analytics (analytics_type, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        ['user-stats', JSON.stringify(data)]
+      );
+
+      result.userStats = true;
+      console.log(`[syncUserStats] User stats stored successfully`);
+    } catch (error: any) {
+      const msg = `User stats sync failed: ${error.message}`;
+      console.error(`[syncUserStats] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncUserActivity(result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncUserActivity] Fetching user activity...`);
+      const endpoint = `/api/jedi/user-activity?days=30`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('User activity endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_user_analytics WHERE analytics_type = $1 AND snapshot_date = CURRENT_DATE`,
+        ['user-activity']
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_user_analytics (analytics_type, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        ['user-activity', JSON.stringify(data)]
+      );
+
+      result.userActivity = true;
+      console.log(`[syncUserActivity] User activity stored successfully`);
+    } catch (error: any) {
+      const msg = `User activity sync failed: ${error.message}`;
+      console.error(`[syncUserActivity] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncDemandSignals(result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncDemandSignals] Fetching demand signals...`);
+      const endpoint = `/api/jedi/demand-signals`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('Demand signals endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_user_analytics WHERE analytics_type = $1 AND snapshot_date = CURRENT_DATE`,
+        ['demand-signals']
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_user_analytics (analytics_type, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        ['demand-signals', JSON.stringify(data)]
+      );
+
+      result.demandSignals = true;
+      console.log(`[syncDemandSignals] Demand signals stored successfully`);
+    } catch (error: any) {
+      const msg = `Demand signals sync failed: ${error.message}`;
+      console.error(`[syncDemandSignals] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncSearchTrends(result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncSearchTrends] Fetching search trends...`);
+      const endpoint = `/api/jedi/search-trends?days=30`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('Search trends endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_user_analytics WHERE analytics_type = $1 AND snapshot_date = CURRENT_DATE`,
+        ['search-trends']
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_user_analytics (analytics_type, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        ['search-trends', JSON.stringify(data)]
+      );
+
+      result.searchTrends = true;
+      console.log(`[syncSearchTrends] Search trends stored successfully`);
+    } catch (error: any) {
+      const msg = `Search trends sync failed: ${error.message}`;
+      console.error(`[syncSearchTrends] ${msg}`);
+      result.errors.push(msg);
+    }
+  }
+
+  private async syncUserPreferences(result: SyncResult): Promise<void> {
+    try {
+      console.log(`[syncUserPreferences] Fetching user preferences aggregate...`);
+      const endpoint = `/api/jedi/user-preferences-aggregate`;
+      const responseData = await this.tryEndpoint(endpoint);
+      const data = responseData?.data || responseData;
+
+      if (!data) {
+        result.errors.push('User preferences endpoint returned empty response');
+        return;
+      }
+
+      await this.pool.query(
+        `DELETE FROM apartment_user_analytics WHERE analytics_type = $1 AND snapshot_date = CURRENT_DATE`,
+        ['user-preferences']
+      );
+
+      await this.pool.query(
+        `INSERT INTO apartment_user_analytics (analytics_type, snapshot_date, data, synced_at) VALUES ($1, CURRENT_DATE, $2, NOW())`,
+        ['user-preferences', JSON.stringify(data)]
+      );
+
+      result.userPreferences = true;
+      console.log(`[syncUserPreferences] User preferences stored successfully`);
+    } catch (error: any) {
+      const msg = `User preferences sync failed: ${error.message}`;
+      console.error(`[syncUserPreferences] ${msg}`);
       result.errors.push(msg);
     }
   }
 
   private async logSync(city: string, state: string, result: SyncResult): Promise<void> {
     try {
+      const totalRecords = result.properties + result.rentComps + result.supplyPipeline;
+      const boolSyncs = [
+        result.marketSnapshot, result.absorptionRate, result.trends, result.submarkets,
+        result.userStats, result.userActivity, result.demandSignals, result.searchTrends, result.userPreferences,
+      ].filter(Boolean).length;
+
       await this.pool.query(`
         INSERT INTO apartment_api_sync_log (
           deal_id, sync_type, status, records_synced, api_endpoint, error_message
@@ -516,12 +610,12 @@ export class ApartmentDataSyncService {
         null,
         'full_sync',
         result.errors.length === 0 ? 'success' : 'partial',
-        result.properties + result.rentComps + result.supplyPipeline,
+        totalRecords + boolSyncs,
         `${city},${state}`,
         result.errors.length > 0 ? result.errors.join('; ') : null,
       ]);
     } catch (e: any) {
-      console.error('Error logging sync:', e.message);
+      console.error('[logSync] Error logging sync:', e.message);
     }
   }
 
@@ -535,12 +629,18 @@ export class ApartmentDataSyncService {
     const marketSnaps = await this.pool.query('SELECT COUNT(*) as count FROM apartment_market_snapshots');
     const compsCount = await this.pool.query('SELECT COUNT(*) as count FROM apartment_rent_comps');
     const pipelineCount = await this.pool.query('SELECT COUNT(*) as count FROM apartment_supply_pipeline');
+    const trendsCount = await this.pool.query('SELECT COUNT(*) as count FROM apartment_trends');
+    const submarketsCount = await this.pool.query('SELECT COUNT(*) as count FROM apartment_submarkets');
+    const analyticsCount = await this.pool.query('SELECT COUNT(*) as count FROM apartment_user_analytics');
 
     return {
       totalProperties: parseInt(propCount.rows[0].count),
       marketSnapshots: parseInt(marketSnaps.rows[0].count),
       rentComps: parseInt(compsCount.rows[0].count),
       supplyPipeline: parseInt(pipelineCount.rows[0].count),
+      trends: parseInt(trendsCount.rows[0].count),
+      submarkets: parseInt(submarketsCount.rows[0].count),
+      userAnalytics: parseInt(analyticsCount.rows[0].count),
       lastSync: lastSync.rows[0] || null,
     };
   }
