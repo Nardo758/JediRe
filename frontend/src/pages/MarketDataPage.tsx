@@ -13,13 +13,14 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
-type ViewType = 'overview' | 'comparables' | 'demographics' | 'supply-demand';
+type ViewType = 'overview' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
 
 const marketTabs: { id: ViewType; label: string; icon: string }[] = [
   { id: 'overview', label: 'Trends', icon: '📊' },
   { id: 'comparables', label: 'Comparables', icon: '🔄' },
   { id: 'demographics', label: 'Demographics', icon: '👥' },
   { id: 'supply-demand', label: 'Supply & Demand', icon: '📦' },
+  { id: 'traffic', label: 'Traffic Analysis', icon: '🚦' },
 ];
 
 // Mock data
@@ -290,6 +291,67 @@ export function MarketDataPage() {
                 <span className="text-yellow-700 ml-1">
                   Supply pipeline represents ~1.5 years of absorption
                 </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (viewId === 'traffic') {
+      return (
+        <div className="space-y-4">
+          <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">🚦</span>
+              <div>
+                <h3 className="font-semibold text-gray-900 text-lg">Traffic Analysis</h3>
+                <p className="text-sm text-gray-600">Property-level foot traffic predictions</p>
+              </div>
+            </div>
+            <div className="bg-white/80 rounded-lg p-4 border border-purple-100">
+              <p className="text-sm text-gray-700 mb-3">
+                Unlock detailed traffic predictions for properties in your markets. Get weekly walk-ins forecasts, 
+                peak hour analysis, and confidence scoring.
+              </p>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => window.location.href = '/settings/modules'}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
+                >
+                  Activate Traffic Analysis
+                </button>
+                <span className="text-sm text-gray-600">$29/month</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-gray-200 p-6">
+            <h4 className="font-semibold text-gray-900 mb-4">What's Included</h4>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Weekly walk-ins predictions</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Peak hour & day analysis</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Confidence scoring</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Component breakdown</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Market benchmarking</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-green-600 flex-shrink-0">✓</span>
+                <span className="text-gray-700">Temporal patterns</span>
               </div>
             </div>
           </div>

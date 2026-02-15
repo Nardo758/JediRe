@@ -10,6 +10,8 @@ import { useModuleCheck, invalidateModuleCache } from '../utils/modules';
 import { FinancialAnalysisSection } from '../components/deal/sections/FinancialAnalysisSection';
 import { InvestmentStrategySection } from '../components/deal/sections/InvestmentStrategySection';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
+import { MarketResearchSection } from '../components/deal/sections/MarketResearchSection';
+import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -239,9 +241,28 @@ export const DealPage: React.FC = () => {
             <ProjectManagementSection deal={deal} />
           </SectionCard>
 
-          {/* 7. Market Analysis */}
-          <SectionCard id="market" icon="📈" title="Market Analysis" dealId={dealId}>
-            {null}
+          {/* 7. Market Research & Traffic Analysis */}
+          <SectionCard id="market" icon="📈" title="Market Intelligence" dealId={dealId}>
+            <div className="space-y-8">
+              {/* Market Research */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <span>📊</span> Market Research
+                </h3>
+                <MarketResearchSection deal={deal} />
+              </div>
+
+              {/* Traffic Analysis */}
+              <div className="pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                  <span>🚦</span> Traffic Analysis
+                </h3>
+                <TrafficAnalysisSection 
+                  deal={deal} 
+                  propertyId={deal.propertyId || deal.properties?.[0]?.id} 
+                />
+              </div>
+            </div>
           </SectionCard>
 
           {/* 8. Development (conditional) */}
