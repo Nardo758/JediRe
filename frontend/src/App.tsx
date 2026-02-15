@@ -17,7 +17,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { MarketDataPage } from './pages/MarketDataPage';
+import { MarketDataPageV2 } from './pages/MarketDataPageV2';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
@@ -60,7 +60,7 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<MarketDataPage />} />
+          <Route path="/market-data" element={<MarketDataPageV2 />} />
           <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
