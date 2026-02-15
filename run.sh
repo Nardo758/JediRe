@@ -126,22 +126,22 @@ cd agents/supply
 if command -v python3 &> /dev/null; then
     # Install dependencies if needed
     if [ -f "requirements.replit.txt" ]; then
-        if [ ! -d "venv" ]; then
-            echo "  → Creating Python virtual environment..."
-            python3 -m venv venv
+        # Detect if we're in Replit environment (skip venv, use Nix Python directly)
+        if [ -n "$REPL_ID" ] || [ -n "$REPLIT_DB_URL" ]; then
+            echo "  → Installing agent dependencies (Replit environment)..."
+            pip install -r requirements.replit.txt
+        else
+            # Local/non-Replit: use virtualenv
+            if [ ! -d "venv" ]; then
+                echo "  → Creating Python virtual environment..."
+                python3 -m venv venv
+            fi
+            
+            source venv/bin/activate
+            
+            echo "  → Installing agent dependencies..."
+            pip install -r requirements.replit.txt
         fi
-        
-        source venv/bin/activate
-        
-        # Explicitly unset any pip user flags
-        unset PIP_USER
-        export PIP_NO_USER_CONFIG=1
-        
-        echo "  → Upgrading pip..."
-        python -m pip install --upgrade pip -q
-        
-        echo "  → Installing agent dependencies..."
-        pip install --isolated --ignore-installed -r requirements.replit.txt
         
         # Use Replit-specific files
         if [ -f "config/settings.replit.py" ]; then
@@ -185,10 +185,15 @@ FRONTEND_PID=$!
 cd ..
 
 # Start supply agent if Python available (in background)
-if command -v python3 &> /dev/null && [ -f "agents/supply/venv/bin/activate" ]; then
+if command -v python3 &> /dev/null; then
     echo "  → Starting supply agent..."
     cd agents/supply
-    source venv/bin/activate
+    
+    # Activate venv if it exists (local environment)
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+    
     python src/main.py &
     AGENT_PID=$!
     cd ../..
