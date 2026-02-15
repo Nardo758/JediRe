@@ -108,6 +108,10 @@ export interface TaskFilters {
   category?: TaskCategory[];
   linkedEntityId?: string;
   assignedToId?: string;
+  dueDateStart?: string;
+  dueDateEnd?: string;
+  completedDateStart?: string;
+  completedDateEnd?: string;
 }
 
 export interface TaskSortConfig {

@@ -591,6 +591,40 @@ class TasksService {
       if (filters.assignedToId) {
         filtered = filtered.filter((task) => task.assignedTo.userId === filters.assignedToId);
       }
+
+      // Due Date filtering
+      if (filters.dueDateStart || filters.dueDateEnd) {
+        filtered = filtered.filter((task) => {
+          if (!task.dueDate) return false; // Exclude tasks without due dates
+          const dueDate = new Date(task.dueDate);
+          
+          if (filters.dueDateStart && filters.dueDateEnd) {
+            return dueDate >= new Date(filters.dueDateStart) && dueDate <= new Date(filters.dueDateEnd);
+          } else if (filters.dueDateStart) {
+            return dueDate >= new Date(filters.dueDateStart);
+          } else if (filters.dueDateEnd) {
+            return dueDate <= new Date(filters.dueDateEnd);
+          }
+          return true;
+        });
+      }
+
+      // Completion Date filtering
+      if (filters.completedDateStart || filters.completedDateEnd) {
+        filtered = filtered.filter((task) => {
+          if (!task.completedAt) return false; // Exclude tasks without completion dates
+          const completedDate = new Date(task.completedAt);
+          
+          if (filters.completedDateStart && filters.completedDateEnd) {
+            return completedDate >= new Date(filters.completedDateStart) && completedDate <= new Date(filters.completedDateEnd);
+          } else if (filters.completedDateStart) {
+            return completedDate >= new Date(filters.completedDateStart);
+          } else if (filters.completedDateEnd) {
+            return completedDate <= new Date(filters.completedDateEnd);
+          }
+          return true;
+        });
+      }
     }
 
     // Apply sorting
