@@ -190,10 +190,10 @@ export const MainLayout: React.FC = () => {
                     Intelligence
                   </h3>
                   
-                  {/* MARKET DATA */}
+                  {/* MARKET RESEARCH */}
                   <SidebarItem
                     icon="📈"
-                    label="Market Data"
+                    label="Market Research"
                     path="/market-data"
                     isActive={isActivePrefix('/market-data')}
                     layerConfig={{
