@@ -133,8 +133,11 @@ if command -v python3 &> /dev/null; then
         
         source venv/bin/activate
         
+        echo "  → Upgrading pip..."
+        python -m pip install --upgrade pip -q
+        
         echo "  → Installing agent dependencies..."
-        pip install -q -r requirements.replit.txt
+        python -m pip install --no-user -r requirements.replit.txt
         
         # Use Replit-specific files
         if [ -f "config/settings.replit.py" ]; then
