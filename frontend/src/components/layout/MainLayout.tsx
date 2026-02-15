@@ -207,6 +207,14 @@ export const MainLayout: React.FC = () => {
                     onShowOnMap={handleShowOnMap}
                   />
                   
+                  {/* PROPERTY COVERAGE */}
+                  <SidebarItem
+                    icon="🗺️"
+                    label="Property Coverage"
+                    path="/property-coverage"
+                    isActive={isActivePrefix('/property-coverage')}
+                  />
+                  
                   {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"
