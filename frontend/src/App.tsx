@@ -30,6 +30,7 @@ import { MapLayersProvider } from './contexts/MapLayersContext';
 import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
 import { DealShowcasePage } from './pages/DealShowcasePage';
 import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
+import { PropertyCoveragePage } from './pages/PropertyCoveragePage';
 
 
 function AppContent() {
@@ -69,6 +70,7 @@ function AppContent() {
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
+          <Route path="/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />

@@ -134,8 +134,51 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+/**
+ * Require API Key (for external integrations)
+ * Checks X-API-Key header against allowed API keys
+ */
+export function requireApiKey(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  const apiKey = req.headers['x-api-key'] as string;
+
+  if (!apiKey) {
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: 'API key required',
+    });
+    return;
+  }
+
+  // List of valid API keys (from environment)
+  const validKeys = [
+    process.env.API_KEY_APARTMENT_LOCATOR,
+  ].filter(Boolean);
+
+  if (!validKeys.includes(apiKey)) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message: 'Invalid API key',
+    });
+    return;
+  }
+
+  // Set a pseudo-user for API key auth (for logging/tracking)
+  req.user = {
+    userId: 'api-key-apartment-locator',
+    email: 'apartment-locator-ai@system',
+    role: 'api_client',
+  };
+
+  next();
+}
+
 export const authMiddleware = {
   requireAuth,
   optionalAuth,
   requireRole,
+  requireApiKey,
 };
