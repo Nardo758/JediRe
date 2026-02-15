@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Mail, User, Users, Building2, Phone, Calendar, MessageCircle, Filter, Search } from 'lucide-react';
+import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 
 interface Contact {
   email: string;
@@ -21,6 +22,9 @@ export function TeamPage() {
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'internal' | 'external' | 'frequent'>('all');
+  const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   // Mock data - replace with actual email API call
@@ -30,7 +34,7 @@ export function TeamPage() {
 
   useEffect(() => {
     filterContacts();
-  }, [searchQuery, selectedFilter, contacts]);
+  }, [searchQuery, selectedFilter, dateRange, customStartDate, customEndDate, contacts]);
 
   const loadContacts = async () => {
     setLoading(true);
@@ -138,6 +142,15 @@ export function TeamPage() {
       filtered = filtered.filter((c) => c.emailCount > 50);
     }
 
+    // Apply date range filter
+    const { start, end } = getDateRangeFromOption(dateRange, customStartDate, customEndDate);
+    if (start) {
+      filtered = filtered.filter((contact) => {
+        const lastContactDate = new Date(contact.lastContact);
+        return lastContactDate >= start && lastContactDate <= end;
+      });
+    }
+
     setFilteredContacts(filtered);
   };
 
@@ -221,7 +234,7 @@ export function TeamPage() {
       </div>
 
       {/* Filters & Search */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6 space-y-4">
         <div className="flex flex-col md:flex-row gap-4">
           {/* Search */}
           <div className="flex-1 relative">
@@ -254,6 +267,22 @@ export function TeamPage() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Date Range Filter */}
+        <div>
+          <div className="text-sm font-medium text-gray-700 mb-3">Last Contact Date</div>
+          <DateRangeFilter
+            selectedRange={dateRange}
+            onRangeChange={setDateRange}
+            showCustom={true}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDatesChange={(start, end) => {
+              setCustomStartDate(start);
+              setCustomEndDate(end);
+            }}
+          />
         </div>
       </div>
 

@@ -11,6 +11,7 @@ import mapboxgl from 'mapbox-gl';
 import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
 import { useDealStore } from '../stores/dealStore';
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
+import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -29,6 +30,9 @@ export function NewsIntelligencePage() {
   
   const [activeView, setActiveView] = useState<ViewType>('feed');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [dateRange, setDateRange] = useState<DateRangeOption>('30d');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -50,6 +54,7 @@ export function NewsIntelligencePage() {
   ];
 
   const prevCategory = useRef(selectedCategory);
+  const prevDateRange = useRef(dateRange);
 
   useEffect(() => {
     fetchDeals();
@@ -57,11 +62,12 @@ export function NewsIntelligencePage() {
   }, []);
 
   useEffect(() => {
-    if (prevCategory.current !== selectedCategory) {
+    if (prevCategory.current !== selectedCategory || prevDateRange.current !== dateRange) {
       prevCategory.current = selectedCategory;
+      prevDateRange.current = dateRange;
       loadEvents();
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, dateRange]);
 
   // Initialize map
   useEffect(() => {
@@ -195,11 +201,44 @@ export function NewsIntelligencePage() {
     });
   };
 
+  // Filter events by date range
+  const filterEventsByDate = (events: NewsEvent[]): NewsEvent[] => {
+    const { start, end } = getDateRangeFromOption(dateRange, customStartDate, customEndDate);
+    
+    if (!start) {
+      return events; // "All time" - no filtering
+    }
+    
+    return events.filter((event) => {
+      const eventDate = new Date(event.published_at);
+      return eventDate >= start && eventDate <= end;
+    });
+  };
+
   // Render functions for each view
-  const renderEventFeed = () => (
-    <div className="space-y-4 max-w-4xl">
-      {/* Category Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+  const renderEventFeed = () => {
+    const filteredEvents = filterEventsByDate(events);
+    
+    return (
+      <div className="space-y-4 max-w-4xl">
+        {/* Date Range Filter */}
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm font-medium text-gray-700 mb-3">Time Range</div>
+          <DateRangeFilter
+            selectedRange={dateRange}
+            onRangeChange={setDateRange}
+            showCustom={true}
+            customStartDate={customStartDate}
+            customEndDate={customEndDate}
+            onCustomDatesChange={(start, end) => {
+              setCustomStartDate(start);
+              setCustomEndDate(end);
+            }}
+          />
+        </div>
+
+        {/* Category Filters */}
+        <div className="flex gap-2 overflow-x-auto pb-2">
         {categories.map((cat) => (
           <button
             key={cat.id}
@@ -216,17 +255,17 @@ export function NewsIntelligencePage() {
         ))}
       </div>
 
-      {/* Event Cards */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="text-center py-8 text-gray-500">Loading events...</div>
-        ) : events.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-4xl mb-2">📰</div>
-            <div>No events found</div>
-          </div>
-        ) : (
-          events.map((event) => (
+        {/* Event Cards */}
+        <div className="space-y-3">
+          {loading ? (
+            <div className="text-center py-8 text-gray-500">Loading events...</div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <div className="text-4xl mb-2">📰</div>
+              <div>No events found in this time range</div>
+            </div>
+          ) : (
+            filteredEvents.map((event) => (
             <div
               key={event.id}
               className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
