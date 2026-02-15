@@ -4,9 +4,11 @@ import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
 import { WarMapsComposer } from '../map/WarMapsComposer';
 import { ChatOverlay } from '../chat/ChatOverlay';
+import QuickSetupModal from '../onboarding/QuickSetupModal';
 import { layersService } from '../../services/layers.service';
 import { mapConfigsService, MapConfiguration } from '../../services/map-configs.service';
 import { MapLayer } from '../../types/layers';
+import api from '../../lib/api';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -26,6 +28,8 @@ export const MainLayout: React.FC = () => {
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
   const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
   const isActivePrefix = (prefix: string) => location.pathname.startsWith(prefix);
@@ -88,6 +92,27 @@ export const MainLayout: React.FC = () => {
     const handler = () => setIsWarMapsOpen(true);
     window.addEventListener('open-war-maps', handler);
     return () => window.removeEventListener('open-war-maps', handler);
+  }, []);
+
+  // Check onboarding status on mount
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const response = await api.get('/user/preferences');
+        const prefs = response.data.data;
+        
+        // Show onboarding if not completed
+        if (!prefs || !prefs.onboarding_completed) {
+          setShowOnboarding(true);
+        }
+      } catch (error) {
+        console.error('Failed to check onboarding status:', error);
+      } finally {
+        setOnboardingChecked(true);
+      }
+    };
+
+    checkOnboarding();
   }, []);
 
   // Handle War Maps creation
@@ -288,6 +313,18 @@ export const MainLayout: React.FC = () => {
           mapId={DEFAULT_MAP_ID}
           existingLayers={layers}
           onLayersCreated={handleWarMapsCreated}
+        />
+      )}
+
+      {/* Quick Setup Onboarding Modal */}
+      {onboardingChecked && (
+        <QuickSetupModal
+          isOpen={showOnboarding}
+          onClose={() => setShowOnboarding(false)}
+          onComplete={() => {
+            setShowOnboarding(false);
+            // Optionally reload user data or show success message
+          }}
         />
       )}
 
