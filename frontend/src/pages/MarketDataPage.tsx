@@ -1,8 +1,8 @@
 /**
- * Market Data Page - Using ThreePanelLayout
+ * Market Research Page - Using ThreePanelLayout
  * 
  * Views: Overview, Comparables, Demographics, Supply/Demand
- * Content: Charts, tables, market metrics
+ * Content: Charts, tables, market metrics, research intelligence
  * Map: Data overlays, heat maps, comp markers
  */
 
