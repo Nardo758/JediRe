@@ -20,10 +20,11 @@ import { HeroMetrics, MetricCard } from '../components/market-research/HeroMetri
 import { InsightCard } from '../components/market-research/InsightCard';
 import { SubmarketLeaderboard } from '../components/market-research/SubmarketLeaderboard';
 
-type TabType = 'overview' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
+type TabType = 'overview' | 'submarkets' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
 
 const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <TrendingUp className="w-4 h-4" /> },
+  { id: 'submarkets', label: 'Submarkets', icon: <MapPin className="w-4 h-4" /> },
   { id: 'comparables', label: 'Comparables', icon: <Building2 className="w-4 h-4" /> },
   { id: 'demographics', label: 'Demographics', icon: <Users className="w-4 h-4" /> },
   { id: 'supply-demand', label: 'Supply & Demand', icon: <Package className="w-4 h-4" /> },
@@ -230,9 +231,10 @@ export function MarketDataPageV2() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
+        return <OverviewTab data={mockData} />;
+      case 'submarkets':
         return (
-          <OverviewTab 
-            data={mockData} 
+          <SubmarketsTab 
             submarkets={mockSubmarkets}
             selectedSubmarket={selectedSubmarket}
             onSubmarketChange={setSelectedSubmarket}
@@ -301,14 +303,7 @@ export function MarketDataPageV2() {
 
 // Tab Components
 
-interface OverviewTabProps {
-  data: typeof mockData;
-  submarkets: typeof mockSubmarkets;
-  selectedSubmarket: string;
-  onSubmarketChange: (id: string) => void;
-}
-
-function OverviewTab({ data, submarkets, selectedSubmarket, onSubmarketChange }: OverviewTabProps) {
+function OverviewTab({ data }: { data: typeof mockData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Avg Rent',
@@ -342,14 +337,6 @@ function OverviewTab({ data, submarkets, selectedSubmarket, onSubmarketChange }:
 
   return (
     <div>
-      {/* Submarket Leaderboard */}
-      <SubmarketLeaderboard
-        city="Atlanta"
-        submarkets={submarkets}
-        selectedSubmarket={selectedSubmarket}
-        onSubmarketChange={onSubmarketChange}
-      />
-
       <HeroMetrics metrics={metrics} />
 
       {/* Rent Trend Chart */}
@@ -412,6 +399,39 @@ function OverviewTab({ data, submarkets, selectedSubmarket, onSubmarketChange }:
           'Rent growth accelerating (+5.2% YoY)',
         ]}
         recommendation="Current opportunity exists with strong demand fundamentals. Monitor new construction pipeline for potential oversupply in 2-3 years."
+      />
+    </div>
+  );
+}
+
+function SubmarketsTab({ 
+  submarkets, 
+  selectedSubmarket, 
+  onSubmarketChange 
+}: { 
+  submarkets: typeof mockSubmarkets; 
+  selectedSubmarket: string; 
+  onSubmarketChange: (id: string) => void;
+}) {
+  return (
+    <div>
+      <SubmarketLeaderboard
+        city="Atlanta"
+        submarkets={submarkets}
+        selectedSubmarket={selectedSubmarket}
+        onSubmarketChange={onSubmarketChange}
+      />
+
+      <InsightCard
+        title="SUBMARKET ANALYSIS"
+        insights={[
+          'Buckhead leads with highest composite score (88) driven by strong rent growth (+6.8%) and low vacancy (4.2%)',
+          'Midtown shows strong fundamentals with 82 score, balanced demand and moderate pipeline',
+          'Downtown shows highest risk with elevated vacancy (8.5%) and heavy supply pipeline (58%)',
+          'Sandy Springs and Decatur offer moderate opportunities with balanced metrics',
+          'Consider Buckhead or Midtown for lower-risk acquisitions; Downtown for value-add plays',
+        ]}
+        recommendation="Focus acquisition efforts on Buckhead and Midtown submarkets for optimal risk-adjusted returns. Monitor Downtown for distressed opportunities."
       />
     </div>
   );
