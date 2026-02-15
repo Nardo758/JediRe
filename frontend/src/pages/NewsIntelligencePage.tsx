@@ -304,6 +304,7 @@ export function NewsIntelligencePage() {
       </div>
     </div>
   );
+  };
 
   const renderMarketDashboard = () => (
     <div className="space-y-4">
