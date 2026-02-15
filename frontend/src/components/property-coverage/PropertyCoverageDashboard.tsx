@@ -9,7 +9,7 @@ interface CountyStats {
   responseTime?: number;
 }
 
-const MUNICIPAL_SCRAPER_API = 'https://municipal-scraper.m-dixon5030.workers.dev';
+const BACKEND_API = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
 
 export default function PropertyCoverageDashboard() {
   const [counties, setCounties] = useState<CountyStats[]>([
@@ -40,9 +40,9 @@ export default function PropertyCoverageDashboard() {
   const checkHealth = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${MUNICIPAL_SCRAPER_API}/health`);
-      const data = await response.json();
-      setApiHealth(data);
+      const response = await fetch(`${BACKEND_API}/properties/health`);
+      const result = await response.json();
+      setApiHealth(result.data || result);
     } catch (error) {
       console.error('Health check failed:', error);
       setApiHealth({ status: 'error' });
@@ -56,7 +56,7 @@ export default function PropertyCoverageDashboard() {
     setTestResult(null);
     
     try {
-      const response = await fetch(`${MUNICIPAL_SCRAPER_API}/api-scrape`, {
+      const response = await fetch(`${BACKEND_API}/properties/scrape`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,8 +65,8 @@ export default function PropertyCoverageDashboard() {
         })
       });
       
-      const data = await response.json();
-      setTestResult(data);
+      const result = await response.json();
+      setTestResult(result.data || result);
     } catch (error) {
       setTestResult({ error: 'Test failed' });
     } finally {
