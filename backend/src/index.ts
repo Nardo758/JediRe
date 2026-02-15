@@ -1189,6 +1189,60 @@ app.get('/api/v1/apartment-sync/supply-pipeline', requireAuth, async (req: Authe
   }
 });
 
+app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_trends WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_submarkets WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/user-analytics', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { type } = req.query;
+    let query = 'SELECT * FROM apartment_user_analytics';
+    const params: any[] = [];
+    if (type) {
+      query += ' WHERE analytics_type = $1';
+      params.push(type);
+    }
+    query += ' ORDER BY snapshot_date DESC LIMIT 50';
+    const result = await pool.query(query, params);
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/demand-signals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM apartment_user_analytics WHERE analytics_type = 'demand-signals' ORDER BY snapshot_date DESC LIMIT 1"
+    );
+    res.json({ success: true, data: result.rows[0] || null });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ============================================
 // Zoning & Property Analysis Endpoints
 // ============================================
