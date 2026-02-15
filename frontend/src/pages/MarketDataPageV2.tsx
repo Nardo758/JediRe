@@ -13,7 +13,8 @@ import {
   Activity,
   ArrowUp,
   ArrowDown,
-  Minus
+  Minus,
+  MapPin
 } from 'lucide-react';
 import { MarketResearchLayout } from '../components/market-research/MarketResearchLayout';
 import { HeroMetrics, MetricCard } from '../components/market-research/HeroMetrics';
