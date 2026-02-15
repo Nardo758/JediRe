@@ -18,6 +18,7 @@ import {
 import { MarketResearchLayout } from '../components/market-research/MarketResearchLayout';
 import { HeroMetrics, MetricCard } from '../components/market-research/HeroMetrics';
 import { InsightCard } from '../components/market-research/InsightCard';
+import { SubmarketLeaderboard } from '../components/market-research/SubmarketLeaderboard';
 
 type TabType = 'overview' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
 
@@ -29,9 +30,78 @@ const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
   { id: 'traffic', label: 'Traffic Analysis', icon: <Activity className="w-4 h-4" /> },
 ];
 
+// Mock submarket performance data
+const mockSubmarkets = [
+  {
+    id: 'buckhead',
+    name: 'Buckhead',
+    propertyCount: 42,
+    metrics: {
+      rentGrowth: 6.8,
+      vacancyRate: 4.2,
+      demandScore: 92,
+      supplyPipeline: 28,
+    },
+    compositeScore: 88,
+    rank: 1,
+  },
+  {
+    id: 'midtown',
+    name: 'Midtown',
+    propertyCount: 38,
+    metrics: {
+      rentGrowth: 5.9,
+      vacancyRate: 5.8,
+      demandScore: 85,
+      supplyPipeline: 35,
+    },
+    compositeScore: 82,
+    rank: 2,
+  },
+  {
+    id: 'sandy-springs',
+    name: 'Sandy Springs',
+    propertyCount: 26,
+    metrics: {
+      rentGrowth: 4.5,
+      vacancyRate: 6.1,
+      demandScore: 78,
+      supplyPipeline: 42,
+    },
+    compositeScore: 74,
+    rank: 3,
+  },
+  {
+    id: 'downtown',
+    name: 'Downtown',
+    propertyCount: 35,
+    metrics: {
+      rentGrowth: 3.2,
+      vacancyRate: 8.5,
+      demandScore: 68,
+      supplyPipeline: 58,
+    },
+    compositeScore: 62,
+    rank: 4,
+  },
+  {
+    id: 'decatur',
+    name: 'Decatur',
+    propertyCount: 18,
+    metrics: {
+      rentGrowth: 4.1,
+      vacancyRate: 7.2,
+      demandScore: 72,
+      supplyPipeline: 45,
+    },
+    compositeScore: 68,
+    rank: 5,
+  },
+];
+
 // Mock data - to be replaced with real API calls
 const mockData = {
-  marketName: 'Buckhead, Atlanta',
+  marketName: 'Atlanta',
   confidence: 'HIGH',
   sources: 4,
   lastUpdated: 'Feb 15, 2026',
@@ -116,7 +186,13 @@ const mockData = {
 
 export function MarketDataPageV2() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [selectedSubmarket, setSelectedSubmarket] = useState<string>('all');
   const [loading, setLoading] = useState(false);
+
+  // Get current submarket name for display
+  const currentSubmarketName = selectedSubmarket === 'all' 
+    ? 'All Atlanta' 
+    : mockSubmarkets.find(s => s.id === selectedSubmarket)?.name || 'Atlanta';
 
   const quickStats = [
     {
@@ -176,7 +252,7 @@ export function MarketDataPageV2() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Market Research</h1>
             <p className="text-sm text-gray-600 mt-1">
-              {mockData.marketName} • Generated: {mockData.lastUpdated} • Confidence: {mockData.confidence} ({mockData.sources}/5 sources)
+              {currentSubmarketName} • Generated: {mockData.lastUpdated} • Confidence: {mockData.confidence} ({mockData.sources}/5 sources)
             </p>
           </div>
         </div>
@@ -209,6 +285,15 @@ export function MarketDataPageV2() {
         onShare={() => console.log('Share')}
       >
         <div className="p-6">
+          {/* Submarket Leaderboard */}
+          <SubmarketLeaderboard
+            city="Atlanta"
+            submarkets={mockSubmarkets}
+            selectedSubmarket={selectedSubmarket}
+            onSubmarketChange={setSelectedSubmarket}
+          />
+
+          {/* Tab Content */}
           {renderTabContent()}
         </div>
       </MarketResearchLayout>
