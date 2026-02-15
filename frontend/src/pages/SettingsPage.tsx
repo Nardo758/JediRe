@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { EmailSettings } from './settings/EmailSettings';
+import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets';
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
@@ -42,6 +43,16 @@ export function SettingsPage() {
           >
             AI Modules
           </a>
+          <button 
+            onClick={() => setActiveTab('markets')}
+            className={`w-full text-left px-4 py-3 rounded-lg ${
+              activeTab === 'markets' 
+                ? 'bg-blue-50 text-blue-700 font-medium' 
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Markets & Coverage
+          </button>
           <button 
             onClick={() => setActiveTab('integrations')}
             className={`w-full text-left px-4 py-3 rounded-lg ${
@@ -127,6 +138,12 @@ export function SettingsPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">Notifications</h2>
               <p className="text-gray-600">Manage your notification preferences here.</p>
+            </div>
+          )}
+
+          {activeTab === 'markets' && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <MarketsPreferencesPage />
             </div>
           )}
         </div>

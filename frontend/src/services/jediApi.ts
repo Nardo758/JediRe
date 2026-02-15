@@ -164,6 +164,13 @@ class JediApi {
     return response.data.submarkets || [];
   }
 
+  async getProperties(city: string, state: string, submarket?: string): Promise<any[]> {
+    const response = await api.get('/api/jedi/properties', {
+      params: { city, state, submarket }
+    });
+    return response.data.properties || [];
+  }
+
   async getRentComps(city: string, state: string): Promise<RentComp[]> {
     const response = await api.get('/api/jedi/rent-comps', {
       params: { city, state }
