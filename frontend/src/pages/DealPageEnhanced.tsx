@@ -251,7 +251,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Financial Analysis"
               isPremium={true}
             >
-              <FinancialSection deal={deal} isPremium={isPremium} />
+              <FinancialSection deal={deal} />
             </DealSection>
           </div>
 
@@ -275,11 +275,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Debt"
               isPremium={true}
             >
-              <DebtSection 
-                deal={deal} 
-                isPremium={isPremium}
-                dealStatus={deal.status || 'pipeline'}
-              />
+              <DebtSection deal={deal} />
             </DealSection>
           </div>
 
@@ -291,7 +287,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Strategy & Arbitrage"
               isPremium={true}
             >
-              <StrategySection deal={deal} isPremium={isPremium} />
+              <StrategySection deal={deal} />
             </DealSection>
           </div>
 

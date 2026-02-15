@@ -3,8 +3,12 @@
  * Property details with 3D building visualization
  */
 
-import React, { useState } from 'react';
-import { BuildingDiagram3D, Building3DModel, Unit3D } from '../../property/BuildingDiagram3D';
+import React, { useState, lazy, Suspense } from 'react';
+import type { Building3DModel, Unit3D } from '../../property/BuildingDiagram3D';
+
+const BuildingDiagram3D = lazy(() => 
+  import('../../property/BuildingDiagram3D').then(mod => ({ default: mod.BuildingDiagram3D }))
+);
 
 interface PropertiesSectionEnhancedProps {
   deal: any;
@@ -101,10 +105,12 @@ export const PropertiesSectionEnhanced: React.FC<PropertiesSectionEnhancedProps>
                 Click on units to see details. Use mouse to rotate, zoom, and pan.
               </p>
             </div>
-            <BuildingDiagram3D
-              buildingData={mockBuildingData}
-              onUnitClick={handleUnitClick}
-            />
+            <Suspense fallback={<div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border"><div className="text-gray-500">Loading 3D view...</div></div>}>
+              <BuildingDiagram3D
+                buildingData={mockBuildingData}
+                onUnitClick={handleUnitClick}
+              />
+            </Suspense>
             
             {/* Statistics */}
             <div className="grid grid-cols-4 gap-4 mt-6">
