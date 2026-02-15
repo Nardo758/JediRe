@@ -340,7 +340,7 @@ router.post('/calibration/apply', async (req, res) => {
       multiplier,
       reason,
       effective_until || null,
-      req.user?.email || 'system'
+      (req as any).user?.email || 'system'
     ]);
     
     res.json({

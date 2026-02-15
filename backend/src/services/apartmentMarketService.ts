@@ -37,6 +37,7 @@ interface TradeAreaMetrics {
   avg_occupancy_rate?: number;
   total_units: number;
   available_units: number;
+  market_saturation?: number;
 }
 
 export class ApartmentMarketService {

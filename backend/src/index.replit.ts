@@ -1056,6 +1056,9 @@ import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
 import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
 import gmailRouter from './api/rest/gmail.routes';
+import marketResearchRoutes from './api/rest/marketResearch.routes';
+import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
+import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 
 app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/gmail', gmailRouter);
@@ -1071,6 +1074,9 @@ app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', financialModelsRouter);
 app.use('/api/v1/strategy-analyses', strategyAnalysesRouter);
 app.use('/api/v1/dd-checklists', ddChecklistsRouter);
+app.use('/api/v1/market-research', marketResearchRoutes);
+app.use('/api/v1/apartment-market', apartmentMarketRoutes);
+app.use('/api/v1/traffic', trafficPredictionRoutes);
 
 // ============================================
 // Zoning & Property Analysis Endpoints
