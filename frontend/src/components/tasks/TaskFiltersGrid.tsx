@@ -9,6 +9,7 @@ import {
   STATUS_CONFIG,
 } from '../../types/task.types';
 import { tasksService } from '../../services/tasks.service';
+import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../ui/DateRangeFilter';
 
 interface TaskFiltersGridProps {
   filters: TaskFilters;
@@ -17,6 +18,12 @@ interface TaskFiltersGridProps {
 
 export const TaskFiltersGrid: React.FC<TaskFiltersGridProps> = ({ filters, onChange }) => {
   const [expanded, setExpanded] = useState(false);
+  const [dueDateRange, setDueDateRange] = useState<DateRangeOption>('all');
+  const [dueDateCustomStart, setDueDateCustomStart] = useState<string>('');
+  const [dueDateCustomEnd, setDueDateCustomEnd] = useState<string>('');
+  const [completedDateRange, setCompletedDateRange] = useState<DateRangeOption>('all');
+  const [completedDateCustomStart, setCompletedDateCustomStart] = useState<string>('');
+  const [completedDateCustomEnd, setCompletedDateCustomEnd] = useState<string>('');
 
   const deals = tasksService.getAvailableDeals();
   const users = tasksService.getAvailableUsers();
@@ -38,6 +45,44 @@ export const TaskFiltersGrid: React.FC<TaskFiltersGridProps> = ({ filters, onCha
 
   const clearAllFilters = () => {
     onChange({});
+    setDueDateRange('all');
+    setDueDateCustomStart('');
+    setDueDateCustomEnd('');
+    setCompletedDateRange('all');
+    setCompletedDateCustomStart('');
+    setCompletedDateCustomEnd('');
+  };
+
+  const handleDueDateRangeChange = (range: DateRangeOption) => {
+    setDueDateRange(range);
+    const { start, end } = getDateRangeFromOption(range, dueDateCustomStart, dueDateCustomEnd);
+    updateFilter('dueDateStart', start ? start.toISOString() : undefined);
+    updateFilter('dueDateEnd', end.toISOString());
+  };
+
+  const handleDueDateCustomChange = (start: string, end: string) => {
+    setDueDateCustomStart(start);
+    setDueDateCustomEnd(end);
+    if (start && end) {
+      updateFilter('dueDateStart', new Date(start).toISOString());
+      updateFilter('dueDateEnd', new Date(end).toISOString());
+    }
+  };
+
+  const handleCompletedDateRangeChange = (range: DateRangeOption) => {
+    setCompletedDateRange(range);
+    const { start, end } = getDateRangeFromOption(range, completedDateCustomStart, completedDateCustomEnd);
+    updateFilter('completedDateStart', start ? start.toISOString() : undefined);
+    updateFilter('completedDateEnd', end.toISOString());
+  };
+
+  const handleCompletedDateCustomChange = (start: string, end: string) => {
+    setCompletedDateCustomStart(start);
+    setCompletedDateCustomEnd(end);
+    if (start && end) {
+      updateFilter('completedDateStart', new Date(start).toISOString());
+      updateFilter('completedDateEnd', new Date(end).toISOString());
+    }
   };
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== undefined && (Array.isArray(v) ? v.length > 0 : true));
@@ -202,6 +247,32 @@ export const TaskFiltersGrid: React.FC<TaskFiltersGridProps> = ({ filters, onCha
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Due Date Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Due Date</label>
+            <DateRangeFilter
+              selectedRange={dueDateRange}
+              onRangeChange={handleDueDateRangeChange}
+              showCustom={true}
+              customStartDate={dueDateCustomStart}
+              customEndDate={dueDateCustomEnd}
+              onCustomDatesChange={handleDueDateCustomChange}
+            />
+          </div>
+
+          {/* Completion Date Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Completion Date</label>
+            <DateRangeFilter
+              selectedRange={completedDateRange}
+              onRangeChange={handleCompletedDateRangeChange}
+              showCustom={true}
+              customStartDate={completedDateCustomStart}
+              customEndDate={completedDateCustomEnd}
+              onCustomDatesChange={handleCompletedDateCustomChange}
+            />
           </div>
         </div>
       )}
