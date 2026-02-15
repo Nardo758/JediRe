@@ -230,7 +230,14 @@ export function MarketDataPageV2() {
   const renderTabContent = () => {
     switch (activeTab) {
       case 'overview':
-        return <OverviewTab data={mockData} />;
+        return (
+          <OverviewTab 
+            data={mockData} 
+            submarkets={mockSubmarkets}
+            selectedSubmarket={selectedSubmarket}
+            onSubmarketChange={setSelectedSubmarket}
+          />
+        );
       case 'comparables':
         return <ComparablesTab data={mockData} />;
       case 'demographics':
@@ -285,15 +292,6 @@ export function MarketDataPageV2() {
         onShare={() => console.log('Share')}
       >
         <div className="p-6">
-          {/* Submarket Leaderboard */}
-          <SubmarketLeaderboard
-            city="Atlanta"
-            submarkets={mockSubmarkets}
-            selectedSubmarket={selectedSubmarket}
-            onSubmarketChange={setSelectedSubmarket}
-          />
-
-          {/* Tab Content */}
           {renderTabContent()}
         </div>
       </MarketResearchLayout>
@@ -303,7 +301,14 @@ export function MarketDataPageV2() {
 
 // Tab Components
 
-function OverviewTab({ data }: { data: typeof mockData }) {
+interface OverviewTabProps {
+  data: typeof mockData;
+  submarkets: typeof mockSubmarkets;
+  selectedSubmarket: string;
+  onSubmarketChange: (id: string) => void;
+}
+
+function OverviewTab({ data, submarkets, selectedSubmarket, onSubmarketChange }: OverviewTabProps) {
   const metrics: MetricCard[] = [
     {
       label: 'Avg Rent',
