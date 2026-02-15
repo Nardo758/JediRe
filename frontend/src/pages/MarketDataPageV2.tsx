@@ -342,6 +342,14 @@ function OverviewTab({ data, submarkets, selectedSubmarket, onSubmarketChange }:
 
   return (
     <div>
+      {/* Submarket Leaderboard */}
+      <SubmarketLeaderboard
+        city="Atlanta"
+        submarkets={submarkets}
+        selectedSubmarket={selectedSubmarket}
+        onSubmarketChange={onSubmarketChange}
+      />
+
       <HeroMetrics metrics={metrics} />
 
       {/* Rent Trend Chart */}
