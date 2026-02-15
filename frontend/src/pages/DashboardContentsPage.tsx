@@ -9,7 +9,7 @@ export function DashboardContentsPage() {
     { icon: '📧', label: 'Email', path: '/dashboard/email', description: 'Synced email inbox with deal linking' },
     { icon: '📊', label: 'Pipeline', path: '/deals', description: 'Deal tracking grid with stages and scores' },
     { icon: '🏢', label: 'Assets Owned', path: '/assets-owned', description: 'Owned asset performance tracking' },
-    { icon: '📈', label: 'Market Data', path: '/market-data', description: 'Market trends, comps, and demographics' },
+    { icon: '📈', label: 'Market Research', path: '/market-data', description: 'Market trends, comps, and demographics' },
     { icon: '📰', label: 'News Intel', path: '/news-intel', description: 'Real-time news intelligence and alerts' },
     { icon: '📈', label: 'Reports', path: '/reports', description: 'Portfolio and deal reports' },
     { icon: '👥', label: 'Team', path: '/team', description: 'Team management and collaboration' },
