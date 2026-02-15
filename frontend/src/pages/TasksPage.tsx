@@ -11,6 +11,7 @@ import { TaskGrid } from '../components/tasks/TaskGrid';
 import { TaskFiltersGrid } from '../components/tasks/TaskFiltersGrid';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { CreateTaskModal } from '../components/tasks/CreateTaskModal';
+import { TaskCompletionReview } from '../components/tasks/TaskCompletionReview';
 
 export const TasksPage: React.FC = () => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -125,6 +126,26 @@ export const TasksPage: React.FC = () => {
     }
   };
 
+  // Email completion handlers
+  const handleApproveCompletion = (taskId: string, emailId: string, completionDate: string) => {
+    // Mark task as complete
+    tasksService.updateTask(taskId, {
+      status: 'complete',
+      completedAt: completionDate,
+      source: {
+        type: 'email',
+        referenceId: emailId,
+        sourceUrl: `/emails/${emailId}`,
+      },
+    });
+    loadTasks();
+  };
+
+  const handleRejectCompletion = (taskId: string, emailId: string) => {
+    // Just reload - rejection is logged on backend
+    console.log(`Rejected completion suggestion for task ${taskId} from email ${emailId}`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
@@ -196,6 +217,13 @@ export const TasksPage: React.FC = () => {
             <div className="text-2xl font-bold text-yellow-600">{stats.dueToday}</div>
           </div>
         </div>
+
+        {/* Email Intelligence - Task Completion Review */}
+        <TaskCompletionReview
+          onComplete={handleApproveCompletion}
+          onReject={handleRejectCompletion}
+          onRefresh={loadTasks}
+        />
 
         {/* Filters */}
         <TaskFiltersGrid filters={filters} onChange={setFilters} />
