@@ -20,6 +20,7 @@ import notificationsRoutes from './notifications.routes';
 import pipelineRoutes from './pipeline';
 import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
+import taskCompletionRoutes from './task-completion.routes';
 import emailRoutes from './email.routes';
 import inboxRoutes from './inbox.routes';
 import gmailRoutes from './gmail.routes';
@@ -105,6 +106,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Tasks routes (Global Tasks Module)
   app.use(`${API_PREFIX}/tasks`, tasksRoutes);
+
+  // Task Completion Detection routes (Email Intelligence)
+  app.use(`${API_PREFIX}/tasks`, taskCompletionRoutes);
 
   // Email routes (Email AI Integration)
   app.use(`${API_PREFIX}/emails`, emailRoutes);
