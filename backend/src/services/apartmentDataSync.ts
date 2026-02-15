@@ -65,10 +65,19 @@ export class ApartmentDataSyncService {
             console.log(`Authenticated successfully with key for ${endpoint}`);
             return response.data;
           } catch (authErr: any) {
+            if (authErr.response?.status === 500) {
+              const errorMsg = authErr.response?.data?.error || authErr.response?.data?.message || 'Internal server error';
+              console.log(`Server error (500) for ${endpoint}: ${errorMsg} (auth succeeded but server failed)`);
+              throw new Error(`Remote server error: ${errorMsg}`);
+            }
             console.log(`Auth key failed for ${endpoint}: ${authErr.response?.status || authErr.message}`);
             continue;
           }
         }
+      }
+      if (e.response?.status === 500) {
+        const errorMsg = e.response?.data?.error || e.response?.data?.message || 'Internal server error';
+        throw new Error(`Remote server error: ${errorMsg}`);
       }
       throw e;
     }
