@@ -16,6 +16,7 @@ import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import { createEventsRoutes } from './api/rest/events.routes';
 
 dotenv.config();
 
@@ -1105,6 +1106,11 @@ app.use('/api/v1', propertyProxyRoutes);
 app.use('/api/training', createTrainingRoutes(pool));
 app.use('/api/calibration', createCalibrationRoutes(pool));
 app.use('/api/capsules', createCapsuleRoutes(pool));
+
+// ============================================
+// Digital Traffic Events & Scoring Routes
+// ============================================
+app.use('/api/events', createEventsRoutes(pool));
 
 // ============================================
 // Apartment Data Sync Endpoints

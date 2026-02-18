@@ -46,7 +46,7 @@ import proformaRoutes from './proforma.routes';
 import auditRoutes from './audit.routes';
 import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
-import eventsRoutes from './events.routes';
+import kafkaEventsRoutes from './kafka-events.routes';
 import filesRoutes from './files.routes';
 import documentsFilesRoutes from './documentsFiles.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
@@ -156,8 +156,8 @@ export function setupRESTRoutes(app: Application): void {
   // Source Credibility routes (JEDI RE Phase 3, Component 4 - Source Credibility Learning)
   app.use(`${API_PREFIX}/credibility`, credibilityRoutes);
 
-  // Events routes (JEDI RE Phase 3, Component 3 - Kafka Event Bus Monitoring)
-  app.use(`${API_PREFIX}/events`, eventsRoutes);
+  // Kafka Events routes (JEDI RE Phase 3, Component 3 - Kafka Event Bus Monitoring)
+  app.use(`${API_PREFIX}/kafka-events`, kafkaEventsRoutes);
 
   // Isochrone routes (Drive-time boundary generation)
   app.use(`${API_PREFIX}/isochrone`, isochroneRoutes);
