@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Property } from '../../types';
 import { calculateNegotiationPower } from '../../utils/leaseIntel';
+import { trackPropertyEvent } from '@/hooks/useEventTracking';
+import { DigitalTrafficCard } from '@/components/analytics/DigitalTrafficCard';
 
 interface PropertyCardProps {
   property: Property;
@@ -9,6 +11,32 @@ interface PropertyCardProps {
 }
 
 export function PropertyCard({ property, onClick, loading }: PropertyCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const hasTracked = useRef(false);
+
+  // Track search impression when card becomes visible
+  useEffect(() => {
+    if (!cardRef.current || hasTracked.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !hasTracked.current) {
+            trackPropertyEvent(property.id, 'search_impression', {
+              position: cardRef.current?.getBoundingClientRect(),
+            });
+            hasTracked.current = true;
+          }
+        });
+      },
+      { threshold: 0.5 } // Track when 50% visible
+    );
+
+    observer.observe(cardRef.current);
+
+    return () => observer.disconnect();
+  }, [property.id]);
+
   if (loading) {
     return <PropertyCardSkeleton />;
   }
@@ -19,6 +47,7 @@ export function PropertyCard({ property, onClick, loading }: PropertyCardProps) 
 
   return (
     <div
+      ref={cardRef}
       className="group relative overflow-hidden rounded-lg bg-white shadow-md transition-all hover:shadow-lg cursor-pointer border border-gray-200"
       onClick={onClick}
     >
@@ -76,6 +105,11 @@ export function PropertyCard({ property, onClick, loading }: PropertyCardProps) 
             ${(property.rent - property.current_lease_amount).toLocaleString()}/mo below market
           </div>
         )}
+
+        {/* Digital Traffic Score - Compact Display */}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <DigitalTrafficCard propertyId={property.id} compact={true} />
+        </div>
       </div>
     </div>
   );

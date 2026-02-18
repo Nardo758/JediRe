@@ -5,6 +5,7 @@ import { Property } from '@/types';
 import PropertyBubble from './PropertyBubble';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import CollaboratorCursor from './CollaboratorCursor';
+import { trackPropertyEvent } from '@/hooks/useEventTracking';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -47,6 +48,12 @@ export default function MapView() {
   };
 
   const handlePropertyClick = (property: Property) => {
+    // Track map click event
+    trackPropertyEvent(property.id, 'map_click', {
+      coordinates: property.coordinates,
+      currentZoom: viewState.zoom,
+    });
+    
     setSelectedProperty(property);
     selectPropertyWs(property.id);
     mapRef.current?.flyTo({

@@ -4,6 +4,7 @@ import { Deal } from '@/types';
 import api from '@/lib/api';
 import { useModuleCheck } from '@/utils/modules';
 import { ModuleUpsellBanner } from './ModuleUpsellBanner';
+import { trackPropertyEvent } from '@/hooks/useEventTracking';
 
 interface TrafficPrediction {
   id: string;
@@ -40,6 +41,14 @@ export function TrafficAnalysisSection({ deal, propertyId }: TrafficAnalysisSect
     try {
       setLoading(true);
       setError(null);
+      
+      // Track analysis run event
+      if (propertyId) {
+        trackPropertyEvent(propertyId, 'analysis_run', {
+          module: 'traffic-analysis',
+          timestamp: new Date().toISOString(),
+        });
+      }
       
       const response = await api.get(`/api/traffic/prediction/${propertyId}`);
       
