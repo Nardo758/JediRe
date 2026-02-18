@@ -144,6 +144,10 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       const geometry = response.data.data.geometry;
       set({ draftGeometry: geometry });
       console.log('[TradeArea] Draft geometry updated:', geometry);
+      
+      // Load preview stats
+      await get().loadPreviewStats(geometry);
+      
       return geometry;
     } catch (error) {
       console.error('[TradeArea] Error generating radius circle:', error);
@@ -162,9 +166,11 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       const geometry = response.data.geometry;
       set({ draftGeometry: geometry });
       
-      // Update preview stats if available
+      // Update preview stats if available, otherwise load them
       if (response.data.stats) {
         set({ previewStats: response.data.stats });
+      } else {
+        await get().loadPreviewStats(geometry);
       }
       
       return geometry;
@@ -186,9 +192,11 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       const geometry = response.data.geometry;
       set({ draftGeometry: geometry });
       
-      // Update preview stats if available
+      // Update preview stats if available, otherwise load them
       if (response.data.stats) {
         set({ previewStats: response.data.stats });
+      } else {
+        await get().loadPreviewStats(geometry);
       }
       
       return geometry;
