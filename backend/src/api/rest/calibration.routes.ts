@@ -5,8 +5,6 @@ import {
   PropertyActuals,
   ForecastValidation,
   CalibrationFactors,
-  RecordActualsRequest,
-  CalculateCalibrationRequest,
 } from '../../models/calibration';
 
 export function createCalibrationRoutes(pool: Pool): Router {
@@ -25,7 +23,13 @@ export function createCalibrationRoutes(pool: Pool): Router {
         period_start,
         period_end,
         actuals_data
-      } = req.body as RecordActualsRequest;
+      } = req.body as {
+        user_id: string;
+        property_id: string;
+        period_start: string;
+        period_end: string;
+        actuals_data: any;
+      };
 
       if (!user_id || !property_id || !period_start || !period_end || !actuals_data) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -168,7 +172,11 @@ export function createCalibrationRoutes(pool: Pool): Router {
         user_id,
         module_type,
         min_validations = 3
-      } = req.body as CalculateCalibrationRequest;
+      } = req.body as {
+        user_id: string;
+        module_type: string;
+        min_validations?: number;
+      };
 
       if (!user_id || !module_type) {
         return res.status(400).json({ error: 'Missing required fields: user_id, module_type' });
@@ -191,7 +199,7 @@ export function createCalibrationRoutes(pool: Pool): Router {
       const validations = validationsResult.rows as ForecastValidation[];
 
       // Calculate factors
-      const factors = calibrationCalculator.calculateFactors(validations, module_type);
+      const factors = calibrationCalculator.calculateFactors(module_type, validations);
       const confidence = calibrationCalculator.calculateConfidence(validations);
 
       // Save factors
@@ -343,7 +351,7 @@ export function createCalibrationRoutes(pool: Pool): Router {
       const validations = validationsResult.rows as ForecastValidation[];
 
       // Recalculate
-      const factors = calibrationCalculator.calculateFactors(validations, moduleType);
+      const factors = calibrationCalculator.calculateFactors(moduleType, validations);
       const confidence = calibrationCalculator.calculateConfidence(validations);
 
       // Update factors
