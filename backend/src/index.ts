@@ -13,6 +13,9 @@ import path from 'path';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
 import { generateAccessToken } from './auth/jwt';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { createTrainingRoutes } from './api/rest/training.routes';
+import { createCalibrationRoutes } from './api/rest/calibration.routes';
+import { createCapsuleRoutes } from './api/rest/capsule.routes';
 
 dotenv.config();
 
@@ -1095,6 +1098,13 @@ app.use('/api/v1/apartment-market', apartmentMarketRoutes);
 app.use('/api/v1/market-intel', marketIntelRoutes);
 app.use('/api/v1/traffic', trafficPredictionRoutes);
 app.use('/api/v1', propertyProxyRoutes);
+
+// ============================================
+// Deal Capsule System Routes
+// ============================================
+app.use('/api/training', createTrainingRoutes(pool));
+app.use('/api/calibration', createCalibrationRoutes(pool));
+app.use('/api/capsules', createCapsuleRoutes(pool));
 
 // ============================================
 // Apartment Data Sync Endpoints

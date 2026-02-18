@@ -2,9 +2,6 @@ import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import {
   DealCapsule,
-  CreateCapsuleRequest,
-  UpdateCapsuleRequest,
-  ShareCapsuleRequest,
 } from '../../models/deal-capsule-updated';
 
 export function createCapsuleRoutes(pool: Pool): Router {
@@ -24,7 +21,15 @@ export function createCapsuleRoutes(pool: Pool): Router {
         platform_intel,
         user_adjustments,
         status = 'DISCOVER'
-      } = req.body as CreateCapsuleRequest;
+      } = req.body as {
+        user_id: string;
+        name: string;
+        property_address: string;
+        deal_data: any;
+        platform_intel?: any;
+        user_adjustments?: any;
+        status?: string;
+      };
 
       if (!user_id || !name || !property_address || !deal_data) {
         return res.status(400).json({ error: 'Missing required fields: user_id, name, property_address, deal_data' });
@@ -210,7 +215,15 @@ export function createCapsuleRoutes(pool: Pool): Router {
         user_adjustments,
         module_outputs,
         status
-      } = req.body as UpdateCapsuleRequest;
+      } = req.body as {
+        user_id: string;
+        name?: string;
+        deal_data?: any;
+        platform_intel?: any;
+        user_adjustments?: any;
+        module_outputs?: any;
+        status?: string;
+      };
 
       if (!user_id) {
         return res.status(400).json({ error: 'Missing required field: user_id' });
@@ -454,7 +467,13 @@ export function createCapsuleRoutes(pool: Pool): Router {
         permission_tier,
         expires_at,
         custom_message
-      } = req.body as ShareCapsuleRequest;
+      } = req.body as {
+        user_id: string;
+        shared_with_email: string;
+        permission_tier: string;
+        expires_at?: string;
+        custom_message?: string;
+      };
 
       if (!user_id || !shared_with_email || !permission_tier) {
         return res.status(400).json({ error: 'Missing required fields' });

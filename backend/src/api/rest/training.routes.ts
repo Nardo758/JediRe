@@ -6,9 +6,9 @@ import {
   UserModuleTraining,
   TrainingExample,
   ModuleSuggestion,
-  CreateTrainingExampleRequest,
-  GenerateSuggestionsRequest,
+  ModuleType,
 } from '../../models/module-training';
+import { Suggestion } from '../../services/training/suggestion-generator';
 
 export function createTrainingRoutes(pool: Pool): Router {
   const router = Router();
@@ -21,7 +21,12 @@ export function createTrainingRoutes(pool: Pool): Router {
    */
   router.post('/examples', async (req: Request, res: Response) => {
     try {
-      const { user_id, module_type, example_data, metadata } = req.body as CreateTrainingExampleRequest;
+      const { user_id, module_type, example_data, metadata } = req.body as {
+        user_id: string;
+        module_type: string;
+        example_data: any;
+        metadata?: any;
+      };
 
       if (!user_id || !module_type || !example_data) {
         return res.status(400).json({ error: 'Missing required fields: user_id, module_type, example_data' });
@@ -118,15 +123,15 @@ export function createTrainingRoutes(pool: Pool): Router {
 
       // Extract patterns
       const patterns = patternExtractor.extractPatterns(
-        examplesResult.rows as TrainingExample[],
-        module_type
+        module_type as ModuleType,
+        examplesResult.rows as TrainingExample[]
       );
 
-      // Calculate quality score
-      const qualityScore = patternExtractor.calculateQualityScore(
-        examplesResult.rows as TrainingExample[],
-        patterns
-      );
+      // Calculate quality score (average across examples)
+      const examples = examplesResult.rows as TrainingExample[];
+      const qualityScore = examples.length > 0
+        ? examples.reduce((sum, ex) => sum + patternExtractor.calculateQualityScore(ex), 0) / examples.length
+        : 0;
 
       // Save or update patterns
       const upsertResult = await pool.query(
@@ -167,7 +172,13 @@ export function createTrainingRoutes(pool: Pool): Router {
         deal_data, 
         platform_intel,
         include_calibration = true 
-      } = req.body as GenerateSuggestionsRequest;
+      } = req.body as {
+        user_id: string;
+        module_type: ModuleType;
+        deal_data: any;
+        platform_intel?: any;
+        include_calibration?: boolean;
+      };
 
       if (!user_id || !module_type || !deal_data) {
         return res.status(400).json({ error: 'Missing required fields: user_id, module_type, deal_data' });
@@ -204,13 +215,22 @@ export function createTrainingRoutes(pool: Pool): Router {
         }
       }
 
-      // Generate suggestions
-      const suggestions = suggestionGenerator.generateSuggestions(
+      // Generate suggestions using capsule-like structure
+      const capsuleLike = {
+        deal_data: deal_data || {},
+        platform_intel: platform_intel || {},
+      } as any;
+
+      let suggestions: Suggestion[] = suggestionGenerator.generateSuggestions(
+        capsuleLike,
         training,
-        deal_data,
-        platform_intel,
-        calibrationFactors
+        module_type
       );
+
+      // Apply calibration if available
+      if (calibrationFactors) {
+        suggestions = suggestionGenerator.combineSuggestions(suggestions, calibrationFactors.calibration_data?.noi_factor || null);
+      }
 
       // Save suggestions for tracking
       const client = await pool.connect();
@@ -227,8 +247,8 @@ export function createTrainingRoutes(pool: Pool): Router {
             [
               user_id,
               module_type,
-              suggestion.field_name,
-              suggestion.suggested_value,
+              suggestion.field,
+              suggestion.value,
               suggestion.confidence,
               suggestion.reason
             ]
@@ -241,7 +261,7 @@ export function createTrainingRoutes(pool: Pool): Router {
         res.json({ 
           success: true, 
           suggestions: savedSuggestions,
-          pattern_quality: training.quality_score,
+          pattern_quality: training.confidence,
           calibration_applied: !!calibrationFactors
         });
       } catch (error) {
