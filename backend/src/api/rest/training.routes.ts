@@ -21,22 +21,23 @@ export function createTrainingRoutes(pool: Pool): Router {
    */
   router.post('/examples', async (req: Request, res: Response) => {
     try {
-      const { user_id, module_type, example_data, metadata } = req.body as {
-        user_id: string;
-        module_type: string;
-        example_data: any;
-        metadata?: any;
+      const { training_id, deal_characteristics, user_output, source_type, source_file_name } = req.body as {
+        training_id: string;
+        deal_characteristics: any;
+        user_output: any;
+        source_type?: string;
+        source_file_name?: string;
       };
 
-      if (!user_id || !module_type || !example_data) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, module_type, example_data' });
+      if (!training_id || !deal_characteristics || !user_output) {
+        return res.status(400).json({ error: 'Missing required fields: training_id, deal_characteristics, user_output' });
       }
 
       const result = await pool.query(
-        `INSERT INTO training_examples (user_id, module_type, example_data, metadata)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO training_examples (training_id, deal_characteristics, user_output, source_type, source_file_name)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [user_id, module_type, example_data, metadata || {}]
+        [training_id, deal_characteristics, user_output, source_type || 'manual', source_file_name || null]
       );
 
       res.json({ 
@@ -56,9 +57,9 @@ export function createTrainingRoutes(pool: Pool): Router {
    */
   router.post('/examples/bulk', async (req: Request, res: Response) => {
     try {
-      const { user_id, module_type, examples } = req.body;
+      const { training_id, examples } = req.body;
 
-      if (!user_id || !module_type || !Array.isArray(examples) || examples.length === 0) {
+      if (!training_id || !Array.isArray(examples) || examples.length === 0) {
         return res.status(400).json({ error: 'Invalid bulk upload data' });
       }
 
@@ -69,10 +70,10 @@ export function createTrainingRoutes(pool: Pool): Router {
         const insertedExamples = [];
         for (const example of examples) {
           const result = await client.query(
-            `INSERT INTO training_examples (user_id, module_type, example_data, metadata)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO training_examples (training_id, deal_characteristics, user_output, source_type, source_file_name)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING *`,
-            [user_id, module_type, example.data, example.metadata || {}]
+            [training_id, example.deal_characteristics, example.user_output, example.source_type || 'manual', example.source_file_name || null]
           );
           insertedExamples.push(result.rows[0]);
         }
@@ -103,48 +104,45 @@ export function createTrainingRoutes(pool: Pool): Router {
    */
   router.post('/extract-patterns', async (req: Request, res: Response) => {
     try {
-      const { user_id, module_type } = req.body;
+      const { user_id, module_id } = req.body;
 
-      if (!user_id || !module_type) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, module_type' });
+      if (!user_id || !module_id) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, module_id' });
       }
 
-      // Fetch training examples
       const examplesResult = await pool.query(
-        `SELECT * FROM training_examples 
-         WHERE user_id = $1 AND module_type = $2
-         ORDER BY created_at DESC`,
-        [user_id, module_type]
+        `SELECT te.* FROM training_examples te
+         JOIN user_module_training umt ON te.training_id = umt.id
+         WHERE umt.user_id = $1 AND umt.module_id = $2
+         ORDER BY te.created_at DESC`,
+        [user_id, module_id]
       );
 
       if (examplesResult.rows.length === 0) {
         return res.status(400).json({ error: 'No training examples found for this module' });
       }
 
-      // Extract patterns
       const patterns = patternExtractor.extractPatterns(
-        module_type as ModuleType,
+        module_id as ModuleType,
         examplesResult.rows as TrainingExample[]
       );
 
-      // Calculate quality score (average across examples)
       const examples = examplesResult.rows as TrainingExample[];
       const qualityScore = examples.length > 0
         ? examples.reduce((sum, ex) => sum + patternExtractor.calculateQualityScore(ex), 0) / examples.length
         : 0;
 
-      // Save or update patterns
       const upsertResult = await pool.query(
-        `INSERT INTO user_module_training (user_id, module_type, learned_patterns, training_count, quality_score)
+        `INSERT INTO user_module_training (user_id, module_id, learned_patterns, sample_size, confidence)
          VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (user_id, module_type) 
+         ON CONFLICT (user_id, module_id) 
          DO UPDATE SET 
            learned_patterns = $3,
-           training_count = $4,
-           quality_score = $5,
+           sample_size = $4,
+           confidence = $5,
            last_trained = NOW()
          RETURNING *`,
-        [user_id, module_type, patterns, examplesResult.rows.length, qualityScore]
+        [user_id, module_id, patterns, examplesResult.rows.length, qualityScore]
       );
 
       res.json({ 
@@ -168,27 +166,28 @@ export function createTrainingRoutes(pool: Pool): Router {
     try {
       const { 
         user_id, 
-        module_type, 
+        module_id,
+        capsule_id,
         deal_data, 
         platform_intel,
         include_calibration = true 
       } = req.body as {
         user_id: string;
-        module_type: ModuleType;
+        module_id: string;
+        capsule_id: string;
         deal_data: any;
         platform_intel?: any;
         include_calibration?: boolean;
       };
 
-      if (!user_id || !module_type || !deal_data) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, module_type, deal_data' });
+      if (!user_id || !module_id || !deal_data) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, module_id, deal_data' });
       }
 
-      // Fetch learned patterns
       const patternsResult = await pool.query(
         `SELECT * FROM user_module_training 
-         WHERE user_id = $1 AND module_type = $2`,
-        [user_id, module_type]
+         WHERE user_id = $1 AND module_id = $2`,
+        [user_id, module_id]
       );
 
       if (patternsResult.rows.length === 0) {
@@ -199,15 +198,14 @@ export function createTrainingRoutes(pool: Pool): Router {
 
       const training = patternsResult.rows[0] as UserModuleTraining;
 
-      // Fetch calibration factors if requested
       let calibrationFactors = null;
       if (include_calibration) {
         const calibrationResult = await pool.query(
           `SELECT * FROM calibration_factors 
-           WHERE user_id = $1 AND module_type = $2 
-           ORDER BY calculated_at DESC 
+           WHERE user_id = $1 AND module_id = $2 
+           ORDER BY last_updated DESC 
            LIMIT 1`,
-          [user_id, module_type]
+          [user_id, module_id]
         );
 
         if (calibrationResult.rows.length > 0) {
@@ -215,7 +213,6 @@ export function createTrainingRoutes(pool: Pool): Router {
         }
       }
 
-      // Generate suggestions using capsule-like structure
       const capsuleLike = {
         deal_data: deal_data || {},
         platform_intel: platform_intel || {},
@@ -224,15 +221,13 @@ export function createTrainingRoutes(pool: Pool): Router {
       let suggestions: Suggestion[] = suggestionGenerator.generateSuggestions(
         capsuleLike,
         training,
-        module_type
+        module_id as ModuleType
       );
 
-      // Apply calibration if available
       if (calibrationFactors) {
         suggestions = suggestionGenerator.combineSuggestions(suggestions, calibrationFactors.calibration_data?.noi_factor || null);
       }
 
-      // Save suggestions for tracking
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -241,12 +236,12 @@ export function createTrainingRoutes(pool: Pool): Router {
         for (const suggestion of suggestions) {
           const result = await client.query(
             `INSERT INTO module_suggestions 
-             (user_id, module_type, field_name, suggested_value, confidence, reason)
+             (capsule_id, module_id, suggested_field, suggested_value, confidence, suggestion_reason)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
             [
-              user_id,
-              module_type,
+              capsule_id || null,
+              module_id,
               suggestion.field,
               suggestion.value,
               suggestion.confidence,
@@ -277,17 +272,17 @@ export function createTrainingRoutes(pool: Pool): Router {
   });
 
   /**
-   * GET /api/training/:userId/:moduleType
+   * GET /api/training/:userId/:moduleId
    * Get training status for a module
    */
-  router.get('/:userId/:moduleType', async (req: Request, res: Response) => {
+  router.get('/:userId/:moduleId', async (req: Request, res: Response) => {
     try {
-      const { userId, moduleType } = req.params;
+      const { userId, moduleId } = req.params;
 
       const result = await pool.query(
         `SELECT * FROM user_module_training 
-         WHERE user_id = $1 AND module_type = $2`,
-        [userId, moduleType]
+         WHERE user_id = $1 AND module_id = $2`,
+        [userId, moduleId]
       );
 
       if (result.rows.length === 0) {
@@ -318,10 +313,10 @@ export function createTrainingRoutes(pool: Pool): Router {
       const { userId } = req.params;
 
       const result = await pool.query(
-        `SELECT module_type, training_count, quality_score, last_trained 
+        `SELECT module_id, sample_size, confidence, last_trained 
          FROM user_module_training 
          WHERE user_id = $1
-         ORDER BY module_type`,
+         ORDER BY module_id`,
         [userId]
       );
 
@@ -350,10 +345,10 @@ export function createTrainingRoutes(pool: Pool): Router {
 
       const result = await pool.query(
         `UPDATE module_suggestions 
-         SET user_decision = $1, 
-             actual_value = $2, 
+         SET user_response = $1, 
+             user_final_value = $2, 
              feedback_notes = $3,
-             decided_at = NOW()
+             feedback_timestamp = NOW()
          WHERE id = $4
          RETURNING *`,
         [status, actual_value, feedback_notes, suggestionId]
@@ -374,36 +369,28 @@ export function createTrainingRoutes(pool: Pool): Router {
   });
 
   /**
-   * DELETE /api/training/:userId/:moduleType
+   * DELETE /api/training/:userId/:moduleId
    * Reset training for a module (delete all training data)
    */
-  router.delete('/:userId/:moduleType', async (req: Request, res: Response) => {
+  router.delete('/:userId/:moduleId', async (req: Request, res: Response) => {
     try {
-      const { userId, moduleType } = req.params;
+      const { userId, moduleId } = req.params;
 
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
 
-        // Delete training
         await client.query(
           `DELETE FROM user_module_training 
-           WHERE user_id = $1 AND module_type = $2`,
-          [userId, moduleType]
-        );
-
-        // Delete training examples
-        await client.query(
-          `DELETE FROM training_examples 
-           WHERE user_id = $1 AND module_type = $2`,
-          [userId, moduleType]
+           WHERE user_id = $1 AND module_id = $2`,
+          [userId, moduleId]
         );
 
         await client.query('COMMIT');
 
         res.json({ 
           success: true, 
-          message: `Training data for ${moduleType} has been reset`
+          message: `Training data for ${moduleId} has been reset`
         });
       } catch (error) {
         await client.query('ROLLBACK');

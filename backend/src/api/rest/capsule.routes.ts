@@ -15,45 +15,44 @@ export function createCapsuleRoutes(pool: Pool): Router {
     try {
       const {
         user_id,
-        name,
         property_address,
         deal_data,
         platform_intel,
         user_adjustments,
+        asset_class,
         status = 'DISCOVER'
       } = req.body as {
         user_id: string;
-        name: string;
         property_address: string;
         deal_data: any;
         platform_intel?: any;
         user_adjustments?: any;
+        asset_class?: string;
         status?: string;
       };
 
-      if (!user_id || !name || !property_address || !deal_data) {
-        return res.status(400).json({ error: 'Missing required fields: user_id, name, property_address, deal_data' });
+      if (!user_id || !property_address || !deal_data) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, property_address, deal_data' });
       }
 
       const result = await pool.query(
         `INSERT INTO deal_capsules 
-         (user_id, name, property_address, deal_data, platform_intel, user_adjustments, status)
+         (user_id, property_address, deal_data, platform_intel, user_adjustments, asset_class, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
         [
           user_id,
-          name,
           property_address,
           deal_data,
           platform_intel || {},
           user_adjustments || {},
+          asset_class || null,
           status
         ]
       );
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'created', $3)`,
         [
           result.rows[0].id,
@@ -99,7 +98,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       }
 
       if (search) {
-        query += ` AND (name ILIKE $${paramIndex} OR property_address ILIKE $${paramIndex})`;
+        query += ` AND (property_address ILIKE $${paramIndex})`;
         params.push(`%${search}%`);
         paramIndex++;
       }
@@ -109,7 +108,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
 
       const result = await pool.query(query, params);
 
-      // Get total count
       let countQuery = `SELECT COUNT(*) FROM deal_capsules WHERE user_id = $1`;
       const countParams: any[] = [user_id];
       let countParamIndex = 2;
@@ -121,7 +119,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
       }
 
       if (search) {
-        countQuery += ` AND (name ILIKE $${countParamIndex} OR property_address ILIKE $${countParamIndex})`;
+        countQuery += ` AND (property_address ILIKE $${countParamIndex})`;
         countParams.push(`%${search}%`);
       }
 
@@ -163,15 +161,13 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Capsule not found' });
       }
 
-      // Get documents
       const docsResult = await pool.query(
         `SELECT * FROM capsule_documents 
          WHERE capsule_id = $1 
-         ORDER BY uploaded_at DESC`,
+         ORDER BY created_at DESC`,
         [id]
       );
 
-      // Get recent activity
       const activityResult = await pool.query(
         `SELECT * FROM capsule_activity 
          WHERE capsule_id = $1 
@@ -180,7 +176,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         [id]
       );
 
-      // Get shares
       const sharesResult = await pool.query(
         `SELECT * FROM capsule_shares 
          WHERE capsule_id = $1`,
@@ -209,19 +204,19 @@ export function createCapsuleRoutes(pool: Pool): Router {
       const { id } = req.params;
       const {
         user_id,
-        name,
         deal_data,
         platform_intel,
         user_adjustments,
         module_outputs,
+        asset_class,
         status
       } = req.body as {
         user_id: string;
-        name?: string;
         deal_data?: any;
         platform_intel?: any;
         user_adjustments?: any;
         module_outputs?: any;
+        asset_class?: string;
         status?: string;
       };
 
@@ -229,16 +224,9 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(400).json({ error: 'Missing required field: user_id' });
       }
 
-      // Build update query dynamically
       const updates: string[] = [];
       const values: any[] = [];
       let paramIndex = 1;
-
-      if (name !== undefined) {
-        updates.push(`name = $${paramIndex}`);
-        values.push(name);
-        paramIndex++;
-      }
 
       if (deal_data !== undefined) {
         updates.push(`deal_data = $${paramIndex}`);
@@ -261,6 +249,12 @@ export function createCapsuleRoutes(pool: Pool): Router {
       if (module_outputs !== undefined) {
         updates.push(`module_outputs = $${paramIndex}`);
         values.push(module_outputs);
+        paramIndex++;
+      }
+
+      if (asset_class !== undefined) {
+        updates.push(`asset_class = $${paramIndex}`);
+        values.push(asset_class);
         paramIndex++;
       }
 
@@ -288,9 +282,8 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Capsule not found' });
       }
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'updated', $3)`,
         [
           id,
@@ -327,7 +320,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
       try {
         await client.query('BEGIN');
 
-        // Delete in order (foreign key constraints)
         await client.query(`DELETE FROM capsule_activity WHERE capsule_id = $1`, [id]);
         await client.query(`DELETE FROM capsule_shares WHERE capsule_id = $1`, [id]);
         await client.query(`DELETE FROM capsule_documents WHERE capsule_id = $1`, [id]);
@@ -369,13 +361,12 @@ export function createCapsuleRoutes(pool: Pool): Router {
   router.post('/:id/documents', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { user_id, file_name, file_type, file_url, file_size, metadata } = req.body;
+      const { user_id, file_name, document_type, file_path, file_size_bytes, mime_type, extracted_data } = req.body;
 
-      if (!user_id || !file_name || !file_type || !file_url) {
-        return res.status(400).json({ error: 'Missing required fields' });
+      if (!user_id || !file_name || !file_path) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, file_name, file_path' });
       }
 
-      // Verify capsule exists and user owns it
       const capsuleResult = await pool.query(
         `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
         [id, user_id]
@@ -387,17 +378,16 @@ export function createCapsuleRoutes(pool: Pool): Router {
 
       const result = await pool.query(
         `INSERT INTO capsule_documents 
-         (capsule_id, file_name, file_type, file_url, file_size, uploaded_by, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (capsule_id, file_name, document_type, file_path, file_size_bytes, mime_type, uploaded_by, extracted_data)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [id, file_name, file_type, file_url, file_size, user_id, metadata || {}]
+        [id, file_name, document_type || null, file_path, file_size_bytes || null, mime_type || null, user_id, extracted_data || {}]
       );
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'document_uploaded', $3)`,
-        [id, user_id, { file_name, file_type }]
+        [id, user_id, { file_name, document_type }]
       );
 
       res.json({
@@ -424,7 +414,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(400).json({ error: 'Missing required parameter: user_id' });
       }
 
-      // Verify ownership through capsule
       const result = await pool.query(
         `DELETE FROM capsule_documents 
          WHERE id = $1 AND capsule_id = $2 
@@ -437,9 +426,8 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Document not found' });
       }
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'document_deleted', $3)`,
         [id, user_id, { file_name: result.rows[0].file_name }]
       );
@@ -463,23 +451,20 @@ export function createCapsuleRoutes(pool: Pool): Router {
       const { id } = req.params;
       const {
         user_id,
-        shared_with_email,
+        shared_with,
         permission_tier,
-        expires_at,
-        custom_message
+        expires_at
       } = req.body as {
         user_id: string;
-        shared_with_email: string;
+        shared_with: string;
         permission_tier: string;
         expires_at?: string;
-        custom_message?: string;
       };
 
-      if (!user_id || !shared_with_email || !permission_tier) {
-        return res.status(400).json({ error: 'Missing required fields' });
+      if (!user_id || !shared_with || !permission_tier) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, shared_with, permission_tier' });
       }
 
-      // Verify capsule ownership
       const capsuleResult = await pool.query(
         `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
         [id, user_id]
@@ -489,22 +474,20 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Capsule not found' });
       }
 
-      // Generate share token
       const shareToken = `share_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
       const result = await pool.query(
         `INSERT INTO capsule_shares 
-         (capsule_id, shared_by, shared_with_email, permission_tier, share_token, expires_at, custom_message)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (capsule_id, shared_by, shared_with, permission_tier, share_token, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [id, user_id, shared_with_email, permission_tier, shareToken, expires_at, custom_message]
+        [id, user_id, shared_with, permission_tier, shareToken, expires_at || null]
       );
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'shared', $3)`,
-        [id, user_id, { shared_with: shared_with_email, permission_tier }]
+        [id, user_id, { shared_with, permission_tier }]
       );
 
       res.json({
@@ -536,7 +519,7 @@ export function createCapsuleRoutes(pool: Pool): Router {
         `DELETE FROM capsule_shares 
          WHERE id = $1 AND capsule_id = $2 
          AND capsule_id IN (SELECT id FROM deal_capsules WHERE user_id = $3)
-         RETURNING shared_with_email`,
+         RETURNING shared_with`,
         [shareId, id, user_id]
       );
 
@@ -544,11 +527,10 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(404).json({ error: 'Share not found' });
       }
 
-      // Log activity
       await pool.query(
-        `INSERT INTO capsule_activity (capsule_id, user_id, action_type, details)
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
          VALUES ($1, $2, 'share_revoked', $3)`,
-        [id, user_id, { shared_with: result.rows[0].shared_with_email }]
+        [id, user_id, { shared_with: result.rows[0].shared_with }]
       );
 
       res.json({
@@ -574,7 +556,6 @@ export function createCapsuleRoutes(pool: Pool): Router {
         return res.status(400).json({ error: 'Missing required parameter: user_id' });
       }
 
-      // Verify access
       const capsuleResult = await pool.query(
         `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
         [id, user_id]
