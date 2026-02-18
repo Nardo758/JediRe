@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import circle from '@turf/circle';
+import area from '@turf/area';
 import { point } from '@turf/helpers';
 
 const router = Router();
@@ -245,8 +246,17 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       });
     }
 
+    // Calculate area in square kilometers
+    const areaSqMeters = area(geometry);
+    const areaSqKm = areaSqMeters / 1_000_000;
+
+    // Preliminary traffic estimation: ~1200 walk-ins per sq km per week
+    // This is a rough heuristic based on urban density patterns
+    const estimatedWeeklyWalkIns = Math.floor(areaSqKm * 1200);
+    const dailyAverage = Math.floor(estimatedWeeklyWalkIns / 7);
+
     // TODO: Calculate real stats from database
-    // For now, return mock data
+    // For now, return mock data with preliminary walk-in estimates
 
     const mockStats = {
       population: Math.floor(Math.random() * 50000) + 20000,
@@ -254,6 +264,9 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       pipeline_units: Math.floor(Math.random() * 2000) + 500,
       avg_rent: Math.floor(Math.random() * 1000) + 1500,
       properties_count: Math.floor(Math.random() * 50) + 10,
+      weekly_walk_ins: estimatedWeeklyWalkIns,
+      daily_average: dailyAverage,
+      note: 'Preliminary estimate',
     };
 
     res.json({
