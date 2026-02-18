@@ -290,6 +290,32 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
           <label className="block text-sm font-medium text-gray-700 mb-3">
             Trade Area Preview
           </label>
+          
+          {/* Walk-In Traffic Estimates */}
+          {previewStats.weekly_walk_ins !== undefined && (
+            <div className="mb-4">
+              <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-medium text-blue-900 uppercase tracking-wide">
+                    Estimated Walk-In Traffic
+                  </div>
+                </div>
+                <div className="text-3xl font-bold text-blue-900 mb-1">
+                  {previewStats.weekly_walk_ins.toLocaleString()} walk-ins/week
+                </div>
+                <div className="text-sm text-blue-700 mb-3">
+                  Daily average: {(previewStats.daily_average ?? 0).toLocaleString()} walk-ins
+                </div>
+                <div className="flex items-start gap-2 bg-orange-100 border border-orange-300 rounded px-3 py-2">
+                  <span className="text-orange-600 font-bold flex-shrink-0">⚠️</span>
+                  <p className="text-xs text-orange-800">
+                    Preliminary estimate - full traffic engine in development
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Population</div>
