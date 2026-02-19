@@ -47,6 +47,7 @@ import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import eventsRoutes from './events.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
+import moduleLibrariesRoutes from './module-libraries.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -169,6 +170,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Module System routes (Settings > Modules page)
   app.use(`${API_PREFIX}/modules`, modulesRoutes);
+
+  // Module Libraries routes (Historical data for Opus learning)
+  app.use(`${API_PREFIX}/module-libraries`, moduleLibrariesRoutes);
 
   // Financial Models routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/financial-models`, financialModelsRoutes);

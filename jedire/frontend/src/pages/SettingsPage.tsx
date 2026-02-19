@@ -42,6 +42,12 @@ export function SettingsPage() {
           >
             AI Modules
           </a>
+          <a 
+            href="/settings/module-libraries"
+            className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
+          >
+            Module Libraries
+          </a>
           <button 
             onClick={() => setActiveTab('integrations')}
             className={`w-full text-left px-4 py-3 rounded-lg ${
