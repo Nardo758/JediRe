@@ -16,6 +16,7 @@ import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import preferencesRouter from './api/rest/preferences.routes';
 
 dotenv.config();
 
@@ -57,31 +58,40 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// Health Check Endpoint (lightweight - no DB query)
+// Health Check Endpoints
 // ============================================
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  let databaseStatus = 'unknown';
+  try {
+    await pool.query('SELECT 1');
+    databaseStatus = 'connected';
+  } catch { databaseStatus = 'disconnected'; }
+
   res.status(200).json({
-    status: 'healthy',
+    status: 'ok',
     timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    database: databaseStatus,
+    uptime: process.uptime(),
   });
 });
 
-app.get('/health/full', async (req, res) => {
+app.get('/health/db', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()');
-    
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      database: 'connected',
-      dbTime: result.rows[0].now
+    const start = Date.now();
+    const result = await pool.query('SELECT NOW() as time, version() as version');
+    const latency = Date.now() - start;
+    res.status(200).json({
+      connected: true,
+      latency,
+      timestamp: result.rows[0].time,
+      version: result.rows[0].version,
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(503).json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      connected: false,
+      error: error.message,
     });
   }
 });
@@ -1100,6 +1110,7 @@ app.use('/api/v1/market-intel', marketIntelRoutes);
 app.use('/api/v1/traffic', trafficPredictionRoutes);
 app.use('/api/v1', propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', leasingTrafficRoutes);
+app.use('/api/v1/preferences', preferencesRouter);
 
 // ============================================
 // Deal Capsule System Routes
