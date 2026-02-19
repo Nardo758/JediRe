@@ -34,6 +34,7 @@ import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
+import { LeasingForecastPage } from './pages/LeasingForecastPage';
 
 
 function AppContent() {
@@ -87,6 +88,7 @@ function AppContent() {
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+          <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/team" element={<TeamPage />} />
