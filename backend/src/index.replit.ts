@@ -1092,6 +1092,7 @@ import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import marketIntelRoutes from './api/rest/marketIntel.routes';
 import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
+import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 
 app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/gmail', gmailRouter);
@@ -1117,6 +1118,7 @@ app.use('/api/v1/preferences', preferencesRouter);
 app.use('/api/v1/property-types', propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', customStrategiesRouter);
+app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
 
 // ============================================
 // Deal Capsule System Routes

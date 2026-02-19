@@ -30,6 +30,8 @@ Preferred communication style: Simple, everyday language.
 
 **Key Design Decision:** Map-agnostic approach reduces infrastructure costs from $50-100K/year to $5-10K/year by storing only zoning rules and intelligence data, not full parcel geometries.
 
+- **Module Library System:** Upload historical data (Excel, PDF, CSV) for Opus AI to learn patterns, formulas, and assumptions. 3 module libraries (Financial, Market, Due Diligence) with file upload, parsing status tracking, pattern detection, and template learning. Backend: `moduleLibrary.service.ts` + `module-libraries.routes.ts` (7 REST endpoints with multer). Frontend: `ModuleLibrariesPage.tsx` + `ModuleLibraryDetailPage.tsx` under `/settings/module-libraries`. DB: `module_library_files`, `opus_learned_patterns`, `opus_template_structures` tables.
+
 ### Agent Dashboard (CRM Module)
 
 - **Schema:** 5 Drizzle ORM tables — `agent_clients`, `agent_deals`, `agent_leads`, `agent_activities`, `agent_commission_templates`
