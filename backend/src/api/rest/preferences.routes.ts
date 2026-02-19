@@ -273,10 +273,10 @@ router.get('/available-markets', async (req: Request, res: Response) => {
 router.get('/property-types', async (req: Request, res: Response) => {
   try {
     const result = await query(
-      `SELECT type_key, display_name, description, icon
+      `SELECT type_key, display_name, description, icon, category, sort_order
        FROM property_types 
        WHERE enabled = true
-       ORDER BY display_name ASC`
+       ORDER BY sort_order ASC, display_name ASC`
     );
 
     res.json({
