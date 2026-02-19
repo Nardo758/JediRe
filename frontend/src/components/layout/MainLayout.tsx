@@ -98,7 +98,7 @@ export const MainLayout: React.FC = () => {
   useEffect(() => {
     const checkOnboarding = async () => {
       try {
-        const response = await api.get('/user/preferences');
+        const response = await api.get('/preferences/user');
         const prefs = response.data.data;
         
         // Show onboarding if not completed

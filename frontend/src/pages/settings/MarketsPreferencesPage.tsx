@@ -39,9 +39,9 @@ export default function MarketsPreferencesPage() {
       
       // Load available options
       const [marketsRes, typesRes, prefsRes] = await Promise.all([
-        api.get('/user/available-markets'),
-        api.get('/user/property-types'),
-        api.get('/user/preferences')
+        api.get('/preferences/available-markets'),
+        api.get('/preferences/property-types'),
+        api.get('/preferences/user')
       ]);
       
       setMarkets(marketsRes.data.markets);
@@ -64,7 +64,7 @@ export default function MarketsPreferencesPage() {
     try {
       setSaving(true);
       
-      await api.put('/user/preferences', {
+      await api.put('/preferences/user', {
         preferred_markets: selectedMarkets,
         property_types: selectedPropertyTypes,
         primary_market: primaryMarket,

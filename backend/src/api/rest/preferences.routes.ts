@@ -234,10 +234,10 @@ router.delete('/', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/user/available-markets
+ * GET /api/v1/preferences/available-markets
  * Get list of available markets for onboarding
  */
-router.get('/user/available-markets', async (req: Request, res: Response) => {
+router.get('/available-markets', async (req: Request, res: Response) => {
   try {
     const result = await query(
       `SELECT name, display_name, state, metro_area, coverage_status, 
@@ -267,10 +267,10 @@ router.get('/user/available-markets', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/user/property-types
+ * GET /api/v1/preferences/property-types
  * Get list of property types for onboarding
  */
-router.get('/user/property-types', async (req: Request, res: Response) => {
+router.get('/property-types', async (req: Request, res: Response) => {
   try {
     const result = await query(
       `SELECT type_key, display_name, description, icon
@@ -293,10 +293,10 @@ router.get('/user/property-types', async (req: Request, res: Response) => {
 });
 
 /**
- * PUT /api/v1/user/preferences
+ * PUT /api/v1/preferences/user
  * Update user market and property type preferences (for onboarding)
  */
-router.put('/user/preferences', async (req: Request, res: Response) => {
+router.put('/user', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
     const {
@@ -389,10 +389,10 @@ router.put('/user/preferences', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/v1/user/preferences
+ * GET /api/v1/preferences/user
  * Get user's market and property type preferences
  */
-router.get('/user/preferences', async (req: Request, res: Response) => {
+router.get('/user', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
 
