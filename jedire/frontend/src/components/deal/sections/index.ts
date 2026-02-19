@@ -6,7 +6,7 @@ export { ModuleUpsellBanner } from './ModuleUpsellBanner';
 export { PropertiesSection } from './PropertiesSection';
 export { MarketSection } from './MarketSection';
 export { MarketAnalysisSection } from './MarketAnalysisSection';
-export { DocumentsSection } from './DocumentsSection';
+export { MarketIntelligenceSection } from './MarketIntelligenceSection';
 export { TeamSection } from './TeamSection';
 export { ContextTrackerSection } from './ContextTrackerSection';
 export { NotesSection } from './NotesSection';

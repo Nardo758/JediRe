@@ -17,12 +17,9 @@ import {
   StrategySection,
   DueDiligenceSection,
   PropertiesSection,
-  MarketSection,
-  MarketCompetitionSection,
-  SupplyTrackingSection,
+  MarketIntelligenceSection,
   DebtMarketSection,
   AIAgentSection,
-  DocumentsSection,
   TeamSection,
   ContextTrackerSection,
   NotesSection,
@@ -146,22 +143,10 @@ export const DealView: React.FC = () => {
             <DueDiligenceSection deal={selectedDeal as any} enhanced={false} onToggleModule={handleModuleUpgrade} />
           </div>
         );
-      case 'market':
+      case 'market-intelligence':
         return (
           <div className="p-6">
-            <MarketSection deal={selectedDeal as any} isPremium={false} />
-          </div>
-        );
-      case 'market-competition':
-        return (
-          <div className="p-6">
-            <MarketCompetitionSection deal={selectedDeal as any} isPremium={false} />
-          </div>
-        );
-      case 'supply-tracking':
-        return (
-          <div className="p-6">
-            <SupplyTrackingSection deal={selectedDeal as any} isPremium={false} />
+            <MarketIntelligenceSection deal={selectedDeal as any} isPremium={false} />
           </div>
         );
       case 'debt-market':
@@ -176,10 +161,14 @@ export const DealView: React.FC = () => {
             <AIAgentSection deal={selectedDeal as any} isPremium={false} />
           </div>
         );
-      case 'documents':
+      case 'files':
         return (
           <div className="p-6">
-            <DocumentsSection deal={selectedDeal as any} />
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">📁</div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Files Section</h3>
+              <p className="text-gray-600">File management coming soon</p>
+            </div>
           </div>
         );
       case 'team':
