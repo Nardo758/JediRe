@@ -241,10 +241,18 @@ router.get('/available-markets', async (req: Request, res: Response) => {
   try {
     const result = await query(
       `SELECT name, display_name, state, metro_area, coverage_status, 
-              property_count, data_freshness
+              property_count, data_freshness, region
        FROM available_markets 
        WHERE enabled = true
        ORDER BY 
+         CASE region
+           WHEN 'Southeast' THEN 1
+           WHEN 'Texas' THEN 2
+           WHEN 'West' THEN 3
+           WHEN 'Midwest' THEN 4
+           WHEN 'Northeast' THEN 5
+           ELSE 6
+         END,
          CASE coverage_status 
            WHEN 'active' THEN 1
            WHEN 'beta' THEN 2

@@ -119,6 +119,7 @@ export default function PropertyTypesSettings() {
   const [selectedType, setSelectedType] = useState<PropertyType | null>(null);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loadingStrategies, setLoadingStrategies] = useState(false);
+  const [primaryUseCase, setPrimaryUseCase] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -141,6 +142,7 @@ export default function PropertyTypesSettings() {
       setPropertyTypes(typesRes.data.property_types);
       const prefs = prefsRes.data.data || prefsRes.data;
       setSelectedTypes(prefs.property_types || []);
+      setPrimaryUseCase(prefs.primary_use_case || '');
       
       // Auto-select first type if there are selected types
       if (prefs.property_types && prefs.property_types.length > 0) {
@@ -183,9 +185,10 @@ export default function PropertyTypesSettings() {
     try {
       setSaving(true);
       await api.put('/preferences/user', {
-        property_types: selectedTypes
+        property_types: selectedTypes,
+        primary_use_case: primaryUseCase
       });
-      alert('Property type preferences saved successfully!');
+      alert('Preferences saved successfully!');
     } catch (error) {
       console.error('Failed to save preferences:', error);
       alert('Failed to save preferences');
@@ -215,10 +218,30 @@ export default function PropertyTypesSettings() {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-2xl font-bold text-gray-900">Property Types & Strategies</h2>
-        <p className="text-sm text-gray-600 mt-1">
-          Select property types you focus on and view applicable investment strategies
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Property Types & Strategies</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Select property types you focus on and view applicable investment strategies
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Primary Role:</label>
+            <select
+              value={primaryUseCase}
+              onChange={(e) => setPrimaryUseCase(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Select role...</option>
+              <option value="investor">Investor</option>
+              <option value="developer">Developer</option>
+              <option value="broker">Broker/Agent</option>
+              <option value="lender">Lender</option>
+              <option value="property_manager">Property Manager</option>
+              <option value="analyst">Analyst/Research</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Two-Panel Layout */}
