@@ -197,16 +197,20 @@ export class LeasingTrafficService {
     const result = await pool.query(`
       SELECT 
         id,
-        property_name,
-        address,
-        latitude,
-        longitude,
+        address_line1,
+        city,
+        state_code,
+        lat,
+        lng,
         property_type,
-        project_type,
+        building_class,
         units,
-        occupancy,
+        current_occupancy AS occupancy,
         avg_rent,
-        total_value
+        market_rent,
+        submarket_id,
+        year_built,
+        sqft
       FROM properties
       WHERE id = $1
     `, [propertyId]);
