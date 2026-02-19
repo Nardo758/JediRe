@@ -1,5 +1,7 @@
 import React from 'react';
 import { DealSidebarProps } from '../../types';
+import { Badge } from '../shared/Badge';
+import { AnalysisStatus } from '../../services/dealAnalysis.service';
 
 const moduleIcons: Record<string, string> = {
   map: '🗺️',
@@ -55,11 +57,18 @@ const ASSET_MODULES = [
 const PRO_MODULES: string[] = [];
 const ENTERPRISE_MODULES: string[] = [];
 
-export const DealSidebar: React.FC<DealSidebarProps> = ({
+interface ExtendedDealSidebarProps extends DealSidebarProps {
+  analysisStatus?: AnalysisStatus | null;
+  strategyResultsReady?: boolean;
+}
+
+export const DealSidebar: React.FC<ExtendedDealSidebarProps> = ({
   deal,
   modules,
   currentModule,
-  onModuleChange
+  onModuleChange,
+  analysisStatus,
+  strategyResultsReady
 }) => {
   const isPortfolio = deal.dealCategory === 'portfolio' || (deal as any).state === 'POST_CLOSE';
   const isOwned = isPortfolio;
@@ -84,7 +93,74 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
     return null;
   };
 
+  const getModuleBadge = (moduleName: string) => {
+    if (!analysisStatus) return null;
+
+    // Market module - depends on comparables
+    if (moduleName === 'market') {
+      if (analysisStatus.comparables.status === 'in_progress') {
+        return <Badge color="yellow" size="sm">Analyzing...</Badge>;
+      }
+      if (analysisStatus.comparables.status === 'complete') {
+        return <Badge color="green" size="sm">Ready</Badge>;
+      }
+      return <Badge color="gray" size="sm">Queued</Badge>;
+    }
+
+    // Strategy module - depends on strategy analysis
+    if (moduleName === 'strategy') {
+      if (analysisStatus.strategies.status === 'in_progress') {
+        return <Badge color="yellow" size="sm">Analyzing...</Badge>;
+      }
+      if (analysisStatus.strategies.status === 'complete' || strategyResultsReady) {
+        return <Badge color="green" size="sm">Ready</Badge>;
+      }
+      return <Badge color="gray" size="sm">Queued</Badge>;
+    }
+
+    // Financial module - depends on financial models
+    if (moduleName === 'financial') {
+      if (analysisStatus.financialModels.status === 'in_progress') {
+        return <Badge color="yellow" size="sm">Building...</Badge>;
+      }
+      if (analysisStatus.financialModels.status === 'complete') {
+        return <Badge color="green" size="sm">Ready</Badge>;
+      }
+      return <Badge color="gray" size="sm">Queued</Badge>;
+    }
+
+    return null;
+  };
+
+  const isModuleUnlocked = (moduleName: string) => {
+    if (!analysisStatus) return true; // No restrictions if no analysis
+
+    // Market requires comparables to be complete
+    if (moduleName === 'market') {
+      return analysisStatus.comparables.status === 'complete';
+    }
+
+    // Strategy requires strategies to be complete
+    if (moduleName === 'strategy') {
+      return analysisStatus.strategies.status === 'complete' || strategyResultsReady;
+    }
+
+    // Financial requires all analysis to be complete
+    if (moduleName === 'financial') {
+      return analysisStatus.financialModels.status === 'complete';
+    }
+
+    return true; // All other modules are unlocked by default
+  };
+
   const handleModuleClick = (moduleName: string) => {
+    const unlocked = isModuleUnlocked(moduleName);
+    
+    if (!unlocked) {
+      alert('This module will be available once the analysis is complete.');
+      return;
+    }
+    
     if (isModuleEnabled(moduleName)) {
       onModuleChange(moduleName);
     } else {
@@ -102,19 +178,22 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
         <div className="space-y-1">
           {visibleModules.map(moduleName => {
             const enabled = isModuleEnabled(moduleName);
+            const unlocked = isModuleUnlocked(moduleName);
             const upgradeMsg = getModuleUpgradeMessage(moduleName);
             const isActive = currentModule === moduleName;
+            const badge = getModuleBadge(moduleName);
+            const isLocked = !enabled || !unlocked;
 
             return (
               <button
                 key={moduleName}
                 onClick={() => handleModuleClick(moduleName)}
-                disabled={!enabled}
+                disabled={isLocked}
                 className={`
                   w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition
                   ${isActive 
                     ? 'bg-blue-50 text-blue-700 font-semibold' 
-                    : enabled
+                    : enabled && unlocked
                       ? 'text-gray-700 hover:bg-gray-50'
                       : 'text-gray-400 cursor-not-allowed'
                   }
@@ -122,11 +201,14 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
               >
                 <span className="text-xl">{moduleIcons[moduleName] || '📋'}</span>
                 <div className="flex-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-sm">{moduleLabels[moduleName] || moduleName}</span>
-                    {!enabled && upgradeMsg && (
-                      <span className="text-xs text-blue-600">🔒</span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {badge}
+                      {!enabled && upgradeMsg && (
+                        <span className="text-xs text-blue-600">🔒</span>
+                      )}
+                    </div>
                   </div>
                   {!enabled && upgradeMsg && (
                     <span className="text-xs text-gray-500">{upgradeMsg}</span>

@@ -4,10 +4,19 @@ import { useDealStore } from '../stores/dealStore';
 import { DealSidebar } from '../components/deal/DealSidebar';
 import { DealMapView } from '../components/deal/DealMapView';
 import { DealContextTracker } from '../components/deal/DealContextTracker';
+import { ActionStatusPanel } from '../components/deal/ActionStatusPanel';
+import { StrategyAnalysisResults } from '../components/deal/StrategyAnalysisResults';
 import { GeographicScopeTabs } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
+import { Badge } from '../components/shared/Badge';
 import { api } from '../services/api.client';
+import { 
+  dealAnalysisService, 
+  AnalysisStatus,
+  StrategyAnalysisResult,
+  ZoningAnalysisResult,
+} from '../services/dealAnalysis.service';
 import { OverviewSection } from '../components/deal/sections/OverviewSection';
 import { AIAgentSection } from '../components/deal/sections/AIAgentSection';
 import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
@@ -35,6 +44,13 @@ export const DealView: React.FC = () => {
   const [modulesLoading, setModulesLoading] = useState(false);
   const [modulesError, setModulesError] = useState<string | null>(null);
   const [geographicStats, setGeographicStats] = useState<any>(null);
+  
+  // Analysis state
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
+  const [strategyResults, setStrategyResults] = useState<StrategyAnalysisResult | null>(null);
+  const [zoningResults, setZoningResults] = useState<ZoningAnalysisResult | null>(null);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [showActionPanel, setShowActionPanel] = useState(true);
 
   useEffect(() => {
     if (id) {
@@ -42,6 +58,7 @@ export const DealView: React.FC = () => {
       fetchModules(id);
       loadTradeAreaForDeal(id);
       fetchGeographicContext(id);
+      startDealAnalysis(id);
     }
   }, [id]);
 
@@ -103,8 +120,86 @@ export const DealView: React.FC = () => {
     }
   };
 
+  const startDealAnalysis = async (dealId: string) => {
+    try {
+      // Start the analysis
+      await dealAnalysisService.startAnalysis(dealId);
+      
+      // Start polling for updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await dealAnalysisService.getAnalysisStatus(dealId);
+          setAnalysisStatus(status);
+          
+          // Check if all tasks are complete
+          const allComplete = 
+            status.zoningAnalysis.status === 'complete' &&
+            status.comparables.status === 'complete' &&
+            status.strategies.status === 'complete' &&
+            status.financialModels.status === 'complete';
+          
+          if (allComplete) {
+            clearInterval(pollInterval);
+            setAnalysisComplete(true);
+            
+            // Load strategy results for existing properties
+            if (selectedDeal?.development_type === 'existing' || selectedDeal?.property_type_key === 'existing') {
+              try {
+                const strategyData = await dealAnalysisService.getStrategyAnalysis(
+                  dealId,
+                  selectedDeal?.purchase_price || 1000000,
+                  4 // Default existing units
+                );
+                setStrategyResults(strategyData);
+              } catch (err) {
+                console.error('Failed to load strategy results:', err);
+              }
+            }
+            
+            // Load zoning results for new development
+            if (selectedDeal?.development_type === 'new' || selectedDeal?.development_type === 'land') {
+              try {
+                const zoningData = await dealAnalysisService.getZoningAnalysis(dealId);
+                setZoningResults(zoningData);
+              } catch (err) {
+                console.error('Failed to load zoning results:', err);
+              }
+            }
+            
+            // Auto-hide panel after 10 seconds
+            setTimeout(() => {
+              setShowActionPanel(false);
+            }, 10000);
+          }
+        } catch (err) {
+          console.error('Failed to poll analysis status:', err);
+        }
+      }, 2000); // Poll every 2 seconds
+      
+      // Clear interval on unmount
+      return () => clearInterval(pollInterval);
+    } catch (err) {
+      console.error('Failed to start deal analysis:', err);
+    }
+  };
+
+  const handleSkipSetup = () => {
+    setAnalysisComplete(true);
+    setShowActionPanel(false);
+    setCurrentModule('overview');
+  };
+
+  const handleChooseStrategy = (physicalOptionId: string, strategyId: string) => {
+    console.log('Chosen strategy:', { physicalOptionId, strategyId });
+    // Navigate to financial section to build the model
+    setCurrentModule('financial');
+    setShowActionPanel(false);
+  };
+
   const isOwned = selectedDeal?.dealCategory === 'portfolio' || selectedDeal?.state === 'POST_CLOSE';
   const dealMode = isOwned ? 'performance' : 'acquisition';
+  
+  const isExistingProperty = selectedDeal?.development_type === 'existing' || selectedDeal?.property_type_key === 'existing';
 
   const renderModule = () => {
     if (!selectedDeal) return null;
@@ -315,12 +410,38 @@ export const DealView: React.FC = () => {
         />
       </div>
 
+      {/* Action Status Panel - shows during analysis */}
+      {!analysisComplete && showActionPanel && analysisStatus && (
+        <ActionStatusPanel
+          status={analysisStatus}
+          dealType={selectedDeal?.development_type || 'existing'}
+          propertyType={selectedDeal?.property_type_key}
+          onSkipSetup={handleSkipSetup}
+        />
+      )}
+
+      {/* Strategy Analysis Results - shows when analysis complete */}
+      {analysisComplete && (strategyResults || zoningResults) && (
+        <StrategyAnalysisResults
+          results={strategyResults || undefined}
+          zoningResults={zoningResults || undefined}
+          dealType={selectedDeal?.development_type || 'existing'}
+          onChooseStrategy={handleChooseStrategy}
+          onViewDetailed={() => setCurrentModule('strategy')}
+          onCompareAll={() => setCurrentModule('strategy')}
+          onStartDesign={() => setCurrentModule('overview')}
+          onViewZoning={() => setCurrentModule('overview')}
+        />
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         <DealSidebar
           deal={selectedDeal}
           modules={modules}
           currentModule={currentModule}
           onModuleChange={setCurrentModule}
+          analysisStatus={analysisStatus}
+          strategyResultsReady={!!strategyResults || !!zoningResults}
         />
 
         <div className="flex-1 overflow-auto bg-gray-50">
