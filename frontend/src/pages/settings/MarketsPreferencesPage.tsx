@@ -1,6 +1,78 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Building2, CheckCircle2, Loader2 } from 'lucide-react';
+import {
+  MapPin, Building2, CheckCircle2, Loader2,
+  Home, Building, House, Columns3, Caravan, Users,
+  Trees, GraduationCap, HeartHandshake, ShieldCheck, Hammer,
+  Briefcase, Stethoscope, Palette,
+  Store, ShoppingBag, Zap, ShoppingCart, FileSignature, Sparkles, Tag,
+  Warehouse, Package, Factory, Snowflake, Server, Layout, Truck,
+  Bed, Hotel, CalendarClock, Palmtree, Key,
+  Archive, Car, HeartPulse, FlaskConical, Ticket, Church, School, Fuel,
+  Mountain, FileCheck, Wheat, MapPin as MapPinIcon,
+  Layers, LayoutGrid
+} from 'lucide-react';
 import api from '@/lib/api';
+
+// Icon mapping for property types
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
+  'home': Home,
+  'building-2': Building2,
+  'building': Building,
+  'house': House,
+  'columns': Columns3,
+  'caravan': Caravan,
+  'users': Users,
+  'trees': Trees,
+  'graduation-cap': GraduationCap,
+  'heart-handshake': HeartHandshake,
+  'shield-check': ShieldCheck,
+  'hammer': Hammer,
+  'briefcase': Briefcase,
+  'stethoscope': Stethoscope,
+  'palette': Palette,
+  'store': Store,
+  'shopping-bag': ShoppingBag,
+  'zap': Zap,
+  'shopping-cart': ShoppingCart,
+  'file-signature': FileSignature,
+  'sparkles': Sparkles,
+  'tag': Tag,
+  'warehouse': Warehouse,
+  'package': Package,
+  'factory': Factory,
+  'snowflake': Snowflake,
+  'server': Server,
+  'layout': Layout,
+  'truck': Truck,
+  'bed': Bed,
+  'hotel': Hotel,
+  'calendar-clock': CalendarClock,
+  'palm-tree': Palmtree,
+  'key': Key,
+  'archive': Archive,
+  'car': Car,
+  'heart-pulse': HeartPulse,
+  'flask-conical': FlaskConical,
+  'ticket': Ticket,
+  'church': Church,
+  'school': School,
+  'fuel': Fuel,
+  'mountain': Mountain,
+  'file-check': FileCheck,
+  'wheat': Wheat,
+  'map-pin': MapPinIcon,
+  'layers': Layers,
+  'layout-grid': LayoutGrid,
+};
+
+// Lucide Icon component that renders actual React components
+function LucideIcon({ name, className }: { name: string; className?: string }) {
+  const IconComponent = ICON_MAP[name];
+  if (!IconComponent) {
+    return <Building2 className={className} />;
+  }
+  return <IconComponent className={className} />;
+}
 
 interface Market {
   name: string;
@@ -234,7 +306,7 @@ export default function MarketsPreferencesPage() {
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-2xl">{type.icon}</span>
+                    <LucideIcon name={type.icon} className="w-5 h-5 text-purple-600" />
                     <h3 className="font-semibold text-gray-900">{type.display_name}</h3>
                   </div>
                   <p className="text-xs text-gray-600">{type.description}</p>
