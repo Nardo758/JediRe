@@ -1,7 +1,6 @@
 import React from 'react';
 import { DealSidebarProps } from '../../types';
 import { Badge } from '../shared/Badge';
-import { AnalysisStatus } from '../../services/dealAnalysis.service';
 
 const moduleIcons: Record<string, string> = {
   map: '🗺️',
@@ -57,18 +56,11 @@ const ASSET_MODULES = [
 const PRO_MODULES: string[] = [];
 const ENTERPRISE_MODULES: string[] = [];
 
-interface ExtendedDealSidebarProps extends DealSidebarProps {
-  analysisStatus?: AnalysisStatus | null;
-  strategyResultsReady?: boolean;
-}
-
-export const DealSidebar: React.FC<ExtendedDealSidebarProps> = ({
+export const DealSidebar: React.FC<DealSidebarProps> = ({
   deal,
   modules,
   currentModule,
   onModuleChange,
-  analysisStatus,
-  strategyResultsReady
 }) => {
   const isPortfolio = deal.dealCategory === 'portfolio' || (deal as any).state === 'POST_CLOSE';
   const isOwned = isPortfolio;
@@ -93,64 +85,12 @@ export const DealSidebar: React.FC<ExtendedDealSidebarProps> = ({
     return null;
   };
 
-  const getModuleBadge = (moduleName: string) => {
-    if (!analysisStatus) return null;
-
-    // Market module - depends on comparables
-    if (moduleName === 'market') {
-      if (analysisStatus.comparables.status === 'in_progress') {
-        return <Badge color="yellow" size="sm">Analyzing...</Badge>;
-      }
-      if (analysisStatus.comparables.status === 'complete') {
-        return <Badge color="green" size="sm">Ready</Badge>;
-      }
-      return <Badge color="gray" size="sm">Queued</Badge>;
-    }
-
-    // Strategy module - depends on strategy analysis
-    if (moduleName === 'strategy') {
-      if (analysisStatus.strategies.status === 'in_progress') {
-        return <Badge color="yellow" size="sm">Analyzing...</Badge>;
-      }
-      if (analysisStatus.strategies.status === 'complete' || strategyResultsReady) {
-        return <Badge color="green" size="sm">Ready</Badge>;
-      }
-      return <Badge color="gray" size="sm">Queued</Badge>;
-    }
-
-    // Financial module - depends on financial models
-    if (moduleName === 'financial') {
-      if (analysisStatus.financialModels.status === 'in_progress') {
-        return <Badge color="yellow" size="sm">Building...</Badge>;
-      }
-      if (analysisStatus.financialModels.status === 'complete') {
-        return <Badge color="green" size="sm">Ready</Badge>;
-      }
-      return <Badge color="gray" size="sm">Queued</Badge>;
-    }
-
+  const getModuleBadge = (_moduleName: string) => {
     return null;
   };
 
-  const isModuleUnlocked = (moduleName: string) => {
-    if (!analysisStatus) return true; // No restrictions if no analysis
-
-    // Market requires comparables to be complete
-    if (moduleName === 'market') {
-      return analysisStatus.comparables.status === 'complete';
-    }
-
-    // Strategy requires strategies to be complete
-    if (moduleName === 'strategy') {
-      return analysisStatus.strategies.status === 'complete' || strategyResultsReady;
-    }
-
-    // Financial requires all analysis to be complete
-    if (moduleName === 'financial') {
-      return analysisStatus.financialModels.status === 'complete';
-    }
-
-    return true; // All other modules are unlocked by default
+  const isModuleUnlocked = (_moduleName: string) => {
+    return true;
   };
 
   const handleModuleClick = (moduleName: string) => {

@@ -1,312 +1,203 @@
-import React from 'react';
-import { Button } from '../shared/Button';
-import {
-  StrategyAnalysisResult,
-  ZoningAnalysisResult,
-} from '../../services/dealAnalysis.service';
+import React, { useState } from 'react';
+import { StrategyResults } from '@/services/dealAnalysis.service';
 
-interface StrategyAnalysisResultsProps {
-  results?: StrategyAnalysisResult;
-  zoningResults?: ZoningAnalysisResult;
+export interface StrategyAnalysisResultsProps {
+  results: StrategyResults;
   dealType: string;
-  onChooseStrategy?: (physicalOptionId: string, strategyId: string) => void;
-  onViewDetailed?: () => void;
-  onCompareAll?: () => void;
-  onStartDesign?: () => void;
-  onViewZoning?: () => void;
+  onChooseStrategy?: (strategyId: string) => void;
 }
 
 export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = ({
   results,
-  zoningResults,
   dealType,
   onChooseStrategy,
-  onViewDetailed,
-  onCompareAll,
-  onStartDesign,
-  onViewZoning,
 }) => {
-  const isExisting = dealType === 'existing';
+  const [selectedStrategy, setSelectedStrategy] = useState<string | null>(
+    results.recommendedStrategyId || null
+  );
+  const [expandedStrategy, setExpandedStrategy] = useState<string | null>(
+    results.recommendedStrategyId || null
+  );
 
-  // For NEW DEVELOPMENT - show zoning results
-  if (!isExisting && zoningResults) {
-    return (
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg shadow-lg mx-6 mt-4">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-blue-200 bg-white/50">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">📐</span>
-            <h2 className="text-xl font-bold text-gray-900">Zoning Analysis Complete</h2>
+  const handleSelectStrategy = (strategyId: string) => {
+    setSelectedStrategy(strategyId);
+    onChooseStrategy?.(strategyId);
+  };
+
+  const toggleExpand = (strategyId: string) => {
+    setExpandedStrategy(expandedStrategy === strategyId ? null : strategyId);
+  };
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 80) return 'text-green-600 bg-green-50';
+    if (confidence >= 60) return 'text-blue-600 bg-blue-50';
+    if (confidence >= 40) return 'text-yellow-600 bg-yellow-50';
+    return 'text-orange-600 bg-orange-50';
+  };
+
+  const getConfidenceLabel = (confidence: number) => {
+    if (confidence >= 80) return 'High Confidence';
+    if (confidence >= 60) return 'Good Confidence';
+    if (confidence >= 40) return 'Moderate Confidence';
+    return 'Low Confidence';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Strategy Recommendations
+            </h2>
+            <p className="text-gray-600">
+              Based on analysis of your {dealType} deal, we've identified{' '}
+              {results.strategies.length} potential strategies
+            </p>
           </div>
-        </div>
-
-        {/* Content */}
-        <div className="px-6 py-6">
-          <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-700 uppercase mb-3">
-              Maximum Allowed
-            </h3>
-            <div className="space-y-2 text-gray-700">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">•</span>
-                <span>
-                  <span className="font-semibold">{zoningResults.maxUnits} units</span> (current zoning {zoningResults.zoning})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">•</span>
-                <span>
-                  <span className="font-semibold">{zoningResults.heightLimit} ft</span> height limit
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">•</span>
-                <span>
-                  <span className="font-semibold">{zoningResults.lotCoverage}%</span> lot coverage
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg">•</span>
-                <span>
-                  <span className="font-semibold">{zoningResults.parkingRequired} parking spaces</span> required
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-700 uppercase mb-3">
-              Next Actions
-            </h3>
-            <div className="space-y-2 text-gray-700">
-              <div className="flex items-start gap-2">
-                <span className="text-gray-400 mt-0.5">☐</span>
-                <span>Design project in 3D (unit mix, massing, site plan)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-400 mt-0.5">☐</span>
-                <span>Define development features (amenities, parking)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-400 mt-0.5">☐</span>
-                <span>Build construction timeline</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-gray-400 mt-0.5">☐</span>
-                <span>Create development pro forma</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-4 border-t border-blue-200">
-            {onStartDesign && (
-              <Button variant="default" size="md" onClick={onStartDesign}>
-                Start 3D Design →
-              </Button>
-            )}
-            {onViewZoning && (
-              <Button variant="outline" size="md" onClick={onViewZoning}>
-                View Zoning Details
-              </Button>
-            )}
+          <div className="text-sm text-gray-500">
+            Analyzed {new Date(results.analysisCompletedAt).toLocaleDateString()}
           </div>
         </div>
       </div>
-    );
-  }
 
-  // For EXISTING PROPERTIES - show strategy matrix
-  if (isExisting && results) {
-    const { physicalOptions, strategies, matrix, bestStrategy } = results;
+      <div className="space-y-4">
+        {results.strategies.map((strategy) => {
+          const isRecommended = strategy.id === results.recommendedStrategyId;
+          const isSelected = strategy.id === selectedStrategy;
+          const isExpanded = strategy.id === expandedStrategy;
 
-    const bestPhysical = physicalOptions.find(p => p.id === bestStrategy.physicalOptionId);
-    const bestStrategyData = strategies.find(s => s.id === bestStrategy.strategyId);
-
-    const formatCurrency = (value: number): string => {
-      if (value >= 1000000) {
-        return `$${(value / 1000000).toFixed(1)}M`;
-      }
-      return `$${(value / 1000).toFixed(0)}K`;
-    };
-
-    const getMatrixCell = (physicalId: string, strategyId: string) => {
-      const physicalIdx = physicalOptions.findIndex(p => p.id === physicalId);
-      const strategyIdx = strategies.findIndex(s => s.id === strategyId);
-      if (physicalIdx === -1 || strategyIdx === -1) return null;
-      return matrix[physicalIdx][strategyIdx];
-    };
-
-    const isBestStrategy = (physicalId: string, strategyId: string) => {
-      return physicalId === bestStrategy.physicalOptionId && 
-             strategyId === bestStrategy.strategyId;
-    };
-
-    return (
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg shadow-lg mx-6 mt-4">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-green-200 bg-white/50">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🎯</span>
-            <h2 className="text-xl font-bold text-gray-900">Strategy Analysis Complete</h2>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="px-6 py-6">
-          <p className="text-gray-700 mb-6">
-            We analyzed <span className="font-semibold">{strategies.length * physicalOptions.length} strategies</span> across{' '}
-            <span className="font-semibold">{physicalOptions.length} physical options</span>:
-          </p>
-
-          {/* Strategy Matrix */}
-          <div className="mb-6 overflow-x-auto">
-            <h3 className="text-sm font-bold text-gray-700 uppercase mb-3">
-              Physical Options × Investment Strategies
-            </h3>
-            
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left p-3 bg-white/70 border border-gray-300 font-semibold text-sm">
-                    Strategy
-                  </th>
-                  {physicalOptions.map(physical => (
-                    <th
-                      key={physical.id}
-                      className="text-center p-3 bg-white/70 border border-gray-300"
-                    >
-                      <div className="font-semibold text-sm">{physical.name}</div>
-                      <div className="text-xs text-gray-600">
-                        {physical.id === 'as-is' && `${physical.units} units`}
-                        {physical.id === 'redevelop' && `(+${physical.units - physicalOptions[0].units} units)`}
-                        {physical.id === 'rebuild' && `(${physical.units} units)`}
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {strategies.map(strategy => (
-                  <tr key={strategy.id}>
-                    <td className="p-3 bg-white/70 border border-gray-300 font-medium text-sm">
-                      {strategy.name}
-                    </td>
-                    {physicalOptions.map(physical => {
-                      const cell = getMatrixCell(physical.id, strategy.id);
-                      const isBest = isBestStrategy(physical.id, strategy.id);
-                      
-                      if (!cell || cell.irr === 0) {
-                        return (
-                          <td
-                            key={physical.id}
-                            className="p-3 bg-gray-100 border border-gray-300 text-center text-gray-400 text-sm"
-                          >
-                            N/A
-                          </td>
-                        );
-                      }
-
-                      return (
-                        <td
-                          key={physical.id}
-                          className={`p-3 border border-gray-300 text-center relative ${
-                            isBest
-                              ? 'bg-yellow-100 border-yellow-400 border-2'
-                              : 'bg-white/70'
-                          }`}
-                        >
-                          <div className="font-bold text-base">
-                            {(cell.irr * 100).toFixed(1)}% IRR
-                            {isBest && <span className="ml-1 text-yellow-600">★</span>}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Best Strategy Callout */}
-          <div className="mb-6 p-5 bg-yellow-50 border-2 border-yellow-300 rounded-lg">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">★</span>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  BEST RETURN: {bestPhysical?.name} + {bestStrategyData?.name}
-                </h3>
-                <div className="space-y-1 text-gray-700">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">•</span>
-                    <span>
-                      <span className="font-semibold">IRR: {(bestStrategy.irr * 100).toFixed(1)}%</span>
-                      {' '}({bestStrategy.details.timelineMonths} months)
-                    </span>
+          return (
+            <div
+              key={strategy.id}
+              className={`rounded-lg border-2 transition-all ${
+                isSelected
+                  ? 'border-blue-500 bg-blue-50'
+                  : isRecommended
+                  ? 'border-green-500 bg-green-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-xl font-semibold text-gray-900">
+                        {strategy.name}
+                      </h3>
+                      {isRecommended && (
+                        <span className="px-3 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded-full">
+                          Recommended
+                        </span>
+                      )}
+                      {isSelected && !isRecommended && (
+                        <span className="px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+                          Selected
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 uppercase tracking-wide mb-2">
+                      {strategy.type}
+                    </p>
                   </div>
-                  {bestPhysical?.id === 'redevelop' && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">•</span>
-                        <span>Add {bestStrategy.details.units - physicalOptions[0].units} units on vacant portion</span>
+
+                  <div
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold ${getConfidenceColor(
+                      strategy.confidence
+                    )}`}
+                  >
+                    <div className="text-lg">{strategy.confidence}%</div>
+                    <div className="text-xs opacity-75">
+                      {getConfidenceLabel(strategy.confidence)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  {strategy.projectedROI && (
+                    <div className="bg-white rounded-lg p-3 border border-gray-200">
+                      <div className="text-sm text-gray-600">Projected ROI</div>
+                      <div className="text-2xl font-bold text-gray-900">
+                        {strategy.projectedROI}%
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">•</span>
-                        <span>Renovate existing {physicalOptions[0].units} units</span>
-                      </div>
-                    </>
+                    </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">•</span>
-                    <span>
-                      Total investment: <span className="font-semibold">
-                        {formatCurrency(bestStrategy.details.totalInvestment)}
-                      </span>
-                    </span>
+                  {strategy.timelineMonths && (
+                    <div className="bg-white rounded-lg p-3 border border-gray-200">
+                      <div className="text-sm text-gray-600">Timeline</div>
+                      <div className="text-2xl font-bold text-gray-900">
+                        {strategy.timelineMonths} months
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {strategy.description && (
+                  <p className="text-gray-700 mb-4">{strategy.description}</p>
+                )}
+
+                <button
+                  onClick={() => toggleExpand(strategy.id)}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium mb-4"
+                >
+                  {isExpanded ? 'Hide Details' : 'Show Details'}
+                </button>
+
+                {isExpanded && (
+                  <div className="space-y-4 pt-4 border-t border-gray-200">
+                    {strategy.opportunities && strategy.opportunities.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          <span className="text-green-500">✓</span> Opportunities
+                        </h4>
+                        <ul className="space-y-1">
+                          {strategy.opportunities.map((opp, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 flex gap-2">
+                              <span className="text-green-500">•</span>
+                              <span>{opp}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {strategy.risks && strategy.risks.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                          <span className="text-orange-500">!</span> Risks
+                        </h4>
+                        <ul className="space-y-1">
+                          {strategy.risks.map((risk, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 flex gap-2">
+                              <span className="text-orange-500">•</span>
+                              <span>{risk}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">•</span>
-                    <span>
-                      Exit value: <span className="font-semibold">
-                        {formatCurrency(bestStrategy.details.exitValue)}
-                      </span>
-                    </span>
-                  </div>
+                )}
+
+                <div className="mt-4">
+                  <button
+                    onClick={() => handleSelectStrategy(strategy.id)}
+                    className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50'
+                    }`}
+                  >
+                    {isSelected ? 'Selected Strategy' : 'Choose This Strategy'}
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-4 border-t border-green-200">
-            {onChooseStrategy && (
-              <Button
-                variant="default"
-                size="md"
-                onClick={() => onChooseStrategy(
-                  bestStrategy.physicalOptionId,
-                  bestStrategy.strategyId
-                )}
-              >
-                Choose This Strategy →
-              </Button>
-            )}
-            {onViewDetailed && (
-              <Button variant="outline" size="md" onClick={onViewDetailed}>
-                View Detailed Analysis
-              </Button>
-            )}
-            {onCompareAll && (
-              <Button variant="ghost" size="md" onClick={onCompareAll}>
-                Compare All Strategies
-              </Button>
-            )}
-          </div>
-        </div>
+          );
+        })}
       </div>
-    );
-  }
-
-  return null;
+    </div>
+  );
 };
+
+export default StrategyAnalysisResults;
