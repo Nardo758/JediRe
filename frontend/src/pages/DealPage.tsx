@@ -12,6 +12,7 @@ import { InvestmentStrategySection } from '../components/deal/sections/Investmen
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 import { MarketResearchSection } from '../components/deal/sections/MarketResearchSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
+import LeasingTrafficCard from '../components/analytics/LeasingTrafficCard';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -262,6 +263,19 @@ export const DealPage: React.FC = () => {
                   propertyId={deal.propertyId || deal.properties?.[0]?.id} 
                 />
               </div>
+
+              {/* Leasing Traffic (Multifamily Only) */}
+              {deal.projectType?.toLowerCase() === 'multifamily' && deal.propertyId && (
+                <div className="pt-6 border-t border-gray-200">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <span>🏢</span> Leasing Traffic
+                  </h3>
+                  <LeasingTrafficCard 
+                    propertyId={deal.propertyId || deal.properties?.[0]?.id}
+                    showForecast={true}
+                  />
+                </div>
+              )}
             </div>
           </SectionCard>
 

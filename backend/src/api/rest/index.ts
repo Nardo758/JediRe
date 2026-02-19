@@ -51,6 +51,7 @@ import filesRoutes from './files.routes';
 import documentsFilesRoutes from './documentsFiles.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
 import mapAnnotationsRoutes from './mapAnnotations.routes';
+import leasingTrafficRoutes from './leasing-traffic.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -198,6 +199,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Map Annotations routes (Drawing tools for Pipeline & Assets maps)
   app.use(`${API_PREFIX}/map-annotations`, mapAnnotationsRoutes);
+
+  // Leasing Traffic Prediction routes (Multifamily leasing traffic predictions)
+  app.use(`${API_PREFIX}/leasing-traffic`, leasingTrafficRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

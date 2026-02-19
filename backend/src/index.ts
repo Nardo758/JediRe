@@ -1077,6 +1077,7 @@ import gmailRouter from './api/rest/gmail.routes';
 import marketResearchRoutes from './api/rest/marketResearch.routes';
 import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
+import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import marketIntelRoutes from './api/rest/marketIntel.routes';
 
@@ -1098,6 +1099,7 @@ app.use('/api/v1/market-research', marketResearchRoutes);
 app.use('/api/v1/apartment-market', apartmentMarketRoutes);
 app.use('/api/v1/market-intel', marketIntelRoutes);
 app.use('/api/v1/traffic', trafficPredictionRoutes);
+app.use('/api/v1/leasing-traffic', leasingTrafficRoutes);
 app.use('/api/v1', propertyProxyRoutes);
 
 // ============================================
