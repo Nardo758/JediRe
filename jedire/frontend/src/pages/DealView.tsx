@@ -107,6 +107,12 @@ export const DealView: React.FC = () => {
     navigate('/settings/modules');
   };
 
+  const handleStrategySelection = (strategyId: string) => {
+    console.log('Strategy selected for deal:', selectedDeal?.id, 'strategy:', strategyId);
+    // TODO: Save selected strategy to deal
+    // This could trigger navigation to strategy module or update deal state
+  };
+
   const renderModule = () => {
     if (!selectedDeal) return null;
 
@@ -116,7 +122,10 @@ export const DealView: React.FC = () => {
       case 'overview':
         return (
           <div className="p-6">
-            <OverviewSection deal={selectedDeal as any} />
+            <OverviewSection 
+              deal={selectedDeal as any} 
+              onStrategySelected={handleStrategySelection}
+            />
           </div>
         );
       case 'properties':
