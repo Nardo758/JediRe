@@ -7,12 +7,10 @@ const moduleIcons: Record<string, string> = {
   financial: '💰',
   strategy: '🎯',
   'due-diligence': '✅',
-  market: '📈',
-  'market-competition': '🏆',
-  'supply-tracking': '📦',
+  'market-intelligence': '📊',
   'debt-market': '💳',
   'ai-agent': '🤖',
-  documents: '📄',
+  files: '📁',
   team: '👥',
   context: '🧭',
   notes: '💬',
@@ -24,12 +22,10 @@ const moduleLabels: Record<string, string> = {
   financial: 'Financial Analysis',
   strategy: 'Strategy & Arbitrage',
   'due-diligence': 'Due Diligence',
-  market: 'Market Analysis',
-  'market-competition': 'Market Competition',
-  'supply-tracking': 'Supply Tracking',
+  'market-intelligence': 'Market Intelligence',
   'debt-market': 'Debt Market',
   'ai-agent': 'AI Agent (Opus)',
-  documents: 'Documents',
+  files: 'Files',
   team: 'Team & Comms',
   context: 'Context Tracker',
   notes: 'Notes & Comments',
@@ -41,12 +37,10 @@ const moduleOrder = [
   'financial',
   'strategy',
   'due-diligence',
-  'market',
-  'market-competition',
-  'supply-tracking',
+  'market-intelligence',
   'debt-market',
   'ai-agent',
-  'documents',
+  'files',
   'team',
   'context',
   'notes',
@@ -66,7 +60,7 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
 
   const getModuleUpgradeMessage = (moduleName: string) => {
     if (deal.tier === 'basic') {
-      if (['strategy', 'market', 'financial', 'market-competition', 'supply-tracking', 'debt-market', 'ai-agent'].includes(moduleName)) {
+      if (['strategy', 'market-intelligence', 'financial', 'debt-market', 'ai-agent'].includes(moduleName)) {
         return 'Upgrade to Pro';
       }
       if (['pipeline', 'team'].includes(moduleName)) {
