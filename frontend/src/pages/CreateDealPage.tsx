@@ -7,8 +7,7 @@ import { useMapDrawingStore } from '../stores/mapDrawingStore';
 import { Button } from '../components/shared/Button';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
-import { api } from '../services/api';
-import { getStrategiesForPropertyType, PropertyTypeStrategy } from '../services/strategyDefaults.service';
+import { apiClient } from '../services/api.client';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -27,14 +26,14 @@ interface PropertyType {
 }
 
 const STEPS = {
-  CATEGORY: 1,        // Deal Category
-  TYPE: 2,            // Development Type (progressive reveal after category)
-  PROPERTY_TYPE: 3,   // Property Type Selection
-  STRATEGY: 4,        // Investment Strategy Selection
-  DETAILS: 5,         // Deal Name + Description
-  ADDRESS: 6,         // Property Address
-  TRADE_AREA: 7,      // Trade Area (optional)
-  BOUNDARY: 8,        // Boundary (optional, new dev only)
+  CATEGORY: 1,
+  TYPE: 2,
+  PROPERTY_TYPE: 3,
+  DOCUMENTS: 4,
+  DETAILS: 5,
+  ADDRESS: 6,
+  TRADE_AREA: 7,
+  BOUNDARY: 8,
 } as const;
 
 export const CreateDealPage: React.FC = () => {
@@ -42,14 +41,11 @@ export const CreateDealPage: React.FC = () => {
   const { createDeal, isLoading } = useDealStore();
   const { startDrawing, drawnGeometry, clearDrawing } = useMapDrawingStore();
 
-  // Form state
   const [currentStep, setCurrentStep] = useState<number>(STEPS.CATEGORY);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
-  const [selectedStrategy, setSelectedStrategy] = useState<PropertyTypeStrategy | null>(null);
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
-  const [availableStrategies, setAvailableStrategies] = useState<PropertyTypeStrategy[]>([]);
   const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
   const [boundary, setBoundary] = useState<any>(null);
@@ -57,22 +53,30 @@ export const CreateDealPage: React.FC = () => {
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Geographic context
+  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const [purchasePrice, setPurchasePrice] = useState('');
+  const [offerDate, setOfferDate] = useState('');
+  const [units, setUnits] = useState('');
+  const [occupancy, setOccupancy] = useState('');
+  const [rentPerSf, setRentPerSf] = useState('');
+  const [capRate, setCapRate] = useState('');
+  const [renovationBudget, setRenovationBudget] = useState('');
+
   const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
 
-  // Map refs
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const draw = useRef<MapboxDraw | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
 
-  // Load property types on mount
   useEffect(() => {
     const loadPropertyTypes = async () => {
       try {
-        const response = await api.get('/property-types');
+        const response = await apiClient.get('/api/v1/property-types');
         if (response.data.success) {
           setAvailablePropertyTypes(response.data.data);
         }
@@ -83,7 +87,6 @@ export const CreateDealPage: React.FC = () => {
     loadPropertyTypes();
   }, []);
 
-  // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
@@ -131,7 +134,6 @@ export const CreateDealPage: React.FC = () => {
     };
   }, []);
 
-  // Handle boundary drawing mode
   useEffect(() => {
     if (!map.current || !draw.current) return;
 
@@ -149,11 +151,9 @@ export const CreateDealPage: React.FC = () => {
     }
   }, [currentStep, developmentType, coordinates]);
 
-  // Update map when coordinates change
   useEffect(() => {
     if (!map.current || !coordinates) return;
 
-    // Add marker
     if (marker.current) {
       marker.current.remove();
     }
@@ -161,7 +161,6 @@ export const CreateDealPage: React.FC = () => {
       .setLngLat(coordinates)
       .addTo(map.current);
 
-    // Fly to location
     map.current.flyTo({
       center: coordinates,
       zoom: 16,
@@ -169,38 +168,73 @@ export const CreateDealPage: React.FC = () => {
     });
   }, [coordinates]);
 
-  // Handle category selection
   const handleSelectCategory = (category: DealCategory) => {
     setDealCategory(category);
     setCurrentStep(STEPS.TYPE);
     setError(null);
   };
 
-  // Handle development type selection
   const handleSelectType = (type: DevelopmentType) => {
     setDevelopmentType(type);
     setCurrentStep(STEPS.PROPERTY_TYPE);
     setError(null);
   };
 
-  // Handle property type selection
   const handleSelectPropertyType = (type: PropertyType) => {
     setPropertyType(type);
-    const strategies = getStrategiesForPropertyType(type.type_key);
-    setAvailableStrategies(strategies);
-    setSelectedStrategy(null); // Reset strategy when type changes
-    setCurrentStep(STEPS.STRATEGY);
+    setCurrentStep(STEPS.DOCUMENTS);
     setError(null);
   };
 
-  // Handle strategy selection
-  const handleSelectStrategy = (strategy: PropertyTypeStrategy) => {
-    setSelectedStrategy(strategy);
+  const handleProceedFromDocuments = () => {
+    if (!purchasePrice.trim()) {
+      setError('Purchase Price is required');
+      return;
+    }
+    if (!offerDate.trim()) {
+      setError('Call for Offer Date is required');
+      return;
+    }
+    setError(null);
     setCurrentStep(STEPS.DETAILS);
-    setError(null);
   };
 
-  // Handle proceeding to address entry
+  const handleFileUpload = async (files: FileList) => {
+    setIsUploading(true);
+    setError(null);
+
+    const uploadedFiles: any[] = [];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await apiClient.post('/api/v1/deals/upload-document', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        if (response.data.success) {
+          uploadedFiles.push({
+            id: response.data.data.id,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+          });
+        }
+      }
+
+      setUploadedDocuments([...uploadedDocuments, ...uploadedFiles]);
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload documents');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleProceedToAddress = () => {
     if (!dealName.trim()) {
       setError('Please enter a deal name');
@@ -210,7 +244,6 @@ export const CreateDealPage: React.FC = () => {
     setCurrentStep(STEPS.ADDRESS);
   };
 
-  // Handle address selection
   const handleAddressSelected = async (value: string, coords: [number, number] | null) => {
     setAddress(value);
     
@@ -220,9 +253,8 @@ export const CreateDealPage: React.FC = () => {
 
       const [lng, lat] = coords;
 
-      // Lookup submarket and MSA
       try {
-        const submarketResponse = await api.get('/submarkets/lookup', {
+        const submarketResponse = await apiClient.get('/api/v1/submarkets/lookup', {
           params: { lat, lng },
         });
         if (submarketResponse.data.success) {
@@ -233,7 +265,6 @@ export const CreateDealPage: React.FC = () => {
         console.error('Failed to lookup submarket:', err);
       }
 
-      // For existing properties, set point geometry
       if (developmentType === 'existing') {
         setBoundary({
           type: 'Point',
@@ -241,36 +272,30 @@ export const CreateDealPage: React.FC = () => {
         });
       }
 
-      // Move to trade area step
       setCurrentStep(STEPS.TRADE_AREA);
     }
   };
 
-  // Handle trade area save
   const handleTradeAreaSave = (id: number) => {
     setTradeAreaId(id);
     
     if (developmentType === 'new') {
       setCurrentStep(STEPS.BOUNDARY);
     } else {
-      // Existing property - we're done, submit
       handleSubmit();
     }
   };
 
-  // Handle skip trade area
   const handleSkipTradeArea = () => {
     setTradeAreaId(null);
     
     if (developmentType === 'new') {
       setCurrentStep(STEPS.BOUNDARY);
     } else {
-      // Existing property - we're done, submit
       handleSubmit();
     }
   };
 
-  // Handle skip boundary
   const handleSkipBoundary = () => {
     if (coordinates) {
       setBoundary({
@@ -278,11 +303,9 @@ export const CreateDealPage: React.FC = () => {
         coordinates: coordinates,
       });
     }
-    // Submit the deal
     handleSubmit();
   };
 
-  // Handle form submission
   const handleSubmit = async () => {
     if (!dealName.trim()) {
       setError('Please enter a deal name');
@@ -302,16 +325,21 @@ export const CreateDealPage: React.FC = () => {
         development_type: developmentType!,
         property_type_id: propertyType?.id,
         property_type_key: propertyType?.type_key,
-        strategy_name: selectedStrategy?.name,
-        strategy_defaults: selectedStrategy?.defaults,
         address,
         boundary,
+        purchase_price: purchasePrice ? parseFloat(purchasePrice.replace(/[^0-9.]/g, '')) : undefined,
+        call_for_offer_date: offerDate || undefined,
+        units: units ? parseInt(units) : undefined,
+        occupancy: occupancy ? parseFloat(occupancy) : undefined,
+        rent_per_sf: rentPerSf ? parseFloat(rentPerSf) : undefined,
+        cap_rate: capRate ? parseFloat(capRate) : undefined,
+        renovation_budget: renovationBudget ? parseFloat(renovationBudget.replace(/[^0-9.]/g, '')) : undefined,
+        uploaded_documents: uploadedDocuments.map(doc => doc.id),
       });
 
-      // Link geographic context if available
       if (result && (submarketId || msaId || tradeAreaId)) {
         try {
-          await api.post(`/deals/${result.id}/geographic-context`, {
+          await apiClient.post(`/api/v1/deals/${result.id}/geographic-context`, {
             trade_area_id: tradeAreaId,
             submarket_id: submarketId,
             msa_id: msaId,
@@ -322,7 +350,6 @@ export const CreateDealPage: React.FC = () => {
         }
       }
 
-      // Navigate based on deal category
       if (dealCategory === 'pipeline') {
         navigate('/deals');
       } else if (dealCategory === 'portfolio') {
@@ -335,7 +362,6 @@ export const CreateDealPage: React.FC = () => {
     }
   };
 
-  // Handle back navigation
   const handleBack = () => {
     setError(null);
     
@@ -347,14 +373,20 @@ export const CreateDealPage: React.FC = () => {
       case STEPS.PROPERTY_TYPE:
         setCurrentStep(STEPS.TYPE);
         setPropertyType(null);
-        setAvailableStrategies([]);
         break;
-      case STEPS.STRATEGY:
+      case STEPS.DOCUMENTS:
         setCurrentStep(STEPS.PROPERTY_TYPE);
-        setSelectedStrategy(null);
+        setPurchasePrice('');
+        setOfferDate('');
+        setUnits('');
+        setOccupancy('');
+        setRentPerSf('');
+        setCapRate('');
+        setRenovationBudget('');
+        setUploadedDocuments([]);
         break;
       case STEPS.DETAILS:
-        setCurrentStep(STEPS.STRATEGY);
+        setCurrentStep(STEPS.DOCUMENTS);
         setDealName('');
         setDescription('');
         break;
@@ -381,7 +413,6 @@ export const CreateDealPage: React.FC = () => {
 
   return (
     <div className="fixed inset-0 bg-white flex flex-col">
-      {/* Header */}
       <div className="h-16 border-b border-gray-200 flex items-center px-6 bg-white z-10">
         <button
           onClick={() => navigate('/dashboard')}
@@ -394,24 +425,22 @@ export const CreateDealPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Main Content: 40/60 Split */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Form Content (40%) */}
         <div className="w-2/5 overflow-y-auto bg-gray-50 border-r border-gray-200">
           <div className="max-w-2xl mx-auto p-8">
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
               <p className="text-gray-600">
-                Step {currentStep} of {STEPS.BOUNDARY} • {
+                Step {currentStep} of {STEPS.BOUNDARY} &bull; {
                   currentStep <= STEPS.TYPE ? 'Setup' :
-                  currentStep === STEPS.PROPERTY_TYPE || currentStep === STEPS.STRATEGY ? 'Property & Strategy' :
+                  currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
+                  currentStep === STEPS.DOCUMENTS ? 'Documents & Deal Data' :
                   currentStep === STEPS.DETAILS ? 'Deal Details' :
                   'Location'
                 }
               </p>
             </div>
 
-            {/* Progress Indicator */}
             <div className="mb-8">
               <div className="flex items-center gap-2">
                 {Array.from({ length: STEPS.BOUNDARY }).map((_, idx) => (
@@ -425,7 +454,6 @@ export const CreateDealPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Step 1: Deal Category */}
             {currentStep === STEPS.CATEGORY && (
               <div className="space-y-6">
                 <div>
@@ -438,7 +466,7 @@ export const CreateDealPage: React.FC = () => {
                       className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition text-left"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="text-4xl">📁</div>
+                        <div className="text-4xl">&#128193;</div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 text-lg mb-1">
                             Portfolio
@@ -454,7 +482,7 @@ export const CreateDealPage: React.FC = () => {
                       className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition text-left"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="text-4xl">📊</div>
+                        <div className="text-4xl">&#128202;</div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 text-lg mb-1">
                             Pipeline
@@ -470,7 +498,6 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 2: Development Type */}
             {currentStep === STEPS.TYPE && (
               <div className="space-y-6">
                 <div>
@@ -483,7 +510,7 @@ export const CreateDealPage: React.FC = () => {
                       className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition text-left"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏗️</div>
+                        <div className="text-4xl">&#127959;&#65039;</div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 text-lg mb-1">
                             New Development
@@ -499,7 +526,7 @@ export const CreateDealPage: React.FC = () => {
                       className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition text-left"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏢</div>
+                        <div className="text-4xl">&#127970;</div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-gray-900 text-lg mb-1">
                             Existing Property
@@ -515,7 +542,6 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 3: Property Type */}
             {currentStep === STEPS.PROPERTY_TYPE && (
               <div className="space-y-6">
                 <div>
@@ -542,7 +568,7 @@ export const CreateDealPage: React.FC = () => {
                               className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="text-2xl">🏢</div>
+                                <div className="text-2xl">&#127970;</div>
                                 <div className="flex-1">
                                   <h4 className="font-semibold text-gray-900 text-sm">
                                     {type.display_name}
@@ -562,103 +588,241 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 4: Investment Strategy */}
-            {currentStep === STEPS.STRATEGY && propertyType && (
+            {currentStep === STEPS.DOCUMENTS && propertyType && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Select your investment strategy
+                    Upload Documents & Enter Deal Data
                   </h2>
                   <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-sm text-blue-800">
-                      <span className="font-semibold">Property:</span> {propertyType.display_name}
+                      <span className="font-semibold">Property Type:</span> {propertyType.display_name}
                     </p>
                   </div>
-                  {availableStrategies.length > 0 ? (
-                    <div className="space-y-3">
-                      {availableStrategies.map((strategy, index) => {
-                        const strengthColors = {
-                          Strong: 'border-green-300 bg-green-50 hover:border-green-500',
-                          Moderate: 'border-yellow-300 bg-yellow-50 hover:border-yellow-500',
-                          Weak: 'border-gray-300 bg-gray-50 hover:border-gray-500',
-                        };
-                        const badgeColors = {
-                          Strong: 'bg-green-100 text-green-700',
-                          Moderate: 'bg-yellow-100 text-yellow-700',
-                          Weak: 'bg-gray-100 text-gray-700',
-                        };
-                        
-                        return (
-                          <button
-                            key={index}
-                            onClick={() => handleSelectStrategy(strategy)}
-                            className={`w-full p-5 border-2 rounded-xl transition text-left ${strengthColors[strategy.strength]}`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <h3 className="font-semibold text-gray-900 text-lg">
-                                    {strategy.name}
-                                  </h3>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColors[strategy.strength]}`}>
-                                    {strategy.strength}
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-600">
-                                  <div>
-                                    <span className="font-medium">Hold:</span> {strategy.defaults.holdPeriod}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Exit:</span> {strategy.defaults.exitStrategy}
-                                  </div>
-                                  {strategy.defaults.assumptions.capRate && (
-                                    <div>
-                                      <span className="font-medium">Cap Rate:</span> {strategy.defaults.assumptions.capRate}%
-                                    </div>
-                                  )}
-                                  {strategy.defaults.assumptions.renovationBudget && (
-                                    <div>
-                                      <span className="font-medium">Reno Budget:</span> ${strategy.defaults.assumptions.renovationBudget.toLocaleString()}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900">Document Upload</h3>
+                      
+                      <div
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition cursor-pointer"
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleFileUpload(e.dataTransfer.files);
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onClick={() => document.getElementById('file-upload')?.click()}
+                      >
+                        <div className="text-4xl mb-2">&#128196;</div>
+                        <p className="text-sm text-gray-600 mb-2">
+                          Drag & drop files here, or click to browse
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          PDF, Excel, Word, Images
+                        </p>
+                        <input
+                          id="file-upload"
+                          type="file"
+                          multiple
+                          accept=".pdf,.xlsx,.xls,.docx,.doc,.jpg,.jpeg,.png"
+                          className="hidden"
+                          onChange={(e) => {
+                            if (e.target.files) {
+                              handleFileUpload(e.target.files);
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <p className="font-semibold">Suggested Documents:</p>
+                        <ul className="list-disc list-inside pl-2">
+                          <li>Offering Memorandum (OM)</li>
+                          <li>Rent Roll</li>
+                          <li>T-12 Operating Statements</li>
+                          <li>Broker Package</li>
+                          <li>Photos</li>
+                          <li>Other</li>
+                        </ul>
+                      </div>
+
+                      {uploadedDocuments.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-semibold text-gray-700">Uploaded Files:</h4>
+                          {uploadedDocuments.map((doc, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded text-xs"
+                            >
+                              <span className="truncate flex-1">{doc.name}</span>
+                              <button
+                                onClick={() => {
+                                  setUploadedDocuments(uploadedDocuments.filter((_, i) => i !== idx));
+                                }}
+                                className="text-red-600 hover:text-red-800 ml-2"
+                              >
+                                &#10005;
+                              </button>
                             </div>
-                          </button>
-                        );
-                      })}
+                          ))}
+                        </div>
+                      )}
+
+                      {isUploading && (
+                        <div className="text-sm text-blue-600 text-center">
+                          Uploading...
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                      <p className="text-gray-600">No strategies available for this property type.</p>
+
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-gray-900">Deal Data</h3>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Purchase Price <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-3 text-gray-500">$</span>
+                          <input
+                            type="text"
+                            value={purchasePrice}
+                            onChange={(e) => {
+                              const value = e.target.value.replace(/[^0-9.]/g, '');
+                              setPurchasePrice(value ? parseFloat(value).toLocaleString() : '');
+                            }}
+                            placeholder="0"
+                            className="w-full pl-7 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Call for Offer Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={offerDate}
+                          onChange={(e) => setOfferDate(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-200">
+                        <p className="text-xs text-gray-500 mb-3">Optional (can be extracted from documents):</p>
+
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Number of Units
+                          </label>
+                          <input
+                            type="number"
+                            value={units}
+                            onChange={(e) => setUnits(e.target.value)}
+                            placeholder="e.g., 150"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Current Occupancy %
+                          </label>
+                          <input
+                            type="number"
+                            value={occupancy}
+                            onChange={(e) => setOccupancy(e.target.value)}
+                            placeholder="e.g., 92"
+                            min="0"
+                            max="100"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Avg Rent per SF
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-gray-500">$</span>
+                            <input
+                              type="text"
+                              value={rentPerSf}
+                              onChange={(e) => setRentPerSf(e.target.value.replace(/[^0-9.]/g, ''))}
+                              placeholder="e.g., 1.85"
+                              className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Cap Rate %
+                          </label>
+                          <input
+                            type="number"
+                            value={capRate}
+                            onChange={(e) => setCapRate(e.target.value)}
+                            placeholder="e.g., 5.5"
+                            step="0.1"
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Renovation Budget
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2 text-gray-500">$</span>
+                            <input
+                              type="text"
+                              value={renovationBudget}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^0-9.]/g, '');
+                                setRenovationBudget(value ? parseFloat(value).toLocaleString() : '');
+                              }}
+                              placeholder="0"
+                              className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <Button
+                      onClick={handleProceedFromDocuments}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Continue to Deal Details &rarr;
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Step 5: Deal Details */}
             {currentStep === STEPS.DETAILS && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Tell us about this deal
+                    Name Your Deal
                   </h2>
-
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Deal Name *
+                        Deal Name <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         value={dealName}
                         onChange={(e) => setDealName(e.target.value)}
-                        placeholder="e.g., Buckhead Mixed-Use Development"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="e.g., Midtown Crossing Apartments"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
                       />
                     </div>
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Description (Optional)
@@ -667,72 +831,40 @@ export const CreateDealPage: React.FC = () => {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Brief description of the deal..."
-                        rows={4}
+                        rows={3}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
-                    </div>
-
-                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                      <h4 className="font-semibold text-gray-900 mb-3">Setup Summary</h4>
-                      <div className="text-sm text-gray-700 space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Category:</span>
-                          <span className="font-medium">
-                            {dealCategory === 'portfolio' ? 'Portfolio (Owned)' : 'Pipeline (Prospecting)'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Type:</span>
-                          <span className="font-medium">
-                            {developmentType === 'new' ? 'New Development' : 'Existing Property'}
-                          </span>
-                        </div>
-                        {propertyType && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Property:</span>
-                            <span className="font-medium">{propertyType.display_name}</span>
-                          </div>
-                        )}
-                        {selectedStrategy && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Strategy:</span>
-                            <span className="font-medium">{selectedStrategy.name}</span>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 6: Property Address */}
             {currentStep === STEPS.ADDRESS && (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Where is the property located?
+                    Property Location
                   </h2>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Property Address
-                    </label>
-                    <GooglePlacesInput
-                      id="create-deal-address"
-                      name="address"
-                      value={address}
-                      onChange={handleAddressSelected}
-                      placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
-                    />
-                    <p className="text-sm text-gray-500 mt-2">
-                      Start typing and select from the dropdown
-                    </p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Property Address
+                      </label>
+                      <GooglePlacesInput
+                        value={address}
+                        onChange={handleAddressSelected}
+                        placeholder="Start typing an address..."
+                      />
+                      <p className="mt-2 text-xs text-gray-500">
+                        Start typing and select from the dropdown
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Step 7: Trade Area (Optional) */}
             {currentStep === STEPS.TRADE_AREA && coordinates && (
               <div className="space-y-6">
                 <div>
@@ -741,34 +873,19 @@ export const CreateDealPage: React.FC = () => {
                     <span className="text-base font-normal text-gray-500">(Optional)</span>
                   </h2>
                   <p className="text-gray-600 mb-6">
-                    Define the geographic area you want to analyze, or skip to continue.
+                    Set the competitive radius around your property for market analysis.
                   </p>
+
                   <TradeAreaDefinitionPanel
                     propertyLat={coordinates[1]}
                     propertyLng={coordinates[0]}
                     onSave={handleTradeAreaSave}
                     onSkip={handleSkipTradeArea}
-                    onCustomDraw={() => {
-                      if (developmentType === 'new') {
-                        setCurrentStep(STEPS.BOUNDARY);
-                      } else {
-                        handleSubmit();
-                      }
-                    }}
                   />
-                  <div className="mt-6 flex justify-center">
-                    <Button
-                      onClick={handleSkipTradeArea}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    >
-                      Skip - Use System Defaults
-                    </Button>
-                  </div>
                 </div>
               </div>
             )}
 
-            {/* Step 8: Boundary (Optional, New Dev Only) */}
             {currentStep === STEPS.BOUNDARY && developmentType === 'new' && coordinates && (
               <div className="space-y-6">
                 <div>
@@ -781,7 +898,7 @@ export const CreateDealPage: React.FC = () => {
                   </p>
 
                   <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-xl text-center">
-                    <div className="text-5xl mb-3">🗺️</div>
+                    <div className="text-5xl mb-3">&#128506;&#65039;</div>
                     <h3 className="text-lg font-semibold text-blue-900 mb-2">
                       Drawing Tools Active
                     </h3>
@@ -789,16 +906,16 @@ export const CreateDealPage: React.FC = () => {
                       Use the polygon tool on the map to outline your property boundary.
                     </p>
                     <div className="text-xs text-blue-600 space-y-1">
-                      <div>• Click to add points around the property</div>
-                      <div>• Double-click to finish the polygon</div>
-                      <div>• Use the trash icon to start over</div>
+                      <div>&bull; Click to add points around the property</div>
+                      <div>&bull; Double-click to finish the polygon</div>
+                      <div>&bull; Use the trash icon to start over</div>
                     </div>
                   </div>
 
                   {boundary && boundary.type !== 'Point' && (
                     <div className="mt-4 p-4 bg-green-50 border-2 border-green-200 rounded-xl">
                       <p className="text-sm text-green-800 font-semibold text-center">
-                        ✓ Boundary drawn successfully!
+                        &#10003; Boundary drawn successfully!
                       </p>
                     </div>
                   )}
@@ -826,18 +943,16 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Error Message */}
             {error && (
               <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-800">{error}</p>
               </div>
             )}
 
-            {/* Action Buttons */}
             <div className="mt-8 flex items-center gap-3">
               {currentStep > STEPS.CATEGORY && (
                 <Button onClick={handleBack} disabled={isLoading}>
-                  ← Back
+                  &larr; Back
                 </Button>
               )}
               {currentStep === STEPS.DETAILS && (
@@ -846,33 +961,30 @@ export const CreateDealPage: React.FC = () => {
                   disabled={!dealName.trim()}
                   className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                 >
-                  Continue to Location →
+                  Continue to Location &rarr;
                 </Button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Right Panel - Map (60%) */}
         <div className="w-3/5 relative bg-gray-100">
           <div ref={mapContainer} className="absolute inset-0" />
           
-          {/* Map Instructions Overlay */}
           {!coordinates && (
             <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none">
               <div className="bg-white rounded-xl p-8 shadow-2xl max-w-md text-center">
-                <div className="text-6xl mb-4">🗺️</div>
+                <div className="text-6xl mb-4">&#128506;&#65039;</div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
                   Map Preview
                 </h3>
                 <p className="text-gray-600">
-                  The map will show your property location once you enter an address in Step 4.
+                  The map will show your property location once you enter an address in Step 6.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Drawing Mode Instructions */}
           {currentStep === STEPS.BOUNDARY && developmentType === 'new' && (
             <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
               <h4 className="font-semibold text-gray-900 mb-2">Drawing Tools</h4>

@@ -143,11 +143,11 @@ export const DealView: React.FC = () => {
             setAnalysisComplete(true);
             
             // Load strategy results for existing properties
-            if (selectedDeal?.development_type === 'existing' || selectedDeal?.property_type_key === 'existing') {
+            if (selectedDeal?.developmentType === 'existing' || selectedDeal?.propertyTypeKey === 'existing') {
               try {
                 const strategyData = await dealAnalysisService.getStrategyAnalysis(
                   dealId,
-                  selectedDeal?.purchase_price || 1000000,
+                  selectedDeal?.purchasePrice || 1000000,
                   4 // Default existing units
                 );
                 setStrategyResults(strategyData);
@@ -157,7 +157,7 @@ export const DealView: React.FC = () => {
             }
             
             // Load zoning results for new development
-            if (selectedDeal?.development_type === 'new' || selectedDeal?.development_type === 'land') {
+            if (selectedDeal?.developmentType === 'new' || selectedDeal?.developmentType === 'land') {
               try {
                 const zoningData = await dealAnalysisService.getZoningAnalysis(dealId);
                 setZoningResults(zoningData);
@@ -199,7 +199,7 @@ export const DealView: React.FC = () => {
   const isOwned = selectedDeal?.dealCategory === 'portfolio' || selectedDeal?.state === 'POST_CLOSE';
   const dealMode = isOwned ? 'performance' : 'acquisition';
   
-  const isExistingProperty = selectedDeal?.development_type === 'existing' || selectedDeal?.property_type_key === 'existing';
+  const isExistingProperty = selectedDeal?.developmentType === 'existing' || selectedDeal?.propertyTypeKey === 'existing';
 
   const renderModule = () => {
     if (!selectedDeal) return null;
@@ -414,8 +414,8 @@ export const DealView: React.FC = () => {
       {!analysisComplete && showActionPanel && analysisStatus && (
         <ActionStatusPanel
           status={analysisStatus}
-          dealType={selectedDeal?.development_type || 'existing'}
-          propertyType={selectedDeal?.property_type_key}
+          dealType={selectedDeal?.developmentType || 'existing'}
+          propertyType={selectedDeal?.propertyTypeKey}
           onSkipSetup={handleSkipSetup}
         />
       )}
@@ -425,7 +425,7 @@ export const DealView: React.FC = () => {
         <StrategyAnalysisResults
           results={strategyResults || undefined}
           zoningResults={zoningResults || undefined}
-          dealType={selectedDeal?.development_type || 'existing'}
+          dealType={selectedDeal?.developmentType || 'existing'}
           onChooseStrategy={handleChooseStrategy}
           onViewDetailed={() => setCurrentModule('strategy')}
           onCompareAll={() => setCurrentModule('strategy')}
