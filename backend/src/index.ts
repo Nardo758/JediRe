@@ -17,6 +17,7 @@ import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
 import { createEventsRoutes } from './api/rest/events.routes';
+import healthRoutes, { initHealthCheck } from './api/rest/health.routes';
 
 dotenv.config();
 
@@ -58,34 +59,10 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// Health Check Endpoint (lightweight - no DB query)
+// Health Check Endpoints (for monitoring & deployment)
 // ============================================
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/health/full', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT NOW()');
-    
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      database: 'connected',
-      dbTime: result.rows[0].now
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+initHealthCheck(pool);
+app.use('/', healthRoutes);
 
 // ============================================
 // API Routes
