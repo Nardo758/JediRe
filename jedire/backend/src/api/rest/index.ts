@@ -46,6 +46,7 @@ import auditRoutes from './audit.routes';
 import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import eventsRoutes from './events.routes';
+import customStrategiesRoutes from './custom-strategies.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -174,6 +175,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Strategy Analyses routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/strategy-analyses`, strategyAnalysesRoutes);
+
+  // Custom Strategies routes (User-defined investment strategies)
+  app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
 
   // Due Diligence Checklists routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/dd-checklists`, ddChecklistsRoutes);

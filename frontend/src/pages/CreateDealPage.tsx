@@ -8,6 +8,7 @@ import { Button } from '../components/shared/Button';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import { api } from '../services/api';
+import { getStrategiesForPropertyType, PropertyTypeStrategy } from '../services/strategyDefaults.service';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -16,13 +17,24 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 type DealCategory = 'portfolio' | 'pipeline';
 type DevelopmentType = 'new' | 'existing';
 
+interface PropertyType {
+  id: number;
+  type_key: string;
+  display_name: string;
+  category: string;
+  description: string;
+  icon: string;
+}
+
 const STEPS = {
   CATEGORY: 1,        // Deal Category
   TYPE: 2,            // Development Type (progressive reveal after category)
-  DETAILS: 3,         // Deal Name + Description
-  ADDRESS: 4,         // Property Address
-  TRADE_AREA: 5,      // Trade Area (optional)
-  BOUNDARY: 6,        // Boundary (optional, new dev only)
+  PROPERTY_TYPE: 3,   // Property Type Selection
+  STRATEGY: 4,        // Investment Strategy Selection
+  DETAILS: 5,         // Deal Name + Description
+  ADDRESS: 6,         // Property Address
+  TRADE_AREA: 7,      // Trade Area (optional)
+  BOUNDARY: 8,        // Boundary (optional, new dev only)
 } as const;
 
 export const CreateDealPage: React.FC = () => {
@@ -34,6 +46,10 @@ export const CreateDealPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(STEPS.CATEGORY);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
+  const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = useState<PropertyTypeStrategy | null>(null);
+  const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
+  const [availableStrategies, setAvailableStrategies] = useState<PropertyTypeStrategy[]>([]);
   const [address, setAddress] = useState('');
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
   const [boundary, setBoundary] = useState<any>(null);
@@ -51,6 +67,21 @@ export const CreateDealPage: React.FC = () => {
   const map = useRef<mapboxgl.Map | null>(null);
   const draw = useRef<MapboxDraw | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
+
+  // Load property types on mount
+  useEffect(() => {
+    const loadPropertyTypes = async () => {
+      try {
+        const response = await api.get('/property-types');
+        if (response.data.success) {
+          setAvailablePropertyTypes(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to load property types:', err);
+      }
+    };
+    loadPropertyTypes();
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -148,6 +179,23 @@ export const CreateDealPage: React.FC = () => {
   // Handle development type selection
   const handleSelectType = (type: DevelopmentType) => {
     setDevelopmentType(type);
+    setCurrentStep(STEPS.PROPERTY_TYPE);
+    setError(null);
+  };
+
+  // Handle property type selection
+  const handleSelectPropertyType = (type: PropertyType) => {
+    setPropertyType(type);
+    const strategies = getStrategiesForPropertyType(type.type_key);
+    setAvailableStrategies(strategies);
+    setSelectedStrategy(null); // Reset strategy when type changes
+    setCurrentStep(STEPS.STRATEGY);
+    setError(null);
+  };
+
+  // Handle strategy selection
+  const handleSelectStrategy = (strategy: PropertyTypeStrategy) => {
+    setSelectedStrategy(strategy);
     setCurrentStep(STEPS.DETAILS);
     setError(null);
   };
@@ -252,6 +300,10 @@ export const CreateDealPage: React.FC = () => {
         description,
         deal_category: dealCategory!,
         development_type: developmentType!,
+        property_type_id: propertyType?.id,
+        property_type_key: propertyType?.type_key,
+        strategy_name: selectedStrategy?.name,
+        strategy_defaults: selectedStrategy?.defaults,
         address,
         boundary,
       });
@@ -292,8 +344,17 @@ export const CreateDealPage: React.FC = () => {
         setCurrentStep(STEPS.CATEGORY);
         setDevelopmentType(null);
         break;
-      case STEPS.DETAILS:
+      case STEPS.PROPERTY_TYPE:
         setCurrentStep(STEPS.TYPE);
+        setPropertyType(null);
+        setAvailableStrategies([]);
+        break;
+      case STEPS.STRATEGY:
+        setCurrentStep(STEPS.PROPERTY_TYPE);
+        setSelectedStrategy(null);
+        break;
+      case STEPS.DETAILS:
+        setCurrentStep(STEPS.STRATEGY);
         setDealName('');
         setDescription('');
         break;
@@ -343,6 +404,7 @@ export const CreateDealPage: React.FC = () => {
               <p className="text-gray-600">
                 Step {currentStep} of {STEPS.BOUNDARY} • {
                   currentStep <= STEPS.TYPE ? 'Setup' :
+                  currentStep === STEPS.PROPERTY_TYPE || currentStep === STEPS.STRATEGY ? 'Property & Strategy' :
                   currentStep === STEPS.DETAILS ? 'Deal Details' :
                   'Location'
                 }
@@ -453,7 +515,129 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 3: Deal Details */}
+            {/* Step 3: Property Type */}
+            {currentStep === STEPS.PROPERTY_TYPE && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                    What type of property is this?
+                  </h2>
+                  <div className="max-h-[500px] overflow-y-auto pr-2 space-y-6">
+                    {Object.entries(
+                      availablePropertyTypes.reduce((acc, type) => {
+                        if (!acc[type.category]) acc[type.category] = [];
+                        acc[type.category].push(type);
+                        return acc;
+                      }, {} as Record<string, PropertyType[]>)
+                    ).map(([category, types]) => (
+                      <div key={category}>
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                          {category}
+                        </h3>
+                        <div className="grid grid-cols-1 gap-2">
+                          {types.map((type) => (
+                            <button
+                              key={type.id}
+                              onClick={() => handleSelectPropertyType(type)}
+                              className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="text-2xl">🏢</div>
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-gray-900 text-sm">
+                                    {type.display_name}
+                                  </h4>
+                                  <p className="text-xs text-gray-600 mt-0.5">
+                                    {type.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Investment Strategy */}
+            {currentStep === STEPS.STRATEGY && propertyType && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                    Select your investment strategy
+                  </h2>
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <span className="font-semibold">Property:</span> {propertyType.display_name}
+                    </p>
+                  </div>
+                  {availableStrategies.length > 0 ? (
+                    <div className="space-y-3">
+                      {availableStrategies.map((strategy, index) => {
+                        const strengthColors = {
+                          Strong: 'border-green-300 bg-green-50 hover:border-green-500',
+                          Moderate: 'border-yellow-300 bg-yellow-50 hover:border-yellow-500',
+                          Weak: 'border-gray-300 bg-gray-50 hover:border-gray-500',
+                        };
+                        const badgeColors = {
+                          Strong: 'bg-green-100 text-green-700',
+                          Moderate: 'bg-yellow-100 text-yellow-700',
+                          Weak: 'bg-gray-100 text-gray-700',
+                        };
+                        
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => handleSelectStrategy(strategy)}
+                            className={`w-full p-5 border-2 rounded-xl transition text-left ${strengthColors[strategy.strength]}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h3 className="font-semibold text-gray-900 text-lg">
+                                    {strategy.name}
+                                  </h3>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badgeColors[strategy.strength]}`}>
+                                    {strategy.strength}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-600">
+                                  <div>
+                                    <span className="font-medium">Hold:</span> {strategy.defaults.holdPeriod}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">Exit:</span> {strategy.defaults.exitStrategy}
+                                  </div>
+                                  {strategy.defaults.assumptions.capRate && (
+                                    <div>
+                                      <span className="font-medium">Cap Rate:</span> {strategy.defaults.assumptions.capRate}%
+                                    </div>
+                                  )}
+                                  {strategy.defaults.assumptions.renovationBudget && (
+                                    <div>
+                                      <span className="font-medium">Reno Budget:</span> ${strategy.defaults.assumptions.renovationBudget.toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                      <p className="text-gray-600">No strategies available for this property type.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Deal Details */}
             {currentStep === STEPS.DETAILS && (
               <div className="space-y-6">
                 <div>
@@ -503,6 +687,18 @@ export const CreateDealPage: React.FC = () => {
                             {developmentType === 'new' ? 'New Development' : 'Existing Property'}
                           </span>
                         </div>
+                        {propertyType && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Property:</span>
+                            <span className="font-medium">{propertyType.display_name}</span>
+                          </div>
+                        )}
+                        {selectedStrategy && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Strategy:</span>
+                            <span className="font-medium">{selectedStrategy.name}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -510,7 +706,7 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 4: Property Address */}
+            {/* Step 6: Property Address */}
             {currentStep === STEPS.ADDRESS && (
               <div className="space-y-6">
                 <div>
@@ -536,7 +732,7 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 5: Trade Area (Optional) */}
+            {/* Step 7: Trade Area (Optional) */}
             {currentStep === STEPS.TRADE_AREA && coordinates && (
               <div className="space-y-6">
                 <div>
@@ -572,7 +768,7 @@ export const CreateDealPage: React.FC = () => {
               </div>
             )}
 
-            {/* Step 6: Boundary (Optional, New Dev Only) */}
+            {/* Step 8: Boundary (Optional, New Dev Only) */}
             {currentStep === STEPS.BOUNDARY && developmentType === 'new' && coordinates && (
               <div className="space-y-6">
                 <div>

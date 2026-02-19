@@ -83,4 +83,36 @@ export interface Deal {
   
   // Development
   isDevelopment?: boolean;
+  
+  // Property Type & Strategy
+  propertyTypeId?: number;
+  propertyTypeKey?: string;
+  strategyName?: string;
+  strategy_name?: string;
+  strategyDefaults?: {
+    holdPeriod: string;
+    exitStrategy: string;
+    keyMetrics: string[];
+    assumptions: {
+      capRate?: number;
+      rentGrowth?: number;
+      expenseGrowth?: number;
+      occupancy?: number;
+      renovationBudget?: number;
+      timeToStabilize?: number;
+    };
+  };
+  strategy_defaults?: {
+    holdPeriod: string;
+    exitStrategy: string;
+    keyMetrics: string[];
+    assumptions: {
+      capRate?: number;
+      rentGrowth?: number;
+      expenseGrowth?: number;
+      occupancy?: number;
+      renovationBudget?: number;
+      timeToStabilize?: number;
+    };
+  };
 }

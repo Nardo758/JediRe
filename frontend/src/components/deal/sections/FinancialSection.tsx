@@ -40,9 +40,63 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ deal }) => {
   const incomeStatement = isPipeline ? acquisitionProForma : performanceActuals;
   const projections = isPipeline ? acquisitionProjections : performanceProjections;
 
+  // Check if deal has strategy defaults
+  const hasStrategyDefaults = deal.strategy_name && deal.strategy_defaults;
+
   return (
     <div className="space-y-6">
       
+      {/* Strategy Defaults Indicator */}
+      {hasStrategyDefaults && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5">
+          <div className="flex items-start gap-4">
+            <div className="text-3xl">🎯</div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Auto-filled from {deal.strategy_name}
+                </h3>
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                  Strategy Defaults
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-600">Hold Period:</span>
+                  <div className="font-semibold text-gray-900">{deal.strategy_defaults.holdPeriod}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Exit Strategy:</span>
+                  <div className="font-semibold text-gray-900">{deal.strategy_defaults.exitStrategy}</div>
+                </div>
+                {deal.strategy_defaults.assumptions?.capRate && (
+                  <div>
+                    <span className="text-gray-600">Target Cap Rate:</span>
+                    <div className="font-semibold text-gray-900">{deal.strategy_defaults.assumptions.capRate}%</div>
+                  </div>
+                )}
+                {deal.strategy_defaults.assumptions?.renovationBudget && (
+                  <div>
+                    <span className="text-gray-600">Reno Budget:</span>
+                    <div className="font-semibold text-gray-900">
+                      ${deal.strategy_defaults.assumptions.renovationBudget.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors">
+                  📝 Customize Assumptions
+                </button>
+                <button className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-lg transition-colors">
+                  🔄 Reset to Defaults
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mode Indicator */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
