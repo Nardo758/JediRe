@@ -1078,6 +1078,7 @@ import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import marketIntelRoutes from './api/rest/marketIntel.routes';
+import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
 
 app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/gmail', gmailRouter);
@@ -1098,6 +1099,7 @@ app.use('/api/v1/apartment-market', apartmentMarketRoutes);
 app.use('/api/v1/market-intel', marketIntelRoutes);
 app.use('/api/v1/traffic', trafficPredictionRoutes);
 app.use('/api/v1', propertyProxyRoutes);
+app.use('/api/v1/leasing-traffic', leasingTrafficRoutes);
 
 // ============================================
 // Deal Capsule System Routes

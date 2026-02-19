@@ -72,7 +72,7 @@ export class LeasingTrafficService {
     }
     
     // Get property size (units)
-    const units = property.units || 290;  // Default 290-unit baseline
+    const units = parseInt(property.units) || 290;
     
     // Calculate current week ending date (next Sunday)
     const now = new Date();
@@ -96,7 +96,7 @@ export class LeasingTrafficService {
     const netLeases = Math.round(weeklyTours * closingRatio);
     
     // Occupancy (mock - should come from property data)
-    const currentOccupancy = property.occupancy || 0.91;
+    const currentOccupancy = parseFloat(property.occupancy) || 0.91;
     
     const prediction: LeasingTrafficPrediction = {
       property_id: propertyId,
@@ -136,8 +136,8 @@ export class LeasingTrafficService {
       throw new Error(`Property ${propertyId} not found`);
     }
     
-    const units = property.units || 290;
-    let currentOccupancy = property.occupancy || 0.91;
+    const units = parseInt(property.units) || 290;
+    let currentOccupancy = parseFloat(property.occupancy) || 0.91;
     
     const weeklyData = [];
     let totalLeases = 0;
