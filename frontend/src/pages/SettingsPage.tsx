@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
+import PropertyTypesSettings from './settings/PropertyTypesSettings';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types';
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
@@ -52,6 +53,16 @@ export function SettingsPage() {
             }`}
           >
             Markets & Coverage
+          </button>
+          <button 
+            onClick={() => setActiveTab('property-types')}
+            className={`w-full text-left px-4 py-3 rounded-lg ${
+              activeTab === 'property-types' 
+                ? 'bg-blue-50 text-blue-700 font-medium' 
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Property Types & Strategies
           </button>
           <button 
             onClick={() => setActiveTab('integrations')}
@@ -144,6 +155,12 @@ export function SettingsPage() {
           {activeTab === 'markets' && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200">
               <MarketsPreferencesPage />
+            </div>
+          )}
+
+          {activeTab === 'property-types' && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-200px)]">
+              <PropertyTypesSettings />
             </div>
           )}
         </div>
