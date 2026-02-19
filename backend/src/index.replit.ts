@@ -17,6 +17,9 @@ import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
 import preferencesRouter from './api/rest/preferences.routes';
+import propertyTypesRouter from './api/rest/property-types.routes';
+import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
+import customStrategiesRouter from './api/rest/custom-strategies.routes';
 
 dotenv.config();
 
@@ -1111,6 +1114,9 @@ app.use('/api/v1/traffic', trafficPredictionRoutes);
 app.use('/api/v1', propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', leasingTrafficRoutes);
 app.use('/api/v1/preferences', preferencesRouter);
+app.use('/api/v1/property-types', propertyTypesRouter);
+app.use('/api/v1/property-type-strategies', propertyTypeStrategiesRouter);
+app.use('/api/v1/custom-strategies', customStrategiesRouter);
 
 // ============================================
 // Deal Capsule System Routes
