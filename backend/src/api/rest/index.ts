@@ -38,6 +38,7 @@ import financialModelsRoutes from './financial-models.routes';
 import strategyAnalysesRoutes from './strategy-analyses.routes';
 import ddChecklistsRoutes from './dd-checklists.routes';
 import propertyTypeStrategiesRoutes from './property-type-strategies.routes';
+import propertyTypesRoutes from './property-types.routes';
 import dashboardRoutes from './dashboard.routes';
 import demandRoutes from './demand.routes';
 import supplyRoutes from './supply.routes';
@@ -69,6 +70,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Property Type Strategies routes (Settings > Property Types)
   app.use(`${API_PREFIX}/property-type-strategies`, propertyTypeStrategiesRoutes);
+
+  // Property Types routes (Deal Creation)
+  app.use(`${API_PREFIX}/property-types`, propertyTypesRoutes);
 
   // Property extraction routes
   app.use(`${API_PREFIX}/extractions`, extractionsRoutes);
