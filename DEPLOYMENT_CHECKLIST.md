@@ -1,183 +1,255 @@
-# JEDI RE UI-API Connection - Deployment Checklist
+# 🚀 Deployment Checklist
 
-## ✅ Completed Tasks
+## Pre-Deployment (Do This First!)
 
-### Backend Integration
-- [x] API endpoint `/api/v1/analysis/imbalance` verified working
-- [x] Python engines tested with real data
-- [x] Request/response format documented
-- [x] Error handling in place
-- [x] 13 Atlanta neighborhoods data available
+### 1. Environment Variables ✅
+- [ ] Copy `.env.example` to `.env` in backend
+- [ ] Copy `.env.example` to `.env` in frontend
+- [ ] Set `DATABASE_URL` (PostgreSQL connection string)
+- [ ] Set `REDIS_URL` (Redis connection string)
+- [ ] Generate secure random strings for `JWT_SECRET` and `JWT_REFRESH_SECRET`
+- [ ] Set `FRONTEND_URL` to your production frontend URL
+- [ ] Configure external API keys (Google Maps, Mapbox, etc.)
+- [ ] Choose and configure LLM provider (Claude/OpenAI)
 
-### Frontend Development
-- [x] Type definitions match API structure
-- [x] API service points to correct endpoint
-- [x] UI component rebuilt with full feature set
-- [x] Neighborhood dropdown populated
-- [x] All input fields implemented
-- [x] Results display comprehensive
-- [x] Color-coded verdicts working
-- [x] Loading and error states handled
-
-### Testing
-- [x] Test 1: Virginia Highland - NEUTRAL verdict ✅
-- [x] Test 2: Atkins Park - NEUTRAL verdict ✅
-- [x] Test 3: Kirkwood - STRONG_OPPORTUNITY verdict ✅
-- [x] All 5 verdict types can be generated ✅
-- [x] All 5 supply verdicts displayed correctly ✅
-- [x] API response mapping verified ✅
-
-### Documentation
-- [x] Test results documented
-- [x] API structure documented
-- [x] User guide created
-- [x] Next steps identified
-
-## 🚀 Ready to Ship
-
-### Production Readiness Checklist
-- [x] Backend server running (port 4000)
-- [x] Frontend server running (port 5000)
-- [x] API responding with valid data
-- [x] UI rendering correctly
-- [x] Form validation working
-- [x] Error messages clear
-- [x] Loading states smooth
-- [x] Results display complete
-
-## 📋 Pre-Launch Verification
-
-Run these commands to verify everything:
-
+**Generate secure secrets:**
 ```bash
-# 1. Check backend is running
-curl http://localhost:4000/health || echo "Backend not running"
-
-# 2. Check frontend is accessible
-curl -s http://localhost:5000 | grep "JediRe" && echo "Frontend OK"
-
-# 3. Test API endpoint
-curl -s -X POST http://localhost:4000/api/v1/analysis/imbalance \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Virginia Highland",
-    "population": 12000,
-    "existing_units": 5000,
-    "rent_timeseries": [1500,1520,1540,1560,1580,1600,1620,1640,1660,1680,1700,1720,1740,1760,1780,1800,1820,1840,1860,1880,1900,1920,1940,1960,1980,2000,2020,2040,2060,2080,2100,2120,2140,2160,2180,2200,2220,2240,2260,2280,2300,2320,2340,2360,2380,2400,2420,2440,2460,2480,2500,2520]
-  }' | grep "success" && echo "API OK"
+# Generate JWT secrets (use these in your .env)
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-## 🎯 Success Criteria - ALL MET ✅
+### 2. Database Setup ✅
+- [ ] Create production PostgreSQL database
+- [ ] Run initial migrations: `npm run migrate`
+- [ ] Verify database schema is correct
+- [ ] Test database connection: `curl https://your-api.com/health/db`
 
-- [x] UI can select from 13 Atlanta neighborhoods
-- [x] UI form accepts all required inputs
-- [x] API receives correctly formatted requests
-- [x] Python engine processes data successfully
-- [x] API returns structured response
-- [x] UI displays verdict with correct colors
-- [x] UI shows demand signal details
-- [x] UI shows supply signal details
-- [x] UI displays key factors
-- [x] UI displays risks
-- [x] UI shows actionable recommendation
-- [x] Full flow tested end-to-end
-- [x] Multiple neighborhoods tested
-- [x] Different market conditions tested
-- [x] Response time < 2 seconds
-- [x] No errors in console
-- [x] No type mismatches
+### 3. Build Verification ✅
+- [ ] Run `npm run build` - verify no TypeScript errors
+- [ ] Run `npm run deploy:check` - verify build succeeds
+- [ ] Test backend build: `cd backend && npm run build`
+- [ ] Test frontend build: `cd frontend && npm run build`
 
-## 📊 Test Coverage
+### 4. Security Checklist ✅
+- [ ] Change all default secrets/passwords
+- [ ] Verify JWT secrets are different from examples
+- [ ] Set `NODE_ENV=production` in backend
+- [ ] Enable HTTPS/SSL in production
+- [ ] Configure CORS to only allow your frontend domain
+- [ ] Review rate limiting settings
 
-### Neighborhoods Tested
-1. ✅ Virginia Highland (Oversupplied)
-2. ✅ Atkins Park (Oversupplied)
-3. ✅ Kirkwood (Undersupplied)
+### 5. External Services ✅
+- [ ] Set up PostgreSQL database (Railway, Supabase, or similar)
+- [ ] Set up Redis instance (Railway, Upstash, or similar)
+- [ ] Obtain API keys for external services
+- [ ] Configure OAuth callback URLs in Google Console
+- [ ] Test email sync (if using Gmail integration)
 
-### Verdict Types Verified
-1. ✅ STRONG_OPPORTUNITY (Kirkwood)
-2. ✅ NEUTRAL (Virginia Highland, Atkins Park)
-3. ⚠️  MODERATE_OPPORTUNITY (not tested yet)
-4. ⚠️  CAUTION (not tested yet)
-5. ⚠️  AVOID (not tested yet)
+## Deployment Steps
 
-### Supply Verdicts Verified
-1. ✅ CRITICALLY_UNDERSUPPLIED (Kirkwood)
-2. ✅ CRITICALLY_OVERSUPPLIED (Virginia Highland, Atkins Park)
-3. ⚠️  UNDERSUPPLIED (not tested yet)
-4. ⚠️  BALANCED (not tested yet)
-5. ⚠️  OVERSUPPLIED (not tested yet)
+### Option A: Railway Deployment (Recommended)
 
-## 🔧 Known Limitations
-
-1. **Rent Data**: Currently using generated sample data
-   - Action: Integrate real data sources in next phase
-   
-2. **Demographic Data**: Manual entry required
-   - Action: Auto-populate from Census API
-   
-3. **History**: No persistence of analyses
-   - Action: Add database and history feature
-
-4. **Validation**: Basic validation only
-   - Action: Add comprehensive field validation
-
-## 🎉 Delivery Status
-
-**Task:** Connect JEDI RE UI to API endpoints  
-**Goal:** Complete in < 1 hour  
-**Actual:** ~45 minutes  
-**Status:** ✅ **COMPLETE AND SHIPPED**
-
-### Deliverables
-1. ✅ Working UI-API connection
-2. ✅ Tested with 3 neighborhoods
-3. ✅ All verdicts display correctly
-4. ✅ Comprehensive documentation
-5. ✅ Deployment checklist
-
-### Quality Metrics
-- **Code Quality**: Production-ready
-- **Test Coverage**: Core flows tested
-- **Documentation**: Comprehensive
-- **User Experience**: Intuitive and clear
-- **Performance**: < 2 second response time
-- **Reliability**: 100% success rate in testing
-
-## 📞 Support Information
-
-### If Issues Arise
-
-1. **Backend not responding:**
+1. **Install Railway CLI:**
    ```bash
-   cd jedire/backend && npm run dev
+   npm install -g @railway/cli
+   railway login
    ```
 
-2. **Frontend not loading:**
+2. **Create New Project:**
    ```bash
-   cd jedire/frontend && npm run dev
+   railway init
    ```
 
-3. **API errors:**
-   - Check backend logs
-   - Verify Python environment active
-   - Confirm parcel data files exist
+3. **Add PostgreSQL:**
+   ```bash
+   railway add --plugin postgresql
+   ```
 
-4. **UI not updating:**
-   - Hard refresh browser (Ctrl+Shift+R)
-   - Check browser console for errors
-   - Verify API endpoint in network tab
+4. **Add Redis:**
+   ```bash
+   railway add --plugin redis
+   ```
 
-## 🎊 Final Sign-Off
+5. **Set Environment Variables:**
+   ```bash
+   # Copy from your .env file
+   railway variables set JWT_SECRET="your-secret-here"
+   railway variables set JWT_REFRESH_SECRET="your-refresh-secret"
+   # ... add all other variables from .env.example
+   ```
 
-**Project:** JEDI RE Phase 1 - UI-API Connection  
-**Status:** ✅ COMPLETE  
-**Quality:** Production Ready  
-**Tested:** Yes (3 neighborhoods, multiple scenarios)  
-**Documented:** Yes (comprehensive)  
-**Ready for Users:** YES 🚀
+6. **Deploy Backend:**
+   ```bash
+   cd backend
+   railway up
+   ```
+
+7. **Deploy Frontend:**
+   ```bash
+   cd ../frontend
+   railway up
+   ```
+
+8. **Run Migrations:**
+   ```bash
+   railway run npm run migrate
+   ```
+
+### Option B: Docker Deployment
+
+1. **Build Docker Image:**
+   ```bash
+   docker build -t jedire-backend:latest -f backend/Dockerfile .
+   docker build -t jedire-frontend:latest -f frontend/Dockerfile .
+   ```
+
+2. **Run Containers:**
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Run Migrations:**
+   ```bash
+   docker exec jedire-backend npm run migrate
+   ```
+
+### Option C: Manual/VPS Deployment
+
+1. **Install Dependencies:**
+   ```bash
+   npm run install:all
+   ```
+
+2. **Build Project:**
+   ```bash
+   npm run build
+   ```
+
+3. **Set Up Environment:**
+   ```bash
+   # Copy .env files to production server
+   # Set NODE_ENV=production
+   ```
+
+4. **Run Migrations:**
+   ```bash
+   npm run migrate
+   ```
+
+5. **Start Backend:**
+   ```bash
+   npm run start:prod
+   ```
+
+6. **Serve Frontend:**
+   ```bash
+   # Use nginx or similar to serve frontend/dist/
+   ```
+
+## Post-Deployment Verification
+
+### 1. Health Checks ✅
+- [ ] Test basic health: `curl https://your-api.com/health`
+- [ ] Test database health: `curl https://your-api.com/health/db`
+- [ ] Test readiness: `curl https://your-api.com/health/ready`
+- [ ] Verify all checks return `200 OK`
+
+### 2. API Testing ✅
+- [ ] Test authentication endpoints
+- [ ] Test deal creation
+- [ ] Test file upload
+- [ ] Test WebSocket connections
+- [ ] Verify CORS is working from frontend
+
+### 3. Frontend Testing ✅
+- [ ] Load the frontend in browser
+- [ ] Test login/authentication
+- [ ] Test map rendering
+- [ ] Test deal creation flow
+- [ ] Check browser console for errors
+
+### 4. Monitoring Setup ✅
+- [ ] Set up uptime monitoring (UptimeRobot, Pingdom, etc.)
+- [ ] Configure health check alerts
+- [ ] Set up error tracking (Sentry, LogRocket, etc.)
+- [ ] Monitor database connections
+- [ ] Monitor API response times
+
+### 5. Performance ✅
+- [ ] Test API response times (should be < 500ms)
+- [ ] Verify frontend loads quickly (< 3 seconds)
+- [ ] Check database query performance
+- [ ] Verify WebSocket latency is acceptable
+- [ ] Monitor memory usage
+
+## Rollback Procedure
+
+If something goes wrong:
+
+1. **Identify the Issue:**
+   - Check logs: `railway logs` or `docker logs`
+   - Check health endpoints
+   - Review error tracking
+
+2. **Rollback Steps:**
+   ```bash
+   # Railway
+   railway rollback
+   
+   # Docker
+   docker-compose down
+   docker-compose up -d --build
+   
+   # Manual
+   # Revert to previous commit
+   git revert HEAD
+   npm run build
+   npm run start:prod
+   ```
+
+3. **Database Rollback:**
+   - Create database backup before migration
+   - Restore from backup if needed:
+     ```bash
+     pg_restore -d jedire backup.dump
+     ```
+
+## Common Issues
+
+### Issue: Database Connection Fails
+**Solution:** Verify `DATABASE_URL` is correct and database is accessible
+
+### Issue: JWT Authentication Fails
+**Solution:** Ensure `JWT_SECRET` is set and consistent across deployments
+
+### Issue: CORS Errors
+**Solution:** Set `CORS_ORIGIN` to your frontend URL
+
+### Issue: WebSocket Connection Fails
+**Solution:** Ensure WebSocket endpoint is accessible and not blocked by firewall
+
+### Issue: Migration Fails
+**Solution:** Check migration logs, fix SQL errors, run again (migrations are idempotent)
+
+## Maintenance
+
+### Regular Tasks:
+- **Daily:** Check health endpoints and error logs
+- **Weekly:** Review database performance and query logs
+- **Monthly:** Update dependencies and security patches
+- **Quarterly:** Review and optimize database indexes
+
+### Backup Schedule:
+- Database: Daily automated backups
+- Uploads/Files: Daily sync to cloud storage
+- Configuration: Version controlled in Git
 
 ---
-**Deployment Date:** $(date)  
-**Deployed By:** AI Agent (Subagent Session)  
-**Approval:** Ready for main agent review
+
+## Need Help?
+
+Check these resources:
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - Detailed deployment guide
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- [Health Endpoints](#health-endpoints) - Monitoring documentation

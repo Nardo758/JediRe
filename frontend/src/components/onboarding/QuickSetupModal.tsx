@@ -38,8 +38,8 @@ export default function QuickSetupModal({ isOpen, onClose, onComplete }: QuickSe
   const loadOptions = async () => {
     try {
       const [marketsRes, typesRes] = await Promise.all([
-        api.get('/user/available-markets'),
-        api.get('/user/property-types')
+        api.get('/preferences/available-markets'),
+        api.get('/preferences/property-types')
       ]);
       
       // Only show active and beta markets for onboarding
@@ -54,7 +54,7 @@ export default function QuickSetupModal({ isOpen, onClose, onComplete }: QuickSe
 
   const handleSkip = async () => {
     try {
-      await api.put('/user/preferences', { onboarding_completed: true });
+      await api.put('/preferences/user', { onboarding_completed: true });
       onClose();
     } catch (error) {
       console.error('Failed to skip onboarding:', error);
@@ -66,7 +66,7 @@ export default function QuickSetupModal({ isOpen, onClose, onComplete }: QuickSe
     try {
       setSaving(true);
       
-      await api.put('/user/preferences', {
+      await api.put('/preferences/user', {
         preferred_markets: selectedMarkets,
         property_types: selectedPropertyTypes,
         primary_market: selectedMarkets[0] || null,
