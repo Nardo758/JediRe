@@ -1,78 +1,6 @@
 import { useState, useEffect } from 'react';
-import {
-  MapPin, Building2, CheckCircle2, Loader2,
-  Home, Building, House, Columns3, Caravan, Users,
-  Trees, GraduationCap, HeartHandshake, ShieldCheck, Hammer,
-  Briefcase, Stethoscope, Palette,
-  Store, ShoppingBag, Zap, ShoppingCart, FileSignature, Sparkles, Tag,
-  Warehouse, Package, Factory, Snowflake, Server, Layout, Truck,
-  Bed, Hotel, CalendarClock, Palmtree, Key,
-  Archive, Car, HeartPulse, FlaskConical, Ticket, Church, School, Fuel,
-  Mountain, FileCheck, Wheat, MapPin as MapPinIcon,
-  Layers, LayoutGrid
-} from 'lucide-react';
+import { MapPin, CheckCircle2, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
-
-// Icon mapping for property types
-const ICON_MAP: Record<string, React.ComponentType<any>> = {
-  'home': Home,
-  'building-2': Building2,
-  'building': Building,
-  'house': House,
-  'columns': Columns3,
-  'caravan': Caravan,
-  'users': Users,
-  'trees': Trees,
-  'graduation-cap': GraduationCap,
-  'heart-handshake': HeartHandshake,
-  'shield-check': ShieldCheck,
-  'hammer': Hammer,
-  'briefcase': Briefcase,
-  'stethoscope': Stethoscope,
-  'palette': Palette,
-  'store': Store,
-  'shopping-bag': ShoppingBag,
-  'zap': Zap,
-  'shopping-cart': ShoppingCart,
-  'file-signature': FileSignature,
-  'sparkles': Sparkles,
-  'tag': Tag,
-  'warehouse': Warehouse,
-  'package': Package,
-  'factory': Factory,
-  'snowflake': Snowflake,
-  'server': Server,
-  'layout': Layout,
-  'truck': Truck,
-  'bed': Bed,
-  'hotel': Hotel,
-  'calendar-clock': CalendarClock,
-  'palm-tree': Palmtree,
-  'key': Key,
-  'archive': Archive,
-  'car': Car,
-  'heart-pulse': HeartPulse,
-  'flask-conical': FlaskConical,
-  'ticket': Ticket,
-  'church': Church,
-  'school': School,
-  'fuel': Fuel,
-  'mountain': Mountain,
-  'file-check': FileCheck,
-  'wheat': Wheat,
-  'map-pin': MapPinIcon,
-  'layers': Layers,
-  'layout-grid': LayoutGrid,
-};
-
-// Lucide Icon component that renders actual React components
-function LucideIcon({ name, className }: { name: string; className?: string }) {
-  const IconComponent = ICON_MAP[name];
-  if (!IconComponent) {
-    return <Building2 className={className} />;
-  }
-  return <IconComponent className={className} />;
-}
 
 interface Market {
   name: string;
@@ -84,20 +12,11 @@ interface Market {
   data_freshness: string;
 }
 
-interface PropertyType {
-  type_key: string;
-  display_name: string;
-  description: string;
-  icon: string;
-}
-
 export default function MarketsPreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [markets, setMarkets] = useState<Market[]>([]);
-  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedMarkets, setSelectedMarkets] = useState<string[]>([]);
-  const [selectedPropertyTypes, setSelectedPropertyTypes] = useState<string[]>([]);
   const [primaryMarket, setPrimaryMarket] = useState<string>('');
   const [primaryUseCase, setPrimaryUseCase] = useState<string>('');
 
@@ -109,20 +28,15 @@ export default function MarketsPreferencesPage() {
     try {
       setLoading(true);
       
-      // Load available options
-      const [marketsRes, typesRes, prefsRes] = await Promise.all([
+      const [marketsRes, prefsRes] = await Promise.all([
         api.get('/preferences/available-markets'),
-        api.get('/preferences/property-types'),
         api.get('/preferences/user')
       ]);
       
       setMarkets(marketsRes.data.markets);
-      setPropertyTypes(typesRes.data.property_types);
       
-      // Load current preferences
       const prefs = prefsRes.data.preferences;
       setSelectedMarkets(prefs.preferred_markets || []);
-      setSelectedPropertyTypes(prefs.property_types || []);
       setPrimaryMarket(prefs.primary_market || '');
       setPrimaryUseCase(prefs.primary_use_case || '');
     } catch (error) {
@@ -138,7 +52,6 @@ export default function MarketsPreferencesPage() {
       
       await api.put('/preferences/user', {
         preferred_markets: selectedMarkets,
-        property_types: selectedPropertyTypes,
         primary_market: primaryMarket,
         primary_use_case: primaryUseCase
       });
@@ -163,14 +76,6 @@ export default function MarketsPreferencesPage() {
       if (!primaryMarket) {
         setPrimaryMarket(marketName);
       }
-    }
-  };
-
-  const togglePropertyType = (typeKey: string) => {
-    if (selectedPropertyTypes.includes(typeKey)) {
-      setSelectedPropertyTypes(selectedPropertyTypes.filter(t => t !== typeKey));
-    } else {
-      setSelectedPropertyTypes([...selectedPropertyTypes, typeKey]);
     }
   };
 
@@ -204,15 +109,13 @@ export default function MarketsPreferencesPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Markets & Coverage</h1>
         <p className="text-gray-600 mt-2">
-          Select which markets you want to track and what property types you focus on
+          Select which markets you want to track
         </p>
       </div>
 
-      {/* Markets Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-center gap-3 mb-4">
           <MapPin className="w-6 h-6 text-blue-600" />
@@ -279,48 +182,6 @@ export default function MarketsPreferencesPage() {
         </div>
       </div>
 
-      {/* Property Types Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Building2 className="w-6 h-6 text-purple-600" />
-          <h2 className="text-xl font-bold text-gray-900">Property Types</h2>
-        </div>
-        
-        <p className="text-sm text-gray-600 mb-4">
-          Select the property types you focus on. We'll tailor analytics and insights accordingly.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {propertyTypes.map((type) => (
-            <button
-              key={type.type_key}
-              onClick={() => togglePropertyType(type.type_key)}
-              className={`
-                p-4 rounded-lg border-2 text-left transition-all
-                ${selectedPropertyTypes.includes(type.type_key)
-                  ? 'border-purple-600 bg-purple-50'
-                  : 'border-gray-200 hover:border-gray-300'
-                }
-              `}
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <LucideIcon name={type.icon} className="w-5 h-5 text-purple-600" />
-                    <h3 className="font-semibold text-gray-900">{type.display_name}</h3>
-                  </div>
-                  <p className="text-xs text-gray-600">{type.description}</p>
-                </div>
-                {selectedPropertyTypes.includes(type.type_key) && (
-                  <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Use Case */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Primary Use Case</h2>
         
@@ -339,7 +200,6 @@ export default function MarketsPreferencesPage() {
         </select>
       </div>
 
-      {/* Save Button */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-600">
           Changes will update your Market Research dashboard and analytics
