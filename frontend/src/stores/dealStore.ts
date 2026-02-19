@@ -34,6 +34,17 @@ const transformDeal = (deal: any): Deal => {
     triagedAt: deal.triaged_at || deal.triagedAt,
     stateData: deal.state_data || deal.stateData,
     daysInStation: deal.days_in_station || deal.daysInStation || 0,
+    developmentType: deal.development_type || deal.developmentType,
+    propertyTypeKey: deal.property_type_key || deal.propertyTypeKey,
+    propertyTypeId: deal.property_type_id || deal.propertyTypeId,
+    purchasePrice: deal.purchase_price || deal.purchasePrice,
+    callForOfferDate: deal.call_for_offer_date || deal.callForOfferDate,
+    units: deal.units,
+    occupancy: deal.occupancy,
+    rentPerSf: deal.rent_per_sf || deal.rentPerSf,
+    capRate: deal.cap_rate || deal.capRate,
+    renovationBudget: deal.renovation_budget || deal.renovationBudget,
+    dealCategory: deal.deal_category || deal.dealCategory,
   };
 };
 

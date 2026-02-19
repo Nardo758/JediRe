@@ -84,6 +84,16 @@ export interface Deal {
   // Development
   isDevelopment?: boolean;
   
+  // Deal Data (from creation flow)
+  purchasePrice?: number;
+  callForOfferDate?: string;
+  units?: number;
+  occupancy?: number;
+  rentPerSf?: number;
+  capRate?: number;
+  renovationBudget?: number;
+  uploadedDocuments?: string[];
+  
   // Property Type & Strategy
   propertyTypeId?: number;
   propertyTypeKey?: string;
