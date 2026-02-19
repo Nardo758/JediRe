@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
-import PropertyTypesSettings from './settings/PropertyTypesSettings';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets';
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
