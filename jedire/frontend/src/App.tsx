@@ -21,6 +21,8 @@ import { MarketDataPage } from './pages/MarketDataPage';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
+import { ModuleLibrariesPage } from './pages/settings/ModuleLibrariesPage';
+import { ModuleLibraryDetailPage } from './pages/settings/ModuleLibraryDetailPage';
 import { EmailSettings } from './pages/settings/EmailSettings';
 import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
@@ -85,6 +87,8 @@ function AppContent() {
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModulesPage />} />
+          <Route path="/settings/module-libraries" element={<ModuleLibrariesPage />} />
+          <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
           
