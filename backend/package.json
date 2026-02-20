@@ -4,10 +4,10 @@
   "description": "JediRe Backend for Replit - Simplified",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "start:prod": "NODE_ENV=production node dist/index.js",
+    "dev": "ts-node src/index.replit.ts",
+    "build": "tsc --skipLibCheck",
+    "start": "node dist/index.replit.js",
+    "start:prod": "NODE_ENV=production node dist/index.replit.js",
     "migrate": "bash scripts/run-migrations.sh",
     "deploy:check": "npm run build",
     "replit": "npm install && npm run build && npm run start"
@@ -36,7 +36,8 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.11.3",
     "socket.io": "^4.6.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
