@@ -11,6 +11,9 @@ const TAX_PARCELS = `${API_BASE}/Tax_Parcels_2025/FeatureServer/0`;
 const SALES_BASE = `${API_BASE}/Tyler_YearlySales/FeatureServer`;
 const MARKET_TRENDS = `${API_BASE}/CommissionDistrict1Cities_HomeSales/FeatureServer/28`;
 
+const CONCURRENCY = 10;
+const FETCH_TIMEOUT = 15000;
+
 interface TaxParcelFeature {
   attributes: {
     ParcelID: string;
@@ -46,17 +49,6 @@ interface SaleFeature {
   };
 }
 
-interface StructureFeature {
-  attributes: {
-    FeatureID: string;
-    YearBuilt: string;
-    Stories: number;
-    LiveUnits: number;
-    AreaSqFt: number;
-    StructForm: string;
-  };
-}
-
 interface MarketTrendFeature {
   attributes: {
     City: string;
@@ -76,36 +68,45 @@ interface MarketTrendFeature {
   };
 }
 
+async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    return resp;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchLargeMultifamilyProperties(): Promise<TaxParcelFeature[]> {
-  console.log('🔍 Querying Tax Parcels API for 100+ unit properties...');
-  
+  console.log('Querying Tax Parcels API for 100+ unit properties...');
+
   const url = `${TAX_PARCELS}/query`;
   const params = new URLSearchParams({
     where: 'LivUnits >= 100',
     outFields: '*',
     f: 'json',
     returnGeometry: 'false',
-    resultRecordCount: '1000',
+    resultRecordCount: '2000',
   });
-  
-  const response = await fetch(`${url}?${params}`);
+
+  const response = await fetchWithTimeout(`${url}?${params}`, 30000);
   const data = await response.json();
-  
+
   if (data.features) {
-    console.log(`✅ Found ${data.features.length} properties with 100+ units`);
+    console.log(`Found ${data.features.length} properties with 100+ units`);
     return data.features;
   }
-  
-  console.error('❌ No properties found or API error:', data.error);
+
+  console.error('No properties found or API error:', data.error);
   return [];
 }
 
-async function fetchSalesHistory(parcelId: string): Promise<SaleFeature[]> {
-  const allSales: SaleFeature[] = [];
-  
+async function fetchSalesHistoryParallel(parcelId: string): Promise<SaleFeature[]> {
+  const yearPromises = [];
   for (let year = 2018; year <= 2022; year++) {
     const layerId = year - 2016;
-    
     const url = `${SALES_BASE}/${layerId}/query`;
     const params = new URLSearchParams({
       where: `ParID='${parcelId}'`,
@@ -113,29 +114,22 @@ async function fetchSalesHistory(parcelId: string): Promise<SaleFeature[]> {
       f: 'json',
       returnGeometry: 'false',
     });
-    
-    try {
-      const response = await fetch(`${url}?${params}`);
-      const data = await response.json();
-      
-      if (data.features && data.features.length > 0) {
-        allSales.push(...data.features);
-      }
-    } catch (error) {
-      console.error(`  ⚠️  Error fetching ${year} sales for ${parcelId}:`, error);
-    }
-  }
-  
-  return allSales;
-}
 
-async function fetchStructureData(parcelId: string): Promise<StructureFeature | null> {
-  return null;
+    yearPromises.push(
+      fetchWithTimeout(`${url}?${params}`)
+        .then(r => r.json())
+        .then(data => (data.features || []) as SaleFeature[])
+        .catch(() => [] as SaleFeature[])
+    );
+  }
+
+  const results = await Promise.all(yearPromises);
+  return results.flat();
 }
 
 async function fetchMarketTrends(): Promise<MarketTrendFeature[]> {
-  console.log('🔍 Querying market trends (city median prices 2012-2024)...');
-  
+  console.log('Querying market trends (city median prices 2012-2024)...');
+
   const url = `${MARKET_TRENDS}/query`;
   const params = new URLSearchParams({
     where: '1=1',
@@ -143,22 +137,22 @@ async function fetchMarketTrends(): Promise<MarketTrendFeature[]> {
     f: 'json',
     returnGeometry: 'false',
   });
-  
-  const response = await fetch(`${url}?${params}`);
+
+  const response = await fetchWithTimeout(`${url}?${params}`, 30000);
   const data = await response.json();
-  
+
   if (data.features) {
-    console.log(`✅ Found market data for ${data.features.length} cities`);
+    console.log(`Found market data for ${data.features.length} cities`);
     return data.features;
   }
-  
-  console.error('❌ No market trends found');
+
+  console.error('No market trends found');
   return [];
 }
 
 async function upsertPropertyRecord(feature: TaxParcelFeature): Promise<void> {
   const attrs = feature.attributes;
-  
+
   const query = `
     INSERT INTO property_records (
       parcel_id, county, state, address, owner_name, owner_address_1, owner_address_2,
@@ -195,7 +189,7 @@ async function upsertPropertyRecord(feature: TaxParcelFeature): Promise<void> {
       data_source_url = EXCLUDED.data_source_url,
       updated_at = NOW()
   `;
-  
+
   const values = [
     attrs.ParcelID,
     'Fulton',
@@ -222,21 +216,14 @@ async function upsertPropertyRecord(feature: TaxParcelFeature): Promise<void> {
     attrs.TaxYear || 2025,
     `${TAX_PARCELS}/query?where=ParcelID='${encodeURIComponent(attrs.ParcelID)}'`,
   ];
-  
-  try {
-    await pool.query(query, values);
-  } catch (error: any) {
-    console.error(`  ❌ Error upserting ${attrs.ParcelID}:`, error.message);
-  }
+
+  await pool.query(query, values);
 }
 
-async function insertSalesRecords(parcelId: string, sales: SaleFeature[]): Promise<void> {
-  if (sales.length === 0) return;
-  
+async function insertSalesRecords(parcelId: string, sales: SaleFeature[]): Promise<number> {
   const realSales = sales.filter(s => s.attributes.Price > 0);
-  
-  if (realSales.length === 0) return;
-  
+  if (realSales.length === 0) return 0;
+
   const query = `
     INSERT INTO property_sales (
       parcel_id, sale_year, sale_price, is_current, scraped_at
@@ -245,37 +232,33 @@ async function insertSalesRecords(parcelId: string, sales: SaleFeature[]): Promi
       sale_price = EXCLUDED.sale_price,
       is_current = EXCLUDED.is_current
   `;
-  
-  try {
-    for (const sale of realSales) {
-      const values = [
-        parcelId,
-        parseInt(sale.attributes.TaxYear),
-        sale.attributes.Price,
-        sale.attributes.Cur === 'Y',
-      ];
-      
-      await pool.query(query, values);
-    }
-  } catch (error: any) {
-    console.error(`  ❌ Error inserting sales for ${parcelId}:`, error.message);
+
+  for (const sale of realSales) {
+    await pool.query(query, [
+      parcelId,
+      parseInt(sale.attributes.TaxYear),
+      sale.attributes.Price,
+      sale.attributes.Cur === 'Y',
+    ]);
   }
+
+  return realSales.length;
 }
 
 async function insertMarketTrends(trends: MarketTrendFeature[]): Promise<number> {
   let count = 0;
-  
+
   const query = `
     INSERT INTO market_trends (city, year, median_sale_price, scraped_at)
     VALUES ($1, $2, $3, NOW())
     ON CONFLICT (city, year) DO UPDATE SET
       median_sale_price = EXCLUDED.median_sale_price
   `;
-  
+
   for (const trend of trends) {
     const attrs = trend.attributes;
     const city = attrs.City;
-    
+
     const yearData = [
       { year: 2012, price: attrs.F2012_avg_median_sale_price },
       { year: 2013, price: attrs.F2013_avg_median_sale_price },
@@ -291,112 +274,149 @@ async function insertMarketTrends(trends: MarketTrendFeature[]): Promise<number>
       { year: 2023, price: attrs.F2023_avg_median_sale_price },
       { year: 2024, price: attrs.F2024_avg_median_sale_price },
     ];
-    
-    try {
-      for (const { year, price } of yearData) {
-        if (price && price > 0) {
-          await pool.query(query, [city, year, Math.round(price)]);
-          count++;
-        }
+
+    for (const { year, price } of yearData) {
+      if (price && price > 0) {
+        await pool.query(query, [city, year, Math.round(price)]);
+        count++;
       }
-    } catch (error: any) {
-      console.error(`  ❌ Error inserting trends for ${city}:`, error.message);
     }
   }
-  
+
   return count;
 }
 
-async function importProperties() {
-  console.log('🚀 Starting Fulton County Property Import (100+ units)');
-  console.log('━'.repeat(80));
-  console.log('');
-  
-  const properties = await fetchLargeMultifamilyProperties();
-  
-  if (properties.length === 0) {
-    console.log('❌ No properties found. Exiting.');
-    return;
+async function processProperty(
+  property: TaxParcelFeature,
+  index: number,
+  total: number
+): Promise<{ success: boolean; sales: number }> {
+  const parcelId = property.attributes.ParcelID;
+  const address = property.attributes.Address;
+  const units = property.attributes.LivUnits;
+
+  try {
+    await upsertPropertyRecord(property);
+
+    const sales = await fetchSalesHistoryParallel(parcelId);
+    let salesCount = 0;
+    if (sales.length > 0) {
+      salesCount = await insertSalesRecords(parcelId, sales);
+    }
+
+    const salesInfo = salesCount > 0 ? ` | ${salesCount} sale(s)` : '';
+    console.log(`[${index}/${total}] ${address} (${units} units)${salesInfo}`);
+
+    return { success: true, sales: salesCount };
+  } catch (error: any) {
+    console.error(`[${index}/${total}] FAIL ${parcelId}: ${error.message}`);
+    return { success: false, sales: 0 };
   }
-  
-  console.log('');
-  console.log('━'.repeat(80));
-  console.log('📥 Importing properties into database...');
-  console.log('━'.repeat(80));
-  console.log('');
-  
+}
+
+async function processInBatches(
+  properties: TaxParcelFeature[],
+  existingParcelIds: Set<string>
+): Promise<{ successCount: number; salesCount: number; skipped: number }> {
   let successCount = 0;
   let salesCount = 0;
-  
-  for (let i = 0; i < properties.length; i++) {
-    const property = properties[i];
-    const parcelId = property.attributes.ParcelID;
-    const address = property.attributes.Address;
-    const units = property.attributes.LivUnits;
-    
-    console.log(`[${i + 1}/${properties.length}] ${address} (${units} units, ${parcelId})`);
-    
-    try {
-      await upsertPropertyRecord(property);
-      successCount++;
-      
-      const sales = await fetchSalesHistory(parcelId);
-      if (sales.length > 0) {
-        await insertSalesRecords(parcelId, sales);
-        const realSales = sales.filter(s => s.attributes.Price > 0);
-        if (realSales.length > 0) {
-          console.log(`  💰 Found ${realSales.length} sale(s)`);
-          salesCount += realSales.length;
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-    } catch (error) {
-      console.error(`  ❌ Error processing ${parcelId}:`, error);
+  let skipped = 0;
+
+  const toProcess = properties.filter(p => {
+    if (existingParcelIds.has(p.attributes.ParcelID)) {
+      skipped++;
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`Skipping ${skipped} already-imported properties`);
+  console.log(`Processing ${toProcess.length} new properties (${CONCURRENCY} at a time)...`);
+  console.log('');
+
+  for (let i = 0; i < toProcess.length; i += CONCURRENCY) {
+    const batch = toProcess.slice(i, i + CONCURRENCY);
+    const batchNum = Math.floor(i / CONCURRENCY) + 1;
+    const totalBatches = Math.ceil(toProcess.length / CONCURRENCY);
+
+    const results = await Promise.all(
+      batch.map((prop, j) =>
+        processProperty(prop, skipped + i + j + 1, properties.length)
+      )
+    );
+
+    for (const r of results) {
+      if (r.success) successCount++;
+      salesCount += r.sales;
+    }
+
+    if (batchNum % 5 === 0) {
+      console.log(`--- Batch ${batchNum}/${totalBatches} done (${successCount} imported, ${salesCount} sales) ---`);
     }
   }
-  
+
+  return { successCount, salesCount, skipped };
+}
+
+async function importProperties() {
+  const startTime = Date.now();
+  console.log('Starting Fulton County Property Import (100+ units)');
+  console.log('='.repeat(70));
   console.log('');
-  console.log('━'.repeat(80));
-  console.log('📈 Importing market trends (city median prices)...');
-  console.log('━'.repeat(80));
+
+  const existingResult = await pool.query('SELECT parcel_id FROM property_records');
+  const existingParcelIds = new Set(existingResult.rows.map((r: any) => r.parcel_id));
+  console.log(`Found ${existingParcelIds.size} properties already in database`);
+
+  const properties = await fetchLargeMultifamilyProperties();
+
+  if (properties.length === 0) {
+    console.log('No properties found. Exiting.');
+    return;
+  }
+
   console.log('');
-  
+  console.log('--- Importing properties ---');
+  console.log('');
+
+  const { successCount, salesCount, skipped } = await processInBatches(properties, existingParcelIds);
+
+  console.log('');
+  console.log('--- Importing market trends ---');
+  console.log('');
+
   const marketData = await fetchMarketTrends();
   let trendsCount = 0;
-  
+
   if (marketData.length > 0) {
     trendsCount = await insertMarketTrends(marketData);
-    console.log(`✅ Imported ${trendsCount} market trend records`);
+    console.log(`Imported ${trendsCount} market trend records`);
   }
-  
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
   console.log('');
-  console.log('━'.repeat(80));
-  console.log('✅ Import Complete!');
-  console.log('━'.repeat(80));
+  console.log('='.repeat(70));
+  console.log('Import Complete!');
+  console.log('='.repeat(70));
   console.log('');
-  console.log(`📊 Summary:`);
-  console.log(`   Properties imported: ${successCount}/${properties.length}`);
-  console.log(`   Sales records: ${salesCount}`);
-  console.log(`   Market trends: ${trendsCount} data points (${marketData.length} cities, 2012-2024)`);
-  console.log('');
-  console.log('🎯 Next steps:');
-  console.log('   1. Check property_records table');
-  console.log('   2. Check property_sales table for sales history');
-  console.log('   3. Check market_trends table for city-level context');
-  console.log('   4. Query property_metrics view for per-unit calculations');
+  console.log(`Summary:`);
+  console.log(`   Already in DB (skipped): ${skipped}`);
+  console.log(`   New properties imported:  ${successCount}`);
+  console.log(`   Sales records:            ${salesCount}`);
+  console.log(`   Market trends:            ${trendsCount} data points (${marketData.length} cities)`);
+  console.log(`   Total time:               ${elapsed}s`);
   console.log('');
 }
 
 importProperties()
   .then(async () => {
-    console.log('✨ Done!');
+    console.log('Done!');
     await pool.end();
     process.exit(0);
   })
   .catch(async (error) => {
-    console.error('💥 Fatal error:', error);
+    console.error('Fatal error:', error);
     await pool.end();
     process.exit(1);
   });
