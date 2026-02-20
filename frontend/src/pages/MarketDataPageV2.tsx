@@ -21,6 +21,7 @@ import { HeroMetrics, MetricCard } from '../components/market-research/HeroMetri
 import { InsightCard } from '../components/market-research/InsightCard';
 import { SubmarketLeaderboard } from '../components/market-research/SubmarketLeaderboard';
 import { SubmarketPerformanceTable } from '../components/market-research/SubmarketPerformanceTable';
+import { IntelligenceTabNav } from '../components/intelligence/IntelligenceTabNav';
 
 type TabType = 'overview' | 'submarkets' | 'comparables' | 'demographics' | 'supply-demand' | 'traffic';
 
@@ -256,10 +257,12 @@ export function MarketDataPageV2() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-white">
-      {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4">
-        <div className="flex items-center justify-between mb-3">
+    <>
+      <IntelligenceTabNav />
+      <div className="h-screen flex flex-col bg-white">
+        {/* Header */}
+        <div className="border-b border-gray-200 bg-white px-6 py-4">
+          <div className="flex items-center justify-between mb-3">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Market Research</h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -1115,5 +1118,7 @@ function TrafficTab({ data }: { data: typeof mockData }) {
         recommendation="Staff leasing office during peak hours (12-2pm, 5-7pm) to maximize conversions. Consider extended weekend hours for optimal capture."
       />
     </div>
+      </div>
+    </>
   );
 }
