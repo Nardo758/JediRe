@@ -6,6 +6,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 const pool = getPool();
@@ -655,7 +656,7 @@ router.post('/upload-document', requireAuth, dealDocumentUpload.single('file') a
       });
     }
 
-    const docId = crypto.randomBytes(16).toString('hex');
+    const docId = uuidv4();
     const storedPath = file.path;
 
     try {
