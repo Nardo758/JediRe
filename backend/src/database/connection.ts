@@ -17,7 +17,7 @@ class DatabaseConnection {
   private initialize(): void {
     const poolConfig: any = {
       min: parseInt(process.env.DB_POOL_MIN || '2'),
-      max: parseInt(process.env.DB_POOL_MAX || '10'),
+      max: parseInt(process.env.DB_POOL_MAX || '20'),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
     };

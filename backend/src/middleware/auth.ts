@@ -21,8 +21,8 @@ export interface AuthenticatedRequest extends Request {
 
 /**
  * Require authentication
- * Acquires a dedicated DB client, sets RLS user context within a transaction,
- * and attaches the client to the request for downstream handlers.
+ * Verifies JWT and attaches user payload to request.
+ * Route handlers use getPool() for queries; no per-request client is held.
  */
 export async function requireAuth(
   req: AuthenticatedRequest,
@@ -48,42 +48,6 @@ export async function requireAuth(
     });
     return;
   }
-
-  let client: PoolClient | null = null;
-  try {
-    client = await getClient();
-    await client.query('BEGIN');
-    await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', String(payload.userId)]);
-    req.dbClient = client;
-  } catch (error) {
-    logger.error('Failed to set RLS user context:', error);
-    if (client) {
-      try { await client.query('ROLLBACK'); } catch (_) {}
-      client.release();
-    }
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: 'Failed to establish database context',
-    });
-    return;
-  }
-
-  const releaseClient = async () => {
-    const cl = req.dbClient;
-    if (cl) {
-      req.dbClient = undefined;
-      try {
-        await cl.query('COMMIT');
-      } catch (err) {
-        try { await cl.query('ROLLBACK'); } catch (_) {}
-      } finally {
-        try { cl.release(); } catch (_) {}
-      }
-    }
-  };
-
-  res.on('finish', releaseClient);
-  res.on('close', releaseClient);
 
   req.user = payload;
   next();
