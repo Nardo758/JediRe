@@ -188,6 +188,8 @@ const mockData = {
   }
 };
 
+type MarketData = typeof mockData;
+
 export function MarketDataPageV2() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [selectedSubmarket, setSelectedSubmarket] = useState<string>('all');
@@ -203,7 +205,7 @@ export function MarketDataPageV2() {
       label: 'Existing Supply',
       value: mockData.quickStats.existingUnits,
       change: 'Current market',
-      status: 'neutral' as const,
+      status: 'good' as const,
     },
     {
       label: 'Pipeline (0-2Y)',
@@ -270,6 +272,7 @@ export function MarketDataPageV2() {
             </p>
           </div>
         </div>
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-1">
@@ -288,7 +291,6 @@ export function MarketDataPageV2() {
             </button>
           ))}
         </div>
-      </div>
 
       {/* Content */}
       <MarketResearchLayout
@@ -303,12 +305,13 @@ export function MarketDataPageV2() {
         </div>
       </MarketResearchLayout>
     </div>
+    </>
   );
 }
 
 // Tab Components
 
-function OverviewTab({ data }: { data: typeof mockData }) {
+function OverviewTab({ data }: { data: MarketData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Avg Rent',
@@ -664,7 +667,7 @@ function SubmarketsTab({
   );
 }
 
-function ComparablesTab({ data }: { data: typeof mockData }) {
+function ComparablesTab({ data }: { data: MarketData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Comparables Found',
@@ -781,7 +784,7 @@ function ComparablesTab({ data }: { data: typeof mockData }) {
   );
 }
 
-function DemographicsTab({ data }: { data: typeof mockData }) {
+function DemographicsTab({ data }: { data: MarketData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Population',
@@ -885,7 +888,7 @@ function DemographicsTab({ data }: { data: typeof mockData }) {
   );
 }
 
-function SupplyDemandTab({ data }: { data: typeof mockData }) {
+function SupplyDemandTab({ data }: { data: MarketData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Existing Market',
@@ -1029,7 +1032,7 @@ function SupplyDemandTab({ data }: { data: typeof mockData }) {
   );
 }
 
-function TrafficTab({ data }: { data: typeof mockData }) {
+function TrafficTab({ data }: { data: MarketData }) {
   const metrics: MetricCard[] = [
     {
       label: 'Weekly Walk-ins',
@@ -1118,7 +1121,5 @@ function TrafficTab({ data }: { data: typeof mockData }) {
         recommendation="Staff leasing office during peak hours (12-2pm, 5-7pm) to maximize conversions. Consider extended weekend hours for optimal capture."
       />
     </div>
-      </div>
-    </>
   );
 }
