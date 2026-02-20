@@ -487,7 +487,6 @@ export function NewsIntelligencePage() {
       renderContent={renderContent}
       renderMap={renderMap}
     />
-    </>
   );
 }
 
