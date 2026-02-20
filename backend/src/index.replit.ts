@@ -8,9 +8,9 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
 import path from 'path';
 import { requireAuth, AuthenticatedRequest } from './middleware/auth';
+import { query as dbQuery, getPool } from './database/connection';
 import { generateAccessToken } from './auth/jwt';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
@@ -26,20 +26,35 @@ dotenv.config();
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
+const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  return allowedOriginPatterns.some(pattern => pattern.test(origin));
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
   }
 });
 
 const PORT = process.env.PORT || 3000;
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+// Database connection - uses shared pool from database/connection.ts
+const pool = getPool();
 
 // Middleware
 app.use(helmet({
@@ -47,7 +62,13 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || ['http://localhost:5000', /\.replit\.dev$/, /\.replit\.app$/],
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
@@ -1094,38 +1115,38 @@ import marketIntelRoutes from './api/rest/marketIntel.routes';
 import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
 import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 
-app.use('/api/v1/dashboard', dashboardRouter);
-app.use('/api/v1/gmail', gmailRouter);
-app.use('/api/v1/news', newsRouter);
-app.use('/api/v1/trade-areas', tradeAreasRoutes);
-app.use('/api/v1/isochrone', isochroneRoutes);
-app.use('/api/v1/traffic-ai', trafficAiRoutes);
-app.use('/api/v1', geographicContextRoutes);
-app.use('/api/v1/deals', geographicContextRoutes);
-app.use('/api/v1/map-configs', mapConfigsRouter);
-app.use('/api/v1/grid', gridRouter);
+app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
+app.use('/api/v1/gmail', requireAuth, gmailRouter);
+app.use('/api/v1/news', requireAuth, newsRouter);
+app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
+app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
+app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
+app.use('/api/v1', requireAuth, geographicContextRoutes);
+app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
+app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
-app.use('/api/v1/financial-models', financialModelsRouter);
-app.use('/api/v1/strategy-analyses', strategyAnalysesRouter);
-app.use('/api/v1/dd-checklists', ddChecklistsRouter);
-app.use('/api/v1/market-research', marketResearchRoutes);
-app.use('/api/v1/apartment-market', apartmentMarketRoutes);
-app.use('/api/v1/market-intel', marketIntelRoutes);
-app.use('/api/v1/traffic', trafficPredictionRoutes);
-app.use('/api/v1', propertyProxyRoutes);
-app.use('/api/v1/leasing-traffic', leasingTrafficRoutes);
-app.use('/api/v1/preferences', preferencesRouter);
-app.use('/api/v1/property-types', propertyTypesRouter);
-app.use('/api/v1/property-type-strategies', propertyTypeStrategiesRouter);
-app.use('/api/v1/custom-strategies', customStrategiesRouter);
+app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
+app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
+app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
+app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+app.use('/api/v1/apartment-market', requireAuth, apartmentMarketRoutes);
+app.use('/api/v1/market-intel', requireAuth, marketIntelRoutes);
+app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
+app.use('/api/v1', requireAuth, propertyProxyRoutes);
+app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
+app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
+app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
+app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
 
 // ============================================
 // Deal Capsule System Routes
 // ============================================
-app.use('/api/training', createTrainingRoutes(pool));
-app.use('/api/calibration', createCalibrationRoutes(pool));
-app.use('/api/capsules', createCapsuleRoutes(pool));
+app.use('/api/training', requireAuth, createTrainingRoutes(pool));
+app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
+app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 
 // ============================================
 // Apartment Data Sync Endpoints

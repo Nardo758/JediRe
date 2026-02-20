@@ -173,6 +173,17 @@ class DatabaseConnection {
   }
 
   /**
+   * Get the underlying pool for legacy route compatibility.
+   * Prefer using query(), getClient(), or transaction() instead.
+   */
+  public getPool(): Pool {
+    if (!this.pool) {
+      throw new Error('Database pool not initialized');
+    }
+    return this.pool;
+  }
+
+  /**
    * Get pool statistics
    */
   public getStats(): any {
@@ -198,5 +209,7 @@ export const transaction = <T>(callback: (client: PoolClient) => Promise<T>) =>
 export const closeDatabase = () => db.close();
 export const isDatabaseHealthy = () => db.isHealthy();
 export const getDatabaseStats = () => db.getStats();
+
+export const getPool = () => db.getPool();
 
 export default db;
