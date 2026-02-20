@@ -681,3 +681,19 @@
 {"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T18:51:41.074Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T18:51:57.453Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T18:51:57.486Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T19:06:41.088Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T19:06:41.090Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T19:21:41.118Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T19:21:41.121Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T19:36:41.144Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T19:36:41.146Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T19:51:41.170Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T19:51:41.172Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T20:06:41.196Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T20:06:41.198Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T20:21:41.221Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T20:21:41.222Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T20:22:35.868Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T20:22:35.895Z"}
+{"environment":"development","level":"info","message":"Trade area created: 3-Mile Trade Area","service":"jedire-api","timestamp":"2026-02-20T20:26:57.831Z","tradeAreaId":1771619217831,"userId":"6253ba3f-d40d-4597-86ab-270c8397a857"}
+{"context":{"active_scope":"submarket","created_at":"2026-02-20T20:26:58.285Z","deal_id":809,"id":1771619218285,"msa_id":1,"submarket_id":1,"trade_area_id":null,"updated_at":"2026-02-20T20:26:58.285Z"},"environment":"development","level":"info","message":"Geographic context set for deal 809ca8a9-2b39-4887-bbdd-c6302a489b59","service":"jedire-api","timestamp":"2026-02-20T20:26:58.286Z"}
