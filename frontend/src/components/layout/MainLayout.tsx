@@ -22,7 +22,8 @@ export const MainLayout: React.FC = () => {
     assets: false,
     intelligence: true,
     market: false,
-    news: false
+    news: false,
+    marketResearch: false
   });
   
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
@@ -215,10 +216,10 @@ export const MainLayout: React.FC = () => {
                     Intelligence
                   </h3>
                   
-                  {/* MARKET RESEARCH */}
+                  {/* MARKET DATA */}
                   <SidebarItem
                     icon="📈"
-                    label="Market Research"
+                    label="Market Data"
                     path="/market-data"
                     isActive={isActivePrefix('/market-data')}
                     layerConfig={{
@@ -231,6 +232,40 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
+                  
+                  {/* MARKET RESEARCH - Expandable */}
+                  <SidebarItem
+                    icon="🔍"
+                    label="Market Research"
+                    hasSubItems={true}
+                    isExpanded={expandedSections.marketResearch}
+                    onToggle={() => toggleSection('marketResearch')}
+                    isActive={isActivePrefix('/market-research')}
+                  />
+                  
+                  {/* Market Research Submenu */}
+                  {expandedSections.marketResearch && (
+                    <div className="ml-8 mt-1 space-y-1">
+                      <SidebarItem
+                        icon="🏢"
+                        label="Properties"
+                        path="/market-research"
+                        isActive={location.pathname === '/market-research'}
+                      />
+                      <SidebarItem
+                        icon="👥"
+                        label="Active Owners"
+                        path="/market-research/active-owners"
+                        isActive={isActivePrefix('/market-research/active-owners')}
+                      />
+                      <SidebarItem
+                        icon="🏗️"
+                        label="Future Supply"
+                        path="/market-research/future-supply"
+                        isActive={isActivePrefix('/market-research/future-supply')}
+                      />
+                    </div>
+                  )}
                   
                   {/* NEWS INTEL */}
                   <SidebarItem

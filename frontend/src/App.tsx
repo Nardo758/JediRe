@@ -35,6 +35,9 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
+import { MarketResearchPage } from './pages/MarketResearchPage';
+import { ActiveOwnersPage } from './pages/ActiveOwnersPage';
+import { FutureSupplyPage } from './pages/FutureSupplyPage';
 
 
 function AppContent() {
@@ -68,6 +71,10 @@ function AppContent() {
           <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-research" element={<MarketResearchPage />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/active-owners/:name" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />

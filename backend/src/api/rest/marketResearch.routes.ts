@@ -1,403 +1,606 @@
 /**
- * Market Research Engine API Routes
- * Central hub for market intelligence aggregation
+ * Market Research Dashboard API Routes
+ * Property records, active owners, and future supply
  */
 
 import { Router } from 'express';
-import marketResearchEngine from '../../services/marketResearchEngine';
 import { pool } from '../../database';
+import { requireAuth } from '../../middleware/auth';
 
 const router = Router();
 
+// Apply auth middleware to all routes
+router.use(requireAuth);
+
 /**
- * POST /api/market-research/generate/:dealId
- * Generate fresh market research report for a deal
+ * GET /api/v1/market-research/properties
+ * List all properties with filtering and sorting
  */
-router.post('/generate/:dealId', async (req, res) => {
+router.get('/properties', async (req, res) => {
   try {
-    const { dealId } = req.params;
-    const { force = false } = req.query;
+    const {
+      page = 1,
+      limit = 50,
+      sortBy = 'address',
+      sortOrder = 'asc',
+      minUnits,
+      maxUnits,
+      minPricePerUnit,
+      maxPricePerUnit,
+      city,
+      search
+    } = req.query;
+
+    const offset = (Number(page) - 1) * Number(limit);
     
-    // Get deal location
-    const dealResult = await pool.query(`
-      SELECT id, property_name, latitude, longitude, city, state, address
-      FROM deals 
-      WHERE id = $1
-    `, [dealId]);
-    
-    if (dealResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Deal not found' });
+    let whereConditions: string[] = ['property_type = $1'];
+    let queryParams: any[] = ['Multifamily'];
+    let paramCounter = 2;
+
+    // Filters
+    if (minUnits) {
+      whereConditions.push(`units >= $${paramCounter}`);
+      queryParams.push(Number(minUnits));
+      paramCounter++;
     }
     
-    const deal = dealResult.rows[0];
-    
-    if (!deal.latitude || !deal.longitude) {
-      return res.status(400).json({ 
-        error: 'Deal location not set. Please add deal address first.' 
-      });
+    if (maxUnits) {
+      whereConditions.push(`units <= $${paramCounter}`);
+      queryParams.push(Number(maxUnits));
+      paramCounter++;
     }
+
+    if (minPricePerUnit) {
+      whereConditions.push(`(total_assessed_value / NULLIF(units, 0)) >= $${paramCounter}`);
+      queryParams.push(Number(minPricePerUnit));
+      paramCounter++;
+    }
+
+    if (maxPricePerUnit) {
+      whereConditions.push(`(total_assessed_value / NULLIF(units, 0)) <= $${paramCounter}`);
+      queryParams.push(Number(maxPricePerUnit));
+      paramCounter++;
+    }
+
+    if (city) {
+      whereConditions.push(`LOWER(city) = LOWER($${paramCounter})`);
+      queryParams.push(city);
+      paramCounter++;
+    }
+
+    if (search) {
+      whereConditions.push(`(
+        LOWER(address) LIKE LOWER($${paramCounter}) OR 
+        LOWER(owner_name) LIKE LOWER($${paramCounter})
+      )`);
+      queryParams.push(`%${search}%`);
+      paramCounter++;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
     
-    // Check for cached report unless force=true
-    if (!force) {
-      const cached = await marketResearchEngine.getCachedReport(dealId, 24);
-      if (cached) {
-        return res.json({
-          success: true,
-          report: cached,
-          cached: true,
-          message: 'Returning cached report (< 24 hours old)'
-        });
+    // Validate sort column
+    const allowedSortColumns = ['address', 'units', 'owner_name', 'total_assessed_value', 'year_built', 'city'];
+    const sortColumn = allowedSortColumns.includes(sortBy as string) ? sortBy : 'address';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM property_records
+      WHERE ${whereClause}
+    `;
+    const countResult = await pool.query(countQuery, queryParams);
+    const total = parseInt(countResult.rows[0].total);
+
+    // Get paginated data
+    const dataQuery = `
+      SELECT 
+        id,
+        address,
+        city,
+        units,
+        owner_name,
+        total_assessed_value,
+        year_built,
+        building_sqft,
+        property_class,
+        ROUND(total_assessed_value / NULLIF(units, 0), 0) as price_per_unit,
+        ROUND(taxes_per_unit, 0) as taxes_per_unit,
+        latitude,
+        longitude,
+        scraped_at
+      FROM property_records
+      WHERE ${whereClause}
+      ORDER BY ${sortColumn} ${order}
+      LIMIT $${paramCounter} OFFSET $${paramCounter + 1}
+    `;
+    
+    queryParams.push(Number(limit), offset);
+    const dataResult = await pool.query(dataQuery, queryParams);
+
+    res.json({
+      success: true,
+      data: dataResult.rows,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit))
       }
-    }
-    
-    // Generate new report
-    const report = await marketResearchEngine.generateMarketReport({
-      id: deal.id,
-      latitude: deal.latitude,
-      longitude: deal.longitude,
-      city: deal.city,
-      state: deal.state,
-      address: deal.address
     });
-    
-    res.json({
-      success: true,
-      report,
-      cached: false,
-      message: 'Market research report generated successfully'
-    });
-    
-  } catch (error: any) {
-    console.error('Generate report error:', error);
-    res.status(500).json({ 
-      error: error.message,
-      details: 'Failed to generate market research report'
-    });
-  }
-});
 
-/**
- * GET /api/market-research/report/:dealId
- * Get market research report for a deal (cached if available)
- */
-router.get('/report/:dealId', async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    const { maxAge = 24 } = req.query;
-    
-    const report = await marketResearchEngine.getCachedReport(dealId, Number(maxAge));
-    
-    if (!report) {
-      return res.status(404).json({
-        error: 'No market research report found',
-        message: 'Generate a report first using POST /generate/:dealId'
-      });
-    }
-    
-    res.json({
-      success: true,
-      report,
-      cached: true
-    });
-    
   } catch (error: any) {
-    console.error('Get report error:', error);
+    console.error('Get properties error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * GET /api/market-research/metrics/:dealId
- * Get quick market metrics (from extracted table)
+ * GET /api/v1/market-research/properties/:id
+ * Get single property details
  */
-router.get('/metrics/:dealId', async (req, res) => {
+router.get('/properties/:id', async (req, res) => {
   try {
-    const { dealId } = req.params;
-    
-    const result = await pool.query(`
-      SELECT * FROM market_research_metrics WHERE deal_id = $1
-    `, [dealId]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'No market metrics found',
-        message: 'Generate a market research report first'
-      });
-    }
-    
-    res.json({
-      success: true,
-      metrics: result.rows[0]
-    });
-    
-  } catch (error: any) {
-    console.error('Get metrics error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
+    const { id } = req.params;
 
-/**
- * GET /api/market-research/intelligence/:dealId
- * Get comprehensive market intelligence view
- */
-router.get('/intelligence/:dealId', async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    
-    const result = await pool.query(`
-      SELECT * FROM deal_market_intelligence WHERE deal_id = $1
-    `, [dealId]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'No market intelligence found',
-        message: 'Generate a market research report first'
-      });
-    }
-    
-    res.json({
-      success: true,
-      intelligence: result.rows[0]
-    });
-    
-  } catch (error: any) {
-    console.error('Get intelligence error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /api/market-research/sources/:dealId
- * Get data source status for a deal's report
- */
-router.get('/sources/:dealId', async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    
-    // Get latest report
-    const reportResult = await pool.query(`
-      SELECT id, sources_count, confidence_level, generated_at
-      FROM market_research_reports
-      WHERE deal_id = $1
-      ORDER BY generated_at DESC
-      LIMIT 1
-    `, [dealId]);
-    
-    if (reportResult.rows.length === 0) {
-      return res.status(404).json({ error: 'No report found' });
-    }
-    
-    const report = reportResult.rows[0];
-    
-    // Get source logs
-    const logsResult = await pool.query(`
-      SELECT source_name, status, records_fetched, response_time_ms, error_message
-      FROM market_research_source_log
-      WHERE report_id = $1
-      ORDER BY fetched_at DESC
-    `, [report.id]);
-    
-    res.json({
-      success: true,
-      report_id: report.id,
-      generated_at: report.generated_at,
-      sources_count: report.sources_count,
-      confidence_level: report.confidence_level,
-      sources: logsResult.rows
-    });
-    
-  } catch (error: any) {
-    console.error('Get sources error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /api/market-research/analysis-input/:dealId
- * Get formatted input for JEDI Score analysis
- */
-router.get('/analysis-input/:dealId', async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    
-    // Get metrics
-    const metricsResult = await pool.query(`
-      SELECT * FROM market_research_metrics WHERE deal_id = $1
-    `, [dealId]);
-    
-    if (metricsResult.rows.length === 0) {
-      return res.status(404).json({
-        error: 'No market data available',
-        message: 'Generate a market research report first'
-      });
-    }
-    
-    const metrics = metricsResult.rows[0];
-    
-    // Format for JEDI analysis (using comprehensive apartment market data)
-    const analysisInput = {
-      // Submarket identification
-      submarket: metrics.submarket_name || 'Unknown',
-      
-      // Demographics
-      population: metrics.population || 0,
-      median_income: metrics.median_income || 0,
-      population_growth_rate: metrics.population_growth_rate || 0,
-      
-      // Housing supply (from Apartment Locator AI)
-      existing_units: metrics.properties_count || 0,
-      total_units: metrics.total_units || 0,
-      available_units: metrics.available_units || 0,
-      pipeline_units: metrics.units_under_construction || 0,
-      
-      // Rental market performance
-      rent_timeseries: [metrics.avg_rent_1br], // TODO: Pull historical data
-      rent_growth_annual: metrics.rent_growth_12mo || 0,
-      avg_rent: (metrics.avg_rent_1br + metrics.avg_rent_2br) / 2,
-      occupancy_rate: metrics.avg_occupancy_rate || 0,
-      
-      // Market conditions
-      market_saturation: metrics.market_saturation || 0,
-      competition_level: metrics.competition_intensity || 'UNKNOWN',
-      concessions_active: metrics.active_concessions_count || 0,
-      
-      // Property quality indicators
-      avg_property_age: metrics.avg_property_age,
-      property_class_mix: metrics.property_class_mix
-    };
-    
-    res.json({
-      success: true,
-      analysisInput,
-      source: 'Market Research Engine'
-    });
-    
-  } catch (error: any) {
-    console.error('Get analysis input error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /api/market-research/status/:dealId
- * Check if market research exists and its freshness
- */
-router.get('/status/:dealId', async (req, res) => {
-  try {
-    const { dealId } = req.params;
-    
     const result = await pool.query(`
       SELECT 
-        generated_at,
-        confidence_level,
-        sources_count,
-        EXTRACT(EPOCH FROM (NOW() - generated_at)) / 3600 as hours_old
-      FROM market_research_reports
-      WHERE deal_id = $1
-      ORDER BY generated_at DESC
-      LIMIT 1
-    `, [dealId]);
-    
+        pr.*,
+        ROUND(pr.total_assessed_value / NULLIF(pr.units, 0), 0) as price_per_unit,
+        (
+          SELECT COUNT(*)
+          FROM property_sales ps
+          WHERE ps.property_record_id = pr.id
+        ) as sales_count,
+        (
+          SELECT json_agg(json_build_object(
+            'sale_date', ps.sale_date,
+            'sale_price', ps.sale_price,
+            'buyer_name', ps.buyer_name,
+            'price_per_unit', ps.price_per_unit
+          ) ORDER BY ps.sale_date DESC)
+          FROM property_sales ps
+          WHERE ps.property_record_id = pr.id
+          LIMIT 5
+        ) as recent_sales
+      FROM property_records pr
+      WHERE pr.id = $1
+    `, [id]);
+
     if (result.rows.length === 0) {
-      return res.json({
-        success: true,
-        exists: false,
-        status: 'not_generated',
-        message: 'No market research report exists for this deal'
-      });
+      return res.status(404).json({ error: 'Property not found' });
     }
-    
-    const report = result.rows[0];
-    const hoursOld = report.hours_old;
-    
-    let status = 'fresh';
-    let needsUpdate = false;
-    
-    if (hoursOld > 72) {
-      status = 'stale';
-      needsUpdate = true;
-    } else if (hoursOld > 168) { // 1 week
-      status = 'outdated';
-      needsUpdate = true;
-    }
-    
+
     res.json({
       success: true,
-      exists: true,
-      status,
-      needsUpdate,
-      generated_at: report.generated_at,
-      hours_old: Math.round(hoursOld),
-      confidence_level: report.confidence_level,
-      sources_count: report.sources_count
+      data: result.rows[0]
     });
-    
+
   } catch (error: any) {
-    console.error('Get status error:', error);
+    console.error('Get property error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * POST /api/market-research/batch-generate
- * Generate reports for multiple deals
+ * GET /api/v1/market-research/active-owners
+ * Get owner transaction rankings
  */
-router.post('/batch-generate', async (req, res) => {
+router.get('/active-owners', async (req, res) => {
   try {
-    const { dealIds } = req.body;
-    
-    if (!Array.isArray(dealIds) || dealIds.length === 0) {
-      return res.status(400).json({ error: 'dealIds array required' });
-    }
-    
-    const results = [];
-    
-    for (const dealId of dealIds) {
-      try {
-        const dealResult = await pool.query(`
-          SELECT id, property_name, latitude, longitude, city, state, address
-          FROM deals WHERE id = $1
-        `, [dealId]);
-        
-        if (dealResult.rows.length === 0) continue;
-        
-        const deal = dealResult.rows[0];
-        
-        if (!deal.latitude || !deal.longitude) continue;
-        
-        const report = await marketResearchEngine.generateMarketReport({
-          id: deal.id,
-          latitude: deal.latitude,
-          longitude: deal.longitude,
-          city: deal.city,
-          state: deal.state,
-          address: deal.address
-        });
-        
-        results.push({
-          deal_id: dealId,
-          success: true,
-          confidence: report.data_quality.confidence_level
-        });
-        
-      } catch (error: any) {
-        results.push({
-          deal_id: dealId,
-          success: false,
-          error: error.message
-        });
-      }
-    }
-    
+    const {
+      page = 1,
+      limit = 50,
+      startDate = '2018-01-01',
+      endDate = '2022-12-31',
+      minProperties = 1
+    } = req.query;
+
+    const offset = (Number(page) - 1) * Number(limit);
+
+    // Get owner aggregations
+    const query = `
+      WITH owner_stats AS (
+        SELECT 
+          pr.owner_name,
+          COUNT(DISTINCT pr.id) as properties_owned,
+          SUM(pr.units) as total_units,
+          AVG(pr.total_assessed_value / NULLIF(pr.units, 0)) as avg_price_per_unit,
+          SUM(pr.total_assessed_value) as total_portfolio_value,
+          COUNT(ps.id) as transaction_count,
+          AVG(ps.price_per_unit) as avg_transaction_price_per_unit,
+          MIN(ps.sale_date) as first_transaction,
+          MAX(ps.sale_date) as last_transaction,
+          pr.owner_city,
+          pr.owner_state,
+          BOOL_OR(pr.is_out_of_state) as has_out_of_state_ownership
+        FROM property_records pr
+        LEFT JOIN property_sales ps ON ps.buyer_name = pr.owner_name
+          AND ps.sale_date BETWEEN $1 AND $2
+        WHERE 
+          pr.owner_name IS NOT NULL 
+          AND pr.property_type = 'Multifamily'
+          AND pr.units > 0
+        GROUP BY pr.owner_name, pr.owner_city, pr.owner_state
+        HAVING COUNT(DISTINCT pr.id) >= $3
+      )
+      SELECT 
+        *,
+        ROUND(avg_price_per_unit::numeric, 0) as avg_price_per_unit,
+        ROUND(avg_transaction_price_per_unit::numeric, 0) as avg_transaction_price_per_unit,
+        ROUND(total_portfolio_value::numeric, 0) as total_portfolio_value
+      FROM owner_stats
+      ORDER BY total_units DESC, properties_owned DESC
+      LIMIT $4 OFFSET $5
+    `;
+
+    const result = await pool.query(query, [
+      startDate,
+      endDate,
+      Number(minProperties),
+      Number(limit),
+      offset
+    ]);
+
+    // Get total count
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM (
+        SELECT pr.owner_name
+        FROM property_records pr
+        WHERE 
+          pr.owner_name IS NOT NULL 
+          AND pr.property_type = 'Multifamily'
+          AND pr.units > 0
+        GROUP BY pr.owner_name
+        HAVING COUNT(DISTINCT pr.id) >= $1
+      ) subq
+    `;
+    const countResult = await pool.query(countQuery, [Number(minProperties)]);
+    const total = parseInt(countResult.rows[0].total);
+
     res.json({
       success: true,
-      results,
-      total: dealIds.length,
-      successful: results.filter(r => r.success).length
+      data: result.rows,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit))
+      },
+      filters: {
+        startDate,
+        endDate,
+        minProperties
+      }
     });
-    
+
   } catch (error: any) {
-    console.error('Batch generate error:', error);
+    console.error('Get active owners error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/market-research/active-owners/:name
+ * Get owner portfolio details
+ */
+router.get('/active-owners/:name', async (req, res) => {
+  try {
+    const { name } = req.params;
+    const decodedName = decodeURIComponent(name);
+
+    // Get owner summary
+    const summaryQuery = `
+      SELECT 
+        owner_name,
+        COUNT(*) as properties_owned,
+        SUM(units) as total_units,
+        AVG(total_assessed_value / NULLIF(units, 0)) as avg_price_per_unit,
+        SUM(total_assessed_value) as total_portfolio_value,
+        owner_city,
+        owner_state,
+        owner_type,
+        BOOL_OR(is_out_of_state) as has_out_of_state_ownership
+      FROM property_records
+      WHERE owner_name = $1 AND property_type = 'Multifamily'
+      GROUP BY owner_name, owner_city, owner_state, owner_type
+    `;
+    const summaryResult = await pool.query(summaryQuery, [decodedName]);
+
+    if (summaryResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Owner not found' });
+    }
+
+    // Get owner properties
+    const propertiesQuery = `
+      SELECT 
+        id,
+        address,
+        city,
+        units,
+        total_assessed_value,
+        year_built,
+        property_class,
+        ROUND(total_assessed_value / NULLIF(units, 0), 0) as price_per_unit,
+        latitude,
+        longitude
+      FROM property_records
+      WHERE owner_name = $1 AND property_type = 'Multifamily'
+      ORDER BY units DESC
+    `;
+    const propertiesResult = await pool.query(propertiesQuery, [decodedName]);
+
+    // Get transaction history
+    const transactionsQuery = `
+      SELECT 
+        ps.sale_date,
+        ps.sale_price,
+        ps.buyer_name,
+        ps.seller_name,
+        ps.price_per_unit,
+        pr.address,
+        pr.city,
+        pr.units
+      FROM property_sales ps
+      JOIN property_records pr ON ps.property_record_id = pr.id
+      WHERE ps.buyer_name = $1 OR ps.seller_name = $1
+      ORDER BY ps.sale_date DESC
+      LIMIT 20
+    `;
+    const transactionsResult = await pool.query(transactionsQuery, [decodedName]);
+
+    res.json({
+      success: true,
+      data: {
+        summary: summaryResult.rows[0],
+        properties: propertiesResult.rows,
+        transactions: transactionsResult.rows
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Get owner portfolio error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/market-research/future-supply
+ * Get construction pipeline projects
+ */
+router.get('/future-supply', async (req, res) => {
+  try {
+    const {
+      phase,
+      minUnits,
+      maxUnits,
+      city
+    } = req.query;
+
+    let whereConditions: string[] = [];
+    let queryParams: any[] = [];
+    let paramCounter = 1;
+
+    if (phase) {
+      whereConditions.push(`phase = $${paramCounter}`);
+      queryParams.push(phase);
+      paramCounter++;
+    }
+
+    if (minUnits) {
+      whereConditions.push(`projected_units >= $${paramCounter}`);
+      queryParams.push(Number(minUnits));
+      paramCounter++;
+    }
+
+    if (maxUnits) {
+      whereConditions.push(`projected_units <= $${paramCounter}`);
+      queryParams.push(Number(maxUnits));
+      paramCounter++;
+    }
+
+    if (city) {
+      whereConditions.push(`LOWER(location) LIKE LOWER($${paramCounter})`);
+      queryParams.push(`%${city}%`);
+      paramCounter++;
+    }
+
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}` 
+      : '';
+
+    // Get pipeline projects
+    const projectsQuery = `
+      SELECT 
+        id,
+        project_name,
+        location,
+        developer,
+        projected_units,
+        phase,
+        estimated_completion_date,
+        created_at,
+        updated_at
+      FROM supply_pipeline_projects
+      ${whereClause}
+      ORDER BY estimated_completion_date ASC NULLS LAST, projected_units DESC
+    `;
+    const projectsResult = await pool.query(projectsQuery, queryParams);
+
+    // Get phase summary
+    const summaryQuery = `
+      SELECT 
+        phase,
+        COUNT(*) as project_count,
+        SUM(projected_units) as total_units
+      FROM supply_pipeline_projects
+      GROUP BY phase
+      ORDER BY 
+        CASE phase
+          WHEN 'Planning' THEN 1
+          WHEN 'Permitted' THEN 2
+          WHEN 'Construction' THEN 3
+          WHEN 'Completion' THEN 4
+          ELSE 5
+        END
+    `;
+    const summaryResult = await pool.query(summaryQuery);
+
+    // Get alerts related to supply
+    const alertsQuery = `
+      SELECT 
+        id,
+        title,
+        description,
+        alert_type,
+        severity,
+        created_at
+      FROM alerts
+      WHERE alert_type IN ('CONSTRUCTION', 'DEVELOPMENT', 'ZONING')
+      ORDER BY created_at DESC
+      LIMIT 10
+    `;
+    const alertsResult = await pool.query(alertsQuery);
+
+    res.json({
+      success: true,
+      data: {
+        projects: projectsResult.rows,
+        phaseSummary: summaryResult.rows,
+        relatedAlerts: alertsResult.rows
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Get future supply error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/market-research/export
+ * Export data in various formats
+ */
+router.get('/export', async (req, res) => {
+  try {
+    const { type = 'properties', format = 'csv' } = req.query;
+
+    let query = '';
+    let filename = '';
+
+    if (type === 'properties') {
+      query = `
+        SELECT 
+          address,
+          city,
+          units,
+          owner_name,
+          total_assessed_value,
+          ROUND(total_assessed_value / NULLIF(units, 0), 0) as price_per_unit,
+          year_built,
+          property_class,
+          building_sqft
+        FROM property_records
+        WHERE property_type = 'Multifamily' AND units > 0
+        ORDER BY units DESC
+      `;
+      filename = 'market-research-properties';
+    } else if (type === 'owners') {
+      query = `
+        SELECT 
+          owner_name,
+          COUNT(*) as properties_owned,
+          SUM(units) as total_units,
+          ROUND(AVG(total_assessed_value / NULLIF(units, 0)), 0) as avg_price_per_unit,
+          owner_city,
+          owner_state
+        FROM property_records
+        WHERE property_type = 'Multifamily' AND units > 0 AND owner_name IS NOT NULL
+        GROUP BY owner_name, owner_city, owner_state
+        ORDER BY total_units DESC
+      `;
+      filename = 'market-research-active-owners';
+    }
+
+    const result = await pool.query(query);
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+      return res.json(result.rows);
+    }
+
+    // CSV format
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No data to export' });
+    }
+
+    const headers = Object.keys(result.rows[0]);
+    const csvRows = [
+      headers.join(','),
+      ...result.rows.map(row => 
+        headers.map(header => {
+          const value = row[header];
+          // Escape commas and quotes
+          if (value === null || value === undefined) return '';
+          const stringValue = String(value);
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        }).join(',')
+      )
+    ];
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+    res.send(csvRows.join('\n'));
+
+  } catch (error: any) {
+    console.error('Export error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/market-research/stats
+ * Get dashboard statistics
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as total_properties,
+        SUM(units) as total_units,
+        AVG(total_assessed_value / NULLIF(units, 0)) as avg_price_per_unit,
+        COUNT(DISTINCT owner_name) as unique_owners,
+        COUNT(DISTINCT city) as cities_covered
+      FROM property_records
+      WHERE property_type = 'Multifamily' AND units > 0
+    `;
+    const statsResult = await pool.query(statsQuery);
+
+    const salesStatsQuery = `
+      SELECT 
+        COUNT(*) as total_sales,
+        AVG(price_per_unit) as avg_sale_price_per_unit
+      FROM property_sales
+      WHERE sale_date >= '2018-01-01'
+    `;
+    const salesStatsResult = await pool.query(salesStatsQuery);
+
+    res.json({
+      success: true,
+      data: {
+        ...statsResult.rows[0],
+        ...salesStatsResult.rows[0]
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Get stats error:', error);
     res.status(500).json({ error: error.message });
   }
 });
