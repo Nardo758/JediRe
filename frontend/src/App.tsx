@@ -37,6 +37,9 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
+import MarketResearchPage from './pages/MarketResearchPage';
+import ActiveOwnersPage from './pages/ActiveOwnersPage';
+import FutureSupplyPage from './pages/FutureSupplyPage';
 
 
 function AppContent() {
@@ -78,6 +81,12 @@ function AppContent() {
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
+          
+          {/* Market Research Routes */}
+          <Route path="/market-research" element={<MarketResearchPage />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
+          
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
