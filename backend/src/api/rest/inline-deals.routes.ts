@@ -2,9 +2,56 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 
 const router = Router();
 const pool = getPool();
+
+const DEAL_UPLOAD_DIR = path.join(__dirname, '../../uploads/deals');
+
+if (!fs.existsSync(DEAL_UPLOAD_DIR)) {
+  fs.mkdirSync(DEAL_UPLOAD_DIR, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, DEAL_UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = crypto.randomBytes(16).toString('hex');
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${uniqueSuffix}${ext}`);
+  }
+});
+
+const dealDocumentUpload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'image/jpeg',
+      'image/png',
+      'image/jpg',
+      'text/plain',
+      'text/csv',
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, DOCX, XLS, XLSX, JPG, PNG, TXT, CSV allowed.'));
+    }
+  }
+});
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -571,6 +618,168 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
   } catch (error) {
     console.error('Lease analysis error:', error);
     res.status(500).json({ success: false, error: 'Lease analysis failed' });
+  }
+});
+
+router.post('/upload-document', requireAuth, dealDocumentUpload.single('file') as any, async (req: AuthenticatedRequest, res) => {
+  try {
+    const file = req.file;
+    const { dealId, documentType, description } = req.body;
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file provided'
+      });
+    }
+
+    if (!dealId) {
+      fs.unlinkSync(file.path);
+      return res.status(400).json({
+        success: false,
+        error: 'dealId is required'
+      });
+    }
+
+    const client = req.dbClient || pool;
+
+    const dealCheck = await client.query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2`,
+      [dealId, req.user!.userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      fs.unlinkSync(file.path);
+      return res.status(403).json({
+        success: false,
+        error: 'Deal not found or access denied'
+      });
+    }
+
+    const docId = crypto.randomBytes(16).toString('hex');
+    const storedPath = file.path;
+
+    try {
+      await client.query(`
+        INSERT INTO deal_documents (
+          id, deal_id, file_name, file_type, file_url,
+          file_size, uploaded_by, uploaded_at, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+      `, [
+        docId,
+        dealId,
+        file.originalname,
+        file.mimetype,
+        storedPath,
+        file.size,
+        req.user!.userId,
+        JSON.stringify({ documentType: documentType || 'general', description: description || '', storedFilename: file.filename })
+      ]);
+    } catch (dbError: any) {
+      console.error('DB insert failed for document:', dbError.message);
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to save document record'
+      });
+    }
+
+    res.json({
+      success: true,
+      document: {
+        id: docId,
+        filename: file.filename,
+        originalName: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+        dealId: dealId || null,
+        documentType: documentType || 'general',
+        description: description || '',
+        uploadedAt: new Date().toISOString(),
+      },
+      message: 'Document uploaded successfully'
+    });
+
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload document'
+    });
+  }
+});
+
+router.get('/:dealId/documents', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = req.dbClient || pool;
+
+    const result = await client.query(`
+      SELECT 
+        id, file_name as "fileName", file_type as "fileType",
+        file_url as "fileUrl", file_size as "fileSize",
+        uploaded_at as "uploadedAt", metadata
+      FROM deal_documents
+      WHERE deal_id = $1 AND uploaded_by = $2
+      ORDER BY uploaded_at DESC
+    `, [dealId, req.user!.userId]);
+
+    res.json({
+      success: true,
+      documents: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({
+      success: false,
+      documents: [],
+      error: 'Failed to fetch documents'
+    });
+  }
+});
+
+router.delete('/documents/:documentId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { documentId } = req.params;
+    const client = req.dbClient || pool;
+
+    const result = await client.query(`
+      SELECT file_url FROM deal_documents
+      WHERE id = $1 AND uploaded_by = $2
+    `, [documentId, req.user!.userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Document not found'
+      });
+    }
+
+    const filePath = result.rows[0].file_url;
+
+    await client.query(`
+      DELETE FROM deal_documents
+      WHERE id = $1 AND uploaded_by = $2
+    `, [documentId, req.user!.userId]);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({
+      success: true,
+      message: 'Document deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete document'
+    });
   }
 });
 
