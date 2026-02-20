@@ -17,7 +17,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { MarketDataPage } from './pages/MarketDataPage';
+import { MarketDataPageV2 } from './pages/MarketDataPageV2';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
@@ -32,6 +32,17 @@ import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
+import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
+import { DealShowcasePage } from './pages/DealShowcasePage';
+import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
+import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import DealCapsulesPage from './pages/DealCapsulesPage';
+import CapsuleDetailPage from './pages/CapsuleDetailPage';
+import { LeasingForecastPage } from './pages/LeasingForecastPage';
+import MarketResearchPage from './pages/MarketResearchPage';
+import ActiveOwnersPage from './pages/ActiveOwnersPage';
+import FutureSupplyPage from './pages/FutureSupplyPage';
 
 
 function AppContent() {
@@ -61,7 +72,7 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<MarketDataPage />} />
+          <Route path="/market-data" element={<MarketDataPageV2 />} />
           <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
@@ -71,6 +82,14 @@ function AppContent() {
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
+          
+          {/* Market Research Routes */}
+          <Route path="/market-research" element={<MarketResearchPage />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
+          
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
@@ -81,6 +100,9 @@ function AppContent() {
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
+          <Route path="/capsules" element={<DealCapsulesPage />} />
+          <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+          <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/team" element={<TeamPage />} />
