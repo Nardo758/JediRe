@@ -723,3 +723,5 @@
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T20:40:22.134Z"}
 {"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T20:54:16.403Z"}
 {"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T20:54:16.404Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T21:09:16.431Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T21:09:16.435Z"}
