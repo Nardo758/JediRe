@@ -1,0 +1,672 @@
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:36:12.232Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:36:12.314Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:36:27.314Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:36:27.404Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-07T18:36:29.403Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-07T18:36:29.514Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:37:55.377Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:37:55.463Z"}
+{"address":"127.0.0.1","code":"ECONNREFUSED","environment":"development","errno":-111,"level":"error","message":"Failed to set RLS user context: connect ECONNREFUSED 127.0.0.1:5432","port":5432,"service":"jedire-api","stack":"Error: connect ECONNREFUSED 127.0.0.1:5432\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:111:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:39:18)","syscall":"connect","timestamp":"2026-02-07T18:37:59.472Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T00:07:23.100Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T00:07:23.110Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T00:07:23.133Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T00:07:30.232Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T00:07:30.248Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T00:07:51.266Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T00:07:51.328Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T00:22:23.139Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T00:22:23.142Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T01:27:47.341Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T01:27:47.351Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T01:27:47.375Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T01:27:54.512Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T01:27:54.559Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T01:28:07.882Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T01:28:07.939Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T01:42:47.380Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T01:42:47.383Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T01:57:47.407Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T01:57:47.409Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T02:05:28.900Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T02:05:28.913Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T02:05:29.032Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:05:36.479Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:05:36.555Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:05:36.595Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:05:36.607Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T02:10:37.998Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T02:10:38.007Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T02:10:38.027Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:11:39.866Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T02:11:39.926Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T17:48:41.905Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T17:48:41.913Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T17:48:41.942Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:48:45.601Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:48:45.646Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:50:45.841Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:50:45.866Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T17:53:21.324Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T17:53:21.330Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T17:53:21.351Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T17:55:07.717Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T17:55:07.724Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T17:55:07.750Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:55:15.503Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:55:15.575Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:57:03.485Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T17:57:03.843Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:00:40.370Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T18:00:40.377Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:00:40.397Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:01:46.646Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:01:46.734Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:08:22.690Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:08:22.727Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:09:03.334Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:09:03.360Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:10:24.915Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T18:10:24.923Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:10:24.959Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:10:29.530Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:10:29.569Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:10:31.689Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:10:31.745Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:11:52.491Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T18:11:52.501Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:11:52.521Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:11:55.624Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:11:55.650Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:11:57.953Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:11:57.998Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:26:52.530Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:26:52.532Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:29:07.674Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:29:07.707Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:29:10.129Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T18:29:10.194Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:41:52.557Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:41:52.559Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T18:56:52.584Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T18:56:52.585Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T19:11:52.609Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T19:11:52.611Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T19:26:52.639Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T19:26:52.640Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T19:41:52.663Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T19:41:52.665Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T19:56:52.687Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T19:56:52.688Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T20:11:52.710Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T20:11:52.711Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T20:26:52.732Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T20:26:52.734Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:41:46.471Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:41:46.529Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T20:41:52.737Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T20:41:52.738Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T20:41:59.641Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T20:41:59.666Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T20:41:59.688Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:03.967Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:04.005Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:07.710Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:07.766Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:09.286Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T20:42:09.346Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-12T21:06:00.782Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-12T21:06:00.789Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-12T21:06:00.816Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T21:07:02.530Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-12T21:07:02.579Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-13T01:58:22.242Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-13T01:58:22.250Z"}
+{"duration":"1348ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-13T01:58:23.592Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-13T01:58:23.592Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-13T02:50:19.775Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-13T02:50:19.783Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-13T02:50:19.800Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-14T23:50:48.215Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-14T23:50:48.225Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-14T23:50:49.080Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-14T23:50:53.627Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-14T23:50:53.678Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T00:05:48.255Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T00:05:48.258Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T12:23:44.842Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T12:23:44.851Z"}
+{"duration":"1164ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-15T12:23:46.008Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T12:23:46.009Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T12:23:50.060Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T12:23:50.114Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T12:28:44.701Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T12:28:44.714Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T12:28:44.737Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T12:29:37.203Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T12:29:37.213Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T12:29:37.239Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T12:29:49.888Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T12:29:49.973Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T12:44:37.242Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T12:44:37.244Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T17:21:48.979Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T17:21:48.993Z"}
+{"duration":"1029ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-15T17:21:50.010Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T17:21:50.010Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T17:25:43.559Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T17:25:43.568Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T17:25:43.595Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T17:28:18.513Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T17:28:18.525Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T17:28:18.545Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T17:29:40.823Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T17:29:40.832Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T17:29:40.874Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T17:30:37.023Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T17:30:37.032Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T17:30:37.051Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:24:32.928Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T18:24:32.939Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:24:32.963Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:32:19.154Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T18:32:19.162Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:32:19.178Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:33:22.503Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T18:33:22.512Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:33:22.531Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:36:35.113Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T18:36:35.121Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:36:35.143Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:36:56.249Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T18:36:56.256Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:36:56.271Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T18:51:56.284Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T18:51:56.286Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:06:56.312Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:06:56.314Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:09:34.023Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:09:34.082Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:09:40.239Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T19:09:40.249Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:09:40.282Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:09:50.254Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:09:50.300Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:10:45.145Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T19:10:45.191Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:16:22.539Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T19:16:22.549Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:16:22.571Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:19:57.959Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T19:19:57.968Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:19:57.991Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:22:03.064Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T19:22:03.072Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:22:03.088Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:36:46.609Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T19:36:46.617Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:36:46.636Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T19:51:46.647Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T19:51:46.659Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:06:46.674Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:06:46.675Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:14:13.119Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T20:14:13.129Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:14:13.970Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:29:13.158Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:29:13.160Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:32:56.860Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T20:32:56.874Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:32:56.910Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T20:33:04.302Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T20:33:04.341Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:47:21.922Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T20:47:21.933Z"}
+{"duration":"1553ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-15T20:47:23.476Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:47:23.476Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:54:02.393Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T20:54:02.404Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:54:02.451Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T20:56:20.741Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T20:56:20.750Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T20:56:20.770Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T21:11:20.779Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T21:11:20.781Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T21:26:20.807Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T21:26:20.809Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T21:41:20.835Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T21:41:20.837Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T21:52:04.047Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T21:52:04.058Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T21:52:04.079Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T21:52:21.983Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T21:52:22.034Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T21:52:26.518Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T21:52:26.566Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T21:58:34.122Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T21:58:34.132Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T21:58:34.155Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T22:13:34.161Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T22:13:34.164Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T22:28:34.189Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T22:28:34.190Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T22:29:38.980Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T22:29:39.027Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T22:29:39.065Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T22:29:46.144Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-15T22:29:46.208Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T22:44:39.056Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T22:44:39.058Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T22:59:39.084Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T22:59:39.085Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T23:14:39.111Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T23:14:39.114Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-15T23:26:25.845Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-15T23:26:25.856Z"}
+{"duration":"1186ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-15T23:26:27.032Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-15T23:26:27.032Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T04:11:43.256Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-16T04:11:43.271Z"}
+{"duration":"1230ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-16T04:11:44.488Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T04:11:44.488Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T04:26:43.298Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T04:26:43.300Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T04:41:43.326Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T04:41:43.328Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T04:56:43.353Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T04:56:43.354Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T05:11:43.379Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T05:11:43.380Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T05:26:43.404Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T05:26:43.406Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T05:41:43.500Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T05:41:43.548Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T05:56:43.450Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T05:56:43.454Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T06:11:43.471Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T06:11:43.476Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T06:26:43.488Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T06:26:43.489Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-16T06:31:16.843Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-16T06:31:16.851Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-16T06:31:17.796Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T14:47:54.497Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-18T14:47:54.522Z"}
+{"duration":"1258ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-18T14:47:55.757Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T14:47:55.757Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T14:48:05.839Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T14:48:05.967Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:02:54.550Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:02:54.553Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:14:31.680Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-18T15:14:31.690Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:14:31.713Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:14:38.489Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:14:38.543Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:14:38.554Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:14:38.621Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:19:48.746Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-18T15:19:48.764Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:19:48.808Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:20:55.860Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:20:55.937Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:25:08.858Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-18T15:25:08.866Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:25:08.882Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:25:41.514Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:25:41.539Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:26:11.427Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-18T15:26:11.519Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:40:08.895Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:40:08.896Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T15:55:08.923Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T15:55:08.925Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T16:10:08.950Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T16:10:08.952Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-18T16:25:08.977Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-18T16:25:08.980Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T00:24:42.765Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T00:24:42.772Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T00:24:42.788Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T00:32:22.903Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T00:32:22.918Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T00:32:22.943Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T00:35:09.845Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T00:35:09.863Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T00:35:09.885Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T00:42:54.234Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T00:42:54.286Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T00:44:39.505Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T00:44:39.556Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T00:50:09.891Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T00:50:09.894Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T01:05:09.921Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T01:05:09.924Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T01:20:09.946Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T01:20:09.948Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T01:32:44.643Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T01:32:44.700Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T01:35:09.948Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T01:35:09.949Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T01:50:09.972Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T01:50:09.974Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T02:05:09.992Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T02:05:09.993Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T02:20:10.016Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T02:20:10.020Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T02:35:10.040Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T02:35:10.041Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T02:50:10.063Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T02:50:10.068Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T03:05:10.085Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T03:05:10.087Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T03:20:10.106Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T03:20:10.108Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T03:35:10.112Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T03:35:10.113Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T03:50:10.130Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T03:50:10.131Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T04:05:10.149Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T04:05:10.150Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T04:20:10.158Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T04:20:10.159Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T04:35:10.175Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T04:35:10.178Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T04:50:10.191Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T04:50:10.192Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T05:05:10.206Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T05:05:10.207Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T05:20:10.221Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T05:20:10.223Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T05:35:10.235Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T05:35:10.236Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T05:50:10.248Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T05:50:10.253Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T06:05:10.260Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T06:05:10.261Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T06:20:10.271Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T06:20:10.272Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T06:35:10.277Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T06:35:10.278Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T06:50:10.286Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T06:50:10.287Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T07:05:10.294Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T07:05:10.295Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T07:20:10.302Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T07:20:10.303Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T07:35:10.310Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T07:35:10.312Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T07:50:10.312Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T07:50:10.313Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T08:05:10.317Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T08:05:10.318Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T08:20:10.321Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T08:20:10.322Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T08:35:10.321Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T08:35:10.322Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T08:50:10.324Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T08:50:10.326Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T09:05:10.327Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T09:05:10.329Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T09:20:10.327Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T09:20:10.330Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T09:35:10.328Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T09:35:10.331Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T09:50:10.357Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T09:50:10.358Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T10:05:10.385Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T10:05:10.386Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T10:20:10.413Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T10:20:10.415Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T10:35:10.436Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T10:35:10.437Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T10:50:10.460Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T10:50:10.461Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T11:05:10.485Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T11:05:10.486Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T11:20:10.535Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T11:20:10.552Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T11:35:10.557Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T11:35:10.558Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T11:50:10.579Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T11:50:10.580Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T12:05:10.601Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T12:05:10.602Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T12:20:10.622Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T12:20:10.624Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T12:35:10.642Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T12:35:10.643Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T12:50:10.662Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T12:50:10.663Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:05:10.681Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:05:10.682Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:19:01.725Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:19:01.772Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:20:10.699Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:20:10.701Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:21:21.480Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T13:21:21.488Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:21:21.507Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:21:28.355Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:21:28.407Z"}
+{"environment":"development","error":{"code":"42703","file":"parse_relation.c","length":116,"line":"3727","name":"error","position":"8","routine":"errorMissingColumn","severity":"ERROR"},"level":"error","message":"Query error:","query":"SELECT preferred_markets, property_types, primary_market, \n              primary_use_case, onboardin","service":"jedire-api","timestamp":"2026-02-19T13:21:29.120Z"}
+{"code":"42703","environment":"development","file":"parse_relation.c","length":116,"level":"error","line":"3727","message":"Error fetching user preferences: column \"preferred_markets\" does not exist","name":"error","position":"8","routine":"errorMissingColumn","service":"jedire-api","severity":"ERROR","stack":"error: column \"preferred_markets\" does not exist\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.query (/home/runner/workspace/backend/dist/database/connection.js:91:28)\n    at async /home/runner/workspace/backend/dist/api/rest/preferences.routes.js:322:24","timestamp":"2026-02-19T13:21:29.121Z"}
+{"environment":"development","error":{"code":"42703","file":"parse_relation.c","length":116,"line":"3727","name":"error","position":"8","routine":"errorMissingColumn","severity":"ERROR"},"level":"error","message":"Query error:","query":"SELECT preferred_markets, property_types, primary_market, \n              primary_use_case, onboardin","service":"jedire-api","timestamp":"2026-02-19T13:21:29.196Z"}
+{"code":"42703","environment":"development","file":"parse_relation.c","length":116,"level":"error","line":"3727","message":"Error fetching user preferences: column \"preferred_markets\" does not exist","name":"error","position":"8","routine":"errorMissingColumn","service":"jedire-api","severity":"ERROR","stack":"error: column \"preferred_markets\" does not exist\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async DatabaseConnection.query (/home/runner/workspace/backend/dist/database/connection.js:91:28)\n    at async /home/runner/workspace/backend/dist/api/rest/preferences.routes.js:322:24","timestamp":"2026-02-19T13:21:29.196Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:23:44.552Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T13:23:44.559Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:23:44.578Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:24:01.870Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T13:24:01.890Z"}
+{"environment":"development","level":"info","message":"User preferences updated","onboardingCompleted":true,"service":"jedire-api","timestamp":"2026-02-19T13:27:08.362Z","userId":"6253ba3f-d40d-4597-86ab-270c8397a857"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:38:44.595Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:38:44.600Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T13:53:44.623Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T13:53:44.625Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T14:49:21.040Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T14:49:21.053Z"}
+{"duration":"1489ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-19T14:49:22.531Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T14:49:22.531Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T15:04:21.054Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T15:04:21.057Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T15:19:21.085Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T15:19:21.089Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T16:42:45.912Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T16:42:45.960Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T16:42:45.993Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T16:42:55.021Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T16:42:55.093Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T16:43:15.163Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T16:43:15.174Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T16:43:15.196Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T16:58:15.202Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T16:58:15.205Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T17:13:15.226Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T17:13:15.227Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T17:28:15.252Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T17:28:15.254Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T17:43:15.271Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T17:43:15.272Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T17:58:15.293Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T17:58:15.294Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T18:13:15.318Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T18:13:15.319Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T18:26:47.608Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T18:26:47.620Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T18:26:47.663Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T18:26:56.112Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T18:26:56.162Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T18:28:41.923Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T18:28:41.960Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T18:28:42.019Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T18:28:48.883Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T18:28:48.915Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T18:43:41.972Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T18:43:41.974Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T20:56:17.072Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T20:56:17.149Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T20:56:17.206Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T20:56:23.574Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T20:56:23.617Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T20:57:49.174Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T20:57:49.183Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T20:57:49.209Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T21:12:49.212Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T21:12:49.214Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T21:27:49.211Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T21:27:49.213Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T21:30:16.541Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T21:30:16.560Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T21:30:16.587Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T21:30:23.088Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T21:30:23.151Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T21:30:51.065Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T21:30:51.083Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T21:31:47.536Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T21:31:47.548Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T21:31:47.571Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T21:46:47.577Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T21:46:47.582Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T22:01:47.605Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T22:01:47.606Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:00:54.601Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T23:00:54.613Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:00:55.553Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T23:01:00.541Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-19T23:01:00.618Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:10:53.910Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T23:10:53.920Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:10:53.937Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:12:33.957Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-19T23:12:33.966Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:12:33.984Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:27:33.995Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:27:33.999Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:42:34.022Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:42:34.024Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-19T23:57:34.050Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-19T23:57:34.054Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T00:12:34.077Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T00:12:34.078Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T00:27:34.104Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T00:27:34.105Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T00:42:34.124Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T00:42:34.125Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T00:57:34.148Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T00:57:34.149Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T01:12:34.170Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T01:12:34.172Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T01:27:34.193Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T01:27:34.195Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:09:14.812Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T02:09:14.830Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:09:14.860Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:09:22.168Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:09:22.221Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:09:22.743Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:09:22.816Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:10:52.809Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T02:10:52.819Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:10:52.840Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:11:52.660Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:11:52.734Z"}
+{"environment":"development","error":{},"level":"error","message":"Query error:","query":"SELECT preferred_markets, property_types, primary_market, \n              primary_use_case, onboardin","service":"jedire-api","timestamp":"2026-02-20T02:12:02.826Z"}
+{"environment":"development","level":"error","message":"Error fetching user preferences: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\n    at async DatabaseConnection.query (/home/runner/workspace/backend/dist/database/connection.js:91:28)\n    at async /home/runner/workspace/backend/dist/api/rest/preferences.routes.js:330:24","timestamp":"2026-02-20T02:12:02.827Z"}
+{"environment":"development","error":{},"level":"error","message":"Query error:","query":"SELECT \n        d.id as deal_id,\n        d.name,\n        d.project_type as type,\n        d.target_un","service":"jedire-api","timestamp":"2026-02-20T02:12:02.830Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:25:42.238Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T02:25:42.246Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:25:42.263Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:25:48.577Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:25:48.632Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:26:00.477Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:29:15.772Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T02:29:15.780Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:29:15.799Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:29:21.945Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:29:22.002Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:31:00.731Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T02:31:00.741Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:31:00.774Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:31:06.572Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:31:06.628Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T02:46:00.769Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T02:46:00.780Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:47:16.340Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T02:47:16.385Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:26.354Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:26.356Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:36.359Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:36.415Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:46.366Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T02:47:46.367Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T03:01:00.796Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T03:01:00.811Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T15:51:02.608Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T15:51:02.618Z"}
+{"duration":"1274ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-20T15:51:03.884Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T15:51:03.884Z"}
+{"environment":"development","error":{},"level":"error","message":"Query error:","query":"SELECT preferred_markets, property_types, primary_market, \n              primary_use_case, onboardin","service":"jedire-api","timestamp":"2026-02-20T15:51:25.823Z"}
+{"environment":"development","level":"error","message":"Error fetching user preferences: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.query (/home/runner/workspace/backend/dist/database/connection.js:91:28)\n    at async /home/runner/workspace/backend/dist/api/rest/preferences.routes.js:330:24","timestamp":"2026-02-20T15:51:25.823Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:51:27.213Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:51:35.863Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:51:45.872Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:51:51.346Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:51:51.391Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:51:55.894Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:51:55.921Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:01.376Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:52:03.938Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:52:03.963Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:05.899Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:05.947Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:11.408Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:14.290Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:15.903Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:21.441Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:24.271Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:24.318Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:52:24.346Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:25.919Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:25.956Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:31.479Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:52:34.012Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:34.309Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:34.369Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:35.924Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:35.981Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:38.274Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:38.275Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:38.276Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at runNextTicks (node:internal/process/task_queues:60:5)\n    at listOnTimeout (node:internal/timers:545:9)\n    at process.processTimers (node:internal/timers:519:7)\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:42.917Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:42.918Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:44.009Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:44.016Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:44.019Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:44.047Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:45.928Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:52:55.938Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:53:02.102Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:55:48.403Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:55:58.415Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:56:08.421Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:56:18.425Z"}
+{"environment":"development","level":"error","message":"Failed to set RLS user context: timeout exceeded when trying to connect","service":"jedire-api","stack":"Error: timeout exceeded when trying to connect\n    at /home/runner/workspace/backend/node_modules/pg-pool/index.js:45:11\n    at async DatabaseConnection.getClient (/home/runner/workspace/backend/dist/database/connection.js:116:16)\n    at async requireAuth (/home/runner/workspace/backend/dist/middleware/auth.js:40:18)","timestamp":"2026-02-20T15:56:28.430Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T15:58:33.957Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T15:58:33.969Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T15:58:33.999Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:58:38.700Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:58:38.742Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:58:38.820Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:58:38.854Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:59:11.284Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T15:59:11.303Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T16:13:33.998Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T16:13:34.000Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T16:28:34.026Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T16:28:34.028Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T16:43:34.053Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T16:43:34.054Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-20T17:00:00.322Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-20T17:00:00.336Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-20T17:00:01.254Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T17:00:01.590Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-20T17:00:01.625Z"}
