@@ -31,13 +31,23 @@ Preferred communication style: Simple, everyday language.
 **Key Design Decision:** Map-agnostic approach reduces infrastructure costs from $50-100K/year to $5-10K/year by storing only zoning rules and intelligence data, not full parcel geometries.
 
 **Recent Code Quality Improvements (Feb 2026):**
+- **Route extraction complete:** `index.replit.ts` reduced from 1,874 → 268 lines (86% reduction). 45 inline route handlers extracted into 9 dedicated router modules under `api/rest/inline-*.routes.ts`:
+  - `inline-health.routes.ts` — health check + DB status
+  - `inline-auth.routes.ts` — login (JWT) + user profile
+  - `inline-data.routes.ts` — supply, markets, properties, alerts
+  - `inline-deals.routes.ts` — 11 deal routes (CRUD + modules/properties/activity/timeline/key-moments/lease-analysis)
+  - `inline-tasks.routes.ts` — task CRUD + stats (in-memory store)
+  - `inline-inbox.routes.ts` — email inbox CRUD + stats
+  - `inline-zoning-analyze.routes.ts` — geocode, zoning lookup, districts, property analysis
+  - `inline-apartment-sync.routes.ts` — 10 apartment data sync routes (factory function)
+  - `inline-microsoft.routes.ts` — Microsoft OAuth routes (factory function)
+- **Zod input validation** on all critical POST/PATCH endpoints: login, create/update deal, create/update task, update email, geocode, analyze, apartment-sync pull. Schemas in `api/rest/validation.ts`
 - Auth middleware (`requireAuth`) applied to all 27+ user-scoped routes
 - CORS origin validation (not wildcard) for REST and Socket.IO
-- Single database pool via `database/connection.ts` with `getPool()` accessor (typed, null-checked); `index.replit.ts` no longer creates its own Pool
-- Entry point: `index.replit.ts` (active), `index.legacy.ts` (deprecated)
+- Single database pool via `database/connection.ts` with `getPool()` accessor (typed, null-checked)
+- Entry point: `index.replit.ts` (active, 268 lines), `index.legacy.ts` (deprecated)
 - Dead code removed: `notification.service.ts`
 - Property Records: 1,028 Fulton County properties imported via `scripts/import-fulton-properties.ts`
-- Pending improvements: Break up index.replit.ts into smaller router modules; add Zod input validation to critical endpoints
 
 - **Module Library System:** Upload historical data (Excel, PDF, CSV) for Opus AI to learn patterns, formulas, and assumptions. 3 module libraries (Financial, Market, Due Diligence) with file upload, parsing status tracking, pattern detection, and template learning. Backend: `moduleLibrary.service.ts` + `module-libraries.routes.ts` (7 REST endpoints with multer). Frontend: `ModuleLibrariesPage.tsx` + `ModuleLibraryDetailPage.tsx` under `/settings/module-libraries`. DB: `module_library_files`, `opus_learned_patterns`, `opus_template_structures` tables.
 
