@@ -1,15 +1,13 @@
 import { Router } from 'express';
 import { getPool } from '../../database/connection';
+import { validate, geocodeSchema, zoningLookupSchema, analyzeSchema } from './validation';
 
 const router = Router();
 const pool = getPool();
 
-router.post('/geocode', async (req, res) => {
+router.post('/geocode', validate(geocodeSchema), async (req, res) => {
   try {
     const { address } = req.body;
-    if (!address) {
-      return res.status(400).json({ success: false, error: 'Address is required' });
-    }
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`,
       { headers: { 'User-Agent': 'JediRE/1.0 (contact@jedire.com)' } }
@@ -37,12 +35,9 @@ router.post('/geocode', async (req, res) => {
   }
 });
 
-router.post('/zoning/lookup', async (req, res) => {
+router.post('/zoning/lookup', validate(zoningLookupSchema), async (req, res) => {
   try {
     const { lat, lng, municipality } = req.body;
-    if (!lat || !lng) {
-      return res.status(400).json({ success: false, error: 'Coordinates are required' });
-    }
     let sql = `
       SELECT zd.*, zdb.boundary_geojson
       FROM zoning_districts zd
@@ -104,15 +99,9 @@ router.get('/zoning/districts/:municipality', async (req, res) => {
   }
 });
 
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', validate(analyzeSchema), async (req, res) => {
   try {
     const { address, lat, lng, municipality, state, lot_size_sqft } = req.body;
-    if (!address || !lat || !lng || !lot_size_sqft) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Address, coordinates, and lot size are required' 
-      });
-    }
     let sql = `
       SELECT zd.*, zdb.boundary_geojson
       FROM zoning_districts zd

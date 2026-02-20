@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { validate, createTaskSchema, updateTaskSchema } from './validation';
 
 const router = Router();
 
@@ -75,7 +76,7 @@ router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, validate(createTaskSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const { title, description, category, priority = 'medium', status = 'todo', dealId, dueDate, source = 'manual', tags = [] } = req.body;
     if (!title || !category) {
@@ -96,7 +97,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.patch('/:id', requireAuth, validate(updateTaskSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const idx = taskStore.findIndex(t => t.id === parseInt(req.params.id));
     if (idx === -1) return res.status(404).json({ success: false, error: 'Task not found' });

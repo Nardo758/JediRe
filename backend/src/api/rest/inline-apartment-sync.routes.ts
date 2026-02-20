@@ -2,12 +2,13 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ApartmentDataSyncService } from '../../services/apartmentDataSync';
+import { validate, apartmentSyncPullSchema } from './validation';
 
 export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyncService) {
   const router = Router();
   const pool = getPool();
 
-  router.post('/pull', requireAuth, async (req: AuthenticatedRequest, res) => {
+  router.post('/pull', requireAuth, validate(apartmentSyncPullSchema), async (req: AuthenticatedRequest, res) => {
     try {
       const { city = 'Atlanta', state = 'GA' } = req.body;
       console.log(`Starting apartment data sync for ${city}, ${state}...`);

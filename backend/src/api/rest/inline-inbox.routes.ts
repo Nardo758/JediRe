@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { validate, updateEmailSchema } from './validation';
 
 const router = Router();
 const pool = getPool();
@@ -95,7 +96,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.patch('/:id', requireAuth, validate(updateEmailSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;
     const emailId = parseInt(req.params.id);

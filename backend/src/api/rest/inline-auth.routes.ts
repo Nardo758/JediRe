@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { generateAccessToken } from '../../auth/jwt';
+import { validate, loginSchema } from './validation';
 
 const router = Router();
 const pool = getPool();
 
-router.post('/login', async (req, res) => {
+router.post('/login', validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
     console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });

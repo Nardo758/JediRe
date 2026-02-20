@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { validate, createDealSchema, updateDealSchema } from './validation';
 
 const router = Router();
 const pool = getPool();
@@ -117,7 +118,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, validate(createDealSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const client = req.dbClient || pool;
     const {
@@ -125,10 +126,6 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description
     } = req.body;
-
-    if (!name || !boundary) {
-      return res.status(400).json({ success: false, error: 'Name and boundary are required' });
-    }
 
     const userTier = tier || 'basic';
     const boundaryGeom = boundary.type === 'Point'
@@ -184,7 +181,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
-router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: AuthenticatedRequest, res) => {
   try {
     const client = req.dbClient || pool;
     const dealId = req.params.id;
