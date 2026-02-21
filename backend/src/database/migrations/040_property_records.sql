@@ -71,20 +71,6 @@ CREATE TABLE IF NOT EXISTS property_sales (
   UNIQUE(parcel_id, sale_year)
 );
 
--- Market trends table (city-level median prices)
-CREATE TABLE IF NOT EXISTS market_trends (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  city TEXT NOT NULL,
-  year INTEGER NOT NULL,
-  median_sale_price BIGINT,
-  
-  -- Metadata
-  scraped_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  
-  UNIQUE(city, year)
-);
-
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_property_records_parcel_id ON property_records(parcel_id);
 CREATE INDEX IF NOT EXISTS idx_property_records_units ON property_records(units);
@@ -97,9 +83,6 @@ CREATE INDEX IF NOT EXISTS idx_property_records_neighborhood ON property_records
 CREATE INDEX IF NOT EXISTS idx_property_sales_parcel_id ON property_sales(parcel_id);
 CREATE INDEX IF NOT EXISTS idx_property_sales_year ON property_sales(sale_year);
 CREATE INDEX IF NOT EXISTS idx_property_sales_price ON property_sales(sale_price);
-
-CREATE INDEX IF NOT EXISTS idx_market_trends_city ON market_trends(city);
-CREATE INDEX IF NOT EXISTS idx_market_trends_year ON market_trends(year);
 
 -- Computed columns (per-unit metrics)
 CREATE OR REPLACE VIEW property_metrics AS
@@ -123,9 +106,10 @@ SELECT
   END AS sqft_per_unit
 FROM property_records pr;
 
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON property_records TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON property_sales TO authenticated;
+GRANT SELECT ON property_metrics TO authenticated;
+
 COMMENT ON TABLE property_records IS 'Property data scraped from county assessor APIs';
 COMMENT ON TABLE property_sales IS 'Sales history for properties (2018-2022)';
-COMMENT ON TABLE market_trends IS 'City-level median sale prices (2012-2024) for market context';
-COMMENT ON COLUMN property_records.units IS 'Number of living units - critical for multifamily analysis';
-COMMENT ON COLUMN property_records.appraised_value IS 'Total appraised value (typically higher than assessed)';
-COMMENT ON COLUMN property_records.assessed_value IS 'Total assessed value (used for tax calculation)';
