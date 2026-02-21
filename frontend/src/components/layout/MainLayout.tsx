@@ -216,41 +216,29 @@ export const MainLayout: React.FC = () => {
                     Intelligence
                   </h3>
                   
-                  {/* MARKET DATA */}
+                  {/* MARKET INTELLIGENCE - Expandable */}
                   <SidebarItem
                     icon="📈"
-                    label="Market Data"
-                    path="/market-data"
-                    isActive={isActivePrefix('/market-data')}
-                    layerConfig={{
-                      sourceType: 'market',
-                      layerType: 'overlay',
-                      defaultStyle: {
-                        colorScale: ['#dcfce7', '#86efac', '#22c55e', '#15803d'],
-                        opacity: 0.5
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-                  
-                  {/* MARKET RESEARCH - Expandable */}
-                  <SidebarItem
-                    icon="🔍"
-                    label="Market Research"
+                    label="Market Intelligence"
                     hasSubItems={true}
                     isExpanded={expandedSections.marketResearch}
                     onToggle={() => toggleSection('marketResearch')}
-                    isActive={isActivePrefix('/market-research')}
+                    isActive={isActivePrefix('/markets')}
                   />
                   
-                  {/* Market Research Submenu */}
                   {expandedSections.marketResearch && (
                     <div className="ml-8 mt-1 space-y-1">
                       <SidebarItem
-                        icon="🏢"
-                        label="Properties"
-                        path="/market-research"
-                        isActive={location.pathname === '/market-research'}
+                        icon="🏙️"
+                        label="My Markets"
+                        path="/markets"
+                        isActive={location.pathname === '/markets'}
+                      />
+                      <SidebarItem
+                        icon="📊"
+                        label="Compare Markets"
+                        path="/markets/compare"
+                        isActive={isActivePrefix('/markets/compare')}
                       />
                       <SidebarItem
                         icon="👥"

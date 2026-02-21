@@ -17,7 +17,6 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { MarketDataPageV2 } from './pages/MarketDataPageV2';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
@@ -37,7 +36,6 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
-import { MarketResearchPage } from './pages/MarketResearchPage';
 import { ActiveOwnersPage } from './pages/ActiveOwnersPage';
 import { FutureSupplyPage } from './pages/FutureSupplyPage';
 import { MyMarketsOverview, MarketComparison, MarketDeepDive } from './pages/MarketIntelligence';
@@ -70,11 +68,11 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<MarketDataPageV2 />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
-          <Route path="/market-research" element={<MarketResearchPage />} />
+          <Route path="/market-data" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-research" element={<Navigate to="/markets" replace />} />
           <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
           <Route path="/market-research/active-owners/:name" element={<ActiveOwnersPage />} />
           <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />

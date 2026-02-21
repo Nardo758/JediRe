@@ -759,3 +759,15 @@
 {"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T08:28:34.542Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:29:38.918Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:29:38.979Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-21T08:35:39.431Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-21T08:35:39.442Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T08:35:39.466Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:35:45.465Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:35:45.507Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-21T08:35:55.269Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-21T08:35:55.277Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T08:35:55.295Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:36:01.929Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:36:01.968Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:36:03.700Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:36:03.720Z"}
