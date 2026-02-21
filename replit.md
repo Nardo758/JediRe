@@ -48,6 +48,7 @@ Preferred communication style: Simple, everyday language.
 - Entry point: `index.replit.ts` (active, 268 lines), `index.legacy.ts` (deprecated)
 - Dead code removed: `notification.service.ts`
 - Property Records: 1,028 Fulton County properties imported via `scripts/import-fulton-properties.ts`
+- **Market Intelligence ↔ Property Data Integration:** MI Market Data tab now queries actual `property_records` table via `MARKET_COUNTY_MAP` (maps market IDs like 'atlanta' → Fulton/DeKalb/Cobb/Gwinnett counties). Backend endpoint: `GET /api/v1/market-intelligence/:marketId/properties` with server-side pagination, search, sort. 20 US markets pre-mapped to counties.
 
 - **Module Library System:** Upload historical data (Excel, PDF, CSV) for Opus AI to learn patterns, formulas, and assumptions. 3 module libraries (Financial, Market, Due Diligence) with file upload, parsing status tracking, pattern detection, and template learning. Backend: `moduleLibrary.service.ts` + `module-libraries.routes.ts` (7 REST endpoints with multer). Frontend: `ModuleLibrariesPage.tsx` + `ModuleLibraryDetailPage.tsx` under `/settings/module-libraries`. DB: `module_library_files`, `opus_learned_patterns`, `opus_template_structures` tables.
 

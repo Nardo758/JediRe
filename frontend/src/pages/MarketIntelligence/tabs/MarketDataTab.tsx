@@ -1,19 +1,36 @@
-// MarketDataTab.tsx - Research data points for market analysis
-// Created: 2026-02-21
-// This replaces/refactors the existing MarketDataPageV2
-
-import React, { useState, useEffect } from 'react';
-import { Download, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Download, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Building2, MapPin } from 'lucide-react';
 import type { MarketSummaryResponse } from '../../../types/marketIntelligence.types';
 
 interface PropertyRecord {
-  id: number;
-  property_name: string;
+  id: string;
+  parcel_id: string;
   address: string;
-  units: number;
+  city: string;
+  zip_code: string;
+  county: string;
+  state: string;
   owner_name: string;
-  year_built: number;
+  units: number;
+  land_acres: number;
+  year_built: string;
+  stories: number;
+  building_sqft: number;
   assessed_value: number;
+  appraised_value: number;
+  land_use_code: string;
+  class_code: string;
+  subdivision: string;
+  value_per_unit: number | null;
+  value_per_sqft: number | null;
+  scraped_at: string;
+}
+
+interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 interface MarketDataTabProps {
@@ -26,44 +43,82 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
   const [properties, setProperties] = useState<PropertyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, limit: 50, total: 0, totalPages: 0 });
+  const [sortBy, setSortBy] = useState('assessed_value');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [counties, setCounties] = useState<string[]>([]);
+  const [noMapping, setNoMapping] = useState(false);
 
   useEffect(() => {
-    loadProperties();
-  }, [marketId]);
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const loadProperties = async () => {
+  useEffect(() => {
+    loadProperties(1);
+  }, [marketId, debouncedSearch, sortBy, sortOrder]);
+
+  const loadProperties = useCallback(async (page: number) => {
     try {
       setLoading(true);
-      // This would call the existing property records API
-      const response = await fetch(`/api/v1/property-records?market_id=${marketId}`, {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: '50',
+        sortBy,
+        sortOrder,
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+
+      const response = await fetch(`/api/v1/market-intelligence/${marketId}/properties?${params}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();
       setProperties(data.properties || []);
+      setPagination(data.pagination || { page: 1, limit: 50, total: 0, totalPages: 0 });
+      setCounties(data.counties || []);
+      setNoMapping(!!data.message);
     } catch (error) {
       console.error('Error loading properties:', error);
     } finally {
       setLoading(false);
     }
+  }, [marketId, debouncedSearch, sortBy, sortOrder]);
+
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
   };
 
-  const filteredProperties = properties.filter(p =>
-    p.property_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.owner_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.address?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const formatCurrency = (value: number | null | undefined) => {
+    if (!value && value !== 0) return 'N/A';
+    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
+    return `$${value.toLocaleString()}`;
+  };
+
+  const formatNumber = (value: number | null | undefined) => {
+    if (!value && value !== 0) return 'N/A';
+    return value.toLocaleString();
+  };
 
   return (
     <div className="market-data-tab">
-      {/* Header */}
       <div className="data-header">
         <div>
-          <h2>Market Research Data</h2>
+          <h2>Property Research Data</h2>
           <p>
-            {summary.market.data_points_count.toLocaleString()} data points for market analysis
-            • Used to assess trends, find acquisition targets, and benchmark deals
+            {pagination.total > 0 ? (
+              <>{pagination.total.toLocaleString()} properties from {counties.join(', ') || 'county assessor records'}</>
+            ) : (
+              <>Market research data for analysis and acquisition targeting</>
+            )}
           </p>
         </div>
         <div className="data-actions">
@@ -74,91 +129,127 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
         </div>
       </div>
 
-      {/* Search & Filters */}
       <div className="search-bar">
         <div className="search-input">
           <Search size={18} />
           <input
             type="text"
-            placeholder="Search properties, owners, addresses..."
+            placeholder="Search by address or owner name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button className="filter-button">
-          <Filter size={18} />
-          Filters
-        </button>
       </div>
 
-      {/* Properties Table */}
-      {loading ? (
-        <div className="data-loading">Loading properties...</div>
+      {noMapping ? (
+        <div className="no-data-state">
+          <Building2 size={48} />
+          <h3>No Property Data Available</h3>
+          <p>County assessor data has not been imported for this market yet. Property records will appear here once data is scraped and imported.</p>
+        </div>
+      ) : loading ? (
+        <div className="data-loading">Loading property records...</div>
       ) : (
-        <div className="properties-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Property Name</th>
-                <th>Address</th>
-                <th>Units</th>
-                <th>Owner</th>
-                <th>Year Built</th>
-                <th>Value</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProperties.length === 0 ? (
+        <>
+          <div className="properties-table">
+            <table>
+              <thead>
                 <tr>
-                  <td colSpan={7} className="empty-state">
-                    {properties.length === 0 
-                      ? 'No properties loaded yet. Import data to get started.'
-                      : 'No properties match your search.'}
-                  </td>
+                  <th onClick={() => handleSort('address')} className="sortable-th">
+                    Address {sortBy === 'address' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th>Location</th>
+                  <th onClick={() => handleSort('units')} className="sortable-th">
+                    Units {sortBy === 'units' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th onClick={() => handleSort('owner_name')} className="sortable-th">
+                    Owner {sortBy === 'owner_name' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th onClick={() => handleSort('year_built')} className="sortable-th">
+                    Year Built {sortBy === 'year_built' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th onClick={() => handleSort('building_sqft')} className="sortable-th">
+                    Sq Ft {sortBy === 'building_sqft' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th onClick={() => handleSort('assessed_value')} className="sortable-th">
+                    Assessed Value {sortBy === 'assessed_value' && <ArrowUpDown size={14} />}
+                  </th>
+                  <th>$/Unit</th>
                 </tr>
-              ) : (
-                filteredProperties.slice(0, 50).map(property => (
-                  <tr key={property.id}>
-                    <td className="property-name">{property.property_name || 'Unnamed'}</td>
-                    <td>{property.address}</td>
-                    <td>{property.units}</td>
-                    <td>{property.owner_name || 'N/A'}</td>
-                    <td>{property.year_built || 'N/A'}</td>
-                    <td>
-                      {property.assessed_value 
-                        ? `$${(property.assessed_value / 1000000).toFixed(1)}M` 
-                        : 'N/A'}
-                    </td>
-                    <td>
-                      <button className="view-button">View</button>
+              </thead>
+              <tbody>
+                {properties.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="empty-state">
+                      {debouncedSearch
+                        ? 'No properties match your search.'
+                        : 'No properties found in this market.'}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-          
-          {filteredProperties.length > 50 && (
-            <div className="pagination-info">
-              Showing 50 of {filteredProperties.length.toLocaleString()} properties
+                ) : (
+                  properties.map(property => (
+                    <tr key={property.id}>
+                      <td className="property-address">
+                        <span className="address-text">{property.address || 'No Address'}</span>
+                        {property.parcel_id && <span className="parcel-id">Parcel: {property.parcel_id}</span>}
+                      </td>
+                      <td>
+                        <span className="location-cell">
+                          <MapPin size={14} />
+                          {property.city ? `${property.city}, ${property.state}` : `${property.county} Co, ${property.state}`}
+                          {property.zip_code && ` ${property.zip_code}`}
+                        </span>
+                      </td>
+                      <td className="number-cell">{formatNumber(property.units)}</td>
+                      <td className="owner-cell">{property.owner_name || 'N/A'}</td>
+                      <td className="number-cell">{property.year_built || 'N/A'}</td>
+                      <td className="number-cell">{formatNumber(property.building_sqft)}</td>
+                      <td className="value-cell">{formatCurrency(property.assessed_value)}</td>
+                      <td className="value-cell">{formatCurrency(property.value_per_unit)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {pagination.totalPages > 1 && (
+            <div className="pagination-bar">
+              <span className="page-info">
+                Page {pagination.page} of {pagination.totalPages} ({pagination.total.toLocaleString()} total)
+              </span>
+              <div className="page-buttons">
+                <button
+                  disabled={pagination.page <= 1}
+                  onClick={() => loadProperties(pagination.page - 1)}
+                  className="page-btn"
+                >
+                  <ChevronLeft size={18} /> Prev
+                </button>
+                <button
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => loadProperties(pagination.page + 1)}
+                  className="page-btn"
+                >
+                  Next <ChevronRight size={18} />
+                </button>
+              </div>
             </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* Info Box */}
       <div className="info-box">
-        <h3>💡 About Market Data</h3>
+        <h3>About Property Research Data</h3>
         <p>
-          This research data is used to analyze market trends and identify opportunities.
-          It is NOT your portfolio - those are tracked in the "Deals" tab.
+          This is county assessor research data used to analyze markets and find opportunities.
+          It is NOT your portfolio - those are tracked in the "Deals" section.
         </p>
         <ul>
           <li><strong>Acquisition Targeting:</strong> Find properties that meet your criteria</li>
-          <li><strong>Owner Outreach:</strong> Contact information for direct outreach campaigns</li>
-          <li><strong>Comparable Sales:</strong> Historical transactions for valuation</li>
-          <li><strong>Market Analysis:</strong> Rent benchmarking, vintage cohorts, cap rates</li>
+          <li><strong>Owner Outreach:</strong> Use owner information for direct outreach campaigns</li>
+          <li><strong>Valuation Benchmarks:</strong> Compare assessed values across properties</li>
+          <li><strong>Market Analysis:</strong> Analyze vintage cohorts, unit mixes, and density</li>
         </ul>
       </div>
 
@@ -236,31 +327,36 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
           outline: none;
         }
 
-        .filter-button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
+        .no-data-state {
           background: white;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s;
+          padding: 64px 32px;
+          text-align: center;
+          border-radius: 12px;
+          color: #94a3b8;
         }
 
-        .filter-button:hover {
-          background: #f8fafc;
+        .no-data-state h3 {
+          margin: 16px 0 8px;
+          font-size: 18px;
+          color: #475569;
+        }
+
+        .no-data-state p {
+          font-size: 14px;
+          max-width: 400px;
+          margin: 0 auto;
         }
 
         .properties-table {
           background: white;
           border-radius: 12px;
-          overflow: hidden;
+          overflow-x: auto;
         }
 
         table {
           width: 100%;
           border-collapse: collapse;
+          min-width: 900px;
         }
 
         th, td {
@@ -271,11 +367,24 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
 
         th {
           background: #f8fafc;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 600;
           color: #64748b;
           text-transform: uppercase;
           letter-spacing: 0.5px;
+          white-space: nowrap;
+        }
+
+        .sortable-th {
+          cursor: pointer;
+          user-select: none;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .sortable-th:hover {
+          color: #3b82f6;
         }
 
         td {
@@ -283,23 +392,45 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
           color: #0f172a;
         }
 
-        .property-name {
+        .property-address {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .address-text {
           font-weight: 600;
+          font-size: 14px;
         }
 
-        .view-button {
-          padding: 6px 12px;
-          background: #f1f5f9;
-          border: none;
-          border-radius: 4px;
+        .parcel-id {
+          font-size: 11px;
+          color: #94a3b8;
+        }
+
+        .location-cell {
+          display: flex;
+          align-items: center;
+          gap: 4px;
           font-size: 13px;
-          color: #3b82f6;
-          cursor: pointer;
-          transition: background 0.2s;
+          color: #64748b;
         }
 
-        .view-button:hover {
-          background: #e2e8f0;
+        .number-cell {
+          font-variant-numeric: tabular-nums;
+        }
+
+        .owner-cell {
+          max-width: 180px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .value-cell {
+          font-weight: 600;
+          font-variant-numeric: tabular-nums;
+          color: #059669;
         }
 
         .empty-state {
@@ -308,12 +439,46 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
           color: #94a3b8;
         }
 
-        .pagination-info {
-          padding: 16px;
-          text-align: center;
+        .pagination-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: white;
+          padding: 12px 24px;
+          border-radius: 12px;
+        }
+
+        .page-info {
           font-size: 14px;
           color: #64748b;
-          background: #f8fafc;
+        }
+
+        .page-buttons {
+          display: flex;
+          gap: 8px;
+        }
+
+        .page-btn {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 8px 14px;
+          background: white;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .page-btn:hover:not(:disabled) {
+          background: #f1f5f9;
+          border-color: #cbd5e1;
+        }
+
+        .page-btn:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
         }
 
         .data-loading {

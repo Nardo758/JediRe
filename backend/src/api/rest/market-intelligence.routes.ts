@@ -453,11 +453,16 @@ async function generateMarketAlerts(userId: string, markets: any[]): Promise<Mar
   for (const market of markets) {
     if (market.data_points_count > 0 && market.status === 'active') {
       try {
+        const counties = MARKET_COUNTY_MAP[market.market_id];
+        if (!counties || counties.length === 0) continue;
+        const countyConditions = counties.map((_, i) => `(county = $${i * 2 + 1} AND state = $${i * 2 + 2})`).join(' OR ');
+        const countyParams: string[] = [];
+        counties.forEach((c: { county: string; state: string }) => { countyParams.push(c.county, c.state); });
         const ownerInfoCount = await pool.query(
           `SELECT COUNT(*) as count 
            FROM property_records 
-           WHERE market_id = $1 AND owner_name IS NOT NULL AND owner_name != ''`,
-          [market.market_id]
+           WHERE (${countyConditions}) AND owner_name IS NOT NULL AND owner_name != ''`,
+          countyParams
         );
 
         const count = parseInt(ownerInfoCount.rows[0]?.count) || 0;
@@ -508,5 +513,124 @@ async function generateMarketAlerts(userId: string, markets: any[]): Promise<Mar
 
   return alerts;
 }
+
+const MARKET_COUNTY_MAP: Record<string, { county: string; state: string }[]> = {
+  'atlanta': [{ county: 'Fulton', state: 'GA' }, { county: 'DeKalb', state: 'GA' }, { county: 'Cobb', state: 'GA' }, { county: 'Gwinnett', state: 'GA' }],
+  'dallas': [{ county: 'Dallas', state: 'TX' }, { county: 'Tarrant', state: 'TX' }, { county: 'Collin', state: 'TX' }],
+  'houston': [{ county: 'Harris', state: 'TX' }, { county: 'Fort Bend', state: 'TX' }],
+  'austin': [{ county: 'Travis', state: 'TX' }, { county: 'Williamson', state: 'TX' }],
+  'san-antonio': [{ county: 'Bexar', state: 'TX' }],
+  'phoenix': [{ county: 'Maricopa', state: 'AZ' }],
+  'tampa': [{ county: 'Hillsborough', state: 'FL' }],
+  'orlando': [{ county: 'Orange', state: 'FL' }],
+  'charlotte': [{ county: 'Mecklenburg', state: 'NC' }],
+  'nashville': [{ county: 'Davidson', state: 'TN' }],
+  'raleigh': [{ county: 'Wake', state: 'NC' }],
+  'denver': [{ county: 'Denver', state: 'CO' }, { county: 'Arapahoe', state: 'CO' }],
+  'miami': [{ county: 'Miami-Dade', state: 'FL' }],
+  'jacksonville': [{ county: 'Duval', state: 'FL' }],
+  'las-vegas': [{ county: 'Clark', state: 'NV' }],
+  'salt-lake-city': [{ county: 'Salt Lake', state: 'UT' }],
+  'indianapolis': [{ county: 'Marion', state: 'IN' }],
+  'columbus': [{ county: 'Franklin', state: 'OH' }],
+  'kansas-city': [{ county: 'Jackson', state: 'MO' }],
+  'minneapolis': [{ county: 'Hennepin', state: 'MN' }],
+};
+
+router.get('/:marketId/properties', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { marketId } = req.params;
+    const {
+      page = '1',
+      limit = '50',
+      sortBy = 'address',
+      sortOrder = 'asc',
+      search,
+      minUnits,
+      maxUnits,
+    } = req.query;
+
+    const counties = MARKET_COUNTY_MAP[marketId];
+    if (!counties || counties.length === 0) {
+      return res.json({
+        properties: [],
+        pagination: { page: 1, limit: 50, total: 0, totalPages: 0 },
+        market_id: marketId,
+        message: 'No county mapping configured for this market yet'
+      });
+    }
+
+    const countyConditions = counties.map((_, i) => `(county = $${i * 2 + 1} AND state = $${i * 2 + 2})`).join(' OR ');
+    const countyParams: string[] = [];
+    counties.forEach(c => { countyParams.push(c.county, c.state); });
+
+    let whereConditions = [`(${countyConditions})`];
+    let queryParams: any[] = [...countyParams];
+    let paramCounter = countyParams.length + 1;
+
+    if (search) {
+      whereConditions.push(`(LOWER(address) LIKE LOWER($${paramCounter}) OR LOWER(owner_name) LIKE LOWER($${paramCounter}))`);
+      queryParams.push(`%${search}%`);
+      paramCounter++;
+    }
+    if (minUnits) {
+      whereConditions.push(`units >= $${paramCounter}`);
+      queryParams.push(Number(minUnits));
+      paramCounter++;
+    }
+    if (maxUnits) {
+      whereConditions.push(`units <= $${paramCounter}`);
+      queryParams.push(Number(maxUnits));
+      paramCounter++;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+    const allowedSortColumns = ['address', 'units', 'owner_name', 'assessed_value', 'year_built', 'building_sqft'];
+    const sortColumn = allowedSortColumns.includes(sortBy as string) ? sortBy : 'address';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(100, Math.max(1, Number(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM property_records WHERE ${whereClause}`,
+      queryParams
+    );
+    const total = parseInt(countResult.rows[0].total);
+
+    const dataResult = await pool.query(
+      `SELECT 
+        id, parcel_id, address, city, zip_code, county, state,
+        owner_name, owner_address_1, units, land_acres,
+        year_built, stories, building_sqft,
+        assessed_value, appraised_value,
+        land_use_code, class_code, neighborhood_code,
+        subdivision, tax_district, scraped_at,
+        CASE WHEN units > 0 THEN ROUND(assessed_value::numeric / units, 0) ELSE NULL END as value_per_unit,
+        CASE WHEN building_sqft > 0 THEN ROUND(assessed_value::numeric / building_sqft, 2) ELSE NULL END as value_per_sqft
+      FROM property_records
+      WHERE ${whereClause}
+      ORDER BY ${sortColumn} ${order}
+      LIMIT $${paramCounter} OFFSET $${paramCounter + 1}`,
+      [...queryParams, limitNum, offset]
+    );
+
+    res.json({
+      properties: dataResult.rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      },
+      market_id: marketId,
+      counties: counties.map(c => `${c.county} County, ${c.state}`)
+    });
+  } catch (error) {
+    console.error('Error fetching market properties:', error);
+    res.status(500).json({ error: 'Failed to fetch market properties' });
+  }
+});
 
 export default router;
