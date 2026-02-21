@@ -13,6 +13,63 @@ import type {
 const router = Router();
 const pool = getPool();
 
+async function syncUserMarketsFromOnboarding(userId: string): Promise<void> {
+  try {
+    const userResult = await pool.query(
+      'SELECT preferred_markets FROM users WHERE id = $1',
+      [userId]
+    );
+    const preferredMarkets: string[] = userResult.rows[0]?.preferred_markets || [];
+    if (preferredMarkets.length === 0) return;
+
+    const existingPrefs = await pool.query(
+      'SELECT market_id FROM user_market_preferences WHERE user_id = $1',
+      [userId]
+    );
+    const existingMarketIds = new Set(existingPrefs.rows.map(r => r.market_id));
+
+    const newMarkets = preferredMarkets.filter(m => !existingMarketIds.has(m));
+    if (newMarkets.length === 0) return;
+
+    for (const marketName of newMarkets) {
+      const available = await pool.query(
+        'SELECT name, display_name, state FROM available_markets WHERE name = $1',
+        [marketName]
+      );
+      const displayName = available.rows[0]?.display_name || marketName.charAt(0).toUpperCase() + marketName.slice(1);
+      const stateCode = available.rows[0]?.state || '';
+
+      await pool.query(
+        `INSERT INTO market_coverage_status (market_id, display_name, state_code, total_parcels, covered_parcels, data_points_count, total_units, status, metadata)
+         VALUES ($1, $2, $3, 0, 0, 0, 0, 'pending', '{}')
+         ON CONFLICT (market_id) DO NOTHING`,
+        [marketName, displayName, stateCode]
+      );
+
+      const priority = existingMarketIds.size + newMarkets.indexOf(marketName) + 1;
+      await pool.query(
+        `INSERT INTO user_market_preferences (user_id, market_id, display_name, is_active, priority, notification_settings)
+         VALUES ($1, $2, $3, true, $4, '{}')
+         ON CONFLICT (user_id, market_id) DO UPDATE SET is_active = true, updated_at = NOW()`,
+        [userId, marketName, displayName, priority]
+      );
+    }
+
+    const removedMarkets = [...existingMarketIds].filter(m => !preferredMarkets.includes(m));
+    if (removedMarkets.length > 0) {
+      await pool.query(
+        `UPDATE user_market_preferences SET is_active = false, updated_at = NOW()
+         WHERE user_id = $1 AND market_id = ANY($2)`,
+        [userId, removedMarkets]
+      );
+    }
+
+    console.log(`[MI Sync] Synced ${newMarkets.length} new markets, deactivated ${removedMarkets.length} for user ${userId}`);
+  } catch (error) {
+    console.error('[MI Sync] Error syncing markets from onboarding:', error);
+  }
+}
+
 const createPreferenceSchema = z.object({
   market_id: z.string().min(1).max(100),
   display_name: z.string().min(1).max(255),
@@ -164,6 +221,8 @@ router.delete('/preferences/:id', requireAuth, async (req: AuthenticatedRequest,
 router.get('/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.userId;
+
+    await syncUserMarketsFromOnboarding(userId);
 
     const marketsResult = await pool.query(
       `SELECT 

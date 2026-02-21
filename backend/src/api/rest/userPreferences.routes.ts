@@ -9,6 +9,40 @@ import { AuthenticatedRequest, requireAuth } from '../../middleware/auth';
 
 const router = Router();
 
+async function syncMarketsToIntelligence(userId: string, preferredMarkets: string[]): Promise<void> {
+  for (const marketName of preferredMarkets) {
+    const available = await pool.query(
+      'SELECT name, display_name, state FROM available_markets WHERE name = $1',
+      [marketName]
+    );
+    const displayName = available.rows[0]?.display_name || marketName.charAt(0).toUpperCase() + marketName.slice(1);
+    const stateCode = available.rows[0]?.state || '';
+
+    await pool.query(
+      `INSERT INTO market_coverage_status (market_id, display_name, state_code, total_parcels, covered_parcels, data_points_count, total_units, status, metadata)
+       VALUES ($1, $2, $3, 0, 0, 0, 0, 'pending', '{}')
+       ON CONFLICT (market_id) DO NOTHING`,
+      [marketName, displayName, stateCode]
+    );
+
+    const priority = preferredMarkets.indexOf(marketName) + 1;
+    await pool.query(
+      `INSERT INTO user_market_preferences (user_id, market_id, display_name, is_active, priority, notification_settings)
+       VALUES ($1, $2, $3, true, $4, '{}')
+       ON CONFLICT (user_id, market_id) DO UPDATE SET is_active = true, display_name = $3, priority = $4, updated_at = NOW()`,
+      [userId, marketName, displayName, priority]
+    );
+  }
+
+  await pool.query(
+    `UPDATE user_market_preferences SET is_active = false, updated_at = NOW()
+     WHERE user_id = $1 AND market_id != ALL($2)`,
+    [userId, preferredMarkets]
+  );
+
+  console.log(`[MI Sync] Synced ${preferredMarkets.length} markets for user ${userId}`);
+}
+
 /**
  * GET /api/user/preferences
  * Get current user's preferences
@@ -106,6 +140,14 @@ router.put('/preferences', requireAuth, async (req: AuthenticatedRequest, res) =
     `;
     
     const result = await pool.query(query, values);
+
+    if (preferred_markets && preferred_markets.length > 0) {
+      try {
+        await syncMarketsToIntelligence(userId, preferred_markets);
+      } catch (syncError) {
+        console.error('[User Preferences] MI sync failed (non-blocking):', syncError);
+      }
+    }
     
     res.json({
       success: true,
