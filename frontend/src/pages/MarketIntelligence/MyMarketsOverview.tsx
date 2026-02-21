@@ -27,7 +27,7 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
       setLoading(true);
       const token = localStorage.getItem('token');
       if (!token) {
-        setOverview(null);
+        navigate('/login', { replace: true });
         return;
       }
       const response = await fetch('/api/v1/markets/overview', {
@@ -35,6 +35,11 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
           'Authorization': `Bearer ${token}`
         }
       });
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem('token');
+        navigate('/login', { replace: true });
+        return;
+      }
       if (!response.ok) {
         setOverview(null);
         return;
