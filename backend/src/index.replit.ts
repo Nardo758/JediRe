@@ -17,7 +17,7 @@ import inlineAuthRoutes from './api/rest/inline-auth.routes';
 import inlineDataRoutes from './api/rest/inline-data.routes';
 import inlineTasksRoutes from './api/rest/inline-tasks.routes';
 import inlineInboxRoutes from './api/rest/inline-inbox.routes';
-import inlineMicrosoftRoutes from './api/rest/inline-microsoft.routes';
+import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
 import inlineHealthRoutes from './api/rest/inline-health.routes';
 import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
 import propertyTypesRoutes from './api/rest/property-types.routes';
@@ -92,7 +92,13 @@ app.use('/api/v1/deals', authenticateToken, inlineDealsRoutes);
 app.use('/api/v1/data', authenticateToken, inlineDataRoutes);
 app.use('/api/v1/tasks', authenticateToken, inlineTasksRoutes);
 app.use('/api/v1/inbox', authenticateToken, inlineInboxRoutes);
-app.use('/api/v1/microsoft', authenticateToken, inlineMicrosoftRoutes);
+app.use('/api/v1/microsoft', authenticateToken, createMicrosoftInlineRoutes({
+  clientId: process.env.MICROSOFT_CLIENT_ID || '',
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+  tenantId: process.env.MICROSOFT_TENANT_ID || '',
+  redirectUri: process.env.MICROSOFT_REDIRECT_URI || '',
+  scopes: ['Mail.Read', 'Mail.Send', 'Calendars.Read'],
+}));
 app.use('/api/v1/zoning', authenticateToken, inlineZoningRoutes);
 app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
 

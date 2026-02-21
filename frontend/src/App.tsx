@@ -38,8 +38,15 @@ import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import MarketResearchPage from './pages/MarketResearchPage';
-import ActiveOwnersPage from './pages/ActiveOwnersPage';
-import FutureSupplyPage from './pages/FutureSupplyPage';
+import ActiveOwnersPageStandalone from './pages/ActiveOwnersPage';
+import FutureSupplyPageStandalone from './pages/FutureSupplyPage';
+import {
+  MarketIntelligencePage,
+  MyMarketsDashboard,
+  CompareMarketsPage,
+  ActiveOwnersPage,
+  FutureSupplyPage,
+} from './pages/MarketIntelligence';
 
 
 function AppContent() {
@@ -84,8 +91,15 @@ function AppContent() {
           
           {/* Market Research Routes */}
           <Route path="/market-research" element={<MarketResearchPage />} />
-          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
-          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPageStandalone />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPageStandalone />} />
+          
+          {/* Market Intelligence */}
+          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
+          <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
+          <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
+          <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
