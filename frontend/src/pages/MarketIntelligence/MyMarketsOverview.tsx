@@ -499,13 +499,13 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onViewMarket }) => {
             <span className="vital-label">Rent Growth:</span>
             <span className="vital-value positive">
               {market.vitals.rent_growth_yoy > 0 ? '+' : ''}
-              {market.vitals.rent_growth_yoy?.toFixed(1)}% YoY
+              {Number(market.vitals.rent_growth_yoy || 0).toFixed(1)}% YoY
             </span>
           </div>
           <div className="vital">
             <span className="vital-icon">📊</span>
             <span className="vital-label">Occupancy:</span>
-            <span className="vital-value">{market.vitals.occupancy_rate?.toFixed(1)}%</span>
+            <span className="vital-value">{Number(market.vitals.occupancy_rate || 0).toFixed(1)}%</span>
           </div>
           {market.vitals.jedi_score && (
             <div className="vital jedi-score">

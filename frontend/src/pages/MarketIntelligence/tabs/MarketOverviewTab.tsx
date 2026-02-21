@@ -34,7 +34,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
               </span>
               {vitals?.population_growth_yoy && (
                 <span className="vital-change positive">
-                  +{vitals.population_growth_yoy.toFixed(1)}% YoY
+                  +{Number(vitals.population_growth_yoy).toFixed(1)}% YoY
                 </span>
               )}
             </div>
@@ -47,7 +47,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
             <div className="vital-content">
               <label>Job Growth</label>
               <span className="vital-value">
-                {vitals?.job_growth_yoy ? `+${vitals.job_growth_yoy.toFixed(1)}%` : 'N/A'}
+                {vitals?.job_growth_yoy ? `+${Number(vitals.job_growth_yoy).toFixed(1)}%` : 'N/A'}
               </span>
               <span className="vital-label">Year over year</span>
             </div>
@@ -76,7 +76,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
               </span>
               {vitals?.rent_growth_yoy && (
                 <span className="vital-change positive">
-                  +{vitals.rent_growth_yoy.toFixed(1)}% YoY
+                  +{Number(vitals.rent_growth_yoy).toFixed(1)}% YoY
                 </span>
               )}
             </div>
@@ -89,7 +89,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
             <div className="vital-content">
               <label>Occupancy Rate</label>
               <span className="vital-value">
-                {vitals?.occupancy_rate ? `${vitals.occupancy_rate.toFixed(1)}%` : 'N/A'}
+                {vitals?.occupancy_rate ? `${Number(vitals.occupancy_rate).toFixed(1)}%` : 'N/A'}
               </span>
             </div>
           </div>
@@ -136,7 +136,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
               ></div>
             </div>
             <span className="coverage-percentage">
-              {market.coverage_percentage?.toFixed(1)}% Coverage
+              {Number(market.coverage_percentage || 0).toFixed(1)}% Coverage
             </span>
           </div>
 

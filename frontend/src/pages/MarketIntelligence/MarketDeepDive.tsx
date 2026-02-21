@@ -124,7 +124,7 @@ const MarketDeepDive: React.FC = () => {
             <span className="separator">•</span>
             <span>Research Data: {summary.market.data_points_count.toLocaleString()}</span>
             <span className="separator">•</span>
-            <span>Coverage: {summary.market.coverage_percentage?.toFixed(0)}%</span>
+            <span>Coverage: {parseFloat(String(summary.market.coverage_percentage || 0)).toFixed(0)}%</span>
             {summary.vitals?.jedi_score && (
               <>
                 <span className="separator">•</span>
