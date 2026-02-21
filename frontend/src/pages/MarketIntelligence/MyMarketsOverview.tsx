@@ -181,7 +181,7 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
         />
       )}
 
-      <style jsx>{`
+      <style>{`
         .my-markets-overview {
           min-height: 100vh;
           background: #f8fafc;
@@ -511,7 +511,7 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onViewMarket }) => {
         </button>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .market-card-content {
           height: 100%;
           display: flex;
@@ -714,7 +714,7 @@ const AddMarketModal: React.FC<AddMarketModalProps> = ({ onClose, onAdded }) => 
         <button onClick={onClose}>Close</button>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .modal-overlay {
           position: fixed;
           top: 0;

@@ -53,6 +53,7 @@ import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import marketIntelRoutes from './api/rest/marketIntel.routes';
 import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
 import moduleLibrariesRouter from './api/rest/module-libraries.routes';
+import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
 
 dotenv.config();
 
@@ -162,6 +163,7 @@ app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
+app.use('/api/v1/markets', marketIntelligenceRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
