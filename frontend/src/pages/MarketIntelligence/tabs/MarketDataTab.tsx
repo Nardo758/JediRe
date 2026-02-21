@@ -1,245 +1,236 @@
-/**
- * Market Data Tab - Full research library
- * 44 outputs total, 12 using real data (27% real for Atlanta)
- * Highest priority tab - most outputs
- */
-
-import React, { useState } from 'react';
+import React from 'react';
+import OutputCard, { OutputSection } from '../components/OutputCard';
+import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface MarketDataTabProps {
   marketId: string;
 }
 
-interface OutputSection {
-  title: string;
-  description: string;
-  outputs: Array<{
-    id: string;
-    name: string;
-    status: 'REAL' | 'MOCK' | 'PENDING';
-    description: string;
-  }>;
-}
-
 const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
   const isAtlanta = marketId === 'atlanta';
-  const [showAll, setShowAll] = useState(false);
 
-  const sections: OutputSection[] = [
-    {
-      title: 'Property Database Table',
-      description: 'Main table of all properties with new columns',
-      outputs: [
-        { id: 'P-01', name: 'Property Card', status: isAtlanta ? 'REAL' : 'MOCK', description: '1,028 properties with address, units, year, lot, SF' },
-        { id: 'P-02', name: 'Vintage Class', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Derived from year_built (A/A-/B+/B/B-/C)' },
-        { id: 'P-04', name: 'Ownership', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Owner name, purchase date/price from deeds' },
-        { id: 'M-01', name: 'Market Rent', status: 'MOCK', description: 'Apartments.com scraper needed' },
-        { id: 'M-06', name: 'Occupancy Proxy', status: 'MOCK', description: 'Apartments.com available units' },
-        { id: 'T-02', name: 'Physical Traffic Score', status: 'PENDING', description: 'NEW: DOT data + calculation' },
-        { id: 'DC-07', name: 'Pricing Power Index', status: 'PENDING', description: 'NEW: Composite calc' },
-      ],
-    },
-    {
-      title: 'Property Flyout (Enhanced with T/TA/DC)',
-      description: 'PropertyIntelligenceModal - click any row',
-      outputs: [
-        { id: 'P-01', name: 'Municipal Record', status: isAtlanta ? 'REAL' : 'MOCK', description: 'All property basics' },
-        { id: 'P-03', name: 'Loss-to-Lease', status: 'MOCK', description: 'Needs M-01 comp rent' },
-        { id: 'P-05', name: 'Seller Motivation', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Can calculate from P-04' },
-        { id: 'P-06', name: 'Tax Assessment', status: isAtlanta ? 'REAL' : 'MOCK', description: 'From municipal tax records' },
-        { id: 'P-07', name: 'Price Benchmarks', status: isAtlanta ? 'REAL' : 'MOCK', description: 'From deed records' },
-        { id: 'P-08', name: 'Zoning', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Partially available' },
-        { id: 'T-01', name: 'Walk-In Prediction', status: 'PENDING', description: 'NEW: Traffic calc' },
-        { id: 'T-02', name: 'Physical Traffic Score', status: 'PENDING', description: 'NEW: DOT data' },
-        { id: 'T-03', name: 'Digital Traffic Score', status: 'PENDING', description: 'NEW: Google Trends' },
-        { id: 'T-04', name: 'Correlation Signal (Hidden Gem)', status: 'PENDING', description: 'NEW: T-02 vs T-03' },
-        { id: 'T-06', name: 'Capture Rate', status: 'PENDING', description: 'NEW: Calc' },
-        { id: 'T-08', name: 'Generator Proximity', status: 'PENDING', description: 'NEW: POI data' },
-        { id: 'T-10', name: 'Validation Confidence', status: 'PENDING', description: 'NEW: User feedback' },
-        { id: 'TA-01', name: 'Trade Area Definition', status: 'PENDING', description: 'NEW: Geospatial' },
-        { id: 'TA-02', name: 'Competitive Set', status: 'PENDING', description: 'NEW: Matching algo' },
-        { id: 'TA-03', name: 'Trade Area Balance', status: 'PENDING', description: 'NEW: Scoped D-01' },
-        { id: 'TA-04', name: 'Digital Competitive Intel', status: 'PENDING', description: 'NEW: SpyFu data' },
-      ],
-    },
-    {
-      title: 'Demand-Supply Dashboard',
-      description: 'D-01 through D-11, S-04 through S-09',
-      outputs: [
-        { id: 'D-01', name: 'Jobs/Apartments', status: 'MOCK', description: 'BLS + S-01' },
-        { id: 'D-02', name: 'New Jobs/New Units', status: 'MOCK', description: 'BLS + S-02' },
-        { id: 'S-04', name: 'Absorption Runway', status: 'MOCK', description: 'Pipeline / absorption' },
-        { id: 'S-05', name: 'Delivery Clustering', status: 'MOCK', description: 'Geospatial + temporal' },
-        { id: 'S-08', name: 'Saturation Index', status: 'MOCK', description: 'Units per capita' },
-      ],
-    },
-    {
-      title: 'Rent & Pricing Intelligence',
-      description: 'M-01, M-03, M-05, M-07, R-01, R-02, R-03, DC-07',
-      outputs: [
-        { id: 'M-01', name: 'Rent by Vintage', status: 'MOCK', description: 'Apts.com needed' },
-        { id: 'M-03', name: 'Concessions', status: 'MOCK', description: 'Apts.com needed' },
-        { id: 'R-02', name: 'Vintage Convergence', status: 'MOCK', description: 'M-01 spread trend' },
-        { id: 'DC-07', name: 'Pricing Power Index', status: 'PENDING', description: 'NEW: Composite' },
-      ],
-    },
-    {
-      title: 'Ownership Intelligence',
-      description: 'P-04, P-05, R-07, R-09',
-      outputs: [
-        { id: 'P-04', name: 'Ownership Profile', status: isAtlanta ? 'REAL' : 'MOCK', description: 'From deeds' },
-        { id: 'P-05', name: 'Seller Motivation', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Calc from P-04' },
-        { id: 'R-07', name: 'Ownership Concentration', status: isAtlanta ? 'REAL' : 'MOCK', description: 'P-04 aggregated' },
-        { id: 'R-09', name: 'Hold Period vs Cycle', status: isAtlanta ? 'REAL' : 'MOCK', description: 'P-04 + time' },
-      ],
-    },
-    {
-      title: 'Transaction History',
-      description: 'M-08, M-09, P-07',
-      outputs: [
-        { id: 'M-08', name: 'Cap Rate Trends', status: isAtlanta ? 'REAL' : 'MOCK', description: 'From deed records' },
-        { id: 'M-09', name: 'Investor Activity', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Deed frequency' },
-        { id: 'P-07', name: 'Price/Unit Benchmarks', status: isAtlanta ? 'REAL' : 'MOCK', description: 'Recent sales' },
-      ],
-    },
-    {
-      title: 'Traffic & Demand Heatmap',
-      description: 'D-05 through D-09, T-02, T-04',
-      outputs: [
-        { id: 'D-05', name: 'Traffic Growth Rate', status: 'MOCK', description: 'DOT needed' },
-        { id: 'D-09', name: 'Demand Momentum', status: 'MOCK', description: 'Composite' },
-        { id: 'T-02', name: 'Physical Traffic (overlays)', status: 'PENDING', description: 'NEW: Map layer' },
-        { id: 'T-04', name: 'Correlation Signal (colors)', status: 'PENDING', description: 'NEW: Hidden Gems' },
-      ],
-    },
+  const filterFields = [
+    { label: 'Submarket', placeholder: 'All Submarkets' },
+    { label: 'Vintage', placeholder: 'All Classes' },
+    { label: 'Units', placeholder: 'Any Size' },
+    { label: 'Owner Type', placeholder: 'All Owners' },
   ];
 
-  const getStatusBadge = (status: 'REAL' | 'MOCK' | 'PENDING') => {
-    switch (status) {
-      case 'REAL':
-        return <span className="px-2 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded">🟢 REAL</span>;
-      case 'MOCK':
-        return <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded">⚪ MOCK</span>;
-      case 'PENDING':
-        return <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs font-medium rounded">⏳ PENDING</span>;
-    }
-  };
+  const tableHeaders = [
+    { id: 'P-01', label: 'Property', width: 'w-48' },
+    { id: 'P-02', label: 'Vintage', width: 'w-20' },
+    { id: 'P-04', label: 'Owner', width: 'w-36' },
+    { id: 'M-01', label: 'Avg Rent', width: 'w-24' },
+    { id: 'M-06', label: 'Occupancy', width: 'w-24' },
+    { id: 'T-02', label: 'Traffic Score', width: 'w-28' },
+    { id: 'DC-07', label: 'Pricing Power', width: 'w-28' },
+  ];
 
-  const totalOutputs = sections.reduce((sum, section) => sum + section.outputs.length, 0);
-  const realOutputs = sections.reduce(
-    (sum, section) => sum + section.outputs.filter(o => o.status === 'REAL').length,
-    0
-  );
+  const sampleRows = isAtlanta
+    ? [
+        { property: 'The Retreat at Peachtree', vintage: 'B+', owner: 'Greystar RE Partners', rent: '$1,650', occ: '94%', traffic: '—', pricing: '—' },
+        { property: 'Avalon Heights', vintage: 'A-', owner: 'AvalonBay Communities', rent: '$2,100', occ: '96%', traffic: '—', pricing: '—' },
+        { property: 'Palisades at West Midtown', vintage: 'A', owner: 'Camden Property Trust', rent: '$2,350', occ: '91%', traffic: '—', pricing: '—' },
+        { property: 'Ashford Place Apartments', vintage: 'C', owner: 'Local Owner LLC', rent: '$1,050', occ: '88%', traffic: '—', pricing: '—' },
+        { property: 'Buckhead Grand', vintage: 'A', owner: 'Post Apartment Homes', rent: '$2,800', occ: '93%', traffic: '—', pricing: '—' },
+      ]
+    : [];
+
+  const flyoutOutputs = [
+    'P-01', 'P-02', 'P-03', 'P-04', 'P-05', 'P-06', 'P-07', 'P-08',
+    'C-01',
+    'T-01', 'T-02', 'T-03', 'T-04', 'T-06', 'T-08', 'T-10',
+    'TA-01', 'TA-02', 'TA-03', 'TA-04',
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-2xl font-bold mb-2">Market Data Tab</h2>
-        <p className="text-gray-600 mb-4">Full research library - 5-15 minute deep dive</p>
-        <div className="flex items-center space-x-4 text-sm">
-          <div>
-            <span className="text-gray-600">Total Outputs:</span>
-            <span className="ml-2 font-bold">{totalOutputs}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">Real Data:</span>
-            <span className="ml-2 font-bold text-green-600">{realOutputs}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">Coverage:</span>
-            <span className="ml-2 font-bold">{Math.round((realOutputs / totalOutputs) * 100)}%</span>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Market Data</h2>
+          <p className="text-sm text-gray-500">Full research library &middot; 5-15 minute deep dive &middot; 44 outputs</p>
+        </div>
+        <span className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
+          {isAtlanta ? '27% live data' : 'No live data'}
+        </span>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          {filterFields.map((f) => (
+            <div key={f.label} className="flex-1 min-w-[140px]">
+              <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{f.label}</label>
+              <select className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                <option>{f.placeholder}</option>
+              </select>
+            </div>
+          ))}
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Search properties..."
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            />
           </div>
         </div>
       </div>
 
-      {/* Key Feature Highlight */}
-      {isAtlanta && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <h3 className="font-semibold text-green-900 mb-2">✅ Atlanta: Real Data Available</h3>
-          <p className="text-sm text-green-800 mb-3">
-            1,028 properties from Fulton County with municipal records, ownership, and transaction history
-          </p>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div className="bg-white rounded p-3">
-              <div className="text-gray-600">Properties (P-01)</div>
-              <div className="text-2xl font-bold text-green-600">1,028</div>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Property Database</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Click any row to open Property Flyout</p>
+          </div>
+          <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">7 outputs</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                {tableHeaders.map((h) => (
+                  <th key={h.id} className={`px-4 py-3 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider ${h.width}`}>
+                    <div className="flex items-center gap-1.5">
+                      {h.label}
+                      <span className="text-[9px] font-mono text-gray-300">{h.id}</span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sampleRows.length > 0 ? sampleRows.map((row, i) => (
+                <tr key={i} className="border-b border-gray-50 hover:bg-blue-50/30 cursor-pointer transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-900">{row.property}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center justify-center w-7 h-5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: SIGNAL_GROUPS.POSITION.color }}>
+                      {row.vintage}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 truncate max-w-[200px]">{row.owner}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{row.rent}</td>
+                  <td className="px-4 py-3 text-gray-700">{row.occ}</td>
+                  <td className="px-4 py-3 text-gray-400 italic text-xs">{row.traffic}</td>
+                  <td className="px-4 py-3 text-gray-400 italic text-xs">{row.pricing}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400 text-sm">
+                    No property data available for this market. Select Atlanta for sample data.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {isAtlanta && (
+          <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+            Showing 5 of 1,028 properties &middot; Scroll or filter to explore
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100" style={{ borderLeftWidth: 4, borderLeftColor: SIGNAL_GROUPS.POSITION.color }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Property Flyout</h3>
+              <p className="text-sm text-gray-500 mt-0.5">Opens on row click &middot; Full property intelligence modal</p>
             </div>
-            <div className="bg-white rounded p-3">
-              <div className="text-gray-600">Total Units (P-01)</div>
-              <div className="text-2xl font-bold text-green-600">249,964</div>
-            </div>
-            <div className="bg-white rounded p-3">
-              <div className="text-gray-600">Owners (P-04)</div>
-              <div className="text-2xl font-bold text-green-600">~850</div>
-            </div>
+            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">{flyoutOutputs.length} outputs</span>
           </div>
         </div>
-      )}
-
-      {/* Output Sections */}
-      {sections.slice(0, showAll ? sections.length : 3).map((section, idx) => (
-        <div key={idx} className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold">{section.title}</h3>
-            <p className="text-sm text-gray-600">{section.description}</p>
-          </div>
-          <div className="space-y-2">
-            {section.outputs.map((output, outputIdx) => (
-              <div key={outputIdx} className="flex items-start justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-1">
-                    <span className="font-mono text-sm font-medium text-blue-600">{output.id}</span>
-                    <span className="font-medium text-sm">{output.name}</span>
-                    {getStatusBadge(output.status)}
-                  </div>
-                  <div className="text-xs text-gray-600">{output.description}</div>
-                </div>
-              </div>
+        <div className="p-4">
+          <div className="flex flex-wrap gap-1.5">
+            {flyoutOutputs.map((id) => (
+              <span key={id} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-50 border border-gray-100 text-xs">
+                <span className="font-mono text-gray-400">{id}</span>
+              </span>
             ))}
           </div>
+          <p className="text-xs text-gray-400 mt-3">
+            Includes Property basics (P-01–P-08), JEDI Score (C-01), Traffic Engine (T-01–T-10), and Trade Area (TA-01–TA-04) outputs.
+          </p>
         </div>
-      ))}
-
-      {/* Show More/Less */}
-      {sections.length > 3 && (
-        <div className="text-center">
-          <button
-            onClick={() => setShowAll(!showAll)}
-            className="px-6 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-          >
-            {showAll ? '▲ Show Less' : `▼ Show ${sections.length - 3} More Sections`}
-          </button>
-        </div>
-      )}
-
-      {/* PropertyIntelligenceModal Note */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold mb-2">✅ PropertyIntelligenceModal - BUILT</h3>
-        <p className="text-sm text-gray-700 mb-3">
-          The property flyout with 5 tabs (Overview, Traffic, Trade Area, Financial, Ownership) has been built with all outputs structured.
-        </p>
-        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-          <li><strong>Phase 2 Integration:</strong> Connect modal to table row clicks</li>
-          <li><strong>Real Data:</strong> Show actual municipal records for Atlanta properties</li>
-          <li><strong>Mock Data:</strong> Display structured placeholders for T/TA/DC outputs</li>
-          <li><strong>DataSourceIndicator:</strong> Hover attribution showing data provenance</li>
-        </ul>
       </div>
 
-      {/* Phase 2 Components */}
-      <div className="bg-purple-50 border border-purple-200 rounded-lg p-6">
-        <h3 className="font-semibold mb-2">🚧 Phase 2: Components to Build</h3>
-        <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-          <li><strong>MarketDataTable:</strong> Sortable table with new columns (Avg Unit Size, Traffic Score, Motivation, Hold Period)</li>
-          <li><strong>Filter Bar:</strong> Submarket, Vintage, Units, Owner Type, Search</li>
-          <li><strong>Demand-Supply Dashboard:</strong> Charts and metrics</li>
-          <li><strong>Rent Intelligence Section:</strong> Vintage comp analysis</li>
-          <li><strong>Ownership Intelligence:</strong> Portfolio views</li>
-          <li><strong>Transaction History:</strong> Cap rate trends, investor activity</li>
-          <li><strong>Traffic Heatmap:</strong> Map overlay with T-02/T-04 visualization</li>
-        </ul>
-      </div>
+      <OutputSection
+        title="Demand-Supply Dashboard"
+        description="Employment, migration, household formation vs pipeline and absorption"
+        outputIds={['D-01', 'D-02', 'D-03', 'D-04', 'D-05', 'D-06', 'D-07', 'D-08', 'D-09', 'D-10', 'D-11', 'S-04', 'S-05', 'S-06', 'S-07', 'S-08', 'S-09']}
+        groupHighlight="DEMAND"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {['D-01', 'D-02', 'D-03', 'D-04', 'D-05', 'D-06', 'D-07', 'D-08', 'D-09', 'D-10', 'D-11'].map((id) => (
+            <OutputCard key={id} outputId={id} status="mock" />
+          ))}
+          {['S-04', 'S-05', 'S-06', 'S-07', 'S-08', 'S-09'].map((id) => (
+            <OutputCard key={id} outputId={id} status="mock" />
+          ))}
+        </div>
+      </OutputSection>
+
+      <OutputSection
+        title="Rent & Pricing Intelligence"
+        description="Rent trends, concessions, wage growth spread, and pricing power"
+        outputIds={['M-01', 'M-03', 'M-05', 'M-07', 'R-01', 'R-02', 'R-03', 'DC-07']}
+        groupHighlight="MOMENTUM"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <OutputCard outputId="M-01" status="mock" />
+          <OutputCard outputId="M-03" status="mock" />
+          <OutputCard outputId="M-05" status="mock" />
+          <OutputCard outputId="M-07" status="mock" />
+          <OutputCard outputId="R-01" status="mock" />
+          <OutputCard outputId="R-02" status="mock" />
+          <OutputCard outputId="R-03" status="mock" />
+          <OutputCard outputId="DC-07" status="pending" />
+        </div>
+      </OutputSection>
+
+      <OutputSection
+        title="Ownership Intelligence"
+        description="Portfolio analysis, seller motivation, and concentration risk"
+        outputIds={['P-04', 'P-05', 'R-07', 'R-09']}
+        groupHighlight="POSITION"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <OutputCard outputId="P-04" status={isAtlanta ? 'real' : 'mock'} />
+          <OutputCard outputId="P-05" status={isAtlanta ? 'real' : 'mock'} />
+          <OutputCard outputId="R-07" status={isAtlanta ? 'real' : 'mock'} />
+          <OutputCard outputId="R-09" status={isAtlanta ? 'real' : 'mock'} />
+        </div>
+      </OutputSection>
+
+      <OutputSection
+        title="Transaction History"
+        description="Cap rates, investor activity, and price benchmarks"
+        outputIds={['M-08', 'M-09', 'P-07']}
+        groupHighlight="MOMENTUM"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <OutputCard outputId="M-08" status={isAtlanta ? 'real' : 'mock'} />
+          <OutputCard outputId="M-09" status={isAtlanta ? 'real' : 'mock'} />
+          <OutputCard outputId="P-07" status={isAtlanta ? 'real' : 'mock'} />
+        </div>
+      </OutputSection>
+
+      <OutputSection
+        title="Traffic & Demand Heatmap"
+        description="Physical and digital traffic patterns, demand momentum overlay"
+        outputIds={['D-05', 'D-06', 'D-07', 'D-08', 'D-09', 'T-02', 'T-04']}
+        groupHighlight="TRAFFIC"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <OutputCard outputId="D-05" status="mock" />
+          <OutputCard outputId="D-06" status="mock" />
+          <OutputCard outputId="D-07" status="mock" />
+          <OutputCard outputId="D-08" status="mock" />
+          <OutputCard outputId="D-09" status="mock" />
+          <OutputCard outputId="T-02" status="pending" />
+          <OutputCard outputId="T-04" status="pending" />
+        </div>
+      </OutputSection>
     </div>
   );
 };

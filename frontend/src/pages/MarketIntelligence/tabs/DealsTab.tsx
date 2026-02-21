@@ -1,19 +1,7 @@
-// DealsTab.tsx - User's active deals in this market
-// Created: 2026-02-21
-// Shows YOUR portfolio deals (not research data)
-
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
 import { Building2, Plus, Calendar, DollarSign } from 'lucide-react';
-interface Deal {
-  id: number;
-  name: string;
-  property_type: string;
-  status: string;
-  jedi_score: number | null;
-  units: number | null;
-  created_at: string;
-}
+import OutputCard, { OutputSection } from '../components/OutputCard';
+import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface DealsTabProps {
   marketId: string;
@@ -21,388 +9,202 @@ interface DealsTabProps {
   onUpdate?: () => void;
 }
 
-const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
-  const navigate = useNavigate();
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
+const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
+  const opportunityOutputs = ['C-01', 'P-03', 'P-05', 'D-09', 'S-05', 'T-01', 'T-04', 'T-06', 'T-09', 'T-10', 'DC-05', 'DC-06', 'DC-10', 'TA-01', 'TA-02'];
+  const pipelineOutputs = ['C-01', 'C-04'];
+  const activityOutputs = ['R-10', 'M-08', 'M-09'];
+  const arbitrageOutputs = ['C-05', 'C-06', 'C-07', 'C-08', 'T-01', 'T-09'];
 
-  useEffect(() => {
-    loadDeals();
-  }, [marketId]);
+  const placeholderDeals = [
+    { name: 'Heritage at Midtown', units: 240, jedi: 78, tags: ['Value-Add', 'B+ Vintage'] },
+    { name: 'Parkside Residences', units: 180, jedi: 72, tags: ['Core-Plus', 'A Class'] },
+    { name: 'Summit Creek Apartments', units: 320, jedi: 65, tags: ['Opportunistic', 'C Vintage'] },
+  ];
 
-  const loadDeals = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/v1/deals?market=${marketId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setDeals(data.deals || []);
-    } catch (error) {
-      console.error('Error loading deals:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusClasses: Record<string, string> = {
-      active: 'status-active',
-      pipeline: 'status-pipeline',
-      closed: 'status-closed',
-      archived: 'status-archived',
-    };
-    return statusClasses[status.toLowerCase()] || 'status-default';
-  };
-
-  if (loading) {
-    return <div className="deals-loading">Loading deals...</div>;
-  }
+  const kanbanColumns = [
+    { stage: 'Screening', count: 4, color: 'bg-gray-100 border-gray-300' },
+    { stage: 'LOI', count: 2, color: 'bg-blue-50 border-blue-300' },
+    { stage: 'Due Diligence', count: 1, color: 'bg-amber-50 border-amber-300' },
+    { stage: 'Closing', count: 1, color: 'bg-green-50 border-green-300' },
+  ];
 
   return (
-    <div className="deals-tab">
-      {/* Header */}
-      <div className="deals-header">
-        <div>
-          <h2>💼 Your Deals in {summary?.market?.display_name || marketId}</h2>
-          <p>
-            {summary?.active_deals_count ?? 0} active {(summary?.active_deals_count ?? 0) === 1 ? 'deal' : 'deals'}
-            • These are properties you own or are pursuing
-          </p>
-        </div>
-        <button 
-          className="create-deal-button"
-          onClick={() => navigate('/deals/create')}
-        >
-          <Plus size={18} />
-          Create Deal
-        </button>
-      </div>
-
-      {/* Deals Grid/List */}
-      {deals.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">
-            <Building2 size={48} />
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Active Opportunities + Pipeline</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {summary?.market?.display_name || marketId} — 26 outputs across deal intelligence
+            </p>
           </div>
-          <h3>No deals yet in this market</h3>
-          <p>Create your first deal to start tracking properties in {summary?.market?.display_name || marketId}</p>
-          <button 
-            className="create-deal-button"
-            onClick={() => navigate('/deals/create')}
-          >
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
             <Plus size={18} />
-            Create Your First Deal
+            New Deal
           </button>
         </div>
-      ) : (
-        <div className="deals-grid">
-          {deals.map(deal => (
-            <div 
-              key={deal.id} 
-              className="deal-card"
-              onClick={() => navigate(`/deals/${deal.id}`)}
-            >
-              <div className="deal-header">
-                <h3>{deal.name}</h3>
-                <span className={`status-badge ${getStatusBadge(deal.status)}`}>
-                  {deal.status}
-                </span>
-              </div>
+      </div>
 
-              <div className="deal-meta">
-                <div className="meta-item">
-                  <Building2 size={14} />
-                  <span>{deal.property_type || 'multifamily'}</span>
-                </div>
-                {deal.units && (
-                  <div className="meta-item">
-                    <DollarSign size={14} />
-                    <span>{deal.units} units</span>
+      <OutputSection
+        title="AI-Recommended Opportunities"
+        description="Enhanced with Traffic + Dev Capacity + Trade Area signals"
+        outputIds={opportunityOutputs}
+      >
+        <div className="space-y-4 mb-6">
+          {placeholderDeals.map((deal, idx) => (
+            <div key={idx} className="border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Building2 size={16} className="text-gray-400" />
+                    <span className="font-semibold text-gray-900">{deal.name}</span>
                   </div>
-                )}
-                <div className="meta-item">
-                  <Calendar size={14} />
-                  <span>{new Date(deal.created_at).toLocaleDateString()}</span>
+                  <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                    <span className="flex items-center gap-1"><DollarSign size={12} />{deal.units} units</span>
+                    <span className="flex items-center gap-1"><Calendar size={12} />Listed 3d ago</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded">JEDI {deal.jedi}</span>
                 </div>
               </div>
-
-              {deal.jedi_score && (
-                <div className="jedi-score-badge">
-                  <span>JEDI Score:</span>
-                  <strong>{deal.jedi_score}</strong>
-                </div>
-              )}
-
-              <div className="deal-footer">
-                <button 
-                  className="view-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/deals/${deal.id}`);
-                  }}
-                >
-                  View Deal →
-                </button>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {deal.tags.map(tag => (
+                  <span key={tag} className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{tag}</span>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {opportunityOutputs.slice(0, 6).map(id => (
+                  <span key={id} className="text-[10px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">{id}</span>
+                ))}
+                <span className="text-[10px] text-gray-400">+{opportunityOutputs.length - 6} more</span>
               </div>
             </div>
           ))}
         </div>
-      )}
-
-      {/* Info Box */}
-      <div className="info-box">
-        <h3>📌 About Your Deals</h3>
-        <p>
-          This tab shows properties in your portfolio that are located in {summary?.market?.display_name || marketId}.
-          These are separate from the "Market Data" tab, which shows research data points for analysis.
-        </p>
-        <div className="info-grid">
-          <div>
-            <strong>Market Data:</strong> Research data for analysis (1,028 properties)
-          </div>
-          <div>
-            <strong>Deals:</strong> Your active portfolio ({summary?.active_deals_count ?? 0} deals)
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">Output Coverage ({opportunityOutputs.length} outputs)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {opportunityOutputs.map(id => (
+              <OutputCard key={id} outputId={id} compact />
+            ))}
           </div>
         </div>
-      </div>
+      </OutputSection>
 
-      <style>{`
-        .deals-tab {
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
+      <OutputSection
+        title="My Pipeline"
+        description="Stage-specific metrics per deal"
+        outputIds={pipelineOutputs}
+      >
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {kanbanColumns.map(col => (
+            <div key={col.stage} className={`rounded-xl border-2 ${col.color} p-4 min-h-[200px]`}>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-semibold text-gray-700">{col.stage}</span>
+                <span className="text-xs font-bold text-gray-500 bg-white px-2 py-0.5 rounded-full">{col.count}</span>
+              </div>
+              {Array.from({ length: Math.min(col.count, 2) }).map((_, i) => (
+                <div key={i} className="bg-white rounded-lg border border-gray-200 p-3 mb-2 shadow-sm">
+                  <div className="h-3 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-2 bg-gray-100 rounded w-1/2"></div>
+                </div>
+              ))}
+              {col.count > 2 && (
+                <p className="text-[11px] text-gray-400 text-center mt-1">+{col.count - 2} more</p>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">Per-Deal Outputs ({pipelineOutputs.length} outputs)</p>
+          <div className="flex gap-2">
+            {pipelineOutputs.map(id => (
+              <OutputCard key={id} outputId={id} compact />
+            ))}
+          </div>
+        </div>
+      </OutputSection>
 
-        .deals-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          background: white;
-          padding: 24px;
-          border-radius: 12px;
-        }
+      <OutputSection
+        title="Market Deal Activity"
+        description="Recent transaction signals and market momentum"
+        outputIds={activityOutputs}
+      >
+        <div className="space-y-3 mb-6">
+          {[
+            { icon: '📰', text: 'Greystar sells 280-unit portfolio in Buckhead for $62M', time: '2h ago', type: 'Sale' },
+            { icon: '📊', text: 'Cap rates compressed 15bps in Midtown submarket', time: '1d ago', type: 'Trend' },
+            { icon: '🏗️', text: 'New 350-unit permit filed near Beltline corridor', time: '2d ago', type: 'Permit' },
+            { icon: '💰', text: 'Investor activity index up 12% MoM in Atlanta MSA', time: '3d ago', type: 'Activity' },
+          ].map((item, idx) => (
+            <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+              <span className="text-lg">{item.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800">{item.text}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{item.time}</p>
+              </div>
+              <span className="text-[10px] font-medium text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200 flex-shrink-0">{item.type}</span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">Signal Outputs ({activityOutputs.length} outputs)</p>
+          <div className="flex gap-2">
+            {activityOutputs.map(id => (
+              <OutputCard key={id} outputId={id} compact />
+            ))}
+          </div>
+        </div>
+      </OutputSection>
 
-        .deals-header h2 {
-          font-size: 20px;
-          font-weight: 700;
-          color: #0f172a;
-          margin: 0 0 8px 0;
-        }
-
-        .deals-header p {
-          font-size: 14px;
-          color: #64748b;
-          margin: 0;
-        }
-
-        .create-deal-button {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 16px;
-          background: #3b82f6;
-          color: white;
-          border: none;
-          border-radius: 6px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .create-deal-button:hover {
-          background: #2563eb;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: white;
-          padding: 64px 24px;
-          border-radius: 12px;
-          text-align: center;
-        }
-
-        .empty-icon {
-          display: flex;
-          align-items: center;
-          justify-center;
-          width: 96px;
-          height: 96px;
-          background: #f8fafc;
-          border-radius: 50%;
-          color: #cbd5e1;
-          margin-bottom: 24px;
-        }
-
-        .empty-state h3 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #0f172a;
-          margin: 0 0 8px 0;
-        }
-
-        .empty-state p {
-          font-size: 14px;
-          color: #64748b;
-          margin: 0 0 24px 0;
-        }
-
-        .deals-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          gap: 20px;
-        }
-
-        .deal-card {
-          background: white;
-          border: 1px solid #e2e8f0;
-          border-radius: 12px;
-          padding: 20px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .deal-card:hover {
-          border-color: #3b82f6;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
-        }
-
-        .deal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 16px;
-        }
-
-        .deal-header h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #0f172a;
-          margin: 0;
-        }
-
-        .status-badge {
-          padding: 4px 10px;
-          border-radius: 12px;
-          font-size: 12px;
-          font-weight: 500;
-        }
-
-        .status-active {
-          background: #dcfce7;
-          color: #15803d;
-        }
-
-        .status-pipeline {
-          background: #dbeafe;
-          color: #1e40af;
-        }
-
-        .status-closed {
-          background: #f1f5f9;
-          color: #64748b;
-        }
-
-        .deal-meta {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin-bottom: 12px;
-        }
-
-        .meta-item {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 13px;
-          color: #64748b;
-        }
-
-        .jedi-score-badge {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          background: #eff6ff;
-          border-radius: 6px;
-          font-size: 13px;
-          margin-bottom: 16px;
-        }
-
-        .jedi-score-badge strong {
-          color: #3b82f6;
-          font-size: 16px;
-          font-weight: 700;
-        }
-
-        .deal-footer {
-          border-top: 1px solid #e2e8f0;
-          padding-top: 16px;
-        }
-
-        .view-button {
-          width: 100%;
-          padding: 8px;
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          color: #3b82f6;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .view-button:hover {
-          background: #3b82f6;
-          color: white;
-          border-color: #3b82f6;
-        }
-
-        .info-box {
-          background: #eff6ff;
-          border: 1px solid #bfdbfe;
-          border-radius: 12px;
-          padding: 20px;
-        }
-
-        .info-box h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1e40af;
-          margin: 0 0 12px 0;
-        }
-
-        .info-box p {
-          font-size: 14px;
-          color: #1e3a8a;
-          margin: 0 0 12px 0;
-        }
-
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 12px;
-          font-size: 13px;
-          color: #1e3a8a;
-        }
-
-        .info-grid strong {
-          color: #1e40af;
-        }
-
-        .deals-loading {
-          background: white;
-          padding: 48px;
-          text-align: center;
-          color: #64748b;
-          border-radius: 12px;
-        }
-      `}</style>
+      <OutputSection
+        title="Strategy Arbitrage Leaderboard"
+        description="Ranked opportunities by alternative strategy upside"
+        outputIds={arbitrageOutputs}
+      >
+        <div className="overflow-x-auto mb-6">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Rank</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Property</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Strategy</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Arbitrage Score</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Traffic Share</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Upside</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { rank: 1, name: 'Peachtree Lofts', strategy: 'Condo Conv.', score: 92, trafficShare: '18%', upside: '+34%' },
+                { rank: 2, name: 'Brookhaven Terrace', strategy: 'STR Hybrid', score: 87, trafficShare: '14%', upside: '+28%' },
+                { rank: 3, name: 'Midtown 440', strategy: 'BTR vs Hold', score: 81, trafficShare: '11%', upside: '+22%' },
+                { rank: 4, name: 'Decatur Station', strategy: 'Value-Add', score: 76, trafficShare: '9%', upside: '+18%' },
+              ].map(row => (
+                <tr key={row.rank} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 text-sm font-bold text-gray-700">#{row.rank}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.name}</td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded">{row.strategy}</span>
+                  </td>
+                  <td className="px-4 py-3 text-sm font-bold text-teal-600">{row.score}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{row.trafficShare}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-green-600">{row.upside}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-xs font-medium text-gray-500 mb-2">Arbitrage Outputs ({arbitrageOutputs.length} outputs)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {arbitrageOutputs.map(id => (
+              <OutputCard key={id} outputId={id} compact />
+            ))}
+          </div>
+        </div>
+      </OutputSection>
     </div>
   );
 };
