@@ -729,3 +729,12 @@
 {"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-21T01:40:23.907Z"}
 {"duration":"1555ms","environment":"development","level":"warn","message":"Slow query detected:","query":"SELECT id, email_address, sync_frequency_minutes, last_sync_at\n         FROM user_email_accounts\n   ","service":"jedire-api","timestamp":"2026-02-21T01:40:25.436Z"}
 {"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T01:40:25.437Z"}
+{"environment":"development","level":"info","message":"Starting scheduled email sync for all accounts","service":"jedire-api","timestamp":"2026-02-21T08:21:02.857Z"}
+{"environment":"development","level":"info","message":"Email sync scheduler started (interval: 15 minutes)","service":"jedire-api","timestamp":"2026-02-21T08:21:02.873Z"}
+{"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T08:21:02.896Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:05.370Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:05.418Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:06.148Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:06.201Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:15.331Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:21:15.338Z"}
