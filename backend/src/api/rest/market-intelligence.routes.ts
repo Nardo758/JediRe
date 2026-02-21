@@ -192,19 +192,11 @@ router.get('/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
       [userId]
     );
 
-    const dealCounts = await pool.query(
-      `SELECT 
-        COALESCE(address, 'unknown') as market_ref,
-        COUNT(*) as deal_count
-       FROM deals
-       WHERE user_id = $1
-       GROUP BY address`,
+    const totalDeals = await pool.query(
+      `SELECT COUNT(*) as deal_count FROM deals WHERE user_id = $1 AND status = 'active'`,
       [userId]
     );
-
-    const dealCountMap = new Map(
-      dealCounts.rows.map(row => [row.market_ref.toLowerCase().replace(/\s+/g, '-'), parseInt(row.deal_count)])
-    );
+    const totalDealCount = parseInt(totalDeals.rows[0]?.deal_count) || 0;
 
     const markets: MarketCardData[] = marketsResult.rows.map(row => ({
       market_id: row.market_id,
@@ -213,7 +205,7 @@ router.get('/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
       coverage_percentage: parseFloat(row.coverage_percentage) || 0,
       data_points_count: row.data_points_count || 0,
       total_units: row.total_units || 0,
-      active_deals_count: dealCountMap.get(row.market_id) || 0,
+      active_deals_count: 0,
       status: row.status,
       vitals: row.jedi_score ? {
         rent_growth_yoy: parseFloat(row.rent_growth_yoy),
@@ -229,7 +221,7 @@ router.get('/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
     const response: MarketOverviewResponse = {
       active_markets_count: markets.length,
       total_data_points: markets.reduce((sum, m) => sum + m.data_points_count, 0),
-      active_deals_count: markets.reduce((sum, m) => sum + m.active_deals_count, 0),
+      active_deals_count: totalDealCount,
       markets,
       alerts
     };
@@ -272,13 +264,13 @@ router.get('/compare', requireAuth, async (req: AuthenticatedRequest, res) => {
         mv.avg_rent_per_unit, mv.occupancy_rate, mv.vacancy_rate,
         mv.absorption_rate, mv.new_supply_units, mv.jedi_score,
         mv.jedi_rating, mv.source as vitals_source,
-        (SELECT COUNT(*) FROM deals WHERE user_id = $1 AND LOWER(REPLACE(address, ' ', '-')) = mcs.market_id) as active_deals_count
+        0 as active_deals_count
        FROM market_coverage_status mcs
        LEFT JOIN LATERAL (
          SELECT * FROM market_vitals WHERE market_id = mcs.market_id ORDER BY date DESC LIMIT 1
        ) mv ON true
-       WHERE mcs.market_id = ANY($2)`,
-      [userId, marketIdArray]
+       WHERE mcs.market_id = ANY($1)`,
+      [marketIdArray]
     );
 
     const response: MarketComparisonResponse = {
@@ -360,8 +352,8 @@ router.get('/:marketId/summary', requireAuth, async (req: AuthenticatedRequest, 
     );
 
     const dealCountResult = await pool.query(
-      "SELECT COUNT(*) as count FROM deals WHERE user_id = $1 AND LOWER(REPLACE(address, ' ', '-')) = $2",
-      [userId, marketId]
+      "SELECT COUNT(*) as count FROM deals WHERE user_id = $1 AND status = 'active'",
+      [userId]
     );
 
     const response: MarketSummaryResponse = {

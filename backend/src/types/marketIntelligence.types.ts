@@ -4,7 +4,7 @@
 
 export interface UserMarketPreference {
   id: number;
-  user_id: number;
+  user_id: string;
   market_id: string;
   display_name: string;
   is_active: boolean;
@@ -134,7 +134,7 @@ export interface MarketComparisonResponse {
 // Service types
 
 export interface GenerateMarketAlertsOptions {
-  user_id: number;
+  user_id: string;
   market_id?: string;
   since?: Date;
 }
