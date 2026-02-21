@@ -40,6 +40,7 @@ import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import { MarketResearchPage } from './pages/MarketResearchPage';
 import { ActiveOwnersPage } from './pages/ActiveOwnersPage';
 import { FutureSupplyPage } from './pages/FutureSupplyPage';
+import { MyMarketsOverview, MarketComparison, MarketDeepDive } from './pages/MarketIntelligence';
 
 
 function AppContent() {
@@ -77,6 +78,9 @@ function AppContent() {
           <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
           <Route path="/market-research/active-owners/:name" element={<ActiveOwnersPage />} />
           <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
+          <Route path="/markets" element={<MyMarketsOverview />} />
+          <Route path="/markets/compare" element={<MarketComparison />} />
+          <Route path="/markets/:marketId" element={<MarketDeepDive />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
