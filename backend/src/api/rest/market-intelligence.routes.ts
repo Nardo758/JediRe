@@ -463,6 +463,8 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       const maxYear = req.query.maxYear ? parseInt(req.query.maxYear as string) : undefined;
       const minUnits = req.query.minUnits ? parseInt(req.query.minUnits as string) : undefined;
       const maxUnits = req.query.maxUnits ? parseInt(req.query.maxUnits as string) : undefined;
+      const minPricePerUnit = req.query.minPricePerUnit ? parseFloat(req.query.minPricePerUnit as string) : undefined;
+      const maxPricePerUnit = req.query.maxPricePerUnit ? parseFloat(req.query.maxPricePerUnit as string) : undefined;
       const ownerType = req.query.ownerType as string;
       const search = req.query.search as string;
       const sortBy = (req.query.sortBy as string) || 'units';
@@ -519,6 +521,18 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       if (maxUnits) {
         whereClause += ` AND pr.units <= $${paramIndex}`;
         params.push(maxUnits);
+        paramIndex++;
+      }
+
+      if (minPricePerUnit) {
+        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) >= $${paramIndex}`;
+        params.push(minPricePerUnit);
+        paramIndex++;
+      }
+
+      if (maxPricePerUnit) {
+        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) <= $${paramIndex}`;
+        params.push(maxPricePerUnit);
         paramIndex++;
       }
 

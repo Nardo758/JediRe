@@ -17,7 +17,6 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { MarketDataPageV2 } from './pages/MarketDataPageV2';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
@@ -37,9 +36,6 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
-import MarketResearchPage from './pages/MarketResearchPage';
-import ActiveOwnersPageStandalone from './pages/ActiveOwnersPage';
-import FutureSupplyPageStandalone from './pages/FutureSupplyPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
@@ -76,10 +72,10 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<MarketDataPageV2 />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
@@ -89,10 +85,10 @@ function AppContent() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           
-          {/* Market Research Routes */}
-          <Route path="/market-research" element={<MarketResearchPage />} />
-          <Route path="/market-research/active-owners" element={<ActiveOwnersPageStandalone />} />
-          <Route path="/market-research/future-supply" element={<FutureSupplyPageStandalone />} />
+          {/* Market Research Redirects */}
+          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
+          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
           
           {/* Market Intelligence */}
           <Route path="/market-intelligence" element={<MarketIntelligencePage />} />

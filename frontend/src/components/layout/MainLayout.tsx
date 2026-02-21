@@ -254,23 +254,6 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
                   
-                  {/* MARKET RESEARCH */}
-                  <SidebarItem
-                    icon="📈"
-                    label="Market Research"
-                    path="/market-data"
-                    isActive={isActivePrefix('/market-data')}
-                    layerConfig={{
-                      sourceType: 'market',
-                      layerType: 'overlay',
-                      defaultStyle: {
-                        colorScale: ['#dcfce7', '#86efac', '#22c55e', '#15803d'],
-                        opacity: 0.5
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-                  
                   {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"

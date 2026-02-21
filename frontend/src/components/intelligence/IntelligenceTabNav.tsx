@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TrendingUp, Search, Newspaper } from 'lucide-react';
+import { TrendingUp, Newspaper } from 'lucide-react';
 
 interface Tab {
   id: string;
@@ -17,18 +17,11 @@ interface Tab {
 
 const tabs: Tab[] = [
   {
-    id: 'market-data',
-    label: 'Market Data',
+    id: 'market-intelligence',
+    label: 'Market Intelligence',
     icon: <TrendingUp className="w-4 h-4" />,
-    path: '/market-data',
-    matchPaths: ['/market-data']
-  },
-  {
-    id: 'market-research',
-    label: 'Market Research',
-    icon: <Search className="w-4 h-4" />,
-    path: '/market-research',
-    matchPaths: ['/market-research', '/market-research/active-owners', '/market-research/future-supply']
+    path: '/market-intelligence',
+    matchPaths: ['/market-intelligence']
   },
   {
     id: 'news-intel',
