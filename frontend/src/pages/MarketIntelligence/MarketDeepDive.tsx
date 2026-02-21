@@ -167,7 +167,7 @@ const MarketDeepDive: React.FC = () => {
         />
       </main>
 
-      <style jsx>{`
+      <style>{`
         .market-deep-dive {
           min-height: 100vh;
           background: #f8fafc;

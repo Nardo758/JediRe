@@ -197,7 +197,7 @@ const MarketOverviewTab: React.FC<MarketOverviewTabProps> = ({ marketId, summary
         </div>
       </section>
 
-      <style jsx>{`
+      <style>{`
         .market-overview-tab {
           display: flex;
           flex-direction: column;

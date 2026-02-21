@@ -160,7 +160,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
         </ul>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .trends-tab {
           display: flex;
           flex-direction: column;

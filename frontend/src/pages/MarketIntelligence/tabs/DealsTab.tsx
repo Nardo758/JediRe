@@ -171,7 +171,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .deals-tab {
           display: flex;
           flex-direction: column;

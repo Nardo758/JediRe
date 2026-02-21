@@ -118,7 +118,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .submarkets-tab {
           display: flex;
           flex-direction: column;

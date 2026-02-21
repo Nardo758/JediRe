@@ -162,7 +162,7 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
         </ul>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .market-data-tab {
           display: flex;
           flex-direction: column;

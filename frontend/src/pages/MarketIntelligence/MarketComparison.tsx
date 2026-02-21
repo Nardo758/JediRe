@@ -220,7 +220,7 @@ const MarketComparison: React.FC = () => {
         </table>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .market-comparison {
           min-height: 100vh;
           background: #f8fafc;
