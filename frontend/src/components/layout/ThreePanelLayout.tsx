@@ -40,7 +40,7 @@ export interface ThreePanelLayoutProps {
   renderContent: (viewId?: string) => ReactNode;
   
   /** Map container for Panel 3 */
-  renderMap: () => ReactNode;
+  renderMap?: () => ReactNode;
   
   /** Optional: Show views panel (default: true if views provided) */
   showViewsPanel?: boolean;
@@ -68,6 +68,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   onNewMap,
 }) => {
   const hasViewsPanel = showViewsPanel && views && views.length > 0;
+  const hasMap = !!renderMap;
   
   const [showViews, setShowViews] = useState(() => {
     if (!hasViewsPanel) return false;
@@ -81,6 +82,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   });
   
   const [showMap, setShowMap] = useState(() => {
+    if (!hasMap) return false;
     const saved = localStorage.getItem(`${storageKey}-show-map`);
     return saved ? JSON.parse(saved) : true;
   });
@@ -233,9 +235,9 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
       )}
 
       {/* Panel 3: Map */}
-      {showMap && (
+      {showMap && hasMap && (
         <div className="flex-1 relative">
-          {renderMap()}
+          {renderMap!()}
         </div>
       )}
 
@@ -267,6 +269,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
           {showContent ? '◀ Content' : '▶ Content'}
         </button>
         
+        {hasMap && (
         <button
           onClick={() => {
             if (!showMap) {
@@ -283,6 +286,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         >
           {showMap ? 'Map ▶' : '◀ Map'}
         </button>
+        )}
       </div>
       </div>
     </div>

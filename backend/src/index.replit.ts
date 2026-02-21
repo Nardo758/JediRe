@@ -21,6 +21,7 @@ import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes'
 import inlineHealthRoutes from './api/rest/inline-health.routes';
 import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
 import propertyTypesRoutes from './api/rest/property-types.routes';
+import gridRoutes from './api/rest/grid.routes';
 
 // Middleware
 import { authenticateToken, optionalAuth } from './middleware/auth';
@@ -101,6 +102,9 @@ app.use('/api/v1/microsoft', authenticateToken, createMicrosoftInlineRoutes({
 }));
 app.use('/api/v1/zoning', authenticateToken, inlineZoningRoutes);
 app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
+
+// Grid routes (Pipeline & Assets Owned)
+app.use('/api/v1/grid', gridRoutes);
 
 // NEW: Market Intelligence routes (auth required for preferences, optional for data)
 const marketIntelRoutes = createMarketIntelligenceRoutes(pool);

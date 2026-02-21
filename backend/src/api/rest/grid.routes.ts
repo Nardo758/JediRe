@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import pool from '../../database/connection';
-import { requireAuth } from '../../middleware/auth';
+import { optionalAuth } from '../../middleware/auth';
 
 interface AuthenticatedRequest extends Request {
   user?: { userId: string; email: string };
 }
 
 const router = Router();
-router.use(requireAuth);
+router.use(optionalAuth);
 
 router.get('/pipeline', async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -74,7 +74,18 @@ router.get('/pipeline', async (req: AuthenticatedRequest, res: Response) => {
 
 router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user!.userId;
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      const mockAssets = [
+        { id: 'demo-1', property_name: 'Peachtree Towers', address: '1200 Peachtree St NE, Atlanta, GA', asset_type: 'multifamily', acquisition_date: '2024-03-15', hold_period: 23, actual_noi: 2850000, proforma_noi: 2700000, noi_variance: 5.6, actual_occupancy: 94.2, proforma_occupancy: 93.0, occupancy_variance: 1.3, actual_avg_rent: 1850, proforma_rent: 1780, rent_variance: 3.9, current_irr: 14.2, projected_irr: 12.5, coc_return: 8.4, equity_multiple: 1.65, total_distributions: 1200000, actual_opex_ratio: 38.5, actual_capex: 450000, proforma_capex: 400000, loan_maturity_date: '2028-06-15', months_to_maturity: 28, refi_risk_flag: false },
+        { id: 'demo-2', property_name: 'Buckhead Commons', address: '3456 Piedmont Rd NE, Atlanta, GA', asset_type: 'multifamily', acquisition_date: '2023-09-01', hold_period: 29, actual_noi: 4100000, proforma_noi: 4350000, noi_variance: -5.7, actual_occupancy: 91.8, proforma_occupancy: 95.0, occupancy_variance: -3.4, actual_avg_rent: 2150, proforma_rent: 2200, rent_variance: -2.3, current_irr: 11.8, projected_irr: 13.0, coc_return: 7.2, equity_multiple: 1.42, total_distributions: 2800000, actual_opex_ratio: 42.1, actual_capex: 680000, proforma_capex: 500000, loan_maturity_date: '2027-03-01', months_to_maturity: 12, refi_risk_flag: true },
+        { id: 'demo-3', property_name: 'Midtown Lofts', address: '789 Spring St NW, Atlanta, GA', asset_type: 'multifamily', acquisition_date: '2024-01-20', hold_period: 25, actual_noi: 1980000, proforma_noi: 1900000, noi_variance: 4.2, actual_occupancy: 96.1, proforma_occupancy: 94.0, occupancy_variance: 2.2, actual_avg_rent: 1720, proforma_rent: 1650, rent_variance: 4.2, current_irr: 15.6, projected_irr: 14.0, coc_return: 9.1, equity_multiple: 1.78, total_distributions: 950000, actual_opex_ratio: 35.2, actual_capex: 280000, proforma_capex: 300000, loan_maturity_date: '2029-01-20', months_to_maturity: 35, refi_risk_flag: false },
+        { id: 'demo-4', property_name: 'Decatur Office Building', address: '400 Church St, Decatur, GA', asset_type: 'office', acquisition_date: '2023-06-10', hold_period: 32, actual_noi: 1450000, proforma_noi: 1600000, noi_variance: -9.4, actual_occupancy: 87.3, proforma_occupancy: 92.0, occupancy_variance: -5.1, actual_avg_rent: 1380, proforma_rent: 1500, rent_variance: -8.0, current_irr: 9.2, projected_irr: 11.5, coc_return: 6.1, equity_multiple: 1.28, total_distributions: 600000, actual_opex_ratio: 44.8, actual_capex: 520000, proforma_capex: 350000, loan_maturity_date: '2026-12-10', months_to_maturity: 10, refi_risk_flag: true },
+        { id: 'demo-5', property_name: 'Sandy Springs Plaza', address: '6100 Lake Forrest Dr, Sandy Springs, GA', asset_type: 'mixed_use', acquisition_date: '2024-06-01', hold_period: 20, actual_noi: 3200000, proforma_noi: 3100000, noi_variance: 3.2, actual_occupancy: 93.5, proforma_occupancy: 92.0, occupancy_variance: 1.6, actual_avg_rent: 1950, proforma_rent: 1900, rent_variance: 2.6, current_irr: 13.4, projected_irr: 12.8, coc_return: 8.8, equity_multiple: 1.55, total_distributions: 1600000, actual_opex_ratio: 36.9, actual_capex: 390000, proforma_capex: 400000, loan_maturity_date: '2029-06-01', months_to_maturity: 40, refi_risk_flag: false },
+      ];
+      return res.json({ success: true, count: mockAssets.length, assets: mockAssets });
+    }
     
     const result = await pool.query(`
       SELECT 
