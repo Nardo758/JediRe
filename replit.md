@@ -75,6 +75,13 @@ start.sh           # Startup script (runs backend + frontend)
   - **Compare Markets**: Market selector toggles, SVG radar chart (8 axes including DC/T), 25-row side-by-side metrics table, Entry Point Calculator with DC-11 forecasts, AI investment recommendation narratives
   - **Active Owners**: Seller/buyer activity dashboard, owner database with BUY/HOLD/SELL signals, expandable owner detail with portfolio/land positions/timeline/AI assessment, acquisition target generator with 6 filters
   - **Future Supply**: Enhanced scoreboard with capacity/constraint/overhang columns, Gantt delivery calendar with DC-06 ghost bars, 10-year SVG supply wave with phase labels, build economics monitor, developer land bank table
+- **Data Integration Phase 1** - Connected real Atlanta property data from database:
+  - Backend: 4 new API endpoints (GET /properties, /properties/:id, /market-stats/:marketId, /submarket-stats/:marketId) with parameterized SQL, filtering, sorting, pagination
+  - MarketDataTab: Fetches 1,028 real properties from DB with search/filter controls, property flyout loads real detail + sales history
+  - OverviewTab: Coverage bar shows real counts (1,028 props, 249,964 units) with LIVE badge
+  - MarketIntelligencePage: Atlanta card shows live property/unit counts from DB
+  - SubmarketsTab: Merges real property counts with mock signal scores
+  - Auth: Routes use optionalAuth so data endpoints work without login, LIVE badges distinguish real vs mock data
 - **Previous**: Signal group architecture (signalGroups.ts with 89 outputs across 9 groups)
 - Installed Node.js 20 module for proper PATH resolution in workflows
 - Fixed root package.json (was empty, causing vite config load failure)

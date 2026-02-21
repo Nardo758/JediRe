@@ -23,7 +23,7 @@ import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
 import propertyTypesRoutes from './api/rest/property-types.routes';
 
 // Middleware
-import { authenticateToken } from './middleware/auth';
+import { authenticateToken, optionalAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 
 const app: Express = express();
@@ -102,8 +102,9 @@ app.use('/api/v1/microsoft', authenticateToken, createMicrosoftInlineRoutes({
 app.use('/api/v1/zoning', authenticateToken, inlineZoningRoutes);
 app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
 
-// NEW: Market Intelligence routes
-app.use('/api/v1/markets', authenticateToken, createMarketIntelligenceRoutes(pool));
+// NEW: Market Intelligence routes (auth required for preferences, optional for data)
+const marketIntelRoutes = createMarketIntelligenceRoutes(pool);
+app.use('/api/v1/markets', optionalAuth, marketIntelRoutes);
 
 // Error handling
 app.use(errorHandler);

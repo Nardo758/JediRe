@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface SubmarketsTabProps {
@@ -162,6 +162,40 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
   const [activeLayer, setActiveLayer] = useState('JEDI');
   const [expandedSubmarket, setExpandedSubmarket] = useState<string | null>(null);
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [liveSubmarketStats, setLiveSubmarketStats] = useState<any[]>([]);
+  const [submarketLoading, setSubmarketLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSubmarketStats = async () => {
+      try {
+        const res = await fetch(`/api/v1/markets/submarket-stats/${marketId}`);
+        const data = await res.json();
+        setLiveSubmarketStats(data.submarkets || []);
+      } catch (err) {
+        console.error('Failed to fetch submarket stats:', err);
+      } finally {
+        setSubmarketLoading(false);
+      }
+    };
+    fetchSubmarketStats();
+  }, [marketId]);
+
+  const mergedSubmarkets = mockSubmarkets.map(sub => {
+    const liveStat = liveSubmarketStats.find(
+      (ls: any) => ls.name?.toLowerCase() === sub.name.toLowerCase() ||
+                    ls.neighborhood_code?.toLowerCase() === sub.name.toLowerCase()
+    );
+    if (liveStat) {
+      return {
+        ...sub,
+        supply: liveStat.total_properties ?? sub.supply,
+        _liveProperties: liveStat.total_properties,
+        _liveUnits: liveStat.total_units,
+        _live: true,
+      };
+    }
+    return { ...sub, _live: false };
+  });
 
   const toggleCompare = (name: string) => {
     setCompareSelection(prev =>
@@ -169,8 +203,8 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
     );
   };
 
-  const comparedSubmarkets = mockSubmarkets.filter(s => compareSelection.includes(s.name));
-  const expandedData = mockSubmarkets.find(s => s.name === expandedSubmarket);
+  const comparedSubmarkets = mergedSubmarkets.filter(s => compareSelection.includes(s.name));
+  const expandedData = mergedSubmarkets.find(s => s.name === expandedSubmarket);
 
   return (
     <div className="flex flex-col gap-6">
@@ -249,7 +283,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {mockSubmarkets.map(sub => (
+              {mergedSubmarkets.map(sub => (
                 <tr key={sub.name} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-3 text-center">
                     <input
@@ -260,12 +294,15 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
                     />
                   </td>
                   <td className="px-4 py-3 font-semibold text-gray-900 sticky left-0 bg-white z-10">
-                    <button
-                      className="text-left hover:text-teal-600 transition-colors underline decoration-dotted underline-offset-2"
-                      onClick={() => setExpandedSubmarket(expandedSubmarket === sub.name ? null : sub.name)}
-                    >
-                      {sub.name}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        className="text-left hover:text-teal-600 transition-colors underline decoration-dotted underline-offset-2"
+                        onClick={() => setExpandedSubmarket(expandedSubmarket === sub.name ? null : sub.name)}
+                      >
+                        {sub.name}
+                      </button>
+                      {(sub as any)._live && <span className="text-[7px] font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded leading-none">LIVE</span>}
+                    </div>
                   </td>
                   {TABLE_COLUMNS.map(col => (
                     <td key={col.key} className="px-3 py-3 text-center whitespace-nowrap">

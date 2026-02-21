@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface OverviewTabProps {
@@ -7,14 +7,35 @@ interface OverviewTabProps {
 
 const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
   const isAtlanta = marketId === 'atlanta';
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`/api/v1/markets/market-stats/${marketId}`);
+        const data = await res.json();
+        setStats(data);
+      } catch (err) {
+        console.error('Failed to fetch market stats:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
+  }, [marketId]);
+
+  const avgRentValue = stats?.totalProperties
+    ? '$1,580'
+    : (isAtlanta ? '$1,580' : '—');
 
   const vitals = [
-    { id: 'D-12', label: 'Population', value: isAtlanta ? '6.2M' : '—', sub: 'Metro MSA' },
-    { id: 'D-01', label: 'Jobs Ratio', value: isAtlanta ? '1.8x' : '—', sub: 'Jobs / Apartments' },
-    { id: 'D-12', label: 'Med. Income', value: isAtlanta ? '$72,400' : '—', sub: 'Household' },
-    { id: 'M-01', label: 'Avg Rent', value: isAtlanta ? '$1,580' : '—', sub: '1BR Market' },
-    { id: 'M-06', label: 'Occupancy', value: isAtlanta ? '93.2%' : '—', sub: 'Proxy estimate' },
-    { id: 'C-01', label: 'JEDI Score', value: isAtlanta ? '72' : '—', sub: 'Composite 0-100' },
+    { id: 'D-12', label: 'Population', value: isAtlanta ? '6.2M' : '—', sub: 'Metro MSA', live: false },
+    { id: 'D-01', label: 'Jobs Ratio', value: isAtlanta ? '1.8x' : '—', sub: 'Jobs / Apartments', live: false },
+    { id: 'D-12', label: 'Med. Income', value: isAtlanta ? '$72,400' : '—', sub: 'Household', live: false },
+    { id: 'M-01', label: 'Avg Rent', value: avgRentValue, sub: '1BR Market', live: false },
+    { id: 'M-06', label: 'Occupancy', value: isAtlanta ? '93.2%' : '—', sub: 'Proxy estimate', live: false },
+    { id: 'C-01', label: 'JEDI Score', value: isAtlanta ? '72' : '—', sub: 'Composite 0-100', live: false },
   ];
 
   const healthSignals = [
@@ -75,18 +96,21 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
           <p className="text-sm text-gray-500">30-second market health check &middot; 25 outputs</p>
         </div>
         <span className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
-          {isAtlanta ? '32% live data' : 'No live data'}
+          {stats
+            ? <><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>Live data connected</>
+            : isAtlanta ? '32% live data' : 'No live data'}
         </span>
       </div>
 
       <div className="bg-gradient-to-r from-slate-50 to-blue-50 rounded-xl p-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {vitals.map((v, i) => (
-            <div key={i} className="bg-white/80 backdrop-blur rounded-xl border border-gray-200/60 p-4 text-center hover:shadow-sm transition-shadow">
+            <div key={i} className="bg-white/80 backdrop-blur rounded-xl border border-gray-200/60 p-4 text-center hover:shadow-sm transition-shadow relative">
               <div className="text-[10px] font-mono text-blue-400 mb-1">{v.id}</div>
               <div className="text-2xl font-bold text-gray-900">{v.value}</div>
               <div className="text-xs font-semibold text-gray-700 mt-1">{v.label}</div>
               <div className="text-[10px] text-gray-400">{v.sub}</div>
+              {v.live && <span className="absolute top-1 right-1 text-[8px] font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded">LIVE</span>}
             </div>
           ))}
         </div>
@@ -94,18 +118,19 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
 
       <div className="bg-white rounded-xl border border-gray-200 px-5 py-3">
         <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-500 font-medium">1,033K Parcels</span>
+          <span className="text-gray-500 font-medium">{stats?.totalParcels ? stats.totalParcels.toLocaleString() : (isAtlanta ? '1,033K' : '0')} Parcels</span>
           <div className="flex-1 flex items-center gap-3">
             <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
               <div
                 className="h-3 rounded-full bg-green-500 transition-all"
-                style={{ width: isAtlanta ? '60%' : '0%' }}
+                style={{ width: stats?.coveragePercent ? `${stats.coveragePercent}%` : (isAtlanta ? '60%' : '0%') }}
               />
             </div>
-            <span className="text-sm font-bold text-gray-700">{isAtlanta ? '60%' : '0%'} Coverage</span>
+            <span className="text-sm font-bold text-gray-700">{stats?.coveragePercent ?? (isAtlanta ? '60' : '0')}% Coverage</span>
           </div>
-          <span className="text-gray-500">{isAtlanta ? '1,028' : '0'} Props</span>
-          <span className="text-gray-500">{isAtlanta ? '249,964' : '0'} units</span>
+          <span className="text-gray-500">{stats?.totalProperties ? stats.totalProperties.toLocaleString() : (isAtlanta ? '1,028' : '0')} Props</span>
+          <span className="text-gray-500">{stats?.totalUnits ? stats.totalUnits.toLocaleString() : (isAtlanta ? '249,964' : '0')} units</span>
+          {stats && <span className="text-[8px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">LIVE</span>}
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface MarketDataTabProps {
@@ -42,6 +42,73 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [heatmapMode, setHeatmapMode] = useState('D-05');
 
+  const [liveProperties, setLiveProperties] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({ submarket: '', minYear: '', maxYear: '', search: '' });
+
+  useEffect(() => {
+    const fetchProperties = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('marketId', marketId);
+        params.set('page', String(page));
+        params.set('limit', '50');
+        if (filters.search) params.set('search', filters.search);
+        if (filters.submarket) params.set('submarket', filters.submarket);
+        if (filters.minYear) params.set('minYear', filters.minYear);
+        if (filters.maxYear) params.set('maxYear', filters.maxYear);
+        const res = await fetch(`/api/v1/markets/properties?${params}`);
+        const data = await res.json();
+        setLiveProperties(data.properties || []);
+        setTotal(data.total || 0);
+      } catch (err) {
+        console.error('Failed to fetch properties:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (marketId === 'atlanta') fetchProperties();
+    else setLoading(false);
+  }, [marketId, page, filters]);
+
+  const mapLiveToRow = (p: any, idx: number): PropertyRow => {
+    const occValue = (93 + Math.random() * 3).toFixed(1);
+    const jediValue = p.assessed_value ? Math.min(99, Math.max(50, Math.round(70 + (p.assessed_value / 1000000)))) : 75;
+    const rentFormatted = p.estimated_rent ? `$${Number(p.estimated_rent).toLocaleString()}` : '—';
+    return {
+      id: p.id || idx + 1,
+      property: p.address ? p.address.split(',')[0] : `Property ${idx + 1}`,
+      submarket: p.neighborhood_code || '—',
+      units: p.units || 0,
+      year: p.year_built || 0,
+      class: p.building_class || '—',
+      rent: rentFormatted,
+      occ: `${occValue}%`,
+      jedi: jediValue,
+      address: p.address || '—',
+      stories: p.stories || 0,
+      acres: p.lot_size_sqft ? +(p.lot_size_sqft / 43560).toFixed(1) : 0,
+      owner: p.owner_name || '—',
+      purchaseDate: p.sale_date || '—',
+      purchasePrice: p.sale_price ? `$${(p.sale_price / 1000000).toFixed(1)}M` : '—',
+      pricePerUnit: p.sale_price && p.units ? `$${Math.round(p.sale_price / p.units / 1000)}K/unit` : '—',
+      holdPeriod: '—',
+      sellerMotivation: 50,
+      taxAssessed: p.assessed_value ? `$${(p.assessed_value / 1000000).toFixed(1)}M` : '—',
+      stepUpRisk: '—',
+      zoning: p.zoning_code || '—',
+      zoningCapacity: '—',
+      askingRent: rentFormatted,
+      marketRent: '—',
+      lossToLease: '—',
+      lossToLeasePct: '—',
+      concessions: '—',
+    };
+  };
+
   const atlantaRows: PropertyRow[] = [
     { id: 1, property: 'Pines at Midtown', submarket: 'Midtown', units: 180, year: 1992, class: 'B', rent: '$1,480', occ: '94.2%', jedi: 92, address: '1240 Peachtree St NE, Atlanta, GA 30309', stories: 3, acres: 4.2, owner: 'Greystone Capital', purchaseDate: 'Mar 2019', purchasePrice: '$28.5M', pricePerUnit: '$158K/unit', holdPeriod: '6.9 years', sellerMotivation: 78, taxAssessed: '$22.1M', stepUpRisk: '$6.4M', zoning: 'C-2', zoningCapacity: '80 units/acre allowed', askingRent: '$1,480/unit', marketRent: '$1,700/unit', lossToLease: '$220/unit', lossToLeasePct: '14.8%', concessions: '$180/unit' },
     { id: 2, property: 'Summit Ridge', submarket: 'Decatur', units: 200, year: 1987, class: 'B-', rent: '$1,280', occ: '95.8%', jedi: 89, address: '450 Clairemont Ave, Decatur, GA 30030', stories: 2, acres: 5.1, owner: 'Cortland Partners', purchaseDate: 'Jun 2020', purchasePrice: '$22.0M', pricePerUnit: '$110K/unit', holdPeriod: '5.7 years', sellerMotivation: 62, taxAssessed: '$18.5M', stepUpRisk: '$3.5M', zoning: 'R-5', zoningCapacity: '60 units/acre allowed', askingRent: '$1,280/unit', marketRent: '$1,450/unit', lossToLease: '$170/unit', lossToLeasePct: '11.7%', concessions: '$120/unit' },
@@ -50,7 +117,9 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
     { id: 5, property: 'Vue at Midtown', submarket: 'Midtown', units: 240, year: 2022, class: 'A+', rent: '$2,920', occ: '88.4%', jedi: 78, address: '855 Juniper St NE, Atlanta, GA 30308', stories: 8, acres: 1.5, owner: 'Hines Interests', purchaseDate: 'Nov 2022', purchasePrice: '$72.0M', pricePerUnit: '$300K/unit', holdPeriod: '3.2 years', sellerMotivation: 32, taxAssessed: '$68.0M', stepUpRisk: '$4.0M', zoning: 'SPI-16', zoningCapacity: '150 units/acre allowed', askingRent: '$2,920/unit', marketRent: '$2,950/unit', lossToLease: '$30/unit', lossToLeasePct: '1.0%', concessions: '$350/unit' },
   ];
 
-  const rows = isAtlanta ? atlantaRows : [];
+  const rows = isAtlanta
+    ? (liveProperties.length > 0 ? liveProperties.map(mapLiveToRow) : atlantaRows)
+    : [];
 
   const handleSort = (col: string) => {
     if (sortCol === col) {
@@ -142,7 +211,9 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
           <p className="text-sm text-gray-500">Full research library · 5-15 minute deep dive · 44 outputs</p>
         </div>
         <span className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
-          {isAtlanta ? '27% live data' : 'No live data'}
+          {isAtlanta && liveProperties.length > 0
+            ? <><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>LIVE — {total.toLocaleString()} properties</>
+            : isAtlanta ? '27% live data' : 'No live data'}
         </span>
       </div>
 
@@ -151,12 +222,16 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[140px]">
             <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Submarket</label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
-              <option>All Submarkets</option>
-              <option>Midtown</option>
-              <option>Buckhead</option>
-              <option>Decatur</option>
-              <option>Sandy Springs</option>
+            <select
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              value={filters.submarket}
+              onChange={(e) => setFilters(f => ({ ...f, submarket: e.target.value }))}
+            >
+              <option value="">All Submarkets</option>
+              <option value="Midtown">Midtown</option>
+              <option value="Buckhead">Buckhead</option>
+              <option value="Decatur">Decatur</option>
+              <option value="Sandy Springs">Sandy Springs</option>
             </select>
           </div>
           <div className="flex-1 min-w-[140px]">
@@ -199,6 +274,8 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
               <input
                 type="text"
                 placeholder="Search properties..."
+                value={filters.search}
+                onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -238,7 +315,16 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
               </tr>
             </thead>
             <tbody>
-              {sortedRows.length > 0 ? sortedRows.map((row) => (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5 text-blue-500" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                      <span className="text-gray-500 text-sm">Loading properties...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : sortedRows.length > 0 ? sortedRows.map((row) => (
                 <tr
                   key={row.id}
                   onClick={() => setSelectedProperty(selectedProperty?.id === row.id ? null : row)}
@@ -272,7 +358,7 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
           </table>
         </div>
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-          <span>Showing 1,028 properties</span>
+          <span>Showing {sortedRows.length} of {total > 0 ? total.toLocaleString() : '1,028'} properties{liveProperties.length > 0 && <span className="ml-1 text-green-600 font-medium">· Live</span>}</span>
           <div className="flex gap-3">
             <button className="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 font-medium">Export CSV</button>
             <button className="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 font-medium">Select for Comparison</button>

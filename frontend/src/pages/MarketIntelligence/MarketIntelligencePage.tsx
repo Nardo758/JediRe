@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SIGNAL_GROUPS } from './signalGroups';
 
@@ -76,8 +76,33 @@ const MarketIntelligencePage: React.FC = () => {
   const navigate = useNavigate();
   const [sortBy, setSortBy] = useState<SortKey>('jediScore');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [atlantaStats, setAtlantaStats] = useState<any>(null);
 
-  const sortedMarkets = [...TRACKED_MARKETS].sort((a, b) => {
+  useEffect(() => {
+    const fetchAtlantaStats = async () => {
+      try {
+        const res = await fetch('/api/v1/markets/market-stats/atlanta');
+        const data = await res.json();
+        setAtlantaStats(data);
+      } catch (err) {
+        console.error('Failed to fetch Atlanta stats:', err);
+      }
+    };
+    fetchAtlantaStats();
+  }, []);
+
+  const markets = TRACKED_MARKETS.map(m => {
+    if (m.id === 'atlanta' && atlantaStats) {
+      return {
+        ...m,
+        properties: atlantaStats.totalProperties || m.properties,
+        units: atlantaStats.totalUnits || m.units,
+      };
+    }
+    return m;
+  });
+
+  const sortedMarkets = [...markets].sort((a, b) => {
     switch (sortBy) {
       case 'jediScore': return b.jediScore - a.jediScore;
       case 'rentGrowth': return b.rentGrowth - a.rentGrowth;
@@ -88,8 +113,8 @@ const MarketIntelligencePage: React.FC = () => {
     }
   });
 
-  const totalProps = TRACKED_MARKETS.reduce((s, m) => s + m.properties, 0);
-  const totalUnits = TRACKED_MARKETS.reduce((s, m) => s + m.units, 0);
+  const totalProps = markets.reduce((s, m) => s + m.properties, 0);
+  const totalUnits = markets.reduce((s, m) => s + m.units, 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -107,7 +132,7 @@ const MarketIntelligencePage: React.FC = () => {
             </button>
           </div>
           <div className="text-sm text-gray-500 mb-4">
-            Tracking {TRACKED_MARKETS.length} markets | {totalProps.toLocaleString()} properties | {totalUnits.toLocaleString()} units
+            Tracking {markets.length} markets | {totalProps.toLocaleString()} properties | {totalUnits.toLocaleString()} units
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -169,6 +194,7 @@ const MarketIntelligencePage: React.FC = () => {
                     </h3>
                     <div className="text-xs text-gray-500 mt-0.5">
                       {market.properties.toLocaleString()} props | {formatUnits(market.units)} units
+                      {market.id === 'atlanta' && atlantaStats && <span className="ml-1 text-[8px] font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded">LIVE</span>}
                     </div>
                   </div>
                   <div className="text-right">
