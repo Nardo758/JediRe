@@ -22,6 +22,7 @@ import inlineHealthRoutes from './api/rest/inline-health.routes';
 import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
 import propertyTypesRoutes from './api/rest/property-types.routes';
 import gridRoutes from './api/rest/grid.routes';
+import inlineNewsRoutes from './api/rest/inline-news.routes';
 
 // Middleware
 import { authenticateToken, optionalAuth } from './middleware/auth';
@@ -105,6 +106,9 @@ app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
 
 // Grid routes (Pipeline & Assets Owned)
 app.use('/api/v1/grid', gridRoutes);
+
+// News Intelligence routes
+app.use('/api/v1/news', inlineNewsRoutes);
 
 // NEW: Market Intelligence routes (auth required for preferences, optional for data)
 const marketIntelRoutes = createMarketIntelligenceRoutes(pool);

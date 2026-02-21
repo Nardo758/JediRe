@@ -7,14 +7,8 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import mapboxgl from 'mapbox-gl';
-import { ThreePanelLayout } from '../components/layout/ThreePanelLayout';
-import { useDealStore } from '../stores/dealStore';
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
-import 'mapbox-gl/dist/mapbox-gl.css';
-
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
@@ -26,16 +20,11 @@ const tabs: { id: ViewType; label: string; icon: string }[] = [
 ];
 
 export function NewsIntelligencePage() {
-  const { deals, fetchDeals } = useDealStore();
-  
   const [activeView, setActiveView] = useState<ViewType>('feed');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [dateRange, setDateRange] = useState<DateRangeOption>('30d');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
-  
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
   
   const [events, setEvents] = useState<NewsEvent[]>([]);
   const [alerts, setAlerts] = useState<NewsAlert[]>([]);
@@ -57,7 +46,6 @@ export function NewsIntelligencePage() {
   const prevDateRange = useRef(dateRange);
 
   useEffect(() => {
-    fetchDeals();
     loadData();
   }, []);
 
@@ -68,38 +56,6 @@ export function NewsIntelligencePage() {
       loadEvents();
     }
   }, [selectedCategory, dateRange]);
-
-  // Initialize map
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return;
-
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [-84.388, 33.749], // Atlanta
-      zoom: 10,
-    });
-
-    map.current.on('load', () => {
-      if (map.current && deals.length > 0) {
-        addDealsToMap(map.current, deals);
-      }
-    });
-
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-      }
-    };
-  }, []);
-
-  // Update map when deals change
-  useEffect(() => {
-    if (map.current && map.current.isStyleLoaded()) {
-      addDealsToMap(map.current, deals);
-    }
-  }, [deals]);
 
   const loadData = async () => {
     setLoading(true);
@@ -134,71 +90,6 @@ export function NewsIntelligencePage() {
     } catch (error) {
       console.error('Error loading events:', error);
     }
-  };
-
-  const addDealsToMap = (m: mapboxgl.Map, deals: any[]) => {
-    if (m.getSource('deals')) {
-      if (m.getLayer('deal-fills')) m.removeLayer('deal-fills');
-      if (m.getLayer('deal-borders')) m.removeLayer('deal-borders');
-      m.removeSource('deals');
-    }
-
-    const geojson = {
-      type: 'FeatureCollection',
-      features: deals
-        .filter((deal) => deal.boundary?.type && deal.boundary?.coordinates)
-        .map((deal) => ({
-          type: 'Feature',
-          geometry: deal.boundary,
-          properties: {
-            id: deal.id,
-            name: deal.name,
-            tier: deal.tier,
-          },
-        })),
-    };
-
-    m.addSource('deals', { type: 'geojson', data: geojson as any });
-
-    m.addLayer({
-      id: 'deal-fills',
-      type: 'fill',
-      source: 'deals',
-      paint: {
-        'fill-color': [
-          'match',
-          ['get', 'tier'],
-          'basic',
-          '#fbbf24',
-          'pro',
-          '#3b82f6',
-          'enterprise',
-          '#10b981',
-          '#6b7280',
-        ],
-        'fill-opacity': 0.2,
-      },
-    });
-
-    m.addLayer({
-      id: 'deal-borders',
-      type: 'line',
-      source: 'deals',
-      paint: {
-        'line-color': [
-          'match',
-          ['get', 'tier'],
-          'basic',
-          '#f59e0b',
-          'pro',
-          '#2563eb',
-          'enterprise',
-          '#059669',
-          '#4b5563',
-        ],
-        'line-width': 2,
-      },
-    });
   };
 
   // Filter events by date range
@@ -424,9 +315,10 @@ export function NewsIntelligencePage() {
     }
   };
 
-  const renderContent = () => (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+  return (
+    <div className="h-full flex flex-col bg-gray-50">
+      <div className="flex items-center gap-1 px-6 pt-4 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+        <h1 className="text-xl font-bold text-gray-900 mr-6">News Intelligence</h1>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -439,54 +331,19 @@ export function NewsIntelligencePage() {
           >
             <span>{tab.icon}</span>
             <span>{tab.label}</span>
+            {tab.id === 'alerts' && unreadAlertCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-xs bg-red-500 text-white rounded-full">{unreadAlertCount}</span>
+            )}
           </button>
         ))}
-        {activeView === 'alerts' && unreadAlertCount > 0 && (
-          <div className="ml-auto text-xs text-gray-500">{unreadAlertCount} unread</div>
-        )}
         {activeView === 'feed' && (
           <div className="ml-auto text-xs text-gray-500">{events.length} events</div>
         )}
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-6">
         {renderViewContent()}
       </div>
     </div>
-  );
-
-  // Map renderer for ThreePanelLayout
-  const renderMap = () => (
-    <>
-      <div ref={mapContainer} className="absolute inset-0" />
-      
-      {/* Map Legend */}
-      <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Legend</h3>
-        <div className="space-y-1.5 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-blue-500" />
-            <span>Employment</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-orange-500" />
-            <span>Development</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-green-500" />
-            <span>Transactions</span>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-
-  return (
-    <ThreePanelLayout
-      storageKey="news"
-      showViewsPanel={false}
-      renderContent={renderContent}
-      renderMap={renderMap}
-    />
   );
 }
 

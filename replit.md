@@ -93,14 +93,23 @@ start.sh           # Startup script (runs backend + frontend)
 - Added `authenticateToken` alias export in auth middleware
 - Both backend and frontend servers running successfully
 
+## Quick Wins Phase (2026-02-21)
+- **News Intelligence Page Rebuilt**: Removed mapbox/ThreePanelLayout dependency, now uses clean full-page layout with 4 tabs (Event Feed, Dashboard, Network, Alerts). Fixed SQL query (removed non-existent columns). 30 news events + 3 alerts loading from database.
+- **Assets Owned Page**: 50 real properties from property_records table with computed metrics
+- **Pipeline Grid**: Real property data served without login requirement
+- **Grid Routes**: Pipeline & Assets Owned grid endpoints registered at /api/v1/grid
+- **News Routes**: 4 endpoints at /api/v1/news (events, alerts, dashboard, network) with optionalAuth
+
 ## Database
 - PostgreSQL with PostGIS extensions
 - 1,028 Fulton County properties (249,964 units) imported
 - 52 market trend records
+- 30 news events, 3 news alerts, news contact credibility data
 - Connection pool max: 20 connections
 
 ## Known Issues
 - LLM API key not configured (AI features disabled)
+- Onboarding status endpoint not yet implemented (404, non-critical)
 
 ## Market Intelligence Module
 - Navigation: Sidebar > Intelligence > Market Intelligence (expandable)
