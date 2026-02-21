@@ -65,6 +65,12 @@ start.sh           # Startup script (runs backend + frontend)
 - start.sh starts backend (ts-node on port 4000) and frontend (vite on port 5000) concurrently
 
 ## Recent Changes (2026-02-21)
+- **Market Intelligence Module Rebuilt** with signal group architecture:
+  - Created signalGroups.ts with 89 outputs across 9 signal groups (Demand, Supply, Momentum, Position, Risk, Composite, Traffic Engine, Dev Capacity, Trade Area)
+  - Built reusable OutputCard + OutputSection components with signal group color coding and hover tooltips
+  - Rebuilt all 5 dashboard tabs: Overview (25 outputs), Market Data (44 outputs), Submarkets (36 outputs), Trends (23 outputs), Deals (26 outputs)
+  - Rebuilt all 3 horizontal pages: Compare Markets (39 outputs, SVG radar chart), Active Owners (10 outputs), Future Supply (21 outputs)
+  - Each section has proper skeleton placeholders, output count badges, and signal group highlighting
 - Installed Node.js 20 module for proper PATH resolution in workflows
 - Fixed root package.json (was empty, causing vite config load failure)
 - Added JWT_REFRESH_SECRET environment variable
