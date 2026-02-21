@@ -37,7 +37,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
       setLoading(true);
       const response = await fetch(`/api/v1/deals?market=${marketId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();

@@ -25,7 +25,7 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
   const loadOverview = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       if (!token) {
         navigate('/login', { replace: true });
         return;
@@ -36,7 +36,7 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
         }
       });
       if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('token');
+        localStorage.removeItem('auth_token');
         navigate('/login', { replace: true });
         return;
       }

@@ -37,7 +37,7 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId, summary }) => {
       // This would call the existing property records API
       const response = await fetch(`/api/v1/property-records?market_id=${marketId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();
