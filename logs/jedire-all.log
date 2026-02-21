@@ -748,3 +748,5 @@
 {"environment":"development","level":"info","message":"No accounts to sync","service":"jedire-api","timestamp":"2026-02-21T08:25:22.202Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:25:59.758Z"}
 {"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:25:59.774Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:26:22.088Z"}
+{"environment":"development","level":"warn","message":"Invalid access token","service":"jedire-api","timestamp":"2026-02-21T08:26:22.134Z"}

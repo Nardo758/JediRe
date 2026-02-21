@@ -25,11 +25,20 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
   const loadOverview = async () => {
     try {
       setLoading(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOverview(null);
+        return;
+      }
       const response = await fetch('/api/v1/markets/overview', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
+      if (!response.ok) {
+        setOverview(null);
+        return;
+      }
       const data = await response.json();
       setOverview(data);
     } catch (error) {
