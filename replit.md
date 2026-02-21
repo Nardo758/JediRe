@@ -82,4 +82,9 @@ start.sh           # Startup script (runs backend + frontend)
 
 ## Known Issues
 - LLM API key not configured (AI features disabled)
-- `DocumentsSection.tsx` is an empty placeholder file
+
+## Market Intelligence Module
+- Navigation: Sidebar > Intelligence > Market Intelligence (expandable)
+- Sub-pages: My Markets, Compare Markets, Active Owners, Future Supply
+- Market Dashboard: 5 tabs (Overview, Market Data, Submarkets, Trends, Deals)
+- Routes: /market-intelligence, /market-intelligence/markets/:marketId, /market-intelligence/compare, /market-intelligence/owners, /market-intelligence/supply

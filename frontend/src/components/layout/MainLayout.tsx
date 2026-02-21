@@ -214,6 +214,45 @@ export const MainLayout: React.FC = () => {
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Intelligence
                   </h3>
+
+                  {/* MARKET INTELLIGENCE */}
+                  <SidebarItem
+                    icon="🧠"
+                    label="Market Intelligence"
+                    path="/market-intelligence"
+                    isActive={isActivePrefix('/market-intelligence')}
+                    hasSubItems={true}
+                    isExpanded={expandedSections.market}
+                    onToggle={() => toggleSection('market')}
+                  />
+                  {expandedSections.market && (
+                    <div className="ml-6 space-y-0.5">
+                      <SidebarItem
+                        icon="📍"
+                        label="My Markets"
+                        path="/market-intelligence"
+                        isActive={isActive('/market-intelligence')}
+                      />
+                      <SidebarItem
+                        icon="⚖️"
+                        label="Compare Markets"
+                        path="/market-intelligence/compare"
+                        isActive={isActive('/market-intelligence/compare')}
+                      />
+                      <SidebarItem
+                        icon="👥"
+                        label="Active Owners"
+                        path="/market-intelligence/owners"
+                        isActive={isActive('/market-intelligence/owners')}
+                      />
+                      <SidebarItem
+                        icon="🏗️"
+                        label="Future Supply"
+                        path="/market-intelligence/supply"
+                        isActive={isActive('/market-intelligence/supply')}
+                      />
+                    </div>
+                  )}
                   
                   {/* MARKET RESEARCH */}
                   <SidebarItem

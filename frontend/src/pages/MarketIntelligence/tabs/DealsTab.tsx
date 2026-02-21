@@ -5,8 +5,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Calendar, DollarSign } from 'lucide-react';
-import type { MarketSummaryResponse } from '../../../types/marketIntelligence.types';
-
 interface Deal {
   id: number;
   name: string;
@@ -19,8 +17,8 @@ interface Deal {
 
 interface DealsTabProps {
   marketId: string;
-  summary: MarketSummaryResponse;
-  onUpdate: () => void;
+  summary?: Record<string, any>;
+  onUpdate?: () => void;
 }
 
 const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
@@ -68,9 +66,9 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
       {/* Header */}
       <div className="deals-header">
         <div>
-          <h2>💼 Your Deals in {summary.market.display_name}</h2>
+          <h2>💼 Your Deals in {summary?.market?.display_name || marketId}</h2>
           <p>
-            {summary.active_deals_count} active {summary.active_deals_count === 1 ? 'deal' : 'deals'}
+            {summary?.active_deals_count ?? 0} active {(summary?.active_deals_count ?? 0) === 1 ? 'deal' : 'deals'}
             • These are properties you own or are pursuing
           </p>
         </div>
@@ -90,7 +88,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
             <Building2 size={48} />
           </div>
           <h3>No deals yet in this market</h3>
-          <p>Create your first deal to start tracking properties in {summary.market.display_name}</p>
+          <p>Create your first deal to start tracking properties in {summary?.market?.display_name || marketId}</p>
           <button 
             className="create-deal-button"
             onClick={() => navigate('/deals/create')}
@@ -158,7 +156,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
       <div className="info-box">
         <h3>📌 About Your Deals</h3>
         <p>
-          This tab shows properties in your portfolio that are located in {summary.market.display_name}.
+          This tab shows properties in your portfolio that are located in {summary?.market?.display_name || marketId}.
           These are separate from the "Market Data" tab, which shows research data points for analysis.
         </p>
         <div className="info-grid">
@@ -166,12 +164,12 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary }) => {
             <strong>Market Data:</strong> Research data for analysis (1,028 properties)
           </div>
           <div>
-            <strong>Deals:</strong> Your active portfolio ({summary.active_deals_count} deals)
+            <strong>Deals:</strong> Your active portfolio ({summary?.active_deals_count ?? 0} deals)
           </div>
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .deals-tab {
           display: flex;
           flex-direction: column;

@@ -4,12 +4,10 @@
 
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
-import type { MarketSummaryResponse } from '../../../types/marketIntelligence.types';
-
 interface TrendsTabProps {
   marketId: string;
-  summary: MarketSummaryResponse;
-  onUpdate: () => void;
+  summary?: Record<string, any>;
+  onUpdate?: () => void;
 }
 
 // Mock historical data (replace with API call to market_vitals table)
@@ -47,7 +45,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
       {/* Header */}
       <div className="trends-header">
         <h2>📈 Market Trends (2012-2024)</h2>
-        <p>12 years of historical performance data for {summary.market.display_name}</p>
+        <p>12 years of historical performance data for {summary?.market?.display_name || marketId}</p>
       </div>
 
       {/* Summary Cards */}
@@ -160,7 +158,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
         </ul>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .trends-tab {
           display: flex;
           flex-direction: column;

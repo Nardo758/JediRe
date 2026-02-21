@@ -4,12 +4,10 @@
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import type { MarketSummaryResponse } from '../../../types/marketIntelligence.types';
-
 interface SubmarketsTabProps {
   marketId: string;
-  summary: MarketSummaryResponse;
-  onUpdate: () => void;
+  summary?: Record<string, any>;
+  onUpdate?: () => void;
 }
 
 // Mock submarket data (replace with API call)
@@ -42,7 +40,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
       {/* Header */}
       <div className="submarkets-header">
         <h2>Submarket Analysis</h2>
-        <p>Supply vs Demand analysis for submarkets in {summary.market.display_name}</p>
+        <p>Supply vs Demand analysis for submarkets in {summary?.market?.display_name || marketId}</p>
       </div>
 
       {/* Submarkets Table */}
@@ -118,7 +116,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .submarkets-tab {
           display: flex;
           flex-direction: column;
