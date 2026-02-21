@@ -228,12 +228,6 @@ export const MainLayout: React.FC = () => {
                   {expandedSections.market && (
                     <div className="ml-6 space-y-0.5">
                       <SidebarItem
-                        icon="📍"
-                        label="My Markets"
-                        path="/market-intelligence"
-                        isActive={isActive('/market-intelligence')}
-                      />
-                      <SidebarItem
                         icon="⚖️"
                         label="Compare Markets"
                         path="/market-intelligence/compare"
