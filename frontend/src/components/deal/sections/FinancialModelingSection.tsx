@@ -7,10 +7,11 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface FinancialModelingSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
 }
 
-export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> = ({ dealId }) => {
+export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Advanced Financial Modeling Suite                 │

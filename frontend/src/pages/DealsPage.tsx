@@ -278,7 +278,7 @@ export function DealsPage() {
     }
   };
 
-  const handleRowClick = (row: PipelineDeal) => navigate(`/deals/${row.id}`);
+  const handleRowClick = (row: PipelineDeal) => navigate(`/deals/${row.id}/detail`);
 
   // Initialize map
   useEffect(() => {
@@ -347,7 +347,7 @@ export function DealsPage() {
     m.on('click', 'deal-fills', (e) => {
       if (e.features && e.features[0]) {
         const dealId = e.features[0].properties?.id;
-        if (dealId) navigate(`/deals/${dealId}`);
+        if (dealId) navigate(`/deals/${dealId}/detail`);
       }
     });
     m.on('mouseenter', 'deal-fills', () => { m.getCanvas().style.cursor = 'pointer'; });

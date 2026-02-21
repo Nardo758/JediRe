@@ -64,19 +64,19 @@ import {
 } from './strategyMockData';
 
 import {
-  dueDiligenceChecklist,
-  phaseProgress,
-  recentFindings
+  acquisitionChecklist as dueDiligenceChecklist,
+  acquisitionDDStats as phaseProgress,
+  acquisitionInspections as recentFindings
 } from './dueDiligenceMockData';
 
 import {
-  teamMembers,
-  communications
+  acquisitionTeamMembers as teamMembers,
+  acquisitionCommunications as communications
 } from './teamMockData';
 
 import {
-  documentCategories,
-  recentDocuments
+  acquisitionDocumentCategories as documentCategories,
+  acquisitionDocuments as recentDocuments
 } from './documentsMockData';
 
 // ============================================================================

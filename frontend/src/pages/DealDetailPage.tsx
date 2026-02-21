@@ -1,21 +1,17 @@
-// DealDetailPage - Refactored with TabGroups
-// Created: 2026-02-20
-// Phase 1: Navigation consolidation (16 tabs → 7 groups)
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp, Settings,
   Building2, Users, Target, Package, MapPin, CreditCard, Calculator,
-  Shield, ClipboardCheck, Calendar, StickyNote, FolderOpen,
-  LogOut, Globe
+  ClipboardCheck, Calendar, StickyNote, FolderOpen,
+  LogOut, Globe, Search, ArrowLeft, Shield, Activity
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
+import { apiClient } from '../services/api.client';
 
-// Import tab components (these would be your existing section components)
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import MarketSection from '../components/deal/sections/MarketSection';
-import CompetitionSection from '../components/deal/sections/CompetitionSection';
+import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
 import SupplySection from '../components/deal/sections/SupplySection';
 import ExitSection from '../components/deal/sections/ExitSection';
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
@@ -25,21 +21,19 @@ import DueDiligenceSection from '../components/deal/sections/DueDiligenceSection
 import TimelineSection from '../components/deal/sections/TimelineSection';
 import TeamSection from '../components/deal/sections/TeamSection';
 import DocumentsSection from '../components/deal/sections/DocumentsSection';
-import FilesSection from '../components/deal/sections/FilesSection';
+import { FilesSection } from '../components/deal/sections/FilesSection';
 import NotesSection from '../components/deal/sections/NotesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
-import ContextSection from '../components/deal/sections/ContextSection';
+import ContextTrackerSection from '../components/deal/sections/ContextTrackerSection';
 
-interface DealDetailPageProps {}
-
-const DealDetailPage: React.FC<DealDetailPageProps> = () => {
+const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Load deal data
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
@@ -49,13 +43,8 @@ const DealDetailPage: React.FC<DealDetailPageProps> = () => {
   const loadDeal = async (id: string) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/deals/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setDeal(data);
+      const response = await apiClient.get(`/api/v1/deals/${id}`);
+      setDeal(response.data);
     } catch (error) {
       console.error('Error loading deal:', error);
     } finally {
@@ -63,34 +52,28 @@ const DealDetailPage: React.FC<DealDetailPageProps> = () => {
     }
   };
 
-  // Keyboard shortcuts (1-7 to switch groups)
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Only if not in an input field
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-
       const keyMap: { [key: string]: string } = {
-        '1': 'overview', // First tab of ANALYSIS group
-        '2': 'financial-model', // First tab of FINANCIAL group
-        '3': 'due-diligence', // First tab of OPERATIONS group
-        '4': 'documents', // First tab of DOCUMENTS group
-        '5': 'ai-agent', // First tab of AI TOOLS group
-        '6': 'deal-status', // DEAL STATUS
-        '7': 'settings', // SETTINGS
+        '1': 'overview',
+        '2': 'financial-model',
+        '3': 'due-diligence',
+        '4': 'documents',
+        '5': 'ai-agent',
+        '6': 'deal-status',
+        '7': 'settings',
       };
-
       if (keyMap[e.key]) {
         setActiveTab(keyMap[e.key]);
       }
     };
-
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  // Tab definitions
   const analysisTabs: Tab[] = [
     { id: 'overview', label: 'Overview', icon: <BarChart3 size={16} />, component: OverviewSection },
     { id: 'market', label: 'Market Intelligence', icon: <TrendingUp size={16} />, component: MarketSection },
@@ -119,7 +102,7 @@ const DealDetailPage: React.FC<DealDetailPageProps> = () => {
 
   const aiToolsTabs: Tab[] = [
     { id: 'ai-agent', label: 'AI Agent / Opus', icon: <Bot size={16} />, component: OpusAISection },
-    { id: 'context', label: 'Context Builder', icon: <Globe size={16} />, component: ContextSection },
+    { id: 'context', label: 'Context Builder', icon: <Globe size={16} />, component: ContextTrackerSection },
   ];
 
   const dealStatusTabs: Tab[] = [
@@ -130,7 +113,6 @@ const DealDetailPage: React.FC<DealDetailPageProps> = () => {
     { id: 'settings', label: 'Deal Settings', icon: <Settings size={16} />, component: DealSettingsComponent },
   ];
 
-  // Find active tab component
   const allTabs = [
     ...analysisTabs,
     ...financialTabs,
@@ -144,286 +126,340 @@ const DealDetailPage: React.FC<DealDetailPageProps> = () => {
   const activeTabData = allTabs.find(tab => tab.id === activeTab);
   const ActiveComponent = activeTabData?.component || OverviewSection;
 
+  const filteredTabs = searchQuery
+    ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
+    : null;
+
   if (loading) {
     return (
-      <div className="deal-detail-loading">
-        <div className="spinner">Loading...</div>
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-500">Loading deal...</span>
+        </div>
       </div>
     );
   }
 
   if (!deal) {
     return (
-      <div className="deal-detail-error">
-        <h2>Deal not found</h2>
-        <button onClick={() => navigate('/deals')}>Back to Deals</button>
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <div className="text-6xl text-slate-300">
+          <Building2 size={64} />
+        </div>
+        <h2 className="text-xl font-semibold text-slate-700">Deal not found</h2>
+        <p className="text-sm text-slate-500">This deal may have been deleted or you don't have access.</p>
+        <button
+          onClick={() => navigate('/deals')}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+        >
+          Back to Deals
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="deal-detail-page">
-      {/* Header */}
-      <div className="deal-header">
-        <button className="back-button" onClick={() => navigate('/deals')}>
-          ← Back to Deals
+    <div className="h-full flex flex-col bg-slate-50">
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
+        <button
+          className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1 transition-colors"
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft size={14} />
+          Back
         </button>
-        <h1>{deal.name || 'Untitled Deal'}</h1>
-        <div className="deal-meta">
-          <span className="deal-type">{deal.property_type || 'multifamily'}</span>
-          {deal.location && <span className="deal-location"><MapPin size={14} /> {deal.location}</span>}
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-slate-900">{deal.name || 'Untitled Deal'}</h1>
+          <span className="text-xs font-medium px-3 py-1 bg-slate-100 text-slate-600 rounded-full capitalize">
+            {deal.project_type || deal.property_type || 'multifamily'}
+          </span>
+          {deal.status && (
+            <span className={`text-xs font-medium px-3 py-1 rounded-full ${
+              deal.status === 'active' ? 'bg-green-100 text-green-700' :
+              deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
+              'bg-yellow-100 text-yellow-700'
+            }`}>
+              {deal.status}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
+          {(deal.address || deal.location) && (
+            <span className="flex items-center gap-1">
+              <MapPin size={14} />
+              {deal.address || deal.location}
+            </span>
+          )}
+          {deal.jedi_score && (
+            <span className="flex items-center gap-1">
+              <Activity size={14} />
+              JEDI Score: {deal.jedi_score}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Main Layout */}
-      <div className="deal-content">
-        {/* Sidebar Navigation */}
-        <aside className="deal-sidebar">
-          <div className="sidebar-search">
-            <input 
-              type="text" 
-              placeholder="Search tabs..." 
-              className="tab-search"
-              onKeyDown={(e) => {
-                // Tab search functionality
-                if (e.key === 'Enter') {
-                  const query = (e.target as HTMLInputElement).value.toLowerCase();
-                  const found = allTabs.find(tab => 
-                    tab.label.toLowerCase().includes(query)
-                  );
-                  if (found) {
-                    setActiveTab(found.id);
-                    (e.target as HTMLInputElement).value = '';
-                  }
-                }
-              }}
-            />
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
+          <div className="p-3">
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search tabs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+
+            {searchQuery && filteredTabs ? (
+              <div className="space-y-0.5">
+                <div className="text-xs text-slate-400 px-3 py-1 font-medium">Search Results ({filteredTabs.length})</div>
+                {filteredTabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }}
+                    className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
+                      activeTab === tab.id
+                        ? 'bg-blue-500 text-white font-medium'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.icon && <span className="flex items-center">{tab.icon}</span>}
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+                {filteredTabs.length === 0 && (
+                  <div className="text-sm text-slate-400 text-center py-4">No matching tabs</div>
+                )}
+              </div>
+            ) : (
+              <nav className="flex-1">
+                <TabGroup
+                  id="analysis"
+                  title="ANALYSIS"
+                  icon={<BarChart3 size={18} />}
+                  tabs={analysisTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  defaultExpanded={true}
+                />
+                <TabGroup
+                  id="financial"
+                  title="FINANCIAL"
+                  icon={<DollarSign size={18} />}
+                  tabs={financialTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
+                <TabGroup
+                  id="operations"
+                  title="OPERATIONS"
+                  icon={<ClipboardCheck size={18} />}
+                  tabs={operationsTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
+                <TabGroup
+                  id="documents"
+                  title="DOCUMENTS"
+                  icon={<FileText size={18} />}
+                  tabs={documentsTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
+                <TabGroup
+                  id="ai-tools"
+                  title="AI TOOLS"
+                  icon={<Bot size={18} />}
+                  tabs={aiToolsTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
+                <TabGroup
+                  id="deal-status"
+                  title="DEAL STATUS"
+                  icon={<TrendingUp size={18} />}
+                  tabs={dealStatusTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  alwaysExpanded={true}
+                />
+                <TabGroup
+                  id="settings"
+                  title="SETTINGS"
+                  icon={<Settings size={18} />}
+                  tabs={settingsTabs}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
+              </nav>
+            )}
           </div>
 
-          <nav className="tab-groups">
-            <TabGroup
-              id="analysis"
-              title="ANALYSIS"
-              icon={<BarChart3 size={18} />}
-              tabs={analysisTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              defaultExpanded={true}
-            />
-
-            <TabGroup
-              id="financial"
-              title="FINANCIAL"
-              icon={<DollarSign size={18} />}
-              tabs={financialTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-            />
-
-            <TabGroup
-              id="operations"
-              title="OPERATIONS"
-              icon={<ClipboardCheck size={18} />}
-              tabs={operationsTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-            />
-
-            <TabGroup
-              id="documents"
-              title="DOCUMENTS"
-              icon={<FileText size={18} />}
-              tabs={documentsTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-            />
-
-            <TabGroup
-              id="ai-tools"
-              title="AI TOOLS"
-              icon={<Bot size={18} />}
-              tabs={aiToolsTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-            />
-
-            <TabGroup
-              id="deal-status"
-              title="DEAL STATUS"
-              icon={<TrendingUp size={18} />}
-              tabs={dealStatusTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              alwaysExpanded={true}
-            />
-
-            <TabGroup
-              id="settings"
-              title="SETTINGS"
-              icon={<Settings size={18} />}
-              tabs={settingsTabs}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-            />
-          </nav>
-
-          {/* Keyboard shortcuts hint */}
-          <div className="shortcuts-hint">
-            <small>Shortcuts: 1-7 to switch groups</small>
+          <div className="mt-auto p-3 border-t border-slate-200">
+            <p className="text-xs text-slate-400 text-center">Press 1-7 to switch groups</p>
           </div>
         </aside>
 
-        {/* Main Content Area */}
-        <main className="deal-main">
-          <ActiveComponent deal={deal} onUpdate={loadDeal} />
+        <main className="flex-1 overflow-y-auto p-6">
+          <ActiveComponent deal={deal} onUpdate={() => dealId && loadDeal(dealId)} />
         </main>
       </div>
-
-      <style jsx>{`
-        .deal-detail-page {
-          min-height: 100vh;
-          background: #f8fafc;
-        }
-
-        .deal-header {
-          background: white;
-          border-bottom: 1px solid #e2e8f0;
-          padding: 20px 24px;
-        }
-
-        .back-button {
-          background: none;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-          font-size: 14px;
-          margin-bottom: 12px;
-        }
-
-        .back-button:hover {
-          color: #334155;
-        }
-
-        .deal-header h1 {
-          font-size: 24px;
-          font-weight: 700;
-          color: #0f172a;
-          margin: 0 0 8px 0;
-        }
-
-        .deal-meta {
-          display: flex;
-          gap: 16px;
-          align-items: center;
-          font-size: 14px;
-          color: #64748b;
-        }
-
-        .deal-type {
-          text-transform: capitalize;
-          background: #f1f5f9;
-          padding: 4px 12px;
-          border-radius: 12px;
-          font-weight: 500;
-        }
-
-        .deal-location {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-
-        .deal-content {
-          display: flex;
-          height: calc(100vh - 140px);
-        }
-
-        .deal-sidebar {
-          width: 280px;
-          background: white;
-          border-right: 1px solid #e2e8f0;
-          overflow-y: auto;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .sidebar-search {
-          margin-bottom: 16px;
-        }
-
-        .tab-search {
-          width: 100%;
-          padding: 8px 12px;
-          border: 1px solid #e2e8f0;
-          border-radius: 6px;
-          font-size: 14px;
-        }
-
-        .tab-search:focus {
-          outline: none;
-          border-color: #3b82f6;
-        }
-
-        .tab-groups {
-          flex: 1;
-        }
-
-        .shortcuts-hint {
-          margin-top: auto;
-          padding-top: 16px;
-          border-top: 1px solid #e2e8f0;
-          color: #94a3b8;
-          text-align: center;
-        }
-
-        .deal-main {
-          flex: 1;
-          overflow-y: auto;
-          padding: 24px;
-        }
-
-        .deal-detail-loading,
-        .deal-detail-error {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          height: 100vh;
-        }
-
-        .spinner {
-          font-size: 18px;
-          color: #64748b;
-        }
-      `}</style>
     </div>
   );
 };
 
-// Placeholder components (replace with actual implementations)
-const DealStatusComponent: React.FC<any> = ({ deal }) => (
-  <div className="deal-status-summary">
-    <h2>Deal Capsule Summary</h2>
-    <div className="capsule-card">
-      <h3>{deal.name}</h3>
-      <div className="status-grid">
-        <div className="status-item">
-          <label>Status</label>
-          <span>{deal.status || 'Active'}</span>
+const DealStatusComponent: React.FC<{ deal: any; onUpdate?: () => void }> = ({ deal }) => {
+  const statusColor = deal?.status === 'active' ? 'green' : deal?.status === 'closed' ? 'blue' : 'yellow';
+  const mode = deal?.deal_category === 'owned' ? 'Performance' : 'Acquisition';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-slate-900">Deal Capsule Summary</h2>
+        <span className={`px-3 py-1 rounded-full text-xs font-medium bg-${statusColor}-100 text-${statusColor}-700`}>
+          {deal?.status || 'Active'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Mode</div>
+          <div className="text-lg font-semibold text-slate-900">{mode}</div>
         </div>
-        <div className="status-item">
-          <label>JEDI Score</label>
-          <span>{deal.jedi_score || 'N/A'}</span>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">JEDI Score</div>
+          <div className="text-lg font-semibold text-blue-600">{deal?.jedi_score || 'N/A'}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Property Type</div>
+          <div className="text-lg font-semibold text-slate-900 capitalize">{deal?.project_type || deal?.property_type || 'N/A'}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <div className="text-xs text-slate-500 mb-1">Units</div>
+          <div className="text-lg font-semibold text-slate-900">{deal?.target_units?.toLocaleString() || 'N/A'}</div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-slate-200 p-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">Deal Details</h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-slate-500">Address:</span>
+            <span className="ml-2 text-slate-900">{deal?.address || 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Budget:</span>
+            <span className="ml-2 text-slate-900">{deal?.budget ? `$${Number(deal.budget).toLocaleString()}` : 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Timeline Start:</span>
+            <span className="ml-2 text-slate-900">{deal?.timeline_start ? new Date(deal.timeline_start).toLocaleDateString() : 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Timeline End:</span>
+            <span className="ml-2 text-slate-900">{deal?.timeline_end ? new Date(deal.timeline_end).toLocaleDateString() : 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Category:</span>
+            <span className="ml-2 text-slate-900 capitalize">{deal?.deal_category || 'N/A'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Tier:</span>
+            <span className="ml-2 text-slate-900 capitalize">{deal?.tier || 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+
+      {deal?.notes && (
+        <div className="bg-white rounded-lg border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-2">Notes</h3>
+          <p className="text-sm text-slate-600">{deal.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DealSettingsComponent: React.FC<{ deal: any; onUpdate?: () => void }> = ({ deal }) => (
+  <div className="space-y-6">
+    <h2 className="text-lg font-bold text-slate-900">Deal Settings</h2>
+
+    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-700">General</h3>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Deal Name</label>
+          <input
+            type="text"
+            defaultValue={deal?.name || ''}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+            readOnly
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Property Type</label>
+          <input
+            type="text"
+            defaultValue={deal?.project_type || deal?.property_type || ''}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
+            readOnly
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Category</label>
+          <input
+            type="text"
+            defaultValue={deal?.deal_category || ''}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
+            readOnly
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Tier</label>
+          <input
+            type="text"
+            defaultValue={deal?.tier || ''}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
+            readOnly
+          />
         </div>
       </div>
     </div>
-  </div>
-);
 
-const DealSettingsComponent: React.FC<any> = ({ deal }) => (
-  <div className="deal-settings">
-    <h2>Deal Settings</h2>
-    <p>Configure deal-specific settings and preferences.</p>
+    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-700">Notifications</h3>
+      <div className="space-y-3">
+        <label className="flex items-center gap-3">
+          <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-500 rounded border-slate-300" />
+          <span className="text-sm text-slate-700">Email notifications for deal updates</span>
+        </label>
+        <label className="flex items-center gap-3">
+          <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-500 rounded border-slate-300" />
+          <span className="text-sm text-slate-700">Alert on market changes affecting this deal</span>
+        </label>
+        <label className="flex items-center gap-3">
+          <input type="checkbox" className="w-4 h-4 text-blue-500 rounded border-slate-300" />
+          <span className="text-sm text-slate-700">Weekly summary report</span>
+        </label>
+      </div>
+    </div>
+
+    <div className="bg-white rounded-lg border border-red-200 p-5 space-y-3">
+      <h3 className="text-sm font-semibold text-red-600">Danger Zone</h3>
+      <p className="text-sm text-slate-500">These actions cannot be undone.</p>
+      <div className="flex gap-3">
+        <button className="px-4 py-2 text-sm border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-50 transition-colors">
+          Archive Deal
+        </button>
+        <button className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+          Delete Deal
+        </button>
+      </div>
+    </div>
   </div>
 );
 

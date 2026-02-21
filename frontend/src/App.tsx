@@ -33,6 +33,7 @@ import { DealShowcasePage } from './pages/DealShowcasePage';
 import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
@@ -103,6 +104,7 @@ function AppContent() {
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />
