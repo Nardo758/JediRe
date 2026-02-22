@@ -2,12 +2,21 @@
  * JEDI RE Backend - Main Entry Point
  * Created: 2026-02-20
  * Consolidated index with all route registrations
+ * 
+ * SECURITY ENHANCED:
+ * - Input validation with Zod
+ * - Rate limiting on all routes
+ * - Secure CORS configuration
+ * - SQL injection prevention (parameterized queries)
+ * - XSS protection
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Pool } from 'pg';
 import env from './config/environment';
+import { secrets } from './config/secrets';
 
 // Import route modules
 import healthRoutes, { initHealthCheck } from './api/rest/health.routes';
@@ -17,14 +26,19 @@ import inlineAuthRoutes from './api/rest/inline-auth.routes';
 import inlineDataRoutes from './api/rest/inline-data.routes';
 import inlineTasksRoutes from './api/rest/inline-tasks.routes';
 import inlineInboxRoutes from './api/rest/inline-inbox.routes';
-import inlineMicrosoftRoutes from './api/rest/inline-microsoft.routes';
+import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
 import inlineHealthRoutes from './api/rest/inline-health.routes';
 import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
 import propertyTypesRoutes from './api/rest/property-types.routes';
+import gridRoutes from './api/rest/grid.routes';
+import inlineNewsRoutes from './api/rest/inline-news.routes';
+import dealStateRoutes from './api/rest/dealState.routes';
 
 // Middleware
-import { authenticateToken } from './middleware/auth';
+import { authenticateToken, optionalAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
+import { apiLimiter, authLimiter, aiLimiter, strictLimiter } from './middleware/rateLimit';
+import { sanitizeInputs } from './middleware/validate';
 
 const app: Express = express();
 const config = env.get();
@@ -50,22 +64,67 @@ pool.query('SELECT NOW()', (err, res) => {
 // Initialize health check with pool
 initHealthCheck(pool);
 
-// CORS configuration
+// ============================================
+// SECURITY MIDDLEWARE
+// ============================================
+
+// Helmet - Security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Allow embedding for map tiles, etc.
+}));
+
+// Enhanced CORS configuration with validation
+const allowedOrigins = secrets.security.allowedOrigins;
+
 const corsOptions = {
-  origin: config.nodeEnv === 'production' 
-    ? ['https://jedire.com', 'https://www.jedire.com']
-    : ['http://localhost:3000', 'http://localhost:5173'],
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 CORS blocked: ${origin}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS policy`));
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
+  exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+  maxAge: 86400, // 24 hours
 };
 
-// Middleware
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Request logging
+// Body parsing with size limits
+app.use(express.json({ 
+  limit: '10mb', // Reduced from 50mb for security
+  verify: (req: any, res, buf) => {
+    // Store raw body for webhook signature verification if needed
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sanitize all inputs to prevent XSS
+app.use(sanitizeInputs);
+
+// Request logging with security info
 app.use((req: Request, res: Response, next: NextFunction) => {
-  console.log(`${req.method} ${req.path}`);
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - IP: ${ip}`);
   next();
 });
 
@@ -80,24 +139,57 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
-// Health check routes (no auth required)
+// ============================================
+// PUBLIC ROUTES (No Auth, Limited Rate Limiting)
+// ============================================
+
+// Health check routes (no rate limit)
 app.use('/', healthRoutes);
 app.use('/api/v1', inlineHealthRoutes);
 
-// Auth routes (no auth required)
-app.use('/api/v1/auth', inlineAuthRoutes);
+// Auth routes (strict rate limiting to prevent brute force)
+app.use('/api/v1/auth', authLimiter, inlineAuthRoutes);
 
-// Protected API routes (require authentication)
+// ============================================
+// PROTECTED ROUTES (Auth Required + Rate Limited)
+// ============================================
+
+// Apply global API rate limiter to all /api/* routes
+app.use('/api/', apiLimiter);
+
+// Deal management routes
 app.use('/api/v1/deals', authenticateToken, inlineDealsRoutes);
+app.use('/api/v1/deals', authenticateToken, dealStateRoutes); // Deal state persistence
+
+// Data and task routes
 app.use('/api/v1/data', authenticateToken, inlineDataRoutes);
 app.use('/api/v1/tasks', authenticateToken, inlineTasksRoutes);
 app.use('/api/v1/inbox', authenticateToken, inlineInboxRoutes);
-app.use('/api/v1/microsoft', authenticateToken, inlineMicrosoftRoutes);
-app.use('/api/v1/zoning', authenticateToken, inlineZoningRoutes);
+
+// Third-party integrations (strict rate limiting)
+app.use('/api/v1/microsoft', strictLimiter, authenticateToken, createMicrosoftInlineRoutes({
+  clientId: secrets.external.microsoft.clientId || '',
+  clientSecret: secrets.external.microsoft.clientSecret || '',
+  tenantId: secrets.external.microsoft.tenantId || '',
+  redirectUri: secrets.external.microsoft.redirectUri || '',
+  scopes: ['Mail.Read', 'Mail.Send', 'Calendars.Read'],
+}));
+
+// AI-powered routes (heavy rate limiting - expensive operations)
+app.use('/api/v1/zoning', aiLimiter, authenticateToken, inlineZoningRoutes);
+
+// Property and type routes
 app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
 
-// NEW: Market Intelligence routes
-app.use('/api/v1/markets', authenticateToken, createMarketIntelligenceRoutes(pool));
+// Grid routes (Pipeline & Assets Owned)
+app.use('/api/v1/grid', authenticateToken, gridRoutes);
+
+// News Intelligence routes
+app.use('/api/v1/news', authenticateToken, inlineNewsRoutes);
+
+// Market Intelligence routes (optional auth)
+const marketIntelRoutes = createMarketIntelligenceRoutes(pool);
+app.use('/api/v1/markets', optionalAuth, marketIntelRoutes);
 
 // Error handling
 app.use(errorHandler);

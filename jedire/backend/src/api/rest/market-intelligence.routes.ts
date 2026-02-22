@@ -454,6 +454,359 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
     }
   });
 
+  // GET /api/v1/markets/properties - List properties with filtering/pagination
+  router.get('/properties', async (req, res) => {
+    try {
+      const marketId = (req.query.marketId as string) || 'atlanta';
+      const submarket = req.query.submarket as string;
+      const minYear = req.query.minYear ? parseInt(req.query.minYear as string) : undefined;
+      const maxYear = req.query.maxYear ? parseInt(req.query.maxYear as string) : undefined;
+      const minUnits = req.query.minUnits ? parseInt(req.query.minUnits as string) : undefined;
+      const maxUnits = req.query.maxUnits ? parseInt(req.query.maxUnits as string) : undefined;
+      const minPricePerUnit = req.query.minPricePerUnit ? parseFloat(req.query.minPricePerUnit as string) : undefined;
+      const maxPricePerUnit = req.query.maxPricePerUnit ? parseFloat(req.query.maxPricePerUnit as string) : undefined;
+      const ownerType = req.query.ownerType as string;
+      const search = req.query.search as string;
+      const sortBy = (req.query.sortBy as string) || 'units';
+      const sortDir = (req.query.sortDir as string) === 'asc' ? 'ASC' : 'DESC';
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const offset = (page - 1) * limit;
+
+      const allowedSortColumns: Record<string, string> = {
+        units: 'pr.units',
+        year_built: 'pr.year_built',
+        assessed_value: 'pr.assessed_value',
+        appraised_value: 'pr.appraised_value',
+        address: 'pr.address',
+        owner_name: 'pr.owner_name',
+        building_sqft: 'pr.building_sqft',
+      };
+      const sortColumn = allowedSortColumns[sortBy] || 'pr.units';
+
+      let whereClause = '';
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      if (marketId === 'atlanta') {
+        whereClause = `WHERE pr.county = 'Fulton' AND pr.state = 'GA' AND pr.units > 0`;
+      } else {
+        whereClause = `WHERE pr.units > 0`;
+      }
+
+      if (search) {
+        whereClause += ` AND (pr.address ILIKE $${paramIndex} OR pr.owner_name ILIKE $${paramIndex})`;
+        params.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      if (minYear) {
+        whereClause += ` AND pr.year_built IS NOT NULL AND pr.year_built ~ '^[0-9]+$' AND pr.year_built::integer >= $${paramIndex}`;
+        params.push(minYear);
+        paramIndex++;
+      }
+
+      if (maxYear) {
+        whereClause += ` AND pr.year_built IS NOT NULL AND pr.year_built ~ '^[0-9]+$' AND pr.year_built::integer <= $${paramIndex}`;
+        params.push(maxYear);
+        paramIndex++;
+      }
+
+      if (minUnits) {
+        whereClause += ` AND pr.units >= $${paramIndex}`;
+        params.push(minUnits);
+        paramIndex++;
+      }
+
+      if (maxUnits) {
+        whereClause += ` AND pr.units <= $${paramIndex}`;
+        params.push(maxUnits);
+        paramIndex++;
+      }
+
+      if (minPricePerUnit) {
+        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) >= $${paramIndex}`;
+        params.push(minPricePerUnit);
+        paramIndex++;
+      }
+
+      if (maxPricePerUnit) {
+        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) <= $${paramIndex}`;
+        params.push(maxPricePerUnit);
+        paramIndex++;
+      }
+
+      if (submarket) {
+        whereClause += ` AND pr.neighborhood_code = $${paramIndex}`;
+        params.push(submarket);
+        paramIndex++;
+      }
+
+      if (ownerType) {
+        whereClause += ` AND pr.owner_name ILIKE $${paramIndex}`;
+        params.push(`%${ownerType}%`);
+        paramIndex++;
+      }
+
+      const countResult = await pool.query(
+        `SELECT COUNT(*) as total FROM property_records pr ${whereClause}`,
+        params
+      );
+      const total = parseInt(countResult.rows[0].total);
+
+      const dataParams = [...params, limit, offset];
+
+      const result = await pool.query(
+        `SELECT 
+          pr.id, pr.parcel_id, pr.county, pr.state, pr.address, pr.city, pr.zip_code,
+          pr.owner_name, pr.owner_address_1, pr.owner_address_2,
+          pr.units, pr.land_acres, pr.year_built, pr.stories, pr.building_sqft,
+          pr.assessed_value, pr.assessed_land, pr.assessed_improvements, pr.appraised_value,
+          pr.land_use_code, pr.class_code, pr.neighborhood_code, pr.subdivision, pr.tax_district,
+          pr.property_type, pr.total_assessed_value,
+          s.name as submarket_name,
+          CASE WHEN pr.assessed_value > 0 AND pr.units > 0 THEN ROUND(pr.assessed_value::numeric / pr.units / 12 * 0.08) ELSE NULL END as estimated_rent,
+          CASE WHEN pr.appraised_value > 0 AND pr.units > 0 THEN ROUND(pr.appraised_value::numeric / pr.units) ELSE NULL END as price_per_unit,
+          CASE 
+            WHEN pr.class_code IN ('C5','C6') THEN 'A'
+            WHEN pr.class_code IN ('C4') THEN 'B'
+            WHEN pr.class_code IN ('C3') THEN 'C'
+            ELSE pr.class_code
+          END as building_class
+        FROM property_records pr
+        LEFT JOIN submarkets s ON s.external_id = pr.neighborhood_code
+        ${whereClause}
+        ORDER BY ${sortColumn} ${sortDir} NULLS LAST
+        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+        dataParams
+      );
+
+      res.json({
+        properties: result.rows,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error) {
+      console.error('Error fetching properties:', error);
+      res.status(500).json({ error: 'Failed to fetch properties' });
+    }
+  });
+
+  // GET /api/v1/markets/properties/:id - Single property detail with sales history
+  router.get('/properties/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const propertyResult = await pool.query(
+        `SELECT 
+          pr.*,
+          s.name as submarket_name,
+          CASE WHEN pr.assessed_value > 0 AND pr.units > 0 THEN ROUND(pr.assessed_value::numeric / pr.units / 12 * 0.08) ELSE NULL END as estimated_rent,
+          CASE WHEN pr.appraised_value > 0 AND pr.units > 0 THEN ROUND(pr.appraised_value::numeric / pr.units) ELSE NULL END as price_per_unit,
+          CASE 
+            WHEN pr.class_code IN ('C5','C6') THEN 'A'
+            WHEN pr.class_code IN ('C4') THEN 'B'
+            WHEN pr.class_code IN ('C3') THEN 'C'
+            ELSE pr.class_code
+          END as building_class
+        FROM property_records pr
+        LEFT JOIN submarkets s ON s.external_id = pr.neighborhood_code
+        WHERE pr.id = $1`,
+        [id]
+      );
+
+      if (propertyResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Property not found' });
+      }
+
+      const property = propertyResult.rows[0];
+
+      const salesResult = await pool.query(
+        `SELECT * FROM property_sales WHERE parcel_id = $1 ORDER BY sale_year DESC`,
+        [property.parcel_id]
+      );
+
+      const currentYear = new Date().getFullYear();
+      const lastSaleYear = salesResult.rows.length > 0 ? salesResult.rows[0].sale_year : null;
+      const holdPeriod = lastSaleYear ? currentYear - lastSaleYear : null;
+
+      let sellerMotivationScore: number | null = null;
+      if (holdPeriod !== null) {
+        if (holdPeriod > 10) {
+          sellerMotivationScore = 85 + Math.min(15, (holdPeriod - 10) * 2);
+        } else if (holdPeriod > 6) {
+          sellerMotivationScore = 60 + (holdPeriod - 6) * 6;
+        } else if (holdPeriod >= 3) {
+          sellerMotivationScore = 30 + (holdPeriod - 3) * 10;
+        } else {
+          sellerMotivationScore = holdPeriod * 10;
+        }
+        sellerMotivationScore = Math.min(100, Math.max(0, sellerMotivationScore));
+      }
+
+      res.json({
+        ...property,
+        sales: salesResult.rows,
+        hold_period: holdPeriod,
+        seller_motivation_score: sellerMotivationScore,
+      });
+    } catch (error) {
+      console.error('Error fetching property detail:', error);
+      res.status(500).json({ error: 'Failed to fetch property detail' });
+    }
+  });
+
+  // GET /api/v1/markets/market-stats/:marketId - Aggregated market statistics
+  router.get('/market-stats/:marketId', async (req, res) => {
+    try {
+      const { marketId } = req.params;
+
+      let whereClause = 'WHERE units > 0';
+      if (marketId === 'atlanta') {
+        whereClause = "WHERE county = 'Fulton' AND state = 'GA' AND units > 0";
+      }
+
+      const statsResult = await pool.query(
+        `SELECT 
+          COUNT(*) as total_properties,
+          COALESCE(SUM(units), 0) as total_units,
+          ROUND(AVG(assessed_value)::numeric, 2) as avg_assessed_value,
+          ROUND(AVG(units)::numeric, 2) as avg_units_per_property,
+          ROUND(STDDEV(assessed_value)::numeric, 2) as stddev_assessed_value,
+          COUNT(DISTINCT owner_name) as unique_owners
+        FROM property_records
+        ${whereClause}`
+      );
+
+      const propertyTypesResult = await pool.query(
+        `SELECT COALESCE(property_type, 'Unknown') as type, COUNT(*) as count
+        FROM property_records
+        ${whereClause}
+        GROUP BY property_type
+        ORDER BY count DESC`
+      );
+
+      const neighborhoodResult = await pool.query(
+        `SELECT 
+          neighborhood_code,
+          COUNT(*) as properties,
+          SUM(units) as total_units,
+          ROUND(AVG(assessed_value)::numeric, 2) as avg_assessed_value
+        FROM property_records
+        ${whereClause} AND neighborhood_code IS NOT NULL
+        GROUP BY neighborhood_code
+        ORDER BY total_units DESC
+        LIMIT 10`
+      );
+
+      const stats = statsResult.rows[0];
+      const totalProperties = parseInt(stats.total_properties);
+      const totalUnits = parseInt(stats.total_units);
+      const avgAssessedValue = parseFloat(stats.avg_assessed_value) || 0;
+      const avgUnits = parseFloat(stats.avg_units_per_property) || 0;
+      const stddevAssessed = parseFloat(stats.stddev_assessed_value) || 0;
+      const uniqueOwners = parseInt(stats.unique_owners) || 0;
+
+      const propertyTypes: Record<string, number> = {};
+      propertyTypesResult.rows.forEach((row: any) => {
+        propertyTypes[row.type] = parseInt(row.count);
+      });
+
+      const demandScore = Math.min(100, Math.round((totalProperties / 500) * 40 + (totalUnits / 5000) * 60));
+      const supplyScore = Math.min(100, Math.round(avgUnits * 5 + (totalUnits > 10000 ? 30 : totalUnits / 333)));
+      const momentumScore = avgAssessedValue > 100000 ? Math.min(100, Math.round(60 + (avgAssessedValue / 500000) * 40)) : Math.min(100, Math.round((avgAssessedValue / 100000) * 60));
+      const ownerConcentration = uniqueOwners > 0 ? totalProperties / uniqueOwners : 1;
+      const positionScore = Math.min(100, Math.round(ownerConcentration * 20 + 40));
+      const riskScore = stddevAssessed > 0 && avgAssessedValue > 0
+        ? Math.min(100, Math.round(100 - (stddevAssessed / avgAssessedValue) * 50))
+        : 50;
+
+      res.json({
+        totalProperties,
+        totalUnits,
+        avgAssessedValue,
+        avgUnitsPerProperty: avgUnits,
+        propertyTypes,
+        neighborhoodStats: neighborhoodResult.rows,
+        coveragePercent: 60,
+        totalParcels: 1033000,
+        signals: {
+          demand: Math.max(0, Math.min(100, demandScore)),
+          supply: Math.max(0, Math.min(100, supplyScore)),
+          momentum: Math.max(0, Math.min(100, momentumScore)),
+          position: Math.max(0, Math.min(100, positionScore)),
+          risk: Math.max(0, Math.min(100, riskScore)),
+        },
+      });
+    } catch (error) {
+      console.error('Error fetching market stats:', error);
+      res.status(500).json({ error: 'Failed to fetch market stats' });
+    }
+  });
+
+  // GET /api/v1/markets/submarket-stats/:marketId - Submarket breakdown
+  router.get('/submarket-stats/:marketId', async (req, res) => {
+    try {
+      const { marketId } = req.params;
+
+      const msaId = marketId === 'atlanta' ? 1 : 1;
+
+      const submarketResult = await pool.query(
+        `SELECT id, name, external_id, properties_count, total_units, avg_occupancy, avg_rent, avg_cap_rate
+        FROM submarkets
+        WHERE msa_id = $1
+        ORDER BY name ASC`,
+        [msaId]
+      );
+
+      let whereClause = 'WHERE units > 0';
+      if (marketId === 'atlanta') {
+        whereClause = "WHERE county = 'Fulton' AND state = 'GA' AND units > 0";
+      }
+
+      const propertyStatsResult = await pool.query(
+        `SELECT 
+          neighborhood_code,
+          COUNT(*) as real_properties,
+          COALESCE(SUM(units), 0) as real_units
+        FROM property_records
+        ${whereClause} AND neighborhood_code IS NOT NULL
+        GROUP BY neighborhood_code`
+      );
+
+      const propertyStatsMap = new Map<string, { real_properties: number; real_units: number }>();
+      propertyStatsResult.rows.forEach((row: any) => {
+        propertyStatsMap.set(row.neighborhood_code, {
+          real_properties: parseInt(row.real_properties),
+          real_units: parseInt(row.real_units),
+        });
+      });
+
+      const submarkets = submarketResult.rows.map((row: any) => {
+        const realStats = propertyStatsMap.get(row.external_id);
+        return {
+          id: row.id,
+          name: row.name,
+          external_id: row.external_id,
+          properties_count: row.properties_count,
+          total_units: row.total_units,
+          avg_occupancy: row.avg_occupancy ? parseFloat(row.avg_occupancy) : null,
+          avg_rent: row.avg_rent ? parseFloat(row.avg_rent) : null,
+          avg_cap_rate: row.avg_cap_rate ? parseFloat(row.avg_cap_rate) : null,
+          real_properties: realStats ? realStats.real_properties : 0,
+          real_units: realStats ? realStats.real_units : 0,
+        };
+      });
+
+      res.json(submarkets);
+    } catch (error) {
+      console.error('Error fetching submarket stats:', error);
+      res.status(500).json({ error: 'Failed to fetch submarket stats' });
+    }
+  });
+
   return router;
 }
 

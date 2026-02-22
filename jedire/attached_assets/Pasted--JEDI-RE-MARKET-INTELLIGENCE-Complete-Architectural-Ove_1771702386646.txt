@@ -1,0 +1,890 @@
+# JEDI RE — MARKET INTELLIGENCE
+# Complete Architectural Overview & Navigation Architecture
+## Version 2.0 — 89 Research Outputs | 8 Signal Groups | 9 Pages
+
+---
+
+# PART 1: SYSTEM ARCHITECTURE
+
+## 1.1 The Intelligence Stack
+
+The Market Intelligence section is a three-layer system:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  LAYER 3: APPLICATION LAYER (9 Pages)                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ My Markets (5 tabs) │ Compare │ Active Owners │ Future Supply │ +more  ││
+│  │ Each page consumes specific outputs and renders them into               ││
+│  │ actionable UI: charts, tables, maps, scores, alerts, AI narratives     ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                            ▲ consumes                                       │
+│  LAYER 2: INTELLIGENCE ENGINE (89 Research Outputs)                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ 8 Signal Groups:                                                        ││
+│  │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                ││
+│  │ │DEMAND  │ │SUPPLY  │ │MOMENTUM│ │POSITION│ │RISK    │                ││
+│  │ │12 out  │ │10 out  │ │10 out  │ │12 out  │ │10 out  │                ││
+│  │ │D-01–12 │ │S-01–10 │ │M-01–10 │ │P-01–12 │ │R-01–10 │                ││
+│  │ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                ││
+│  │ ┌────────┐ ┌────────┐ ┌────────┐                                       ││
+│  │ │COMPOSIT│ │TRAFFIC │ │DEV CAP │ ┌────────┐                            ││
+│  │ │10 out  │ │10 out  │ │11 out  │ │TRADE   │                            ││
+│  │ │C-01–10 │ │T-01–10 │ │DC-01-11│ │AREA    │                            ││
+│  │ │        │ │  ★ NEW │ │  ★ NEW │ │4 out   │                            ││
+│  │ └────────┘ └────────┘ └────────┘ │TA-01-04│                            ││
+│  │                                   │  ★ NEW │                            ││
+│  │                                   └────────┘                            ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                            ▲ derives from                                   │
+│  LAYER 1: DATA SOURCES (Raw Inputs)                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────┐│
+│  │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      ││
+│  │ │ Municipal    │ │ Federal     │ │ Scrapers    │ │ Traffic     │      ││
+│  │ │ Records     │ │ APIs        │ │             │ │ Data        │      ││
+│  │ │ • Parcels   │ │ • BLS Jobs  │ │ • Apts.com  │ │ • State DOT │      ││
+│  │ │ • Permits   │ │ • Census    │ │ • Google    │ │ • Google    │      ││
+│  │ │ • Deeds     │ │ • Freddie   │ │   Places    │ │   Maps/Pop  │      ││
+│  │ │ • Tax Rolls │ │ • BEA       │ │ • Google    │ │   Times     │      ││
+│  │ │ • Zoning    │ │ • FEMA      │ │   Trends    │ │ • Transit   │      ││
+│  │ └─────────────┘ └─────────────┘ └─────────────┘ │   Agencies  │      ││
+│  │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ └─────────────┘      ││
+│  │ │ User Data   │ │ News/Email  │ │ Third-Party │                        ││
+│  │ │ • PMS       │ │ • NewsAPI   │ │ • CoStar    │                        ││
+│  │ │ • Lease     │ │ • Broker    │ │ • SpyFu     │                        ││
+│  │ │   actuals   │ │   emails    │ │ • RSMeans   │                        ││
+│  │ │ • Traffic   │ │ • Alerts    │ │ • Municode  │                        ││
+│  │ │   validation│ │             │ │             │                        ││
+│  │ └─────────────┘ └─────────────┘ └─────────────┘                        ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## 1.2 Signal Group Summary (89 Outputs)
+
+| Signal Group | ID Range | Count | Level | Core Question |
+|-------------|----------|-------|-------|---------------|
+| **DEMAND** | D-01 to D-12 | 12 | MSA / Submarket | "Do enough people want to live here?" |
+| **SUPPLY** | S-01 to S-10 | 10 | MSA / Submarket / Project | "How much competition is being built?" |
+| **MOMENTUM** | M-01 to M-10 | 10 | MSA / Submarket / Property | "Which direction are rents and values moving?" |
+| **POSITION** | P-01 to P-12 | 12 | Property | "What is the property's unique situation?" |
+| **RISK** | R-01 to R-10 | 10 | All levels | "What could go wrong?" |
+| **COMPOSITE** | C-01 to C-10 | 10 | All levels | "What does the AI think when it synthesizes everything?" |
+| **TRAFFIC** ★ | T-01 to T-10 | 10 | Property | "How many people walk in this property per week?" |
+| **DEV CAPACITY** ★ | DC-01 to DC-11 | 11 | Submarket / Parcel | "What COULD be built, not just what IS being built?" |
+| **TRADE AREA** ★ | TA-01 to TA-04 | 4 | Property / Trade Area | "Who is the competitive set for this specific property?" |
+| | | **89** | | |
+
+★ = New signal groups added in v2.0
+
+## 1.3 Vertical vs. Horizontal View Architecture
+
+```
+MARKET INTELLIGENCE
+│
+├── VERTICAL VIEWS (deep-dive into ONE market)
+│   │
+│   └── My Markets → [Select Atlanta] → 5-Tab Dashboard
+│       ├── Overview ─── 30-second snapshot
+│       ├── Market Data ─ Full research library
+│       ├── Submarkets ── WHERE within the market
+│       ├── Trends ────── HOW is it changing
+│       └── Deals ─────── Active opportunities + pipeline
+│
+├── HORIZONTAL VIEWS (compare ACROSS markets)
+│   │
+│   ├── Compare Markets ── Side-by-side 2-4 MSAs with AI recommendation
+│   ├── Active Owners ──── Ownership intelligence across ALL tracked markets
+│   └── Future Supply ──── Supply risk dashboard across ALL tracked markets
+│
+└── RELATIONSHIP: Vertical goes DEEP. Horizontal goes WIDE.
+    A user typically starts horizontal (which market?),
+    then goes vertical (deep into Atlanta),
+    then goes horizontal again (who owns these properties across markets?).
+```
+
+---
+
+# PART 2: THE 89 RESEARCH OUTPUTS — COMPLETE CATALOG
+
+## 2.1 DEMAND SIGNAL (12 outputs)
+
+These answer: **"Do enough people want to live/work here to sustain or grow rents?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| D-01 | Jobs-to-Apartments Ratio | How many jobs exist per apartment unit (>4.0 = undersupplied) | BLS API + S-01 | FREE | Monthly | MSA/Sub |
+| D-02 | New Jobs to New Units Ratio | Are new jobs outpacing new supply? (>5.0 = strong) | BLS + S-02 | FREE | Monthly | MSA/Sub |
+| D-03 | Net Migration to New Supply | Population inflow vs units being built | Census + S-02 | FREE | Annual | MSA |
+| D-04 | Household Formation to Supply | New households forming vs new units | Census + S-02 | FREE | Annual | MSA |
+| D-05 | Traffic Count Growth Rate | YoY change in vehicle trips on roads near properties | State DOT | FREE | Annual+ | Road Segment |
+| D-06 | Traffic Acceleration | Is traffic growth itself accelerating? (2nd derivative) | D-05 time series | Computed | Quarterly | Road Segment |
+| D-07 | Digital-Physical Traffic Gap | Gap between online search interest and physical traffic | Google Trends + DOT | FREE | Monthly | Submarket |
+| D-08 | Search Interest Volume | Google Trends volume for submarket + apartment keywords | Google Trends API | FREE | Weekly | Submarket |
+| D-09 | Demand Momentum Score | Composite demand signal (0-100) from all D outputs | Computed | Computed | Monthly | MSA/Sub |
+| D-10 | Employment Gravity Score | Concentration and proximity of major employers | BLS + Census LODES | FREE | Quarterly | Submarket |
+| D-11 | Rent-to-Mortgage Discount | Gap between renting and buying — wider = more rent demand | M-01 + Freddie Mac | FREE | Monthly | MSA |
+| D-12 | Population & Demographics | Population, growth rate, median HHI, age distribution | Census ACS | FREE | Annual | MSA/Sub |
+
+## 2.2 SUPPLY SIGNAL (10 outputs)
+
+These answer: **"How much competition exists and is coming?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| S-01 | Existing Inventory Map | Every apartment property: address, units, year built, class | Municipal Records | FREE | Real-time | Property |
+| S-02 | Pipeline: Under Construction | Projects actively being built with unit count + est. delivery | Municipal Permits | FREE | Monthly | Project |
+| S-03 | Pipeline: Permitted Not Started | Approved projects that haven't broken ground yet | Municipal Permits | FREE | Monthly | Project |
+| S-04 | Absorption Runway | Months needed to absorb all pipeline at current absorption | S-02+03 / Historical | Computed | Monthly | MSA/Sub |
+| S-05 | Delivery Clustering | Geographic and temporal clustering of deliveries | S-02 geospatial+time | Computed | Monthly | Submarket |
+| S-06 | Permit Momentum | QoQ trend in new permits — rising or falling? | S-03 trend | Computed | Quarterly | MSA/Sub |
+| S-07 | Construction Cost vs Rent Yield | Is building new still profitable? (YoC vs cap rate) | RSMeans + M-01 | $200/mo | Quarterly | MSA |
+| S-08 | Saturation Index | Units per capita relative to demand signals | S-01 / D-12 + S-02 | Computed | Monthly | Submarket |
+| S-09 | Permit-to-Delivery Conversion | What % of permits actually become buildings? | Historical S-03→S-02 | Computed | Quarterly | MSA |
+| S-10 | Vintage Breakdown | Distribution of stock by decade of construction | P-01 year_built | FREE | Real-time | MSA/Sub |
+
+## 2.3 MOMENTUM SIGNAL (10 outputs)
+
+These answer: **"Which direction are rents, values, and market health moving?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| M-01 | Rent Trends by Vintage Class | Average asking rent by A/B/C class over time | Apartments.com Scraper | $50/mo | Weekly | MSA/Sub |
+| M-02 | Rent Acceleration Rate | Is rent growth itself speeding up or slowing? | M-01 2nd derivative | Computed | Monthly | MSA/Sub |
+| M-03 | Concession Tracking | Average concession value by property and submarket | Apartments.com Scraper | $50/mo | Weekly | Property |
+| M-04 | Concession Velocity | Are concessions increasing or decreasing? | M-03 trend | Computed | Monthly | MSA/Sub |
+| M-05 | Rent vs Wage Growth Spread | Gap between rent growth and wage growth (+ = headroom) | M-01 + BLS wages | FREE | Quarterly | MSA |
+| M-06 | Occupancy Proxy | Estimated occupancy from available-unit tracking | Apartments.com avail. | $50/mo | Weekly | Property |
+| M-07 | Traffic-to-Rent Elasticity | How much rent responds to traffic growth (higher = lagging) | D-05 + M-01 correl. | Computed | Quarterly | Submarket |
+| M-08 | Cap Rate Trends | Direction of cap rates from transaction data | Municipal sale records | FREE | Quarterly | MSA/Sub |
+| M-09 | Investor Activity Index | Volume and velocity of transactions | Municipal deed freq. | FREE | Monthly | MSA/Sub |
+| M-10 | Review Sentiment Score | NLP analysis of Google/Yelp reviews for comp set | Google Places reviews | FREE | Monthly | Property |
+
+## 2.4 POSITION SIGNAL (12 outputs)
+
+These answer: **"What is this specific property's unique situation?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| P-01 | Property Card (Municipal) | Address, units, year built, lot size, stories, parking | Municipal Records | FREE | Real-time | Property |
+| P-02 | Vintage Classification | Class A/A-/B+/B/B-/C derived from year built | P-01 year_built | Computed | Static | Property |
+| P-03 | Loss-to-Lease Estimate | Gap between actual rent and market rent for vintage | M-01 comp − actual | Computed | Monthly | Property |
+| P-04 | Ownership Profile & Hold Period | Current owner, purchase date, purchase price, hold years | Municipal Deeds | FREE | Real-time | Property |
+| P-05 | Seller Motivation Score | Likelihood owner is motivated to sell (0-100) | P-04 + R-09 + patterns | Computed | Monthly | Property |
+| P-06 | Tax Assessment & Step-Up Risk | Current assessed value and likely reassessment on sale | Municipal Tax Records | FREE | Annual | Property |
+| P-07 | Price/Unit Benchmarks | Recent $/unit and $/SF from comparable transactions | Municipal sale records | FREE | Quarterly | MSA/Sub |
+| P-08 | Zoning & Development Capacity | What's allowed on this parcel: density, height, setbacks | Municipal Zoning + Municode AI | FREE | Quarterly | Property |
+| P-09 | Amenity Density Score | Restaurants, transit, retail within walking distance | Google Places API | FREE | Monthly | Property |
+| P-10 | Revenue Conversion Efficiency | Actual GPR vs market potential (measures management quality) | PMS Integration | PMS | Monthly | Property |
+| P-11 | Expense Efficiency Gap | OpEx vs comp set — where is money being wasted? | PMS Integration | PMS | Monthly | Property |
+| P-12 | Turnover Cost Impact | Cost of turnover (make-ready, vacancy loss, concessions) | PMS Integration | PMS | Monthly | Property |
+
+## 2.5 RISK SIGNAL (10 outputs)
+
+These answer: **"What could go wrong and how badly?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| R-01 | Affordability Absorption Threshold | Max rent the market can sustain (30% of median renter HHI) | Census + M-01 | FREE | Quarterly | MSA/Sub |
+| R-02 | Vintage Convergence Rate | Is the A-C rent spread widening (good for value-add) or compressing? | M-01 spread trend | Computed | Monthly | MSA/Sub |
+| R-03 | Concession Drag Rate | Concessions as % of GPR — higher = weaker market | M-03 / M-01 | Computed | Monthly | MSA/Sub |
+| R-04 | Insurance Cost Trends | YoY change in insurance costs for the MSA | Industry reports | $200/yr | Annual | MSA |
+| R-05 | Tax Reassessment Risk | Likely tax increase on acquisition (assessed vs sale price gap) | P-06 + sale price | Computed | On txn | Property |
+| R-06 | Deferred Maintenance Estimate | Estimated capex needs based on age and efficiency gaps | P-01 age + P-10/11 | Computed | Quarterly | Property |
+| R-07 | Ownership Concentration Risk | Market share of top 3 owners (higher = less competition for deals) | P-04 aggregated | Computed | Quarterly | Submarket |
+| R-08 | Seasonal Traffic Swing | How much traffic varies by season (higher = revenue volatility) | D-05 seasonal var. | Computed | Annual | Property |
+| R-09 | Owner Hold Period vs Market Cycle | Is owner past typical hold? Debt maturity likely? | P-04 + M-08 trend | Computed | Quarterly | Property |
+| R-10 | News Sentiment & Alerts | AI-parsed news and email for market-moving events | NewsAPI + Email Intel | $50/mo | Real-time | MSA/Sub |
+
+## 2.6 COMPOSITE / AI PREDICTION (10 outputs)
+
+These answer: **"What does the AI recommend when it synthesizes everything?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| C-01 | JEDI Score (0-100) | Single composite score: "Should I invest here?" | All 5 master signals | Computed | Daily | All levels |
+| C-02 | Rent Growth Forecast (AI) | ML-predicted rent trajectory 1-5 years | All demand+supply+momentum | Computed | Monthly | MSA/Sub |
+| C-03 | Occupancy Trajectory Model | Predicted occupancy path based on supply/demand dynamics | Supply + demand + momentum | Computed | Monthly | MSA/Sub |
+| C-04 | Broker OM Variance Report | Gap between broker's assumptions and JEDI's assumptions | OM inputs vs AI outputs | Computed | Per deal | Property |
+| C-05 | Strategy Arbitrage Score | Spread between best and second-best strategy IRR | All strategy analyses | Computed | Per deal | Property |
+| C-06 | Apt-to-Condo Conversion Spread | Rental NOI vs condo sell-out value comparison | M-01 + condo comps | Computed | Per deal | Property |
+| C-07 | Build-to-Rent vs Hold Breakeven | Is it cheaper to build new or buy existing? | S-07 + P-07 + M-01 | Computed | Per deal | Property |
+| C-08 | STR Hybrid Revenue Uplift | Revenue gain from converting some units to short-term rental | LTR NOI vs STR model | Computed | Per deal | Property |
+| C-09 | Sensitivity Scenario Generator | Bull/Base/Bear scenarios with probability weights | Monte Carlo on all inputs | Computed | Per deal | Property |
+| C-10 | Submarket Ranking Report | Ranked list of all submarkets by JEDI Score with AI narrative | C-01 per submarket | Computed | Monthly | Submarket |
+
+## 2.7 TRAFFIC ENGINE — ★ NEW (10 outputs)
+
+These answer: **"How many people walk into this property per week?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| T-01 | Weekly Walk-In Prediction | Actual estimated walk-ins/week (e.g., "2,847/week") | ADT + Census + Generators + Capture | Computed | Daily | Property |
+| T-02 | Physical Traffic Score (0-100) | Drive-by and foot traffic volume passing the property | State DOT + Road Class + Intersect. | FREE | Monthly | Property |
+| T-03 | Digital Traffic Score (0-100) | Online search interest for the property / area | Google Trends + Platform + Scraper | FREE | Weekly | Property |
+| T-04 | Traffic Correlation Signal | Hidden Gem / Validated / Hype Check / Dead Zone | T-02 vs T-03 (2×2 matrix) | Computed | Weekly | Property |
+| T-05 | Traffic-to-Lease Prediction | Estimated new leases/month from traffic volume | T-01 + T-03 → ML model | Computed | Weekly | Property |
+| T-06 | Capture Rate | % of passing traffic that enters property | Frontage + Corner + Setback + Signs | FREE | Static | Property |
+| T-07 | Property Traffic Trajectory | Is property-level traffic accelerating or declining? | T-01 8-week time series | Computed | Weekly | Property |
+| T-08 | Generator Proximity Score | Traffic contribution from nearby anchors | Census + BLS + Transit + Places | FREE | Monthly | Property |
+| T-09 | Competitive Traffic Share | Property's % of total submarket walk-ins | T-01 subject / T-01 trade area sum | Computed | Weekly | Property |
+| T-10 | Traffic Validation Confidence | How reliable is the prediction based on user feedback | User actuals vs predicted | FREE | Ongoing | Property |
+
+**The Traffic Engine's key innovation**: It produces an actual NUMBER (2,847 walk-ins/week), not a score. This number feeds directly into revenue models: `walk-ins × conversion rate × avg rent = projected GPR velocity.`
+
+**2×2 Matrix (T-04) classifications:**
+
+```
+              HIGH Physical Traffic
+                     │
+  HIDDEN GEM         │       VALIDATED WINNER
+  (High phys, low    │       (Both high —
+   digital = under-  │        expect competition)
+   discovered)       │
+                     │
+LOW Digital ─────────┼──────────── HIGH Digital
+                     │
+  DEAD ZONE          │       HYPE CHECK
+  (Both low =        │       (High digital, low
+   avoid)            │        physical = verify
+                     │        fundamentals)
+              LOW Physical Traffic
+```
+
+## 2.8 DEVELOPMENT CAPACITY INTELLIGENCE — ★ NEW (11 outputs)
+
+These answer: **"What COULD be built? How constrained is supply long-term?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| DC-01 | Capacity Ratio | Remaining developable capacity as % of existing stock | Zoning + Vacant Parcels / S-01 | FREE | Quarterly | Submarket |
+| DC-02 | Buildout Timeline | Years until submarket reaches practical build-out | Weighted Capacity / Annual Abs. | Computed | Quarterly | Submarket |
+| DC-03 | Supply Constraint Score (0-100) | How supply-constrained is this submarket? Higher = more constrained = better | Composite: zoning + land + entitlement | Computed | Quarterly | Submarket |
+| DC-04 | Supply Overhang Risk | Hidden supply in markets that LOOK safe | (Capacity − Pipeline) / Inventory | Computed | Quarterly | Submarket |
+| DC-05 | Last Mover Advantage Flag | Near-buildout submarkets where last sites command premiums | Capacity < 15% + Active Dev > 0 | Computed | Quarterly | Submarket |
+| DC-06 | Development Probability | Likelihood (0-100%) a specific vacant parcel gets developed | Owner + zoning + infra + market | Computed | Quarterly | Parcel |
+| DC-07 | Pricing Power Index (0-100) | Ability to push rents without losing occupancy | DC-03 40% + D-01 25% + M-06 20% + M-03 inv 15% | Computed | Monthly | Submarket |
+| DC-08 | Supply Wave Forecast (10yr) | Year-by-year supply projection: pipeline + capacity conversion | S-02 + S-03 + DC-06 weighted land | Computed | Quarterly | MSA/Sub |
+| DC-09 | Developer Land Bank Index | Who owns developable parcels + predicted timing | Parcel ownership + DC-06 + behavior | FREE | Quarterly | Submarket |
+| DC-10 | Assemblage Opportunity Score | Adjacent parcels that could combine for larger development | Spatial adjacency + capacity | Computed | Quarterly | Parcel Cluster |
+| DC-11 | Supply-Adjusted Rent Forecast | Rent projection adjusted for BOTH pipeline AND capacity | C-02 base ± DC-03 factor | Computed | Monthly | Submarket |
+
+**Key insight**: Industry standard sees 2 years of supply pipeline. JEDI sees 10+ years by analyzing zoning capacity, vacant land, and development probability. This fundamentally changes risk assessment.
+
+## 2.9 TRADE AREA INTELLIGENCE — ★ NEW (4 outputs)
+
+These answer: **"Who competes directly with this specific property?"**
+
+| ID | Output Name | What It Shows the User | Primary Source | Cost | Frequency | Level |
+|----|-------------|----------------------|----------------|------|-----------|-------|
+| TA-01 | Trade Area Definition | User-defined or auto-generated competitive boundary | Radius / Drive-time / Traffic / Custom | FREE | User-set | Property |
+| TA-02 | Competitive Set | Properties competing for the same renters within trade area | S-01 in TA + P-02 vintage match | Computed | Monthly | Property |
+| TA-03 | Trade Area Supply-Demand Balance | Supply-demand ratio scoped to trade area (not MSA) | D-01 + S-01 within polygon | Computed | Monthly | Trade Area |
+| TA-04 | Digital Competitive Intel | Website traffic and SEO performance of competing properties | SpyFu / SimilarWeb | $39/mo | Monthly | Property |
+
+**Key insight**: An MSA-level supply-demand ratio can mask property-level reality. A property in Decatur (12.4% pipeline) has a completely different competitive situation than one in Buckhead (18.2%) — even though they're both "Atlanta." Trade Area outputs scope analysis to the relevant competitive boundary.
+
+---
+
+# PART 3: DATA SOURCE COST SUMMARY
+
+| Source | Annual Cost | Outputs Powered | Priority |
+|--------|-----------|----------------|----------|
+| Municipal Records (Parcels, Permits, Deeds, Tax, Zoning) | FREE | S-01, S-02, S-03, P-01, P-04, P-06, P-08, M-08, M-09 + derived | MVP |
+| BLS API | FREE | D-01, D-02, D-10, M-05 | MVP |
+| Census ACS / LODES | FREE | D-03, D-04, D-12, R-01 | MVP |
+| Google Trends | FREE | D-07, D-08, T-03 | MVP |
+| Google Places API | FREE (quota) | P-09, M-10, T-08 | MVP |
+| State DOT Traffic | FREE | D-05, D-06, T-02 | MVP |
+| Apartments.com Scraper | ~$600/yr | M-01, M-03, M-06, P-03 + derived | MVP |
+| NewsAPI | ~$600/yr | R-10 | Phase 2 |
+| RSMeans (construction costs) | ~$2,400/yr | S-07 | Phase 2 |
+| SpyFu / SimilarWeb | ~$468/yr | TA-04 | Phase 3 |
+| CoStar API (if available) | ~$5,000/yr | Enhanced S-01, M-01, P-07 | Phase 3 |
+| PMS Integration | User-provided | P-10, P-11, P-12 | Phase 3 |
+| **TOTAL (MVP)** | **~$1,200/yr** | **60+ outputs** | |
+| **TOTAL (Full Platform)** | **~$9,268/yr** | **All 89 outputs** | |
+
+---
+
+# PART 4: NAVIGATION ARCHITECTURE
+
+## 4.1 Complete Sidebar Structure
+
+```
+SIDEBAR
+│
+├── 📊 MARKET INTELLIGENCE
+│   │
+│   ├── 🗺️ My Markets                           ◄── VERTICAL DEEP-DIVE
+│   │   │
+│   │   ├── Market Selector Grid                  (C-01, S-01, M-01, D-01, D-12 per card)
+│   │   │   Shows all tracked MSAs as cards
+│   │   │   Sort by: JEDI Score, Rent Growth, Pipeline %, Job Growth
+│   │   │
+│   │   └── [Click Market] → Market Dashboard (5 Tabs)
+│   │       │
+│   │       ├── ✦ OVERVIEW TAB
+│   │       │   ├── Market Vitals Bar
+│   │       │   │   D-12 (pop), D-01 (jobs), D-12 (income), M-01 (rent),
+│   │       │   │   M-06 (occ), C-01 (JEDI Score)
+│   │       │   │
+│   │       │   ├── Data Coverage Bar
+│   │       │   │   S-01 count, P-04 coverage %, Municipal pipeline stats
+│   │       │   │
+│   │       │   ├── 5-Signal Health Bar ★ ENHANCED
+│   │       │   │   DEMAND:    D-09
+│   │       │   │   SUPPLY:    S-04/05/08 composite + DC-04 (overhang risk) ★
+│   │       │   │   MOMENTUM:  M-02/05/07 composite
+│   │       │   │   POSITION:  P-10/11 avg
+│   │       │   │   RISK:      R-01/03/04/07 composite
+│   │       │   │   AI Summary narrative (Claude)
+│   │       │   │
+│   │       │   ├── Recent Market Intelligence
+│   │       │   │   R-10 (top 3 alerts with impact assessment)
+│   │       │   │
+│   │       │   └── Supply Snapshot ★ ENHANCED
+│   │       │       S-01, S-02, S-03, S-05, S-06, S-10 (existing)
+│   │       │       DC-01 (capacity ratio), DC-04 (overhang risk) ★ NEW
+│   │       │       DC-08 (10yr supply wave mini-chart) ★ NEW
+│   │       │
+│   │       ├── 📋 MARKET DATA TAB
+│   │       │   ├── Filter Bar
+│   │       │   │   Submarket, Vintage, Units, Owner Type, Search
+│   │       │   │
+│   │       │   ├── Property Database Table
+│   │       │   │   P-01, P-02, P-04, M-01, M-06
+│   │       │   │
+│   │       │   ├── Property Flyout (on row click) ★ ENHANCED
+│   │       │   │   P-01 thru P-08, C-01 (existing)
+│   │       │   │   T-01 (walk-ins/week) ★ NEW
+│   │       │   │   T-02 (physical traffic score) ★ NEW
+│   │       │   │   T-03 (digital traffic score) ★ NEW
+│   │       │   │   T-04 (correlation signal: Hidden Gem?) ★ NEW
+│   │       │   │   T-06 (capture rate) ★ NEW
+│   │       │   │   T-08 (generator proximity) ★ NEW
+│   │       │   │   T-10 (validation confidence) ★ NEW
+│   │       │   │   TA-01 (trade area definition) ★ NEW
+│   │       │   │   TA-02 (competitive set list) ★ NEW
+│   │       │   │   TA-03 (trade area balance) ★ NEW
+│   │       │   │   TA-04 (digital competitive intel) ★ NEW
+│   │       │   │
+│   │       │   ├── Demand-Supply Dashboard
+│   │       │   │   D-01 thru D-11, S-04 thru S-09
+│   │       │   │
+│   │       │   ├── Rent & Pricing Intelligence
+│   │       │   │   M-01, M-03, M-05, M-07, R-01, R-02, R-03
+│   │       │   │   DC-07 (pricing power index) ★ NEW
+│   │       │   │
+│   │       │   ├── Ownership Intelligence
+│   │       │   │   P-04, P-05, R-07, R-09
+│   │       │   │
+│   │       │   ├── Transaction History
+│   │       │   │   M-08, M-09, P-07
+│   │       │   │
+│   │       │   └── Traffic & Demand Heatmap ★ ENHANCED
+│   │       │       D-05, D-06, D-07, D-08, D-09 (existing)
+│   │       │       T-02 (physical traffic overlay by property) ★ NEW
+│   │       │       T-04 (correlation signal color-code) ★ NEW
+│   │       │
+│   │       ├── 🏘️ SUBMARKETS TAB ★ ENHANCED
+│   │       │   ├── Choropleth Map
+│   │       │   │   C-01, C-10 per submarket
+│   │       │   │   Toggle: JEDI | Demand | Supply Risk | Rent Growth |
+│   │       │   │           Cap Rate | Pricing Power ★ | Constraint ★
+│   │       │   │
+│   │       │   ├── Ranking Table ★ ENHANCED (new columns)
+│   │       │   │   C-01, D-09, S-01 thru S-08, M-02, M-07 (existing)
+│   │       │   │   DC-01 (capacity ratio) ★ NEW COLUMN
+│   │       │   │   DC-02 (buildout timeline) ★ NEW COLUMN
+│   │       │   │   DC-03 (supply constraint score) ★ NEW COLUMN
+│   │       │   │   DC-04 (supply overhang risk) ★ NEW COLUMN
+│   │       │   │   DC-05 (last mover flag) ★ NEW COLUMN
+│   │       │   │   DC-07 (pricing power index) ★ NEW COLUMN
+│   │       │   │   DC-11 (supply-adj rent forecast) ★ NEW COLUMN
+│   │       │   │   T-02 avg (physical traffic score avg) ★ NEW COLUMN
+│   │       │   │
+│   │       │   ├── Submarket Detail (click to expand)
+│   │       │   │   All 5 original signal groups + DC + T aggregated ★
+│   │       │   │   DC-01 thru DC-05, DC-07 per submarket ★ NEW
+│   │       │   │   T-02 avg, T-08 avg per submarket ★ NEW
+│   │       │   │   DC-09 (developer land bank for this submarket) ★ NEW
+│   │       │   │
+│   │       │   └── Submarket Comparison (2-3 side by side)
+│   │       │       All metrics from ranking table × selected submarkets
+│   │       │       DC-03, DC-07 comparison ★ NEW
+│   │       │
+│   │       ├── 📈 TRENDS TAB ★ ENHANCED
+│   │       │   ├── Rent Trends by Vintage
+│   │       │   │   M-01, M-02, R-02 (time series)
+│   │       │   │   DC-11 (supply-adjusted forecast overlay) ★ NEW
+│   │       │   │
+│   │       │   ├── Supply Pipeline Timeline
+│   │       │   │   S-02, S-03, S-04, S-05, S-06 (existing)
+│   │       │   │   DC-08 (10-year supply wave extended view) ★ NEW
+│   │       │   │
+│   │       │   ├── Demand Signal Trends
+│   │       │   │   D-05, D-06, D-07, D-08, D-09
+│   │       │   │   T-02 avg trend (physical traffic score over time) ★ NEW
+│   │       │   │   T-03 avg trend (digital traffic score over time) ★ NEW
+│   │       │   │   T-07 (property traffic trajectory, when prop selected) ★ NEW
+│   │       │   │
+│   │       │   ├── Transaction & Cap Rates
+│   │       │   │   M-08, M-09, P-07
+│   │       │   │
+│   │       │   ├── Concession & Occupancy Trends
+│   │       │   │   M-03, M-04, M-06, R-03
+│   │       │   │
+│   │       │   └── JEDI Score History
+│   │       │       C-01 time series with signal decomposition
+│   │       │
+│   │       └── 💼 DEALS TAB ★ ENHANCED
+│   │           ├── AI-Recommended Opportunities ★ ENHANCED
+│   │           │   C-01, P-03, P-05, D-09, S-05 (existing)
+│   │           │   T-01 (walk-in volume as opportunity signal) ★ NEW
+│   │           │   T-04 (Hidden Gem = high phys/low digital) ★ NEW
+│   │           │   T-06 (capture rate enhances valuation) ★ NEW
+│   │           │   T-09 (competitive traffic share) ★ NEW
+│   │           │   T-10 (confidence qualifier on prediction) ★ NEW
+│   │           │   DC-05 (last mover advantage for dev deals) ★ NEW
+│   │           │   DC-06 (development probability for dev deals) ★ NEW
+│   │           │   DC-10 (assemblage opportunities for dev deals) ★ NEW
+│   │           │   TA-01 (trade area context for each opp) ★ NEW
+│   │           │   TA-02 (competitive set for each opp) ★ NEW
+│   │           │
+│   │           ├── My Pipeline
+│   │           │   C-01, C-04 per deal, stage-specific metrics
+│   │           │
+│   │           ├── Market Deal Activity
+│   │           │   R-10, M-08, M-09
+│   │           │
+│   │           └── Strategy Arbitrage Leaderboard
+│   │               C-05, C-06, C-07, C-08
+│   │               T-01, T-09 (traffic informs strategy selection) ★ NEW
+│   │
+│   ├── ⚖️ Compare Markets                       ◄── HORIZONTAL: CROSS-MSA
+│   │   │
+│   │   ├── Market Selector (pick 2-4 MSAs)
+│   │   │
+│   │   ├── Radar Chart (5+3 signal overlay) ★ ENHANCED
+│   │   │   D-09, S-composite, M-composite, P-avg, R-composite (existing)
+│   │   │   DC-03 avg (supply constraint) ★ NEW AXIS
+│   │   │   DC-07 avg (pricing power) ★ NEW AXIS
+│   │   │   T-02 avg (physical traffic) ★ NEW AXIS
+│   │   │
+│   │   ├── Side-by-Side Metrics Table ★ ENHANCED
+│   │   │   All D, S, M, P, R outputs at MSA level (existing)
+│   │   │   DC-01 (capacity ratio per market) ★ NEW ROWS
+│   │   │   DC-02 (buildout timeline per market) ★ NEW ROWS
+│   │   │   DC-03 (supply constraint per market) ★ NEW ROWS
+│   │   │   DC-04 (supply overhang risk per market) ★ NEW ROWS
+│   │   │   DC-07 (pricing power per market) ★ NEW ROWS
+│   │   │   DC-08 (10yr wave summary per market) ★ NEW ROWS
+│   │   │   DC-11 (supply-adj rent forecast per market) ★ NEW ROWS
+│   │   │   T-02 avg (physical traffic per market) ★ NEW ROWS
+│   │   │   T-03 avg (digital traffic per market) ★ NEW ROWS
+│   │   │
+│   │   ├── Trend Comparison Charts
+│   │   │   Toggle: Rent Growth | Pipeline % | Cap Rates | JEDI |
+│   │   │           Traffic | Supply Wave ★ | Pricing Power ★
+│   │   │   DC-08 (supply wave overlay per market) ★ NEW TOGGLE
+│   │   │   DC-07 (pricing power trend per market) ★ NEW TOGGLE
+│   │   │
+│   │   ├── AI Investment Recommendation
+│   │   │   All outputs → Claude narrative with confidence scores
+│   │   │   Now includes DC-03 (constraint), DC-07 (pricing power) ★
+│   │   │   "Charlotte is past-peak supply AND supply-constrained
+│   │   │    (DC-03: 72) — best risk-adjusted entry point."
+│   │   │
+│   │   └── Entry Point Calculator ★ ENHANCED
+│   │       P-07, C-02, C-03, M-08 (existing)
+│   │       DC-11 (supply-adjusted rent forecast replaces C-02) ★ NEW
+│   │       DC-07 (pricing power informs rent push assumptions) ★ NEW
+│   │       T-05 (traffic-to-lease improves absorption estimates) ★ NEW
+│   │
+│   ├── 👥 Active Owners                         ◄── HORIZONTAL: OWNERSHIP
+│   │   │
+│   │   ├── Activity Dashboard
+│   │   │   P-04, P-05, R-09, Municipal Deeds (seller/buyer signals)
+│   │   │
+│   │   ├── Owner Database Table
+│   │   │   P-04, R-07, R-09 across all markets
+│   │   │   BUY / HOLD / SELL signal per owner
+│   │   │
+│   │   ├── Owner Detail Profile (click to expand) ★ ENHANCED
+│   │   │   P-04, P-01 all properties, R-09 (existing)
+│   │   │   Portfolio map (Mapbox)
+│   │   │   Acquisition timeline
+│   │   │   AI assessment narrative
+│   │   │   DC-06 (development probability for owners' vacant land) ★ NEW
+│   │   │   DC-09 (developer land bank positions per owner) ★ NEW
+│   │   │
+│   │   └── Acquisition Target Generator
+│   │       P-01, P-04, P-05, R-09, S-01
+│   │       Filter by: hold period, owner type, units, vintage,
+│   │                  markets, motivation score
+│   │
+│   └── 🏗️ Future Supply                         ◄── HORIZONTAL: SUPPLY RISK
+│       │
+│       ├── Supply Risk Scoreboard ★ ENHANCED
+│       │   S-02, S-03, S-04, S-05, S-06 per market (existing)
+│       │   DC-01 (capacity ratio — long-term risk) ★ NEW COLUMN
+│       │   DC-03 (supply constraint score) ★ NEW COLUMN
+│       │   DC-04 (supply overhang risk) ★ NEW COLUMN
+│       │   Risk classification now uses BOTH pipeline AND capacity
+│       │
+│       ├── Delivery Calendar (Gantt timeline)
+│       │   S-02, S-03, S-05 project-level (existing)
+│       │   DC-06 (probability-weighted vacant land as "ghost bars") ★ NEW
+│       │   Shows confirmed pipeline AS solid bars
+│       │   Shows capacity conversion AS dotted/transparent bars
+│       │   Cluster alerts flag geographic + temporal clustering
+│       │
+│       ├── 10-Year Supply Wave Analysis ★ ENHANCED (KEY UPGRADE)
+│       │   S-02, S-03, S-04, S-06, S-09 (existing: 2-year view)
+│       │   DC-08 (EXTENDS TO 10 YEARS) ★ NEW — THE KILLER FEATURE
+│       │   Year-by-year: Pipeline (solid) + Capacity Conversion (gradient)
+│       │   Phase labels per market: PEAKING → CRESTING → TROUGH → BUILDING
+│       │   DC-02 (buildout timeline annotation: "8.6 years to practical
+│       │          buildout in Decatur")
+│       │   DC-05 (Last Mover flags on specific submarkets)
+│       │
+│       ├── Build Economics Monitor ★ ENHANCED
+│       │   S-07 per market (new build YoC vs existing cap) (existing)
+│       │   DC-03 (supply constraint explains WHY building is uneconomic) ★ NEW
+│       │   DC-05 (last mover advantage — where is it still worth building?) ★ NEW
+│       │
+│       ├── Developer Land Bank ★ NEW SECTION
+│       │   DC-09 (who owns developable parcels across all markets) ★ NEW
+│       │   DC-06 (development probability per parcel) ★ NEW
+│       │   DC-10 (assemblage opportunity scores) ★ NEW
+│       │   Table: Owner | Parcels | Capacity | Est. Start | Status
+│       │   Map: developable parcels colored by probability
+│       │
+│       └── Supply Risk Map ★ ENHANCED
+│           S-02, S-05 geospatial (existing)
+│           DC-01 (capacity ratio colors the "long-term" risk ring) ★ NEW
+│           Market circles: inner = pipeline risk, outer = capacity risk
+│
+├── Other sidebar sections (Deal Pipeline, Strategy Arbitrage, etc.)
+│   These modules CONSUME Market Intelligence outputs
+│   but are separate sidebar sections
+│
+└── [Each module documented in separate spec]
+```
+
+## 4.2 Output Usage Matrix — Which Outputs Power Which Pages
+
+### Pages where each output appears (● = present)
+
+```
+LEGEND:
+  Overview = My Markets > Overview Tab
+  MktData  = My Markets > Market Data Tab
+  Subs     = My Markets > Submarkets Tab
+  Trends   = My Markets > Trends Tab
+  Deals    = My Markets > Deals Tab
+  Compare  = Compare Markets
+  Owners   = Active Owners
+  FutSupp  = Future Supply
+  ProForma = Pro Forma Builder (downstream module, included for completeness)
+```
+
+**DEMAND (D-01 to D-12)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| D-01 | Jobs/Apt | — | ● | ● | — | ● | ● | — | — |
+| D-02 | New Jobs/Unit | — | ● | ● | — | — | ● | — | — |
+| D-03 | Migration | — | ● | ● | — | — | ● | — | — |
+| D-04 | HH Formation | — | ● | — | — | — | ● | — | — |
+| D-05 | Traffic Growth | ● | ● | ● | ● | — | ● | — | — |
+| D-06 | Traffic Accel | — | — | — | ● | — | — | — | — |
+| D-07 | Digi-Physical | — | — | — | ● | — | — | — | — |
+| D-08 | Search Interest | — | — | — | ● | — | — | — | — |
+| D-09 | Demand Momentum | ● | ● | ● | ● | ● | ● | — | — |
+| D-10 | Employment Grav | — | ● | — | — | — | — | — | — |
+| D-11 | Rent-Mort Disc | — | ● | — | — | — | ● | — | — |
+| D-12 | Demographics | ● | ● | ● | — | — | ● | — | — |
+
+**SUPPLY (S-01 to S-10)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| S-01 | Inventory | ● | ● | ● | — | — | ● | ● | ● |
+| S-02 | Under Constr | ● | ● | ● | ● | — | ● | — | ● |
+| S-03 | Permitted | ● | — | — | ● | — | — | — | ● |
+| S-04 | Absorb Runway | ● | ● | ● | ● | ● | ● | — | ● |
+| S-05 | Delivery Clust | ● | ● | ● | ● | ● | ● | — | ● |
+| S-06 | Permit Momentum | ● | — | — | ● | — | ● | — | ● |
+| S-07 | Build Cost/Cap | — | ● | — | — | — | — | — | ● |
+| S-08 | Saturation | ● | ● | ● | — | ● | ● | — | — |
+| S-09 | Permit Conv | — | ● | — | — | — | — | — | ● |
+| S-10 | Vintage Break | ● | — | — | — | — | — | — | — |
+
+**MOMENTUM (M-01 to M-10)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| M-01 | Rent/Vintage | ● | ● | ● | ● | — | ● | — | — |
+| M-02 | Rent Accel | — | — | ● | ● | — | ● | — | — |
+| M-03 | Concessions | — | ● | — | ● | — | ● | — | — |
+| M-04 | Concession Vel | — | — | — | ● | — | — | — | — |
+| M-05 | Rent vs Wage | — | ● | — | — | — | ● | — | — |
+| M-06 | Occupancy Proxy | ● | ● | — | ● | — | — | — | — |
+| M-07 | Traffic-Rent El | — | ● | ● | — | — | — | — | — |
+| M-08 | Cap Rate Trend | — | ● | ● | ● | ● | ● | — | — |
+| M-09 | Investor Activ | — | ● | — | ● | ● | ● | — | — |
+| M-10 | Review Sentim | — | — | — | — | — | — | — | — |
+
+**POSITION (P-01 to P-12)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| P-01 | Property Card | — | ● | — | — | — | — | ● | — |
+| P-02 | Vintage Class | — | ● | — | — | — | — | — | — |
+| P-03 | Loss-to-Lease | — | ● | — | — | ● | — | — | — |
+| P-04 | Ownership | — | ● | — | — | — | — | ● | — |
+| P-05 | Seller Motiv | — | ● | — | — | ● | — | ● | — |
+| P-06 | Tax Assessment | — | ● | — | — | — | — | — | — |
+| P-07 | Price Benchmark | — | ● | ● | ● | — | ● | — | — |
+| P-08 | Zoning/Dev Cap | — | ● | — | — | — | — | — | — |
+| P-09 | Amenity Density | — | — | ● | — | — | — | — | — |
+| P-10 | Revenue Eff | — | — | — | — | — | — | — | — |
+| P-11 | Expense Gap | — | — | — | — | — | — | — | — |
+| P-12 | Turnover Impact | — | — | — | — | — | — | — | — |
+
+*P-10/11/12 appear in Pro Forma Builder and Performance Tracker (downstream modules)*
+
+**RISK (R-01 to R-10)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| R-01 | Affordability | — | ● | ● | — | — | ● | — | — |
+| R-02 | Vint Converge | — | ● | ● | ● | ● | ● | — | — |
+| R-03 | Concession Drag | — | ● | ● | ● | — | ● | — | — |
+| R-04 | Insurance Trend | — | — | — | — | — | ● | — | — |
+| R-05 | Tax Reassess | — | — | — | — | — | — | — | — |
+| R-06 | Deferred Maint | — | — | — | — | — | — | — | — |
+| R-07 | Owner Conc | — | ● | ● | — | — | — | ● | — |
+| R-08 | Seasonal Swing | — | — | — | — | — | — | — | — |
+| R-09 | Hold vs Cycle | — | ● | — | — | ● | — | ● | — |
+| R-10 | News Sentiment | ● | — | — | — | ● | — | — | — |
+
+*R-04/05/06/08 appear in Pro Forma Builder and Performance Tracker (downstream)*
+
+**COMPOSITE (C-01 to C-10)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| C-01 | JEDI Score | ● | ● | ● | ● | ● | ● | — | — |
+| C-02 | Rent Forecast | — | — | — | — | — | ● | — | — |
+| C-03 | Occ Model | — | — | — | — | — | ● | — | — |
+| C-04 | OM Variance | — | — | — | — | ● | — | — | — |
+| C-05 | Strategy Arb | — | — | — | — | ● | — | — | — |
+| C-06 | Condo Convert | — | — | — | — | ● | — | — | — |
+| C-07 | Build vs Hold | — | — | — | — | ● | — | — | — |
+| C-08 | STR Hybrid | — | — | — | — | ● | — | — | — |
+| C-09 | Scenario Gen | — | — | — | — | — | — | — | — |
+| C-10 | Sub Ranking | — | — | ● | — | — | ● | — | — |
+
+*C-04/05/06/07/08/09 are per-deal and appear in Strategy Arbitrage module*
+
+**TRAFFIC ★ NEW (T-01 to T-10)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| T-01 | Walk-In Predict | — | ● | — | — | ● | — | — | — |
+| T-02 | Physical Score | — | ● | ● | ● | — | ● | — | — |
+| T-03 | Digital Score | — | ● | — | ● | ● | ● | — | — |
+| T-04 | Correlation Sig | — | ● | — | — | ● | — | — | — |
+| T-05 | Traffic-Lease | — | — | — | — | — | — | — | — |
+| T-06 | Capture Rate | — | ● | — | — | ● | — | — | — |
+| T-07 | Traffic Traject | — | — | — | ● | — | — | — | — |
+| T-08 | Generator Prox | — | ● | ● | — | — | — | — | — |
+| T-09 | Comp Traffic Sh | — | — | — | — | ● | — | — | — |
+| T-10 | Validation Conf | — | ● | — | — | ● | — | — | — |
+
+*T-01/05/06/09/10 also appear in Pro Forma Builder and Performance Tracker*
+
+**DEV CAPACITY ★ NEW (DC-01 to DC-11)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| DC-01 | Capacity Ratio | — | — | ● | — | — | ● | — | ● |
+| DC-02 | Buildout Timeln | — | — | ● | — | — | ● | — | ● |
+| DC-03 | Supply Constr | — | — | ● | — | — | ● | — | ● |
+| DC-04 | Overhang Risk | ● | — | ● | — | — | ● | — | ● |
+| DC-05 | Last Mover | — | — | ● | — | ● | — | — | ● |
+| DC-06 | Dev Probability | — | — | — | — | ● | — | ● | ● |
+| DC-07 | Pricing Power | — | ● | ● | — | — | ● | — | — |
+| DC-08 | Supply Wave 10y | ● | — | — | ● | — | ● | — | ● |
+| DC-09 | Dev Land Bank | — | — | ● | — | — | — | ● | ● |
+| DC-10 | Assemblage | — | — | — | — | ● | — | — | ● |
+| DC-11 | Supply-Adj Rent | — | — | ● | ● | — | ● | — | — |
+
+**TRADE AREA ★ NEW (TA-01 to TA-04)**
+
+| ID | Name | Overview | MktData | Subs | Trends | Deals | Compare | Owners | FutSupp |
+|----|------|:--------:|:-------:|:----:|:------:|:-----:|:-------:|:------:|:-------:|
+| TA-01 | Trade Area Def | — | ● | ● | — | ● | — | — | — |
+| TA-02 | Competitive Set | — | ● | — | — | ● | — | — | — |
+| TA-03 | TA Balance | — | ● | ● | — | — | — | — | — |
+| TA-04 | Digital Comp | — | ● | — | — | — | — | — | — |
+
+## 4.3 Page Consumption Summary
+
+| Page | Original Outputs | + New (v2.0) | Total | Primary Purpose |
+|------|:----------------:|:------------:|:-----:|----------------|
+| **Overview** | 22 | +3 (DC-04, DC-08, DC-01) | **25** | 30-second market health check |
+| **Market Data** | 32 | +12 (T-01–T-10 partial, TA-01–04, DC-07) | **44** | Full research library |
+| **Submarkets** | 24 | +12 (DC-01–05, DC-07, DC-09, DC-11, T-02, T-08, TA-01, TA-03) | **36** | WHERE within the market |
+| **Trends** | 18 | +5 (DC-08, DC-11, T-02, T-03, T-07) | **23** | Time-series momentum analysis |
+| **Deals** | 14 | +12 (T-01/03/04/06/09/10, DC-05/06/10, TA-01/02) | **26** | Active opportunities + pipeline |
+| **Compare Markets** | 28 | +11 (DC-01–04, DC-07/08/11, T-02/03, DC-11, T-05) | **39** | Cross-MSA allocation decisions |
+| **Active Owners** | 8 | +2 (DC-06, DC-09) | **10** | Ownership intelligence |
+| **Future Supply** | 12 | +9 (DC-01–06, DC-08–10) | **21** | Supply risk across all markets |
+
+---
+
+# PART 5: DATA FLOW — HOW A USER MOVES THROUGH THE SYSTEM
+
+## 5.1 The Investment Decision Journey
+
+```
+USER JOURNEY: "I have $50M to deploy in the Southeast. Where and what?"
+
+PHASE 1: MARKET SELECTION (Horizontal)
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Compare Markets                                                         │
+│  Select: Atlanta, Charlotte, Nashville, Tampa                            │
+│  ↓                                                                       │
+│  Radar chart shows Atlanta = best demand, Charlotte = best risk-adjusted │
+│  Side-by-side table: Charlotte wins on pipeline %, constraint score,     │
+│    pricing power, AND supply-adjusted rent forecast (DC outputs)         │
+│  AI says: "Charlotte and Tampa are past-peak supply. Nashville avoid."   │
+│  ↓                                                                       │
+│  DECISION: Focus on Charlotte, explore Atlanta                           │
+└──────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PHASE 2: SUBMARKET SELECTION (Vertical)
+┌──────────────────────────────────────────────────────────────────────────┐
+│  My Markets → Charlotte → Submarkets Tab                                 │
+│  ↓                                                                       │
+│  Ranking table with DC columns: South End has 82 constraint score,       │
+│  NoDa has 71 pricing power, University has 28.4yr buildout timeline      │
+│  ↓                                                                       │
+│  Submarket comparison: South End vs NoDa vs University                   │
+│  DC-07 (pricing power): South End 82, NoDa 71, University 58            │
+│  DC-03 (constraint): South End 78, NoDa 65, University 42               │
+│  T-02 avg (traffic): South End 88, NoDa 72, University 54               │
+│  ↓                                                                       │
+│  DECISION: Target South End (constrained, high pricing power, traffic)   │
+└──────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PHASE 3: PROPERTY IDENTIFICATION (Vertical → Deals)
+┌──────────────────────────────────────────────────────────────────────────┐
+│  My Markets → Charlotte → Deals Tab                                      │
+│  ↓                                                                       │
+│  AI Opportunities ranked by JEDI Score + Traffic Signal:                  │
+│  🏆 The Heritage at South End | 220u | 1994 | B class                    │
+│     T-01: 1,840 walk-ins/week (strong)                                   │
+│     T-04: HIDDEN GEM (high physical 78, low digital 34)                  │
+│     P-03: $180/unit loss-to-lease (14.2%)                                │
+│     P-05: Seller motivation 78/100 (7.8yr hold, likely debt maturity)    │
+│     TA-02: 8 direct competitors within trade area                        │
+│  ↓                                                                       │
+│  [Add to Pipeline] → moves to Deal Pipeline module                       │
+└──────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PHASE 4: SUPPLY RISK CHECK (Horizontal)
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Future Supply                                                           │
+│  ↓                                                                       │
+│  Charlotte overall: LOW risk (12.4% pipeline, 0.92x permit momentum)     │
+│  DC-08 (10yr): Supply wave cresting 2026, declining through 2029         │
+│  DC-01: South End capacity ratio 22% — limited long-term supply          │
+│  DC-04: No overhang risk — what you see IS what you get                  │
+│  DC-05: Not yet "last mover" but approaching (buildout: 12 years)        │
+│  ↓                                                                       │
+│  Delivery Calendar: Only 1 project (350u NoDa) delivers Q3 2026         │
+│  DC-06: One vacant parcel at 40% probability = ~180 potential units      │
+│  ↓                                                                       │
+│  CONCLUSION: Supply environment is favorable for 3-5 year hold           │
+└──────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+PHASE 5: OWNERSHIP TARGETING (Horizontal)
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Active Owners                                                           │
+│  ↓                                                                       │
+│  Search: Heritage at South End → Owner: Regional Capital Partners        │
+│  Profile: 6 properties, 1,400 units, avg hold 6.2 years                 │
+│  Heritage = longest hold at 7.8 years (outlier)                          │
+│  DC-09: Owner also holds 2 developable parcels (land bank position)      │
+│  ↓                                                                       │
+│  AI Assessment: "High-probability seller for Heritage. May be willing    │
+│  to sell Heritage to fund development on land positions."                 │
+│  ↓                                                                       │
+│  [Contact Owner] [Add to Pipeline] [Export Profile]                      │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+## 5.2 The Platform Lifecycle
+
+```
+ DISCOVER ──→ RESEARCH ──→ ANALYZE ──→ MODEL ──→ EXECUTE ──→ TRACK
+    │              │            │           │          │          │
+    │              │            │           │          │          │
+ Overview       Market       Submarkets   Pro Forma  Deal Deck  Performance
+ Compare Mkts   Data Tab     Trends       Sensitivity OM Compare Tracker
+ News Intel     Traffic Map  Strategy Arb  Scenario   Pipeline   Portfolio
+ Future Supply  Active Owners Compare Mkts                       Manager
+                Trade Area
+
+ ◄────── Market Intelligence Section ──────►  ◄── Downstream Modules ──►
+ (This document covers everything left                (Separate specs)
+  of the dotted line)
+```
+
+---
+
+# PART 6: KEY DESIGN PRINCIPLES
+
+## 6.1 Progressive Disclosure
+- **Overview**: 6 numbers + 5 bars + AI summary = 30 seconds
+- **Market Data**: Full research library = 5-15 minutes
+- **Property Flyout**: Every data point for one property = deep dive
+- **Never force a user to see more than they need**
+
+## 6.2 Data Attribution
+- Every number shows source on hover: `"D-01 | Source: BLS + Municipal | Updated: Feb 15, 2026 | Confidence: HIGH"`
+- Color language: Green = Demand, Red = Supply, Orange = Momentum, Purple = Position, Gray = Risk, Teal = Composite, Blue = Traffic, Violet = Dev Capacity
+
+## 6.3 Vertical Goes Deep, Horizontal Goes Wide
+- My Markets tabs = everything about ONE market
+- Compare / Owners / Supply = questions that span MULTIPLE markets
+- A user should never need to switch between single-market tabs to answer a cross-market question
+
+## 6.4 The Traffic Engine Is Property-Level
+- T-outputs appear in flyouts, deal cards, and opportunity rankings
+- They do NOT appear as market-level aggregates (unlike D-outputs)
+- Exception: T-02 and T-03 can be averaged per submarket for ranking table comparison
+
+## 6.5 Dev Capacity Extends the Time Horizon
+- Standard supply analysis: S-02 + S-03 = 2-year window
+- Dev Capacity Intelligence: DC-01 through DC-11 = 10-year window
+- They work TOGETHER: S-outputs show near-term, DC-outputs show long-term
+- Future Supply page MUST show both layers, not just one
+
+## 6.6 Trade Areas Scope the Analysis
+- MSA-level metrics can mask property-level reality
+- TA-01 defines the competitive boundary
+- TA-02 identifies who competes directly
+- TA-03 recalculates supply-demand within that boundary
+- Every property analysis should default to trade area scope, with MSA as benchmark
