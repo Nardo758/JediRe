@@ -30,6 +30,22 @@ Preferred communication style: Simple, everyday language.
 
 **Key Design Decision:** Map-agnostic approach reduces infrastructure costs from $50-100K/year to $5-10K/year by storing only zoning rules and intelligence data, not full parcel geometries.
 
+**Deal Capsule Module Architecture (Feb 2026):**
+Each deal ("capsule") uses a 6-group tab navigation system in `DealDetailPage.tsx`:
+
+| Group | Modules (Tab IDs) | Component |
+|-------|-------------------|-----------|
+| **DEAL STATUS** | Overview (`overview`), 3D Building Design (`3d-design`), Deal Lifecycle (`deal-status`) | OverviewSection, Design3DPageEnhanced, DealStatusSection |
+| **ANALYSIS** | Market Intelligence (`market-intelligence`), Competition (`competition`), Supply Pipeline (`supply`), Trends (`trends`), Traffic Engine (`traffic`) | MarketAnalysisPage, CompetitionPage, SupplyPipelinePage, TrendsAnalysisSection, TrafficAnalysisSection |
+| **FINANCIAL** | Financial Model (`financial-model`), Debt & Financing (`debt`), Exit Strategy (`exit`) | FinancialModelingSection, DebtSection, ExitSection |
+| **OPERATIONS** | Due Diligence (`due-diligence`), Project Timeline (`timeline`), Project Management (`project-management`) | DueDiligencePage, ProjectTimelinePage, ProjectManagementSection |
+| **DOCUMENTS** | Documents (`documents`), Files & Assets (`files`), Notes (`notes`) | DocumentsSection, FilesSection, NotesSection |
+| **AI TOOLS** | Opus AI Agent (`ai-agent`), AI Recommendations (`ai-recommendations`) | OpusAISection, AIRecommendationsSection |
+
+**Inter-Module Communication:** `DealModuleProvider` context in `contexts/DealModuleContext.tsx` shares design3D, financial, and market state between modules. Modules can emit events and navigate to other tabs programmatically via `useDealModule()` hook.
+
+**Canonical Module Sources:** Development pages (`pages/development/`) are the canonical versions for Market, Competition, Supply, Due Diligence, and Timeline. Section components (`components/deal/sections/`) house all other modules. Duplicate/legacy components archived in `sections/_archive/`.
+
 **Recent Code Quality Improvements (Feb 2026):**
 - **Route extraction complete:** `index.replit.ts` reduced from 1,874 → 268 lines (86% reduction). 45 inline route handlers extracted into 9 dedicated router modules under `api/rest/inline-*.routes.ts`:
   - `inline-health.routes.ts` — health check + DB status
