@@ -66,21 +66,30 @@ export const CreateDealPage: React.FC = () => {
   const marker = useRef<mapboxgl.Marker | null>(null);
 
   useEffect(() => {
-    // Simplified property types for development deals
-    const developmentPropertyTypes = [
-      {
-        id: 1,
-        type_key: 'multifamily',
-        display_name: 'Multifamily',
-        category: 'Residential',
-        description: 'Multi-unit residential building',
-        icon: '🏢',
-      },
-      // Add more if needed in the future:
-      // { id: 2, type_key: 'mixed-use', display_name: 'Mixed-Use', category: 'Mixed', description: 'Residential with ground floor retail', icon: '🏪' },
-      // { id: 3, type_key: 'senior-housing', display_name: 'Senior Housing', category: 'Specialized', description: 'Age-restricted housing', icon: '🏥' },
-    ];
-    setAvailablePropertyTypes(developmentPropertyTypes);
+    const fetchPropertyTypes = async () => {
+      try {
+        const response = await apiClient.get('/api/v1/property-types');
+        if (response.data?.data) {
+          setAvailablePropertyTypes(response.data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch property types, using defaults');
+        setAvailablePropertyTypes([
+          { id: 10, type_key: 'single_family', display_name: 'Single-Family Homes', category: 'Residential', description: 'Detached single-family residential properties', icon: '🏠' },
+          { id: 16, type_key: 'garden_apartments', display_name: 'Garden-Style Apartments', category: 'Multifamily', description: 'Low-rise garden-style apartment communities', icon: '🏘️' },
+          { id: 17, type_key: 'midrise_apartments', display_name: 'Mid-Rise Apartments', category: 'Multifamily', description: 'Mid-rise apartment buildings (4-8 stories)', icon: '🏢' },
+          { id: 18, type_key: 'highrise_apartments', display_name: 'High-Rise Apartments', category: 'Multifamily', description: 'High-rise apartment towers (9+ stories)', icon: '🏙️' },
+          { id: 23, type_key: 'office_class_abc', display_name: 'Office (Class A, B, C)', category: 'Commercial', description: 'Traditional office space across all classes', icon: '🏛️' },
+          { id: 27, type_key: 'strip_centers', display_name: 'Strip Centers', category: 'Retail', description: 'Small inline retail strip shopping centers', icon: '🏪' },
+          { id: 34, type_key: 'warehouse_distribution', display_name: 'Warehouse / Distribution', category: 'Industrial', description: 'Bulk warehouse and distribution centers', icon: '🏭' },
+          { id: 41, type_key: 'limited_service_hotels', display_name: 'Limited-Service Hotels', category: 'Hospitality', description: 'Select-service and economy hotel properties', icon: '🏨' },
+          { id: 46, type_key: 'self_storage', display_name: 'Self-Storage', category: 'Special Purpose', description: 'Self-storage facilities and climate-controlled units', icon: '📦' },
+          { id: 54, type_key: 'raw_undeveloped', display_name: 'Raw / Undeveloped', category: 'Land', description: 'Unimproved raw land parcels', icon: '🌿' },
+          { id: 58, type_key: 'vertical_mixed_use', display_name: 'Vertical Mixed-Use', category: 'Mixed-Use', description: 'Vertically stacked residential/retail/office towers', icon: '🏗️' },
+        ]);
+      }
+    };
+    fetchPropertyTypes();
   }, []);
 
   useEffect(() => {
@@ -433,7 +442,7 @@ export const CreateDealPage: React.FC = () => {
                       disabled={!dealName.trim() || !address.trim()}
                       className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                     >
-                      Continue to Development Type &rarr;
+                      Continue
                     </Button>
                   </div>
                 </div>
@@ -790,7 +799,7 @@ export const CreateDealPage: React.FC = () => {
                       onClick={handleProceedFromDocuments}
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                     >
-                      Continue to Trade Area &rarr;
+                      Continue
                     </Button>
                   </div>
                 </div>
