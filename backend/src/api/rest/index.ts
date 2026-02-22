@@ -55,6 +55,7 @@ import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-in
 import mapAnnotationsRoutes from './mapAnnotations.routes';
 import leasingTrafficRoutes from './leasing-traffic.routes';
 import moduleLibrariesRoutes from './module-libraries.routes';
+import neighboringPropertiesRoutes from './neighboringProperties.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -214,6 +215,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Leasing Traffic Prediction routes (Multifamily leasing traffic predictions)
   app.use(`${API_PREFIX}/leasing-traffic`, leasingTrafficRoutes);
+
+  // Neighboring Properties routes (AI-enhanced assemblage analysis)
+  app.use(`${API_PREFIX}/properties`, neighboringPropertiesRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
