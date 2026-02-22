@@ -1,30 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  BarChart3, DollarSign, FileText, Bot, TrendingUp, Settings,
+  BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Users, Target, Package, MapPin, CreditCard, Calculator,
-  ClipboardCheck, Calendar, StickyNote, FolderOpen,
-  LogOut, Globe, Search, ArrowLeft, Shield, Activity
+  ClipboardCheck, Calendar, FolderOpen, Box,
+  LogOut, Globe, Search, ArrowLeft, Activity
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
-import MarketSection from '../components/deal/sections/MarketSection';
-import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
-import SupplySection from '../components/deal/sections/SupplySection';
 import ExitSection from '../components/deal/sections/ExitSection';
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
 import DebtSection from '../components/deal/sections/DebtSection';
 import InvestmentStrategySection from '../components/deal/sections/InvestmentStrategySection';
-import DueDiligenceSection from '../components/deal/sections/DueDiligenceSection';
-import TimelineSection from '../components/deal/sections/TimelineSection';
 import TeamSection from '../components/deal/sections/TeamSection';
-import DocumentsSection from '../components/deal/sections/DocumentsSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
-import NotesSection from '../components/deal/sections/NotesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import ContextTrackerSection from '../components/deal/sections/ContextTrackerSection';
+
+import CompetitionPage from './development/CompetitionPage';
+import { DueDiligencePage } from './development/DueDiligencePage';
+import { MarketAnalysisPage } from './development/MarketAnalysisPage';
+import { ProjectTimelinePage } from './development/ProjectTimelinePage';
+import SupplyPipelinePage from './development/SupplyPipelinePage';
+import { Design3DPageEnhanced } from './Design3DPage.enhanced';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -61,10 +61,8 @@ const DealDetailPage: React.FC = () => {
         '1': 'overview',
         '2': 'financial-model',
         '3': 'due-diligence',
-        '4': 'documents',
+        '4': 'files',
         '5': 'ai-agent',
-        '6': 'deal-status',
-        '7': 'settings',
       };
       if (keyMap[e.key]) {
         setActiveTab(keyMap[e.key]);
@@ -75,42 +73,108 @@ const DealDetailPage: React.FC = () => {
   }, []);
 
   const analysisTabs: Tab[] = [
-    { id: 'overview', label: 'Overview', icon: <BarChart3 size={16} />, component: OverviewSection },
-    { id: 'market', label: 'Market Intelligence', icon: <TrendingUp size={16} />, component: MarketSection },
-    { id: 'competition', label: 'Competition Analysis', icon: <Target size={16} />, component: CompetitionSection },
-    { id: 'supply', label: 'Supply Pipeline', icon: <Package size={16} />, component: SupplySection },
-    { id: 'exit', label: 'Exit Analysis', icon: <LogOut size={16} />, component: ExitSection },
+    { 
+      id: 'overview', 
+      label: 'Overview', 
+      icon: <BarChart3 size={16} />, 
+      component: OverviewSection 
+    },
+    { 
+      id: '3d-design', 
+      label: '3D Building Design', 
+      icon: <Box size={16} />, 
+      component: Design3DPageEnhanced 
+    },
+    { 
+      id: 'market-analysis', 
+      label: 'Market Analysis', 
+      icon: <TrendingUp size={16} />, 
+      component: MarketAnalysisPage 
+    },
+    { 
+      id: 'competition', 
+      label: 'Competition Analysis', 
+      icon: <Target size={16} />, 
+      component: CompetitionPage 
+    },
+    { 
+      id: 'supply', 
+      label: 'Supply Pipeline', 
+      icon: <Package size={16} />, 
+      component: SupplyPipelinePage 
+    },
   ];
 
   const financialTabs: Tab[] = [
-    { id: 'financial-model', label: 'Financial Model', icon: <Calculator size={16} />, component: FinancialModelingSection },
-    { id: 'debt', label: 'Debt & Financing', icon: <CreditCard size={16} />, component: DebtSection },
-    { id: 'strategy', label: 'Investment Strategy', icon: <Target size={16} />, component: InvestmentStrategySection },
+    { 
+      id: 'strategy', 
+      label: 'Investment Strategy', 
+      icon: <Target size={16} />, 
+      component: InvestmentStrategySection 
+    },
+    { 
+      id: 'financial-model', 
+      label: 'Financial Model', 
+      icon: <Calculator size={16} />, 
+      component: FinancialModelingSection 
+    },
+    { 
+      id: 'debt', 
+      label: 'Debt & Financing', 
+      icon: <CreditCard size={16} />, 
+      component: DebtSection 
+    },
+    { 
+      id: 'exit', 
+      label: 'Exit Analysis', 
+      icon: <LogOut size={16} />, 
+      component: ExitSection 
+    },
   ];
 
   const operationsTabs: Tab[] = [
-    { id: 'due-diligence', label: 'Due Diligence', icon: <ClipboardCheck size={16} />, component: DueDiligenceSection },
-    { id: 'timeline', label: 'Timeline & Milestones', icon: <Calendar size={16} />, component: TimelineSection },
-    { id: 'team', label: 'Team & Roles', icon: <Users size={16} />, component: TeamSection },
+    { 
+      id: 'due-diligence', 
+      label: 'Due Diligence', 
+      icon: <ClipboardCheck size={16} />, 
+      component: DueDiligencePage 
+    },
+    { 
+      id: 'timeline', 
+      label: 'Project Timeline', 
+      icon: <Calendar size={16} />, 
+      component: ProjectTimelinePage 
+    },
+    { 
+      id: 'team', 
+      label: 'Team & Roles', 
+      icon: <Users size={16} />, 
+      component: TeamSection 
+    },
   ];
 
   const documentsTabs: Tab[] = [
-    { id: 'documents', label: 'Documents', icon: <FileText size={16} />, component: DocumentsSection },
-    { id: 'files', label: 'Files & Assets', icon: <FolderOpen size={16} />, component: FilesSection },
-    { id: 'notes', label: 'Notes', icon: <StickyNote size={16} />, component: NotesSection },
+    { 
+      id: 'files', 
+      label: 'Files & Assets', 
+      icon: <FolderOpen size={16} />, 
+      component: FilesSection 
+    },
   ];
 
   const aiToolsTabs: Tab[] = [
-    { id: 'ai-agent', label: 'AI Agent / Opus', icon: <Bot size={16} />, component: OpusAISection },
-    { id: 'context', label: 'Context Builder', icon: <Globe size={16} />, component: ContextTrackerSection },
-  ];
-
-  const dealStatusTabs: Tab[] = [
-    { id: 'deal-status', label: 'Deal Capsule Summary', icon: <Building2 size={16} />, component: DealStatusComponent },
-  ];
-
-  const settingsTabs: Tab[] = [
-    { id: 'settings', label: 'Deal Settings', icon: <Settings size={16} />, component: DealSettingsComponent },
+    { 
+      id: 'ai-agent', 
+      label: 'AI Agent / Opus', 
+      icon: <Bot size={16} />, 
+      component: OpusAISection 
+    },
+    { 
+      id: 'context', 
+      label: 'Context Builder', 
+      icon: <Globe size={16} />, 
+      component: ContextTrackerSection 
+    },
   ];
 
   const allTabs = [
@@ -119,8 +183,6 @@ const DealDetailPage: React.FC = () => {
     ...operationsTabs,
     ...documentsTabs,
     ...aiToolsTabs,
-    ...dealStatusTabs,
-    ...settingsTabs,
   ];
 
   const activeTabData = allTabs.find(tab => tab.id === activeTab);
@@ -278,29 +340,12 @@ const DealDetailPage: React.FC = () => {
                   activeTab={activeTab}
                   onTabChange={setActiveTab}
                 />
-                <TabGroup
-                  id="deal-status"
-                  title="DEAL STATUS"
-                  icon={<TrendingUp size={18} />}
-                  tabs={dealStatusTabs}
-                  activeTab={activeTab}
-                  onTabChange={setActiveTab}
-                  alwaysExpanded={true}
-                />
-                <TabGroup
-                  id="settings"
-                  title="SETTINGS"
-                  icon={<Settings size={18} />}
-                  tabs={settingsTabs}
-                  activeTab={activeTab}
-                  onTabChange={setActiveTab}
-                />
               </nav>
             )}
           </div>
 
           <div className="mt-auto p-3 border-t border-slate-200">
-            <p className="text-xs text-slate-400 text-center">Press 1-7 to switch groups</p>
+            <p className="text-xs text-slate-400 text-center">Press 1-5 to switch groups</p>
           </div>
         </aside>
 
@@ -311,156 +356,5 @@ const DealDetailPage: React.FC = () => {
     </div>
   );
 };
-
-const DealStatusComponent: React.FC<{ deal: any; onUpdate?: () => void }> = ({ deal }) => {
-  const statusColor = deal?.status === 'active' ? 'green' : deal?.status === 'closed' ? 'blue' : 'yellow';
-  const mode = deal?.deal_category === 'owned' ? 'Performance' : 'Acquisition';
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-900">Deal Capsule Summary</h2>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium bg-${statusColor}-100 text-${statusColor}-700`}>
-          {deal?.status || 'Active'}
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <div className="text-xs text-slate-500 mb-1">Mode</div>
-          <div className="text-lg font-semibold text-slate-900">{mode}</div>
-        </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <div className="text-xs text-slate-500 mb-1">JEDI Score</div>
-          <div className="text-lg font-semibold text-blue-600">{deal?.jedi_score || 'N/A'}</div>
-        </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <div className="text-xs text-slate-500 mb-1">Property Type</div>
-          <div className="text-lg font-semibold text-slate-900 capitalize">{deal?.project_type || deal?.property_type || 'N/A'}</div>
-        </div>
-        <div className="bg-white rounded-lg border border-slate-200 p-4">
-          <div className="text-xs text-slate-500 mb-1">Units</div>
-          <div className="text-lg font-semibold text-slate-900">{deal?.target_units?.toLocaleString() || 'N/A'}</div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-slate-200 p-5">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Deal Details</h3>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-slate-500">Address:</span>
-            <span className="ml-2 text-slate-900">{deal?.address || 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500">Budget:</span>
-            <span className="ml-2 text-slate-900">{deal?.budget ? `$${Number(deal.budget).toLocaleString()}` : 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500">Timeline Start:</span>
-            <span className="ml-2 text-slate-900">{deal?.timeline_start ? new Date(deal.timeline_start).toLocaleDateString() : 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500">Timeline End:</span>
-            <span className="ml-2 text-slate-900">{deal?.timeline_end ? new Date(deal.timeline_end).toLocaleDateString() : 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500">Category:</span>
-            <span className="ml-2 text-slate-900 capitalize">{deal?.deal_category || 'N/A'}</span>
-          </div>
-          <div>
-            <span className="text-slate-500">Tier:</span>
-            <span className="ml-2 text-slate-900 capitalize">{deal?.tier || 'N/A'}</span>
-          </div>
-        </div>
-      </div>
-
-      {deal?.notes && (
-        <div className="bg-white rounded-lg border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-2">Notes</h3>
-          <p className="text-sm text-slate-600">{deal.notes}</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const DealSettingsComponent: React.FC<{ deal: any; onUpdate?: () => void }> = ({ deal }) => (
-  <div className="space-y-6">
-    <h2 className="text-lg font-bold text-slate-900">Deal Settings</h2>
-
-    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-slate-700">General</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Deal Name</label>
-          <input
-            type="text"
-            defaultValue={deal?.name || ''}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
-            readOnly
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Property Type</label>
-          <input
-            type="text"
-            defaultValue={deal?.project_type || deal?.property_type || ''}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
-            readOnly
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Category</label>
-          <input
-            type="text"
-            defaultValue={deal?.deal_category || ''}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
-            readOnly
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-500 mb-1">Tier</label>
-          <input
-            type="text"
-            defaultValue={deal?.tier || ''}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm capitalize focus:outline-none focus:border-blue-500"
-            readOnly
-          />
-        </div>
-      </div>
-    </div>
-
-    <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-slate-700">Notifications</h3>
-      <div className="space-y-3">
-        <label className="flex items-center gap-3">
-          <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-500 rounded border-slate-300" />
-          <span className="text-sm text-slate-700">Email notifications for deal updates</span>
-        </label>
-        <label className="flex items-center gap-3">
-          <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-500 rounded border-slate-300" />
-          <span className="text-sm text-slate-700">Alert on market changes affecting this deal</span>
-        </label>
-        <label className="flex items-center gap-3">
-          <input type="checkbox" className="w-4 h-4 text-blue-500 rounded border-slate-300" />
-          <span className="text-sm text-slate-700">Weekly summary report</span>
-        </label>
-      </div>
-    </div>
-
-    <div className="bg-white rounded-lg border border-red-200 p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-red-600">Danger Zone</h3>
-      <p className="text-sm text-slate-500">These actions cannot be undone.</p>
-      <div className="flex gap-3">
-        <button className="px-4 py-2 text-sm border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-50 transition-colors">
-          Archive Deal
-        </button>
-        <button className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
-          Delete Deal
-        </button>
-      </div>
-    </div>
-  </div>
-);
 
 export default DealDetailPage;
