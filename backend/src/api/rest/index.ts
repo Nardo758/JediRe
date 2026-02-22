@@ -56,6 +56,7 @@ import mapAnnotationsRoutes from './mapAnnotations.routes';
 import leasingTrafficRoutes from './leasing-traffic.routes';
 import moduleLibrariesRoutes from './module-libraries.routes';
 import neighboringPropertiesRoutes from './neighboringProperties.routes';
+import qwenRoutes from './qwen.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -218,6 +219,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Neighboring Properties routes (AI-enhanced assemblage analysis)
   app.use(`${API_PREFIX}/properties`, neighboringPropertiesRoutes);
+
+  // Qwen AI routes (Multimodal AI for development intelligence)
+  app.use(`${API_PREFIX}/ai`, qwenRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

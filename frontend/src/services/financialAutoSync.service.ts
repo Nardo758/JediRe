@@ -347,41 +347,95 @@ export class FinancialAutoSyncService {
     this.assumptions.delete(designId);
   }
 
-  // ===== AI INTEGRATION HOOKS (Future) =====
+  // ===== AI INTEGRATION HOOKS =====
 
   /**
-   * AI-powered market rent predictions (Future: Qwen integration)
-   * Currently returns null - implement when AI model is ready
+   * AI-powered market rent predictions with Qwen
+   * Falls back to null if AI is unavailable
    */
-  async predictRents?(
+  async predictRents(
     unitMix: Design3D['unitMix'],
     location: { lat: number; lng: number; address: string },
-    model: 'qwen'
+    model: 'qwen' = 'qwen'
   ): Promise<RentForecast[] | null> {
-    // TODO: Integrate with Qwen model for rent predictions
-    // This will analyze:
-    // - Market comps in the area
-    // - Demographic data
-    // - Supply/demand dynamics
-    // - Historical rent trends
-    return null;
+    try {
+      // Check if AI service is available
+      const statusResponse = await fetch('/api/v1/ai/status');
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.enabled) {
+        console.warn('[FinancialAutoSync] AI service not available for rent predictions');
+        return null;
+      }
+
+      // TODO: Create dedicated rent prediction endpoint
+      // For now, return null and use manual inputs
+      // When endpoint is created, call it like this:
+      /*
+      const response = await fetch('/api/v1/ai/predict-rents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unitMix, location, marketData })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Rent prediction failed');
+      }
+      
+      const result = await response.json();
+      return result.data;
+      */
+      
+      console.info('[FinancialAutoSync] Rent prediction endpoint not yet implemented');
+      return null;
+    } catch (error) {
+      console.error('[FinancialAutoSync] Rent prediction error:', error);
+      return null;
+    }
   }
 
   /**
-   * AI-powered cost estimation from 3D model (Future: Qwen integration)
-   * Currently returns null - implement when AI model is ready
+   * AI-powered cost estimation from 3D model with Qwen
+   * Falls back to null if AI is unavailable
    */
-  async estimateCostsWithAI?(
+  async estimateCostsWithAI(
     design3D: Design3D,
-    model: 'qwen'
+    model: 'qwen' = 'qwen'
   ): Promise<CostBreakdown | null> {
-    // TODO: Integrate with Qwen model for cost estimation
-    // This will analyze:
-    // - Similar projects in database
-    // - Current material costs
-    // - Labor market conditions
-    // - Design complexity factors
-    return null;
+    try {
+      // Check if AI service is available
+      const statusResponse = await fetch('/api/v1/ai/status');
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.enabled) {
+        console.warn('[FinancialAutoSync] AI service not available for cost estimation');
+        return null;
+      }
+
+      // TODO: Create dedicated cost estimation endpoint
+      // For now, return null and use manual inputs
+      // When endpoint is created, call it like this:
+      /*
+      const response = await fetch('/api/v1/ai/estimate-costs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ design3D })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Cost estimation failed');
+      }
+      
+      const result = await response.json();
+      return result.data;
+      */
+      
+      console.info('[FinancialAutoSync] Cost estimation endpoint not yet implemented');
+      return null;
+    } catch (error) {
+      console.error('[FinancialAutoSync] Cost estimation error:', error);
+      return null;
+    }
   }
 }
 

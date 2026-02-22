@@ -17,6 +17,7 @@ import {
   calculateCombinedParcelGeometry,
   analyzeSpatialBenefits 
 } from './spatialAnalysis';
+import { qwenService } from './qwen.service';
 
 // ============================================================================
 // Types & Interfaces
@@ -430,65 +431,253 @@ export class NeighboringPropertyEngine {
   }
 
   /**
-   * AI INTEGRATION POINT: Analyze owner disposition using Qwen
-   * @future Use Qwen to analyze owner background, property holding duration,
+   * AI INTEGRATION: Analyze owner disposition using Qwen
+   * Uses Qwen to analyze owner background, property holding duration,
    * market signals, and generate disposition score
    */
   async analyzeOwnerDisposition(ownerId: string, model: 'qwen' = 'qwen'): Promise<any> {
-    // TODO: Implement Qwen integration
-    // - Pull owner history from property_records
-    // - Analyze holding period patterns
-    // - Check for distress signals (tax delinquency, etc.)
-    // - Generate disposition score with AI reasoning
+    try {
+      if (!qwenService.isEnabled()) {
+        logger.warn('Qwen AI not configured, using rule-based analysis', { ownerId });
+        return this.analyzeOwnerDispositionRuleBased(ownerId);
+      }
+
+      // Pull owner history from database
+      const ownerProfile = await this.getOwnerProfile(ownerId);
+      
+      if (!ownerProfile) {
+        throw new Error(`Owner not found: ${ownerId}`);
+      }
+
+      // Call Qwen AI service
+      const dispositionScore = await qwenService.predictOwnerDisposition(ownerProfile);
+      
+      logger.info('AI owner disposition analysis complete', { 
+        ownerId, 
+        score: dispositionScore.score 
+      });
+      
+      return dispositionScore;
+    } catch (error) {
+      logger.error('AI owner disposition analysis failed', { ownerId, error });
+      // Fallback to rule-based
+      return this.analyzeOwnerDispositionRuleBased(ownerId);
+    }
+  }
+
+  /**
+   * Get owner profile from database
+   */
+  private async getOwnerProfile(ownerId: string): Promise<any> {
+    const result = await query(
+      `SELECT 
+        o.owner_id as id,
+        o.owner_name as name,
+        COUNT(pr.parcel_id) as properties,
+        AVG(EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM pr.last_sale_date)) as avg_hold_period,
+        MAX(pr.last_sale_date) as last_transaction_date
+      FROM owners o
+      LEFT JOIN property_records pr ON pr.owner_id = o.owner_id
+      WHERE o.owner_id = $1
+      GROUP BY o.owner_id, o.owner_name`,
+      [ownerId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const owner = result.rows[0];
+
+    // Get recent acquisitions
+    const acquisitionHistory = await query(
+      `SELECT 
+        pr.address,
+        pr.last_sale_price as price,
+        pr.last_sale_date as date
+      FROM property_records pr
+      WHERE pr.owner_id = $1
+      AND pr.last_sale_date IS NOT NULL
+      ORDER BY pr.last_sale_date DESC
+      LIMIT 10`,
+      [ownerId]
+    );
+
+    owner.acquisitionHistory = acquisitionHistory.rows;
+
+    return owner;
+  }
+
+  /**
+   * Fallback: Rule-based owner disposition analysis
+   */
+  private async analyzeOwnerDispositionRuleBased(ownerId: string): Promise<any> {
+    const ownerProfile = await this.getOwnerProfile(ownerId);
     
-    logger.warn('AI owner disposition analysis not yet implemented', { ownerId });
+    if (!ownerProfile) {
+      return {
+        score: 50,
+        factors: { holdPeriod: 50, marketTiming: 50, financialNeed: 50, portfolioStrategy: 50 },
+        estimatedPrice: 0,
+        timeframe: 'unknown',
+        negotiationLeverage: 'medium',
+        confidence: 0.3,
+        reasoning: 'Owner profile not found - using default estimates'
+      };
+    }
+
+    // Simple rule-based scoring
+    const holdPeriodScore = Math.min(100, ownerProfile.avg_hold_period * 10); // 10 years = 100
+    const portfolioScore = Math.min(100, (ownerProfile.properties / 5) * 100); // 5+ properties = active investor
+    
+    const score = (holdPeriodScore + portfolioScore) / 2;
+
     return {
-      implemented: false,
-      message: 'Qwen integration pending'
+      score,
+      factors: {
+        holdPeriod: holdPeriodScore,
+        marketTiming: 50,
+        financialNeed: 50,
+        portfolioStrategy: portfolioScore
+      },
+      estimatedPrice: 0,
+      timeframe: score > 70 ? '3-6 months' : score > 50 ? '6-12 months' : 'not likely',
+      negotiationLeverage: score > 70 ? 'high' : score > 50 ? 'medium' : 'low',
+      confidence: 0.5,
+      reasoning: 'Rule-based analysis (AI not configured)'
     };
   }
 
   /**
-   * AI INTEGRATION POINT: Generate negotiation strategy using Qwen
-   * @future Use Qwen to create custom negotiation approach based on
+   * AI INTEGRATION: Generate negotiation strategy using Qwen
+   * Uses Qwen to create custom negotiation approach based on
    * owner type, market conditions, and assemblage value
    */
   async generateNegotiationStrategy(
     neighbors: NeighborProperty[], 
     model: 'qwen' = 'qwen'
   ): Promise<any> {
-    // TODO: Implement Qwen integration
-    // - Analyze all neighbor data
-    // - Consider market timing
-    // - Generate acquisition sequence
-    // - Draft talking points and offer structure
-    
-    logger.warn('AI negotiation strategy not yet implemented', { 
-      neighborCount: neighbors.length 
-    });
+    try {
+      if (!qwenService.isEnabled()) {
+        logger.warn('Qwen AI not configured, using rule-based strategy', { 
+          neighborCount: neighbors.length 
+        });
+        return this.generateNegotiationStrategyRuleBased(neighbors);
+      }
+
+      // Convert to format expected by Qwen service
+      const enrichedNeighbors = neighbors.map(n => ({
+        parcelId: n.parcelId,
+        address: n.address,
+        owner: {
+          id: `owner-${n.parcelId}`,
+          name: n.ownerName,
+          properties: 1, // Would need to query
+          avgHoldPeriod: 5, // Would need to query
+          acquisitionHistory: []
+        },
+        assessedValue: n.assessedValue || 0,
+        zoning: n.landUseCode || 'unknown',
+        distanceFromSite: n.distance
+      }));
+
+      // Call Qwen AI service
+      const strategy = await qwenService.generateNegotiationStrategy(enrichedNeighbors);
+      
+      logger.info('AI negotiation strategy generated', {
+        neighborCount: neighbors.length,
+        approach: strategy.approach
+      });
+      
+      return strategy;
+    } catch (error) {
+      logger.error('AI negotiation strategy generation failed', { error });
+      // Fallback to rule-based
+      return this.generateNegotiationStrategyRuleBased(neighbors);
+    }
+  }
+
+  /**
+   * Fallback: Rule-based negotiation strategy
+   */
+  private generateNegotiationStrategyRuleBased(neighbors: NeighborProperty[]): any {
+    // Sort by value/potential
+    const prioritized = neighbors
+      .sort((a, b) => (b.sharedBoundaryFeet || 0) - (a.sharedBoundaryFeet || 0))
+      .map((n, index) => ({
+        parcelId: n.parcelId,
+        priority: index + 1,
+        approachStrategy: index === 0 
+          ? 'Direct offer - highest priority due to longest shared boundary'
+          : 'Secondary target - approach after primary acquisition',
+        offerRange: {
+          low: (n.assessedValue || 0) * 0.9,
+          mid: (n.assessedValue || 0) * 1.1,
+          high: (n.assessedValue || 0) * 1.3
+        }
+      }));
+
     return {
-      implemented: false,
-      message: 'Qwen integration pending'
+      approach: 'sequential',
+      prioritizedTargets: prioritized,
+      timeline: '6-12 months',
+      risks: [
+        'Competing developers may pursue same targets',
+        'Price escalation if sequential approach is detected',
+        'Some owners may not be willing sellers'
+      ],
+      successProbability: 0.6,
+      reasoning: 'Rule-based strategy prioritizing shared boundary length (AI not configured)'
     };
   }
 
   /**
-   * AI INTEGRATION POINT: Analyze site from aerial imagery
-   * @future Send satellite image to Qwen for context analysis
+   * AI INTEGRATION: Analyze site from aerial imagery
+   * Sends satellite image to Qwen for context analysis
    * (access roads, neighboring uses, environmental factors)
    */
-  async analyzeSiteFromAerial(coords: { lat: number; lng: number }): Promise<any> {
-    // TODO: Implement aerial image analysis
-    // - Fetch satellite imagery from Google/Mapbox
-    // - Send to Qwen vision model
-    // - Extract site context (access, adjacencies, constraints)
-    // - Return structured insights
-    
-    logger.warn('AI aerial analysis not yet implemented', { coords });
-    return {
-      implemented: false,
-      message: 'Satellite image analysis with Qwen pending'
-    };
+  async analyzeSiteFromAerial(
+    coords: { lat: number; lng: number },
+    satelliteUrl?: string
+  ): Promise<any> {
+    try {
+      if (!qwenService.isEnabled()) {
+        logger.warn('Qwen AI not configured, aerial analysis unavailable', { coords });
+        return {
+          implemented: false,
+          message: 'Qwen AI not configured - configure HF_TOKEN to enable aerial analysis'
+        };
+      }
+
+      // If no satellite URL provided, generate one from coords
+      if (!satelliteUrl) {
+        // Use Mapbox Static API or similar
+        const mapboxToken = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN;
+        if (mapboxToken) {
+          satelliteUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${coords.lng},${coords.lat},16,0/1280x1280@2x?access_token=${mapboxToken}`;
+        } else {
+          logger.warn('No Mapbox token available for satellite imagery', { coords });
+          return {
+            implemented: false,
+            message: 'Satellite imagery requires MAPBOX_TOKEN configuration'
+          };
+        }
+      }
+
+      // Call Qwen AI service for aerial analysis
+      const siteContext = await qwenService.analyzeSiteFromAerial(coords, satelliteUrl);
+      
+      logger.info('AI aerial analysis complete', { coords });
+      
+      return siteContext;
+    } catch (error) {
+      logger.error('AI aerial analysis failed', { coords, error });
+      return {
+        implemented: false,
+        error: error.message,
+        message: 'AI aerial analysis failed - see logs for details'
+      };
+    }
   }
 }
 

@@ -224,6 +224,91 @@ export const Pipeline3DProgress: React.FC<Pipeline3DProgressProps> = ({
     calculateMetrics(updatedSections);
   };
 
+  /**
+   * AI Integration: Auto-tag uploaded photos using Qwen
+   */
+  const autoTagPhotos = async (photoFiles: File[]): Promise<PhotoTag[]> => {
+    try {
+      const formData = new FormData();
+      photoFiles.forEach(photo => formData.append('photos', photo));
+
+      const response = await fetch('/api/v1/ai/auto-tag-photos', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to auto-tag photos');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'AI photo tagging failed');
+      }
+
+      return result.data;
+    } catch (error) {
+      console.error('[Pipeline3DProgress] Auto-tag photos error:', error);
+      // Return basic tags as fallback
+      return photoFiles.map((file, index) => ({
+        photoId: `photo-${Date.now()}-${index}`,
+        tags: ['construction'],
+        confidence: 0.3,
+      }));
+    }
+  };
+
+  /**
+   * AI Integration: Estimate construction progress from photos
+   */
+  const estimateProgressFromPhotos = async (
+    photoFiles: File[],
+    section: string
+  ): Promise<{
+    percentComplete: number;
+    confidence: number;
+    itemsCompleted: string[];
+    itemsRemaining: string[];
+  }> => {
+    try {
+      const formData = new FormData();
+      photoFiles.forEach(photo => formData.append('photos', photo));
+      formData.append('section', section);
+
+      const response = await fetch('/api/v1/ai/estimate-progress', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to estimate progress');
+      }
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'AI progress estimation failed');
+      }
+
+      return {
+        percentComplete: result.data.percentComplete,
+        confidence: result.data.confidence,
+        itemsCompleted: result.data.itemsCompleted,
+        itemsRemaining: result.data.itemsRemaining,
+      };
+    } catch (error) {
+      console.error('[Pipeline3DProgress] Estimate progress error:', error);
+      // Return default estimate as fallback
+      return {
+        percentComplete: 0,
+        confidence: 0,
+        itemsCompleted: [],
+        itemsRemaining: [],
+      };
+    }
+  };
+
   const selectedSectionData = buildingSections.find(s => s.id === selectedSection);
 
   return (
