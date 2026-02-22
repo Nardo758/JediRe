@@ -784,4 +784,51 @@ router.delete('/documents/:documentId', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+router.get('/:id/design', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    if (!pool) {
+      return res.json({ success: true, data: null });
+    }
+    const result = await pool.query(
+      'SELECT * FROM deal_designs WHERE deal_id = $1 ORDER BY updated_at DESC LIMIT 1',
+      [id]
+    );
+    if (result.rows.length > 0) {
+      res.json({ success: true, data: result.rows[0].design_data });
+    } else {
+      res.json({ success: true, data: null });
+    }
+  } catch (error) {
+    console.error('Error loading deal design:', error);
+    res.json({ success: true, data: null });
+  }
+});
+
+router.post('/:id/design', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const designData = req.body;
+    if (!pool) {
+      return res.json({ success: true, data: designData });
+    }
+    const existing = await pool.query('SELECT id FROM deal_designs WHERE deal_id = $1', [id]);
+    if (existing.rows.length > 0) {
+      await pool.query(
+        'UPDATE deal_designs SET design_data = $1, updated_at = NOW() WHERE deal_id = $2',
+        [JSON.stringify(designData), id]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO deal_designs (id, deal_id, design_data, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())',
+        [uuidv4(), id, JSON.stringify(designData)]
+      );
+    }
+    res.json({ success: true, data: designData });
+  } catch (error) {
+    console.error('Error saving deal design:', error);
+    res.status(500).json({ success: false, error: 'Failed to save design' });
+  }
+});
+
 export default router;
