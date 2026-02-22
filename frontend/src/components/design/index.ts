@@ -1,33 +1,24 @@
-/**
- * Design Components - Export Index
- * Centralizes exports for easy importing
- */
+// Main 3D Editor
+export { Building3DEditor } from './Building3DEditor';
 
-export { Building3DEditor, default } from './Building3DEditor';
+// Panel Components
+export { SubjectPropertyPanel } from './panels/SubjectPropertyPanel';
+export { CompetitionPanel } from './panels/CompetitionPanel';
+export { TrafficPanel } from './panels/TrafficPanel';
+export { ResearchPanel } from './panels/ResearchPanel';
 
-// Re-export hooks for convenience
-export { 
-  useDesign3D, 
-  useBuildingGenerator,
-  useAIDesignGeneration,
-  useAIImageToTerrain,
-  useDesign3DKeyboardShortcuts
-} from '@/hooks/design/useDesign3D';
+// Map Components
+export { MapLayerControls } from './MapLayerControls';
+export { MapModeSelector } from './MapModeSelector';
+export { MapView } from './MapView';
 
-// Re-export store
-export { useDesign3DStore } from '@/stores/design/design3d.store';
+// Financial Components
+export { FinancialSummaryPanel } from './FinancialSummaryPanel';
 
-// Re-export types
-export type {
-  Design3DState,
-  BuildingSection,
-  BuildingMetrics,
-  ParcelBoundary,
-  ZoningEnvelope,
-  ContextBuilding,
-  EditMode,
-  Point3D,
-  Polygon2D,
-  UnitMix,
-  UnitType,
-} from '@/types/design/design3d.types';
+// Table Components
+export { CompetitionTable } from './tables/CompetitionTable';
+export { TrafficDataTable } from './tables/TrafficDataTable';
+export { MarketTrendsTable } from './tables/MarketTrendsTable';
+
+// Layout Components
+export { CollapsiblePanel, BottomPanel } from './SidebarLayout';

@@ -8,11 +8,6 @@ import { Button } from '../components/shared/Button';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import { apiClient } from '../services/api.client';
-import { Building3DEditor } from '../components/design';
-import { FinancialModelDisplay } from '../components/financial';
-import { designOptimizerService } from '../services/designOptimizer.service';
-import { financialAutoSync } from '../services/financialAutoSync.service';
-import type { Design3D, ProForma, FinancialAssumptions } from '../types/financial.types';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -39,10 +34,6 @@ const STEPS = {
   ADDRESS: 6,
   TRADE_AREA: 7,
   BOUNDARY: 8,
-  DESIGN_3D: 9,           // New: 3D Building Design (development only)
-  NEIGHBORS: 10,          // New: Neighboring Property Recommendations (development only)
-  OPTIMIZE: 11,           // New: Design Optimization (development only)
-  FINANCIAL: 12,          // New: Financial Review (development only)
 } as const;
 
 export const CreateDealPage: React.FC = () => {
@@ -76,20 +67,6 @@ export const CreateDealPage: React.FC = () => {
   const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
-
-  // ============================================================================
-  // 3D DEVELOPMENT FLOW STATE (Steps 9-12)
-  // ============================================================================
-  const [design3D, setDesign3D] = useState<Design3D | null>(null);
-  const [selectedNeighbors, setSelectedNeighbors] = useState<any[]>([]);
-  const [neighboringProperties, setNeighboringProperties] = useState<any[]>([]);
-  const [isLoadingNeighbors, setIsLoadingNeighbors] = useState(false);
-  const [optimizedDesign, setOptimizedDesign] = useState<any | null>(null);
-  const [optimizationResults, setOptimizationResults] = useState<any | null>(null);
-  const [isOptimizing, setIsOptimizing] = useState(false);
-  const [proForma, setProForma] = useState<ProForma | null>(null);
-  const [financialAssumptions, setFinancialAssumptions] = useState<FinancialAssumptions | null>(null);
-  const [propertyId, setPropertyId] = useState<string | null>(null);
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -326,230 +303,8 @@ export const CreateDealPage: React.FC = () => {
         coordinates: coordinates,
       });
     }
-    
-    // For development deals, proceed to 3D design step
-    if (developmentType === 'new') {
-      setCurrentStep(STEPS.DESIGN_3D);
-    } else {
-      handleSubmit();
-    }
+    handleSubmit();
   };
-
-  // ============================================================================
-  // 3D DEVELOPMENT FLOW HANDLERS
-  // ============================================================================
-
-  /**
-   * Step 9: Handle 3D design completion
-   * Captures design metrics from Building3DEditor and proceeds to neighbor recommendations
-   */
-  const handle3DDesignComplete = (designData: Design3D) => {
-    setDesign3D(designData);
-    setError(null);
-    setCurrentStep(STEPS.NEIGHBORS);
-  };
-
-  /**
-   * Step 10: Load neighboring property recommendations
-   * Calls API to get properties within assemblage distance
-   */
-  const loadNeighboringProperties = async () => {
-    if (!propertyId && !coordinates) {
-      setError('Property location not available');
-      return;
-    }
-
-    setIsLoadingNeighbors(true);
-    setError(null);
-
-    try {
-      const [lng, lat] = coordinates!;
-      const response = await apiClient.get(`/api/v1/properties/neighbors`, {
-        params: {
-          lat,
-          lng,
-          radius: 500, // 500 feet default assemblage radius
-          limit: 10,
-        },
-      });
-
-      if (response.data.success) {
-        setNeighboringProperties(response.data.data || []);
-      } else {
-        setNeighboringProperties([]);
-      }
-    } catch (err: any) {
-      console.error('Failed to load neighboring properties:', err);
-      setError(err.message || 'Failed to load neighboring properties');
-      setNeighboringProperties([]);
-    } finally {
-      setIsLoadingNeighbors(false);
-    }
-  };
-
-  /**
-   * Step 10: Handle neighbor selection and proceed to optimization
-   */
-  const handleNeighborsComplete = () => {
-    setError(null);
-    setCurrentStep(STEPS.OPTIMIZE);
-  };
-
-  /**
-   * Step 10: Skip neighbor recommendations
-   */
-  const handleSkipNeighbors = () => {
-    setSelectedNeighbors([]);
-    setCurrentStep(STEPS.OPTIMIZE);
-  };
-
-  /**
-   * Step 11: Run design optimization
-   * Uses designOptimizer service to optimize unit mix, parking, and amenities
-   */
-  const handleOptimizeDesign = async () => {
-    if (!design3D) {
-      setError('3D design data not available');
-      return;
-    }
-
-    setIsOptimizing(true);
-    setError(null);
-
-    try {
-      // Prepare market demand data (would come from API in production)
-      const marketDemand = {
-        studioAbsorption: 2,
-        oneBrAbsorption: 5,
-        twoBrAbsorption: 4,
-        threeBrAbsorption: 2,
-        studioRentPSF: 2.5,
-        oneBrRentPSF: 2.2,
-        twoBrRentPSF: 2.0,
-        threeBrRentPSF: 1.9,
-        vacancy: 5,
-      };
-
-      // Prepare parcel data
-      const parcelData = {
-        lotSizeSqft: design3D.grossSF || 50000,
-        zoningFAR: design3D.farMax || 3.0,
-        maxHeight: design3D.stories * 12, // Assuming 12ft per story
-        geometry: boundary?.type === 'Polygon' ? boundary : undefined,
-      };
-
-      // Run optimization
-      const results = await designOptimizerService.optimizeDesign({
-        marketDemand,
-        parcelData,
-        existingDesign: design3D,
-        selectedNeighbors,
-      });
-
-      setOptimizationResults(results);
-      
-      // Store optimized design for financial modeling
-      if (results.optimizedDesign) {
-        setOptimizedDesign(results.optimizedDesign);
-      }
-    } catch (err: any) {
-      console.error('Design optimization failed:', err);
-      setError(err.message || 'Failed to optimize design');
-    } finally {
-      setIsOptimizing(false);
-    }
-  };
-
-  /**
-   * Step 11: Accept optimization results
-   */
-  const handleAcceptOptimization = () => {
-    if (optimizedDesign) {
-      setDesign3D(optimizedDesign);
-    }
-    setError(null);
-    setCurrentStep(STEPS.FINANCIAL);
-  };
-
-  /**
-   * Step 11: Skip optimization and use current design
-   */
-  const handleSkipOptimization = () => {
-    setOptimizedDesign(null);
-    setOptimizationResults(null);
-    setCurrentStep(STEPS.FINANCIAL);
-  };
-
-  /**
-   * Step 12: Generate financial pro forma
-   * Auto-generates financial model from 3D design
-   */
-  useEffect(() => {
-    if (currentStep === STEPS.FINANCIAL && design3D && !financialAssumptions) {
-      // Initialize default financial assumptions
-      const defaultAssumptions: FinancialAssumptions = {
-        marketRents: {
-          studio: 1800,
-          oneBed: 2200,
-          twoBed: 2800,
-          threeBed: 3500,
-        },
-        constructionCosts: {
-          residentialPerSF: 250,
-          parkingSurface: 5000,
-          parkingStructured: 60000,
-          parkingUnderground: 80000,
-          amenityPerSF: 150,
-          siteWork: 500000,
-          contingency: 0.05,
-        },
-        softCosts: {
-          architectureEngineering: 0.05,
-          legalPermitting: 0.02,
-          financing: 0.015,
-          marketing: 50000,
-          developerFee: 0.03,
-        },
-        operatingAssumptions: {
-          vacancyRate: 0.05,
-          managementFee: 0.04,
-          operatingExpensesPerUnit: 5000,
-          propertyTaxRate: 0.012,
-          insurancePerUnit: 800,
-          utilitiesPerUnit: 600,
-          repairsMaintenancePerUnit: 1200,
-          payrollPerUnit: 1000,
-        },
-        debtAssumptions: {
-          loanToValue: 0.65,
-          interestRate: 0.075,
-          loanTerm: 30,
-          amortization: 30,
-          constructionLoanRate: 0.08,
-          constructionPeriod: 24,
-        },
-        exitAssumptions: {
-          holdPeriod: 10,
-          exitCapRate: 0.05,
-          sellingCosts: 0.02,
-        },
-      };
-
-      setFinancialAssumptions(defaultAssumptions);
-
-      // Trigger auto-generation
-      financialAutoSync.onDesignChange(design3D);
-    }
-  }, [currentStep, design3D, financialAssumptions]);
-
-  /**
-   * Load neighboring properties when reaching Step 10
-   */
-  useEffect(() => {
-    if (currentStep === STEPS.NEIGHBORS && neighboringProperties.length === 0) {
-      loadNeighboringProperties();
-    }
-  }, [currentStep]);
 
   const handleSubmit = async () => {
     if (!dealName.trim()) {
@@ -563,8 +318,7 @@ export const CreateDealPage: React.FC = () => {
     }
 
     try {
-      // Prepare deal creation payload
-      const dealPayload: any = {
+      const result = await createDeal({
         name: dealName,
         description,
         deal_category: dealCategory!,
@@ -581,21 +335,7 @@ export const CreateDealPage: React.FC = () => {
         cap_rate: capRate ? parseFloat(capRate) : undefined,
         renovation_budget: renovationBudget ? parseFloat(renovationBudget.replace(/[^0-9.]/g, '')) : undefined,
         uploaded_documents: uploadedDocuments.map(doc => doc.id),
-      };
-
-      // Include 3D development data if available (for new development deals)
-      if (developmentType === 'new' && design3D) {
-        dealPayload.design3D = design3D;
-        dealPayload.selectedNeighbors = selectedNeighbors;
-        dealPayload.optimizationResults = optimizationResults;
-        dealPayload.proForma = proForma;
-        dealPayload.financialAssumptions = financialAssumptions;
-        
-        // Override units with 3D design data
-        dealPayload.units = design3D.totalUnits;
-      }
-
-      const result = await createDeal(dealPayload);
+      });
 
       if (result && (submarketId || msaId || tradeAreaId)) {
         try {
@@ -666,25 +406,6 @@ export const CreateDealPage: React.FC = () => {
           draw.current.deleteAll();
         }
         break;
-      case STEPS.DESIGN_3D:
-        setCurrentStep(STEPS.BOUNDARY);
-        setDesign3D(null);
-        break;
-      case STEPS.NEIGHBORS:
-        setCurrentStep(STEPS.DESIGN_3D);
-        setSelectedNeighbors([]);
-        setNeighboringProperties([]);
-        break;
-      case STEPS.OPTIMIZE:
-        setCurrentStep(STEPS.NEIGHBORS);
-        setOptimizedDesign(null);
-        setOptimizationResults(null);
-        break;
-      case STEPS.FINANCIAL:
-        setCurrentStep(STEPS.OPTIMIZE);
-        setProForma(null);
-        setFinancialAssumptions(null);
-        break;
       default:
         break;
     }
@@ -710,18 +431,11 @@ export const CreateDealPage: React.FC = () => {
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
               <p className="text-gray-600">
-                Step {currentStep} of {developmentType === 'new' ? STEPS.FINANCIAL : STEPS.BOUNDARY} &bull; {
+                Step {currentStep} of {STEPS.BOUNDARY} &bull; {
                   currentStep <= STEPS.TYPE ? 'Setup' :
                   currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
                   currentStep === STEPS.DOCUMENTS ? 'Documents & Deal Data' :
                   currentStep === STEPS.DETAILS ? 'Deal Details' :
-                  currentStep === STEPS.ADDRESS ? 'Location' :
-                  currentStep === STEPS.TRADE_AREA ? 'Trade Area' :
-                  currentStep === STEPS.BOUNDARY ? 'Boundary' :
-                  currentStep === STEPS.DESIGN_3D ? '3D Design' :
-                  currentStep === STEPS.NEIGHBORS ? 'Neighboring Properties' :
-                  currentStep === STEPS.OPTIMIZE ? 'Design Optimization' :
-                  currentStep === STEPS.FINANCIAL ? 'Financial Review' :
                   'Location'
                 }
               </p>
@@ -729,7 +443,7 @@ export const CreateDealPage: React.FC = () => {
 
             <div className="mb-8">
               <div className="flex items-center gap-2">
-                {Array.from({ length: developmentType === 'new' ? STEPS.FINANCIAL : STEPS.BOUNDARY }).map((_, idx) => (
+                {Array.from({ length: STEPS.BOUNDARY }).map((_, idx) => (
                   <div
                     key={idx}
                     className={`h-2 flex-1 rounded-full transition-all ${
@@ -1207,402 +921,23 @@ export const CreateDealPage: React.FC = () => {
                   )}
 
                   <div className="mt-6 flex justify-center gap-3">
-                    <Button
-                      onClick={handleSkipBoundary}
-                      disabled={isLoading}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      Continue to 3D Design &rarr;
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ============================================================================ */}
-            {/* STEP 9: 3D BUILDING DESIGN (Development Only) */}
-            {/* ============================================================================ */}
-            {currentStep === STEPS.DESIGN_3D && developmentType === 'new' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Design Your Building in 3D
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Use the 3D editor to design your building. Define unit mix, massing, parking, and amenities.
-                  </p>
-
-                  <div className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden" style={{ height: '600px' }}>
-                    <Building3DEditor
-                      dealId={propertyId || undefined}
-                      onMetricsChange={(metrics) => {
-                        // Update design3D state with metrics from editor
-                        const designData: Design3D = {
-                          id: propertyId || `temp-${Date.now()}`,
-                          dealId: propertyId || '',
-                          totalUnits: metrics.totalUnits || 0,
-                          unitMix: metrics.unitMix || { studio: 0, oneBed: 0, twoBed: 0, threeBed: 0 },
-                          rentableSF: metrics.rentableSF || 0,
-                          grossSF: metrics.grossSF || 0,
-                          efficiency: metrics.efficiency || 0.85,
-                          parkingSpaces: metrics.parkingSpaces || 0,
-                          parkingType: metrics.parkingType || 'surface',
-                          amenitySF: metrics.amenitySF || 0,
-                          stories: metrics.stories || 1,
-                          farUtilized: metrics.farUtilized || 0,
-                          farMax: metrics.farMax,
-                          lastModified: new Date().toISOString(),
-                        };
-                        setDesign3D(designData);
-                      }}
-                      onSave={() => {
-                        if (design3D) {
-                          handle3DDesignComplete(design3D);
-                        } else {
-                          setError('Please complete your 3D design before proceeding');
-                        }
-                      }}
-                    />
-                  </div>
-
-                  {design3D && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="grid grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="font-semibold text-green-900">Total Units:</span>
-                          <span className="ml-2 text-green-700">{design3D.totalUnits}</span>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-green-900">Rentable SF:</span>
-                          <span className="ml-2 text-green-700">{design3D.rentableSF.toLocaleString()}</span>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-green-900">Stories:</span>
-                          <span className="ml-2 text-green-700">{design3D.stories}</span>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-green-900">Parking:</span>
-                          <span className="ml-2 text-green-700">{design3D.parkingSpaces} spaces</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-6 flex justify-end">
-                    <Button
-                      onClick={() => {
-                        if (design3D) {
-                          handle3DDesignComplete(design3D);
-                        } else {
-                          setError('Please complete your 3D design before proceeding');
-                        }
-                      }}
-                      disabled={!design3D}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      Continue to Neighbor Analysis &rarr;
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ============================================================================ */}
-            {/* STEP 10: NEIGHBORING PROPERTY RECOMMENDATIONS */}
-            {/* ============================================================================ */}
-            {currentStep === STEPS.NEIGHBORS && developmentType === 'new' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Neighboring Property Recommendations
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Consider assembling adjacent properties to maximize development potential.
-                  </p>
-
-                  {isLoadingNeighbors ? (
-                    <div className="text-center py-12">
-                      <div className="text-4xl mb-4">&#8987;</div>
-                      <p className="text-gray-600">Loading neighboring properties...</p>
-                    </div>
-                  ) : neighboringProperties.length === 0 ? (
-                    <div className="p-6 bg-gray-50 border-2 border-gray-200 rounded-xl text-center">
-                      <div className="text-5xl mb-3">&#127970;</div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                        No Adjacent Properties Found
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        No neighboring properties available for assemblage at this location.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-4 max-h-[500px] overflow-y-auto">
-                      {neighboringProperties.map((neighbor, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-4 border-2 rounded-lg cursor-pointer transition ${
-                            selectedNeighbors.find(n => n.id === neighbor.id)
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 hover:border-blue-300'
-                          }`}
-                          onClick={() => {
-                            const isSelected = selectedNeighbors.find(n => n.id === neighbor.id);
-                            if (isSelected) {
-                              setSelectedNeighbors(selectedNeighbors.filter(n => n.id !== neighbor.id));
-                            } else {
-                              setSelectedNeighbors([...selectedNeighbors, neighbor]);
-                            }
-                          }}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-gray-900">
-                                {neighbor.address || `Property ${idx + 1}`}
-                              </h4>
-                              <p className="text-sm text-gray-600 mt-1">
-                                {neighbor.lotSize ? `${neighbor.lotSize.toLocaleString()} SF lot` : 'Lot size unknown'}
-                              </p>
-                              {neighbor.benefits && (
-                                <div className="flex gap-2 mt-2">
-                                  {neighbor.benefits.additionalUnits && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      +{neighbor.benefits.additionalUnits} units potential
-                                    </span>
-                                  )}
-                                  {neighbor.benefits.costSavings && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                      ${neighbor.benefits.costSavings.toLocaleString()} savings
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            <div className="ml-4">
-                              {selectedNeighbors.find(n => n.id === neighbor.id) ? (
-                                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div className="w-6 h-6 border-2 border-gray-300 rounded-full" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-6 flex justify-between">
-                    <Button
-                      onClick={handleSkipNeighbors}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    >
-                      Skip Neighbor Analysis
-                    </Button>
-                    <Button
-                      onClick={handleNeighborsComplete}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      {selectedNeighbors.length > 0 
-                        ? `Continue with ${selectedNeighbors.length} Selected &rarr;`
-                        : 'Continue without Neighbors &rarr;'
-                      }
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ============================================================================ */}
-            {/* STEP 11: DESIGN OPTIMIZATION */}
-            {/* ============================================================================ */}
-            {currentStep === STEPS.OPTIMIZE && developmentType === 'new' && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Optimize Your Design
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Use AI-powered optimization to maximize returns based on market data and zoning constraints.
-                  </p>
-
-                  {!optimizationResults ? (
-                    <div className="space-y-4">
-                      <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl text-center">
-                        <div className="text-5xl mb-3">&#129302;</div>
-                        <h3 className="text-lg font-semibold text-purple-900 mb-2">
-                          Ready to Optimize
-                        </h3>
-                        <p className="text-sm text-purple-700 mb-4">
-                          Our AI will analyze market demand, zoning rules, and construction costs to suggest the optimal unit mix, parking configuration, and amenity package.
-                        </p>
-                        <Button
-                          onClick={handleOptimizeDesign}
-                          disabled={isOptimizing}
-                          className="bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
-                        >
-                          {isOptimizing ? 'Optimizing...' : '✨ Optimize Design'}
-                        </Button>
-                      </div>
-
-                      {design3D && (
-                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                          <h4 className="font-semibold text-gray-900 mb-3">Current Design:</h4>
-                          <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <span className="text-gray-600">Total Units:</span>
-                              <span className="ml-2 font-medium">{design3D.totalUnits}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Parking Spaces:</span>
-                              <span className="ml-2 font-medium">{design3D.parkingSpaces}</span>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Amenity SF:</span>
-                              <span className="ml-2 font-medium">{design3D.amenitySF.toLocaleString()}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="p-6 bg-green-50 border-2 border-green-200 rounded-xl">
-                        <div className="flex items-start gap-4">
-                          <div className="text-4xl">&#9989;</div>
-                          <div className="flex-1">
-                            <h3 className="text-lg font-semibold text-green-900 mb-2">
-                              Optimization Complete!
-                            </h3>
-                            <p className="text-sm text-green-700 mb-4">
-                              {optimizationResults.summary || 'Your design has been optimized for maximum returns.'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {optimizationResults.comparison && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                            <h4 className="font-semibold text-gray-900 mb-3">Before Optimization:</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Total Units:</span>
-                                <span className="font-medium">{optimizationResults.comparison.before.totalUnits}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Parking:</span>
-                                <span className="font-medium">{optimizationResults.comparison.before.parkingSpaces}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Estimated NOI:</span>
-                                <span className="font-medium">${(optimizationResults.comparison.before.estimatedNOI || 0).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-4 bg-green-50 border-2 border-green-500 rounded-lg">
-                            <h4 className="font-semibold text-green-900 mb-3">After Optimization:</h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-green-700">Total Units:</span>
-                                <span className="font-semibold text-green-900">{optimizationResults.comparison.after.totalUnits}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-green-700">Parking:</span>
-                                <span className="font-semibold text-green-900">{optimizationResults.comparison.after.parkingSpaces}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-green-700">Estimated NOI:</span>
-                                <span className="font-semibold text-green-900">${(optimizationResults.comparison.after.estimatedNOI || 0).toLocaleString()}</span>
-                              </div>
-                            </div>
-                            <div className="mt-3 pt-3 border-t border-green-300">
-                              <div className="flex justify-between text-sm font-semibold text-green-900">
-                                <span>Improvement:</span>
-                                <span className="text-lg">+{optimizationResults.improvementPercent || 0}%</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex gap-3">
-                        <Button
-                          onClick={handleAcceptOptimization}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          &#10003; Accept Optimized Design
-                        </Button>
-                        <Button
-                          onClick={handleSkipOptimization}
-                          className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700"
-                        >
-                          Keep Original Design
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* ============================================================================ */}
-            {/* STEP 12: FINANCIAL REVIEW */}
-            {/* ============================================================================ */}
-            {currentStep === STEPS.FINANCIAL && developmentType === 'new' && design3D && financialAssumptions && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Financial Pro Forma Review
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Review the auto-generated financial model based on your 3D design.
-                  </p>
-
-                  <div className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden">
-                    <FinancialModelDisplay
-                      design3D={design3D}
-                      assumptions={financialAssumptions}
-                      onProFormaChange={(newProForma) => {
-                        setProForma(newProForma);
-                      }}
-                    />
-                  </div>
-
-                  {proForma && (
-                    <div className="mt-6 grid grid-cols-3 gap-4">
-                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-blue-900">
-                          ${(proForma.totalDevCost || 0).toLocaleString()}
-                        </div>
-                        <div className="text-sm text-blue-700 mt-1">Total Development Cost</div>
-                      </div>
-                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-green-900">
-                          {((proForma.leveragedIRR || 0) * 100).toFixed(2)}%
-                        </div>
-                        <div className="text-sm text-green-700 mt-1">Levered IRR</div>
-                      </div>
-                      <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg text-center">
-                        <div className="text-2xl font-bold text-purple-900">
-                          {((proForma.equityMultiple || 0)).toFixed(2)}x
-                        </div>
-                        <div className="text-sm text-purple-700 mt-1">Equity Multiple</div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="mt-6 flex justify-end">
-                    <Button
-                      onClick={handleSubmit}
-                      disabled={isLoading}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      {isLoading ? 'Creating Deal...' : '🎉 Finalize & Create Deal'}
-                    </Button>
+                    {boundary && boundary.type !== 'Point' ? (
+                      <Button
+                        onClick={handleSubmit}
+                        disabled={isLoading}
+                        className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                      >
+                        {isLoading ? 'Creating Deal...' : 'Create Deal with Boundary'}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleSkipBoundary}
+                        disabled={isLoading}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-700 disabled:opacity-50"
+                      >
+                        Skip - Use Point Location & Create
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1615,29 +950,9 @@ export const CreateDealPage: React.FC = () => {
             )}
 
             <div className="mt-8 flex items-center gap-3">
-              {currentStep > STEPS.CATEGORY && currentStep !== STEPS.BOUNDARY && currentStep !== STEPS.DESIGN_3D && currentStep !== STEPS.NEIGHBORS && currentStep !== STEPS.OPTIMIZE && currentStep !== STEPS.FINANCIAL && (
+              {currentStep > STEPS.CATEGORY && (
                 <Button onClick={handleBack} disabled={isLoading}>
                   &larr; Back
-                </Button>
-              )}
-              {currentStep === STEPS.DESIGN_3D && (
-                <Button onClick={handleBack} disabled={isLoading}>
-                  &larr; Back
-                </Button>
-              )}
-              {currentStep === STEPS.NEIGHBORS && (
-                <Button onClick={handleBack} disabled={isLoading}>
-                  &larr; Back to 3D Design
-                </Button>
-              )}
-              {currentStep === STEPS.OPTIMIZE && (
-                <Button onClick={handleBack} disabled={isLoading}>
-                  &larr; Back to Neighbors
-                </Button>
-              )}
-              {currentStep === STEPS.FINANCIAL && (
-                <Button onClick={handleBack} disabled={isLoading}>
-                  &larr; Back to Optimization
                 </Button>
               )}
               {currentStep === STEPS.DETAILS && (

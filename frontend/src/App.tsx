@@ -36,9 +36,10 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
-import { ActiveOwnersPage } from './pages/ActiveOwnersPage';
-import { FutureSupplyPage } from './pages/FutureSupplyPage';
+import ActiveOwnersPage from './pages/ActiveOwnersPage';
+import FutureSupplyPage from './pages/FutureSupplyPage';
 import { MyMarketsOverview, MarketComparison, MarketDeepDive } from './pages/MarketIntelligence';
+import { Design3DPageEnhanced } from './pages/Design3DPage.enhanced';
 
 
 function AppContent() {
@@ -95,6 +96,7 @@ function AppContent() {
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
+          <Route path="/deals/:dealId/design" element={<Design3DPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/capsules" element={<DealCapsulesPage />} />

@@ -30,7 +30,11 @@ outputType = "webview"
 
 [userenv.shared]
 JWT_REFRESH_SECRET = "jedi-re-refresh-secret-2026-secure-token"
-PORT = "4000"
+PORT = "3000"
+
+[[ports]]
+localPort = 3000
+externalPort = 3002
 
 [[ports]]
 localPort = 4000
