@@ -177,8 +177,8 @@ export const Design3DPageEnhanced: React.FC = () => {
         <div className="text-center">
           <div className="text-6xl mb-4">❌</div>
           <p className="text-gray-600 mb-4">Deal not found</p>
-          <Link to="/deals" className="text-blue-600 hover:text-blue-700">
-            Back to Deals
+          <Link to={dealId ? `/deals/${dealId}` : '/deals'} className="text-blue-600 hover:text-blue-700">
+            Back to Deal
           </Link>
         </div>
       </div>
@@ -293,12 +293,12 @@ export const Design3DPageEnhanced: React.FC = () => {
                     handleSave();
                   }
                 }
-                navigate(`/deals`);
+                navigate(`/deals/${dealId}`);
               }}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
             >
               <ChevronLeft className="w-5 h-5" />
-              <span className="font-medium">Back to Deals</span>
+              <span className="font-medium">Back to Deal</span>
             </button>
             
             <div className="border-l border-gray-300 pl-4">
