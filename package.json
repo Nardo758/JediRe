@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@turf/area": "^7.3.4",
+    "@turf/circle": "^7.3.4",
+    "@turf/helpers": "^7.3.4",
+    "@turf/union": "^7.3.4",
+    "@types/multer": "^2.0.0",
+    "multer": "^2.0.2",
     "recharts": "^3.7.0"
   }
 }
