@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
+import { useDealStore } from '../stores/dealStore';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import ExitSection from '../components/deal/sections/ExitSection';
@@ -29,6 +30,7 @@ import { Design3DPageEnhanced } from './Design3DPage.enhanced';
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
+  const { fetchDealById } = useDealStore();
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -45,6 +47,7 @@ const DealDetailPage: React.FC = () => {
       setLoading(true);
       const response = await apiClient.get(`/api/v1/deals/${id}`);
       setDeal(response.data);
+      fetchDealById(id);
     } catch (error) {
       console.error('Error loading deal:', error);
     } finally {
