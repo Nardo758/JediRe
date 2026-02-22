@@ -33,7 +33,13 @@ import {
   Download
 } from 'lucide-react';
 
-export const Design3DPageEnhanced: React.FC = () => {
+interface Design3DPageEnhancedProps {
+  deal?: any;
+  onUpdate?: () => void;
+  onBack?: () => void;
+}
+
+export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBack }) => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const { selectedDeal: currentDeal, fetchDealById: loadDeal } = useDealStore();
@@ -293,7 +299,11 @@ export const Design3DPageEnhanced: React.FC = () => {
                     handleSave();
                   }
                 }
-                navigate(`/deals/${dealId}`);
+                if (onBack) {
+                  onBack();
+                } else {
+                  navigate(`/deals/${dealId}`);
+                }
               }}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
             >
