@@ -43,7 +43,7 @@ export const MarketAnalysisPage: React.FC = () => {
     const insights: MarketInsights = {
       unitMix: currentUnitMix,
       amenities: selectedAmenities,
-      targetDemographic: demographicData?.primaryProfile || 'young-professionals',
+      targetDemographic: demographicData?.primaryProfile?.ageRange || 'young-professionals',
     };
     
     console.log('Applying insights to 3D design:', insights);

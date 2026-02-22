@@ -34,10 +34,15 @@ export interface DemandPoint {
 }
 
 export interface DemandDriver {
+  id: string;
   name: string;
+  type: string;
   impact: number;
   trend: 'up' | 'down' | 'stable';
   description?: string;
+  distance: number;
+  location: [number, number];
+  details?: string;
 }
 
 export interface HeatmapPoint {
@@ -47,13 +52,36 @@ export interface HeatmapPoint {
   label?: string;
 }
 
+export interface DemographicProfile {
+  ageRange: string;
+  incomeRange: string;
+  remoteWorkPercentage: number;
+  petOwnershipPercentage: number;
+  vehicleOwnership: number;
+}
+
 export interface DemographicData {
-  primaryProfile: string;
+  primaryProfile: DemographicProfile;
   medianIncome: number;
   medianAge: number;
   populationGrowth: number;
   employmentRate: number;
   topEmployers: string[];
+  ageDistribution: Record<string, number>;
+  growthTrends: Record<string, number>;
+  lifestyleIndicators: Record<string, number>;
+}
+
+export interface Amenity {
+  id: string;
+  name: string;
+  category: 'fitness' | 'work' | 'pet' | 'parking' | 'entertainment' | 'service';
+  monthlyPremium: number;
+  roi: number;
+  marketPenetration: number;
+  adoptionRate: number;
+  sqftRequired: number;
+  trending: 'up' | 'stable' | 'down';
 }
 
 export interface AmenityData {
