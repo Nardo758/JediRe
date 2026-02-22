@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Users, Target, Package, MapPin, CreditCard, Calculator,
-  ClipboardCheck, Calendar, FolderOpen, Box,
+  ClipboardCheck, Calendar, FolderOpen, Box, Car,
   LogOut, Globe, Search, ArrowLeft, Activity
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
@@ -19,6 +19,7 @@ import TeamSection from '../components/deal/sections/TeamSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import ContextTrackerSection from '../components/deal/sections/ContextTrackerSection';
+import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
 import CompetitionPage from './development/CompetitionPage';
 import { DueDiligencePage } from './development/DueDiligencePage';
@@ -105,6 +106,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Supply Pipeline', 
       icon: <Package size={16} />, 
       component: SupplyPipelinePage 
+    },
+    { 
+      id: 'traffic', 
+      label: 'Traffic Engine', 
+      icon: <Car size={16} />, 
+      component: TrafficAnalysisSection 
     },
   ];
 
