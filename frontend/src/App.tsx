@@ -8,6 +8,7 @@ import { DealsPage } from './pages/DealsPage';
 import { DealView } from './pages/DealView';
 import { DealPage } from './pages/DealPage';
 import { DealPageEnhanced } from './pages/DealPageEnhanced';
+import DealDetailPage from './pages/DealDetailPage';
 import { CreateDealPage } from './pages/CreateDealPage';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
@@ -104,8 +105,8 @@ function AppContent() {
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:dealId/design" element={<Design3DPageEnhanced />} />
-          <Route path="/deals/:id" element={<DealView />} />
-          <Route path="/deals/:id/:module" element={<DealView />} />
+          <Route path="/deals/:dealId" element={<DealDetailPage />} />
+          <Route path="/deals/:dealId/:module" element={<DealDetailPage />} />
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
