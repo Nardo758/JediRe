@@ -40,6 +40,13 @@ import ActiveOwnersPage from './pages/ActiveOwnersPage';
 import FutureSupplyPage from './pages/FutureSupplyPage';
 import { MyMarketsOverview, MarketComparison, MarketDeepDive } from './pages/MarketIntelligence';
 import { Design3DPageEnhanced } from './pages/Design3DPage.enhanced';
+import {
+  CompetitionPage,
+  DueDiligencePage,
+  MarketAnalysisPage,
+  ProjectTimelinePage,
+  SupplyPipelinePage,
+} from './pages/development';
 
 
 function AppContent() {
@@ -112,6 +119,13 @@ function AppContent() {
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
+
+          {/* Development Module Routes */}
+          <Route path="/development/competition/:dealId" element={<CompetitionPage />} />
+          <Route path="/development/due-diligence/:dealId" element={<DueDiligencePage />} />
+          <Route path="/development/market-analysis/:dealId" element={<MarketAnalysisPage />} />
+          <Route path="/development/timeline/:dealId" element={<ProjectTimelinePage />} />
+          <Route path="/development/supply/:dealId" element={<SupplyPipelinePage />} />
           
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
