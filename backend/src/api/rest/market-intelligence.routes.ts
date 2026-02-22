@@ -1,13 +1,8 @@
-// Market Intelligence API Routes
-// Created: 2026-02-20
-// Purpose: Unified market system endpoints
-
 import { Router } from 'express';
-import { Pool } from 'pg';
 import { z } from 'zod';
+import { getPool } from '../../database/connection';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import type {
-  CreateMarketPreferenceRequest,
-  UpdateMarketPreferenceRequest,
   MarketOverviewResponse,
   MarketSummaryResponse,
   MarketComparisonResponse,
@@ -16,8 +11,65 @@ import type {
 } from '../../types/marketIntelligence.types';
 
 const router = Router();
+const pool = getPool();
 
-// Validation schemas
+async function syncUserMarketsFromOnboarding(userId: string): Promise<void> {
+  try {
+    const userResult = await pool.query(
+      'SELECT preferred_markets FROM users WHERE id = $1',
+      [userId]
+    );
+    const preferredMarkets: string[] = userResult.rows[0]?.preferred_markets || [];
+    if (preferredMarkets.length === 0) return;
+
+    const existingPrefs = await pool.query(
+      'SELECT market_id FROM user_market_preferences WHERE user_id = $1',
+      [userId]
+    );
+    const existingMarketIds = new Set(existingPrefs.rows.map(r => r.market_id));
+
+    const newMarkets = preferredMarkets.filter(m => !existingMarketIds.has(m));
+    if (newMarkets.length === 0) return;
+
+    for (const marketName of newMarkets) {
+      const available = await pool.query(
+        'SELECT name, display_name, state FROM available_markets WHERE name = $1',
+        [marketName]
+      );
+      const displayName = available.rows[0]?.display_name || marketName.charAt(0).toUpperCase() + marketName.slice(1);
+      const stateCode = available.rows[0]?.state || '';
+
+      await pool.query(
+        `INSERT INTO market_coverage_status (market_id, display_name, state_code, total_parcels, covered_parcels, data_points_count, total_units, status, metadata)
+         VALUES ($1, $2, $3, 0, 0, 0, 0, 'pending', '{}')
+         ON CONFLICT (market_id) DO NOTHING`,
+        [marketName, displayName, stateCode]
+      );
+
+      const priority = existingMarketIds.size + newMarkets.indexOf(marketName) + 1;
+      await pool.query(
+        `INSERT INTO user_market_preferences (user_id, market_id, display_name, is_active, priority, notification_settings)
+         VALUES ($1, $2, $3, true, $4, '{}')
+         ON CONFLICT (user_id, market_id) DO UPDATE SET is_active = true, updated_at = NOW()`,
+        [userId, marketName, displayName, priority]
+      );
+    }
+
+    const removedMarkets = [...existingMarketIds].filter(m => !preferredMarkets.includes(m));
+    if (removedMarkets.length > 0) {
+      await pool.query(
+        `UPDATE user_market_preferences SET is_active = false, updated_at = NOW()
+         WHERE user_id = $1 AND market_id = ANY($2)`,
+        [userId, removedMarkets]
+      );
+    }
+
+    console.log(`[MI Sync] Synced ${newMarkets.length} new markets, deactivated ${removedMarkets.length} for user ${userId}`);
+  } catch (error) {
+    console.error('[MI Sync] Error syncing markets from onboarding:', error);
+  }
+}
+
 const createPreferenceSchema = z.object({
   market_id: z.string().min(1).max(100),
   display_name: z.string().min(1).max(255),
@@ -41,808 +93,396 @@ const updatePreferenceSchema = z.object({
   }).optional()
 });
 
-export function createMarketIntelligenceRoutes(pool: Pool) {
-  
-  // GET /api/v1/markets/preferences - Get user's tracked markets
-  router.get('/preferences', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+router.get('/preferences', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const result = await pool.query(
+      `SELECT * FROM user_market_preferences WHERE user_id = $1 ORDER BY priority ASC, display_name ASC`,
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching market preferences:', error);
+    res.status(500).json({ error: 'Failed to fetch market preferences' });
+  }
+});
 
-      const result = await pool.query(
-        `SELECT * FROM user_market_preferences 
-         WHERE user_id = $1 
-         ORDER BY priority ASC, display_name ASC`,
-        [userId]
-      );
-
-      res.json(result.rows);
-    } catch (error) {
-      console.error('Error fetching market preferences:', error);
-      res.status(500).json({ error: 'Failed to fetch market preferences' });
+router.post('/preferences', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const validation = createPreferenceSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid request', details: validation.error });
     }
-  });
 
-  // POST /api/v1/markets/preferences - Add market to tracking
-  router.post('/preferences', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+    const { market_id, display_name, priority, notification_settings } = validation.data;
 
-      const validation = createPreferenceSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ error: 'Invalid request', details: validation.error });
-      }
+    const marketCheck = await pool.query(
+      'SELECT id FROM market_coverage_status WHERE market_id = $1',
+      [market_id]
+    );
 
-      const { market_id, display_name, priority, notification_settings } = validation.data;
-
-      // Check if market exists in coverage status
-      const marketCheck = await pool.query(
-        'SELECT id FROM market_coverage_status WHERE market_id = $1',
-        [market_id]
-      );
-
-      if (marketCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'Market not found in system' });
-      }
-
-      const result = await pool.query(
-        `INSERT INTO user_market_preferences 
-         (user_id, market_id, display_name, priority, notification_settings)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (user_id, market_id) DO UPDATE
-         SET is_active = true, display_name = $3, priority = $4, notification_settings = $5, updated_at = NOW()
-         RETURNING *`,
-        [userId, market_id, display_name, priority || 1, JSON.stringify(notification_settings || {})]
-      );
-
-      res.status(201).json(result.rows[0]);
-    } catch (error) {
-      console.error('Error creating market preference:', error);
-      res.status(500).json({ error: 'Failed to create market preference' });
+    if (marketCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Market not found in system' });
     }
-  });
 
-  // PUT /api/v1/markets/preferences/:id - Update market preference
-  router.put('/preferences/:id', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+    const result = await pool.query(
+      `INSERT INTO user_market_preferences 
+       (user_id, market_id, display_name, priority, notification_settings)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, market_id) DO UPDATE
+       SET is_active = true, display_name = $3, priority = $4, notification_settings = $5, updated_at = NOW()
+       RETURNING *`,
+      [userId, market_id, display_name, priority || 1, JSON.stringify(notification_settings || {})]
+    );
 
-      const preferenceId = parseInt(req.params.id);
-      const validation = updatePreferenceSchema.safeParse(req.body);
-      
-      if (!validation.success) {
-        return res.status(400).json({ error: 'Invalid request', details: validation.error });
-      }
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating market preference:', error);
+    res.status(500).json({ error: 'Failed to create market preference' });
+  }
+});
 
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
+router.put('/preferences/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const preferenceId = parseInt(req.params.id);
+    const validation = updatePreferenceSchema.safeParse(req.body);
 
-      if (validation.data.is_active !== undefined) {
-        updates.push(`is_active = $${paramCount++}`);
-        values.push(validation.data.is_active);
-      }
-
-      if (validation.data.priority !== undefined) {
-        updates.push(`priority = $${paramCount++}`);
-        values.push(validation.data.priority);
-      }
-
-      if (validation.data.notification_settings !== undefined) {
-        updates.push(`notification_settings = $${paramCount++}`);
-        values.push(JSON.stringify(validation.data.notification_settings));
-      }
-
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
-      }
-
-      values.push(preferenceId, userId);
-
-      const result = await pool.query(
-        `UPDATE user_market_preferences 
-         SET ${updates.join(', ')}, updated_at = NOW()
-         WHERE id = $${paramCount++} AND user_id = $${paramCount}
-         RETURNING *`,
-        values
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Market preference not found' });
-      }
-
-      res.json(result.rows[0]);
-    } catch (error) {
-      console.error('Error updating market preference:', error);
-      res.status(500).json({ error: 'Failed to update market preference' });
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Invalid request', details: validation.error });
     }
-  });
 
-  // DELETE /api/v1/markets/preferences/:id - Remove market from tracking
-  router.delete('/preferences/:id', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
 
-      const preferenceId = parseInt(req.params.id);
-
-      const result = await pool.query(
-        'DELETE FROM user_market_preferences WHERE id = $1 AND user_id = $2 RETURNING *',
-        [preferenceId, userId]
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Market preference not found' });
-      }
-
-      res.json({ success: true, deleted: result.rows[0] });
-    } catch (error) {
-      console.error('Error deleting market preference:', error);
-      res.status(500).json({ error: 'Failed to delete market preference' });
+    if (validation.data.is_active !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(validation.data.is_active);
     }
-  });
 
-  // GET /api/v1/markets/overview - Dashboard data for "My Markets"
-  router.get('/overview', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+    if (validation.data.priority !== undefined) {
+      updates.push(`priority = $${paramCount++}`);
+      values.push(validation.data.priority);
+    }
 
-      // Get user's tracked markets with coverage and vitals
-      const marketsResult = await pool.query(
-        `SELECT 
-          ump.market_id,
-          ump.display_name,
-          mcs.state_code,
-          mcs.coverage_percentage,
-          mcs.data_points_count,
-          mcs.total_units,
-          mcs.status,
-          mcs.last_import_date,
-          mv.rent_growth_yoy,
-          mv.occupancy_rate,
-          mv.jedi_score,
-          mv.jedi_rating
-         FROM user_market_preferences ump
-         JOIN market_coverage_status mcs ON ump.market_id = mcs.market_id
-         LEFT JOIN LATERAL (
-           SELECT * FROM market_vitals 
-           WHERE market_id = ump.market_id 
-           ORDER BY date DESC 
-           LIMIT 1
-         ) mv ON true
-         WHERE ump.user_id = $1 AND ump.is_active = true
-         ORDER BY ump.priority ASC, ump.display_name ASC`,
-        [userId]
-      );
+    if (validation.data.notification_settings !== undefined) {
+      updates.push(`notification_settings = $${paramCount++}`);
+      values.push(JSON.stringify(validation.data.notification_settings));
+    }
 
-      // Get deal counts per market
-      const dealCounts = await pool.query(
-        `SELECT 
-          COALESCE(location, 'unknown') as market_id,
-          COUNT(*) as deal_count
-         FROM deals
-         WHERE user_id = $1
-         GROUP BY location`,
-        [userId]
-      );
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
 
-      const dealCountMap = new Map(
-        dealCounts.rows.map(row => [row.market_id.toLowerCase().replace(/\s+/g, '-'), parseInt(row.deal_count)])
-      );
+    values.push(preferenceId, userId);
 
-      const markets: MarketCardData[] = marketsResult.rows.map(row => ({
+    const result = await pool.query(
+      `UPDATE user_market_preferences 
+       SET ${updates.join(', ')}, updated_at = NOW()
+       WHERE id = $${paramCount++} AND user_id = $${paramCount}
+       RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Market preference not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating market preference:', error);
+    res.status(500).json({ error: 'Failed to update market preference' });
+  }
+});
+
+router.delete('/preferences/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const preferenceId = parseInt(req.params.id);
+
+    const result = await pool.query(
+      'DELETE FROM user_market_preferences WHERE id = $1 AND user_id = $2 RETURNING *',
+      [preferenceId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Market preference not found' });
+    }
+
+    res.json({ success: true, deleted: result.rows[0] });
+  } catch (error) {
+    console.error('Error deleting market preference:', error);
+    res.status(500).json({ error: 'Failed to delete market preference' });
+  }
+});
+
+router.get('/overview', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+
+    await syncUserMarketsFromOnboarding(userId);
+
+    const marketsResult = await pool.query(
+      `SELECT 
+        ump.market_id,
+        ump.display_name,
+        mcs.state_code,
+        mcs.coverage_percentage,
+        mcs.data_points_count,
+        mcs.total_units,
+        mcs.status,
+        mcs.last_import_date,
+        mv.rent_growth_yoy,
+        mv.occupancy_rate,
+        mv.jedi_score,
+        mv.jedi_rating
+       FROM user_market_preferences ump
+       JOIN market_coverage_status mcs ON ump.market_id = mcs.market_id
+       LEFT JOIN LATERAL (
+         SELECT * FROM market_vitals 
+         WHERE market_id = ump.market_id 
+         ORDER BY date DESC 
+         LIMIT 1
+       ) mv ON true
+       WHERE ump.user_id = $1 AND ump.is_active = true
+       ORDER BY ump.priority ASC, ump.display_name ASC`,
+      [userId]
+    );
+
+    const totalDeals = await pool.query(
+      `SELECT COUNT(*) as deal_count FROM deals WHERE user_id = $1 AND status = 'active'`,
+      [userId]
+    );
+    const totalDealCount = parseInt(totalDeals.rows[0]?.deal_count) || 0;
+
+    const markets: MarketCardData[] = marketsResult.rows.map(row => ({
+      market_id: row.market_id,
+      display_name: row.display_name,
+      state_code: row.state_code,
+      coverage_percentage: parseFloat(row.coverage_percentage) || 0,
+      data_points_count: row.data_points_count || 0,
+      total_units: row.total_units || 0,
+      active_deals_count: 0,
+      status: row.status,
+      vitals: row.jedi_score ? {
+        rent_growth_yoy: parseFloat(row.rent_growth_yoy),
+        occupancy_rate: parseFloat(row.occupancy_rate),
+        jedi_score: row.jedi_score,
+        jedi_rating: row.jedi_rating
+      } : null,
+      last_import_date: row.last_import_date
+    }));
+
+    const alerts = await generateMarketAlerts(userId, markets);
+
+    const response: MarketOverviewResponse = {
+      active_markets_count: markets.length,
+      total_data_points: markets.reduce((sum, m) => sum + m.data_points_count, 0),
+      active_deals_count: totalDealCount,
+      markets,
+      alerts
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching market overview:', error);
+    res.status(500).json({ error: 'Failed to fetch market overview' });
+  }
+});
+
+router.get('/coverage', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM market_coverage_status ORDER BY display_name ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching market coverage:', error);
+    res.status(500).json({ error: 'Failed to fetch market coverage' });
+  }
+});
+
+router.get('/compare', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const marketIds = req.query.markets as string;
+    if (!marketIds) {
+      return res.status(400).json({ error: 'markets query parameter required' });
+    }
+
+    const marketIdArray = marketIds.split(',').map(id => id.trim());
+
+    const result = await pool.query(
+      `SELECT 
+        mcs.*,
+        mv.date as vitals_date,
+        mv.population, mv.population_growth_yoy, mv.job_growth_yoy,
+        mv.median_income, mv.median_home_price, mv.rent_growth_yoy,
+        mv.avg_rent_per_unit, mv.occupancy_rate, mv.vacancy_rate,
+        mv.absorption_rate, mv.new_supply_units, mv.jedi_score,
+        mv.jedi_rating, mv.source as vitals_source,
+        0 as active_deals_count
+       FROM market_coverage_status mcs
+       LEFT JOIN LATERAL (
+         SELECT * FROM market_vitals WHERE market_id = mcs.market_id ORDER BY date DESC LIMIT 1
+       ) mv ON true
+       WHERE mcs.market_id = ANY($1)`,
+      [marketIdArray]
+    );
+
+    const response: MarketComparisonResponse = {
+      markets: result.rows.map(row => ({
         market_id: row.market_id,
         display_name: row.display_name,
-        state_code: row.state_code,
-        coverage_percentage: parseFloat(row.coverage_percentage) || 0,
-        data_points_count: row.data_points_count || 0,
-        total_units: row.total_units || 0,
-        active_deals_count: dealCountMap.get(row.market_id) || 0,
-        status: row.status,
-        vitals: row.jedi_score ? {
-          rent_growth_yoy: parseFloat(row.rent_growth_yoy),
-          occupancy_rate: parseFloat(row.occupancy_rate),
+        vitals: row.vitals_date ? {
+          id: 0,
+          market_id: row.market_id,
+          date: row.vitals_date,
+          population: row.population,
+          population_growth_yoy: row.population_growth_yoy ? parseFloat(row.population_growth_yoy) : null,
+          job_growth_yoy: row.job_growth_yoy ? parseFloat(row.job_growth_yoy) : null,
+          median_income: row.median_income,
+          median_home_price: row.median_home_price,
+          rent_growth_yoy: row.rent_growth_yoy ? parseFloat(row.rent_growth_yoy) : null,
+          avg_rent_per_unit: row.avg_rent_per_unit,
+          occupancy_rate: row.occupancy_rate ? parseFloat(row.occupancy_rate) : null,
+          vacancy_rate: row.vacancy_rate ? parseFloat(row.vacancy_rate) : null,
+          absorption_rate: row.absorption_rate ? parseFloat(row.absorption_rate) : null,
+          new_supply_units: row.new_supply_units,
           jedi_score: row.jedi_score,
-          jedi_rating: row.jedi_rating
+          jedi_rating: row.jedi_rating,
+          source: row.vitals_source,
+          metadata: {},
+          created_at: new Date()
         } : null,
-        last_import_date: row.last_import_date
-      }));
-
-      // Generate alerts
-      const alerts = await generateMarketAlerts(pool, userId, markets);
-
-      const response: MarketOverviewResponse = {
-        active_markets_count: markets.length,
-        total_data_points: markets.reduce((sum, m) => sum + m.data_points_count, 0),
-        active_deals_count: markets.reduce((sum, m) => sum + m.active_deals_count, 0),
-        markets,
-        alerts
-      };
-
-      res.json(response);
-    } catch (error) {
-      console.error('Error fetching market overview:', error);
-      res.status(500).json({ error: 'Failed to fetch market overview' });
-    }
-  });
-
-  // GET /api/v1/markets/:marketId/summary - Single market card data
-  router.get('/:marketId/summary', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const { marketId } = req.params;
-
-      // Get market coverage
-      const marketResult = await pool.query(
-        'SELECT * FROM market_coverage_status WHERE market_id = $1',
-        [marketId]
-      );
-
-      if (marketResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Market not found' });
-      }
-
-      // Get latest vitals
-      const vitalsResult = await pool.query(
-        'SELECT * FROM market_vitals WHERE market_id = $1 ORDER BY date DESC LIMIT 1',
-        [marketId]
-      );
-
-      // Get user preference
-      const preferenceResult = await pool.query(
-        'SELECT * FROM user_market_preferences WHERE user_id = $1 AND market_id = $2',
-        [userId, marketId]
-      );
-
-      // Get deal count
-      const dealCountResult = await pool.query(
-        'SELECT COUNT(*) as count FROM deals WHERE user_id = $1 AND LOWER(REPLACE(location, \' \', \'-\')) = $2',
-        [userId, marketId]
-      );
-
-      const response: MarketSummaryResponse = {
-        market: marketResult.rows[0],
-        vitals: vitalsResult.rows[0] || null,
-        active_deals_count: parseInt(dealCountResult.rows[0].count) || 0,
-        is_tracked: preferenceResult.rows.length > 0,
-        user_preference: preferenceResult.rows[0] || null
-      };
-
-      res.json(response);
-    } catch (error) {
-      console.error('Error fetching market summary:', error);
-      res.status(500).json({ error: 'Failed to fetch market summary' });
-    }
-  });
-
-  // GET /api/v1/markets/:marketId/alerts - Market-specific alerts
-  router.get('/:marketId/alerts', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const { marketId } = req.params;
-
-      // Check if user tracks this market
-      const preferenceCheck = await pool.query(
-        'SELECT id FROM user_market_preferences WHERE user_id = $1 AND market_id = $2 AND is_active = true',
-        [userId, marketId]
-      );
-
-      if (preferenceCheck.rows.length === 0) {
-        return res.status(403).json({ error: 'Market not tracked by user' });
-      }
-
-      // Get market data for alert generation
-      const marketResult = await pool.query(
-        `SELECT mcs.*, mv.* 
-         FROM market_coverage_status mcs
-         LEFT JOIN LATERAL (
-           SELECT * FROM market_vitals WHERE market_id = mcs.market_id ORDER BY date DESC LIMIT 1
-         ) mv ON true
-         WHERE mcs.market_id = $1`,
-        [marketId]
-      );
-
-      const alerts = await generateMarketAlerts(pool, userId, [marketResult.rows[0]]);
-
-      res.json(alerts);
-    } catch (error) {
-      console.error('Error fetching market alerts:', error);
-      res.status(500).json({ error: 'Failed to fetch market alerts' });
-    }
-  });
-
-  // GET /api/v1/markets/compare - Multi-market comparison
-  router.get('/compare', async (req, res) => {
-    try {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const marketIds = req.query.markets as string;
-      if (!marketIds) {
-        return res.status(400).json({ error: 'markets query parameter required' });
-      }
-
-      const marketIdArray = marketIds.split(',').map(id => id.trim());
-
-      const result = await pool.query(
-        `SELECT 
-          mcs.*,
-          mv.*,
-          (SELECT COUNT(*) FROM deals WHERE user_id = $1 AND LOWER(REPLACE(location, ' ', '-')) = mcs.market_id) as active_deals_count
-         FROM market_coverage_status mcs
-         LEFT JOIN LATERAL (
-           SELECT * FROM market_vitals WHERE market_id = mcs.market_id ORDER BY date DESC LIMIT 1
-         ) mv ON true
-         WHERE mcs.market_id = ANY($2)`,
-        [userId, marketIdArray]
-      );
-
-      const response: MarketComparisonResponse = {
-        markets: result.rows.map(row => ({
+        coverage: {
+          id: row.id,
           market_id: row.market_id,
           display_name: row.display_name,
-          vitals: row.date ? {
-            id: row.id,
-            market_id: row.market_id,
-            date: row.date,
-            population: row.population,
-            population_growth_yoy: row.population_growth_yoy,
-            job_growth_yoy: row.job_growth_yoy,
-            median_income: row.median_income,
-            median_home_price: row.median_home_price,
-            rent_growth_yoy: row.rent_growth_yoy,
-            avg_rent_per_unit: row.avg_rent_per_unit,
-            occupancy_rate: row.occupancy_rate,
-            vacancy_rate: row.vacancy_rate,
-            absorption_rate: row.absorption_rate,
-            new_supply_units: row.new_supply_units,
-            jedi_score: row.jedi_score,
-            jedi_rating: row.jedi_rating,
-            source: row.source,
-            metadata: row.metadata,
-            created_at: row.created_at
-          } : null,
-          coverage: {
-            id: row.id,
-            market_id: row.market_id,
-            display_name: row.display_name,
-            state_code: row.state_code,
-            total_parcels: row.total_parcels,
-            covered_parcels: row.covered_parcels,
-            coverage_percentage: row.coverage_percentage,
-            data_points_count: row.data_points_count,
-            total_units: row.total_units,
-            last_import_date: row.last_import_date,
-            next_scheduled_import: row.next_scheduled_import,
-            status: row.status,
-            metadata: row.metadata,
-            created_at: row.created_at,
-            updated_at: row.updated_at
-          },
-          active_deals_count: parseInt(row.active_deals_count) || 0
-        })),
-        comparison_date: new Date()
-      };
-
-      res.json(response);
-    } catch (error) {
-      console.error('Error fetching market comparison:', error);
-      res.status(500).json({ error: 'Failed to fetch market comparison' });
-    }
-  });
-
-  // GET /api/v1/markets/properties - List properties with filtering/pagination
-  router.get('/properties', async (req, res) => {
-    try {
-      const marketId = (req.query.marketId as string) || 'atlanta';
-      const submarket = req.query.submarket as string;
-      const minYear = req.query.minYear ? parseInt(req.query.minYear as string) : undefined;
-      const maxYear = req.query.maxYear ? parseInt(req.query.maxYear as string) : undefined;
-      const minUnits = req.query.minUnits ? parseInt(req.query.minUnits as string) : undefined;
-      const maxUnits = req.query.maxUnits ? parseInt(req.query.maxUnits as string) : undefined;
-      const minPricePerUnit = req.query.minPricePerUnit ? parseFloat(req.query.minPricePerUnit as string) : undefined;
-      const maxPricePerUnit = req.query.maxPricePerUnit ? parseFloat(req.query.maxPricePerUnit as string) : undefined;
-      const ownerType = req.query.ownerType as string;
-      const search = req.query.search as string;
-      const sortBy = (req.query.sortBy as string) || 'units';
-      const sortDir = (req.query.sortDir as string) === 'asc' ? 'ASC' : 'DESC';
-      const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
-      const offset = (page - 1) * limit;
-
-      const allowedSortColumns: Record<string, string> = {
-        units: 'pr.units',
-        year_built: 'pr.year_built',
-        assessed_value: 'pr.assessed_value',
-        appraised_value: 'pr.appraised_value',
-        address: 'pr.address',
-        owner_name: 'pr.owner_name',
-        building_sqft: 'pr.building_sqft',
-      };
-      const sortColumn = allowedSortColumns[sortBy] || 'pr.units';
-
-      let whereClause = '';
-      const params: any[] = [];
-      let paramIndex = 1;
-
-      if (marketId === 'atlanta') {
-        whereClause = `WHERE pr.county = 'Fulton' AND pr.state = 'GA' AND pr.units > 0`;
-      } else {
-        whereClause = `WHERE pr.units > 0`;
-      }
-
-      if (search) {
-        whereClause += ` AND (pr.address ILIKE $${paramIndex} OR pr.owner_name ILIKE $${paramIndex})`;
-        params.push(`%${search}%`);
-        paramIndex++;
-      }
-
-      if (minYear) {
-        whereClause += ` AND pr.year_built IS NOT NULL AND pr.year_built ~ '^[0-9]+$' AND pr.year_built::integer >= $${paramIndex}`;
-        params.push(minYear);
-        paramIndex++;
-      }
-
-      if (maxYear) {
-        whereClause += ` AND pr.year_built IS NOT NULL AND pr.year_built ~ '^[0-9]+$' AND pr.year_built::integer <= $${paramIndex}`;
-        params.push(maxYear);
-        paramIndex++;
-      }
-
-      if (minUnits) {
-        whereClause += ` AND pr.units >= $${paramIndex}`;
-        params.push(minUnits);
-        paramIndex++;
-      }
-
-      if (maxUnits) {
-        whereClause += ` AND pr.units <= $${paramIndex}`;
-        params.push(maxUnits);
-        paramIndex++;
-      }
-
-      if (minPricePerUnit) {
-        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) >= $${paramIndex}`;
-        params.push(minPricePerUnit);
-        paramIndex++;
-      }
-
-      if (maxPricePerUnit) {
-        whereClause += ` AND pr.assessed_value > 0 AND pr.units > 0 AND (pr.assessed_value::numeric / pr.units::numeric) <= $${paramIndex}`;
-        params.push(maxPricePerUnit);
-        paramIndex++;
-      }
-
-      if (submarket) {
-        whereClause += ` AND pr.neighborhood_code = $${paramIndex}`;
-        params.push(submarket);
-        paramIndex++;
-      }
-
-      if (ownerType) {
-        whereClause += ` AND pr.owner_name ILIKE $${paramIndex}`;
-        params.push(`%${ownerType}%`);
-        paramIndex++;
-      }
-
-      const countResult = await pool.query(
-        `SELECT COUNT(*) as total FROM property_records pr ${whereClause}`,
-        params
-      );
-      const total = parseInt(countResult.rows[0].total);
-
-      const dataParams = [...params, limit, offset];
-
-      const result = await pool.query(
-        `SELECT 
-          pr.id, pr.parcel_id, pr.county, pr.state, pr.address, pr.city, pr.zip_code,
-          pr.owner_name, pr.owner_address_1, pr.owner_address_2,
-          pr.units, pr.land_acres, pr.year_built, pr.stories, pr.building_sqft,
-          pr.assessed_value, pr.assessed_land, pr.assessed_improvements, pr.appraised_value,
-          pr.land_use_code, pr.class_code, pr.neighborhood_code, pr.subdivision, pr.tax_district,
-          pr.property_type, pr.total_assessed_value,
-          s.name as submarket_name,
-          CASE WHEN pr.assessed_value > 0 AND pr.units > 0 THEN ROUND(pr.assessed_value::numeric / pr.units / 12 * 0.08) ELSE NULL END as estimated_rent,
-          CASE WHEN pr.appraised_value > 0 AND pr.units > 0 THEN ROUND(pr.appraised_value::numeric / pr.units) ELSE NULL END as price_per_unit,
-          CASE 
-            WHEN pr.class_code IN ('C5','C6') THEN 'A'
-            WHEN pr.class_code IN ('C4') THEN 'B'
-            WHEN pr.class_code IN ('C3') THEN 'C'
-            ELSE pr.class_code
-          END as building_class
-        FROM property_records pr
-        LEFT JOIN submarkets s ON s.external_id = pr.neighborhood_code
-        ${whereClause}
-        ORDER BY ${sortColumn} ${sortDir} NULLS LAST
-        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-        dataParams
-      );
-
-      res.json({
-        properties: result.rows,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      });
-    } catch (error) {
-      console.error('Error fetching properties:', error);
-      res.status(500).json({ error: 'Failed to fetch properties' });
-    }
-  });
-
-  // GET /api/v1/markets/properties/:id - Single property detail with sales history
-  router.get('/properties/:id', async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      const propertyResult = await pool.query(
-        `SELECT 
-          pr.*,
-          s.name as submarket_name,
-          CASE WHEN pr.assessed_value > 0 AND pr.units > 0 THEN ROUND(pr.assessed_value::numeric / pr.units / 12 * 0.08) ELSE NULL END as estimated_rent,
-          CASE WHEN pr.appraised_value > 0 AND pr.units > 0 THEN ROUND(pr.appraised_value::numeric / pr.units) ELSE NULL END as price_per_unit,
-          CASE 
-            WHEN pr.class_code IN ('C5','C6') THEN 'A'
-            WHEN pr.class_code IN ('C4') THEN 'B'
-            WHEN pr.class_code IN ('C3') THEN 'C'
-            ELSE pr.class_code
-          END as building_class
-        FROM property_records pr
-        LEFT JOIN submarkets s ON s.external_id = pr.neighborhood_code
-        WHERE pr.id = $1`,
-        [id]
-      );
-
-      if (propertyResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Property not found' });
-      }
-
-      const property = propertyResult.rows[0];
-
-      const salesResult = await pool.query(
-        `SELECT * FROM property_sales WHERE parcel_id = $1 ORDER BY sale_year DESC`,
-        [property.parcel_id]
-      );
-
-      const currentYear = new Date().getFullYear();
-      const lastSaleYear = salesResult.rows.length > 0 ? salesResult.rows[0].sale_year : null;
-      const holdPeriod = lastSaleYear ? currentYear - lastSaleYear : null;
-
-      let sellerMotivationScore: number | null = null;
-      if (holdPeriod !== null) {
-        if (holdPeriod > 10) {
-          sellerMotivationScore = 85 + Math.min(15, (holdPeriod - 10) * 2);
-        } else if (holdPeriod > 6) {
-          sellerMotivationScore = 60 + (holdPeriod - 6) * 6;
-        } else if (holdPeriod >= 3) {
-          sellerMotivationScore = 30 + (holdPeriod - 3) * 10;
-        } else {
-          sellerMotivationScore = holdPeriod * 10;
-        }
-        sellerMotivationScore = Math.min(100, Math.max(0, sellerMotivationScore));
-      }
-
-      res.json({
-        ...property,
-        sales: salesResult.rows,
-        hold_period: holdPeriod,
-        seller_motivation_score: sellerMotivationScore,
-      });
-    } catch (error) {
-      console.error('Error fetching property detail:', error);
-      res.status(500).json({ error: 'Failed to fetch property detail' });
-    }
-  });
-
-  // GET /api/v1/markets/market-stats/:marketId - Aggregated market statistics
-  router.get('/market-stats/:marketId', async (req, res) => {
-    try {
-      const { marketId } = req.params;
-
-      let whereClause = 'WHERE units > 0';
-      if (marketId === 'atlanta') {
-        whereClause = "WHERE county = 'Fulton' AND state = 'GA' AND units > 0";
-      }
-
-      const statsResult = await pool.query(
-        `SELECT 
-          COUNT(*) as total_properties,
-          COALESCE(SUM(units), 0) as total_units,
-          ROUND(AVG(assessed_value)::numeric, 2) as avg_assessed_value,
-          ROUND(AVG(units)::numeric, 2) as avg_units_per_property,
-          ROUND(STDDEV(assessed_value)::numeric, 2) as stddev_assessed_value,
-          COUNT(DISTINCT owner_name) as unique_owners
-        FROM property_records
-        ${whereClause}`
-      );
-
-      const propertyTypesResult = await pool.query(
-        `SELECT COALESCE(property_type, 'Unknown') as type, COUNT(*) as count
-        FROM property_records
-        ${whereClause}
-        GROUP BY property_type
-        ORDER BY count DESC`
-      );
-
-      const neighborhoodResult = await pool.query(
-        `SELECT 
-          neighborhood_code,
-          COUNT(*) as properties,
-          SUM(units) as total_units,
-          ROUND(AVG(assessed_value)::numeric, 2) as avg_assessed_value
-        FROM property_records
-        ${whereClause} AND neighborhood_code IS NOT NULL
-        GROUP BY neighborhood_code
-        ORDER BY total_units DESC
-        LIMIT 10`
-      );
-
-      const stats = statsResult.rows[0];
-      const totalProperties = parseInt(stats.total_properties);
-      const totalUnits = parseInt(stats.total_units);
-      const avgAssessedValue = parseFloat(stats.avg_assessed_value) || 0;
-      const avgUnits = parseFloat(stats.avg_units_per_property) || 0;
-      const stddevAssessed = parseFloat(stats.stddev_assessed_value) || 0;
-      const uniqueOwners = parseInt(stats.unique_owners) || 0;
-
-      const propertyTypes: Record<string, number> = {};
-      propertyTypesResult.rows.forEach((row: any) => {
-        propertyTypes[row.type] = parseInt(row.count);
-      });
-
-      const demandScore = Math.min(100, Math.round((totalProperties / 500) * 40 + (totalUnits / 5000) * 60));
-      const supplyScore = Math.min(100, Math.round(avgUnits * 5 + (totalUnits > 10000 ? 30 : totalUnits / 333)));
-      const momentumScore = avgAssessedValue > 100000 ? Math.min(100, Math.round(60 + (avgAssessedValue / 500000) * 40)) : Math.min(100, Math.round((avgAssessedValue / 100000) * 60));
-      const ownerConcentration = uniqueOwners > 0 ? totalProperties / uniqueOwners : 1;
-      const positionScore = Math.min(100, Math.round(ownerConcentration * 20 + 40));
-      const riskScore = stddevAssessed > 0 && avgAssessedValue > 0
-        ? Math.min(100, Math.round(100 - (stddevAssessed / avgAssessedValue) * 50))
-        : 50;
-
-      res.json({
-        totalProperties,
-        totalUnits,
-        avgAssessedValue,
-        avgUnitsPerProperty: avgUnits,
-        propertyTypes,
-        neighborhoodStats: neighborhoodResult.rows,
-        coveragePercent: 60,
-        totalParcels: 1033000,
-        signals: {
-          demand: Math.max(0, Math.min(100, demandScore)),
-          supply: Math.max(0, Math.min(100, supplyScore)),
-          momentum: Math.max(0, Math.min(100, momentumScore)),
-          position: Math.max(0, Math.min(100, positionScore)),
-          risk: Math.max(0, Math.min(100, riskScore)),
-        },
-      });
-    } catch (error) {
-      console.error('Error fetching market stats:', error);
-      res.status(500).json({ error: 'Failed to fetch market stats' });
-    }
-  });
-
-  // GET /api/v1/markets/submarket-stats/:marketId - Submarket breakdown
-  router.get('/submarket-stats/:marketId', async (req, res) => {
-    try {
-      const { marketId } = req.params;
-
-      const msaId = marketId === 'atlanta' ? 1 : 1;
-
-      const submarketResult = await pool.query(
-        `SELECT id, name, external_id, properties_count, total_units, avg_occupancy, avg_rent, avg_cap_rate
-        FROM submarkets
-        WHERE msa_id = $1
-        ORDER BY name ASC`,
-        [msaId]
-      );
-
-      let whereClause = 'WHERE units > 0';
-      if (marketId === 'atlanta') {
-        whereClause = "WHERE county = 'Fulton' AND state = 'GA' AND units > 0";
-      }
-
-      const propertyStatsResult = await pool.query(
-        `SELECT 
-          neighborhood_code,
-          COUNT(*) as real_properties,
-          COALESCE(SUM(units), 0) as real_units
-        FROM property_records
-        ${whereClause} AND neighborhood_code IS NOT NULL
-        GROUP BY neighborhood_code`
-      );
-
-      const propertyStatsMap = new Map<string, { real_properties: number; real_units: number }>();
-      propertyStatsResult.rows.forEach((row: any) => {
-        propertyStatsMap.set(row.neighborhood_code, {
-          real_properties: parseInt(row.real_properties),
-          real_units: parseInt(row.real_units),
-        });
-      });
-
-      const submarkets = submarketResult.rows.map((row: any) => {
-        const realStats = propertyStatsMap.get(row.external_id);
-        return {
-          id: row.id,
-          name: row.name,
-          external_id: row.external_id,
-          properties_count: row.properties_count,
+          state_code: row.state_code,
+          total_parcels: row.total_parcels,
+          covered_parcels: row.covered_parcels,
+          coverage_percentage: row.coverage_percentage ? parseFloat(row.coverage_percentage) : null,
+          data_points_count: row.data_points_count,
           total_units: row.total_units,
-          avg_occupancy: row.avg_occupancy ? parseFloat(row.avg_occupancy) : null,
-          avg_rent: row.avg_rent ? parseFloat(row.avg_rent) : null,
-          avg_cap_rate: row.avg_cap_rate ? parseFloat(row.avg_cap_rate) : null,
-          real_properties: realStats ? realStats.real_properties : 0,
-          real_units: realStats ? realStats.real_units : 0,
-        };
-      });
+          last_import_date: row.last_import_date,
+          next_scheduled_import: row.next_scheduled_import,
+          status: row.status,
+          metadata: row.metadata,
+          created_at: row.created_at,
+          updated_at: row.updated_at
+        },
+        active_deals_count: parseInt(row.active_deals_count) || 0
+      })),
+      comparison_date: new Date()
+    };
 
-      res.json(submarkets);
-    } catch (error) {
-      console.error('Error fetching submarket stats:', error);
-      res.status(500).json({ error: 'Failed to fetch submarket stats' });
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching market comparison:', error);
+    res.status(500).json({ error: 'Failed to fetch market comparison' });
+  }
+});
+
+router.get('/:marketId/summary', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const { marketId } = req.params;
+
+    const marketResult = await pool.query(
+      'SELECT * FROM market_coverage_status WHERE market_id = $1',
+      [marketId]
+    );
+
+    if (marketResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Market not found' });
     }
-  });
 
-  return router;
-}
+    const vitalsResult = await pool.query(
+      'SELECT * FROM market_vitals WHERE market_id = $1 ORDER BY date DESC LIMIT 1',
+      [marketId]
+    );
 
-// Helper: Generate market alerts
-async function generateMarketAlerts(pool: Pool, userId: number, markets: any[]): Promise<MarketAlert[]> {
+    const preferenceResult = await pool.query(
+      'SELECT * FROM user_market_preferences WHERE user_id = $1 AND market_id = $2',
+      [userId, marketId]
+    );
+
+    const dealCountResult = await pool.query(
+      "SELECT COUNT(*) as count FROM deals WHERE user_id = $1 AND status = 'active'",
+      [userId]
+    );
+
+    const response: MarketSummaryResponse = {
+      market: marketResult.rows[0],
+      vitals: vitalsResult.rows[0] || null,
+      active_deals_count: parseInt(dealCountResult.rows[0].count) || 0,
+      is_tracked: preferenceResult.rows.length > 0,
+      user_preference: preferenceResult.rows[0] || null
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching market summary:', error);
+    res.status(500).json({ error: 'Failed to fetch market summary' });
+  }
+});
+
+router.get('/:marketId/vitals', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { marketId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 12;
+
+    const result = await pool.query(
+      'SELECT * FROM market_vitals WHERE market_id = $1 ORDER BY date DESC LIMIT $2',
+      [marketId, limit]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching market vitals:', error);
+    res.status(500).json({ error: 'Failed to fetch market vitals' });
+  }
+});
+
+async function generateMarketAlerts(userId: string, markets: any[]): Promise<MarketAlert[]> {
   const alerts: MarketAlert[] = [];
 
   for (const market of markets) {
-    // Alert: New data points available
     if (market.data_points_count > 0 && market.status === 'active') {
-      // Check if there are properties with owner info
-      const ownerInfoCount = await pool.query(
-        `SELECT COUNT(*) as count 
-         FROM property_records 
-         WHERE market_id = $1 AND owner_name IS NOT NULL AND owner_name != ''`,
-        [market.market_id]
-      );
+      try {
+        const counties = MARKET_COUNTY_MAP[market.market_id];
+        if (!counties || counties.length === 0) continue;
+        const countyConditions = counties.map((_, i) => `(county = $${i * 2 + 1} AND state = $${i * 2 + 2})`).join(' OR ');
+        const countyParams: string[] = [];
+        counties.forEach((c: { county: string; state: string }) => { countyParams.push(c.county, c.state); });
+        const ownerInfoCount = await pool.query(
+          `SELECT COUNT(*) as count 
+           FROM property_records 
+           WHERE (${countyConditions}) AND owner_name IS NOT NULL AND owner_name != ''`,
+          countyParams
+        );
 
-      const count = parseInt(ownerInfoCount.rows[0]?.count) || 0;
-      if (count > 0) {
-        alerts.push({
-          id: `${market.market_id}-owner-info`,
-          market_id: market.market_id,
-          market_name: market.display_name,
-          type: 'new_data',
-          severity: 'info',
-          title: 'Owner Contact Info Available',
-          message: `${count} properties with owner contact information ready for outreach`,
-          action_url: `/markets/${market.market_id}/data`,
-          created_at: new Date()
-        });
-      }
+        const count = parseInt(ownerInfoCount.rows[0]?.count) || 0;
+        if (count > 0) {
+          alerts.push({
+            id: `${market.market_id}-owner-info`,
+            market_id: market.market_id,
+            market_name: market.display_name,
+            type: 'new_data',
+            severity: 'info',
+            title: 'Owner Contact Info Available',
+            message: `${count} properties with owner contact information ready for outreach`,
+            action_url: `/markets/${market.market_id}/data`,
+            created_at: new Date()
+          });
+        }
+      } catch (e) {}
     }
 
-    // Alert: Opportunity identified (high JEDI score)
-    if (market.jedi_score && market.jedi_score >= 90) {
+    if (market.vitals?.jedi_score && market.vitals.jedi_score >= 90) {
       alerts.push({
         id: `${market.market_id}-high-score`,
         market_id: market.market_id,
@@ -850,13 +490,12 @@ async function generateMarketAlerts(pool: Pool, userId: number, markets: any[]):
         type: 'opportunity',
         severity: 'success',
         title: 'Strong Buy Signal',
-        message: `JEDI Score: ${market.jedi_score} (${market.jedi_rating}) - Excellent investment opportunity`,
-        action_url: `/markets/${market.market_id}/overview`,
+        message: `JEDI Score: ${market.vitals.jedi_score} (${market.vitals.jedi_rating}) - Excellent investment opportunity`,
+        action_url: `/markets/${market.market_id}`,
         created_at: new Date()
       });
     }
 
-    // Alert: Market data pending
     if (market.status === 'pending' && market.data_points_count === 0) {
       alerts.push({
         id: `${market.market_id}-pending`,
@@ -875,4 +514,123 @@ async function generateMarketAlerts(pool: Pool, userId: number, markets: any[]):
   return alerts;
 }
 
-export default createMarketIntelligenceRoutes;
+const MARKET_COUNTY_MAP: Record<string, { county: string; state: string }[]> = {
+  'atlanta': [{ county: 'Fulton', state: 'GA' }, { county: 'DeKalb', state: 'GA' }, { county: 'Cobb', state: 'GA' }, { county: 'Gwinnett', state: 'GA' }],
+  'dallas': [{ county: 'Dallas', state: 'TX' }, { county: 'Tarrant', state: 'TX' }, { county: 'Collin', state: 'TX' }],
+  'houston': [{ county: 'Harris', state: 'TX' }, { county: 'Fort Bend', state: 'TX' }],
+  'austin': [{ county: 'Travis', state: 'TX' }, { county: 'Williamson', state: 'TX' }],
+  'san-antonio': [{ county: 'Bexar', state: 'TX' }],
+  'phoenix': [{ county: 'Maricopa', state: 'AZ' }],
+  'tampa': [{ county: 'Hillsborough', state: 'FL' }],
+  'orlando': [{ county: 'Orange', state: 'FL' }],
+  'charlotte': [{ county: 'Mecklenburg', state: 'NC' }],
+  'nashville': [{ county: 'Davidson', state: 'TN' }],
+  'raleigh': [{ county: 'Wake', state: 'NC' }],
+  'denver': [{ county: 'Denver', state: 'CO' }, { county: 'Arapahoe', state: 'CO' }],
+  'miami': [{ county: 'Miami-Dade', state: 'FL' }],
+  'jacksonville': [{ county: 'Duval', state: 'FL' }],
+  'las-vegas': [{ county: 'Clark', state: 'NV' }],
+  'salt-lake-city': [{ county: 'Salt Lake', state: 'UT' }],
+  'indianapolis': [{ county: 'Marion', state: 'IN' }],
+  'columbus': [{ county: 'Franklin', state: 'OH' }],
+  'kansas-city': [{ county: 'Jackson', state: 'MO' }],
+  'minneapolis': [{ county: 'Hennepin', state: 'MN' }],
+};
+
+router.get('/:marketId/properties', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { marketId } = req.params;
+    const {
+      page = '1',
+      limit = '50',
+      sortBy = 'address',
+      sortOrder = 'asc',
+      search,
+      minUnits,
+      maxUnits,
+    } = req.query;
+
+    const counties = MARKET_COUNTY_MAP[marketId];
+    if (!counties || counties.length === 0) {
+      return res.json({
+        properties: [],
+        pagination: { page: 1, limit: 50, total: 0, totalPages: 0 },
+        market_id: marketId,
+        message: 'No county mapping configured for this market yet'
+      });
+    }
+
+    const countyConditions = counties.map((_, i) => `(county = $${i * 2 + 1} AND state = $${i * 2 + 2})`).join(' OR ');
+    const countyParams: string[] = [];
+    counties.forEach(c => { countyParams.push(c.county, c.state); });
+
+    let whereConditions = [`(${countyConditions})`];
+    let queryParams: any[] = [...countyParams];
+    let paramCounter = countyParams.length + 1;
+
+    if (search) {
+      whereConditions.push(`(LOWER(address) LIKE LOWER($${paramCounter}) OR LOWER(owner_name) LIKE LOWER($${paramCounter}))`);
+      queryParams.push(`%${search}%`);
+      paramCounter++;
+    }
+    if (minUnits) {
+      whereConditions.push(`units >= $${paramCounter}`);
+      queryParams.push(Number(minUnits));
+      paramCounter++;
+    }
+    if (maxUnits) {
+      whereConditions.push(`units <= $${paramCounter}`);
+      queryParams.push(Number(maxUnits));
+      paramCounter++;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+    const allowedSortColumns = ['address', 'units', 'owner_name', 'assessed_value', 'year_built', 'building_sqft'];
+    const sortColumn = allowedSortColumns.includes(sortBy as string) ? sortBy : 'address';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.min(100, Math.max(1, Number(limit)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM property_records WHERE ${whereClause}`,
+      queryParams
+    );
+    const total = parseInt(countResult.rows[0].total);
+
+    const dataResult = await pool.query(
+      `SELECT 
+        id, parcel_id, address, city, zip_code, county, state,
+        owner_name, owner_address_1, units, land_acres,
+        year_built, stories, building_sqft,
+        assessed_value, appraised_value,
+        land_use_code, class_code, neighborhood_code,
+        subdivision, tax_district, scraped_at,
+        CASE WHEN units > 0 THEN ROUND(assessed_value::numeric / units, 0) ELSE NULL END as value_per_unit,
+        CASE WHEN building_sqft > 0 THEN ROUND(assessed_value::numeric / building_sqft, 2) ELSE NULL END as value_per_sqft
+      FROM property_records
+      WHERE ${whereClause}
+      ORDER BY ${sortColumn} ${order}
+      LIMIT $${paramCounter} OFFSET $${paramCounter + 1}`,
+      [...queryParams, limitNum, offset]
+    );
+
+    res.json({
+      properties: dataResult.rows,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      },
+      market_id: marketId,
+      counties: counties.map(c => `${c.county} County, ${c.state}`)
+    });
+  } catch (error) {
+    console.error('Error fetching market properties:', error);
+    res.status(500).json({ error: 'Failed to fetch market properties' });
+  }
+});
+
+export default router;

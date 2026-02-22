@@ -1,0 +1,28 @@
+Instructions for manual edit to MarketDataPageV2.tsx:
+
+Around line 239, find this code:
+
+        return (
+          <MarketResearchLayout
+
+And change it to:
+
+        return (
+          <>
+            <IntelligenceTabNav />
+            <MarketResearchLayout
+
+Then at the end, find:
+
+            {renderTabContent()}
+          </MarketResearchLayout>
+        );
+
+And change it to:
+
+            {renderTabContent()}
+          </MarketResearchLayout>
+          </>
+        );
+
+This wraps the MarketResearchLayout in a React fragment and adds the IntelligenceTabNav component at the top.

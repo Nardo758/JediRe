@@ -33,17 +33,12 @@ import { DealShowcasePage } from './pages/DealShowcasePage';
 import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
-import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
-import {
-  MarketIntelligencePage,
-  MyMarketsDashboard,
-  CompareMarketsPage,
-  ActiveOwnersPage,
-  FutureSupplyPage,
-} from './pages/MarketIntelligence';
+import { ActiveOwnersPage } from './pages/ActiveOwnersPage';
+import { FutureSupplyPage } from './pages/FutureSupplyPage';
+import { MyMarketsOverview, MarketComparison, MarketDeepDive } from './pages/MarketIntelligence';
 
 
 function AppContent() {
@@ -73,10 +68,17 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-research" element={<Navigate to="/markets" replace />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/active-owners/:name" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
+          <Route path="/markets" element={<MyMarketsOverview />} />
+          <Route path="/markets/compare" element={<MarketComparison />} />
+          <Route path="/markets/:marketId" element={<MarketDeepDive />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
@@ -85,26 +87,12 @@ function AppContent() {
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
-          
-          {/* Market Research Redirects */}
-          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
-          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
-          
-          {/* Market Intelligence */}
-          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
-          <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
-          <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
-          <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
-          <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
-          
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
-          <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />

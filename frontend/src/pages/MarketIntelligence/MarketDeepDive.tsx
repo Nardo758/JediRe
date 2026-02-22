@@ -41,7 +41,7 @@ const MarketDeepDive: React.FC = () => {
       setLoading(true);
       const response = await fetch(`/api/v1/markets/${id}/summary`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();
@@ -124,7 +124,7 @@ const MarketDeepDive: React.FC = () => {
             <span className="separator">•</span>
             <span>Research Data: {summary.market.data_points_count.toLocaleString()}</span>
             <span className="separator">•</span>
-            <span>Coverage: {summary.market.coverage_percentage?.toFixed(0)}%</span>
+            <span>Coverage: {parseFloat(String(summary.market.coverage_percentage || 0)).toFixed(0)}%</span>
             {summary.vitals?.jedi_score && (
               <>
                 <span className="separator">•</span>
@@ -167,7 +167,7 @@ const MarketDeepDive: React.FC = () => {
         />
       </main>
 
-      <style jsx>{`
+      <style>{`
         .market-deep-dive {
           min-height: 100vh;
           background: #f8fafc;

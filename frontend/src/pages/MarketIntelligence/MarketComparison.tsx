@@ -29,7 +29,7 @@ const MarketComparison: React.FC = () => {
       setLoading(true);
       const response = await fetch(`/api/v1/markets/compare?markets=${marketIds}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();
@@ -106,7 +106,7 @@ const MarketComparison: React.FC = () => {
               <td className="metric-name">Coverage %</td>
               {comparison.markets.map(market => (
                 <td key={market.market_id}>
-                  {market.coverage.coverage_percentage?.toFixed(1)}%
+                  {Number(market.coverage.coverage_percentage || 0).toFixed(1)}%
                 </td>
               ))}
             </tr>
@@ -144,7 +144,7 @@ const MarketComparison: React.FC = () => {
               {comparison.markets.map(market => (
                 <td key={market.market_id} className={market.vitals?.population_growth_yoy ? 'positive' : ''}>
                   {market.vitals?.population_growth_yoy ? 
-                    `+${market.vitals.population_growth_yoy.toFixed(1)}%` : 'N/A'}
+                    `+${Number(market.vitals.population_growth_yoy).toFixed(1)}%` : 'N/A'}
                 </td>
               ))}
             </tr>
@@ -153,7 +153,7 @@ const MarketComparison: React.FC = () => {
               {comparison.markets.map(market => (
                 <td key={market.market_id} className={market.vitals?.job_growth_yoy ? 'positive' : ''}>
                   {market.vitals?.job_growth_yoy ? 
-                    `+${market.vitals.job_growth_yoy.toFixed(1)}%` : 'N/A'}
+                    `+${Number(market.vitals.job_growth_yoy).toFixed(1)}%` : 'N/A'}
                 </td>
               ))}
             </tr>
@@ -171,7 +171,7 @@ const MarketComparison: React.FC = () => {
               {comparison.markets.map(market => (
                 <td key={market.market_id} className={market.vitals?.rent_growth_yoy ? 'positive' : ''}>
                   {market.vitals?.rent_growth_yoy ? 
-                    `+${market.vitals.rent_growth_yoy.toFixed(1)}%` : 'N/A'}
+                    `+${Number(market.vitals.rent_growth_yoy).toFixed(1)}%` : 'N/A'}
                 </td>
               ))}
             </tr>
@@ -188,7 +188,7 @@ const MarketComparison: React.FC = () => {
               <td className="metric-name">Occupancy Rate</td>
               {comparison.markets.map(market => (
                 <td key={market.market_id}>
-                  {market.vitals?.occupancy_rate?.toFixed(1)}%
+                  {Number(market.vitals?.occupancy_rate || 0).toFixed(1)}%
                 </td>
               ))}
             </tr>
@@ -220,7 +220,7 @@ const MarketComparison: React.FC = () => {
         </table>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .market-comparison {
           min-height: 100vh;
           background: #f8fafc;

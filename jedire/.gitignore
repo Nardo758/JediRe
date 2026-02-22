@@ -1,0 +1,22 @@
+polymarket-trader/.env
+.env
+jedi-re/gis-data/fulton_parcels_complete.geojson
+
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build outputs
+dist/
+build/
+*.log
+*.pid
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+.local/share/

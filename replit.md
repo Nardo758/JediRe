@@ -1,118 +1,94 @@
-# JEDI RE - Commercial Real Estate Intelligence Platform
+# JEDI RE - Real Estate Intelligence Platform
 
 ## Overview
-JEDI RE is a comprehensive commercial real estate intelligence platform with dual-mode functionality (Pipeline/Owned Assets), featuring 17 modules including AI Agent, Map View with Mapbox, real-time collaboration, PostGIS spatial queries, external integrations, Deal Capsule System with ML capabilities, property type strategy matrix (51 types x 4 strategies), custom strategy builder, regional market organization (61 US markets across 5 regions), 8-step deal creation workflow with document upload, Module Library System, Property Records Import System, and Market Intelligence module.
 
-## Architecture
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS (port 5000)
-- **Backend**: Express + TypeScript (port 4000)
-- **Database**: PostgreSQL with PostGIS extensions
-- **Map**: Mapbox GL JS via react-map-gl
-- **State**: Zustand for client state
-- **Build**: Vite with path alias `@/` -> `src/`
+This is Leon D's development workspace containing multiple projects, with **JEDI RE** as the primary active project. JEDI RE is a B2B real estate intelligence platform that uses AI-powered analysis engines to help investors and developers source deals, analyze zoning, and score market opportunities. The platform uses a "map-agnostic" architecture that avoids expensive GIS infrastructure by letting users bring their own maps while the system focuses on intelligence processing.
 
-## Project Structure
-```
-frontend/          # React frontend
-  src/
-    components/    # UI components (layout, deal, auth, map, etc.)
-    pages/         # Page components
-    contexts/      # React contexts (Architecture, MapLayers)
-    services/      # API service modules
-    stores/        # Zustand stores
-    lib/           # Shared utilities (api.ts)
-    types/         # TypeScript type definitions
-    hooks/         # Custom hooks
-  vite.config.ts   # Vite config with @ alias and proxy to backend
-  tailwind.config.js
-  postcss.config.cjs
+Secondary projects in this workspace include **Traveloure** (travel booking platform with AI itinerary generation), an **Apartment Locator AI** (consumer search platform), and an **Agent Dashboard** (real estate agent CRM with client management).
 
-backend/           # Express backend
-  src/
-    api/rest/      # Route handlers (inline-*.routes.ts, market-intelligence, etc.)
-    api/websocket/ # WebSocket handlers
-    middleware/    # Auth (requireAuth/authenticateToken), error handler
-    services/     # Business logic services
-    database/     # DB connection pool, migrations
-    config/       # Environment configuration
-    auth/         # JWT utilities
-    models/       # Data models
-    utils/        # Utility functions
-  
-start.sh           # Startup script (runs backend + frontend)
-```
+The workspace also contains an AI assistant persona called "RocketMan" that maintains continuity through markdown-based memory files.
 
-## Key Files
-- `backend/src/index.replit.ts` - Main backend entry point, route registration
-- `backend/src/middleware/auth.ts` - JWT auth middleware (exports: requireAuth, authenticateToken, optionalAuth, requireRole, requireApiKey)
-- `backend/src/database/connection.ts` - PostgreSQL connection pool (max: 20)
-- `backend/src/config/environment.ts` - Environment config validator
-- `frontend/src/App.tsx` - React router with all page routes
-- `frontend/src/components/layout/MainLayout.tsx` - Main sidebar layout
-- `frontend/vite.config.ts` - Vite config with @ alias, proxy to localhost:4000
+## User Preferences
 
-## Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string (auto-set by Replit)
-- `JWT_REFRESH_SECRET` - JWT refresh token secret
-- `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` - Microsoft Graph API
-- `GOOGLE_CLIENT_ID/SECRET/CALLBACK_URL` - Google OAuth
-- `VITE_MAPBOX_TOKEN` - Mapbox access token
-- `TOKEN_ENCRYPTION_KEY` - Token encryption
-- `API_KEY_APARTMENT_LOCATOR` - Apartment locator API key
+Preferred communication style: Simple, everyday language.
 
-## Workflow
-- Single workflow "JediRe" runs `bash start.sh`
-- start.sh starts backend (ts-node on port 4000) and frontend (vite on port 5000) concurrently
+## System Architecture
 
-## Recent Changes (2026-02-21)
-- **Market Intelligence UI Upgraded to Production Quality** - All 9 pages rebuilt from skeleton to full design spec:
-  - **My Markets Landing**: 6 market cards with 5-signal mini bars (D/S/M/P/R), sort controls (JEDI/Rent Growth/Pipeline%/Constraint/Traffic), grid/list/map view toggle, rich data (rent, jobs/apt, pipeline%, constraint score, AI one-liner)
-  - **Overview Tab**: Split layout with 5-Signal Health Bar + AI Market Summary, data coverage bar, 3 alert cards with severity colors, dual-column Supply Snapshot (near-term S-outputs vs long-term DC-outputs with mini SVG supply wave chart)
-  - **Market Data Tab**: Sortable property database table (8 columns), slide-out Property Flyout with Rent/Ownership/Traffic Intelligence/Trade Area sections, Demand-Supply Dashboard with verdicts, Rent by Vintage table, Ownership intelligence, Transaction History, Traffic & Demand Heatmap toggles, CSV/Excel export + clipboard copy, enhanced filters (units range, $/unit range)
-  - **Submarkets Tab**: Choropleth map with 7 layer toggles, 14-column ranking table with DC/T columns, expandable submarket detail, comparison panel with bar charts, AI verdict
-  - **Trends Tab**: Time range selector (3M-Max), 6 chart sections with descriptions (rent by vintage + DC-11 forecast, 2yr/10yr supply toggle with SVG bars, dual-axis demand, transactions scatter, concessions area, JEDI decomposition)
-  - **Deals Tab**: AI opportunity cards with Traffic/Trade Area badges, opportunity algorithm transparency, 4-column Kanban pipeline, market deal activity table, strategy arbitrage leaderboard
-  - **Compare Markets**: Market selector toggles, SVG radar chart (8 axes including DC/T), 25-row side-by-side metrics table, Entry Point Calculator with DC-11 forecasts, AI investment recommendation narratives
-  - **Active Owners**: Seller/buyer activity dashboard, owner database with BUY/HOLD/SELL signals, expandable owner detail with portfolio/land positions/timeline/AI assessment, acquisition target generator with 6 filters
-  - **Future Supply**: Enhanced scoreboard with capacity/constraint/overhang columns, Gantt delivery calendar with DC-06 ghost bars, 10-year SVG supply wave with phase labels, build economics monitor, developer land bank table
-- **Market Research Consolidated into Market Intelligence** - Removed duplicate "Market Research" sidebar item; moved CSV/Excel/Clipboard export and enhanced filters (units range, $/unit range) into Market Data tab; old /market-data and /market-research routes redirect to /market-intelligence
-- **Data Integration Phase 1** - Connected real Atlanta property data from database:
-  - Backend: 4 new API endpoints (GET /properties, /properties/:id, /market-stats/:marketId, /submarket-stats/:marketId) with parameterized SQL, filtering, sorting, pagination
-  - MarketDataTab: Fetches 1,028 real properties from DB with search/filter controls, property flyout loads real detail + sales history
-  - OverviewTab: Coverage bar shows real counts (1,028 props, 249,964 units) with LIVE badge
-  - MarketIntelligencePage: Atlanta card shows live property/unit counts from DB
-  - SubmarketsTab: Merges real property counts with mock signal scores
-  - Auth: Routes use optionalAuth so data endpoints work without login, LIVE badges distinguish real vs mock data
-- **Previous**: Signal group architecture (signalGroups.ts with 89 outputs across 9 groups)
-- Installed Node.js 20 module for proper PATH resolution in workflows
-- Fixed root package.json (was empty, causing vite config load failure)
-- Added JWT_REFRESH_SECRET environment variable
-- Recovered ~250 emptied source files from git history (commit 4250d988 had accidentally emptied them)
-- Fixed vite.config.ts: added `@` path alias for `src/` directory
-- Fixed Microsoft routes import in index.replit.ts (factory function, not default export)
-- Added `authenticateToken` alias export in auth middleware
-- Both backend and frontend servers running successfully
+### JEDI RE (Primary Project)
 
-## Quick Wins Phase (2026-02-21)
-- **News Intelligence Page Rebuilt**: Removed mapbox/ThreePanelLayout dependency, now uses clean full-page layout with 4 tabs (Event Feed, Dashboard, Network, Alerts). Fixed SQL query (removed non-existent columns). 30 news events + 3 alerts loading from database.
-- **Assets Owned Page**: 50 real properties from property_records table with computed metrics
-- **Pipeline Grid**: Real property data served without login requirement
-- **Grid Routes**: Pipeline & Assets Owned grid endpoints registered at /api/v1/grid
-- **News Routes**: 4 endpoints at /api/v1/news (events, alerts, dashboard, network) with optionalAuth
+**Problem:** Real estate investors are overwhelmed with data but lack synthesized, actionable intelligence.
 
-## Database
-- PostgreSQL with PostGIS extensions
-- 1,028 Fulton County properties (249,964 units) imported
-- 52 market trend records
-- 30 news events, 3 news alerts, news contact credibility data
-- Connection pool max: 20 connections
+**Architecture:** Express + GraphQL + WebSocket backend with Python geospatial engines, designed as a lightweight map-agnostic system.
 
-## Known Issues
-- LLM API key not configured (AI features disabled)
-- Onboarding status endpoint not yet implemented (404, non-critical)
+- **Backend (99% complete):** Node.js/TypeScript with Express, GraphQL resolvers, WebSocket handlers, and 15+ REST route modules (~6,315 lines TypeScript across 47 files). The backend intentionally supports running without a database for development flexibility.
+- **Python Integration:** Seamless TypeScript-to-Python bridge (<200ms latency) powering GeoPandas analysis, PostGIS spatial queries, and 245 zoning code definitions. Core engines include Signal Processing (Kalman filtering, FFT), Carrying Capacity (ecological supply analysis), and Imbalance Detection.
+- **Frontend (40-65% complete):** React with Mapbox integration. 164+ components defined including MapBuilder with drawing tools, CreateDealModal wizard, three-panel layout, and grid views. Components are partially wired to backend APIs.
+- **Database:** PostgreSQL with optional TimescaleDB. Schema uses Drizzle ORM (config at `drizzle.config.ts`, schema at `shared/schema.ts`). 13+ migrations covering map layers, configurations, agent dashboard tables. Database is intentionally optional for dev mode.
+- **JEDI Score Engine:** 5-signal scoring system (0-100) with demand integration, alert system (Green/Yellow/Red), and score history tracking.
+- **Map Layer System:** Photoshop-like layer architecture with 5 layer types, drag-drop reordering, War Maps composer, bubble/heatmap/choropleth renderers.
+- **CoStar Integration:** 26 years of historical market timeseries data parsed and fed through signal processing pipeline.
 
-## Market Intelligence Module
-- Navigation: Sidebar > Intelligence > Market Intelligence (expandable)
-- Sub-pages: My Markets, Compare Markets, Active Owners, Future Supply
-- Market Dashboard: 5 tabs (Overview, Market Data, Submarkets, Trends, Deals)
-- Routes: /market-intelligence, /market-intelligence/markets/:marketId, /market-intelligence/compare, /market-intelligence/owners, /market-intelligence/supply
+**Key Design Decision:** Map-agnostic approach reduces infrastructure costs from $50-100K/year to $5-10K/year by storing only zoning rules and intelligence data, not full parcel geometries.
+
+**Recent Code Quality Improvements (Feb 2026):**
+- **Route extraction complete:** `index.replit.ts` reduced from 1,874 → 268 lines (86% reduction). 45 inline route handlers extracted into 9 dedicated router modules under `api/rest/inline-*.routes.ts`:
+  - `inline-health.routes.ts` — health check + DB status
+  - `inline-auth.routes.ts` — login (JWT) + user profile
+  - `inline-data.routes.ts` — supply, markets, properties, alerts
+  - `inline-deals.routes.ts` — 11 deal routes (CRUD + modules/properties/activity/timeline/key-moments/lease-analysis)
+  - `inline-tasks.routes.ts` — task CRUD + stats (in-memory store)
+  - `inline-inbox.routes.ts` — email inbox CRUD + stats
+  - `inline-zoning-analyze.routes.ts` — geocode, zoning lookup, districts, property analysis
+  - `inline-apartment-sync.routes.ts` — 10 apartment data sync routes (factory function)
+  - `inline-microsoft.routes.ts` — Microsoft OAuth routes (factory function)
+- **Zod input validation** on all critical POST/PATCH endpoints: login, create/update deal, create/update task, update email, geocode, analyze, apartment-sync pull. Schemas in `api/rest/validation.ts`
+- Auth middleware (`requireAuth`) applied to all 27+ user-scoped routes
+- CORS origin validation (not wildcard) for REST and Socket.IO
+- Single database pool via `database/connection.ts` with `getPool()` accessor (typed, null-checked)
+- Entry point: `index.replit.ts` (active, 268 lines), `index.legacy.ts` (deprecated)
+- Dead code removed: `notification.service.ts`
+- Property Records: 1,028 Fulton County properties imported via `scripts/import-fulton-properties.ts`
+- **Market Intelligence ↔ Property Data Integration:** MI Market Data tab now queries actual `property_records` table via `MARKET_COUNTY_MAP` (maps market IDs like 'atlanta' → Fulton/DeKalb/Cobb/Gwinnett counties). Backend endpoint: `GET /api/v1/market-intelligence/:marketId/properties` with server-side pagination, search, sort. 20 US markets pre-mapped to counties.
+
+- **Module Library System:** Upload historical data (Excel, PDF, CSV) for Opus AI to learn patterns, formulas, and assumptions. 3 module libraries (Financial, Market, Due Diligence) with file upload, parsing status tracking, pattern detection, and template learning. Backend: `moduleLibrary.service.ts` + `module-libraries.routes.ts` (7 REST endpoints with multer). Frontend: `ModuleLibrariesPage.tsx` + `ModuleLibraryDetailPage.tsx` under `/settings/module-libraries`. DB: `module_library_files`, `opus_learned_patterns`, `opus_template_structures` tables.
+
+### Agent Dashboard (CRM Module)
+
+- **Schema:** 5 Drizzle ORM tables — `agent_clients`, `agent_deals`, `agent_leads`, `agent_activities`, `agent_commission_templates`
+- **Frontend:** 5 React components (AgentDashboard, ClientList, ClientCard, ClientFilters, AddClientForm) totaling ~1,550 LOC
+- **Backend:** REST API routes for financial models, strategy analyses, and due diligence checklists
+
+### Traveloure (Travel Platform)
+
+- **Backend:** Django/Python with Django REST Framework
+- **AI:** Claude/Anthropic API for itinerary generation
+- **Payments:** Stripe Connect marketplace with provider splits
+- **Services:** BookingBot orchestrator, availability management, pricing engine, affiliate link generation
+- **Frontend:** React with planning modals, itinerary views, expert registration
+
+### Tech Stack Summary
+
+| Layer | Technology |
+|-------|-----------|
+| Backend Runtime | Node.js + Express (JEDI RE), Django (Traveloure) |
+| API Layer | REST + GraphQL + WebSocket |
+| Database | PostgreSQL (Drizzle ORM), optional TimescaleDB |
+| ORM/Migrations | Drizzle Kit with `shared/schema.ts` |
+| Python Engines | GeoPandas, NumPy/SciPy (signal processing), PostGIS |
+| Frontend | React + TypeScript + Mapbox |
+| Payments | Stripe Connect |
+| AI | Claude/Anthropic API |
+| Testing | Puppeteer (E2E for Traveloure), manual testing elsewhere |
+
+## External Dependencies
+
+- **PostgreSQL** — Primary database. Drizzle ORM configured in `drizzle.config.ts` pointing to `shared/schema.ts`. Connection via `DATABASE_URL` environment variable. TimescaleDB extension used for time-series data in JEDI RE.
+- **Stripe** — Payment processing via Stripe Connect for marketplace payments (Traveloure). Requires `STRIPE_SECRET_KEY` environment variable.
+- **Anthropic/Claude API** — AI itinerary generation for Traveloure. Requires `ANTHROPIC_API_KEY` environment variable.
+- **Mapbox** — Map rendering for JEDI RE frontend. Requires Mapbox access token.
+- **CoStar** — Real estate market data (26 years of Atlanta timeseries integrated via Excel parser). API access pending.
+- **Census API** — Demographics data (population, income, employment) for submarket profiling.
+- **Google Trends** — Search demand proxy via pytrends library.
+- **Puppeteer** — Browser automation for testing (listed in root `package.json`).
+- **Affiliate Partners** — Booking.com, Viator, GetYourGuide, OpenTable, Resy, Skyscanner (Traveloure affiliate links).
+- **Python Dependencies** — GeoPandas, NumPy, SciPy, pandas, openpyxl for data processing engines.

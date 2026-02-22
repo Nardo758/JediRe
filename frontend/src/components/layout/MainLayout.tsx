@@ -22,7 +22,8 @@ export const MainLayout: React.FC = () => {
     assets: false,
     intelligence: true,
     market: false,
-    news: false
+    news: false,
+    marketResearch: false
   });
   
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
@@ -214,36 +215,42 @@ export const MainLayout: React.FC = () => {
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Intelligence
                   </h3>
-
-                  {/* MARKET INTELLIGENCE */}
+                  
+                  {/* MARKET INTELLIGENCE - Expandable */}
                   <SidebarItem
-                    icon="🧠"
+                    icon="📈"
                     label="Market Intelligence"
-                    path="/market-intelligence"
-                    isActive={isActivePrefix('/market-intelligence')}
                     hasSubItems={true}
-                    isExpanded={expandedSections.market}
-                    onToggle={() => toggleSection('market')}
+                    isExpanded={expandedSections.marketResearch}
+                    onToggle={() => toggleSection('marketResearch')}
+                    isActive={isActivePrefix('/markets')}
                   />
-                  {expandedSections.market && (
-                    <div className="ml-6 space-y-0.5">
+                  
+                  {expandedSections.marketResearch && (
+                    <div className="ml-8 mt-1 space-y-1">
                       <SidebarItem
-                        icon="⚖️"
+                        icon="🏙️"
+                        label="My Markets"
+                        path="/markets"
+                        isActive={location.pathname === '/markets'}
+                      />
+                      <SidebarItem
+                        icon="📊"
                         label="Compare Markets"
-                        path="/market-intelligence/compare"
-                        isActive={isActive('/market-intelligence/compare')}
+                        path="/markets/compare"
+                        isActive={isActivePrefix('/markets/compare')}
                       />
                       <SidebarItem
                         icon="👥"
                         label="Active Owners"
-                        path="/market-intelligence/owners"
-                        isActive={isActive('/market-intelligence/owners')}
+                        path="/market-research/active-owners"
+                        isActive={isActivePrefix('/market-research/active-owners')}
                       />
                       <SidebarItem
                         icon="🏗️"
                         label="Future Supply"
-                        path="/market-intelligence/supply"
-                        isActive={isActive('/market-intelligence/supply')}
+                        path="/market-research/future-supply"
+                        isActive={isActivePrefix('/market-research/future-supply')}
                       />
                     </div>
                   )}
