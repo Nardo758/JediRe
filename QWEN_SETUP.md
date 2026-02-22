@@ -39,7 +39,7 @@ Step-by-step guide to configure Qwen AI in JEDI RE.
 ```bash
 # Qwen AI Configuration
 HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-QWEN_MODEL=Qwen/Qwen3.5-397B-A17B:novita
+QWEN_MODEL=Qwen/Qwen2.5-72B-Instruct
 QWEN_BASE_URL=https://router.huggingface.co/v1
 
 # Optional: Mapbox for satellite imagery
@@ -47,6 +47,17 @@ MAPBOX_TOKEN=your_mapbox_token_here
 ```
 
 3. Replace `hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` with your actual token
+
+**Important Token Permissions:**
+Your HuggingFace token must have these permissions enabled:
+- ✅ Make calls to Inference Providers
+- ✅ Make calls to your Inference Endpoints
+- ✅ Manage your Inference Endpoints
+
+To update permissions: Settings → Tokens → Edit your token → Enable "Inference" permissions
+
+**Note on Vision Features:**
+The current model (`Qwen/Qwen2.5-72B-Instruct`) is text-only. Vision features (image-to-3D terrain, photo tagging) will work with text descriptions but not direct image analysis. For full vision capabilities, a multimodal model will be needed when available.
 
 ---
 

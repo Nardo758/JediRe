@@ -173,7 +173,7 @@ class QwenService {
         baseURL: process.env.QWEN_BASE_URL || 'https://router.huggingface.co/v1',
         apiKey: process.env.HF_TOKEN,
       });
-      this.model = process.env.QWEN_MODEL || 'Qwen/Qwen3.5-397B-A17B:novita';
+      this.model = process.env.QWEN_MODEL || 'Qwen/Qwen2.5-72B-Instruct';
     } else {
       console.warn('[QwenService] HF_TOKEN not configured - AI features disabled');
     }
