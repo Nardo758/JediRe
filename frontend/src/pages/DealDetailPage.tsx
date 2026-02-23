@@ -39,6 +39,7 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { ZoningEntitlementsSection } from '../components/deal/sections/ZoningEntitlementsSection';
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
+import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
 import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
@@ -132,7 +133,7 @@ const DealDetailPage: React.FC = () => {
       id: 'team', 
       label: 'Team & Collaborators', 
       icon: <Users size={16} />, 
-      component: TeamSection 
+      component: TeamManagementSection 
     },
   ];
 

@@ -3,10 +3,10 @@
  * Proxies requests to Municipal Scraper API (Cloudflare Worker)
  */
 
-import express, { Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { logger } from '../../utils/logger';
 
-const router = express.Router();
+const router = Router();
 
 const MUNICIPAL_SCRAPER_API = 'https://municipal-scraper.m-dixon5030.workers.dev';
 
