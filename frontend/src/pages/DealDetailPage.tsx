@@ -115,12 +115,6 @@ const DealDetailPage: React.FC = () => {
       id: 'zoning', 
       label: 'Zoning & Entitlements', 
       icon: <Landmark size={16} />, 
-      component: ZoningEntitlementsSection 
-    },
-    { 
-      id: 'zoning-capacity', 
-      label: 'Zoning & Capacity', 
-      icon: <Building2 size={16} />, 
       component: ZoningCapacitySection 
     },
     { 
