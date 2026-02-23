@@ -482,37 +482,53 @@ export async function lookupZoningByLocation(
 /**
  * Save API-fetched districts to database
  */
-export async function saveAPIDistricts(districts: ZoningDistrictAPI[]): Promise<void> {
+export async function saveAPIDistricts(districts: ZoningDistrictAPI[]): Promise<number> {
+  let saved = 0;
+
   for (const district of districts) {
     try {
+      const cityConfig = CITY_APIS[district.municipality_id];
+      const municipalityName = cityConfig?.name || district.municipality_id;
+      const state = cityConfig?.state || '';
+
       await pool.query(
-        `
-        INSERT INTO zoning_districts (
-          municipality_id, zoning_code, district_name,
-          max_density_per_acre, max_height_feet,
-          source, source_url, last_updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-        ON CONFLICT (municipality_id, zoning_code)
+        `INSERT INTO zoning_districts (
+          municipality, state, district_code, district_name,
+          municipality_id, zoning_code, category,
+          max_units_per_acre, max_density_per_acre,
+          max_building_height_ft, max_height_feet,
+          source, source_url
+        ) VALUES ($1, $2, $3, $4, $5, $3, 'api', $6, $6, $7, $7, $8, $9)
+        ON CONFLICT (municipality, state, district_code)
         DO UPDATE SET
           district_name = EXCLUDED.district_name,
+          municipality_id = EXCLUDED.municipality_id,
+          zoning_code = EXCLUDED.zoning_code,
+          max_units_per_acre = COALESCE(EXCLUDED.max_units_per_acre, zoning_districts.max_units_per_acre),
           max_density_per_acre = COALESCE(EXCLUDED.max_density_per_acre, zoning_districts.max_density_per_acre),
+          max_building_height_ft = COALESCE(EXCLUDED.max_building_height_ft, zoning_districts.max_building_height_ft),
           max_height_feet = COALESCE(EXCLUDED.max_height_feet, zoning_districts.max_height_feet),
-          last_updated_at = NOW()
-        `,
+          source = EXCLUDED.source,
+          source_url = EXCLUDED.source_url,
+          updated_at = NOW()`,
         [
-          district.municipality_id,
+          municipalityName,
+          state,
           district.zoning_code,
           district.district_name,
-          district.max_density_per_acre,
-          district.max_height_feet,
+          district.municipality_id,
+          district.max_density_per_acre || null,
+          district.max_height_feet || null,
           district.source,
           district.source_url,
         ]
       );
-    } catch (error) {
-      console.error(`Error saving district ${district.zoning_code}:`, error);
+      saved++;
+    } catch (error: any) {
+      console.error(`Error saving district ${district.zoning_code}:`, error.message);
     }
   }
 
-  console.log(`Saved ${districts.length} API districts to database`);
+  console.log(`Saved ${saved}/${districts.length} API districts to database`);
+  return saved;
 }
