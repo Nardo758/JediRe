@@ -1,0 +1,67 @@
+The highest-impact data flows are:
+
+1. Atlanta Properties → Module Enhancements:
+
+Deal Overview — JEDI Score breakdown, owner seller likelihood (0-100), value/unit vs. median, tax burden comparison
+Zoning — Current density vs. neighborhood benchmarks, redevelopment potential (can you 2-3x units?)
+Market Intelligence — Submarket benchmarks (value/unit, density, tax rates), top owners by market share, vintage performance by decade
+3D Design — Density targets from neighborhood data, optimal unit mix, neighboring parcel assemblage opportunities with seller scores
+Strategy — Value-add score breakdown, recommended approach (renovate vs. redevelop vs. hold) with comparable deals
+Financial Model — Purchase price from assessed values, tax rates, cap rate estimates, operating expense benchmarks
+Risk Management — Market concentration risk, owner portfolio health, supply saturation scoring
+2. Rent Comp Data → Module Enhancements:
+
+Competition — 2x2 matrix (rent/SF vs. occupancy), competitive positioning, hidden gem detection, marketing effectiveness
+Supply Pipeline — New construction absorption risk, concession trends, saturation scoring
+Trends — Aging curve (rent depreciation by vintage), renovation ROI benchmarks, rent premium by building age
+Traffic Engine — Marketing tier ROI analysis, leasing velocity predictions
+3D Design — Optimal unit mix (60% 1BR, 30% 2BR, 10% Studio), unit size benchmarks by type, story count rent premiums
+Financial Model — Market rent/SF, occupancy targets, concession assumptions, rent growth rates
+Exit Strategy — Cap rate trends, buyer type breakdown, comparable exit multiples
+3. Cross-module data flow (the key differentiator):
+The mapping doc defines specific JavaScript data structures that flow between modules — for example, the designInputs object feeds density benchmarks + unit mix into 3D Design, and the financialInputs object aggregates rent data from Competition, cap rates from Market Intelligence, tax data from Atlanta properties, and capex from Strategy — all into the Financial Model automatically.
+
+Implementation approach: The mapping doc suggests a phased rollout — Phase 1 (quick wins: owner scoring, rent positioning matrix, value-add scores), Phase 2 (market benchmarking, portfolio analysis), Phase 3 (predictive models, cross-market intelligence), Phase 4 (full platform build).
+
+Want me to start building this out? I'd suggest beginning with:
+
+Import the rent comp Excel data into a new database table
+Build the Property Intelligence Layer (scoring algorithms for the Atlanta data)
+Wire real data into the top 3-4 highest-impact modules (Deal Overview, Competition, Financial Model, Market Intelligence)
+Created task list
+Time worked
+43 seconds
+Work done
+3 actions
+Items read
+1431 lines
+Agent Usage
+$0.62
+which wireframes should we enhance ?
+
+Based on the module mapping doc, the wireframes that would benefit most from real data enhancement are the ones that are currently "coming soon" placeholders but have rich data available to power them. Here's my recommendation, ranked by impact:
+
+Top Priority — These are placeholder wireframes with real data ready to go:
+
+Competition Analysis — Currently uses the development page, but the rent comp data (18 properties with rent/SF, occupancy, concessions, unit mix) can power a real 2x2 positioning matrix, competitive overlap tiering, and hidden gem detection.
+
+Deal Overview — Can show a real JEDI Score breakdown with owner seller likelihood, value/unit vs. median, and tax burden — all computable from the Atlanta property data right now.
+
+Trends Analysis — Currently a stub. The rent comp vintage data (2002-2026 buildings) can power a real aging curve, vintage rent premium chart, and renovation ROI benchmarks.
+
+Zoning & Entitlements — Currently a placeholder wireframe. Atlanta density data (units/acre calculations) can populate real density benchmarks, redevelopment potential scores, and neighborhood comparisons.
+
+Risk Management — Currently a placeholder. Supply pipeline data + owner concentration analysis from Atlanta properties can populate a real risk matrix with market, execution, and owner risk scores.
+
+Exit Strategy — Currently a placeholder. Cap rate estimates from Atlanta assessed values, plus buyer type analysis, can populate real exit scenarios.
+
+Lower Priority — Already partially built or need additional data sources:
+
+Traffic Engine — Marketing effectiveness analysis from rent comp ad levels
+Supply Pipeline — New construction filtering from year-built data
+Context Tracker — Comparable sales and owner activity timelines
+Skip for now — These need external data we don't have yet:
+
+Environmental & ESG (needs Phase I/II data)
+Construction Management (needs draw schedules)
+Capital Events (needs equity structure data)
