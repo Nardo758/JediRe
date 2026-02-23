@@ -43,6 +43,7 @@ import { RiskManagementSection } from '../components/deal/sections/RiskManagemen
 import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
+import { PropertyBoundarySection } from '../components/deal/sections/PropertyBoundarySection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -100,6 +101,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Deal Overview', 
       icon: <BarChart3 size={16} />, 
       component: OverviewSection 
+    },
+    { 
+      id: 'property-boundary', 
+      label: 'Property Boundary', 
+      icon: <MapPin size={16} />, 
+      component: PropertyBoundarySection 
     },
     { 
       id: 'zoning', 

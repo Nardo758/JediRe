@@ -95,7 +95,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
     if (!mapContainerRef.current) return;
 
     // TODO: Get Mapbox token from environment
-    const mapboxToken = process.env.REACT_APP_MAPBOX_TOKEN || 'pk.YOUR_TOKEN_HERE';
+    const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
     mapboxgl.accessToken = mapboxToken;
 
     // Get initial center from deal address or default to Atlanta
