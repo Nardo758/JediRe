@@ -1,14 +1,10 @@
-/**
- * Property Boundary API Routes
- * Handles site boundary definition for development deals
- */
-
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { getPool } from '../../database/connection';
 
 const router = Router();
+const pool = getPool();
 
-// Validation schemas
 const SetbacksSchema = z.object({
   front: z.number().min(0).max(100),
   side: z.number().min(0).max(100),
@@ -17,21 +13,20 @@ const SetbacksSchema = z.object({
 
 const ConstraintSchema = z.object({
   type: z.string(),
-  geoJSON: z.any(), // GeoJSON.Feature
+  geoJSON: z.any(),
   description: z.string().optional(),
 });
 
 const BoundarySchema = z.object({
-  dealId: z.string().uuid(),
-  boundaryGeoJSON: z.any(), // GeoJSON.Feature<GeoJSON.Polygon>
-  parcelArea: z.number().nullable(),
-  parcelAreaSF: z.number().nullable(),
-  perimeter: z.number().nullable(),
-  centroid: z.tuple([z.number(), z.number()]).nullable(),
-  setbacks: SetbacksSchema,
-  buildableArea: z.number().nullable(),
-  buildableAreaSF: z.number().nullable(),
-  buildablePercentage: z.number().nullable(),
+  boundaryGeoJSON: z.any(),
+  parcelArea: z.number().nullable().optional(),
+  parcelAreaSF: z.number().nullable().optional(),
+  perimeter: z.number().nullable().optional(),
+  centroid: z.tuple([z.number(), z.number()]).nullable().optional(),
+  setbacks: SetbacksSchema.optional(),
+  buildableArea: z.number().nullable().optional(),
+  buildableAreaSF: z.number().nullable().optional(),
+  buildablePercentage: z.number().nullable().optional(),
   constraints: z.object({
     easements: z.array(ConstraintSchema).optional(),
     floodplain: z.boolean().optional(),
@@ -42,136 +37,123 @@ const BoundarySchema = z.object({
   surveyDocumentUrl: z.string().url().optional(),
 });
 
-/**
- * GET /api/v1/deals/:dealId/boundary
- * Retrieve property boundary for a deal
- */
-router.get('/deals/:dealId/boundary', async (req, res) => {
+router.get('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
 
-    const { data, error } = await req.supabase
-      .from('property_boundaries')
-      .select('*')
-      .eq('deal_id', dealId)
-      .single();
+    const result = await pool.query(
+      'SELECT * FROM property_boundaries WHERE deal_id = $1',
+      [dealId]
+    );
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // No boundary found - return 404
-        return res.status(404).json({ error: 'Boundary not found' });
-      }
-      throw error;
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Boundary not found' });
     }
 
-    res.json(data);
+    res.json(result.rows[0]);
   } catch (error: any) {
     console.error('Error fetching boundary:', error);
     res.status(500).json({ error: error.message || 'Failed to fetch boundary' });
   }
 });
 
-/**
- * POST /api/v1/deals/:dealId/boundary
- * Create or update property boundary
- */
-router.post('/deals/:dealId/boundary', async (req, res) => {
+router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
-    
-    // Validate request body
-    const validatedData = BoundarySchema.parse({
-      ...req.body,
-      dealId,
-    });
 
-    // Check if boundary already exists
-    const { data: existing } = await req.supabase
-      .from('property_boundaries')
-      .select('id')
-      .eq('deal_id', dealId)
-      .single();
+    const validatedData = BoundarySchema.parse(req.body);
+
+    const centroidValue = validatedData.centroid
+      ? `(${validatedData.centroid[0]},${validatedData.centroid[1]})`
+      : null;
+
+    const existing = await pool.query(
+      'SELECT id FROM property_boundaries WHERE deal_id = $1',
+      [dealId]
+    );
 
     let result;
 
-    if (existing) {
-      // Update existing boundary
-      const { data, error } = await req.supabase
-        .from('property_boundaries')
-        .update({
-          boundary_geojson: validatedData.boundaryGeoJSON,
-          parcel_area: validatedData.parcelArea,
-          parcel_area_sf: validatedData.parcelAreaSF,
-          perimeter: validatedData.perimeter,
-          centroid: validatedData.centroid,
-          setbacks: validatedData.setbacks,
-          buildable_area: validatedData.buildableArea,
-          buildable_area_sf: validatedData.buildableAreaSF,
-          buildable_percentage: validatedData.buildablePercentage,
-          constraints: validatedData.constraints || {},
-          survey_document_url: validatedData.surveyDocumentUrl,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('deal_id', dealId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      result = data;
+    if (existing.rows.length > 0) {
+      result = await pool.query(
+        `UPDATE property_boundaries SET
+          boundary_geojson = $1,
+          parcel_area = $2,
+          parcel_area_sf = $3,
+          perimeter = $4,
+          centroid = $5,
+          setbacks = $6,
+          buildable_area = $7,
+          buildable_area_sf = $8,
+          buildable_percentage = $9,
+          constraints = $10,
+          survey_document_url = $11,
+          updated_at = NOW()
+        WHERE deal_id = $12
+        RETURNING *`,
+        [
+          JSON.stringify(validatedData.boundaryGeoJSON),
+          validatedData.parcelArea || null,
+          validatedData.parcelAreaSF || null,
+          validatedData.perimeter || null,
+          centroidValue,
+          JSON.stringify(validatedData.setbacks || {}),
+          validatedData.buildableArea || null,
+          validatedData.buildableAreaSF || null,
+          validatedData.buildablePercentage || null,
+          JSON.stringify(validatedData.constraints || {}),
+          validatedData.surveyDocumentUrl || null,
+          dealId,
+        ]
+      );
     } else {
-      // Insert new boundary
-      const { data, error } = await req.supabase
-        .from('property_boundaries')
-        .insert({
-          deal_id: dealId,
-          boundary_geojson: validatedData.boundaryGeoJSON,
-          parcel_area: validatedData.parcelArea,
-          parcel_area_sf: validatedData.parcelAreaSF,
-          perimeter: validatedData.perimeter,
-          centroid: validatedData.centroid,
-          setbacks: validatedData.setbacks,
-          buildable_area: validatedData.buildableArea,
-          buildable_area_sf: validatedData.buildableAreaSF,
-          buildable_percentage: validatedData.buildablePercentage,
-          constraints: validatedData.constraints || {},
-          survey_document_url: validatedData.surveyDocumentUrl,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      result = data;
+      result = await pool.query(
+        `INSERT INTO property_boundaries (
+          deal_id, boundary_geojson, parcel_area, parcel_area_sf, perimeter,
+          centroid, setbacks, buildable_area, buildable_area_sf, buildable_percentage,
+          constraints, survey_document_url
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING *`,
+        [
+          dealId,
+          JSON.stringify(validatedData.boundaryGeoJSON),
+          validatedData.parcelArea || null,
+          validatedData.parcelAreaSF || null,
+          validatedData.perimeter || null,
+          centroidValue,
+          JSON.stringify(validatedData.setbacks || {}),
+          validatedData.buildableArea || null,
+          validatedData.buildableAreaSF || null,
+          validatedData.buildablePercentage || null,
+          JSON.stringify(validatedData.constraints || {}),
+          validatedData.surveyDocumentUrl || null,
+        ]
+      );
     }
 
-    res.json(result);
+    res.json(result.rows[0]);
   } catch (error: any) {
     console.error('Error saving boundary:', error);
-    
+
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        error: 'Validation error', 
-        details: error.errors 
+      return res.status(400).json({
+        error: 'Validation error',
+        details: error.errors,
       });
     }
-    
+
     res.status(500).json({ error: error.message || 'Failed to save boundary' });
   }
 });
 
-/**
- * DELETE /api/v1/deals/:dealId/boundary
- * Delete property boundary
- */
-router.delete('/deals/:dealId/boundary', async (req, res) => {
+router.delete('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
 
-    const { error } = await req.supabase
-      .from('property_boundaries')
-      .delete()
-      .eq('deal_id', dealId);
-
-    if (error) throw error;
+    await pool.query(
+      'DELETE FROM property_boundaries WHERE deal_id = $1',
+      [dealId]
+    );
 
     res.json({ success: true, message: 'Boundary deleted' });
   } catch (error: any) {
@@ -180,32 +162,24 @@ router.delete('/deals/:dealId/boundary', async (req, res) => {
   }
 });
 
-/**
- * GET /api/v1/deals/:dealId/boundary/export
- * Export boundary in various formats (GeoJSON, KML, etc.)
- */
-router.get('/deals/:dealId/boundary/export', async (req, res) => {
+router.get('/deals/:dealId/boundary/export', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const format = req.query.format || 'geojson';
 
-    const { data, error } = await req.supabase
-      .from('property_boundaries')
-      .select('*')
-      .eq('deal_id', dealId)
-      .single();
+    const result = await pool.query(
+      'SELECT * FROM property_boundaries WHERE deal_id = $1',
+      [dealId]
+    );
 
-    if (error) throw error;
-    if (!data) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Boundary not found' });
     }
 
-    // For now, only support GeoJSON export
-    // TODO: Add KML, DXF, PDF exports
     if (format === 'geojson') {
       res.setHeader('Content-Type', 'application/geo+json');
       res.setHeader('Content-Disposition', `attachment; filename="boundary-${dealId}.geojson"`);
-      res.json(data.boundary_geojson);
+      res.json(result.rows[0].boundary_geojson);
     } else {
       res.status(400).json({ error: 'Unsupported export format' });
     }
@@ -215,54 +189,41 @@ router.get('/deals/:dealId/boundary/export', async (req, res) => {
   }
 });
 
-/**
- * GET /api/v1/deals/:dealId/development-capacity
- * Calculate development capacity based on boundary and zoning
- */
-router.get('/deals/:dealId/development-capacity', async (req, res) => {
+router.get('/deals/:dealId/development-capacity', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
 
-    // Get boundary data
-    const { data: boundary, error: boundaryError } = await req.supabase
-      .from('property_boundaries')
-      .select('*')
-      .eq('deal_id', dealId)
-      .single();
+    const boundaryResult = await pool.query(
+      'SELECT * FROM property_boundaries WHERE deal_id = $1',
+      [dealId]
+    );
 
-    if (boundaryError) throw boundaryError;
-    if (!boundary) {
+    if (boundaryResult.rows.length === 0) {
       return res.status(404).json({ error: 'Boundary not defined' });
     }
 
-    // Get deal data (for zoning info)
-    const { data: deal, error: dealError } = await req.supabase
-      .from('deals')
-      .select('*')
-      .eq('id', dealId)
-      .single();
+    const boundary = boundaryResult.rows[0];
 
-    if (dealError) throw dealError;
+    const zoningResult = await pool.query(
+      'SELECT * FROM zoning_capacity WHERE deal_id = $1',
+      [dealId]
+    );
 
-    // TODO: Get actual zoning data from database or API
-    // For now, use defaults
-    const zoningData = deal.zoning_data || {
-      maxUnitsPerAcre: 60,
-      maxFAR: 2.5,
-      maxStories: 6,
-      maxHeight: 75,
-      parkingRatio: 1.5,
-    };
+    const zoning = zoningResult.rows[0] || {};
 
-    // Calculate by-right capacity
+    const maxUnitsPerAcre = zoning.max_density || 60;
+    const maxFAR = zoning.max_far || 2.5;
+    const maxStories = zoning.max_stories || 6;
+    const maxHeight = zoning.max_height || 75;
+    const parkingRatio = zoning.parking_per_unit || 1.5;
+
     const byRightMaxUnits = Math.floor(
-      (boundary.buildable_area || 0) * zoningData.maxUnitsPerAcre
+      (boundary.buildable_area || 0) * maxUnitsPerAcre
     );
     const byRightMaxBuildingSF = Math.floor(
-      (boundary.parcel_area_sf || 0) * zoningData.maxFAR
+      (boundary.parcel_area_sf || 0) * maxFAR
     );
 
-    // Calculate with-variances capacity (example: 20% density bonus)
     const withVariancesMaxUnits = Math.floor(byRightMaxUnits * 1.2);
 
     const capacity = {
@@ -271,9 +232,9 @@ router.get('/deals/:dealId/development-capacity', async (req, res) => {
       byRight: {
         maxUnits: byRightMaxUnits,
         maxBuildingSF: byRightMaxBuildingSF,
-        maxStories: zoningData.maxStories,
-        maxHeight: zoningData.maxHeight,
-        parkingRequired: Math.ceil(byRightMaxUnits * zoningData.parkingRatio),
+        maxStories,
+        maxHeight,
+        parkingRequired: Math.ceil(byRightMaxUnits * parkingRatio),
       },
       withVariances: {
         densityBonus: {

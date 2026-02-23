@@ -293,7 +293,7 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
     const { dealId } = req.params;
 
     const dealResult = await pool.query(
-      `SELECT d.id, d.property_address, d.address, d.state, d.asset_type,
+      `SELECT d.id, d.property_address, d.address, d.state,
               zc.zoning_code
        FROM deals d
        LEFT JOIN zoning_capacity zc ON zc.deal_id = d.id
