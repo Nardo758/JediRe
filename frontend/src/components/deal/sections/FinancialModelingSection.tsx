@@ -3,6 +3,7 @@ import { propertyMetricsService } from '@/services/propertyMetrics.service';
 import type { MarketSummary, NeighborhoodBenchmark } from '@/services/propertyMetrics.service';
 import { propertyScoringService } from '@/services/propertyScoring.service';
 import type { CapRateEstimate } from '@/services/propertyScoring.service';
+import { OpusProformaBuilder } from './OpusProformaBuilder';
 
 interface FinancialModelingSectionProps {
   deal?: any;
@@ -30,7 +31,8 @@ const fmtCurrency = (val: number) =>
 
 const fmtPct = (val: number) => `${val.toFixed(1)}%`;
 
-export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> = ({ deal }) => {
+export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> = ({ deal, dealId }) => {
+  const [viewMode, setViewMode] = useState<'calculator' | 'opus'>('calculator');
   const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
   const [benchmarks, setBenchmarks] = useState<NeighborhoodBenchmark[]>([]);
   const [capRates, setCapRates] = useState<CapRateEstimate[]>([]);
@@ -152,8 +154,24 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
     );
   }
 
+  if (viewMode === 'opus') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <button onClick={() => setViewMode('calculator')} className="px-3 py-1.5 text-xs rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Calculator</button>
+          <button className="px-3 py-1.5 text-xs rounded-md bg-purple-100 text-purple-700 font-semibold border border-purple-300">Opus AI Builder</button>
+        </div>
+        <OpusProformaBuilder deal={deal} dealId={dealId} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-3 mb-2">
+        <button className="px-3 py-1.5 text-xs rounded-md bg-purple-100 text-purple-700 font-semibold border border-purple-300">Calculator</button>
+        <button onClick={() => setViewMode('opus')} className="px-3 py-1.5 text-xs rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200">Opus AI Builder</button>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <MetricCard label="Going-In Cap" value={fmtPct(proForma.goingInCap)} color="blue" />
         <MetricCard label="Est. IRR" value={fmtPct(proForma.irrEstimate)} color="green" />

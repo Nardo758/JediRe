@@ -79,6 +79,16 @@ Each deal ("capsule") uses a 6-group tab navigation system in `DealDetailPage.ts
     - `RiskManagementSection.tsx` — Market risk dashboard: supply pipeline, occupancy distribution, owner concentration, submarket risk heatmap
     - `ExitSection.tsx` — Exit pricing benchmarks ($/unit by neighborhood), buyer universe (top owners), rent comp exit support (implied value at cap rates)
 
+- **Opus Pro Forma Builder (Feb 2026):** AI-powered financial modeling assistant using Anthropic Claude (claude-sonnet-4-6) via Replit AI Integrations. Streams responses via SSE. Auto-generates pro forma models by pulling cross-module context (deals, rent comps, cap rates, design inputs, supply intelligence) and comparable data from the Data Library.
+  - Backend: `opus.service.ts` (streaming chat, context gathering, pro forma version CRUD, automatic model parsing from AI responses) + `opus.routes.ts` (9 REST endpoints at `/api/v1/opus/*`, auth-protected, SSE streaming for chat)
+  - Frontend: `OpusProformaBuilder.tsx` (chat UI with SSE streaming, structured pro forma table rendering, version management, quick prompts). Embedded in `FinancialModelingSection.tsx` with Calculator/Opus AI toggle.
+  - DB: `opus_conversations`, `opus_messages`, `opus_proforma_versions` tables
+
+- **Data Library (Feb 2026):** Global file repository for historical property data (rent rolls, operating statements, comp surveys). Files categorized by city, zip, property type, height, vintage, unit count. Opus AI matches comparable files to deals automatically.
+  - Backend: `dataLibrary.service.ts` (file upload with metadata tagging, CSV parsing, comparable matching algorithm, filename sanitization, path traversal protection) + `data-library.routes.ts` (6 REST endpoints at `/api/v1/data-library/*`, multer with 50MB limit)
+  - Frontend: `DataLibraryPage.tsx` (upload form with metadata, search/filter, parsed data preview, file management). Routes: `/data-library` and `/settings/data-library`
+  - DB: `data_library_files` table with property-matching indexes
+
 ### Agent Dashboard (CRM Module)
 
 - **Schema:** 5 Drizzle ORM tables — `agent_clients`, `agent_deals`, `agent_leads`, `agent_activities`, `agent_commission_templates`
