@@ -6,7 +6,7 @@ import {
   ClipboardCheck, Calendar, FolderOpen, Box, Car,
   LogOut, Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
-  Compass, Landmark
+  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat, Coins
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
@@ -38,6 +38,11 @@ import { AIRecommendationsSection } from '../components/deal/sections/AIRecommen
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
 import { ZoningEntitlementsSection } from '../components/deal/sections/ZoningEntitlementsSection';
 import { StrategySection } from '../components/deal/sections/StrategySection';
+import { TeamSection } from '../components/deal/sections/TeamSection';
+import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
+import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
+import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
+import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -108,6 +113,12 @@ const DealDetailPage: React.FC = () => {
       icon: <Compass size={16} />, 
       component: ContextTrackerSection 
     },
+    { 
+      id: 'team', 
+      label: 'Team & Collaborators', 
+      icon: <Users size={16} />, 
+      component: TeamSection 
+    },
   ];
 
   // Stage 2: MARKET RESEARCH - Validate opportunity
@@ -165,6 +176,12 @@ const DealDetailPage: React.FC = () => {
       component: FinancialModelingSection 
     },
     { 
+      id: 'capital-events', 
+      label: 'Capital Events', 
+      icon: <Coins size={16} />, 
+      component: CapitalEventsSection 
+    },
+    { 
       id: 'debt', 
       label: 'Debt & Financing', 
       icon: <CreditCard size={16} />, 
@@ -193,6 +210,18 @@ const DealDetailPage: React.FC = () => {
       component: DealStatusSection 
     },
     { 
+      id: 'risk-management', 
+      label: 'Risk Management', 
+      icon: <AlertTriangle size={16} />, 
+      component: RiskManagementSection 
+    },
+    { 
+      id: 'environmental-esg', 
+      label: 'Environmental & ESG', 
+      icon: <Leaf size={16} />, 
+      component: EnvironmentalESGSection 
+    },
+    { 
       id: 'files', 
       label: 'Files & Assets', 
       icon: <FolderOpen size={16} />, 
@@ -213,6 +242,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Project Management', 
       icon: <Briefcase size={16} />, 
       component: ProjectManagementSection 
+    },
+    { 
+      id: 'construction-management', 
+      label: 'Construction Management', 
+      icon: <HardHat size={16} />, 
+      component: ConstructionManagementSection 
     },
   ];
 
