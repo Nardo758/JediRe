@@ -32,7 +32,6 @@ import { ProjectTimelinePage } from './development/ProjectTimelinePage';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
 import { FilesSection } from '../components/deal/sections/FilesSection';
-import { NotesSection } from '../components/deal/sections/NotesSection';
 
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
@@ -96,12 +95,6 @@ const DealDetailPage: React.FC = () => {
       label: 'Deal Overview', 
       icon: <BarChart3 size={16} />, 
       component: OverviewSection 
-    },
-    { 
-      id: 'notes', 
-      label: 'Notes', 
-      icon: <StickyNote size={16} />, 
-      component: NotesSection 
     },
     { 
       id: 'context-tracker', 
