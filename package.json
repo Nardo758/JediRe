@@ -9,6 +9,7 @@
     "@turf/union": "^7.3.4",
     "@types/multer": "^2.0.0",
     "multer": "^2.0.2",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "xlsx": "^0.18.5"
   }
 }
