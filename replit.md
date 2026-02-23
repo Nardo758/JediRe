@@ -68,6 +68,17 @@ Each deal ("capsule") uses a 6-group tab navigation system in `DealDetailPage.ts
 
 - **Module Library System:** Upload historical data (Excel, PDF, CSV) for Opus AI to learn patterns, formulas, and assumptions. 3 module libraries (Financial, Market, Due Diligence) with file upload, parsing status tracking, pattern detection, and template learning. Backend: `moduleLibrary.service.ts` + `module-libraries.routes.ts` (7 REST endpoints with multer). Frontend: `ModuleLibrariesPage.tsx` + `ModuleLibraryDetailPage.tsx` under `/settings/module-libraries`. DB: `module_library_files`, `opus_learned_patterns`, `opus_template_structures` tables.
 
+- **Property Intelligence Layer (Feb 2026):** Real metrics replace placeholder wireframes across 6 deal capsule modules. Two data sources: 1,028 Atlanta multifamily properties (`property_records` table) and 18 West Palm Beach rent comps (`rent_comps` table with 29 columns: rents by unit type, occupancy, concessions, distance, neighborhood).
+  - Backend: `propertyMetrics.service.ts` (8 methods: property metrics, density, neighborhood benchmarks, submarket comparison, top owners, owner search, rent comps, market summary) + `property-metrics.routes.ts` (8 REST endpoints at `/api/v1/property-metrics/*`, auth-protected)
+  - Frontend: `propertyMetrics.service.ts` API client service
+  - **Enhanced Modules:**
+    - `OverviewSection.tsx` — Property Intelligence Dashboard: submarket comparison table, top owners, market summary stats
+    - `CompetitionSection.tsx` — Sortable rent comp table, CSS scatter plot (rent/SF vs occupancy), unit mix breakdown, effective rent analysis
+    - `TrendsAnalysisSection.tsx` — Rent by vintage analysis, occupancy by building age, neighborhood value comparison, concession analysis
+    - `ZoningEntitlementsSection.tsx` — Density intelligence dashboard: density tiers, land utilization, zoning insight
+    - `RiskManagementSection.tsx` — Market risk dashboard: supply pipeline, occupancy distribution, owner concentration, submarket risk heatmap
+    - `ExitSection.tsx` — Exit pricing benchmarks ($/unit by neighborhood), buyer universe (top owners), rent comp exit support (implied value at cap rates)
+
 ### Agent Dashboard (CRM Module)
 
 - **Schema:** 5 Drizzle ORM tables — `agent_clients`, `agent_deals`, `agent_leads`, `agent_activities`, `agent_commission_templates`
