@@ -92,6 +92,43 @@ export interface TaxBurdenResult {
   flag: 'overtaxed' | 'undertaxed' | 'normal';
 }
 
+export interface DesignInputs {
+  benchmarks: {
+    avgDensity: number;
+    topQuartileDensity: number;
+    maxDensity: number;
+    avgStories: number;
+    avgSfPerUnit: number;
+  };
+  optimalUnitMix: {
+    studio: number;
+    oneBed: number;
+    twoBed: number;
+    threeBed: number;
+  };
+  rentByUnitType: {
+    studio: number | null;
+    oneBed: number | null;
+    twoBed: number | null;
+    threeBed: number | null;
+  };
+  rentPremiums: {
+    highriseRentPerSf: number | null;
+    midriseRentPerSf: number | null;
+    premium: number;
+  };
+  avgUnitSf: number;
+  assemblageOpportunities: {
+    parcelId: string;
+    address: string;
+    ownerName: string;
+    units: number;
+    acres: number;
+    density: number;
+    yearBuilt: string | null;
+  }[];
+}
+
 const BASE = '/api/v1/property-scoring';
 
 export const propertyScoringService = {
@@ -117,6 +154,16 @@ export const propertyScoringService = {
 
   async getTaxBurden(limit = 50): Promise<TaxBurdenResult[]> {
     const { data } = await apiClient.get(`${BASE}/tax-burden`, { params: { limit } });
+    return data;
+  },
+
+  async getSupplyIntelligence(): Promise<any> {
+    const { data } = await apiClient.get(`${BASE}/supply-intelligence`);
+    return data;
+  },
+
+  async getDesignInputs(neighborhood?: string): Promise<DesignInputs> {
+    const { data } = await apiClient.get(`${BASE}/design-inputs`, { params: neighborhood ? { neighborhood } : {} });
     return data;
   },
 };

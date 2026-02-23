@@ -59,5 +59,26 @@ export function createPropertyScoringRouter(pool: Pool): Router {
     }
   });
 
+  router.get('/supply-intelligence', async (req: Request, res: Response) => {
+    try {
+      const result = await scoring.getSupplyIntelligence();
+      res.json(result);
+    } catch (err: any) {
+      console.error('Supply intelligence error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get('/design-inputs', async (req: Request, res: Response) => {
+    try {
+      const neighborhoodCode = req.query.neighborhood as string | undefined;
+      const result = await scoring.getDesignInputs(neighborhoodCode);
+      res.json(result);
+    } catch (err: any) {
+      console.error('Design inputs error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }

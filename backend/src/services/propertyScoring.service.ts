@@ -605,4 +605,181 @@ export class PropertyScoringService {
     results.sort((a, b) => b.deviationPct - a.deviationPct);
     return results.slice(0, limit);
   }
+
+  async getSupplyIntelligence(): Promise<any> {
+    const [vintageRes, densityRes, concentrationRes] = await Promise.all([
+      this.pool.query(
+        `SELECT
+          CASE
+            WHEN CAST(NULLIF(regexp_replace(year_built, '[^0-9]', '', 'g'), '') AS int) >= 2020 THEN '2020+'
+            WHEN CAST(NULLIF(regexp_replace(year_built, '[^0-9]', '', 'g'), '') AS int) >= 2015 THEN '2015-2019'
+            WHEN CAST(NULLIF(regexp_replace(year_built, '[^0-9]', '', 'g'), '') AS int) >= 2010 THEN '2010-2014'
+            WHEN CAST(NULLIF(regexp_replace(year_built, '[^0-9]', '', 'g'), '') AS int) >= 2000 THEN '2000-2009'
+            WHEN CAST(NULLIF(regexp_replace(year_built, '[^0-9]', '', 'g'), '') AS int) >= 1990 THEN '1990-1999'
+            ELSE 'Pre-1990'
+          END as vintage,
+          COUNT(*) as property_count,
+          SUM(units) as total_units,
+          AVG(units) as avg_units
+         FROM property_records
+         WHERE year_built IS NOT NULL AND units > 0
+           AND regexp_replace(year_built, '[^0-9]', '', 'g') != ''
+         GROUP BY vintage
+         ORDER BY vintage`
+      ),
+      this.pool.query(
+        `SELECT
+          neighborhood_code,
+          COUNT(*) as properties,
+          SUM(units) as total_units,
+          AVG(CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as avg_density,
+          SUM(land_acres) as total_acres
+         FROM property_records
+         WHERE units > 0 AND neighborhood_code IS NOT NULL
+         GROUP BY neighborhood_code
+         ORDER BY SUM(units) DESC
+         LIMIT 15`
+      ),
+      this.pool.query(
+        `SELECT owner_name, COUNT(*) as properties, SUM(units) as total_units
+         FROM property_records
+         WHERE units > 0
+         GROUP BY owner_name
+         ORDER BY SUM(units) DESC
+         LIMIT 10`
+      ),
+    ]);
+
+    const totalUnits = vintageRes.rows.reduce((s: number, r: any) => s + Number(r.total_units || 0), 0);
+    const newSupply = vintageRes.rows.filter((r: any) => r.vintage === '2020+' || r.vintage === '2015-2019')
+      .reduce((s: number, r: any) => s + Number(r.total_units || 0), 0);
+
+    const safePct = (n: number, d: number) => d > 0 ? Math.round((n / d) * 100) : 0;
+    const safeShare = (n: number, d: number) => d > 0 ? Math.round((n / d) * 1000) / 10 : 0;
+
+    return {
+      deliveryPipeline: vintageRes.rows.map((r: any) => ({
+        vintage: r.vintage,
+        properties: Number(r.property_count),
+        units: Number(r.total_units || 0),
+        avgUnits: Math.round(Number(r.avg_units) || 0),
+        pctOfTotal: safePct(Number(r.total_units || 0), totalUnits),
+      })),
+      submarketSaturation: densityRes.rows.map((r: any) => ({
+        neighborhood: r.neighborhood_code,
+        properties: Number(r.properties),
+        units: Number(r.total_units || 0),
+        avgDensity: Number(r.avg_density) ? Math.round(Number(r.avg_density) * 10) / 10 : null,
+        totalAcres: Math.round(Number(r.total_acres || 0) * 10) / 10,
+      })),
+      ownerConcentration: concentrationRes.rows.map((r: any) => ({
+        owner: r.owner_name,
+        properties: Number(r.properties),
+        units: Number(r.total_units || 0),
+        marketShare: safeShare(Number(r.total_units || 0), totalUnits),
+      })),
+      summary: {
+        totalProperties: vintageRes.rows.reduce((s: number, r: any) => s + Number(r.property_count || 0), 0),
+        totalUnits,
+        newSupplyUnits: newSupply,
+        newSupplyPct: safePct(newSupply, totalUnits),
+        submarketCount: densityRes.rows.length,
+      },
+    };
+  }
+
+  async getDesignInputs(neighborhoodCode?: string): Promise<any> {
+    const densityQuery = neighborhoodCode
+      ? this.pool.query(
+          `SELECT
+            AVG(CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as avg_density,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as top_quartile_density,
+            MAX(CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as max_density,
+            AVG(units) as avg_units, AVG(stories) as avg_stories, AVG(building_sqft::numeric / NULLIF(units, 0)) as avg_sf_per_unit
+           FROM property_records WHERE neighborhood_code = $1 AND units > 0`,
+          [neighborhoodCode]
+        )
+      : this.pool.query(
+          `SELECT
+            AVG(CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as avg_density,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as top_quartile_density,
+            MAX(CASE WHEN land_acres > 0 THEN units::numeric / land_acres END) as max_density,
+            AVG(units) as avg_units, AVG(stories) as avg_stories, AVG(building_sqft::numeric / NULLIF(units, 0)) as avg_sf_per_unit
+           FROM property_records WHERE units > 0`
+        );
+
+    const unitMixQuery = this.pool.query(
+      `SELECT
+        AVG(avg_sf) as avg_unit_sf,
+        AVG(studio_rent) as avg_studio_rent, AVG(one_bed_rent) as avg_1br_rent,
+        AVG(two_bed_rent) as avg_2br_rent, AVG(three_bed_rent) as avg_3br_rent,
+        SUM(studio_count) as total_studios, SUM(one_bed_count) as total_1br,
+        SUM(two_bed_count) as total_2br, SUM(three_bed_count) as total_3br,
+        AVG(CASE WHEN stories >= 20 THEN rent_per_sf END) as highrise_rent,
+        AVG(CASE WHEN stories < 10 THEN rent_per_sf END) as midrise_rent
+       FROM rent_comps`
+    );
+
+    const assemblageQuery = neighborhoodCode
+      ? this.pool.query(
+          `SELECT parcel_id, address, owner_name, units, land_acres, year_built,
+                  CASE WHEN land_acres > 0 THEN units::numeric / land_acres END as density
+           FROM property_records
+           WHERE neighborhood_code = $1 AND units > 0 AND land_acres > 2
+           ORDER BY CASE WHEN land_acres > 0 THEN units::numeric / land_acres END ASC
+           LIMIT 10`,
+          [neighborhoodCode]
+        )
+      : this.pool.query(
+          `SELECT parcel_id, address, owner_name, units, land_acres, year_built,
+                  CASE WHEN land_acres > 0 THEN units::numeric / land_acres END as density
+           FROM property_records
+           WHERE units > 0 AND land_acres > 5
+           ORDER BY CASE WHEN land_acres > 0 THEN units::numeric / land_acres END ASC
+           LIMIT 10`
+        );
+
+    const [densityRes, mixRes, assembRes] = await Promise.all([densityQuery, unitMixQuery, assemblageQuery]);
+
+    const d = densityRes.rows[0] || {};
+    const m = mixRes.rows[0] || {};
+    const totalUnitsByType = Number(m.total_studios || 0) + Number(m.total_1br || 0) + Number(m.total_2br || 0) + Number(m.total_3br || 0);
+
+    return {
+      benchmarks: {
+        avgDensity: Number(d.avg_density) || 0,
+        topQuartileDensity: Number(d.top_quartile_density) || 0,
+        maxDensity: Number(d.max_density) || 0,
+        avgStories: Math.round(Number(d.avg_stories) || 0),
+        avgSfPerUnit: Math.round(Number(d.avg_sf_per_unit) || 0),
+      },
+      optimalUnitMix: {
+        studio: totalUnitsByType > 0 ? Math.round((Number(m.total_studios || 0) / totalUnitsByType) * 100) : 10,
+        oneBed: totalUnitsByType > 0 ? Math.round((Number(m.total_1br || 0) / totalUnitsByType) * 100) : 60,
+        twoBed: totalUnitsByType > 0 ? Math.round((Number(m.total_2br || 0) / totalUnitsByType) * 100) : 25,
+        threeBed: totalUnitsByType > 0 ? Math.round((Number(m.total_3br || 0) / totalUnitsByType) * 100) : 5,
+      },
+      rentByUnitType: {
+        studio: Number(m.avg_studio_rent) || null,
+        oneBed: Number(m.avg_1br_rent) || null,
+        twoBed: Number(m.avg_2br_rent) || null,
+        threeBed: Number(m.avg_3br_rent) || null,
+      },
+      rentPremiums: {
+        highriseRentPerSf: Number(m.highrise_rent) || null,
+        midriseRentPerSf: Number(m.midrise_rent) || null,
+        premium: (Number(m.highrise_rent) || 0) - (Number(m.midrise_rent) || 0),
+      },
+      avgUnitSf: Math.round(Number(m.avg_unit_sf) || 850),
+      assemblageOpportunities: assembRes.rows.map((r: any) => ({
+        parcelId: r.parcel_id,
+        address: r.address,
+        ownerName: r.owner_name,
+        units: r.units,
+        acres: Number(r.land_acres),
+        density: Number(r.density) || 0,
+        yearBuilt: r.year_built,
+      })),
+    };
+  }
 }
