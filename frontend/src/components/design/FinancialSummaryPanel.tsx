@@ -9,8 +9,8 @@ import {
   Car,
   Layers
 } from 'lucide-react';
-import DesignToFinancialService from '../../services/DesignToFinancialService';
-import type { Design3D } from '../../types/financial.types';
+import DesignToFinancialService from './DesignToFinancialService';
+import { Design3D } from './Design3D';
 
 interface FinancialSummaryPanelProps {
   design3D: Design3D;
@@ -214,7 +214,7 @@ export const FinancialSummaryPanel: React.FC<FinancialSummaryPanelProps> = ({
         </p>
       </div>
       
-      <style>{`
+      <style jsx>{`
         .financial-summary-panel {
           background: white;
           border-radius: 8px;

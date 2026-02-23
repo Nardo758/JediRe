@@ -1,8 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { ErrorFallback } from './components/fallbacks/ErrorFallback';
 import { MapPage } from './pages/MapPage';
 import { Dashboard } from './pages/Dashboard';
 import { PropertiesPage } from './pages/PropertiesPage';
@@ -11,7 +9,6 @@ import { DealView } from './pages/DealView';
 import { DealPage } from './pages/DealPage';
 import { DealPageEnhanced } from './pages/DealPageEnhanced';
 import { CreateDealPage } from './pages/CreateDealPage';
-import { Design3DPage } from './pages/Design3DPage';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
 import { NewsIntelligencePage } from './pages/NewsIntelligencePage';
@@ -20,6 +17,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MarketDataPageV2 } from './pages/MarketDataPageV2';
 import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 import { ModulesPage } from './pages/settings/ModulesPage';
@@ -39,17 +37,12 @@ import { DealShowcasePage } from './pages/DealShowcasePage';
 import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
-import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
-import {
-  MarketIntelligencePage,
-  MyMarketsDashboard,
-  CompareMarketsPage,
-  ActiveOwnersPage,
-  FutureSupplyPage,
-} from './pages/MarketIntelligence';
+import MarketResearchPage from './pages/MarketResearchPage';
+import ActiveOwnersPage from './pages/ActiveOwnersPage';
+import FutureSupplyPage from './pages/FutureSupplyPage';
 
 
 function AppContent() {
@@ -79,10 +72,10 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data" element={<MarketDataPageV2 />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/market-data" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/market-data" replace />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
@@ -92,26 +85,17 @@ function AppContent() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           
-          {/* Market Research Redirects */}
-          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
-          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
-          
-          {/* Market Intelligence */}
-          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
-          <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
-          <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
-          <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
-          <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
+          {/* Market Research Routes */}
+          <Route path="/market-research" element={<MarketResearchPage />} />
+          <Route path="/market-research/active-owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-research/future-supply" element={<FutureSupplyPage />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
-          <Route path="/deals/:dealId/design" element={<Design3DPage />} />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
-          <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:id" element={<DealView />} />
@@ -147,13 +131,11 @@ function AppContent() {
 
 function App() {
   return (
-    <ErrorBoundary fallback={<ErrorFallback />}>
-      <ArchitectureProvider>
-        <MapLayersProvider>
-          <AppContent />
-        </MapLayersProvider>
-      </ArchitectureProvider>
-    </ErrorBoundary>
+    <ArchitectureProvider>
+      <MapLayersProvider>
+        <AppContent />
+      </MapLayersProvider>
+    </ArchitectureProvider>
   );
 }
 

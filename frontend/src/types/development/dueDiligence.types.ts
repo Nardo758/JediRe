@@ -1,145 +1,271 @@
+/**
+ * Due Diligence Types - Development-Specific
+ * Types for managing pre-development investigations and entitlement tracking
+ */
+
+// ===== OVERALL DUE DILIGENCE STATUS =====
+
+export type DDStatus = 'not_started' | 'in_progress' | 'complete' | 'issue' | 'blocked';
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
 export interface DueDiligenceState {
   id: string;
   dealId: string;
-  status: 'not_started' | 'in_progress' | 'complete' | 'flagged';
-  progress: number;
-  completedItems: number;
-  totalItems: number;
-  startDate?: string;
-  targetDate?: string;
+  parcels: ParcelDueDiligence[];
+  overallProgress: number; // 0-100
+  overallRisk: RiskLevel;
+  criticalPathItem?: string;
   lastUpdated: string;
-  categories: DDCategory[];
 }
 
-export interface DDCategory {
-  id: string;
-  name: string;
-  status: 'not_started' | 'in_progress' | 'complete' | 'flagged';
-  progress: number;
-  items: DDItem[];
+// ===== PARCEL-SPECIFIC DUE DILIGENCE =====
+
+export interface ParcelDueDiligence {
+  parcelId: string;
+  address: string;
+  parcelType: 'main' | 'adjacent' | 'assemblage';
+  progress: number; // 0-100
+  title: DDItemStatus;
+  survey: DDItemStatus;
+  environmental: DDItemStatus;
+  geotechnical: DDItemStatus;
+  zoning: DDItemStatus;
+  utilities: DDItemStatus;
 }
 
-export interface DDItem {
-  id: string;
-  name: string;
-  status: 'pending' | 'in_progress' | 'complete' | 'flagged' | 'na';
-  assignee?: string;
+export interface DDItemStatus {
+  status: DDStatus;
+  completedDate?: string;
   dueDate?: string;
+  notes?: string;
+  documents?: string[]; // Document IDs
+  riskLevel?: RiskLevel;
+}
+
+// ===== ZONING & ENTITLEMENTS =====
+
+export interface ZoningAnalysis {
+  id: string;
+  dealId: string;
+  currentZoning: string;
+  byRightUnits: number;
+  byRightHeight: number; // feet
+  byRightFAR: number;
+  upzoningPotential?: UpzoningScenario;
+  communitySupport: 'supportive' | 'neutral' | 'opposed' | 'mixed' | 'unknown';
+  councilMemberPosition?: 'supportive' | 'neutral' | 'opposed' | 'unknown';
+  lastUpdated: string;
+}
+
+export interface UpzoningScenario {
+  proposedZoning: string;
+  proposedUnits: number;
+  proposedHeight: number;
+  proposedFAR: number;
+  processTimeline: number; // months
+  successLikelihood: number; // 0-100%
+  estimatedCost: number;
+  keyRequirements: string[];
+}
+
+export interface EntitlementChecklist {
+  id: string;
+  dealId: string;
+  items: EntitlementItem[];
+  timeline: EntitlementTimeline[];
+  overallStatus: 'not_started' | 'in_progress' | 'approved' | 'denied' | 'appealing';
+}
+
+export interface EntitlementItem {
+  id: string;
+  type: 'rezoning' | 'variance' | 'conditional_use' | 'site_plan' | 'building_permit' | 'other';
+  name: string;
+  required: boolean;
+  status: DDStatus;
+  filingDate?: string;
+  hearingDate?: string;
+  approvalDate?: string;
+  expirationDate?: string;
   notes?: string;
   documents?: string[];
 }
 
-export interface ZoningAnalysis {
-  currentZoning: string;
-  proposedUse: string;
-  allowedUses: string[];
-  conditionalUses: string[];
-  maxDensity: number;
-  maxHeight: number;
-  farAllowed: number;
-  setbacks: {
-    front: number;
-    side: number;
-    rear: number;
-  };
-  parkingRequirements: {
-    residential: number;
-    commercial: number;
-  };
-  overlayDistricts: string[];
-  variancesNeeded: string[];
-  entitlementTimeline: number;
-  status: 'conforming' | 'non_conforming' | 'variance_needed' | 'rezoning_needed';
+export interface EntitlementTimeline {
+  id: string;
+  stage: string;
+  description: string;
+  estimatedStart: string;
+  estimatedEnd: string;
+  actualStart?: string;
+  actualEnd?: string;
+  status: 'pending' | 'in_progress' | 'complete' | 'delayed';
+  dependencies?: string[]; // IDs of prerequisite stages
 }
+
+// ===== ENVIRONMENTAL & GEOTECHNICAL =====
 
 export interface EnvironmentalAssessment {
   id: string;
-  type: 'Phase I' | 'Phase II' | 'Phase III';
-  status: 'pending' | 'in_progress' | 'complete' | 'flagged';
-  findings: string[];
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  estimatedCost?: number;
-  remediationNeeded: boolean;
-  completionDate?: string;
+  dealId: string;
+  parcelId?: string;
+  phaseI: PhaseIESA;
+  phaseII?: PhaseIIESA;
+  remediation?: RemediationPlan;
+  overallRisk: RiskLevel;
+}
+
+export interface PhaseIESA {
+  status: DDStatus;
+  completedDate?: string;
+  findings: 'clean' | 'rec' | 'concern' | 'pending';
+  recognizedEnvironmentalConditions: string[];
+  phaseIIRequired: boolean;
+  reportDocId?: string;
+  cost: number;
+}
+
+export interface PhaseIIESA {
+  status: DDStatus;
+  completedDate?: string;
+  contaminantsFound: string[];
+  remediationRequired: boolean;
+  estimatedCost: number;
+  timeline: number; // weeks
+  reportDocId?: string;
+  cost: number;
+}
+
+export interface RemediationPlan {
+  description: string;
+  estimatedCost: number;
+  timeline: number; // weeks
+  impact: 'minimal' | 'moderate' | 'significant';
+  contractor?: string;
+  permitRequired: boolean;
 }
 
 export interface GeotechnicalReport {
   id: string;
-  status: 'pending' | 'in_progress' | 'complete';
-  soilType: string;
-  bearingCapacity: number;
-  waterTable: number;
-  seismicZone?: string;
-  foundationType: string;
+  dealId: string;
+  parcelId?: string;
+  status: DDStatus;
+  completedDate?: string;
+  soilConditions: SoilLayer[];
+  waterTableDepth: number; // feet
+  foundationRecommendation: FoundationRecommendation;
   specialConsiderations: string[];
-  completionDate?: string;
+  reportDocId?: string;
+  cost: number;
 }
 
+export interface SoilLayer {
+  depthStart: number; // feet
+  depthEnd: number; // feet
+  description: string;
+  bearingCapacity?: number; // psf
+}
+
+export interface FoundationRecommendation {
+  type: 'spread_footing' | 'mat' | 'auger_cast_piles' | 'driven_piles' | 'other';
+  depth: number; // feet
+  costImpact: number; // $ above standard
+  specialRequirements: string[];
+  dewateringRequired: boolean;
+  shoringRequired: boolean;
+}
+
+// ===== UTILITY CAPACITY =====
+
 export interface UtilityCapacity {
+  id: string;
+  dealId: string;
   water: UtilityService;
   sewer: UtilityService;
   electric: UtilityService;
   gas: UtilityService;
-  telecom: UtilityService;
-  stormwater: UtilityService;
+  telecom?: UtilityService;
+  overallStatus: 'adequate' | 'upgrade_needed' | 'insufficient' | 'unknown';
 }
 
 export interface UtilityService {
   available: boolean;
+  mainSize?: string; // e.g., "12 inch"
+  capacity: 'adequate' | 'marginal' | 'insufficient' | 'unknown';
+  currentUtilization?: number; // % used
+  upgradeRequired: boolean;
+  upgradeCost?: number;
+  upgradeTimeline?: number; // weeks
   provider: string;
-  capacity: 'adequate' | 'upgrade_needed' | 'unavailable';
-  connectionCost?: number;
-  upgradeRequired?: boolean;
-  timeline?: string;
+  serviceVoltage?: string; // for electric
+  substationDistance?: number; // miles, for electric
   notes?: string;
 }
+
+// ===== ASSEMBLAGE DUE DILIGENCE =====
 
 export interface AssemblageDueDiligence {
-  parcels: ParcelDD[];
-  totalArea: number;
-  estimatedValue: number;
-  acquisitionStatus: 'not_started' | 'in_progress' | 'complete';
-  challenges: string[];
+  id: string;
+  dealId: string;
+  parcels: ParcelDueDiligence[];
+  overallProgress: number;
+  criticalPathParcel?: string;
+  synchronizationRisks: string[];
+  closingStrategy: 'simultaneous' | 'sequential' | 'contingent';
+  estimatedTotalCost: number;
 }
 
-export interface ParcelDD {
-  id: string;
-  address: string;
-  owner: string;
-  area: number;
-  estimatedValue: number;
-  status: 'not_contacted' | 'negotiating' | 'under_contract' | 'acquired' | 'declined';
-  notes?: string;
-}
+// ===== RISK MATRIX =====
 
 export interface RiskMatrix {
-  categories: RiskCategory[];
-  overallScore: number;
-  overallLevel: 'low' | 'medium' | 'high' | 'critical';
+  id: string;
+  dealId: string;
+  risks: RiskItem[];
+  overallRiskScore: number; // 0-100
+  lastUpdated: string;
 }
 
-export interface RiskCategory {
-  name: string;
-  probability: number;
-  impact: number;
-  score: number;
-  level: 'low' | 'medium' | 'high' | 'critical';
-  mitigations: string[];
+export interface RiskItem {
+  id: string;
+  category: 'entitlement' | 'environmental' | 'geotechnical' | 'utility' | 'assemblage' | 'financial' | 'other';
+  description: string;
+  probability: number; // 0-100%
+  impact: number; // 0-10 scale
+  riskScore: number; // probability * impact
+  mitigationPlan?: string;
+  status: 'identified' | 'monitoring' | 'mitigating' | 'resolved' | 'accepted';
+  owner?: string;
+  createdDate: string;
+  updatedDate?: string;
 }
+
+// ===== AI INSIGHTS =====
 
 export interface DDInsights {
-  summary: string;
-  keyFindings: string[];
-  recommendations: DDRecommendation[];
-  riskAlerts: string[];
-  overallScore: number;
+  criticalRisks: string[];
+  recommendedActions: ActionItem[];
+  timelineImpacts: TimelineImpact[];
+  costImpacts: CostImpact[];
+  goNoGoRecommendation?: 'go' | 'proceed_with_caution' | 'no_go';
+  confidence: number; // 0-100%
 }
 
-export interface DDRecommendation {
-  id: string;
-  title: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  category: string;
+export interface ActionItem {
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  action: string;
+  reasoning: string;
   estimatedImpact?: string;
+}
+
+export interface TimelineImpact {
+  item: string;
+  delayWeeks: number;
+  criticalPath: boolean;
+  recommendation: string;
+}
+
+export interface CostImpact {
+  item: string;
+  costChange: number;
+  category: 'hard_cost' | 'soft_cost' | 'timeline' | 'contingency';
+  recommendation: string;
 }

@@ -167,7 +167,7 @@ export class ThreeDErrorBoundary extends Component<Props, State> {
               The 3D viewer encountered an error, but your design has been saved.
             </p>
 
-            {import.meta.env.DEV && this.state.error && (
+            {process.env.NODE_ENV === 'development' && this.state.error && (
               <div className="mb-6 bg-red-900 bg-opacity-50 border border-red-700 rounded p-3 text-left">
                 <p className="text-xs text-red-300 font-mono overflow-auto max-h-24">
                   {this.state.error.toString()}

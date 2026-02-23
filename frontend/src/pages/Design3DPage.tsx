@@ -6,7 +6,6 @@ import { apiClient } from '../services/api.client';
 import type { Design3D } from '../types/financial.types';
 import { ThreeDErrorBoundary } from '../components/3DErrorBoundary';
 import { Design3DError } from '../components/fallbacks/Design3DError';
-import { propertyScoringService, DesignInputs } from '../services/propertyScoring.service';
 
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -20,8 +19,6 @@ export const Design3DPage: React.FC = () => {
   const [showMetrics, setShowMetrics] = useState(true);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [designInputs, setDesignInputs] = useState<DesignInputs | null>(null);
-  const [showBenchmarks, setShowBenchmarks] = useState(true);
 
   // Load deal data on mount
   useEffect(() => {
@@ -36,15 +33,10 @@ export const Design3DPage: React.FC = () => {
           await loadDeal(dealId);
         }
         
-        const [designResponse, benchmarksData] = await Promise.all([
-          apiClient.get(`/api/v1/deals/${dealId}/design`),
-          propertyScoringService.getDesignInputs().catch(() => null),
-        ]);
-        if (designResponse.data.success && designResponse.data.data) {
-          setDesign3D(designResponse.data.data);
-        }
-        if (benchmarksData) {
-          setDesignInputs(benchmarksData);
+        // Load existing design if available
+        const response = await apiClient.get(`/api/v1/deals/${dealId}/design`);
+        if (response.data.success && response.data.data) {
+          setDesign3D(response.data.data);
         }
       } catch (err) {
         console.error('Failed to load deal/design:', err);
@@ -398,130 +390,6 @@ export const Design3DPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {designInputs?.benchmarks && (
-                <>
-                  <div className="mb-6">
-                    <button
-                      onClick={() => setShowBenchmarks(!showBenchmarks)}
-                      className="flex items-center justify-between w-full text-sm font-semibold text-blue-700 mb-3"
-                    >
-                      <span>Market Benchmarks</span>
-                      <span className="text-xs">{showBenchmarks ? '[-]' : '[+]'}</span>
-                    </button>
-                    {showBenchmarks && (
-                      <div className="space-y-4">
-                        <div className="bg-blue-50 rounded-lg p-3 space-y-2">
-                          <p className="text-xs font-semibold text-blue-800 uppercase">Density Targets</p>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Market Avg</span>
-                            <span className="text-xs font-medium">{(designInputs.benchmarks.avgDensity ?? 0).toFixed(1)} units/acre</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Top 25%</span>
-                            <span className="text-xs font-medium text-blue-700">{(designInputs.benchmarks.topQuartileDensity ?? 0).toFixed(1)} units/acre</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Max Observed</span>
-                            <span className="text-xs font-medium">{(designInputs.benchmarks.maxDensity ?? 0).toFixed(1)} units/acre</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Avg Stories</span>
-                            <span className="text-xs font-medium">{designInputs.benchmarks.avgStories ?? '-'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Avg SF/Unit</span>
-                            <span className="text-xs font-medium">{(designInputs.benchmarks.avgSfPerUnit ?? 0).toLocaleString()} SF</span>
-                          </div>
-                        </div>
-
-                        <div className="bg-green-50 rounded-lg p-3 space-y-2">
-                          <p className="text-xs font-semibold text-green-800 uppercase">Optimal Unit Mix</p>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">Studio</span>
-                            <span className="text-xs font-medium">{designInputs.optimalUnitMix.studio}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">1-Bed</span>
-                            <span className="text-xs font-medium">{designInputs.optimalUnitMix.oneBed}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">2-Bed</span>
-                            <span className="text-xs font-medium">{designInputs.optimalUnitMix.twoBed}%</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-600">3-Bed</span>
-                            <span className="text-xs font-medium">{designInputs.optimalUnitMix.threeBed}%</span>
-                          </div>
-                        </div>
-
-                        <div className="bg-amber-50 rounded-lg p-3 space-y-2">
-                          <p className="text-xs font-semibold text-amber-800 uppercase">Rent by Unit Type</p>
-                          {designInputs.rentByUnitType.studio !== null && (
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">Studio</span>
-                              <span className="text-xs font-medium">${Math.round(designInputs.rentByUnitType.studio).toLocaleString()}/mo</span>
-                            </div>
-                          )}
-                          {designInputs.rentByUnitType.oneBed !== null && (
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">1-Bed</span>
-                              <span className="text-xs font-medium">${Math.round(designInputs.rentByUnitType.oneBed).toLocaleString()}/mo</span>
-                            </div>
-                          )}
-                          {designInputs.rentByUnitType.twoBed !== null && (
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">2-Bed</span>
-                              <span className="text-xs font-medium">${Math.round(designInputs.rentByUnitType.twoBed).toLocaleString()}/mo</span>
-                            </div>
-                          )}
-                          {designInputs.rentByUnitType.threeBed !== null && (
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">3-Bed</span>
-                              <span className="text-xs font-medium">${Math.round(designInputs.rentByUnitType.threeBed).toLocaleString()}/mo</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {designInputs.rentPremiums?.premium !== 0 && designInputs.rentPremiums && (
-                          <div className="bg-purple-50 rounded-lg p-3 space-y-2">
-                            <p className="text-xs font-semibold text-purple-800 uppercase">Height Premium</p>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">Highrise (20+)</span>
-                              <span className="text-xs font-medium">${designInputs.rentPremiums.highriseRentPerSf?.toFixed(2)}/SF</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">Midrise (&lt;10)</span>
-                              <span className="text-xs font-medium">${designInputs.rentPremiums.midriseRentPerSf?.toFixed(2)}/SF</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-600">Premium</span>
-                              <span className="text-xs font-medium text-purple-700">+${designInputs.rentPremiums.premium.toFixed(2)}/SF</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {(designInputs.assemblageOpportunities?.length ?? 0) > 0 && (
-                          <div className="bg-red-50 rounded-lg p-3 space-y-2">
-                            <p className="text-xs font-semibold text-red-800 uppercase">Assemblage Opportunities</p>
-                            <p className="text-xs text-gray-500 mb-1">Underbuilt large parcels</p>
-                            {designInputs.assemblageOpportunities.slice(0, 5).map((opp) => (
-                              <div key={opp.parcelId} className="text-xs border-t border-red-100 pt-1">
-                                <div className="font-medium text-gray-700 truncate">{opp.address}</div>
-                                <div className="flex justify-between text-gray-500">
-                                  <span>{opp.acres.toFixed(1)} acres</span>
-                                  <span>{opp.units} units</span>
-                                  <span>{opp.density.toFixed(1)} u/ac</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
 
               {/* Last Modified */}
               <div className="pt-4 border-t border-gray-200">

@@ -47,12 +47,6 @@ export interface ContextTrackerTab {
 
 export const CONTEXT_TRACKER_TABS: ContextTrackerTab[] = [
   {
-    id: 'notes',
-    name: 'Notes',
-    icon: '📝',
-    description: 'Quick notes, observations, and thoughts about this deal'
-  },
-  {
     id: 'activity-timeline',
     name: 'Activity Timeline',
     icon: '📋',
@@ -85,7 +79,7 @@ export const CONTEXT_TRACKER_TABS: ContextTrackerTab[] = [
   {
     id: 'decision-log',
     name: 'Decision Log',
-    icon: '✅',
+    icon: '📝',
     description: 'Record of all major decisions, approvals, and rationale'
   },
   {

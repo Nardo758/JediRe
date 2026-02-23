@@ -68,7 +68,7 @@ export interface TerrainData {
   slope: number;
   soilType: string;
   topographyFeatures: string[];
-  gradingRequirements: {
+  grading Requirements: {
     cutFill: number;
     estimatedCost: number;
   };
@@ -111,7 +111,7 @@ export interface DispositionScore {
     holdPeriod: number;
     marketTiming: number;
     financialNeed: number;
-    portfolioStrategy: number;
+    portfolio strategy: number;
   };
   estimatedPrice: number;
   timeframe: string;
@@ -166,17 +166,16 @@ class QwenService {
   private enabled: boolean;
 
   constructor() {
-    const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN;
-    this.enabled = !!hfToken;
+    this.enabled = !!process.env.HF_TOKEN;
     
     if (this.enabled) {
       this.client = new OpenAI({
         baseURL: process.env.QWEN_BASE_URL || 'https://router.huggingface.co/v1',
-        apiKey: hfToken,
+        apiKey: process.env.HF_TOKEN,
       });
       this.model = process.env.QWEN_MODEL || 'Qwen/Qwen2.5-72B-Instruct';
     } else {
-      console.warn('[QwenService] HF_TOKEN/HUGGINGFACE_TOKEN not configured - AI features disabled');
+      console.warn('[QwenService] HF_TOKEN not configured - AI features disabled');
     }
   }
 

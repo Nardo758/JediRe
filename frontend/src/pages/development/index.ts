@@ -1,5 +1,5 @@
-export { default as CompetitionPage } from './CompetitionPage';
-export { default as DueDiligencePage } from './DueDiligencePage';
-export { default as MarketAnalysisPage } from './MarketAnalysisPage';
-export { default as ProjectTimelinePage } from './ProjectTimelinePage';
-export { default as SupplyPipelinePage } from './SupplyPipelinePage';
+export { MarketAnalysisPage } from './MarketAnalysisPage';
+// Add other development pages as they are built:
+// export { CompetitionAnalysisPage } from './CompetitionAnalysisPage';
+// export { SupplyPipelinePage } from './SupplyPipelinePage';
+// export { Design3DPage } from './Design3DPage';

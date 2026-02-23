@@ -43,7 +43,7 @@ import type {
 export const DueDiligencePage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { selectedDeal: currentDeal, fetchDealById: loadDeal } = useDealStore();
+  const { currentDeal, loadDeal } = useDealStore();
 
   // State management
   const [dueDiligence, setDueDiligence] = useState<DueDiligenceState | null>(null);
