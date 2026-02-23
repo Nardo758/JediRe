@@ -58,6 +58,7 @@ import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes'
 import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
 import { createOpusRoutes } from './api/rest/opus.routes';
 import { createDataLibraryRoutes } from './api/rest/data-library.routes';
+import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 
 dotenv.config();
 
@@ -172,6 +173,7 @@ app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(poo
 app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
 app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+app.use('/api/v1', requireAuth, propertyBoundaryRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
