@@ -1,14 +1,7 @@
-/**
- * Municode Scraper CLI
- * 
- * Usage:
- *   npm run scrape:municode -- --city=birmingham-al
- *   npm run scrape:municode -- --priority=HIGH
- *   npm run scrape:municode -- --all
- */
+import { scrapeMunicipalities } from '../services/municode.scraper';
+import { getPool } from '../database/connection';
 
-import { scrapeMunicipalities, MunicodeScraper } from '../services/municode.scraper';
-import { db } from '../db';
+const pool = getPool();
 
 interface CliArgs {
   city?: string;
@@ -18,7 +11,6 @@ interface CliArgs {
 }
 
 async function main() {
-  // Parse CLI arguments
   const args: CliArgs = {};
   process.argv.slice(2).forEach((arg) => {
     if (arg.startsWith('--city=')) {
@@ -32,34 +24,32 @@ async function main() {
     }
   });
 
-  console.log('🔍 Municode Scraper CLI\n');
+  console.log('Municode Scraper CLI\n');
 
-  // Test mode - just print municipality info
   if (args.test) {
-    const result = await db.query(`
-      SELECT id, name, state, municode_url, last_scraped_at
+    const result = await pool.query(`
+      SELECT id, name, state, priority, last_scraped_at
       FROM municipalities
       WHERE has_api = FALSE
-      ORDER BY 
-        CASE WHEN last_scraped_at IS NULL THEN 0 ELSE 1 END,
+      ORDER BY
+        CASE priority WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 ELSE 3 END,
         name
     `);
 
     console.log(`Found ${result.rows.length} municipalities without APIs:\n`);
-    result.rows.forEach((row) => {
-      const status = row.last_scraped_at 
-        ? `✅ Scraped ${new Date(row.last_scraped_at).toLocaleDateString()}`
-        : '⏳ Not scraped';
-      console.log(`  ${row.id}: ${row.name}, ${row.state} - ${status}`);
+    result.rows.forEach((row: any) => {
+      const status = row.last_scraped_at
+        ? `Scraped ${new Date(row.last_scraped_at).toLocaleDateString()}`
+        : 'Not scraped';
+      console.log(`  ${row.id}: ${row.name}, ${row.state} [${row.priority}] - ${status}`);
     });
     return;
   }
 
-  // Fetch municipalities to scrape
   let query = `
     SELECT id, name, state, county, municode_url, zoning_chapter_path
     FROM municipalities
-    WHERE has_api = FALSE AND scraping_enabled = TRUE
+    WHERE has_api = FALSE
   `;
   const params: any[] = [];
 
@@ -68,23 +58,23 @@ async function main() {
     params.push(args.city);
     console.log(`Scraping single city: ${args.city}\n`);
   } else if (args.priority) {
-    // Priority stored in notes or tags - simplified for now
-    query += ` LIMIT 6`; // HIGH = first 6
+    query += ` AND priority = $1`;
+    params.push(args.priority);
     console.log(`Scraping ${args.priority} priority cities\n`);
   } else if (args.all) {
     console.log(`Scraping ALL cities (this will take a while)\n`);
   } else {
-    console.error('❌ Error: Must specify --city, --priority, or --all');
+    console.error('Error: Must specify --city, --priority, or --all');
     console.log('\nUsage:');
-    console.log('  npm run scrape:municode -- --city=birmingham-al');
-    console.log('  npm run scrape:municode -- --priority=HIGH');
-    console.log('  npm run scrape:municode -- --all');
-    console.log('  npm run scrape:municode -- --test');
+    console.log('  npx ts-node backend/src/scripts/run-municode-scraper.ts --city=birmingham-al');
+    console.log('  npx ts-node backend/src/scripts/run-municode-scraper.ts --priority=HIGH');
+    console.log('  npx ts-node backend/src/scripts/run-municode-scraper.ts --all');
+    console.log('  npx ts-node backend/src/scripts/run-municode-scraper.ts --test');
     process.exit(1);
   }
 
-  const result = await db.query(query, params);
-  
+  const result = await pool.query(query, params);
+
   if (result.rows.length === 0) {
     console.log('No municipalities found to scrape.');
     return;
@@ -92,39 +82,35 @@ async function main() {
 
   console.log(`Found ${result.rows.length} municipalities to scrape\n`);
 
-  // Run scraper
   await scrapeMunicipalities(result.rows);
 
-  // Show summary
-  const summary = await db.query(`
-    SELECT 
+  const summary = await pool.query(`
+    SELECT
       m.id,
       m.name,
       m.state,
-      COUNT(zd.id) as districts_found,
+      m.total_zoning_districts,
       m.last_scraped_at
     FROM municipalities m
-    LEFT JOIN zoning_districts zd ON zd.municipality_id = m.id
     WHERE m.id = ANY($1)
-    GROUP BY m.id, m.name, m.state, m.last_scraped_at
-  `, [result.rows.map(r => r.id)]);
+    ORDER BY m.name
+  `, [result.rows.map((r: any) => r.id)]);
 
-  console.log('\n✅ Scraping Complete!\n');
-  console.log('📊 Summary:');
-  summary.rows.forEach((row) => {
-    console.log(`  ${row.name}, ${row.state}: ${row.districts_found} districts`);
+  console.log('\nScraping Complete!\n');
+  console.log('Summary:');
+  summary.rows.forEach((row: any) => {
+    console.log(`  ${row.name}, ${row.state}: ${row.total_zoning_districts || 0} districts`);
   });
 }
 
-// Run CLI
 if (require.main === module) {
   main()
     .then(() => {
-      console.log('\n✅ Done!');
+      console.log('\nDone!');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\n❌ Error:', error);
+      console.error('\nError:', error);
       process.exit(1);
     });
 }
