@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { propertyMetricsService, RentComp, MarketSummary } from '../../../services/propertyMetrics.service';
+import { propertyScoringService, HiddenGemResult } from '../../../services/propertyScoring.service';
 
 interface CompetitionSectionProps {
   deal?: any;
@@ -11,6 +12,7 @@ type SortDir = 'asc' | 'desc';
 export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) => {
   const [rentComps, setRentComps] = useState<RentComp[]>([]);
   const [summary, setSummary] = useState<MarketSummary | null>(null);
+  const [hiddenGems, setHiddenGems] = useState<HiddenGemResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('milesAway');
@@ -21,12 +23,14 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
       setLoading(true);
       setError(null);
       try {
-        const [comps, mktSummary] = await Promise.all([
+        const [comps, mktSummary, gems] = await Promise.all([
           propertyMetricsService.getRentComps(),
           propertyMetricsService.getMarketSummary(),
+          propertyScoringService.getHiddenGems().catch(() => []),
         ]);
         setRentComps(comps);
         setSummary(mktSummary);
+        setHiddenGems(gems);
       } catch (err: any) {
         setError(err?.message || 'Failed to load rent comp data');
       } finally {
@@ -98,9 +102,12 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
     );
   }
 
+  const topGems = useMemo(() => hiddenGems.filter(g => g.score >= 50), [hiddenGems]);
+
   return (
     <div className="space-y-6">
       {summary && <QuickStatsRow summary={summary} />}
+      {topGems.length > 0 && <HiddenGemsCard gems={topGems} />}
       <RentCompTable comps={sortedComps} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
       {unitMixComps.length > 0 && <UnitMixBreakdown comps={unitMixComps} />}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -306,6 +313,88 @@ const EffectiveRentCard: React.FC<{ items: { buildingName: string; rentPerSf: nu
           </div>
         ))}
         {items.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No effective rent data available</p>}
+      </div>
+    </div>
+  );
+};
+
+const gemScoreColor = (score: number): string => {
+  if (score >= 70) return 'text-emerald-700';
+  if (score >= 50) return 'text-teal-600';
+  return 'text-gray-600';
+};
+
+const gemScoreBg = (score: number): string => {
+  if (score >= 70) return 'bg-emerald-100';
+  if (score >= 50) return 'bg-teal-100';
+  return 'bg-gray-100';
+};
+
+const HiddenGemsCard: React.FC<{ gems: HiddenGemResult[] }> = ({ gems }) => {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  return (
+    <div className="bg-white border-2 border-emerald-200 rounded-lg p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Hidden Gems Detected</h3>
+          <p className="text-sm text-gray-500">Properties outperforming without heavy marketing — study their strategy</p>
+        </div>
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+          Competitive Intel
+        </span>
+      </div>
+      <div className="space-y-3">
+        {gems.map((g, idx) => (
+          <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer"
+              onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold ${gemScoreBg(g.score)} ${gemScoreColor(g.score)}`}>
+                  {g.score}/100
+                </span>
+                <div>
+                  <p className="font-semibold text-gray-900">{g.buildingName}</p>
+                  <p className="text-xs text-gray-500">{g.address} | {g.units} units | {g.yearBuilt ?? 'N/A'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="text-right">
+                  <p className="font-semibold text-gray-900">{g.occupancyPct?.toFixed(1)}% occ</p>
+                  <p className="text-xs text-gray-500">Ad: {g.adLevel || 'None'}</p>
+                </div>
+                <span className="text-gray-400 text-xs">{expandedIdx === idx ? '▲' : '▼'}</span>
+              </div>
+            </div>
+            {expandedIdx === idx && (
+              <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                <p className="text-sm text-gray-700 mb-3 italic">{g.insight}</p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {g.factors.map((f, fi) => (
+                    <div key={fi} className="text-xs">
+                      <div className="flex justify-between mb-0.5">
+                        <span className="text-gray-600">{f.name}</span>
+                        <span className="font-semibold">{f.points}/{f.maxPoints}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${(f.points / f.maxPoints) * 100}%` }}></div>
+                      </div>
+                      <p className="text-gray-500 mt-0.5 truncate" title={f.reason}>{f.reason}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 grid grid-cols-4 gap-3 text-xs">
+                  <div><span className="text-gray-500">Rent/SF:</span> <span className="font-semibold">{g.rentPerSf != null ? `$${g.rentPerSf.toFixed(2)}` : '—'}</span></div>
+                  <div><span className="text-gray-500">Concession:</span> <span className="font-semibold">{g.concessionPct != null ? `${g.concessionPct.toFixed(1)}%` : '—'}</span></div>
+                  <div><span className="text-gray-500">Views (60d):</span> <span className="font-semibold">{g.commonViews60d ?? '—'}</span></div>
+                  <div><span className="text-gray-500">Overlap:</span> <span className="font-semibold">{g.overlapPct != null ? `${g.overlapPct.toFixed(0)}%` : '—'}</span></div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

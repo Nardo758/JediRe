@@ -31,6 +31,8 @@ import {
 } from '../../../data/exitMockData';
 import { propertyMetricsService } from '@/services/propertyMetrics.service';
 import type { MarketSummary, NeighborhoodBenchmark, OwnerPortfolio, RentComp } from '@/services/propertyMetrics.service';
+import { propertyScoringService } from '@/services/propertyScoring.service';
+import type { CapRateEstimate } from '@/services/propertyScoring.service';
 
 interface ExitSectionProps {
   deal: Deal;
@@ -44,6 +46,7 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
   const [benchmarks, setBenchmarks] = useState<NeighborhoodBenchmark[]>([]);
   const [topOwners, setTopOwners] = useState<OwnerPortfolio[]>([]);
   const [rentComps, setRentComps] = useState<RentComp[]>([]);
+  const [capRates, setCapRates] = useState<CapRateEstimate[]>([]);
   const [marketDataLoading, setMarketDataLoading] = useState(true);
   const [marketDataError, setMarketDataError] = useState<string | null>(null);
 
@@ -52,16 +55,18 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
       setMarketDataLoading(true);
       setMarketDataError(null);
       try {
-        const [summaryRes, benchmarksRes, ownersRes, compsRes] = await Promise.all([
+        const [summaryRes, benchmarksRes, ownersRes, compsRes, capRateRes] = await Promise.all([
           propertyMetricsService.getMarketSummary(),
           propertyMetricsService.getNeighborhoodBenchmarks(),
           propertyMetricsService.getTopOwners(10),
           propertyMetricsService.getRentComps(),
+          propertyScoringService.getCapRateEstimates().catch(() => []),
         ]);
         setMarketSummary(summaryRes);
         setBenchmarks(benchmarksRes);
         setTopOwners(ownersRes);
         setRentComps(compsRes);
+        setCapRates(capRateRes);
       } catch (err) {
         setMarketDataError('Unable to load market benchmark data');
       } finally {
