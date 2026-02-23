@@ -4,7 +4,7 @@ const BASE = '/api/v1/data-library';
 
 export interface DataLibraryFile {
   id: number;
-  user_id: number | null;
+  user_id: string | null;
   file_name: string;
   file_size: number;
   mime_type: string;

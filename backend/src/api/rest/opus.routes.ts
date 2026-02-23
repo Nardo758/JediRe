@@ -22,7 +22,7 @@ export function createOpusRoutes(pool: Pool): Router {
     try {
       const { dealId, title } = req.body;
       if (!dealId) return res.status(400).json({ error: 'dealId required' });
-      const conversation = await opus.createConversation(dealId, (req as any).userId, title);
+      const conversation = await opus.createConversation(dealId, (req as any).user?.userId, title);
       res.status(201).json(conversation);
     } catch (err: any) {
       console.error('Opus create conversation error:', err);

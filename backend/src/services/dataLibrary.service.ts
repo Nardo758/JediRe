@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 
 export interface DataLibraryFile {
   id: number;
-  user_id: number | null;
+  user_id: string | null;
   file_name: string;
   file_path: string;
   file_size: number;
@@ -24,7 +24,7 @@ export interface DataLibraryFile {
 }
 
 export interface DataLibraryUploadParams {
-  userId?: number;
+  userId?: string;
   file: {
     originalname: string;
     buffer: Buffer;

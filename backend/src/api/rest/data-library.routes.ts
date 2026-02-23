@@ -75,7 +75,7 @@ export function createDataLibraryRoutes(pool: Pool): Router {
       if (!req.file) return res.status(400).json({ error: 'File required' });
 
       const file = await service.uploadFile({
-        userId: (req as any).userId,
+        userId: (req as any).user?.userId,
         file: {
           originalname: req.file.originalname,
           buffer: req.file.buffer,

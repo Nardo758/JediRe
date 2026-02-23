@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { query } from '../database/connection';
 
 export interface UploadFileParams {
-  userId: number;
+  userId: string;
   module: string;
   category: string;
   file: {
@@ -17,14 +17,14 @@ export interface UploadFileParams {
 
 export interface ModuleLibraryFile {
   id: number;
-  userId: number;
+  userId: string;
   moduleName: string;
   category: string;
   fileName: string;
   filePath: string;
   fileSize: number;
   mimeType: string;
-  uploadedBy: number;
+  uploadedBy: string;
   uploadedAt: Date;
   parsingStatus: 'pending' | 'parsing' | 'complete' | 'error';
   parsedAt?: Date;
@@ -103,7 +103,7 @@ class ModuleLibraryService {
     }
   }
 
-  async getFiles(userId: number, module: string, category?: string): Promise<ModuleLibraryFile[]> {
+  async getFiles(userId: string, module: string, category?: string): Promise<ModuleLibraryFile[]> {
     try {
       let sql = `
         SELECT * FROM module_library_files
@@ -144,7 +144,7 @@ class ModuleLibraryService {
     }
   }
 
-  async deleteFile(fileId: number, userId: number): Promise<boolean> {
+  async deleteFile(fileId: number, userId: string): Promise<boolean> {
     try {
       const file = await this.getFileById(fileId);
       if (!file || file.userId !== userId) {
@@ -165,7 +165,7 @@ class ModuleLibraryService {
     }
   }
 
-  async getLearningStatus(userId: number, module: string): Promise<LearningStatus> {
+  async getLearningStatus(userId: string, module: string): Promise<LearningStatus> {
     try {
       const filesResult = await query(`
         SELECT 

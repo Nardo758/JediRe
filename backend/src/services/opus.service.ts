@@ -10,7 +10,7 @@ const anthropic = new Anthropic({
 export interface OpusConversation {
   id: number;
   deal_id: string;
-  user_id: number | null;
+  user_id: string | null;
   title: string;
   created_at: Date;
   updated_at: Date;
@@ -47,7 +47,7 @@ export class OpusService {
     this.scoring = new PropertyScoringService(pool);
   }
 
-  async createConversation(dealId: string, userId?: number, title?: string): Promise<OpusConversation> {
+  async createConversation(dealId: string, userId?: string, title?: string): Promise<OpusConversation> {
     const result = await this.pool.query(
       `INSERT INTO opus_conversations (deal_id, user_id, title) VALUES ($1, $2, $3) RETURNING *`,
       [dealId, userId || null, title || 'New Pro Forma Session']

@@ -5,7 +5,7 @@ const BASE = '/api/v1/opus';
 export interface OpusConversation {
   id: number;
   deal_id: string;
-  user_id: number | null;
+  user_id: string | null;
   title: string;
   created_at: string;
   updated_at: string;
