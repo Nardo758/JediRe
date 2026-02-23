@@ -25,6 +25,7 @@ JEDI RE is built with an Express + GraphQL + WebSocket backend, integrating Pyth
 -   **Data Library:** A global file repository for historical property data, categorized for automatic matching of comparable files by Opus AI.
 -   **Site Intelligence Module:** Provides comprehensive site analysis for development deals across six scored categories: Environmental, Infrastructure, Accessibility, Regulatory, Natural Hazards, and Market Context, with real-time overall scoring.
 -   **Property Boundary Module:** Offers interactive map tools for defining site boundaries, calculating area/perimeter, and visualizing setbacks on a Mapbox interface.
+-   **Zoning & Capacity Module:** Multi-constraint analysis (density, FAR, height, parking) with density bonuses (affordable housing, TDR), unit mix distribution, and revenue projection. Integrates with Property Boundary module for buildable area. Two scenarios: By Right vs With Incentives.
 
 ### Agent Dashboard (CRM Module)
 

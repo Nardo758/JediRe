@@ -87,8 +87,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
 
   const fetchData = async () => {
     try {
-      const result = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-capacity`);
-      if (result) setData(result);
+      const response = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-capacity`);
+      if (response.data) setData(response.data);
     } catch (error) {
       console.error('Error fetching zoning capacity:', error);
     } finally {
@@ -101,7 +101,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     setSaving(true);
     setSaveMsg('');
     try {
-      const result = await apiClient.post(`/api/v1/deals/${resolvedDealId}/zoning-capacity`, data);
+      const response = await apiClient.post(`/api/v1/deals/${resolvedDealId}/zoning-capacity`, data);
+      const result = response.data;
       setData(result);
       setSaveMsg(`Saved — Max Units: ${result.max_units_with_incentives || 0} | Limiting Factor: ${result.limiting_factor || 'N/A'}`);
       setTimeout(() => setSaveMsg(''), 5000);

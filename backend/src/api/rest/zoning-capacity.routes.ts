@@ -111,10 +111,10 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
 
     let bonusPercent = 0;
     if (validatedData.affordable_housing_bonus) {
-      bonusPercent += validatedData.affordable_bonus_percent || 25;
+      bonusPercent += validatedData.affordable_bonus_percent ?? 25;
     }
     if (validatedData.tdr_available) {
-      bonusPercent += validatedData.tdr_bonus_percent || 15;
+      bonusPercent += validatedData.tdr_bonus_percent ?? 15;
     }
     const maxUnitsWithIncentives = Math.floor(maxUnitsByRight * (1 + bonusPercent / 100));
 
@@ -195,10 +195,10 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
         validatedData.max_height_feet || null,
         validatedData.max_stories || null,
         validatedData.min_parking_per_unit || null,
-        validatedData.affordable_housing_bonus || false,
-        validatedData.affordable_bonus_percent || 25,
-        validatedData.tdr_available || false,
-        validatedData.tdr_bonus_percent || 15,
+        validatedData.affordable_housing_bonus ?? false,
+        validatedData.affordable_bonus_percent ?? 25,
+        validatedData.tdr_available ?? false,
+        validatedData.tdr_bonus_percent ?? 15,
         validatedData.overlay_zones || [],
         validatedData.special_restrictions || [],
         validatedData.zoning_notes || null,

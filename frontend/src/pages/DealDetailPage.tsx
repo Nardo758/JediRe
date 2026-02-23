@@ -45,6 +45,7 @@ import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsS
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { PropertyBoundarySection } from '../components/deal/sections/PropertyBoundarySection';
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
+import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -114,6 +115,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Zoning & Entitlements', 
       icon: <Landmark size={16} />, 
       component: ZoningEntitlementsSection 
+    },
+    { 
+      id: 'zoning-capacity', 
+      label: 'Zoning & Capacity', 
+      icon: <Building2 size={16} />, 
+      component: ZoningCapacitySection 
     },
     { 
       id: 'context-tracker', 
