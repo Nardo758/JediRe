@@ -7,10 +7,13 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface ConstructionManagementSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
 }
 
-export const ConstructionManagementSection: React.FC<ConstructionManagementSectionProps> = ({ dealId }) => {
+export const ConstructionManagementSection: React.FC<ConstructionManagementSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Construction Management Dashboard                 │

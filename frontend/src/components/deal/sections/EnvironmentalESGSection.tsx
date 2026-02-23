@@ -7,10 +7,13 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface EnvironmentalESGSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
 }
 
-export const EnvironmentalESGSection: React.FC<EnvironmentalESGSectionProps> = ({ dealId }) => {
+export const EnvironmentalESGSection: React.FC<EnvironmentalESGSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Environmental & ESG Management                    │

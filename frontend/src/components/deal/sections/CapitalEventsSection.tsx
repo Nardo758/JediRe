@@ -7,10 +7,13 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface CapitalEventsSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
 }
 
-export const CapitalEventsSection: React.FC<CapitalEventsSectionProps> = ({ dealId }) => {
+export const CapitalEventsSection: React.FC<CapitalEventsSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Capital Events & Disposition Planning             │
