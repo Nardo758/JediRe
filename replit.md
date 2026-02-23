@@ -26,6 +26,7 @@ JEDI RE is built with an Express + GraphQL + WebSocket backend, integrating Pyth
 -   **Site Intelligence Module:** Provides comprehensive site analysis for development deals across six scored categories: Environmental, Infrastructure, Accessibility, Regulatory, Natural Hazards, and Market Context, with real-time overall scoring.
 -   **Property Boundary Module:** Offers interactive map tools for defining site boundaries, calculating area/perimeter, and visualizing setbacks on a Mapbox interface.
 -   **Zoning & Capacity Module:** Multi-constraint analysis (density, FAR, height, parking) with density bonuses (affordable housing, TDR), unit mix distribution, and revenue projection. Integrates with Property Boundary module for buildable area. Two scenarios: By Right vs With Incentives.
+-   **Municipal Zoning Database:** 43 municipalities across 13 SE + TX states. 17 cities with API connectors (Socrata + ArcGIS), 26 cities ready for Municode data upload. Tables: `municipalities`, `zoning_districts` (with both old and new column names for backward compat), `property_zoning_cache`. REST endpoints: `/api/v1/municipalities`, `/api/v1/zoning/lookup`, `/api/v1/zoning-districts/lookup`. CLI tools: `seed-municipalities.ts`, `seed-api-municipalities.ts`, `fetch-api-zoning.ts`. Service: `municipal-api-connectors.ts`.
 
 ### Agent Dashboard (CRM Module)
 

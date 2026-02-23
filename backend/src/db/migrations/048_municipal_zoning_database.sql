@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS municipalities (
   data_quality VARCHAR(50) DEFAULT 'none',
   total_zoning_districts INTEGER DEFAULT 0,
   priority VARCHAR(10) DEFAULT 'MEDIUM',
+  last_scraped_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );

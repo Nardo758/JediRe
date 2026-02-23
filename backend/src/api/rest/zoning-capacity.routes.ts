@@ -218,7 +218,7 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
     res.json(result.rows[0]);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.errors });
+      return res.status(400).json({ error: 'Validation failed', details: (error as any).issues });
     }
     console.error('Error saving zoning capacity:', error);
     res.status(500).json({ error: 'Failed to save zoning capacity' });

@@ -80,7 +80,7 @@ export class SocrataConnector {
           ...(this.appToken && { 'X-App-Token': this.appToken }),
         },
         params: {
-          $where: `address like '%${address}%'`,
+          $where: `address like '%${address.replace(/'/g, "''")}%'`,
           $limit: 1,
         },
       });
