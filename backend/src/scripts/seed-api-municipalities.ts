@@ -5,7 +5,9 @@
  * that have open data APIs available
  */
 
-import { db } from '../db';
+import { getPool } from '../database/connection';
+
+const db = getPool();
 import { CITY_APIS } from '../services/municipal-api-connectors';
 
 async function seedAPIMunicipalities() {
@@ -23,14 +25,14 @@ async function seedAPIMunicipalities() {
         INSERT INTO municipalities (
           id, name, state, county, 
           has_api, api_type, api_url,
-          zoning_data_quality, scraping_enabled
-        ) VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'excellent', FALSE)
+          data_quality
+        ) VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'excellent')
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           has_api = TRUE,
           api_type = EXCLUDED.api_type,
           api_url = EXCLUDED.api_url,
-          zoning_data_quality = 'excellent'
+          data_quality = 'excellent'
         `,
         [
           cityId,
@@ -38,7 +40,7 @@ async function seedAPIMunicipalities() {
           config.state,
           county,
           config.type,
-          config.type === 'socrata' ? config.baseUrl : config.serviceUrl,
+          (config as any).baseUrl || (config as any).serviceUrl,
         ]
       );
 

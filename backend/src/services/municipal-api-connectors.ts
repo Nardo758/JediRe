@@ -7,7 +7,9 @@
  */
 
 import axios from 'axios';
-import { db } from '../db';
+import { getPool } from '../database/connection';
+
+const pool = getPool();
 
 interface ZoningDistrictAPI {
   municipality_id: string;
@@ -483,7 +485,7 @@ export async function lookupZoningByLocation(
 export async function saveAPIDistricts(districts: ZoningDistrictAPI[]): Promise<void> {
   for (const district of districts) {
     try {
-      await db.query(
+      await pool.query(
         `
         INSERT INTO zoning_districts (
           municipality_id, zoning_code, district_name,

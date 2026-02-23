@@ -7,7 +7,9 @@
  */
 
 import { fetchZoningData, saveAPIDistricts, CITY_APIS } from '../services/municipal-api-connectors';
-import { db } from '../db';
+import { getPool } from '../database/connection';
+
+const db = getPool();
 
 interface CliArgs {
   city?: string;

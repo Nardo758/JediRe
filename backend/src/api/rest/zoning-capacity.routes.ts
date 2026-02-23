@@ -227,15 +227,18 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
 
 router.get('/zoning-districts/lookup', async (req: Request, res: Response) => {
   try {
-    const { code, municipality, state } = req.query;
+    const { code, municipality, city, state } = req.query;
+    const cityName = (municipality || city || '') as string;
 
     if (code) {
       const result = await pool.query(
-        `SELECT * FROM zoning_districts 
-         WHERE UPPER(district_code) = UPPER($1)
-         ${municipality ? 'AND UPPER(municipality) = UPPER($2)' : ''}
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
+         ${cityName ? 'AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($2) OR zd.municipality_id = LOWER($2))' : ''}
          LIMIT 1`,
-        municipality ? [code, municipality] : [code]
+        cityName ? [code, cityName] : [code]
       );
       if (result.rows.length > 0) {
         return res.json(result.rows[0]);
@@ -245,23 +248,38 @@ router.get('/zoning-districts/lookup', async (req: Request, res: Response) => {
 
     const params: string[] = [];
     let where = 'WHERE 1=1';
-    if (municipality) {
-      params.push(municipality as string);
-      where += ` AND UPPER(municipality) = UPPER($${params.length})`;
+    if (cityName) {
+      params.push(cityName);
+      where += ` AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($${params.length}) OR zd.municipality_id = LOWER($${params.length}))`;
     }
     if (state) {
       params.push(state as string);
-      where += ` AND UPPER(state) = UPPER($${params.length})`;
+      where += ` AND UPPER(COALESCE(zd.state, m.state)) = UPPER($${params.length})`;
     }
 
     const result = await pool.query(
-      `SELECT id, district_code, district_name, municipality, state, 
-              max_building_height_ft, max_stories, max_far, max_units_per_acre,
-              parking_per_unit, parking_per_1000_sqft, description,
-              min_front_setback_ft, min_side_setback_ft, min_rear_setback_ft,
-              max_lot_coverage, metadata
-       FROM zoning_districts ${where}
-       ORDER BY district_code`,
+      `SELECT zd.id, 
+              COALESCE(zd.zoning_code, zd.district_code) as district_code,
+              zd.district_name, 
+              COALESCE(zd.municipality, m.name) as municipality,
+              COALESCE(zd.state, m.state) as state, 
+              COALESCE(zd.max_height_feet, zd.max_building_height_ft) as max_building_height_ft,
+              zd.max_stories,
+              zd.max_far,
+              COALESCE(zd.max_density_per_acre, zd.max_units_per_acre) as max_units_per_acre,
+              COALESCE(zd.min_parking_per_unit, zd.parking_per_unit) as parking_per_unit,
+              zd.parking_per_1000_sqft,
+              zd.description,
+              COALESCE(zd.setback_front_ft, zd.min_front_setback_ft) as min_front_setback_ft,
+              COALESCE(zd.setback_side_ft, zd.min_side_setback_ft) as min_side_setback_ft,
+              COALESCE(zd.setback_rear_ft, zd.min_rear_setback_ft) as min_rear_setback_ft,
+              COALESCE(zd.max_lot_coverage_percent, zd.max_lot_coverage) as max_lot_coverage,
+              zd.metadata,
+              zd.municipality_id
+       FROM zoning_districts zd
+       LEFT JOIN municipalities m ON m.id = zd.municipality_id
+       ${where}
+       ORDER BY COALESCE(zd.zoning_code, zd.district_code)`,
       params
     );
     res.json(result.rows);
@@ -313,9 +331,17 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
 
     if (!zoningCode) {
       const districtsList = await pool.query(
-        `SELECT id, district_code, district_name, description, max_building_height_ft, max_stories, max_far, max_units_per_acre
-         FROM zoning_districts WHERE UPPER(municipality) = UPPER($1)
-         ORDER BY district_code`,
+        `SELECT zd.id, 
+                COALESCE(zd.zoning_code, zd.district_code) as district_code,
+                zd.district_name, zd.description,
+                COALESCE(zd.max_height_feet, zd.max_building_height_ft) as max_building_height_ft,
+                zd.max_stories, zd.max_far,
+                COALESCE(zd.max_density_per_acre, zd.max_units_per_acre) as max_units_per_acre
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE UPPER(COALESCE(zd.municipality, m.name)) = UPPER($1)
+            OR zd.municipality_id = LOWER($1)
+         ORDER BY COALESCE(zd.zoning_code, zd.district_code)`,
         [city]
       );
       return res.json({
@@ -326,9 +352,10 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
     }
 
     const districtResult = await pool.query(
-      `SELECT * FROM zoning_districts 
-       WHERE UPPER(district_code) = UPPER($1)
-       AND UPPER(municipality) = UPPER($2)
+      `SELECT zd.* FROM zoning_districts zd
+       LEFT JOIN municipalities m ON m.id = zd.municipality_id
+       WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+       AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($2) OR zd.municipality_id = LOWER($2))
        LIMIT 1`,
       [zoningCode, city]
     );
@@ -345,24 +372,24 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
     const baseZoning = metadata.base_zoning || 'residential';
 
     const autoFilledData = {
-      zoning_code: district.district_code,
+      zoning_code: district.zoning_code || district.district_code,
       base_zoning: baseZoning,
-      max_density: district.max_units_per_acre ? parseFloat(district.max_units_per_acre) : null,
+      max_density: (district.max_density_per_acre || district.max_units_per_acre) ? parseFloat(district.max_density_per_acre || district.max_units_per_acre) : null,
       max_far: district.max_far ? parseFloat(district.max_far) : null,
-      max_height_feet: district.max_building_height_ft,
+      max_height_feet: district.max_height_feet || district.max_building_height_ft,
       max_stories: district.max_stories,
-      min_parking_per_unit: district.parking_per_unit ? parseFloat(district.parking_per_unit) : null,
+      min_parking_per_unit: (district.min_parking_per_unit || district.parking_per_unit) ? parseFloat(district.min_parking_per_unit || district.parking_per_unit) : null,
       setbacks: {
-        front: district.min_front_setback_ft,
-        side: district.min_side_setback_ft,
-        rear: district.min_rear_setback_ft,
+        front: district.setback_front_ft || district.min_front_setback_ft,
+        side: district.setback_side_ft || district.min_side_setback_ft,
+        rear: district.setback_rear_ft || district.min_rear_setback_ft,
       },
       district_name: district.district_name,
       description: district.description,
       permitted_uses: district.permitted_uses,
       conditional_uses: district.conditional_uses,
       source_url: district.source_url,
-      max_lot_coverage: district.max_lot_coverage ? parseFloat(district.max_lot_coverage) : null,
+      max_lot_coverage: (district.max_lot_coverage_percent || district.max_lot_coverage) ? parseFloat(district.max_lot_coverage_percent || district.max_lot_coverage) : null,
       parking_per_1000_sqft: district.parking_per_1000_sqft ? parseFloat(district.parking_per_1000_sqft) : null,
       metadata: metadata,
       affordable_bonus_eligible: metadata.bonus_eligible || metadata.affordable_bonus_far > 0 || false,
@@ -378,6 +405,129 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
   } catch (error) {
     console.error('Error auto-filling zoning capacity:', error);
     res.status(500).json({ error: 'Failed to auto-fill zoning capacity' });
+  }
+});
+
+router.get('/municipalities', async (req: Request, res: Response) => {
+  try {
+    const { state, has_api, priority } = req.query;
+    const params: string[] = [];
+    let where = 'WHERE 1=1';
+
+    if (state) {
+      params.push(state as string);
+      where += ` AND UPPER(m.state) = UPPER($${params.length})`;
+    }
+    if (has_api !== undefined) {
+      params.push(has_api as string);
+      where += ` AND m.has_api = $${params.length}::boolean`;
+    }
+    if (priority) {
+      params.push(priority as string);
+      where += ` AND UPPER(m.priority) = UPPER($${params.length})`;
+    }
+
+    const result = await pool.query(
+      `SELECT m.id, m.name, m.state, m.county, m.population,
+              m.has_api, m.api_type, m.data_quality, m.priority,
+              m.total_zoning_districts, m.municode_url,
+              COUNT(zd.id) as actual_districts
+       FROM municipalities m
+       LEFT JOIN zoning_districts zd ON zd.municipality_id = m.id
+       ${where}
+       GROUP BY m.id
+       ORDER BY m.state, m.name`,
+      params
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching municipalities:', error);
+    res.status(500).json({ error: 'Failed to fetch municipalities' });
+  }
+});
+
+router.get('/municipalities/:municipalityId', async (req: Request, res: Response) => {
+  try {
+    const { municipalityId } = req.params;
+    const muniResult = await pool.query('SELECT * FROM municipalities WHERE id = $1', [municipalityId]);
+    if (muniResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Municipality not found' });
+    }
+
+    const districtsResult = await pool.query(
+      `SELECT id, 
+              COALESCE(zoning_code, district_code) as zoning_code,
+              district_name, category,
+              COALESCE(max_density_per_acre, max_units_per_acre) as max_density_per_acre,
+              max_far,
+              COALESCE(max_height_feet, max_building_height_ft) as max_height_feet,
+              max_stories,
+              COALESCE(min_parking_per_unit, parking_per_unit) as min_parking_per_unit,
+              COALESCE(setback_front_ft, min_front_setback_ft) as setback_front_ft,
+              COALESCE(setback_side_ft, min_side_setback_ft) as setback_side_ft,
+              COALESCE(setback_rear_ft, min_rear_setback_ft) as setback_rear_ft,
+              source
+       FROM zoning_districts
+       WHERE municipality_id = $1
+       ORDER BY COALESCE(zoning_code, district_code)`,
+      [municipalityId]
+    );
+
+    res.json({
+      municipality: muniResult.rows[0],
+      districts: districtsResult.rows,
+    });
+  } catch (error) {
+    console.error('Error fetching municipality:', error);
+    res.status(500).json({ error: 'Failed to fetch municipality' });
+  }
+});
+
+router.get('/zoning/lookup', async (req: Request, res: Response) => {
+  try {
+    const { address, city, lat, lng } = req.query;
+
+    const cityName = city as string;
+    if (!cityName && !address) {
+      return res.status(400).json({ error: 'Must provide city or address' });
+    }
+
+    const searchCity = cityName || '';
+    const muniResult = await pool.query(
+      `SELECT id, name, state FROM municipalities 
+       WHERE UPPER(name) = UPPER($1) OR id = LOWER($1)
+       LIMIT 1`,
+      [searchCity]
+    );
+
+    if (muniResult.rows.length === 0) {
+      return res.json({ found: false, message: `No municipality found for "${searchCity}"` });
+    }
+
+    const muni = muniResult.rows[0];
+    const districtsResult = await pool.query(
+      `SELECT id, 
+              COALESCE(zoning_code, district_code) as zoning_code,
+              district_name, category,
+              COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
+              max_far,
+              COALESCE(max_height_feet, max_building_height_ft) as max_height,
+              max_stories
+       FROM zoning_districts
+       WHERE municipality_id = $1
+       ORDER BY COALESCE(zoning_code, district_code)`,
+      [muni.id]
+    );
+
+    res.json({
+      found: true,
+      municipality: muni,
+      districts: districtsResult.rows,
+      total: districtsResult.rows.length,
+    });
+  } catch (error) {
+    console.error('Error looking up zoning:', error);
+    res.status(500).json({ error: 'Failed to lookup zoning' });
   }
 });
 

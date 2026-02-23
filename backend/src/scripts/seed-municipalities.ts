@@ -5,7 +5,9 @@
  * that need Municode scraping (no API available)
  */
 
-import { db } from '../db';
+import { getPool } from '../database/connection';
+
+const db = getPool();
 
 interface MunicipalityData {
   id: string;
@@ -268,12 +270,13 @@ async function seedMunicipalities() {
         `
         INSERT INTO municipalities (
           id, name, state, county, municode_url, zoning_chapter_path,
-          has_api, api_type, zoning_data_quality, scraping_enabled
-        ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, 'none', 'none', TRUE)
+          has_api, api_type, data_quality, priority
+        ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, NULL, 'none', $7)
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           municode_url = EXCLUDED.municode_url,
-          zoning_chapter_path = EXCLUDED.zoning_chapter_path
+          zoning_chapter_path = EXCLUDED.zoning_chapter_path,
+          priority = EXCLUDED.priority
         `,
         [
           muni.id,
@@ -282,6 +285,7 @@ async function seedMunicipalities() {
           muni.county,
           muni.municode_url,
           muni.zoning_chapter_path,
+          muni.priority,
         ]
       );
 
