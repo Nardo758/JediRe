@@ -7,10 +7,13 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface ZoningEntitlementsSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
 }
 
-export const ZoningEntitlementsSection: React.FC<ZoningEntitlementsSectionProps> = ({ dealId }) => {
+export const ZoningEntitlementsSection: React.FC<ZoningEntitlementsSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Zoning & Entitlements Dashboard                   │

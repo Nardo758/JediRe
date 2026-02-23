@@ -5,7 +5,8 @@ import {
   Building2, Target, Package, MapPin, CreditCard, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box, Car,
   LogOut, Search, ArrowLeft, Activity, LineChart,
-  Lightbulb, StickyNote, Briefcase, LayoutDashboard
+  Lightbulb, StickyNote, Briefcase, LayoutDashboard,
+  Compass, Landmark
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
@@ -36,6 +37,8 @@ import { NotesSection } from '../components/deal/sections/NotesSection';
 
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
+import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
+import { ZoningEntitlementsSection } from '../components/deal/sections/ZoningEntitlementsSection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -104,6 +107,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Deal Lifecycle', 
       icon: <LayoutDashboard size={16} />, 
       component: DealStatusSection 
+    },
+    { 
+      id: 'context-tracker', 
+      label: 'Context Tracker', 
+      icon: <Compass size={16} />, 
+      component: ContextTrackerSection 
     },
   ];
 
@@ -179,6 +188,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Project Management', 
       icon: <Briefcase size={16} />, 
       component: ProjectManagementSection 
+    },
+    { 
+      id: 'zoning', 
+      label: 'Zoning & Entitlements', 
+      icon: <Landmark size={16} />, 
+      component: ZoningEntitlementsSection 
     },
   ];
 

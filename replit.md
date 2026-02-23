@@ -35,10 +35,10 @@ Each deal ("capsule") uses a 6-group tab navigation system in `DealDetailPage.ts
 
 | Group | Modules (Tab IDs) | Component |
 |-------|-------------------|-----------|
-| **DEAL STATUS** | Overview (`overview`), 3D Building Design (`3d-design`), Deal Lifecycle (`deal-status`) | OverviewSection, Design3DPageEnhanced, DealStatusSection |
+| **DEAL STATUS** | Overview (`overview`), 3D Building Design (`3d-design`), Deal Lifecycle (`deal-status`), Context Tracker (`context-tracker`) | OverviewSection, Design3DPageEnhanced, DealStatusSection, ContextTrackerSection |
 | **ANALYSIS** | Market Intelligence (`market-intelligence`), Competition (`competition`), Supply Pipeline (`supply`), Trends (`trends`), Traffic Engine (`traffic`) | MarketAnalysisPage, CompetitionPage, SupplyPipelinePage, TrendsAnalysisSection, TrafficAnalysisSection |
 | **FINANCIAL** | Financial Model (`financial-model`), Debt & Financing (`debt`), Exit Strategy (`exit`) | FinancialModelingSection, DebtSection, ExitSection |
-| **OPERATIONS** | Due Diligence (`due-diligence`), Project Timeline (`timeline`), Project Management (`project-management`) | DueDiligencePage, ProjectTimelinePage, ProjectManagementSection |
+| **OPERATIONS** | Due Diligence (`due-diligence`), Project Timeline (`timeline`), Project Management (`project-management`), Zoning & Entitlements (`zoning`) | DueDiligencePage, ProjectTimelinePage, ProjectManagementSection, ZoningEntitlementsSection |
 | **DOCUMENTS** | Documents (`documents`), Files & Assets (`files`), Notes (`notes`) | DocumentsSection, FilesSection, NotesSection |
 | **AI TOOLS** | Opus AI Agent (`ai-agent`), AI Recommendations (`ai-recommendations`) | OpusAISection, AIRecommendationsSection |
 
