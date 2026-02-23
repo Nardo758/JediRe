@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Loader2, Building2, TrendingUp, Save, AlertTriangle,
-  ToggleLeft, ToggleRight
+  ToggleLeft, ToggleRight, Search, CheckCircle2, Info
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 
@@ -51,6 +51,17 @@ interface ZoningCapacityData {
   estimated_value?: number;
 }
 
+interface AvailableDistrict {
+  id: string;
+  district_code: string;
+  district_name: string;
+  description: string;
+  max_building_height_ft: number | null;
+  max_stories: number | null;
+  max_far: number | null;
+  max_units_per_acre: number | null;
+}
+
 const BASE_ZONING_OPTIONS = [
   { value: 'residential', label: 'Residential' },
   { value: 'mixed-use', label: 'Mixed-Use' },
@@ -70,6 +81,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [lookingUp, setLookingUp] = useState(false);
+  const [availableDistricts, setAvailableDistricts] = useState<AvailableDistrict[]>([]);
+  const [showDistrictPicker, setShowDistrictPicker] = useState(false);
+  const [autoFillSource, setAutoFillSource] = useState<string | null>(null);
   const [data, setData] = useState<ZoningCapacityData>({
     affordable_bonus_percent: 25,
     tdr_bonus_percent: 15,
@@ -92,12 +107,95 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   const fetchData = async () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-capacity`);
-      if (response.data) setData(response.data);
+      if (response.data) {
+        setData(response.data);
+      } else {
+        autoFillFromDeal();
+      }
     } catch (error) {
       console.error('Error fetching zoning capacity:', error);
+      autoFillFromDeal();
     } finally {
       setLoading(false);
     }
+  };
+
+  const autoFillFromDeal = async () => {
+    if (!resolvedDealId) return;
+    try {
+      const response = await apiClient.post(`/api/v1/deals/${resolvedDealId}/zoning-capacity/auto-fill`, {});
+      const result = response.data;
+      if (result.auto_filled && result.data) {
+        setData((prev) => ({
+          ...prev,
+          zoning_code: result.data.zoning_code || prev.zoning_code,
+          base_zoning: result.data.base_zoning || prev.base_zoning,
+          max_density: result.data.max_density ?? prev.max_density,
+          max_far: result.data.max_far ?? prev.max_far,
+          max_height_feet: result.data.max_height_feet ?? prev.max_height_feet,
+          max_stories: result.data.max_stories ?? prev.max_stories,
+          min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
+        }));
+        setAutoFillSource(result.data.district_name);
+      } else if (result.available_districts) {
+        setAvailableDistricts(result.available_districts);
+      }
+    } catch (error) {
+      console.error('Auto-fill failed:', error);
+    }
+  };
+
+  const lookupZoningCode = async (code?: string) => {
+    const zoningCode = code || data.zoning_code;
+    if (!zoningCode || !resolvedDealId) return;
+
+    setLookingUp(true);
+    setAutoFillSource(null);
+    try {
+      const response = await apiClient.post(`/api/v1/deals/${resolvedDealId}/zoning-capacity/auto-fill`, {
+        zoning_code: zoningCode,
+      });
+      const result = response.data;
+      if (result.auto_filled && result.data) {
+        setData((prev) => ({
+          ...prev,
+          zoning_code: result.data.zoning_code,
+          base_zoning: result.data.base_zoning || prev.base_zoning,
+          max_density: result.data.max_density ?? prev.max_density,
+          max_far: result.data.max_far ?? prev.max_far,
+          max_height_feet: result.data.max_height_feet ?? prev.max_height_feet,
+          max_stories: result.data.max_stories ?? prev.max_stories,
+          min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
+        }));
+        setAutoFillSource(result.data.district_name);
+        setShowDistrictPicker(false);
+      } else {
+        setSaveMsg(`No matching district found for "${zoningCode}"`);
+        setTimeout(() => setSaveMsg(''), 3000);
+      }
+    } catch (error) {
+      console.error('Zoning lookup failed:', error);
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
+  const loadAvailableDistricts = async () => {
+    try {
+      const response = await apiClient.get('/api/v1/zoning-districts/lookup', {
+        params: { municipality: 'Atlanta' },
+      });
+      if (Array.isArray(response.data)) {
+        setAvailableDistricts(response.data);
+        setShowDistrictPicker(true);
+      }
+    } catch (error) {
+      console.error('Failed to load districts:', error);
+    }
+  };
+
+  const selectDistrict = (district: AvailableDistrict) => {
+    lookupZoningCode(district.district_code);
   };
 
   const saveData = async () => {
@@ -191,8 +289,17 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         </button>
       </div>
 
+      {autoFillSource && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <CheckCircle2 size={16} className="text-blue-600" />
+          <span className="text-sm text-blue-800">
+            Auto-filled from <strong>{autoFillSource}</strong> — you can adjust any values below
+          </span>
+        </div>
+      )}
+
       {saveMsg && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${saveMsg.includes('Failed') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+        <div className={`px-4 py-2 rounded-lg text-sm ${saveMsg.includes('Failed') || saveMsg.includes('No matching') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
           {saveMsg}
         </div>
       )}
@@ -205,8 +312,19 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Zoning Code</label>
-                <input type="text" value={data.zoning_code || ''} onChange={(e) => updateField('zoning_code', e.target.value)}
-                  placeholder="e.g. MR-4A" className={inputClass} />
+                <div className="flex gap-2">
+                  <input type="text" value={data.zoning_code || ''} onChange={(e) => updateField('zoning_code', e.target.value)}
+                    placeholder="e.g. MR-4A" className={`${inputClass} flex-1`} />
+                  <button onClick={() => lookupZoningCode()} disabled={lookingUp || !data.zoning_code}
+                    title="Look up zoning code"
+                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 disabled:bg-gray-100 border border-blue-200 disabled:border-gray-200 text-blue-600 disabled:text-gray-400 rounded-lg transition-colors">
+                    {lookingUp ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                  </button>
+                </div>
+                <button onClick={loadAvailableDistricts}
+                  className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                  Browse all Atlanta districts
+                </button>
               </div>
               <div>
                 <label className={labelClass}>Base Zoning</label>
@@ -245,6 +363,40 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               </div>
             </div>
           </div>
+
+          {showDistrictPicker && availableDistricts.length > 0 && (
+            <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Info size={18} className="text-blue-600" />
+                  Select a Zoning District
+                </h3>
+                <button onClick={() => setShowDistrictPicker(false)}
+                  className="text-xs text-gray-500 hover:text-gray-700">Close</button>
+              </div>
+              <div className="max-h-72 overflow-y-auto space-y-2">
+                {availableDistricts.map((d) => (
+                  <button key={d.id} onClick={() => selectDistrict(d)}
+                    className="w-full text-left p-3 bg-gray-50 hover:bg-blue-50 border border-gray-100 hover:border-blue-200 rounded-lg transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">{d.district_code}</span>
+                        <span className="text-sm text-gray-500 ml-2">— {d.district_name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        {d.max_far && <span>FAR {parseFloat(String(d.max_far)).toFixed(1)}</span>}
+                        {d.max_building_height_ft && <span>{d.max_building_height_ft} ft</span>}
+                        {d.max_units_per_acre && <span>{parseFloat(String(d.max_units_per_acre))} u/ac</span>}
+                      </div>
+                    </div>
+                    {d.description && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-1">{d.description}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Density Bonuses</h3>

@@ -225,6 +225,162 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
   }
 });
 
+router.get('/zoning-districts/lookup', async (req: Request, res: Response) => {
+  try {
+    const { code, municipality, state } = req.query;
+
+    if (code) {
+      const result = await pool.query(
+        `SELECT * FROM zoning_districts 
+         WHERE UPPER(district_code) = UPPER($1)
+         ${municipality ? 'AND UPPER(municipality) = UPPER($2)' : ''}
+         LIMIT 1`,
+        municipality ? [code, municipality] : [code]
+      );
+      if (result.rows.length > 0) {
+        return res.json(result.rows[0]);
+      }
+      return res.json(null);
+    }
+
+    const params: string[] = [];
+    let where = 'WHERE 1=1';
+    if (municipality) {
+      params.push(municipality as string);
+      where += ` AND UPPER(municipality) = UPPER($${params.length})`;
+    }
+    if (state) {
+      params.push(state as string);
+      where += ` AND UPPER(state) = UPPER($${params.length})`;
+    }
+
+    const result = await pool.query(
+      `SELECT id, district_code, district_name, municipality, state, 
+              max_building_height_ft, max_stories, max_far, max_units_per_acre,
+              parking_per_unit, parking_per_1000_sqft, description,
+              min_front_setback_ft, min_side_setback_ft, min_rear_setback_ft,
+              max_lot_coverage, metadata
+       FROM zoning_districts ${where}
+       ORDER BY district_code`,
+      params
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error looking up zoning district:', error);
+    res.status(500).json({ error: 'Failed to lookup zoning district' });
+  }
+});
+
+router.get('/zoning-districts/:districtId', async (req: Request, res: Response) => {
+  try {
+    const { districtId } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM zoning_districts WHERE id = $1',
+      [districtId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'District not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching zoning district:', error);
+    res.status(500).json({ error: 'Failed to fetch zoning district' });
+  }
+});
+
+router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const dealResult = await pool.query(
+      `SELECT d.id, d.property_address, d.address, d.state, d.asset_type,
+              zc.zoning_code
+       FROM deals d
+       LEFT JOIN zoning_capacity zc ON zc.deal_id = d.id
+       WHERE d.id = $1`,
+      [dealId]
+    );
+
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const deal = dealResult.rows[0];
+    const zoningCode = deal.zoning_code || req.body.zoning_code;
+    const fullAddress = deal.property_address || deal.address || '';
+    const addressParts = fullAddress.split(',').map((s: string) => s.trim());
+    const city = req.body.city || (addressParts.length >= 2 ? addressParts[addressParts.length - 2] : 'Atlanta');
+
+    if (!zoningCode) {
+      const districtsList = await pool.query(
+        `SELECT id, district_code, district_name, description, max_building_height_ft, max_stories, max_far, max_units_per_acre
+         FROM zoning_districts WHERE UPPER(municipality) = UPPER($1)
+         ORDER BY district_code`,
+        [city]
+      );
+      return res.json({
+        auto_filled: false,
+        message: 'No zoning code specified. Select from available districts.',
+        available_districts: districtsList.rows,
+      });
+    }
+
+    const districtResult = await pool.query(
+      `SELECT * FROM zoning_districts 
+       WHERE UPPER(district_code) = UPPER($1)
+       AND UPPER(municipality) = UPPER($2)
+       LIMIT 1`,
+      [zoningCode, city]
+    );
+
+    if (districtResult.rows.length === 0) {
+      return res.json({
+        auto_filled: false,
+        message: `No zoning district found for code "${zoningCode}" in ${city}`,
+      });
+    }
+
+    const district = districtResult.rows[0];
+    const metadata = district.metadata || {};
+    const baseZoning = metadata.base_zoning || 'residential';
+
+    const autoFilledData = {
+      zoning_code: district.district_code,
+      base_zoning: baseZoning,
+      max_density: district.max_units_per_acre ? parseFloat(district.max_units_per_acre) : null,
+      max_far: district.max_far ? parseFloat(district.max_far) : null,
+      max_height_feet: district.max_building_height_ft,
+      max_stories: district.max_stories,
+      min_parking_per_unit: district.parking_per_unit ? parseFloat(district.parking_per_unit) : null,
+      setbacks: {
+        front: district.min_front_setback_ft,
+        side: district.min_side_setback_ft,
+        rear: district.min_rear_setback_ft,
+      },
+      district_name: district.district_name,
+      description: district.description,
+      permitted_uses: district.permitted_uses,
+      conditional_uses: district.conditional_uses,
+      source_url: district.source_url,
+      max_lot_coverage: district.max_lot_coverage ? parseFloat(district.max_lot_coverage) : null,
+      parking_per_1000_sqft: district.parking_per_1000_sqft ? parseFloat(district.parking_per_1000_sqft) : null,
+      metadata: metadata,
+      affordable_bonus_eligible: metadata.bonus_eligible || metadata.affordable_bonus_far > 0 || false,
+      affordable_bonus_far: metadata.affordable_bonus_far || null,
+      density_bonus_2024: metadata.density_bonus_2024 || false,
+    };
+
+    res.json({
+      auto_filled: true,
+      district_id: district.id,
+      data: autoFilledData,
+    });
+  } catch (error) {
+    console.error('Error auto-filling zoning capacity:', error);
+    res.status(500).json({ error: 'Failed to auto-fill zoning capacity' });
+  }
+});
+
 router.delete('/deals/:dealId/zoning-capacity', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
