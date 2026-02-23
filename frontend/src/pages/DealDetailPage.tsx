@@ -76,9 +76,9 @@ const DealDetailPage: React.FC = () => {
       const keyMap: { [key: string]: string } = {
         '1': 'overview',
         '2': 'market-intelligence',
-        '3': 'financial-model',
+        '3': '3d-design',
         '4': 'due-diligence',
-        '5': 'files',
+        '5': 'timeline',
         '6': 'ai-agent',
       };
       if (keyMap[e.key]) {
@@ -89,18 +89,13 @@ const DealDetailPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  const dealStatusTabs: Tab[] = [
+  // Stage 1: OVERVIEW & SETUP - Get oriented
+  const overviewSetupTabs: Tab[] = [
     { 
       id: 'overview', 
-      label: 'Overview', 
+      label: 'Deal Overview', 
       icon: <BarChart3 size={16} />, 
       component: OverviewSection 
-    },
-    { 
-      id: '3d-design', 
-      label: '3D Building Design', 
-      icon: <Box size={16} />, 
-      component: Design3DPageEnhanced 
     },
     { 
       id: 'deal-status', 
@@ -116,7 +111,8 @@ const DealDetailPage: React.FC = () => {
     },
   ];
 
-  const analysisTabs: Tab[] = [
+  // Stage 2: MARKET RESEARCH - Validate opportunity
+  const marketResearchTabs: Tab[] = [
     { 
       id: 'market-intelligence', 
       label: 'Market Intelligence', 
@@ -149,7 +145,14 @@ const DealDetailPage: React.FC = () => {
     },
   ];
 
-  const financialTabs: Tab[] = [
+  // Stage 3: DEAL DESIGN - Create the deal
+  const dealDesignTabs: Tab[] = [
+    { 
+      id: '3d-design', 
+      label: '3D Building Design', 
+      icon: <Box size={16} />, 
+      component: Design3DPageEnhanced 
+    },
     { 
       id: 'financial-model', 
       label: 'Financial Model', 
@@ -170,13 +173,36 @@ const DealDetailPage: React.FC = () => {
     },
   ];
 
-  const operationsTabs: Tab[] = [
+  // Stage 4: DUE DILIGENCE - Verify & validate
+  const dueDiligenceTabs: Tab[] = [
     { 
       id: 'due-diligence', 
-      label: 'Due Diligence', 
+      label: 'DD Checklist', 
       icon: <ClipboardCheck size={16} />, 
       component: DueDiligencePage 
     },
+    { 
+      id: 'zoning', 
+      label: 'Zoning & Entitlements', 
+      icon: <Landmark size={16} />, 
+      component: ZoningEntitlementsSection 
+    },
+    { 
+      id: 'documents', 
+      label: 'Documents', 
+      icon: <FileText size={16} />, 
+      component: DocumentsSection 
+    },
+    { 
+      id: 'files', 
+      label: 'Files & Assets', 
+      icon: <FolderOpen size={16} />, 
+      component: FilesSection 
+    },
+  ];
+
+  // Stage 5: EXECUTION - Build & deliver
+  const executionTabs: Tab[] = [
     { 
       id: 'timeline', 
       label: 'Project Timeline', 
@@ -190,27 +216,6 @@ const DealDetailPage: React.FC = () => {
       component: ProjectManagementSection 
     },
     { 
-      id: 'zoning', 
-      label: 'Zoning & Entitlements', 
-      icon: <Landmark size={16} />, 
-      component: ZoningEntitlementsSection 
-    },
-  ];
-
-  const documentsTabs: Tab[] = [
-    { 
-      id: 'documents', 
-      label: 'Documents', 
-      icon: <FileText size={16} />, 
-      component: DocumentsSection 
-    },
-    { 
-      id: 'files', 
-      label: 'Files & Assets', 
-      icon: <FolderOpen size={16} />, 
-      component: FilesSection 
-    },
-    { 
       id: 'notes', 
       label: 'Notes', 
       icon: <StickyNote size={16} />, 
@@ -218,7 +223,8 @@ const DealDetailPage: React.FC = () => {
     },
   ];
 
-  const aiToolsTabs: Tab[] = [
+  // Always Available: AI ASSISTANT
+  const aiAssistantTabs: Tab[] = [
     { 
       id: 'ai-agent', 
       label: 'Opus AI Agent', 
@@ -234,12 +240,12 @@ const DealDetailPage: React.FC = () => {
   ];
 
   const allTabs = [
-    ...dealStatusTabs,
-    ...analysisTabs,
-    ...financialTabs,
-    ...operationsTabs,
-    ...documentsTabs,
-    ...aiToolsTabs,
+    ...overviewSetupTabs,
+    ...marketResearchTabs,
+    ...dealDesignTabs,
+    ...dueDiligenceTabs,
+    ...executionTabs,
+    ...aiAssistantTabs,
   ];
 
   const activeTabData = allTabs.find(tab => tab.id === activeTab);
@@ -358,51 +364,51 @@ const DealDetailPage: React.FC = () => {
               ) : (
                 <nav className="flex-1">
                   <TabGroup
-                    id="deal-status"
-                    title="DEAL STATUS"
+                    id="overview-setup"
+                    title="OVERVIEW & SETUP"
                     icon={<LayoutDashboard size={18} />}
-                    tabs={dealStatusTabs}
+                    tabs={overviewSetupTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                     defaultExpanded={true}
                   />
                   <TabGroup
-                    id="analysis"
-                    title="ANALYSIS"
-                    icon={<BarChart3 size={18} />}
-                    tabs={analysisTabs}
+                    id="market-research"
+                    title="MARKET RESEARCH"
+                    icon={<Search size={18} />}
+                    tabs={marketResearchTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                   />
                   <TabGroup
-                    id="financial"
-                    title="FINANCIAL"
-                    icon={<DollarSign size={18} />}
-                    tabs={financialTabs}
+                    id="deal-design"
+                    title="DEAL DESIGN"
+                    icon={<Box size={18} />}
+                    tabs={dealDesignTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                   />
                   <TabGroup
-                    id="operations"
-                    title="OPERATIONS"
+                    id="due-diligence"
+                    title="DUE DILIGENCE"
                     icon={<ClipboardCheck size={18} />}
-                    tabs={operationsTabs}
+                    tabs={dueDiligenceTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                   />
                   <TabGroup
-                    id="documents"
-                    title="DOCUMENTS"
-                    icon={<FileText size={18} />}
-                    tabs={documentsTabs}
+                    id="execution"
+                    title="EXECUTION"
+                    icon={<Activity size={18} />}
+                    tabs={executionTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                   />
                   <TabGroup
-                    id="ai-tools"
-                    title="AI TOOLS"
+                    id="ai-assistant"
+                    title="AI ASSISTANT"
                     icon={<Bot size={18} />}
-                    tabs={aiToolsTabs}
+                    tabs={aiAssistantTabs}
                     activeTab={activeTab}
                     onTabChange={setActiveTab}
                   />
@@ -412,8 +418,8 @@ const DealDetailPage: React.FC = () => {
 
             <div className="mt-auto p-3 border-t border-slate-200">
               <div className="text-[10px] text-slate-400 text-center space-y-0.5">
-                <p>Press 1-6 to jump to groups</p>
-                <p className="text-slate-300">6 groups | {allTabs.length} modules</p>
+                <p>Press 1-6 for quick access</p>
+                <p className="text-slate-300">6 stages | {allTabs.length} modules</p>
               </div>
             </div>
           </aside>
