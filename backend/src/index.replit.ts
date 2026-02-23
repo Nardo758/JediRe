@@ -1,236 +1,282 @@
 /**
- * JEDI RE Backend - Main Entry Point
- * Created: 2026-02-20
- * Consolidated index with all route registrations
- * 
- * SECURITY ENHANCED:
- * - Input validation with Zod
- * - Rate limiting on all routes
- * - Secure CORS configuration
- * - SQL injection prevention (parameterized queries)
- * - XSS protection
+ * JediRe Backend - Replit Entry Point
+ * Route handlers extracted to dedicated router modules
  */
-
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
-import { Pool } from 'pg';
-import env from './config/environment';
-import { secrets } from './config/secrets';
+import dotenv from 'dotenv';
+import path from 'path';
+import { requireAuth } from './middleware/auth';
+import { getPool } from './database/connection';
+import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { createTrainingRoutes } from './api/rest/training.routes';
+import { createCalibrationRoutes } from './api/rest/calibration.routes';
+import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import preferencesRouter from './api/rest/preferences.routes';
+import propertyTypesRouter from './api/rest/property-types.routes';
+import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
+import customStrategiesRouter from './api/rest/custom-strategies.routes';
 
-// Import route modules
-import healthRoutes, { initHealthCheck } from './api/rest/health.routes';
-import { createMarketIntelligenceRoutes } from './api/rest/market-intelligence.routes';
-import inlineDealsRoutes from './api/rest/inline-deals.routes';
-import inlineAuthRoutes from './api/rest/inline-auth.routes';
-import inlineDataRoutes from './api/rest/inline-data.routes';
-import inlineTasksRoutes from './api/rest/inline-tasks.routes';
-import inlineInboxRoutes from './api/rest/inline-inbox.routes';
+import healthRouter from './api/rest/inline-health.routes';
+import authRouter from './api/rest/inline-auth.routes';
+import dataRouter from './api/rest/inline-data.routes';
+import dealsRouter from './api/rest/inline-deals.routes';
+import tasksRouter from './api/rest/inline-tasks.routes';
+import inboxRouter from './api/rest/inline-inbox.routes';
+import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
+import { createApartmentSyncRoutes } from './api/rest/inline-apartment-sync.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
-import inlineHealthRoutes from './api/rest/inline-health.routes';
-import inlineZoningRoutes from './api/rest/inline-zoning-analyze.routes';
-import propertyTypesRoutes from './api/rest/property-types.routes';
-import gridRoutes from './api/rest/grid.routes';
-import inlineNewsRoutes from './api/rest/inline-news.routes';
-import dealStateRoutes from './api/rest/dealState.routes';
 
-// Middleware
-import { authenticateToken, optionalAuth } from './middleware/auth';
-import { errorHandler } from './middleware/errorHandler';
-import { apiLimiter, authLimiter, aiLimiter, strictLimiter } from './middleware/rateLimit';
-import { sanitizeInputs } from './middleware/validate';
+import { initializeApartmentLocatorIntegration } from './services/apartmentLocatorIntegration';
+import { ApartmentDataSyncService } from './services/apartmentDataSync';
 
-const app: Express = express();
-const config = env.get();
+import newsRouter from './api/rest/news.routes';
+import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import geographicContextRoutes from './api/rest/geographic-context.routes';
+import isochroneRoutes from './api/rest/isochrone.routes';
+import trafficAiRoutes from './api/rest/traffic-ai.routes';
+import mapConfigsRouter from './api/rest/map-configs.routes';
+import gridRouter from './api/rest/grid.routes';
+import modulesRouter from './api/rest/modules.routes';
+import financialModelsRouter from './api/rest/financial-models.routes';
+import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
+import ddChecklistsRouter from './api/rest/dd-checklists.routes';
+import dashboardRouter from './api/rest/dashboard.routes';
+import gmailRouter from './api/rest/gmail.routes';
+import marketResearchRoutes from './api/rest/marketResearch.routes';
+import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
+import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
+import propertyProxyRoutes from './api/rest/property-proxy.routes';
+import marketIntelRoutes from './api/rest/marketIntel.routes';
+import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
+import moduleLibrariesRouter from './api/rest/module-libraries.routes';
+import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
+import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes';
+import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
+import { createOpusRoutes } from './api/rest/opus.routes';
+import { createDataLibraryRoutes } from './api/rest/data-library.routes';
+import propertyBoundaryRouter from './api/rest/property-boundary.routes';
+import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 
-// Database connection pool
-export const pool = new Pool({
-  connectionString: config.databaseUrl,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+dotenv.config();
 
-// Test database connection
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('❌ Database connection failed:', err);
-    process.exit(1);
-  } else {
-    console.log('✅ Database connected:', res.rows[0].now);
+const app = express();
+const isProduction = process.env.NODE_ENV === 'production';
+const httpServer = createServer(app);
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
+const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  return allowedOriginPatterns.some(pattern => pattern.test(origin));
+}
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
   }
 });
 
-// Initialize health check with pool
-initHealthCheck(pool);
+const PORT = process.env.PORT || 3000;
 
-// ============================================
-// SECURITY MIDDLEWARE
-// ============================================
+const pool = getPool();
 
-// Helmet - Security headers
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
-    },
-  },
-  crossOriginEmbedderPolicy: false, // Allow embedding for map tiles, etc.
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
 }));
-
-// Enhanced CORS configuration with validation
-const allowedOrigins = secrets.security.allowedOrigins;
-
-const corsOptions = {
-  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin)) {
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
-      console.warn(`🚫 CORS blocked: ${origin}`);
-      callback(new Error(`Origin ${origin} not allowed by CORS policy`));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
-  exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
-  maxAge: 86400, // 24 hours
-};
-
-app.use(cors(corsOptions));
-
-// Body parsing with size limits
-app.use(express.json({ 
-  limit: '10mb', // Reduced from 50mb for security
-  verify: (req: any, res, buf) => {
-    // Store raw body for webhook signature verification if needed
-    req.rawBody = buf;
-  }
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Sanitize all inputs to prevent XSS
-app.use(sanitizeInputs);
-
-// Request logging with security info
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - IP: ${ip}`);
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Root endpoint
-app.get('/', (req: Request, res: Response) => {
-  res.json({
-    name: 'JEDI RE API',
-    version: config.appVersion,
-    status: 'running',
-    environment: config.nodeEnv,
-    timestamp: new Date().toISOString(),
+app.use('/health', healthRouter);
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1', dataRouter);
+app.use('/api/v1/deals', dealsRouter);
+app.use('/api/v1/tasks', tasksRouter);
+app.use('/api/v1/inbox', inboxRouter);
+app.use('/api/v1', zoningAnalyzeRouter);
+
+initializeApartmentLocatorIntegration({
+  baseUrl: process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app',
+  timeout: 30000,
+  apiKey: process.env.APARTMENT_LOCATOR_API_KEY || process.env.API_KEY_APARTMENT_LOCATOR,
+});
+
+const apartmentSyncService = new ApartmentDataSyncService(pool);
+app.use('/api/v1/apartment-sync', createApartmentSyncRoutes(apartmentSyncService));
+
+const microsoftConfig = {
+  clientId: process.env.MICROSOFT_CLIENT_ID || '',
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+  tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
+  redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
+  scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
+};
+app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
+
+app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
+app.use('/api/v1/gmail', requireAuth, gmailRouter);
+app.use('/api/v1/news', requireAuth, newsRouter);
+app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
+app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
+app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
+app.use('/api/v1', requireAuth, geographicContextRoutes);
+app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
+app.use('/api/v1/grid', requireAuth, gridRouter);
+app.use('/api/v1/modules', requireAuth, modulesRouter);
+app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
+app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
+app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
+app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+app.use('/api/v1/apartment-market', requireAuth, apartmentMarketRoutes);
+app.use('/api/v1/market-intel', requireAuth, marketIntelRoutes);
+app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
+app.use('/api/v1', requireAuth, propertyProxyRoutes);
+app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
+app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
+app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
+app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
+app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
+app.use('/api/v1/markets', marketIntelligenceRouter);
+app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
+app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
+app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
+app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+app.use('/api/v1', requireAuth, propertyBoundaryRouter);
+app.use('/api/v1', requireAuth, siteIntelligenceRouter);
+
+app.use('/api/training', requireAuth, createTrainingRoutes(pool));
+app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
+app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
+
+const activeUsers = new Map<string, any>();
+
+io.on('connection', (socket) => {
+  console.log(`WebSocket connected: ${socket.id}`);
+  
+  socket.on('user:join', (userData) => {
+    activeUsers.set(socket.id, {
+      ...userData,
+      socketId: socket.id,
+      connectedAt: new Date()
+    });
+    io.emit('users:update', Array.from(activeUsers.values()));
+  });
+  
+  socket.on('cursor:move', (data) => {
+    socket.broadcast.emit('cursor:update', {
+      socketId: socket.id,
+      ...data
+    });
+  });
+  
+  socket.on('property:select', (propertyId) => {
+    socket.broadcast.emit('property:selected', {
+      socketId: socket.id,
+      propertyId
+    });
+  });
+  
+  socket.on('disconnect', () => {
+    console.log(`WebSocket disconnected: ${socket.id}`);
+    activeUsers.delete(socket.id);
+    io.emit('users:update', Array.from(activeUsers.values()));
   });
 });
 
-// ============================================
-// PUBLIC ROUTES (No Auth, Limited Rate Limiting)
-// ============================================
+if (isProduction) {
+  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  console.log(`Serving static files from: ${frontendPath}`);
+  app.use(express.static(frontendPath));
+  app.get('*', (req, res, next) => {
+    if (!req.path.startsWith('/api/') && !req.path.startsWith('/health') && !req.path.startsWith('/socket.io')) {
+      const indexPath = path.join(frontendPath, 'index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.error('Error serving index.html:', err);
+          res.status(404).send('Frontend not found. Please ensure the build completed successfully.');
+        }
+      });
+    } else {
+      next();
+    }
+  });
+}
 
-// Health check routes (no rate limit)
-app.use('/', healthRoutes);
-app.use('/api/v1', inlineHealthRoutes);
-
-// Auth routes (strict rate limiting to prevent brute force)
-app.use('/api/v1/auth', authLimiter, inlineAuthRoutes);
-
-// ============================================
-// PROTECTED ROUTES (Auth Required + Rate Limited)
-// ============================================
-
-// Apply global API rate limiter to all /api/* routes
-app.use('/api/', apiLimiter);
-
-// Deal management routes
-app.use('/api/v1/deals', authenticateToken, inlineDealsRoutes);
-app.use('/api/v1/deals', authenticateToken, dealStateRoutes); // Deal state persistence
-
-// Data and task routes
-app.use('/api/v1/data', authenticateToken, inlineDataRoutes);
-app.use('/api/v1/tasks', authenticateToken, inlineTasksRoutes);
-app.use('/api/v1/inbox', authenticateToken, inlineInboxRoutes);
-
-// Third-party integrations (strict rate limiting)
-app.use('/api/v1/microsoft', strictLimiter, authenticateToken, createMicrosoftInlineRoutes({
-  clientId: secrets.external.microsoft.clientId || '',
-  clientSecret: secrets.external.microsoft.clientSecret || '',
-  tenantId: secrets.external.microsoft.tenantId || '',
-  redirectUri: secrets.external.microsoft.redirectUri || '',
-  scopes: ['Mail.Read', 'Mail.Send', 'Calendars.Read'],
-}));
-
-// AI-powered routes (heavy rate limiting - expensive operations)
-app.use('/api/v1/zoning', aiLimiter, authenticateToken, inlineZoningRoutes);
-
-// Property and type routes
-app.use('/api/v1/property-types', authenticateToken, propertyTypesRoutes);
-
-// Grid routes (Pipeline & Assets Owned)
-app.use('/api/v1/grid', authenticateToken, gridRoutes);
-
-// News Intelligence routes
-app.use('/api/v1/news', authenticateToken, inlineNewsRoutes);
-
-// Market Intelligence routes (optional auth)
-const marketIntelRoutes = createMarketIntelligenceRoutes(pool);
-app.use('/api/v1/markets', optionalAuth, marketIntelRoutes);
-
-// Error handling
-app.use(errorHandler);
-
-// 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    error: 'Not Found',
-    message: `Cannot ${req.method} ${req.path}`,
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    success: false,
+    error: err.message || 'Internal server error'
   });
 });
 
-// Start server
-const PORT = config.port || 3001;
-
-app.listen(PORT, () => {
-  console.log(`
-╔════════════════════════════════════════╗
-║      JEDI RE Backend Server            ║
-║                                        ║
-║  🚀 Status: Running                    ║
-║  🌐 Port: ${PORT}                        ║
-║  📦 Environment: ${config.nodeEnv}        ║
-║  🔗 Database: Connected                ║
-║                                        ║
-║  📍 API: http://localhost:${PORT}/api/v1  ║
-╚════════════════════════════════════════╝
-  `);
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
+  console.log('='.repeat(60));
+  console.log('🚀 JediRe Backend (Replit Edition)');
+  console.log('='.repeat(60));
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Server bound to 0.0.0.0:${PORT} (accessible externally)`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`API base: http://localhost:${PORT}/api/v1`);
+  console.log('='.repeat(60));
+  
+  try {
+    emailSyncScheduler.start(15);
+    console.log('Email sync scheduler started (every 15 minutes)');
+  } catch (error) {
+    console.error('Failed to start email sync scheduler:', error);
+  }
 });
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, closing server...');
+  console.log('SIGTERM received, shutting down gracefully...');
+  
+  try {
+    emailSyncScheduler.stop();
+    console.log('Email sync scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping email sync scheduler:', error);
+  }
+  
   await pool.end();
-  process.exit(0);
+  httpServer.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
 
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, closing server...');
-  await pool.end();
-  process.exit(0);
-});
-
-export default app;
+export { app, pool, io };
