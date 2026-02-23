@@ -1,4 +1,4 @@
-import type { Design3D } from '../types/financial.types';
+import { Design3D } from './Design3D';
 import { MarketIntelligence } from './MarketIntelligence';
 
 export interface FinancialInputs {
@@ -102,33 +102,56 @@ export class DesignToFinancialService {
    * Extract financial inputs from 3D design
    */
   async exportDesignData(design3D: Design3D): Promise<FinancialInputs> {
-    const assumptions = await this.getMarketAssumptions('default');
-
-    const unitMix = [
-      { type: 'studio', count: design3D.unitMix.studio, avgSF: 500, avgRent: 1200 },
-      { type: 'oneBed', count: design3D.unitMix.oneBed, avgSF: 700, avgRent: 1500 },
-      { type: 'twoBed', count: design3D.unitMix.twoBed, avgSF: 1000, avgRent: 2000 },
-      { type: 'threeBed', count: design3D.unitMix.threeBed, avgSF: 1300, avgRent: 2500 },
-    ].filter(u => u.count > 0);
-
+    const buildingData = design3D.getBuildingMetrics();
+    const unitMix = design3D.getUnitMix();
+    const location = design3D.getLocation();
+    
+    // Get market data
+    const marketData = await this.marketIntelligence.getMarketData(
+      location.market,
+      location.submarket
+    );
+    
+    // Get default assumptions based on market
+    const assumptions = await this.getMarketAssumptions(location.market);
+    
+    // Calculate unit mix with market rents
+    const enrichedUnitMix = unitMix.map(unit => ({
+      type: unit.type,
+      count: unit.count,
+      avgSF: unit.avgSF,
+      avgRent: marketData.rentsByType[unit.type] || marketData.avgRentPerSF * unit.avgSF
+    }));
+    
     return {
-      totalUnits: design3D.totalUnits,
-      totalSquareFeet: design3D.grossSF,
-      parkingSpaces: design3D.parkingSpaces,
-      stories: design3D.stories,
-      efficiency: design3D.efficiency || 0.85,
-      unitMix,
+      // Building Metrics
+      totalUnits: buildingData.totalUnits,
+      totalSquareFeet: buildingData.totalSF,
+      parkingSpaces: buildingData.parkingSpaces,
+      stories: buildingData.stories,
+      efficiency: buildingData.efficiency || 0.85,
+      
+      // Unit Mix
+      unitMix: enrichedUnitMix,
+      
+      // Development Costs (from market assumptions)
       hardCostPerSF: assumptions.hardCostPerSF,
       parkingCostPerSpace: assumptions.parkingCostPerSpace,
-      landCost: 0,
+      landCost: buildingData.landArea * assumptions.landCostPerSF,
       softCostPercent: assumptions.softCostPercent,
-      market: 'default',
-      submarket: '',
-      avgRentPerSF: 2.0,
-      occupancyRate: 0.95,
-      constructionMonths: this.estimateConstructionTime(design3D.stories, design3D.grossSF),
+      
+      // Market Data
+      market: location.market,
+      submarket: location.submarket,
+      avgRentPerSF: marketData.avgRentPerSF,
+      occupancyRate: marketData.occupancyRate,
+      
+      // Timing
+      constructionMonths: this.estimateConstructionTime(buildingData.stories, buildingData.totalSF),
       leaseUpMonths: 6,
-      sourceDesignId: design3D.id,
+      
+      // Source
+      sourceDesignId: design3D.getId(),
       importedAt: new Date()
     };
   }
@@ -207,18 +230,19 @@ export class DesignToFinancialService {
   /**
    * Compare design to financial targets
    */
-  async compareDesignToTargets(
+  compareDesignToTargets(
     design3D: Design3D, 
     targets: DesignComparison['target']
-  ): Promise<DesignComparison> {
-    const inputs = await this.exportDesignData(design3D);
+  ): DesignComparison {
+    const buildingData = design3D.getBuildingMetrics();
+    const inputs = this.exportDesignData(design3D);
     const proForma = this.calculateProForma(inputs);
     
     const current = {
-      units: design3D.totalUnits,
-      sf: design3D.grossSF,
-      parking: design3D.parkingSpaces,
-      efficiency: design3D.efficiency || 0.85,
+      units: buildingData.totalUnits,
+      sf: buildingData.totalSF,
+      parking: buildingData.parkingSpaces,
+      efficiency: buildingData.efficiency || 0.85,
       estimatedCost: proForma.totalDevelopmentCost,
       estimatedNOI: proForma.netOperatingIncome
     };

@@ -1,7 +1,6 @@
 modules = ["nodejs-20", "postgresql-16"]
 [agent]
 expertMode = true
-integrations = ["javascript_anthropic_ai_integrations:2.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -31,11 +30,7 @@ outputType = "webview"
 
 [userenv.shared]
 JWT_REFRESH_SECRET = "jedi-re-refresh-secret-2026-secure-token"
-PORT = "3000"
-
-[[ports]]
-localPort = 3000
-externalPort = 3002
+PORT = "4000"
 
 [[ports]]
 localPort = 4000

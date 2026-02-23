@@ -1,10 +1,9 @@
 /**
  * Exit Section - Dual-Mode (Acquisition & Performance)
  * Exit strategy planning and readiness tracking
- * With real property data intelligence from market metrics
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import {
@@ -29,10 +28,6 @@ import {
   BrokerRecommendation,
   ExitReadinessChecklistItem
 } from '../../../data/exitMockData';
-import { propertyMetricsService } from '@/services/propertyMetrics.service';
-import type { MarketSummary, NeighborhoodBenchmark, OwnerPortfolio, RentComp } from '@/services/propertyMetrics.service';
-import { propertyScoringService } from '@/services/propertyScoring.service';
-import type { CapRateEstimate } from '@/services/propertyScoring.service';
 
 interface ExitSectionProps {
   deal: Deal;
@@ -42,48 +37,13 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedScenario, setSelectedScenario] = useState<string>(isPipeline ? 'base-sale' : 'perf-base-sale');
 
-  const [marketSummary, setMarketSummary] = useState<MarketSummary | null>(null);
-  const [benchmarks, setBenchmarks] = useState<NeighborhoodBenchmark[]>([]);
-  const [topOwners, setTopOwners] = useState<OwnerPortfolio[]>([]);
-  const [rentComps, setRentComps] = useState<RentComp[]>([]);
-  const [capRates, setCapRates] = useState<CapRateEstimate[]>([]);
-  const [marketDataLoading, setMarketDataLoading] = useState(true);
-  const [marketDataError, setMarketDataError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchMarketData = async () => {
-      setMarketDataLoading(true);
-      setMarketDataError(null);
-      try {
-        const [summaryRes, benchmarksRes, ownersRes, compsRes, capRateRes] = await Promise.all([
-          propertyMetricsService.getMarketSummary(),
-          propertyMetricsService.getNeighborhoodBenchmarks(),
-          propertyMetricsService.getTopOwners(10),
-          propertyMetricsService.getRentComps(),
-          propertyScoringService.getCapRateEstimates().catch(() => []),
-        ]);
-        setMarketSummary(summaryRes);
-        setBenchmarks(benchmarksRes);
-        setTopOwners(ownersRes);
-        setRentComps(compsRes);
-        setCapRates(capRateRes);
-      } catch (err) {
-        setMarketDataError('Unable to load market benchmark data');
-      } finally {
-        setMarketDataLoading(false);
-      }
-    };
-    fetchMarketData();
-  }, []);
-
+  // Select data based on mode
   const stats = isPipeline ? acquisitionExitStats : performanceExitStats;
   const scenarios = isPipeline ? acquisitionExitScenarios : performanceExitScenarios;
   const timeline = isPipeline ? acquisitionExitTimeline : performanceExitTimeline;
   const valueProjections = isPipeline ? acquisitionValueProjections : performanceValueProjections;
   const readinessIndicators = isPipeline ? acquisitionMarketReadiness : performanceMarketReadiness;
   const readinessChecklist = isPipeline ? acquisitionExitReadiness : performanceExitReadiness;
-
-  const totalBenchmarkProperties = benchmarks.reduce((sum, b) => sum + b.propertyCount, 0);
 
   return (
     <div className="space-y-6 p-6">
@@ -104,33 +64,6 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
             </div>
           )}
         </div>
-      </div>
-
-      {/* ========== NEW: Market Comparable Benchmarks for Exit ========== */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-1">
-          📊 Market Comparable Benchmarks for Exit
-        </h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Real market data to ground exit pricing and buyer analysis
-        </p>
-
-        {marketDataLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
-            <span className="text-sm text-gray-500">Loading market benchmarks...</span>
-          </div>
-        ) : marketDataError ? (
-          <div className="p-4 bg-red-50 rounded-lg border border-red-200 text-sm text-red-700">
-            {marketDataError}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <ExitPricingBenchmarksCard benchmarks={benchmarks} totalProperties={totalBenchmarkProperties} />
-            <BuyerUniverseCard owners={topOwners} />
-            <RentCompExitSupportCard marketSummary={marketSummary} />
-          </div>
-        )}
       </div>
 
       {/* Quick Stats */}
@@ -182,220 +115,7 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
   );
 };
 
-// ==================== NEW REAL-DATA SUB-COMPONENTS ====================
-
-interface ExitPricingBenchmarksCardProps {
-  benchmarks: NeighborhoodBenchmark[];
-  totalProperties: number;
-}
-
-const ExitPricingBenchmarksCard: React.FC<ExitPricingBenchmarksCardProps> = ({ benchmarks, totalProperties }) => {
-  const fmt = (val: number | null) => {
-    if (val === null || val === undefined) return '—';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-  };
-
-  const allMedians = benchmarks.map(b => b.medianPerUnit).filter((v): v is number => v !== null);
-  const allAvgs = benchmarks.map(b => b.avgPerUnit).filter((v): v is number => v !== null);
-  const allMins = benchmarks.map(b => b.minPerUnit).filter((v): v is number => v !== null);
-  const allMaxes = benchmarks.map(b => b.maxPerUnit).filter((v): v is number => v !== null);
-
-  const overallMedian = allMedians.length > 0 ? allMedians.reduce((a, b) => a + b, 0) / allMedians.length : null;
-  const overallAvg = allAvgs.length > 0 ? allAvgs.reduce((a, b) => a + b, 0) / allAvgs.length : null;
-  const overallMin = allMins.length > 0 ? Math.min(...allMins) : null;
-  const overallMax = allMaxes.length > 0 ? Math.max(...allMaxes) : null;
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h4 className="font-bold text-gray-900 text-base">💰 Comparable $/Unit Pricing</h4>
-          <p className="text-xs text-gray-500 mt-1">Based on {totalProperties} Atlanta multifamily properties</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <div className="bg-blue-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-blue-600 font-medium mb-1">Median $/Unit</div>
-          <div className="text-lg font-bold text-blue-900">{fmt(overallMedian)}</div>
-        </div>
-        <div className="bg-green-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-green-600 font-medium mb-1">Avg $/Unit</div>
-          <div className="text-lg font-bold text-green-900">{fmt(overallAvg)}</div>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-gray-600 font-medium mb-1">Min $/Unit</div>
-          <div className="text-lg font-bold text-gray-900">{fmt(overallMin)}</div>
-        </div>
-        <div className="bg-orange-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-orange-600 font-medium mb-1">Max $/Unit</div>
-          <div className="text-lg font-bold text-orange-900">{fmt(overallMax)}</div>
-        </div>
-      </div>
-
-      {benchmarks.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b-2 border-gray-200">
-                <th className="text-left py-2 px-3 font-semibold text-gray-700">Neighborhood</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Median $/Unit</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Properties</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Units</th>
-              </tr>
-            </thead>
-            <tbody>
-              {benchmarks.map((b, idx) => (
-                <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 px-3 font-medium text-gray-900">{b.neighborhoodCode}</td>
-                  <td className="text-right py-2 px-3">{fmt(b.medianPerUnit)}</td>
-                  <td className="text-right py-2 px-3">{b.propertyCount}</td>
-                  <td className="text-right py-2 px-3">{b.totalUnits.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-};
-
-interface BuyerUniverseCardProps {
-  owners: OwnerPortfolio[];
-}
-
-const BuyerUniverseCard: React.FC<BuyerUniverseCardProps> = ({ owners }) => {
-  const fmtCurrency = (val: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h4 className="font-bold text-gray-900 text-base">🏢 Buyer Universe</h4>
-          <p className="text-xs text-gray-500 mt-1">Top multifamily owners as potential buyer pool</p>
-        </div>
-        <div className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-semibold rounded-full">
-          {owners.length} active multifamily owners identified in market
-        </div>
-      </div>
-
-      {owners.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b-2 border-gray-200">
-                <th className="text-left py-2 px-3 font-semibold text-gray-700">Owner</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Properties Owned</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Units</th>
-                <th className="text-right py-2 px-3 font-semibold text-gray-700">Total Portfolio Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {owners.map((owner, idx) => (
-                <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 px-3 font-medium text-gray-900">{owner.ownerName}</td>
-                  <td className="text-right py-2 px-3">{owner.propertyCount}</td>
-                  <td className="text-right py-2 px-3">{owner.totalUnits.toLocaleString()}</td>
-                  <td className="text-right py-2 px-3 text-green-700 font-semibold">
-                    {fmtCurrency(owner.totalAssessedValue)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="text-sm text-gray-500 py-4 text-center">No owner data available</div>
-      )}
-    </div>
-  );
-};
-
-interface RentCompExitSupportCardProps {
-  marketSummary: MarketSummary | null;
-}
-
-const RentCompExitSupportCard: React.FC<RentCompExitSupportCardProps> = ({ marketSummary }) => {
-  if (!marketSummary) {
-    return (
-      <div className="border border-gray-200 rounded-lg p-5">
-        <h4 className="font-bold text-gray-900 text-base mb-2">📋 Rent Comp Exit Support</h4>
-        <div className="text-sm text-gray-500 py-4 text-center">No market summary data available</div>
-      </div>
-    );
-  }
-
-  const { avgRentPerSf, avgOccupancy, avgUnitSize } = marketSummary;
-  const impliedNOIPerUnit = (avgRentPerSf * avgUnitSize * 12) * (avgOccupancy / 100);
-  const capRates = [4.5, 5.0, 5.5, 6.0];
-
-  const fmtCurrency = (val: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-
-  return (
-    <div className="border border-gray-200 rounded-lg p-5">
-      <h4 className="font-bold text-gray-900 text-base mb-1">📋 Rent Comp Exit Support</h4>
-      <p className="text-xs text-gray-500 mb-4">Implied per-unit value from market rent data</p>
-
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <div className="bg-indigo-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-indigo-600 font-medium mb-1">Avg Rent/SF</div>
-          <div className="text-lg font-bold text-indigo-900">${avgRentPerSf.toFixed(2)}</div>
-        </div>
-        <div className="bg-teal-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-teal-600 font-medium mb-1">Avg Occupancy</div>
-          <div className="text-lg font-bold text-teal-900">{avgOccupancy.toFixed(1)}%</div>
-        </div>
-        <div className="bg-amber-50 rounded-lg p-3 text-center">
-          <div className="text-xs text-amber-600 font-medium mb-1">Avg Unit Size</div>
-          <div className="text-lg font-bold text-amber-900">{avgUnitSize.toFixed(0)} SF</div>
-        </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="text-sm text-gray-700">
-          <span className="font-semibold">Implied NOI/Unit:</span>{' '}
-          <span className="text-green-700 font-bold">{fmtCurrency(impliedNOIPerUnit)}</span>
-          <span className="text-xs text-gray-500 ml-2">
-            (${avgRentPerSf.toFixed(2)} × {avgUnitSize.toFixed(0)} SF × 12 mo × {avgOccupancy.toFixed(1)}%)
-          </span>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="text-left py-2 px-3 font-semibold text-gray-700">Cap Rate</th>
-              <th className="text-right py-2 px-3 font-semibold text-gray-700">Implied Value/Unit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capRates.map((rate) => {
-              const impliedValue = impliedNOIPerUnit / (rate / 100);
-              return (
-                <tr key={rate} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 px-3 font-medium text-gray-900">{rate.toFixed(1)}%</td>
-                  <td className="text-right py-2 px-3 text-green-700 font-semibold">{fmtCurrency(impliedValue)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-        <div className="text-xs text-blue-900">
-          💡 <span className="font-semibold">Note:</span> Implied values are proxies based on average market rent comps and do not account for property-specific expenses, capital reserves, or management fees.
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ==================== EXISTING SUB-COMPONENTS ====================
+// ==================== SUB-COMPONENTS ====================
 
 interface QuickStatsGridProps {
   stats: ExitQuickStat[];

@@ -77,7 +77,9 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   loadPreviewStats: async (geometry) => {
     try {
       const response = await api.post('/trade-areas/preview-stats', { geometry });
-      set({ previewStats: response.data.data });
+      // Handle different response formats
+      const stats = response.data?.data || response.data;
+      set({ previewStats: stats });
     } catch (error) {
       console.error('Error loading preview stats:', error);
       set({ previewStats: null });
@@ -107,7 +109,8 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       method_params,
     });
     
-    const tradeArea = response.data.data;
+    // Handle different response formats
+    const tradeArea = response.data?.data || response.data;
     set({ activeTradeArea: tradeArea });
     
     return tradeArea;
@@ -116,11 +119,12 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   loadTradeAreaForDeal: async (dealId) => {
     try {
       const response = await api.get(`/deals/${dealId}/geographic-context`);
-      const context = response.data.data;
+      // Handle different response formats
+      const context = response.data?.data || response.data;
       
       set({
-        activeTradeArea: context.trade_area || null,
-        activeScope: context.active_scope,
+        activeTradeArea: context?.trade_area || null,
+        activeScope: context?.active_scope || 'submarket',
       });
     } catch (error) {
       console.error('Error loading trade area for deal:', error);
@@ -141,7 +145,13 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       console.log('[TradeArea] Generating radius circle:', { lat, lng, miles });
       const response = await api.post('/trade-areas/radius', { lat, lng, miles });
       console.log('[TradeArea] Radius circle response:', response.data);
-      const geometry = response.data.data.geometry;
+      
+      // Handle different response formats
+      const geometry = response.data?.data?.geometry || response.data?.geometry;
+      if (!geometry) {
+        throw new Error('No geometry in response');
+      }
+      
       set({ draftGeometry: geometry });
       console.log('[TradeArea] Draft geometry updated:', geometry);
       
@@ -163,12 +173,19 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
         minutes, 
         profile 
       });
-      const geometry = response.data.geometry;
+      
+      // Handle different response formats
+      const geometry = response.data?.data?.geometry || response.data?.geometry;
+      if (!geometry) {
+        throw new Error('No geometry in response');
+      }
+      
       set({ draftGeometry: geometry });
       
       // Update preview stats if available, otherwise load them
-      if (response.data.stats) {
-        set({ previewStats: response.data.stats });
+      const stats = response.data?.data?.stats || response.data?.stats;
+      if (stats) {
+        set({ previewStats: stats });
       } else {
         await get().loadPreviewStats(geometry);
       }
@@ -189,12 +206,19 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
         hint_miles: hintMiles 
       });
       console.log('[TradeArea] AI boundary response:', response.data);
-      const geometry = response.data.geometry;
+      
+      // Handle different response formats
+      const geometry = response.data?.data?.geometry || response.data?.geometry;
+      if (!geometry) {
+        throw new Error('No geometry in response');
+      }
+      
       set({ draftGeometry: geometry });
       
       // Update preview stats if available, otherwise load them
-      if (response.data.stats) {
-        set({ previewStats: response.data.stats });
+      const stats = response.data?.data?.stats || response.data?.stats;
+      if (stats) {
+        set({ previewStats: stats });
       } else {
         await get().loadPreviewStats(geometry);
       }

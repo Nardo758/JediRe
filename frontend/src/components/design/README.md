@@ -1,462 +1,298 @@
-# 3D Building Design Component
-
-**Status:** ✅ Production Ready (Phase 1 Complete)  
-**AI Integration:** 🔄 Hooks Ready for Phase 2
-
----
+# Comprehensive Design Dashboard Documentation
 
 ## Overview
 
-The `Building3DEditor` is a fully-featured 3D building design component built with Three.js and React Three Fiber. It provides an interactive WebGL-based viewport for designing multifamily real estate projects with real-time metrics calculation.
+The Design Dashboard is a production-ready workspace that combines 2D mapping, 3D building design, competition analysis, traffic research, and market intelligence into a unified interface.
 
-## Features
+## Architecture
 
-### Phase 1 (Complete) ✅
-- ✅ **WebGL 3D Viewport** - Hardware-accelerated rendering
-- ✅ **Orbital Camera Controls** - Rotate, zoom, pan
-- ✅ **Interactive Building Editing** - Click to select, hover highlights
-- ✅ **Real-time Metrics** - Unit count, SF, parking, height, coverage, FAR
-- ✅ **Parcel Boundary Visualization** - Extruded polygon mesh
-- ✅ **Zoning Envelope** - Wireframe buildable volume
-- ✅ **Context Buildings** - Placeholder boxes for nearby structures
-- ✅ **Grid Floor Reference** - Configurable grid overlay
-- ✅ **Undo/Redo** - Full history management (50 snapshots)
-- ✅ **Keyboard Shortcuts** - Ctrl+Z, Delete, G, M
-- ✅ **State Persistence** - Zustand with localStorage
-- ✅ **AI Integration Hooks** - Ready for Phase 2 Qwen API
+### Core Components
 
-### Phase 2 (Coming Soon) 🔄
-- 🔄 AI Image-to-3D terrain generation
-- 🔄 AI-powered design generation from prompts
-- 🔄 Intelligent unit mix optimization
-- 🔄 Multiple design alternatives
+1. **Enhanced Design3DPage** (`Design3DPage.enhanced.tsx`)
+   - Main dashboard container
+   - Manages layout state and data flow
+   - Handles saving and navigation
 
----
+2. **State Management** (`DesignDashboardStore.ts`)
+   - Zustand store with persistence
+   - Centralized state for all dashboard features
+   - LocalStorage integration for data persistence
 
-## Installation
+### Layout Components
 
-The component is already integrated into the JEDI RE frontend. Dependencies:
+1. **CollapsiblePanel** - Animated sidebars with toggle controls
+2. **BottomPanel** - Tabbed bottom drawer for data tables
+3. **MapModeSelector** - Switch between 2D, 3D, Satellite, and Split views
+4. **MapLayerControls** - Toggle map layers visibility
 
-```json
-{
-  "three": "^0.160.0",
-  "@react-three/fiber": "^8.15.0",
-  "@react-three/drei": "^9.88.0",
-  "@types/three": "^0.160.0",
-  "zustand": "^4.4.7"
-}
-```
+### Feature Panels
 
-All dependencies are installed via:
-```bash
-npm install
-```
+#### Left Sidebar (4 Panels)
 
----
+1. **SubjectPropertyPanel**
+   - Draw/edit property boundaries
+   - Edit parcel details (APN, zoning, acres)
+   - Configure zoning requirements (height, FAR, setbacks)
+   - Calculate site statistics
 
-## Quick Start
+2. **CompetitionPanel**
+   - Add/remove competing properties
+   - Filter by units, distance, occupancy
+   - Toggle visibility on map
+   - View summary statistics
+   - Import from CoStar/Apartments.com (placeholder)
 
-### Basic Usage
+3. **TrafficPanel**
+   - Add traffic generators (employers, retail, transit)
+   - Calculate traffic scores
+   - Toggle heat map visualization
+   - Analyze by generator type
+   - Generate detailed reports
 
-```tsx
-import { Building3DEditor } from '@/components/design/Building3DEditor';
+4. **ResearchPanel**
+   - Search permits, market data, news
+   - Categorized tabs (permit, market, news, demographic)
+   - Quick search suggestions
+   - Save and manage research items
+   - External data source links
 
-function DealDesignPage() {
-  return (
-    <div className="w-full h-screen">
-      <Building3DEditor
-        dealId="deal-123"
-        onMetricsChange={(metrics) => console.log(metrics)}
-        onSave={() => console.log('Design saved')}
-      />
-    </div>
-  );
-}
-```
+#### Right Sidebar
 
-### With Custom Parcel Data
+1. **3D Design Controls**
+   - Unit mix configuration
+   - Building height slider
+   - Parking spaces and type
+   - Real-time metrics display
 
-```tsx
-import { Building3DEditor } from '@/components/design/Building3DEditor';
-import { useDesign3DStore } from '@/stores/design/design3d.store';
-import { useEffect } from 'react';
+2. **FinancialSummaryPanel**
+   - Automatic financial calculations
+   - Construction cost estimates
+   - Revenue and NOI projections
+   - Return on cost analysis
+   - Per-unit metrics
+   - Send to financial model integration
 
-function DealDesignPage({ parcelData }) {
-  const setParcelBoundary = useDesign3DStore((state) => state.setParcelBoundary);
-  
-  useEffect(() => {
-    setParcelBoundary({
-      id: parcelData.id,
-      coordinates: parcelData.coordinates,
-      area: parcelData.area,
-      extrusionHeight: 2,
-      color: '#10b981',
-      opacity: 0.3,
-    });
-  }, [parcelData]);
-  
-  return <Building3DEditor dealId={parcelData.dealId} />;
-}
-```
+#### Bottom Panel (3 Tables)
 
-### Using the Hook Directly
+1. **CompetitionTable**
+   - Sortable property data
+   - Average calculations
+   - Action buttons (visibility, locate)
 
-```tsx
-import { useDesign3D, useBuildingGenerator } from '@/hooks/design/useDesign3D';
+2. **TrafficDataTable**
+   - Generator details with icons
+   - Impact visualization
+   - Score-based sorting
 
-function CustomDesignTool() {
-  const { state, actions } = useDesign3D();
-  const { generateSimpleBuilding } = useBuildingGenerator();
-  
-  const handleGenerate = () => {
-    if (state.parcelBoundary) {
-      generateSimpleBuilding(state.parcelBoundary, 200); // 200 units
-    }
-  };
-  
-  return (
-    <div>
-      <h2>Units: {state.metrics.unitCount}</h2>
-      <h2>Total SF: {state.metrics.totalSF.toLocaleString()}</h2>
-      <button onClick={handleGenerate}>Generate Building</button>
-      <button onClick={actions.undo} disabled={!actions.canUndo}>
-        Undo
-      </button>
-    </div>
-  );
-}
-```
+3. **MarketTrendsTable**
+   - Key market metrics
+   - Trend indicators
+   - Category grouping
+   - Data source attribution
 
----
+### Map Integration
 
-## API Reference
+1. **MapView Component**
+   - Mapbox GL JS integration
+   - Layer management
+   - Property boundary drawing
+   - Marker popups
+   - Style switching
 
-### Component Props
+2. **Layer System**
+   - Subject Property
+   - Zoning Envelope
+   - Competition markers
+   - Traffic heat map
+   - POI layer
+   - Transit layer
+   - Demographics layer
 
+## Usage
+
+### Basic Setup
+
+1. Replace the existing Design3DPage import:
 ```typescript
-interface Building3DEditorProps {
-  dealId?: string;                          // Optional deal identifier
-  onMetricsChange?: (metrics: BuildingMetrics) => void; // Metrics callback
-  onSave?: () => void;                      // Save callback
-}
+// In your routes file
+import { Design3DPageEnhanced as Design3DPage } from './pages/Design3DPage.enhanced';
 ```
 
-### Hook: useDesign3D()
-
-```typescript
-const { state, actions, hasUnsavedChanges } = useDesign3D();
-
-// State Access
-state.buildingSections    // BuildingSection[]
-state.metrics             // BuildingMetrics
-state.parcelBoundary      // ParcelBoundary | null
-state.zoningEnvelope      // ZoningEnvelope | null
-state.selectedSectionId   // string | null
-state.editMode            // 'view' | 'edit' | 'measure' | 'section'
-
-// Actions
-actions.addBuildingSection(section)
-actions.updateBuildingSection(id, updates)
-actions.removeBuildingSection(id)
-actions.selectSection(id)
-actions.undo()
-actions.redo()
-actions.recalculateMetrics()
-actions.toggleGrid()
-actions.toggleMeasurements()
+2. Set Mapbox token in environment:
+```env
+VITE_MAPBOX_TOKEN=your_mapbox_token_here
 ```
 
-### Hook: useBuildingGenerator()
+### Key Features
 
-```typescript
-const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
+#### Map Modes
+- **2D Planning**: Traditional map for property planning
+- **3D Design**: Three-dimensional building editor
+- **Satellite**: Aerial imagery view
+- **Split View**: Side-by-side 2D and 3D
 
-// Generate simple rectangular building
-const section = generateSimpleBuilding(parcelBoundary, targetUnits);
+#### Data Persistence
+- Subject property boundaries
+- Competition properties
+- Traffic generators
+- Layer visibility preferences
 
-// Generate from unit mix
-const section = generateFromUnitMix(
-  parcelBoundary,
-  { studio: 15, '1BR': 45, '2BR': 30, '3BR': 10 },
-  287 // total units
-);
-```
+#### Real-time Sync
+- Metrics update automatically
+- 2D/3D views stay synchronized
+- Financial calculations update instantly
 
-### Hook: useAIDesignGeneration() (Phase 2 Ready)
+### Keyboard Shortcuts
+- `G` - Toggle grid
+- `M` - Toggle measurements
+- `Ctrl+Z` - Undo
+- `Ctrl+Shift+Z` - Redo
+- `Esc` - Cancel drawing
 
-```typescript
-const { generateDesign, loading, error } = useAIDesignGeneration();
+## API Integration Points
 
-// Generate design from natural language prompt
-const response = await generateDesign({
-  prompt: 'Design a 280-unit building with modern amenities',
-  constraints: {
-    unitCount: 280,
-    maxHeight: 120,
-    minEfficiency: 82,
-    amenities: ['coworking', 'gym', 'rooftop deck'],
-  },
-  parcelBoundary,
-  zoningEnvelope,
-});
-```
+### Current Integrations
+- Deal data loading
+- Design saving/loading
+- Metrics calculation
 
----
+### Future Integrations
+1. **Property Data**
+   - County assessor API
+   - Zoning database
+   - Parcel geometry services
 
-## Keyboard Shortcuts
+2. **Competition Data**
+   - CoStar API
+   - Apartments.com scraping
+   - Rent comparison services
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Z` / `Cmd+Z` | Undo |
-| `Ctrl+Shift+Z` / `Cmd+Shift+Z` | Redo |
-| `Delete` / `Backspace` | Delete selected section |
-| `G` | Toggle grid |
-| `M` | Toggle measurements |
+3. **Traffic Data**
+   - Google Places API
+   - Transit agency APIs
+   - Employment databases
 
----
+4. **Research**
+   - Permit databases
+   - News aggregation
+   - Census/demographic APIs
 
-## State Management
+## Performance Optimizations
 
-The component uses **Zustand** for state management with persistence:
+1. **Lazy Loading**
+   - Panels load on demand
+   - Tables virtualized for large datasets
 
-```typescript
-// Direct store access (advanced)
-import { useDesign3DStore } from '@/stores/design/design3d.store';
+2. **Memoization**
+   - Heavy calculations cached
+   - React.memo on expensive components
 
-// Select specific state (optimized re-renders)
-const metrics = useDesign3DStore((state) => state.metrics);
-const buildingSections = useDesign3DStore((state) => state.buildingSections);
+3. **Debouncing**
+   - Map updates debounced
+   - Search queries throttled
 
-// Selectors (pre-defined)
-import { selectBuildingSections, selectMetrics } from '@/stores/design/design3d.store';
-const sections = useDesign3DStore(selectBuildingSections);
-```
+## Responsive Design
 
-### Persistence
+- Minimum screen width: 1280px
+- Collapsible panels for space management
+- Touch-friendly controls for tablets
+- Optimized for desktop power users
 
-State is automatically persisted to `localStorage` under key `design3d-storage`. Persisted data includes:
-- Parcel boundary
-- Zoning envelope
-- Building sections
-- Metrics
-- View settings
+## Future Enhancements
 
----
+1. **AI Integration**
+   - Qwen API for design generation
+   - Image-to-3D terrain modeling
+   - Natural language property search
 
-## Type Definitions
+2. **Advanced Analytics**
+   - Market prediction models
+   - Competition scoring algorithms
+   - Traffic impact calculations
 
-All types are defined in `src/types/design/design3d.types.ts`:
+3. **Collaboration**
+   - Multi-user editing
+   - Comment threads
+   - Version control
 
-### Key Types
-
-```typescript
-// Building Section
-interface BuildingSection {
-  id: string;
-  name: string;
-  geometry: {
-    footprint: Polygon2D;
-    height: number;
-    floors: number;
-  };
-  position: Point3D;
-  selected: boolean;
-  hovered: boolean;
-  visible: boolean;
-}
-
-// Building Metrics
-interface BuildingMetrics {
-  unitCount: number;
-  totalSF: number;
-  residentialSF: number;
-  amenitySF: number;
-  parkingSpaces: number;
-  height: { feet: number; stories: number };
-  coverage: { percentage: number; buildableArea: number; usedArea: number };
-  efficiency: number;
-  far: number;
-}
-
-// AI Integration Types (Phase 2)
-interface AIDesignGenerationRequest {
-  prompt: string;
-  constraints: { /* ... */ };
-  parcelBoundary: ParcelBoundary;
-  zoningEnvelope: ZoningEnvelope;
-}
-
-interface AIDesignGenerationResponse {
-  buildingSections: BuildingSection[];
-  metrics: BuildingMetrics;
-  unitLayouts: Unit[];
-  reasoning: string;
-  alternatives?: Array<{ /* ... */ }>;
-}
-```
-
----
-
-## Examples
-
-### Example 1: Load Existing Design
-
-```tsx
-import { useEffect } from 'react';
-import { Building3DEditor } from '@/components/design/Building3DEditor';
-import { useDesign3DStore } from '@/stores/design/design3d.store';
-
-function LoadDesignExample({ designData }) {
-  const loadDesign = useDesign3DStore((state) => state.loadDesign);
-  
-  useEffect(() => {
-    loadDesign(designData);
-  }, [designData]);
-  
-  return <Building3DEditor />;
-}
-```
-
-### Example 2: Export Design State
-
-```tsx
-import { useDesign3DStore } from '@/stores/design/design3d.store';
-
-function ExportButton() {
-  const exportState = useDesign3DStore((state) => state.exportState);
-  
-  const handleExport = () => {
-    const state = exportState();
-    const json = JSON.stringify(state, null, 2);
-    
-    // Download as JSON file
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'design-export.json';
-    a.click();
-  };
-  
-  return <button onClick={handleExport}>Export Design</button>;
-}
-```
-
-### Example 3: Custom Metrics Display
-
-```tsx
-import { useDesign3D } from '@/hooks/design/useDesign3D';
-
-function CustomMetricsPanel() {
-  const { state } = useDesign3D();
-  const { metrics } = state;
-  
-  return (
-    <div className="metrics-panel">
-      <h3>Project Metrics</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <MetricCard label="Units" value={metrics.unitCount} />
-        <MetricCard label="SF" value={metrics.totalSF.toLocaleString()} />
-        <MetricCard label="Parking" value={`${metrics.parkingSpaces} spaces`} />
-        <MetricCard label="Height" value={`${metrics.height.stories} stories`} />
-        <MetricCard label="FAR" value={metrics.far.toFixed(2)} />
-        <MetricCard label="Efficiency" value={`${metrics.efficiency}%`} />
-      </div>
-    </div>
-  );
-}
-```
-
----
-
-## Performance Tips
-
-1. **Use Selectors** - Avoid subscribing to entire state:
-   ```tsx
-   // ❌ Bad - re-renders on any state change
-   const state = useDesign3DStore();
-   
-   // ✅ Good - re-renders only when metrics change
-   const metrics = useDesign3DStore((state) => state.metrics);
-   ```
-
-2. **Memoize Callbacks** - Use `useCallback` for event handlers:
-   ```tsx
-   const handleSelect = useCallback((id: string) => {
-     actions.selectSection(id);
-   }, [actions]);
-   ```
-
-3. **Lazy Load 3D Models** - Use `<Suspense>` for heavy assets:
-   ```tsx
-   <Suspense fallback={<LoadingFallback />}>
-     <Building3DEditor />
-   </Suspense>
-   ```
-
-4. **Limit History** - History is automatically limited to 50 snapshots
-
----
+4. **Export Options**
+   - PDF reports
+   - Excel data export
+   - CAD file generation
 
 ## Troubleshooting
 
-### Issue: "Cannot read property 'map' of undefined"
-**Solution:** Ensure parcel boundary is set before adding building sections.
+### Common Issues
 
-### Issue: Metrics not updating
-**Solution:** Call `actions.recalculateMetrics()` manually or wait for automatic calculation after state change.
+1. **Map not loading**
+   - Check Mapbox token
+   - Verify network connectivity
+   - Clear browser cache
 
-### Issue: Performance degradation with many sections
-**Solution:** Use LOD (Level of Detail) for distant buildings, or limit visible sections.
+2. **3D Performance**
+   - Update graphics drivers
+   - Enable hardware acceleration
+   - Reduce quality settings
 
-### Issue: AI hooks not working
-**Solution:** AI integration is Phase 2. Current hooks use algorithmic fallbacks. See `AI_INTEGRATION_GUIDE.md`.
+3. **Data not persisting**
+   - Check localStorage limits
+   - Verify browser settings
+   - Clear corrupted data
 
----
+### Debug Mode
 
-## Testing
+Add `?debug=true` to URL for:
+- Performance metrics
+- State inspection
+- Console logging
+- Layer boundaries
 
-### Unit Tests
+## Component Tree
 
-```bash
-npm test src/hooks/design/
-npm test src/stores/design/
+```
+Design3DPage (Enhanced)
+├── Header
+│   ├── Navigation
+│   ├── Save Controls
+│   └── Settings
+├── Main Content
+│   ├── Left Sidebar (CollapsiblePanel)
+│   │   ├── Panel Tabs
+│   │   └── Active Panel Content
+│   ├── Center View
+│   │   ├── MapView (2D/Satellite)
+│   │   ├── Building3DEditor (3D)
+│   │   ├── MapLayerControls
+│   │   └── MapModeSelector
+│   └── Right Sidebar (CollapsiblePanel)
+│       ├── 3D Design Controls
+│       ├── Real-time Metrics
+│       └── FinancialSummaryPanel
+└── Bottom Panel
+    ├── Tab Navigation
+    └── Active Table Component
 ```
 
-### Integration Tests
+## Best Practices
 
-```bash
-npm run test:e2e -- 3d-editor
-```
+1. **State Management**
+   - Use store actions for all updates
+   - Keep component state minimal
+   - Leverage persistence wisely
 
----
+2. **Performance**
+   - Virtualize long lists
+   - Debounce expensive operations
+   - Use React.memo strategically
 
-## Contributing
+3. **User Experience**
+   - Provide loading states
+   - Show helpful empty states
+   - Add keyboard shortcuts
+   - Include tooltips
 
-When adding features:
-
-1. Update TypeScript types in `design3d.types.ts`
-2. Add actions to `design3d.store.ts`
-3. Create custom hooks in `useDesign3D.ts`
-4. Update this README
-5. Add tests
-
----
-
-## Resources
-
-- **AI Integration Guide:** `/frontend/AI_INTEGRATION_GUIDE.md`
-- **Type Definitions:** `/src/types/design/design3d.types.ts`
-- **Three.js Docs:** https://threejs.org/docs
-- **React Three Fiber:** https://docs.pmnd.rs/react-three-fiber
-- **Zustand Docs:** https://zustand-demo.pmnd.rs/
-
----
-
-## License
-
-Proprietary - JEDI RE
-
----
-
-**🚀 Ready to build!**
+4. **Code Quality**
+   - Type everything with TypeScript
+   - Extract reusable components
+   - Write unit tests for logic
+   - Document complex algorithms

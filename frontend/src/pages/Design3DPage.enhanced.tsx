@@ -33,16 +33,10 @@ import {
   Download
 } from 'lucide-react';
 
-interface Design3DPageEnhancedProps {
-  deal?: any;
-  onUpdate?: () => void;
-  onBack?: () => void;
-}
-
-export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBack }) => {
+export const Design3DPageEnhanced: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { selectedDeal: currentDeal, fetchDealById: loadDeal } = useDealStore();
+  const { currentDeal, loadDeal } = useDealStore();
   
   const {
     mapMode,
@@ -183,8 +177,8 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBa
         <div className="text-center">
           <div className="text-6xl mb-4">❌</div>
           <p className="text-gray-600 mb-4">Deal not found</p>
-          <Link to={dealId ? `/deals/${dealId}` : '/deals'} className="text-blue-600 hover:text-blue-700">
-            Back to Deal
+          <Link to="/deals" className="text-blue-600 hover:text-blue-700">
+            Back to Deals
           </Link>
         </div>
       </div>
@@ -205,8 +199,11 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBa
         return (
           <Building3DEditor
             dealId={dealId}
+            parcelGeometry={currentDeal.boundary}
             onMetricsChange={handleMetricsChange}
             onSave={handleSave}
+            fullScreen={true}
+            showMetricsPanel={false}
           />
         );
       case 'split':
@@ -218,8 +215,11 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBa
             <div className="w-1/2 h-full">
               <Building3DEditor
                 dealId={dealId}
+                parcelGeometry={currentDeal.boundary}
                 onMetricsChange={handleMetricsChange}
                 onSave={handleSave}
+                fullScreen={true}
+                showMetricsPanel={false}
               />
             </div>
           </div>
@@ -299,16 +299,12 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBa
                     handleSave();
                   }
                 }
-                if (onBack) {
-                  onBack();
-                } else {
-                  navigate(`/deals/${dealId}`);
-                }
+                navigate(`/deals`);
               }}
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
             >
               <ChevronLeft className="w-5 h-5" />
-              <span className="font-medium">Back to Deal</span>
+              <span className="font-medium">Back to Deals</span>
             </button>
             
             <div className="border-l border-gray-300 pl-4">
@@ -515,7 +511,7 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ onBa
               
               {/* Financial Summary */}
               <div className="flex-1 overflow-y-auto">
-                <FinancialSummaryPanel design3D={design3D!} />
+                <FinancialSummaryPanel />
               </div>
             </div>
           </CollapsiblePanel>

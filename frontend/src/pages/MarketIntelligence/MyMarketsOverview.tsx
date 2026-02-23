@@ -25,25 +25,11 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
   const loadOverview = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        navigate('/login', { replace: true });
-        return;
-      }
       const response = await fetch('/api/v1/markets/overview', {
         headers: {
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('auth_token');
-        navigate('/login', { replace: true });
-        return;
-      }
-      if (!response.ok) {
-        setOverview(null);
-        return;
-      }
       const data = await response.json();
       setOverview(data);
     } catch (error) {
@@ -195,7 +181,7 @@ const MyMarketsOverview: React.FC<MyMarketsOverviewProps> = () => {
         />
       )}
 
-      <style>{`
+      <style jsx>{`
         .my-markets-overview {
           min-height: 100vh;
           background: #f8fafc;
@@ -499,13 +485,13 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onViewMarket }) => {
             <span className="vital-label">Rent Growth:</span>
             <span className="vital-value positive">
               {market.vitals.rent_growth_yoy > 0 ? '+' : ''}
-              {Number(market.vitals.rent_growth_yoy || 0).toFixed(1)}% YoY
+              {market.vitals.rent_growth_yoy?.toFixed(1)}% YoY
             </span>
           </div>
           <div className="vital">
             <span className="vital-icon">📊</span>
             <span className="vital-label">Occupancy:</span>
-            <span className="vital-value">{Number(market.vitals.occupancy_rate || 0).toFixed(1)}%</span>
+            <span className="vital-value">{market.vitals.occupancy_rate?.toFixed(1)}%</span>
           </div>
           {market.vitals.jedi_score && (
             <div className="vital jedi-score">
@@ -525,7 +511,7 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, onViewMarket }) => {
         </button>
       </div>
 
-      <style>{`
+      <style jsx>{`
         .market-card-content {
           height: 100%;
           display: flex;
@@ -728,7 +714,7 @@ const AddMarketModal: React.FC<AddMarketModalProps> = ({ onClose, onAdded }) => 
         <button onClick={onClose}>Close</button>
       </div>
 
-      <style>{`
+      <style jsx>{`
         .modal-overlay {
           position: fixed;
           top: 0;

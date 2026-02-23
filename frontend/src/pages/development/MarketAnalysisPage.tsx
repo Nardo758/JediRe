@@ -43,7 +43,7 @@ export const MarketAnalysisPage: React.FC = () => {
     const insights: MarketInsights = {
       unitMix: currentUnitMix,
       amenities: selectedAmenities,
-      targetDemographic: demographicData?.primaryProfile?.ageRange || 'young-professionals',
+      targetDemographic: demographicData?.primaryProfile || 'young-professionals',
     };
     
     console.log('Applying insights to 3D design:', insights);
@@ -165,7 +165,7 @@ export const MarketAnalysisPage: React.FC = () => {
         {/* Amenity Analysis Table */}
         <div className="mb-6">
           <AmenityAnalysisTable
-            amenities={amenityData || []}
+            amenities={amenityData?.amenities || []}
             selectedAmenities={selectedAmenities}
             onToggleAmenity={handleToggleAmenity}
           />

@@ -4,10 +4,9 @@
  * - Performance Mode: New competition tracking, market saturation alerts
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import { propertyScoringService } from '../../../services/propertyScoring.service';
 import {
   acquisitionPipelineProjects,
   acquisitionSupplyStats,
@@ -33,19 +32,11 @@ interface SupplySectionProps {
 export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   
+  // Select data based on mode
   const projects = isPipeline ? acquisitionPipelineProjects : performancePipelineProjects;
   const stats = isPipeline ? acquisitionSupplyStats : performanceSupplyStats;
   
-  const [supplyIntel, setSupplyIntel] = useState<any>(null);
-  const [intelLoading, setIntelLoading] = useState(true);
-
-  useEffect(() => {
-    propertyScoringService.getSupplyIntelligence()
-      .then(setSupplyIntel)
-      .catch(() => {})
-      .finally(() => setIntelLoading(false));
-  }, []);
-
+  // Filter state
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [distanceFilter, setDistanceFilter] = useState<number>(5); // miles
   const [showCompetitiveOnly, setShowCompetitiveOnly] = useState<boolean>(false);
@@ -93,74 +84,6 @@ export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
 
       {/* Quick Stats */}
       <QuickStatsGrid stats={stats} mode={mode} />
-
-      {intelLoading && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-48 mb-4"></div>
-          <div className="grid grid-cols-4 gap-4">
-            {[1,2,3,4].map(i => <div key={i} className="h-16 bg-gray-100 rounded-lg"></div>)}
-          </div>
-        </div>
-      )}
-
-      {supplyIntel && !intelLoading && (
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-            Market Supply Intelligence (Live Data)
-          </h3>
-          <div className="grid grid-cols-4 gap-4 mb-4">
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-gray-900">{supplyIntel.summary.totalProperties.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">Properties Tracked</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-gray-900">{supplyIntel.summary.totalUnits.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">Total Units</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-blue-700">{supplyIntel.summary.newSupplyUnits.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">New Supply (2015+)</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-2xl font-bold text-amber-600">{supplyIntel.summary.newSupplyPct}%</p>
-              <p className="text-xs text-gray-500">New Supply Share</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-semibold text-gray-700 mb-2 uppercase">Delivery by Vintage</p>
-              <div className="space-y-1">
-                {supplyIntel.deliveryPipeline.map((v: any) => (
-                  <div key={v.vintage} className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600 w-16">{v.vintage}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-3">
-                      <div
-                        className="bg-blue-500 h-3 rounded-full"
-                        style={{ width: `${Math.min(v.pctOfTotal, 100)}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-xs font-medium text-gray-700 w-20 text-right">{v.units.toLocaleString()} ({v.pctOfTotal}%)</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-700 mb-2 uppercase">Top Submarkets by Units</p>
-              <div className="space-y-1 max-h-36 overflow-y-auto">
-                {supplyIntel.submarketSaturation.slice(0, 8).map((s: any) => (
-                  <div key={s.neighborhood} className="flex justify-between text-xs">
-                    <span className="text-gray-600 truncate w-20">{s.neighborhood}</span>
-                    <span className="font-medium">{s.units.toLocaleString()} units</span>
-                    <span className="text-gray-500">{s.avgDensity || '-'} u/ac</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Supply Impact Calculator */}
       <SupplyImpactCard 

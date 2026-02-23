@@ -57,6 +57,8 @@ import leasingTrafficRoutes from './leasing-traffic.routes';
 import moduleLibrariesRoutes from './module-libraries.routes';
 import neighboringPropertiesRoutes from './neighboringProperties.routes';
 import qwenRoutes from './qwen.routes';
+import competitionRoutes from './competition.routes';
+import errorsRoutes from './errors.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -222,6 +224,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Qwen AI routes (Multimodal AI for development intelligence)
   app.use(`${API_PREFIX}/ai`, qwenRoutes);
+
+  // Competition Analysis routes (Development deal competitive analysis)
+  app.use(`${API_PREFIX}/deals`, competitionRoutes);
+
+  // Error Logging routes (Frontend error tracking and monitoring)
+  app.use(`${API_PREFIX}/errors`, errorsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
