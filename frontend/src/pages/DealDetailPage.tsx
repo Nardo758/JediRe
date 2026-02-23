@@ -97,16 +97,16 @@ const DealDetailPage: React.FC = () => {
       component: OverviewSection 
     },
     { 
-      id: 'context-tracker', 
-      label: 'Context Tracker', 
-      icon: <Compass size={16} />, 
-      component: ContextTrackerSection 
-    },
-    { 
       id: 'zoning', 
       label: 'Zoning & Entitlements', 
       icon: <Landmark size={16} />, 
       component: ZoningEntitlementsSection 
+    },
+    { 
+      id: 'context-tracker', 
+      label: 'Context Tracker', 
+      icon: <Compass size={16} />, 
+      component: ContextTrackerSection 
     },
   ];
 
