@@ -82,7 +82,11 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   });
 
   useEffect(() => {
-    if (resolvedDealId) fetchData();
+    if (resolvedDealId) {
+      fetchData();
+    } else {
+      setLoading(false);
+    }
   }, [resolvedDealId]);
 
   const fetchData = async () => {

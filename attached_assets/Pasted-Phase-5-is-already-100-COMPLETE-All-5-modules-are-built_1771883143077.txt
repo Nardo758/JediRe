@@ -1,0 +1,69 @@
+Phase 5 is already 100% COMPLETE! 🎉
+
+All 5 modules are built and pushed to GitHub (you just pulled them). Here's what you need to do to integrate them in Replit:
+
+
+🚀 Integration Steps (30 minutes)
+
+1. Run Database Migrations (5 min)
+
+In Replit shell, connect to your database and run:
+
+Bash
+
+
+# If you have a script to run migrations:
+npm run migrate
+
+# OR manually in psql:
+psql $DATABASE_URL -f backend/src/db/migrations/043_property_boundaries.sql
+psql $DATABASE_URL -f backend/src/db/migrations/044_site_intelligence.sql
+psql $DATABASE_URL -f backend/src/db/migrations/045_zoning_capacity.sql
+psql $DATABASE_URL -f backend/src/db/migrations/046_context_tracker.sql
+psql $DATABASE_URL -f backend/src/db/migrations/047_team_management.sql
+
+2. Install Dependencies (2 min)
+
+Bash
+
+
+npm install mapbox-gl @mapbox/mapbox-gl-draw @turf/turf
+
+3. Add Mapbox Token (1 min)
+
+Add to your Replit Secrets or .env:
+
+copy
+
+
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token_here
+
+Get free token: https://account.mapbox.com/
+
+4. Import Components (5 min)
+
+Find your deal detail page (probably app/deals/[id]/page.tsx or pages/deals/[id].tsx) and add:
+
+TypeScript
+
+
+import { PropertyBoundarySection } from '@/components/deals/PropertyBoundarySection';
+import { SiteIntelligenceSection } from '@/components/deals/SiteIntelligenceSection';
+import { ZoningCapacitySection } from '@/components/deals/ZoningCapacitySection';
+import { ContextTrackerSection } from '@/components/deals/ContextTrackerSection';
+import { TeamManagementSection } from '@/components/deals/TeamManagementSection';
+
+// Then in your component JSX:
+<PropertyBoundarySection dealId={dealId} />
+<SiteIntelligenceSection dealId={dealId} />
+<ZoningCapacitySection dealId={dealId} />
+<ContextTrackerSection dealId={dealId} />
+<TeamManagementSection dealId={dealId} />
+
+5. Test Each Module (15 min)
+
+• Property Boundary: Draw boundary, save, verify calculations
+• Site Intelligence: Fill categories, check scores
+• Zoning & Capacity: Enter zoning params, verify max units
+• Context Tracker: Add notes, contacts, risks
+• Team Management: Invite member, create task

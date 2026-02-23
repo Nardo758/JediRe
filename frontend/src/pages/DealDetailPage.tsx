@@ -469,7 +469,7 @@ const DealDetailPage: React.FC = () => {
           </aside>
 
           <main className="flex-1 overflow-y-auto p-6">
-            <ActiveComponent deal={deal} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
+            <ActiveComponent deal={deal} dealId={dealId} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
           </main>
         </div>
       </div>
