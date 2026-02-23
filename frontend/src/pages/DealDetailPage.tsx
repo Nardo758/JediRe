@@ -44,6 +44,7 @@ import { EnvironmentalESGSection } from '../components/deal/sections/Environment
 import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { PropertyBoundarySection } from '../components/deal/sections/PropertyBoundarySection';
+import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -227,6 +228,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Environmental & ESG', 
       icon: <Leaf size={16} />, 
       component: EnvironmentalESGSection 
+    },
+    { 
+      id: 'site-intelligence', 
+      label: 'Site Intelligence', 
+      icon: <Activity size={16} />, 
+      component: SiteIntelligenceSection 
     },
     { 
       id: 'files', 
