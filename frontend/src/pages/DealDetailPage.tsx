@@ -31,7 +31,6 @@ import { DueDiligencePage } from './development/DueDiligencePage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
-import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
 import { NotesSection } from '../components/deal/sections/NotesSection';
 
@@ -39,6 +38,7 @@ import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
 import { ZoningEntitlementsSection } from '../components/deal/sections/ZoningEntitlementsSection';
+import { StrategySection } from '../components/deal/sections/StrategySection';
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -98,16 +98,22 @@ const DealDetailPage: React.FC = () => {
       component: OverviewSection 
     },
     { 
-      id: 'deal-status', 
-      label: 'Deal Lifecycle', 
-      icon: <LayoutDashboard size={16} />, 
-      component: DealStatusSection 
+      id: 'notes', 
+      label: 'Notes', 
+      icon: <StickyNote size={16} />, 
+      component: NotesSection 
     },
     { 
       id: 'context-tracker', 
       label: 'Context Tracker', 
       icon: <Compass size={16} />, 
       component: ContextTrackerSection 
+    },
+    { 
+      id: 'zoning', 
+      label: 'Zoning & Entitlements', 
+      icon: <Landmark size={16} />, 
+      component: ZoningEntitlementsSection 
     },
   ];
 
@@ -154,6 +160,12 @@ const DealDetailPage: React.FC = () => {
       component: Design3DPageEnhanced 
     },
     { 
+      id: 'strategy', 
+      label: 'Strategy', 
+      icon: <Target size={16} />, 
+      component: StrategySection 
+    },
+    { 
       id: 'financial-model', 
       label: 'Financial Model', 
       icon: <Calculator size={16} />, 
@@ -182,16 +194,10 @@ const DealDetailPage: React.FC = () => {
       component: DueDiligencePage 
     },
     { 
-      id: 'zoning', 
-      label: 'Zoning & Entitlements', 
-      icon: <Landmark size={16} />, 
-      component: ZoningEntitlementsSection 
-    },
-    { 
-      id: 'documents', 
-      label: 'Documents', 
-      icon: <FileText size={16} />, 
-      component: DocumentsSection 
+      id: 'deal-status', 
+      label: 'Deal Lifecycle', 
+      icon: <LayoutDashboard size={16} />, 
+      component: DealStatusSection 
     },
     { 
       id: 'files', 
@@ -214,12 +220,6 @@ const DealDetailPage: React.FC = () => {
       label: 'Project Management', 
       icon: <Briefcase size={16} />, 
       component: ProjectManagementSection 
-    },
-    { 
-      id: 'notes', 
-      label: 'Notes', 
-      icon: <StickyNote size={16} />, 
-      component: NotesSection 
     },
   ];
 
