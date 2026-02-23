@@ -1,143 +1,148 @@
 -- Migration 048: Municipal Zoning Database
--- Stores municipalities, zoning districts, and property-zoning relationships
+-- Creates municipalities registry, upgrades zoning_districts with FK, adds property_zoning_cache
 
 -- 1. Municipalities Table
 CREATE TABLE IF NOT EXISTS municipalities (
-  id VARCHAR(100) PRIMARY KEY, -- e.g., "birmingham-al"
+  id VARCHAR(100) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   state CHAR(2) NOT NULL,
   county VARCHAR(255),
-  
-  -- API Information
+  population INTEGER,
   has_api BOOLEAN DEFAULT FALSE,
-  api_type VARCHAR(50), -- socrata, arcgis, custom, none
+  api_type VARCHAR(50),
   api_url TEXT,
-  api_key_required BOOLEAN DEFAULT FALSE,
-  api_token VARCHAR(255),
-  
-  -- Municode Information
+  api_dataset_id VARCHAR(255),
   municode_url TEXT,
   zoning_chapter_path TEXT,
-  
-  -- Data Quality
-  zoning_data_quality VARCHAR(50), -- excellent, good, fair, poor, none
-  last_scraped_at TIMESTAMP,
-  scraping_enabled BOOLEAN DEFAULT TRUE,
-  
-  -- Statistics
+  data_quality VARCHAR(50) DEFAULT 'none',
   total_zoning_districts INTEGER DEFAULT 0,
-  properties_cached INTEGER DEFAULT 0,
-  
-  -- Metadata
+  priority VARCHAR(10) DEFAULT 'MEDIUM',
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 2. Zoning Districts Table
-CREATE TABLE IF NOT EXISTS zoning_districts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  municipality_id VARCHAR(100) NOT NULL REFERENCES municipalities(id) ON DELETE CASCADE,
-  
-  -- District Identity
-  zoning_code VARCHAR(50) NOT NULL, -- e.g., "R-1", "C-2", "I-1"
-  district_name TEXT,
-  category VARCHAR(50), -- residential, commercial, industrial, mixed-use, special
-  
-  -- Density & FAR
-  max_density_per_acre DECIMAL(10, 2), -- units per acre
-  min_density_per_acre DECIMAL(10, 2),
-  max_far DECIMAL(10, 2), -- floor area ratio
-  
-  -- Height Restrictions
-  max_height_feet INTEGER,
-  max_stories INTEGER,
-  
-  -- Lot Requirements
-  min_lot_size_sqft INTEGER,
-  min_lot_width_ft INTEGER,
-  max_lot_coverage_percent DECIMAL(5, 2),
-  
-  -- Setback Requirements
-  setback_front_ft INTEGER,
-  setback_side_ft INTEGER,
-  setback_rear_ft INTEGER,
-  
-  -- Parking Requirements
-  min_parking_per_unit DECIMAL(10, 2),
-  parking_notes TEXT,
-  
-  -- Use Regulations
-  permitted_uses TEXT[], -- Array of allowed uses
-  conditional_uses TEXT[], -- Array of conditional uses
-  prohibited_uses TEXT[],
-  
-  -- Overlay Districts
-  overlay_districts TEXT[],
-  special_conditions JSONB,
-  
-  -- Data Source
-  source VARCHAR(50) NOT NULL, -- api, municode_scraped, manual
-  source_url TEXT,
-  last_updated_at TIMESTAMP DEFAULT NOW(),
-  verified_at TIMESTAMP,
-  verified_by VARCHAR(255),
-  
-  -- Metadata
-  created_at TIMESTAMP DEFAULT NOW(),
-  
-  -- Constraints
-  CONSTRAINT unique_municipality_zoning_code UNIQUE (municipality_id, zoning_code)
-);
+-- 2. Upgrade zoning_districts: add municipality_id FK, keep old columns as fallback
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'municipality_id') THEN
+    ALTER TABLE zoning_districts ADD COLUMN municipality_id VARCHAR(100);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'zoning_code') THEN
+    ALTER TABLE zoning_districts ADD COLUMN zoning_code VARCHAR(50);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'category') THEN
+    ALTER TABLE zoning_districts ADD COLUMN category VARCHAR(50);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'max_density_per_acre') THEN
+    ALTER TABLE zoning_districts ADD COLUMN max_density_per_acre DECIMAL(10,2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'max_height_feet') THEN
+    ALTER TABLE zoning_districts ADD COLUMN max_height_feet INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'setback_front_ft') THEN
+    ALTER TABLE zoning_districts ADD COLUMN setback_front_ft INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'setback_side_ft') THEN
+    ALTER TABLE zoning_districts ADD COLUMN setback_side_ft INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'setback_rear_ft') THEN
+    ALTER TABLE zoning_districts ADD COLUMN setback_rear_ft INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'min_parking_per_unit') THEN
+    ALTER TABLE zoning_districts ADD COLUMN min_parking_per_unit DECIMAL(10,2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'parking_notes') THEN
+    ALTER TABLE zoning_districts ADD COLUMN parking_notes TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'overlay_districts') THEN
+    ALTER TABLE zoning_districts ADD COLUMN overlay_districts TEXT[];
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'special_conditions') THEN
+    ALTER TABLE zoning_districts ADD COLUMN special_conditions JSONB;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'source') THEN
+    ALTER TABLE zoning_districts ADD COLUMN source VARCHAR(50) DEFAULT 'manual';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'max_lot_coverage_percent') THEN
+    ALTER TABLE zoning_districts ADD COLUMN max_lot_coverage_percent DECIMAL(5,2);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'min_lot_width_ft') THEN
+    ALTER TABLE zoning_districts ADD COLUMN min_lot_width_ft INTEGER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'zoning_districts' AND column_name = 'verified_at') THEN
+    ALTER TABLE zoning_districts ADD COLUMN verified_at TIMESTAMP;
+  END IF;
+END $$;
 
 -- 3. Property Zoning Cache Table
 CREATE TABLE IF NOT EXISTS property_zoning_cache (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  
-  -- Property Identification
   deal_id UUID REFERENCES deals(id) ON DELETE CASCADE,
   address TEXT NOT NULL,
   parcel_id VARCHAR(255),
-  
-  -- Location
   lat DECIMAL(10, 7),
   lng DECIMAL(10, 7),
   municipality_id VARCHAR(100) REFERENCES municipalities(id),
-  
-  -- Zoning
-  zoning_district_id UUID REFERENCES zoning_districts(id),
+  zoning_district_id UUID,
   zoning_code VARCHAR(50),
-  
-  -- Verification
   verified_at TIMESTAMP,
-  verified_by VARCHAR(255),
-  verification_method VARCHAR(100), -- api, manual, geocoded
-  
-  -- Notes
+  verification_method VARCHAR(100),
   notes TEXT,
-  
-  -- Metadata
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
-  
-  -- Constraints
   CONSTRAINT unique_deal_property_cache UNIQUE (deal_id)
 );
 
--- Indexes
-CREATE INDEX idx_municipalities_state ON municipalities(state);
-CREATE INDEX idx_municipalities_api_type ON municipalities(api_type);
-CREATE INDEX idx_municipalities_last_scraped ON municipalities(last_scraped_at);
+-- 4. Indexes
+CREATE INDEX IF NOT EXISTS idx_municipalities_state ON municipalities(state);
+CREATE INDEX IF NOT EXISTS idx_municipalities_api_type ON municipalities(api_type);
+CREATE INDEX IF NOT EXISTS idx_zoning_districts_municipality_id ON zoning_districts(municipality_id);
+CREATE INDEX IF NOT EXISTS idx_zoning_districts_zoning_code ON zoning_districts(zoning_code);
+CREATE INDEX IF NOT EXISTS idx_zoning_districts_category ON zoning_districts(category);
+CREATE INDEX IF NOT EXISTS idx_property_zoning_deal ON property_zoning_cache(deal_id);
+CREATE INDEX IF NOT EXISTS idx_property_zoning_municipality ON property_zoning_cache(municipality_id);
 
-CREATE INDEX idx_zoning_districts_municipality ON zoning_districts(municipality_id);
-CREATE INDEX idx_zoning_districts_code ON zoning_districts(zoning_code);
-CREATE INDEX idx_zoning_districts_category ON zoning_districts(category);
-CREATE INDEX idx_zoning_districts_source ON zoning_districts(source);
+-- 5. Seed Atlanta municipality and backfill existing zoning_districts
+INSERT INTO municipalities (id, name, state, county, population, has_api, api_type, api_url, data_quality, total_zoning_districts, priority)
+VALUES ('atlanta-ga', 'Atlanta', 'GA', 'Fulton County', 498000, TRUE, 'arcgis', 'https://gis.atlantaga.gov/arcgis/rest/services', 'excellent', 23, 'HIGH')
+ON CONFLICT (id) DO NOTHING;
 
-CREATE INDEX idx_property_zoning_deal ON property_zoning_cache(deal_id);
-CREATE INDEX idx_property_zoning_municipality ON property_zoning_cache(municipality_id);
-CREATE INDEX idx_property_zoning_location ON property_zoning_cache(lat, lng);
+-- Backfill municipality_id and zoning_code from old columns
+UPDATE zoning_districts
+SET municipality_id = 'atlanta-ga',
+    zoning_code = COALESCE(zoning_code, district_code),
+    max_density_per_acre = COALESCE(max_density_per_acre, max_units_per_acre),
+    max_height_feet = COALESCE(max_height_feet, max_building_height_ft),
+    setback_front_ft = COALESCE(setback_front_ft, min_front_setback_ft),
+    setback_side_ft = COALESCE(setback_side_ft, min_side_setback_ft),
+    setback_rear_ft = COALESCE(setback_rear_ft, min_rear_setback_ft),
+    min_parking_per_unit = COALESCE(min_parking_per_unit, parking_per_unit),
+    source = COALESCE(source, 'manual')
+WHERE municipality = 'Atlanta' AND (municipality_id IS NULL OR municipality_id = '');
 
--- Updated timestamp triggers
+-- Austin backfill
+INSERT INTO municipalities (id, name, state, county, population, has_api, api_type, api_url, api_dataset_id, data_quality, priority)
+VALUES ('austin-tx', 'Austin', 'TX', 'Travis County', 961000, TRUE, 'socrata', 'https://data.austintexas.gov', 'n5kp-f8k4', 'good', 'HIGH')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE zoning_districts
+SET municipality_id = 'austin-tx',
+    zoning_code = COALESCE(zoning_code, district_code),
+    max_density_per_acre = COALESCE(max_density_per_acre, max_units_per_acre),
+    max_height_feet = COALESCE(max_height_feet, max_building_height_ft),
+    setback_front_ft = COALESCE(setback_front_ft, min_front_setback_ft),
+    setback_side_ft = COALESCE(setback_side_ft, min_side_setback_ft),
+    setback_rear_ft = COALESCE(setback_rear_ft, min_rear_setback_ft),
+    min_parking_per_unit = COALESCE(min_parking_per_unit, parking_per_unit),
+    source = COALESCE(source, 'manual')
+WHERE municipality = 'Austin' AND (municipality_id IS NULL OR municipality_id = '');
+
+-- Update municipality district counts
+UPDATE municipalities SET total_zoning_districts = (
+  SELECT COUNT(*) FROM zoning_districts WHERE municipality_id = municipalities.id
+);
+
+-- Timestamp trigger for municipalities
 CREATE OR REPLACE FUNCTION update_municipal_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -146,85 +151,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS municipalities_updated_at ON municipalities;
 CREATE TRIGGER municipalities_updated_at
   BEFORE UPDATE ON municipalities
   FOR EACH ROW
   EXECUTE FUNCTION update_municipal_timestamp();
 
+DROP TRIGGER IF EXISTS property_zoning_cache_updated_at ON property_zoning_cache;
 CREATE TRIGGER property_zoning_cache_updated_at
   BEFORE UPDATE ON property_zoning_cache
   FOR EACH ROW
   EXECUTE FUNCTION update_municipal_timestamp();
-
--- Function to lookup zoning by address
-CREATE OR REPLACE FUNCTION lookup_zoning_by_address(
-  p_address TEXT,
-  p_lat DECIMAL,
-  p_lng DECIMAL
-)
-RETURNS TABLE(
-  municipality_id VARCHAR(100),
-  municipality_name VARCHAR(255),
-  zoning_district_id UUID,
-  zoning_code VARCHAR(50),
-  district_name TEXT,
-  max_density DECIMAL,
-  max_far DECIMAL,
-  max_height_feet INTEGER
-) AS $$
-BEGIN
-  -- Find nearest municipality (within 50 miles)
-  -- Then lookup zoning district
-  
-  -- Simplified version - real implementation would use PostGIS
-  RETURN QUERY
-  SELECT
-    m.id as municipality_id,
-    m.name as municipality_name,
-    zd.id as zoning_district_id,
-    zd.zoning_code,
-    zd.district_name,
-    zd.max_density_per_acre as max_density,
-    zd.max_far,
-    zd.max_height_feet
-  FROM municipalities m
-  LEFT JOIN zoning_districts zd ON zd.municipality_id = m.id
-  WHERE m.has_api = TRUE
-  ORDER BY m.name
-  LIMIT 1;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to get municipality statistics
-CREATE OR REPLACE FUNCTION get_municipality_stats(p_municipality_id VARCHAR)
-RETURNS TABLE(
-  total_districts INTEGER,
-  residential_districts INTEGER,
-  commercial_districts INTEGER,
-  industrial_districts INTEGER,
-  mixed_use_districts INTEGER,
-  properties_cached INTEGER,
-  last_scraped TIMESTAMP,
-  data_quality VARCHAR
-) AS $$
-BEGIN
-  RETURN QUERY
-  SELECT
-    COUNT(*)::INTEGER as total_districts,
-    COUNT(*) FILTER (WHERE category = 'residential')::INTEGER as residential_districts,
-    COUNT(*) FILTER (WHERE category = 'commercial')::INTEGER as commercial_districts,
-    COUNT(*) FILTER (WHERE category = 'industrial')::INTEGER as industrial_districts,
-    COUNT(*) FILTER (WHERE category = 'mixed-use')::INTEGER as mixed_use_districts,
-    m.properties_cached,
-    m.last_scraped_at,
-    m.zoning_data_quality
-  FROM zoning_districts zd
-  JOIN municipalities m ON m.id = zd.municipality_id
-  WHERE zd.municipality_id = p_municipality_id
-  GROUP BY m.properties_cached, m.last_scraped_at, m.zoning_data_quality;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON TABLE municipalities IS 'Registry of municipalities with API and Municode information';
-COMMENT ON TABLE zoning_districts IS 'Zoning district parameters for all municipalities';
-COMMENT ON TABLE property_zoning_cache IS 'Cached zoning lookups for properties in deals';
