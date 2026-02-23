@@ -7,10 +7,13 @@ import React from 'react';
 import { PlaceholderContent } from '../PlaceholderContent';
 
 interface RiskManagementSectionProps {
-  dealId: string;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
 }
 
-export const RiskManagementSection: React.FC<RiskManagementSectionProps> = ({ dealId }) => {
+export const RiskManagementSection: React.FC<RiskManagementSectionProps> = ({ deal, dealId }) => {
   const wireframe = `
 ┌────────────────────────────────────────────────────┐
 │  Risk Management & Insurance Center                │
