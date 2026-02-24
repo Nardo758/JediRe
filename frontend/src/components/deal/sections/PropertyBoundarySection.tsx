@@ -337,7 +337,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   }, []);
 
   useEffect(() => {
-    if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading) {
+    if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading && !geocodingAddress && !detectedLocation) {
       lookupZoning();
     }
   }, [boundary.boundaryGeoJSON]);

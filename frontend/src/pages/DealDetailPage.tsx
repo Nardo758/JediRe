@@ -66,8 +66,8 @@ const DealDetailPage: React.FC = () => {
   const loadDeal = async (id: string) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/api/v1/deals/${id}`);
-      setDeal(response.data);
+      const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
+      setDeal(response?.deal || response?.data || response);
       fetchDealById(id);
     } catch (error) {
       console.error('Error loading deal:', error);
