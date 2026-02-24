@@ -79,6 +79,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeDrawMode, setActiveDrawMode] = useState<string | null>(null);
+  const [zoningInfo, setZoningInfo] = useState<{ code: string; description: string; municipality: string; state: string } | null>(null);
+  const [zoningLoading, setZoningLoading] = useState(false);
 
   // Layer visibility toggles
   const [layers, setLayers] = useState({
@@ -172,6 +174,12 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
     };
   }, []);
 
+  useEffect(() => {
+    if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading) {
+      lookupZoning();
+    }
+  }, [boundary.boundaryGeoJSON]);
+
   // Load existing boundary from API
   const loadExistingBoundary = async () => {
     if (!dealId) return;
@@ -262,7 +270,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         buildableAreaAcres = buildableAreaSF / 43560;
       }
 
-      const buildablePercentage = buildableAreaAcres / areaAcres;
+      const buildablePercentage = areaAcres > 0 ? buildableAreaAcres / areaAcres : 0;
 
       setBoundary(prev => ({
         ...prev,
@@ -276,9 +284,49 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         buildablePercentage: buildablePercentage,
       }));
 
+      lookupZoning();
+
     } catch (err: any) {
       console.error('Error calculating metrics:', err);
       setError('Error calculating boundary metrics');
+    }
+  };
+
+  const lookupZoning = async () => {
+    const city = deal?.city || deal?.municipality || '';
+    if (!city && !deal?.address) return;
+
+    const params: Record<string, string> = {};
+    if (city) params.city = city;
+    if (deal?.address) params.address = deal.address;
+    if (boundary.centroid) {
+      params.lat = String(boundary.centroid[1]);
+      params.lng = String(boundary.centroid[0]);
+    }
+
+    try {
+      setZoningLoading(true);
+      const data = await apiClient.get(`/zoning/lookup`, { params }) as any;
+      if (data && data.districts && data.districts.length > 0) {
+        const district = data.districts[0];
+        setZoningInfo({
+          code: district.zoning_code || district.district_code || district.code || '--',
+          description: district.description || district.district_name || '--',
+          municipality: data.municipality?.name || city,
+          state: data.municipality?.state || deal?.state || '',
+        });
+      } else if (data && data.municipality) {
+        setZoningInfo({
+          code: '--',
+          description: 'No zoning district found',
+          municipality: data.municipality.name || city,
+          state: data.municipality.state || deal?.state || '',
+        });
+      }
+    } catch (err: any) {
+      console.error('Zoning lookup error:', err);
+    } finally {
+      setZoningLoading(false);
     }
   };
 
@@ -478,41 +526,111 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
         {/* Metrics Panel */}
         <div className="space-y-3">
-          {/* Boundary Status */}
+          {/* Site Confirmation */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Boundary Status</h3>
-            
             {hasBoundary ? (
               <div className="flex items-center gap-2 text-green-700 mb-3">
-                <CheckCircle size={20} />
-                <span className="font-medium">Defined</span>
+                <CheckCircle size={16} />
+                <h3 className="text-sm font-semibold">Site Confirmed</h3>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-yellow-700 mb-3">
-                <AlertCircle size={20} />
-                <span className="font-medium">Not Defined</span>
+                <AlertCircle size={16} />
+                <h3 className="text-sm font-semibold">Draw Boundary to Confirm</h3>
               </div>
             )}
 
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Parcel Area:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber(boundary.parcelArea)} acres
-                </span>
+            {/* Property Info */}
+            <div className="mb-3 pb-3 border-b border-gray-100">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Property Address</p>
+              <p className="text-sm font-medium text-gray-900">
+                {deal?.address || deal?.propertyAddress || deal?.property_address || 'Not specified'}
+              </p>
+              <p className="text-sm text-gray-600">
+                {[deal?.city || deal?.municipality, deal?.state].filter(Boolean).join(', ') || '--'}
+              </p>
+            </div>
+
+            {/* Zoning Info */}
+            <div className="mb-3 pb-3 border-b border-gray-100">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Zoning</p>
+              {zoningLoading ? (
+                <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
+              ) : zoningInfo ? (
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
+                  <p className="text-sm text-gray-600">{zoningInfo.description}</p>
+                  {zoningInfo.municipality && (
+                    <p className="text-xs text-gray-500 mt-1">{zoningInfo.municipality}, {zoningInfo.state}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">{hasBoundary ? 'No zoning data available' : 'Draw boundary to lookup'}</p>
+              )}
+            </div>
+
+            {/* Site Metrics */}
+            <div className="mb-3 pb-3 border-b border-gray-100">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Site Metrics</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Parcel Area:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber(boundary.parcelArea)} acres
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Square Feet:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber(boundary.parcelAreaSF, 0)} SF
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Perimeter:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber(boundary.perimeter, 0)} feet
+                  </span>
+                </div>
+                {boundary.centroid && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Centroid:</span>
+                    <span className="font-medium text-gray-900 text-xs">
+                      {boundary.centroid[1]?.toFixed(5)}, {boundary.centroid[0]?.toFixed(5)}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Square Feet:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber(boundary.parcelAreaSF, 0)} SF
-                </span>
+            </div>
+
+            {/* Buildable Summary */}
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Buildable Area</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">After Setbacks:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber(boundary.buildableArea)} acres
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Square Feet:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber(boundary.buildableAreaSF, 0)} SF
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Utilization:</span>
+                  <span className="font-medium text-gray-900">
+                    {formatNumber((boundary.buildablePercentage || 0) * 100, 0)}%
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Perimeter:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber(boundary.perimeter, 0)} feet
-                </span>
-              </div>
+              {hasBoundary && boundary.buildablePercentage && boundary.buildablePercentage < 0.7 && (
+                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+                  <AlertCircle size={14} className="inline mr-1" />
+                  Low buildable area due to large setbacks
+                </div>
+              )}
             </div>
           </div>
 
@@ -541,39 +659,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Buildable Area */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Buildable Area</h3>
-            
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">After Setbacks:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber(boundary.buildableArea)} acres
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Square Feet:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber(boundary.buildableAreaSF, 0)} SF
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Utilization:</span>
-                <span className="font-medium text-gray-900">
-                  {formatNumber((boundary.buildablePercentage || 0) * 100, 0)}%
-                </span>
-              </div>
-            </div>
-
-            {hasBoundary && boundary.buildablePercentage && boundary.buildablePercentage < 0.7 && (
-              <div className="mt-3 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
-                <AlertCircle size={14} className="inline mr-1" />
-                Low buildable area due to large setbacks
-              </div>
-            )}
           </div>
 
           {/* Next Steps */}
