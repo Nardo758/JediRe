@@ -178,12 +178,23 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
     try {
       setLoading(true);
-      const data = await apiClient.get(`/deals/${dealId}/boundary`);
-      if (data) {
-        setBoundary(data as any);
+      const raw = await apiClient.get(`/deals/${dealId}/boundary`) as any;
+      if (raw) {
+        const mapped: BoundaryData = {
+          boundaryGeoJSON: raw.boundary_geojson || raw.boundaryGeoJSON || null,
+          parcelArea: raw.parcel_area ?? raw.parcelArea ?? null,
+          parcelAreaSF: raw.parcel_area_sf ?? raw.parcelAreaSF ?? null,
+          perimeter: raw.perimeter ?? null,
+          centroid: raw.centroid ?? null,
+          setbacks: raw.setbacks || { front: 25, side: 10, rear: 20 },
+          buildableArea: raw.buildable_area ?? raw.buildableArea ?? null,
+          buildableAreaSF: raw.buildable_area_sf ?? raw.buildableAreaSF ?? null,
+          buildablePercentage: raw.buildable_percentage ?? raw.buildablePercentage ?? null,
+        };
+        setBoundary(mapped);
         
-        if ((data as any).boundaryGeoJSON && drawRef.current) {
-          drawRef.current.add((data as any).boundaryGeoJSON);
+        if (mapped.boundaryGeoJSON && drawRef.current) {
+          drawRef.current.add(mapped.boundaryGeoJSON);
         }
       }
     } catch (err: any) {
@@ -336,8 +347,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
     // TODO: Implement actual layer toggling on map
   };
 
-  const formatNumber = (num: number | null, decimals: number = 1): string => {
-    if (num === null) return '--';
+  const formatNumber = (num: number | null | undefined, decimals: number = 1): string => {
+    if (num === null || num === undefined) return '--';
     return num.toLocaleString('en-US', { 
       minimumFractionDigits: decimals, 
       maximumFractionDigits: decimals 
