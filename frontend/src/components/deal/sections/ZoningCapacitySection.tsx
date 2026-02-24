@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { ZoningIntelligencePanel } from './ZoningIntelligencePanel';
+import { ZoningLearningPanel } from './ZoningLearningPanel';
 
 interface ZoningCapacitySectionProps {
   deal?: any;
@@ -957,6 +958,14 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         municipality={deal?.city}
         state={deal?.state}
         landAreaSf={deal?.lot_size_sqft}
+      />
+
+      <ZoningLearningPanel
+        deal={deal}
+        dealId={resolvedDealId}
+        districtCode={data.zoning_code}
+        municipality={deal?.city}
+        state={deal?.state}
       />
     </div>
   );
