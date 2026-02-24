@@ -59,6 +59,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const [geocodingAddress, setGeocodingAddress] = useState(false);
 
   const [boundary, setBoundary] = useState<BoundaryData>({
     dealId: dealId || deal?.id || '',
@@ -100,38 +102,178 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
     utilities: false,
   });
 
+  const addSiteMarker = (map: mapboxgl.Map, lngLat: [number, number]) => {
+    if (markerRef.current) {
+      markerRef.current.remove();
+    }
+
+    const el = document.createElement('div');
+    el.style.width = '32px';
+    el.style.height = '40px';
+    el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 24 30">
+      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 18 12 18s12-9 12-18C24 5.4 18.6 0 12 0z" fill="#dc2626"/>
+      <circle cx="12" cy="11" r="5" fill="white"/>
+    </svg>`;
+
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat(lngLat)
+      .addTo(map);
+    markerRef.current = marker;
+  };
+
+  const geocodeDealAddress = async (map: mapboxgl.Map) => {
+    const dealAddress = deal?.address || deal?.propertyAddress || deal?.property_address;
+    const hasCoords = deal?.coordinates?.lng && deal?.coordinates?.lat;
+
+    if (!dealAddress && !hasCoords) return;
+
+    setGeocodingAddress(true);
+    try {
+      let lng: number, lat: number;
+
+      if (hasCoords) {
+        lng = deal.coordinates.lng;
+        lat = deal.coordinates.lat;
+      } else {
+        const token = import.meta.env.VITE_MAPBOX_TOKEN || '';
+        if (!token) {
+          console.error('Mapbox token not configured');
+          setGeocodingAddress(false);
+          return;
+        }
+        const response = await fetch(
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(dealAddress!)}.json?access_token=${token}&limit=1`
+        );
+        const data = await response.json();
+        if (!data.features || data.features.length === 0) {
+          setGeocodingAddress(false);
+          return;
+        }
+        [lng, lat] = data.features[0].center;
+
+        map.flyTo({ center: [lng, lat], zoom: 18, duration: 1500 });
+        addSiteMarker(map, [lng, lat]);
+
+        setBoundary(prev => ({
+          ...prev,
+          centroid: [lng, lat],
+        }));
+      }
+
+      try {
+        const geoData = await apiClient.get(`/reverse-geocode`, {
+          params: { lat, lng }
+        }) as any;
+
+        if (geoData?.found) {
+          setDetectedLocation({
+            city: geoData.city,
+            state: geoData.state,
+            county: geoData.county,
+            hasZoningData: geoData.hasZoningData,
+            municipalityId: geoData.municipality?.id,
+            address: geoData.address || geoData.fullPlaceName || dealAddress || '',
+          });
+
+          const cityName = geoData.city || '';
+          const municipalityId = geoData.municipality?.id || '';
+
+          if (cityName) {
+            setZoningLoading(true);
+            try {
+              const params: Record<string, string> = { city: cityName };
+              if (dealAddress) params.address = dealAddress;
+              const zData = await apiClient.get(`/zoning/lookup`, { params }) as any;
+              if (zData?.districts?.length > 0) {
+                const district = zData.districts[0];
+                const code = district.zoning_code || district.district_code || district.code || '--';
+                setZoningInfo({
+                  code,
+                  description: district.description || district.district_name || '--',
+                  municipality: zData.municipality?.name || cityName,
+                  state: zData.municipality?.state || geoData.state || '',
+                });
+
+                try {
+                  const detailParams: Record<string, string> = { code };
+                  if (municipalityId) detailParams.municipality_id = municipalityId;
+                  else if (cityName) detailParams.municipality = cityName;
+                  const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
+                  if (detailData?.found) {
+                    setZoningDetail(detailData.district);
+                    setRezoneTargets(detailData.rezoneTargets || []);
+                    setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
+                    const d = detailData.district;
+                    const front = d.min_front_setback_ft ?? d.setback_front_ft;
+                    const side = d.min_side_setback_ft ?? d.setback_side_ft;
+                    const rear = d.min_rear_setback_ft ?? d.setback_rear_ft;
+                    if (front != null || side != null || rear != null) {
+                      setBoundary(prev => ({
+                        ...prev,
+                        setbacks: {
+                          front: front ?? prev.setbacks.front,
+                          side: side ?? prev.setbacks.side,
+                          rear: rear ?? prev.setbacks.rear,
+                        }
+                      }));
+                    }
+                  }
+                } catch (err) {
+                  console.error('Zoning detail lookup error:', err);
+                }
+              } else if (zData?.municipality) {
+                setZoningInfo({
+                  code: '--',
+                  description: 'No zoning district found',
+                  municipality: zData.municipality.name || cityName,
+                  state: zData.municipality.state || geoData.state || '',
+                });
+              }
+            } catch (err) {
+              console.error('Zoning lookup error:', err);
+            } finally {
+              setZoningLoading(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Reverse geocode error:', err);
+      }
+    } catch (err) {
+      console.error('Address geocoding error:', err);
+    } finally {
+      setGeocodingAddress(false);
+    }
+  };
+
   // Initialize map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // TODO: Get Mapbox token from environment
     const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
     mapboxgl.accessToken = mapboxToken;
 
-    // Get initial center from deal address or default to Atlanta
-    const center: [number, number] = deal?.coordinates 
+    const hasCoords = deal?.coordinates?.lng && deal?.coordinates?.lat;
+    const center: [number, number] = hasCoords
       ? [deal.coordinates.lng, deal.coordinates.lat]
-      : [-84.3880, 33.7490]; // Atlanta default
+      : [-84.3880, 33.7490];
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/satellite-streets-v12',
       center: center,
-      zoom: 18,
+      zoom: hasCoords ? 18 : 12,
       pitch: 0,
       bearing: 0,
     });
 
-    // Add navigation controls
     map.addControl(new mapboxgl.NavigationControl(), 'top-right');
     map.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
 
-    // Initialize drawing tools
     const draw = new MapboxDraw({
       displayControlsDefault: false,
       controls: {},
       styles: [
-        // Boundary polygon style
         {
           id: 'gl-draw-polygon-fill',
           type: 'fill',
@@ -150,7 +292,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             'line-width': 3,
           },
         },
-        // Active vertex style
         {
           id: 'gl-draw-polygon-and-line-vertex-active',
           type: 'circle',
@@ -165,7 +306,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
     map.addControl(draw);
 
-    // Listen for drawing events
     map.on('draw.create', handleDrawCreate);
     map.on('draw.update', handleDrawUpdate);
     map.on('draw.delete', handleDrawDelete);
@@ -173,10 +313,25 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
     mapRef.current = map;
     drawRef.current = draw;
 
-    // Load existing boundary if available
     loadExistingBoundary();
 
+    map.on('load', () => {
+      if (hasCoords) {
+        addSiteMarker(map, [deal.coordinates.lng, deal.coordinates.lat]);
+        setBoundary(prev => ({ ...prev, centroid: [deal.coordinates.lng, deal.coordinates.lat] }));
+        geocodeDealAddress(map);
+      } else {
+        const dealAddress = deal?.address || deal?.propertyAddress || deal?.property_address;
+        if (dealAddress) {
+          geocodeDealAddress(map);
+        }
+      }
+    });
+
     return () => {
+      if (markerRef.current) {
+        markerRef.current.remove();
+      }
       map.remove();
     };
   }, []);
@@ -551,15 +706,30 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         </div>
       )}
 
-      {/* Status banner */}
-      {!hasBoundary && (
+      {geocodingAddress && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <Loader2 className="text-blue-600 flex-shrink-0 animate-spin" size={20} />
+            <div>
+              <p className="text-blue-800 font-medium">Locating Site</p>
+              <p className="text-blue-700 text-sm">
+                Mapping the deal address and detecting municipality...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!hasBoundary && !geocodingAddress && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-yellow-600 flex-shrink-0" size={20} />
             <div>
               <p className="text-yellow-800 font-medium">Boundary Not Defined</p>
               <p className="text-yellow-700 text-sm">
-                Draw the property boundary to unlock site intelligence, zoning analysis, and 3D design.
+                {detectedLocation
+                  ? 'Site pin placed from deal address. Draw the property boundary around the pin to confirm the site outline.'
+                  : 'Draw the property boundary to unlock site intelligence, zoning analysis, and 3D design.'}
               </p>
             </div>
           </div>
