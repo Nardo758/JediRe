@@ -6,12 +6,20 @@ interface AiRecommendation {
   reasoning: string;
   evidenceCount: number;
   recommendedPath: string;
+  confidence?: number;
+}
+
+interface ParcelInfo {
+  address?: string;
+  lotSize?: string;
+  currentZoning?: string;
 }
 
 interface DevelopmentCapacityData {
   scenarios: CapacityScenario[];
   aiRecommendation: AiRecommendation | null;
   strategyImpacts: StrategyArbitrageImpact[];
+  parcelInfo?: ParcelInfo;
 }
 
 interface UseDevelopmentCapacityReturn {

@@ -49,7 +49,12 @@ function formatDate(d: string | null): string {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function EntitlementTrackerTab() {
+interface EntitlementTrackerTabProps {
+  dealId?: string;
+  deal?: any;
+}
+
+export default function EntitlementTrackerTab({ dealId, deal }: EntitlementTrackerTabProps = {}) {
   const {
     kanbanData,
     loading,
@@ -255,20 +260,20 @@ function KanbanBoard({
   selectedId: string | null;
 }) {
   return (
-    <div className="flex gap-3 p-4 min-w-max h-full">
+    <div className="grid grid-cols-5 gap-3 p-4 h-full">
       {KANBAN_COLUMNS.map((col) => {
         const items = data[col.key] || [];
         return (
-          <div key={col.key} className="flex flex-col w-64 min-w-[16rem] bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
-              <span className="text-sm font-semibold text-gray-700">{col.label}</span>
-              <span className="text-xs text-gray-400 bg-gray-200 rounded-full px-2 py-0.5">
+          <div key={col.key} className="flex flex-col bg-gray-50 rounded-lg min-w-0">
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">{col.label}</span>
+              <span className="text-xs text-gray-500 bg-gray-200 rounded-full px-2 py-0.5 font-medium">
                 {items.length}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {items.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-4">No entitlements</p>
+                <p className="text-xs text-gray-400 text-center py-6">No entitlements</p>
               )}
               {items.map((ent) => (
                 <EntitlementCard
@@ -286,6 +291,13 @@ function KanbanBoard({
   );
 }
 
+function getDaysUntil(dateStr: string | null): string {
+  if (!dateStr) return '';
+  const diff = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  if (diff < 0) return `${Math.abs(diff)}d ago`;
+  return `${diff}d`;
+}
+
 function EntitlementCard({
   entitlement,
   onClick,
@@ -298,34 +310,40 @@ function EntitlementCard({
   return (
     <div
       onClick={onClick}
-      className={`p-3 bg-white rounded-lg shadow-sm border cursor-pointer hover:shadow-md transition-shadow ${
-        selected ? 'border-blue-500 ring-1 ring-blue-200' : 'border-gray-200'
+      className={`p-3 bg-white rounded-lg shadow-sm border cursor-pointer hover:shadow-md transition-all ${
+        selected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200'
       }`}
     >
-      <p className="text-sm font-medium text-gray-900 truncate">{entitlement.parcelAddress}</p>
-      <p className="text-xs text-gray-500 mt-1">{TYPE_LABELS[entitlement.type]}</p>
+      <p className="text-sm font-semibold text-gray-900 truncate">{entitlement.parcelAddress}</p>
 
-      {(entitlement.fromDistrict || entitlement.toDistrict) && (
-        <p className="text-xs text-gray-500 mt-1">
-          {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}
-        </p>
-      )}
-
-      <div className="flex items-center justify-between mt-2">
-        {entitlement.nextMilestoneDate && (
-          <span className="text-xs text-gray-400">
-            Due {formatDate(entitlement.nextMilestoneDate)}
-          </span>
+      <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+        <p className="text-xs font-medium text-gray-600">{TYPE_LABELS[entitlement.type]}</p>
+        {(entitlement.fromDistrict || entitlement.toDistrict) && (
+          <p className="text-xs text-gray-500 mt-0.5">
+            {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}
+          </p>
         )}
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
-          {entitlement.riskLevel === 'low' ? 'Low' : entitlement.riskLevel === 'medium' ? 'Med' : 'High'}
+      </div>
+
+      <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between">
+        {entitlement.nextMilestoneDate ? (
+          <span className="text-xs text-gray-500 font-medium">
+            Due: {getDaysUntil(entitlement.nextMilestoneDate)}
+          </span>
+        ) : (
+          <span />
+        )}
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
+          Risk: {entitlement.riskLevel === 'low' ? 'Low' : entitlement.riskLevel === 'medium' ? 'Med' : 'High'}
         </span>
       </div>
 
       {entitlement.dealId && (
-        <p className="text-xs text-blue-500 mt-1 truncate hover:underline">
-          Deal: {entitlement.dealId}
-        </p>
+        <div className="mt-1.5 pt-1 border-t border-gray-100">
+          <p className="text-xs text-blue-600 font-medium truncate">
+            🔗 Deal #{entitlement.dealId}
+          </p>
+        </div>
       )}
     </div>
   );
@@ -343,9 +361,17 @@ function DetailPanel({
   onDelete: () => void;
 }) {
   return (
-    <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto flex-shrink-0">
+    <div className="w-[420px] border-l border-gray-200 bg-white overflow-y-auto flex-shrink-0">
       <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between z-10">
-        <h3 className="font-semibold text-gray-900 text-sm truncate flex-1">{entitlement.parcelAddress}</h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-gray-900 text-sm truncate">{entitlement.parcelAddress}</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {TYPE_LABELS[entitlement.type]}
+            {(entitlement.fromDistrict || entitlement.toDistrict) && (
+              <> — {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}</>
+            )}
+          </p>
+        </div>
         <div className="flex items-center gap-1 ml-2">
           <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600" title="Edit">
             ✎
@@ -360,36 +386,32 @@ function DetailPanel({
       </div>
 
       <div className="p-4 space-y-5">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-medium text-gray-500 uppercase">Type</span>
-            <span className="text-sm text-gray-900">{TYPE_LABELS[entitlement.type]}</span>
-          </div>
-          {(entitlement.fromDistrict || entitlement.toDistrict) && (
-            <p className="text-sm text-gray-600">
-              {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}
-            </p>
-          )}
-          <div className="flex items-center gap-2 mt-1">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
-              {entitlement.riskLevel === 'low' ? 'Low Risk' : entitlement.riskLevel === 'medium' ? 'Medium Risk' : 'High Risk'}
-            </span>
-          </div>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
+            {entitlement.riskLevel === 'low' ? 'Low Risk' : entitlement.riskLevel === 'medium' ? 'Medium Risk' : 'High Risk'}
+          </span>
           {entitlement.dealId && (
-            <p className="text-xs text-blue-500 mt-1">Deal: {entitlement.dealId}</p>
+            <span className="text-xs text-blue-600 font-medium">🔗 Deal #{entitlement.dealId}</span>
           )}
-          <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-gray-500">
-            <div>Filed: {formatDate(entitlement.filedDate)}</div>
-            <div>Hearing: {formatDate(entitlement.hearingDate)}</div>
-            <div>Approval: {formatDate(entitlement.approvalDate)}</div>
-            <div>Next: {entitlement.nextMilestone || '—'}</div>
-          </div>
         </div>
 
-        <TimelineMilestones milestones={entitlement.milestones} />
-        <DocumentsList documents={entitlement.documents} />
-        <ContactsList contacts={entitlement.contacts} />
+        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+          <div><span className="font-medium text-gray-600">Filed:</span> {formatDate(entitlement.filedDate)}</div>
+          <div><span className="font-medium text-gray-600">Hearing:</span> {formatDate(entitlement.hearingDate)}</div>
+          <div><span className="font-medium text-gray-600">Approval:</span> {formatDate(entitlement.approvalDate)}</div>
+          <div><span className="font-medium text-gray-600">Next:</span> {entitlement.nextMilestone || '—'}</div>
+        </div>
+
+        <HorizontalTimeline milestones={entitlement.milestones} />
+
+        <div className="grid grid-cols-2 gap-4">
+          <DocumentsList documents={entitlement.documents} />
+          <ContactsList contacts={entitlement.contacts} />
+        </div>
+
         <RiskFactorsList factors={entitlement.aiRiskFactors} />
+
+        <NewsIntelligenceSection />
 
         {entitlement.notes && (
           <div>
@@ -397,43 +419,91 @@ function DetailPanel({
             <p className="text-sm text-gray-700">{entitlement.notes}</p>
           </div>
         )}
+
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
+          {entitlement.dealId && (
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors">
+              📎 Open Deal Capsule
+            </button>
+          )}
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+            📊 Financial Impact Analysis
+          </button>
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+            📧 Share Update
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function TimelineMilestones({ milestones }: { milestones: EntitlementMilestone[] }) {
+function HorizontalTimeline({ milestones }: { milestones: EntitlementMilestone[] }) {
   if (!milestones || milestones.length === 0) return null;
 
   const sorted = [...milestones].sort((a, b) => a.sortOrder - b.sortOrder);
 
-  const statusColors: Record<string, string> = {
-    completed: 'bg-green-500',
-    in_progress: 'bg-blue-500',
-    upcoming: 'bg-gray-300',
-    skipped: 'bg-gray-200',
+  const statusColor = (status: string) => {
+    if (status === 'completed') return 'text-green-600';
+    if (status === 'in_progress') return 'text-blue-600';
+    return 'text-gray-400';
+  };
+
+  const dotBg = (status: string) => {
+    if (status === 'completed') return 'bg-green-500';
+    if (status === 'in_progress') return 'bg-blue-500 ring-4 ring-blue-100';
+    return 'bg-gray-300';
+  };
+
+  const lineBg = (status: string) => {
+    if (status === 'completed') return 'bg-green-400';
+    return 'bg-gray-200';
   };
 
   return (
     <div>
-      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Timeline</h4>
-      <div className="relative">
-        <div className="absolute left-2 top-2 bottom-2 w-0.5 bg-gray-200" />
-        <div className="space-y-3">
-          {sorted.map((m) => (
-            <div key={m.id} className="flex items-start gap-3 relative">
-              <div className={`w-4 h-4 rounded-full flex-shrink-0 mt-0.5 ${statusColors[m.status]} border-2 border-white shadow-sm z-10`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800">{m.name}</p>
-                <p className="text-xs text-gray-400">
-                  {m.actualDate ? formatDate(m.actualDate) : m.scheduledDate ? `Scheduled: ${formatDate(m.scheduledDate)}` : ''}
+      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-3">Timeline</h4>
+      <div className="overflow-x-auto">
+        <div className="flex items-start min-w-0">
+          {sorted.map((m, idx) => (
+            <div key={m.id} className="flex items-start flex-shrink-0" style={{ width: `${100 / sorted.length}%`, minWidth: '60px' }}>
+              <div className="flex flex-col items-center w-full">
+                <div className="flex items-center w-full">
+                  {idx > 0 && <div className={`h-0.5 flex-1 ${lineBg(sorted[idx - 1].status)}`} />}
+                  {idx === 0 && <div className="flex-1" />}
+                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${dotBg(m.status)}`} />
+                  {idx < sorted.length - 1 && <div className={`h-0.5 flex-1 ${lineBg(m.status)}`} />}
+                  {idx === sorted.length - 1 && <div className="flex-1" />}
+                </div>
+                <p className={`text-[10px] font-medium mt-1.5 text-center leading-tight ${statusColor(m.status)}`}>
+                  {m.name}
                 </p>
-                {m.notes && <p className="text-xs text-gray-500 mt-0.5">{m.notes}</p>}
+                <p className="text-[9px] text-gray-400 text-center mt-0.5">
+                  {m.status === 'completed' ? '✅' : m.status === 'in_progress' ? '🔄 NOW' : '⏳'}{' '}
+                  {m.actualDate ? formatDate(m.actualDate) : m.scheduledDate ? formatDate(m.scheduledDate) : ''}
+                </p>
               </div>
             </div>
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function NewsIntelligenceSection() {
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+      <h4 className="text-xs font-semibold text-blue-800 uppercase mb-2">News Intelligence</h4>
+      <p className="text-xs text-blue-600 mb-2">Related articles detected:</p>
+      <ul className="space-y-1.5">
+        <li className="text-xs text-gray-700">
+          <span className="text-blue-500">•</span> "Midtown density debate heats up" — <span className="text-gray-400">AJC (2/18)</span>
+        </li>
+        <li className="text-xs text-gray-700">
+          <span className="text-blue-500">•</span> "Atlanta planning commission approves new density guidelines" — <span className="text-gray-400">(2/5)</span>
+        </li>
+      </ul>
     </div>
   );
 }

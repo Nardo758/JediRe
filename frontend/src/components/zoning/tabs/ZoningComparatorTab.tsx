@@ -28,6 +28,17 @@ function formatDelta(delta: number | null | undefined): string {
   return `${sign}${delta.toLocaleString()}`;
 }
 
+function formatDeltaPercent(delta: number | null | undefined, valueA: string | number | null | undefined): string {
+  if (delta === null || delta === undefined) return '—';
+  if (typeof valueA === 'number' && valueA !== 0) {
+    const pct = ((delta / valueA) * 100).toFixed(1);
+    const sign = delta > 0 ? '+' : '';
+    return `${sign}${pct}%`;
+  }
+  const sign = delta > 0 ? '+' : '';
+  return `${sign}${delta.toLocaleString()}`;
+}
+
 interface SelectionPanelProps {
   side: 'a' | 'b';
   label: string;
@@ -130,18 +141,18 @@ function SelectionPanel({
   );
 }
 
-function ComparisonTable({ deltas }: { deltas: ComparisonDelta[] }) {
+function ComparisonTable({ deltas, labelA, labelB }: { deltas: ComparisonDelta[]; labelA?: string; labelB?: string }) {
   if (!deltas || deltas.length === 0) return null;
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-200">
-            <th className="text-left py-3 px-4 text-gray-500 font-medium w-1/4">Metric</th>
-            <th className="text-center py-3 px-4 text-blue-600 font-medium w-1/4">Side A</th>
-            <th className="text-center py-3 px-4 text-purple-600 font-medium w-1/4">Side B</th>
-            <th className="text-center py-3 px-4 text-gray-500 font-medium w-1/4">Delta</th>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[28%]">Parameter</th>
+            <th className="text-center py-3 px-4 text-xs font-semibold text-blue-600 uppercase tracking-wider w-[26%]">{labelA || 'Side A'}</th>
+            <th className="text-center py-3 px-4 text-xs font-semibold text-purple-600 uppercase tracking-wider w-[26%]">{labelB || 'Side B'}</th>
+            <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[20%]">Delta</th>
           </tr>
         </thead>
         <tbody>
@@ -151,31 +162,35 @@ function ComparisonTable({ deltas }: { deltas: ComparisonDelta[] }) {
             return (
               <tr
                 key={row.field || idx}
-                className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors"
               >
-                <td className="py-3 px-4 text-gray-600 font-medium">{row.label}</td>
+                <td className="py-3 px-4 text-gray-700 font-medium">{row.label}</td>
                 <td
-                  className={`py-3 px-4 text-center font-mono ${
-                    isAdvA ? 'text-emerald-600 bg-emerald-50' : 'text-gray-600'
+                  className={`py-3 px-4 text-center font-mono text-sm ${
+                    isAdvA ? 'text-emerald-700 bg-emerald-50 font-semibold' : 'text-gray-600'
                   }`}
                 >
                   {formatValue(row.valueA)}
                   {isAdvA && (
-                    <span className="ml-1.5 text-xs text-emerald-600">▲</span>
+                    <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-[10px]">✓</span>
                   )}
                 </td>
                 <td
-                  className={`py-3 px-4 text-center font-mono ${
-                    isAdvB ? 'text-emerald-600 bg-emerald-50' : 'text-gray-600'
+                  className={`py-3 px-4 text-center font-mono text-sm ${
+                    isAdvB ? 'text-emerald-700 bg-emerald-50 font-semibold' : 'text-gray-600'
                   }`}
                 >
                   {formatValue(row.valueB)}
                   {isAdvB && (
-                    <span className="ml-1.5 text-xs text-emerald-600">▲</span>
+                    <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-[10px]">✓</span>
                   )}
                 </td>
-                <td className="py-3 px-4 text-center font-mono text-gray-500">
-                  {formatDelta(row.delta)}
+                <td className={`py-3 px-4 text-center font-mono text-sm ${
+                  row.delta !== null && row.delta !== undefined
+                    ? row.delta > 0 ? 'text-emerald-600' : row.delta < 0 ? 'text-red-500' : 'text-gray-400'
+                    : 'text-gray-400'
+                }`}>
+                  {formatDeltaPercent(row.delta, row.valueA)}
                 </td>
               </tr>
             );
@@ -197,7 +212,12 @@ function ModeDescription({ mode }: { mode: ComparisonMode }) {
   );
 }
 
-export default function ZoningComparatorTab() {
+interface ZoningComparatorTabProps {
+  dealId?: string;
+  deal?: any;
+}
+
+export default function ZoningComparatorTab({ dealId, deal }: ZoningComparatorTabProps = {}) {
   const {
     comparisonMode,
     comparisonA,
@@ -225,29 +245,40 @@ export default function ZoningComparatorTab() {
         </p>
       </div>
 
-      <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
           Comparison Mode
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-6 flex-wrap">
           {MODE_OPTIONS.map(({ mode, label }) => (
-            <button
+            <label
               key={mode}
+              className="flex items-center gap-2 cursor-pointer group"
               onClick={() => changeMode(mode)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                comparisonMode === mode
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
             >
-              {label}
-            </button>
+              <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                comparisonMode === mode
+                  ? 'border-blue-600'
+                  : 'border-gray-300 group-hover:border-gray-400'
+              }`}>
+                {comparisonMode === mode && (
+                  <span className="w-2 h-2 rounded-full bg-blue-600" />
+                )}
+              </span>
+              <span className={`text-sm transition-colors ${
+                comparisonMode === mode
+                  ? 'text-gray-900 font-medium'
+                  : 'text-gray-600 group-hover:text-gray-900'
+              }`}>
+                {label}
+              </span>
+            </label>
           ))}
         </div>
         <ModeDescription mode={comparisonMode} />
       </div>
 
-      <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex gap-4 items-start">
           <SelectionPanel
             side="a"
@@ -261,7 +292,7 @@ export default function ZoningComparatorTab() {
             onClear={clearSelection}
           />
 
-          <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 mt-6 rounded-full bg-white border border-gray-200 text-gray-500 text-sm font-bold">
+          <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 mt-6 rounded-full bg-gray-100 border border-gray-200 text-gray-500 text-sm font-bold">
             vs
           </div>
 
@@ -308,29 +339,46 @@ export default function ZoningComparatorTab() {
       )}
 
       {comparison && comparison.deltas && (
-        <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-900">Comparison Results</h3>
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-900">Side-by-Side Comparison</h3>
             <p className="text-xs text-gray-500 mt-0.5">
               {getItemLabel(comparison.itemA, comparisonMode)} vs{' '}
               {getItemLabel(comparison.itemB, comparisonMode)}
             </p>
           </div>
-          <ComparisonTable deltas={comparison.deltas} />
+          <ComparisonTable
+            deltas={comparison.deltas}
+            labelA={getItemLabel(comparison.itemA, comparisonMode)}
+            labelB={getItemLabel(comparison.itemB, comparisonMode)}
+          />
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 flex gap-3">
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <span>📊</span> Export Comparison
+            </button>
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <span>📎</span> Attach to Deal
+            </button>
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+              <span>🗺️</span> Show Both on Map
+            </button>
+          </div>
         </div>
       )}
 
       {comparison?.aiSynthesis && (
-        <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border border-blue-200 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <h3 className="text-sm font-semibold text-blue-900">AI Synthesis</h3>
+        <div className="bg-white rounded-xl border border-blue-200 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+              <span className="text-base">🤖</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">AI Synthesis</h3>
+              <p className="text-sm text-gray-600 leading-relaxed italic">
+                "{comparison.aiSynthesis}"
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-gray-600 leading-relaxed">
-            {comparison.aiSynthesis}
-          </p>
         </div>
       )}
 

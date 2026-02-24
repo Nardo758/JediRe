@@ -2,27 +2,47 @@ import React, { useState } from 'react';
 import { useDevelopmentCapacity } from '../../../hooks/useDevelopmentCapacity';
 import type { CapacityScenario, StrategyArbitrageImpact } from '../../../types/zoning.types';
 
-const MATRIX_ROWS: { key: keyof CapacityScenario; label: string; format?: (v: any) => string }[] = [
-  { key: 'maxUnits', label: 'Max Units', format: (v) => v?.toLocaleString() ?? '—' },
-  { key: 'maxHeight', label: 'Max Height (ft)', format: (v) => v != null ? `${v}'` : '—' },
-  { key: 'maxFar', label: 'FAR', format: (v) => v != null ? v.toFixed(2) : '—' },
-  { key: 'maxGfa', label: 'Gross Floor Area (sf)', format: (v) => v != null ? v.toLocaleString() : '—' },
-  { key: 'parkingRequired', label: 'Parking Required' },
-  { key: 'openSpace', label: 'Open Space (%)', format: (v) => v != null ? `${v}%` : '—' },
-  { key: 'timeline', label: 'Timeline' },
-  { key: 'cost', label: 'Estimated Cost' },
-  { key: 'riskLevel', label: 'Risk Level', format: (v) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '—' },
-  { key: 'successPercent', label: 'Success %', format: (v) => v != null ? `${v}%` : '—' },
-  { key: 'estimatedValue', label: 'Estimated Value', format: (v) => v != null ? `$${v.toLocaleString()}` : '—' },
-  { key: 'deltaVsByRight', label: 'Delta vs By-Right', format: (v) => v != null ? `${v >= 0 ? '+' : ''}$${v.toLocaleString()}` : '—' },
+interface MatrixSection {
+  label: string;
+  rows: { key: keyof CapacityScenario; label: string; format?: (v: any) => string }[];
+}
+
+const MATRIX_SECTIONS: MatrixSection[] = [
+  {
+    label: 'Development Parameters',
+    rows: [
+      { key: 'maxUnits', label: 'Max Units', format: (v) => v?.toLocaleString() ?? '—' },
+      { key: 'maxHeight', label: 'Max Height', format: (v) => v != null ? `${v} ft` : '—' },
+      { key: 'maxFar', label: 'Max FAR', format: (v) => v != null ? v.toFixed(2) : '—' },
+      { key: 'maxGfa', label: 'Max GFA', format: (v) => v != null ? `${v.toLocaleString()} SF` : '—' },
+      { key: 'parkingRequired', label: 'Parking Req' },
+      { key: 'openSpace', label: 'Open Space', format: (v) => v != null ? `${v.toLocaleString()} SF` : '—' },
+    ],
+  },
+  {
+    label: 'Entitlement Risk',
+    rows: [
+      { key: 'timeline', label: 'Timeline' },
+      { key: 'cost', label: 'Cost' },
+      { key: 'riskLevel', label: 'Risk', format: (v) => v ? v.charAt(0).toUpperCase() + v.slice(1) : '—' },
+      { key: 'successPercent', label: 'Success %', format: (v) => v != null ? `${v}%` : '—' },
+    ],
+  },
+  {
+    label: 'Value Impact',
+    rows: [
+      { key: 'estimatedValue', label: 'Est. Value', format: (v) => v != null ? `$${v.toLocaleString()}` : '—' },
+      { key: 'deltaVsByRight', label: 'Delta vs By-Right', format: (v) => v != null ? `${v >= 0 ? '+' : ''}$${v.toLocaleString()}` : 'baseline' },
+    ],
+  },
 ];
 
 function getRiskColor(risk: string): string {
   switch (risk) {
-    case 'low': return 'text-green-400';
-    case 'medium': return 'text-yellow-400';
-    case 'high': return 'text-red-400';
-    default: return 'text-gray-400';
+    case 'low': return 'text-green-600';
+    case 'medium': return 'text-yellow-600';
+    case 'high': return 'text-red-600';
+    default: return 'text-gray-500';
   }
 }
 
@@ -30,7 +50,12 @@ function getScenarioByType(scenarios: CapacityScenario[], type: string): Capacit
   return scenarios.find((s) => s.scenarioType === type);
 }
 
-export default function DevelopmentCapacityTab() {
+interface DevelopmentCapacityTabProps {
+  dealId?: string;
+  deal?: any;
+}
+
+export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps = {}) {
   const { data, loading, error, analyzeByAddress, clear } = useDevelopmentCapacity();
   const [address, setAddress] = useState('');
 
@@ -43,11 +68,16 @@ export default function DevelopmentCapacityTab() {
   const variance = data ? getScenarioByType(data.scenarios, 'variance') : undefined;
   const rezone = data ? getScenarioByType(data.scenarios, 'rezone') : undefined;
   const scenarios = [byRight, variance, rezone];
-  const scenarioLabels = ['Current Zoning (By-Right)', 'Variance Path', 'Rezone Path'];
+
+  const scenarioHeaders = [
+    { label: 'CURRENT ZONING', sub: byRight ? `(${byRight.scenarioType === 'by_right' ? 'by-right' : byRight.scenarioType})` : '(by-right)' },
+    { label: 'VARIANCE PATH', sub: variance ? `(${variance.scenarioType})` : '(variance)' },
+    { label: 'REZONE PATH', sub: rezone ? `(→ rezone)` : '(rezone)' },
+  ];
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSearch} className="flex items-center gap-3 bg-white rounded-lg p-4">
+      <form onSubmit={handleSearch} className="flex items-center gap-3 bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex-1">
           <input
             type="text"
@@ -99,49 +129,101 @@ export default function DevelopmentCapacityTab() {
 
       {data && !loading && (
         <>
+          {data.parcelInfo && (
+            <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Parcel:</span>
+                <span className="text-gray-900 font-semibold">{data.parcelInfo.address || address}</span>
+              </div>
+              <div className="w-px h-5 bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Lot:</span>
+                <span className="text-gray-900">{data.parcelInfo.lotSize || '—'}</span>
+              </div>
+              <div className="w-px h-5 bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Current:</span>
+                <span className="text-gray-900 font-semibold">{data.parcelInfo.currentZoning || '—'}</span>
+              </div>
+            </div>
+          )}
+
+          {!data.parcelInfo && (
+            <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Parcel:</span>
+                <span className="text-gray-900 font-semibold">{address}</span>
+              </div>
+              <div className="w-px h-5 bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium">Scenarios:</span>
+                <span className="text-gray-900">{data.scenarios.length} analyzed</span>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Capacity Comparison Matrix</h3>
-              <p className="text-xs text-gray-600 mt-1">Side-by-side analysis of development potential across entitlement paths</p>
+            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Capacity Comparison Matrix</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Side-by-side analysis of development potential across entitlement paths</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left px-5 py-3 text-gray-700 font-medium w-1/4">Metric</th>
-                    {scenarioLabels.map((label, i) => (
-                      <th key={i} className="text-center px-4 py-3 text-gray-700 font-medium w-1/4">
-                        {label}
+                  <tr className="border-b border-gray-200 bg-gray-50/50">
+                    <th className="text-left px-5 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider w-[22%]"></th>
+                    {scenarioHeaders.map((h, i) => (
+                      <th key={i} className="text-center px-4 py-3 w-[26%]">
+                        <div className="text-xs font-bold text-gray-900 uppercase tracking-wide">{h.label}</div>
+                        <div className="text-[10px] text-gray-500 mt-0.5">{h.sub}</div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {MATRIX_ROWS.map((row) => (
-                    <tr key={row.key} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-5 py-3 text-gray-700 font-medium">{row.label}</td>
-                      {scenarios.map((scenario, i) => {
-                        const value = scenario ? scenario[row.key] : null;
-                        const formatted = row.format ? row.format(value) : (value ?? '—');
-                        let cellClass = 'text-gray-900';
+                  {MATRIX_SECTIONS.map((section, sIdx) => (
+                    <React.Fragment key={section.label}>
+                      <tr>
+                        <td colSpan={4} className="px-5 pt-4 pb-1">
+                          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1">
+                            {section.label}
+                          </div>
+                        </td>
+                      </tr>
+                      {section.rows.map((row) => (
+                        <tr key={row.key} className="hover:bg-gray-50/50">
+                          <td className="px-5 py-2.5 text-gray-600 font-medium text-xs">{row.label}</td>
+                          {scenarios.map((scenario, i) => {
+                            const value = scenario ? scenario[row.key] : null;
+                            const formatted = row.format ? row.format(value) : (value ?? '—');
+                            let cellClass = 'text-gray-900';
 
-                        if (row.key === 'riskLevel' && scenario) {
-                          cellClass = getRiskColor(scenario.riskLevel);
-                        }
-                        if (row.key === 'deltaVsByRight' && scenario) {
-                          cellClass = scenario.deltaVsByRight > 0 ? 'text-green-600' : scenario.deltaVsByRight < 0 ? 'text-red-600' : 'text-gray-600';
-                        }
-                        if (row.key === 'successPercent' && scenario) {
-                          cellClass = scenario.successPercent >= 80 ? 'text-green-600' : scenario.successPercent >= 50 ? 'text-yellow-600' : 'text-red-600';
-                        }
+                            if (row.key === 'riskLevel' && scenario) {
+                              cellClass = getRiskColor(scenario.riskLevel);
+                            }
+                            if (row.key === 'deltaVsByRight' && scenario) {
+                              cellClass = scenario.deltaVsByRight > 0 ? 'text-green-600 font-semibold' : scenario.deltaVsByRight < 0 ? 'text-red-600' : 'text-gray-500';
+                            }
+                            if (row.key === 'successPercent' && scenario) {
+                              cellClass = scenario.successPercent >= 80 ? 'text-green-600 font-medium' : scenario.successPercent >= 50 ? 'text-yellow-600 font-medium' : 'text-red-600 font-medium';
+                            }
 
-                        return (
-                          <td key={i} className={`text-center px-4 py-3 ${cellClass}`}>
-                            {formatted}
+                            return (
+                              <td key={i} className={`text-center px-4 py-2.5 text-xs ${cellClass}`}>
+                                {formatted}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                      {sIdx < MATRIX_SECTIONS.length - 1 && (
+                        <tr>
+                          <td colSpan={4} className="px-5 py-0">
+                            <div className="border-b border-gray-100" />
                           </td>
-                        );
-                      })}
-                    </tr>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -149,44 +231,49 @@ export default function DevelopmentCapacityTab() {
           </div>
 
           {data.aiRecommendation && (
-            <div className="bg-white rounded-lg border border-gray-200 p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-base font-semibold text-gray-900">AI Recommendation</h3>
-                    <span className="text-xs text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full">
-                      {data.aiRecommendation.evidenceCount} evidence points
-                    </span>
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                <span className="text-lg">🤖</span>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">AI Recommendation</h3>
+              </div>
+              <div className="p-5">
+                <blockquote className="text-sm text-gray-700 leading-relaxed italic border-l-3 border-blue-400 pl-4 mb-4">
+                  "{data.aiRecommendation.reasoning}"
+                </blockquote>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-xs text-gray-500">
+                    {data.aiRecommendation.confidence != null && (
+                      <span>Confidence: <strong className="text-gray-700">{data.aiRecommendation.confidence}%</strong></span>
+                    )}
+                    <span className="w-px h-4 bg-gray-200" />
+                    <span>Based on: <strong className="text-gray-700">{data.aiRecommendation.evidenceCount} comparable rezones</strong></span>
                   </div>
-                  <p className="text-sm text-gray-700 leading-relaxed mb-3">
-                    {data.aiRecommendation.reasoning}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-600">Recommended Path:</span>
-                    <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2.5 py-1 rounded">
-                      {data.aiRecommendation.recommendedPath}
-                    </span>
-                  </div>
+                  <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2.5 py-1 rounded">
+                    Recommended: {data.aiRecommendation.recommendedPath}
+                  </span>
                 </div>
               </div>
             </div>
           )}
 
           {data.strategyImpacts && data.strategyImpacts.length > 0 && (
-            <div>
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Strategy Arbitrage Impact</h3>
-                <p className="text-xs text-gray-600 mt-1">IRR and cap rate projections for each investment strategy across entitlement scenarios</p>
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Strategy Arbitrage Impact</h3>
+                <p className="text-xs text-gray-500 mt-0.5">How does zoning capacity affect each strategy?</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 space-y-4">
                 {data.strategyImpacts.map((impact) => (
-                  <StrategyImpactCard key={impact.strategy} impact={impact} />
+                  <StrategyImpactRow key={impact.strategy} impact={impact} />
                 ))}
+              </div>
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 flex items-center gap-3">
+                <button className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                  <span>📊</span> Full Strategy Arbitrage Report
+                </button>
+                <button className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+                  <span>📎</span> Attach to Deal Capsule
+                </button>
               </div>
             </div>
           )}
@@ -196,66 +283,62 @@ export default function DevelopmentCapacityTab() {
   );
 }
 
-function StrategyImpactCard({ impact }: { impact: StrategyArbitrageImpact }) {
-  const strategyIcons: Record<string, string> = {
-    BTS: '🏗️',
-    Rental: '🏢',
-    Flip: '🔄',
-    STR: '🏠',
+function StrategyImpactRow({ impact }: { impact: StrategyArbitrageImpact }) {
+  const strategyNames: Record<string, string> = {
+    BTS: 'BUILD-TO-SELL',
+    Rental: 'RENTAL (Hold)',
+    Flip: 'FLIP',
+    STR: 'STR',
   };
 
+  if (!impact.applicable) {
+    return (
+      <div className="flex items-center gap-3 text-sm text-gray-500 py-2 px-1">
+        <span className="font-bold text-xs text-gray-700 uppercase w-32">{strategyNames[impact.strategy] || impact.strategy}</span>
+        <span className="text-xs italic text-gray-400">{impact.reason || 'Not applicable'}</span>
+      </div>
+    );
+  }
+
+  const bestScenario = impact.scenarios.reduce<{ label: string; irr: number | null; capRate: number | null; units: number } | null>((best, s) => {
+    if (s.irr == null) return best;
+    if (!best || (best.irr != null && s.irr > best.irr)) return s;
+    return best;
+  }, null);
+
   return (
-    <div className={`bg-white rounded-lg border ${impact.applicable ? 'border-gray-200' : 'border-gray-200 opacity-60'} p-4`}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{strategyIcons[impact.strategy] || '📊'}</span>
-          <h4 className="font-semibold text-gray-900 text-sm">{impact.strategy}</h4>
+    <div>
+      <div className="font-bold text-xs text-gray-900 uppercase tracking-wide mb-2">
+        {strategyNames[impact.strategy] || impact.strategy}
+      </div>
+      <div className="bg-gray-50 rounded-lg border border-gray-100 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {impact.scenarios.map((scenario) => {
+            const isBest = bestScenario && scenario.label === bestScenario.label;
+            return (
+              <div key={scenario.label} className="flex items-center gap-2 text-xs">
+                <span className="text-gray-500">{scenario.label} ({scenario.units}u):</span>
+                {scenario.irr != null && (
+                  <span className={`font-semibold ${scenario.irr >= 15 ? 'text-green-600' : scenario.irr >= 10 ? 'text-yellow-600' : 'text-gray-700'}`}>
+                    IRR {scenario.irr.toFixed(1)}%
+                  </span>
+                )}
+                {scenario.capRate != null && (
+                  <span className="text-gray-600">
+                    Cap {scenario.capRate.toFixed(1)}%
+                  </span>
+                )}
+                {isBest && <span className="text-sm" title="Best scenario">🏆</span>}
+              </div>
+            );
+          })}
         </div>
-        {!impact.applicable && (
-          <span className="text-[10px] text-red-700 bg-red-50 px-2 py-0.5 rounded">N/A</span>
+        {impact.bestPath && (
+          <div className="mt-2 text-[10px] text-blue-600 font-medium">
+            🏆 Best: {impact.bestPath}
+          </div>
         )}
       </div>
-
-      {impact.applicable && impact.bestPath && (
-        <div className="mb-3">
-          <span className="text-[10px] text-gray-600">Best Path</span>
-          <p className="text-xs font-medium text-blue-700">{impact.bestPath}</p>
-        </div>
-      )}
-
-      {!impact.applicable && (
-        <p className="text-xs text-gray-600 mb-3">{impact.reason}</p>
-      )}
-
-      {impact.applicable && impact.scenarios.length > 0 && (
-        <div className="space-y-2">
-          {impact.scenarios.map((scenario) => (
-            <div key={scenario.label} className="bg-gray-50 rounded px-3 py-2">
-              <div className="text-[10px] text-gray-600 mb-1">{scenario.label}</div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-gray-600">IRR </span>
-                  <span className={`text-xs font-medium ${scenario.irr != null && scenario.irr >= 15 ? 'text-green-600' : scenario.irr != null && scenario.irr >= 10 ? 'text-yellow-600' : 'text-gray-700'}`}>
-                    {scenario.irr != null ? `${scenario.irr.toFixed(1)}%` : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-600">Cap </span>
-                  <span className="text-xs font-medium text-gray-700">
-                    {scenario.capRate != null ? `${scenario.capRate.toFixed(1)}%` : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-gray-600">Units </span>
-                  <span className="text-xs font-medium text-gray-700">
-                    {scenario.units}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
