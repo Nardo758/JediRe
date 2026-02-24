@@ -59,6 +59,7 @@ import neighboringPropertiesRoutes from './neighboringProperties.routes';
 import qwenRoutes from './qwen.routes';
 import competitionRoutes from './competition.routes';
 import errorsRoutes from './errors.routes';
+import dataTrackerRoutes from './data-tracker.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -230,6 +231,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Error Logging routes (Frontend error tracking and monitoring)
   app.use(`${API_PREFIX}/errors`, errorsRoutes);
+
+  // Data Tracker routes (Admin data coverage & completeness tracking)
+  app.use(`${API_PREFIX}/admin/data-tracker`, dataTrackerRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
