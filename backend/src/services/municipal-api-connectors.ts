@@ -45,10 +45,9 @@ export class ArcGISConnector {
     const allFeatures: any[] = [];
     const batchSize = 2000;
     let offset = 0;
-    let hasMore = true;
 
     try {
-      while (hasMore) {
+      while (true) {
         const url = `${this.serviceUrl}/${layerId}/query`;
         const response = await axios.get(url, {
           params: {
@@ -63,28 +62,35 @@ export class ArcGISConnector {
           timeout: 30000,
         });
 
+        if (response.data.error) {
+          if (allFeatures.length > 0) {
+            console.warn(`ArcGIS pagination error at offset ${offset}, returning ${allFeatures.length} features collected so far`);
+            break;
+          }
+          throw new Error(response.data.error.message || 'ArcGIS query error');
+        }
+
         const features = response.data.features || [];
+        if (features.length === 0) break;
+
         allFeatures.push(...features.map((f: any) => ({
           ...f.attributes,
           geometry: f.geometry,
         })));
 
-        if (features.length < batchSize || !response.data.exceededTransferLimit) {
-          hasMore = false;
-        } else {
-          offset += batchSize;
-        }
+        if (features.length < batchSize) break;
+        offset += features.length;
       }
 
       console.log(`Fetched ${allFeatures.length} features from ArcGIS layer ${layerId}`);
       return allFeatures;
 
-    } catch (error) {
+    } catch (error: any) {
       if (allFeatures.length > 0) {
-        console.warn(`ArcGIS pagination stopped at ${allFeatures.length} features (may not support offset)`);
+        console.warn(`ArcGIS pagination stopped at ${allFeatures.length} features: ${error.message}`);
         return allFeatures;
       }
-      console.error('ArcGIS API error:', error);
+      console.error('ArcGIS API error:', error.message);
       throw error;
     }
   }
