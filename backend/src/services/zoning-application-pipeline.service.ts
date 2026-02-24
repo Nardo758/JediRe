@@ -14,6 +14,17 @@ export interface PipelineInput {
   landAreaSf: number;
   setbacks?: { front: number; side: number; rear: number };
   propertyType?: PropertyType;
+  boundaryGeoJSON?: any;
+  buildableAreaSF?: number;
+  constraints?: {
+    floodplain?: boolean;
+    floodplainZone?: string;
+    wetlands?: boolean;
+    protectedArea?: boolean;
+    easements?: any[];
+  };
+  dataSource?: 'property_boundary' | 'manual';
+  boundaryUpdatedAt?: Date | null;
 }
 
 export interface CapacityScenario {
@@ -73,6 +84,9 @@ export interface PipelineResult {
     maxLotCoverage: number | null;
     buildableFootprint: number;
     setbacks: { front: number; side: number; rear: number };
+    footprintSource?: string;
+    constraintAdjustment?: number;
+    constraintFlags?: any;
   };
   step3_overlayAdjustments: any[];
   step4_capacityScenarios: CapacityScenario[];
@@ -112,7 +126,7 @@ export class ZoningApplicationPipeline {
     const step2 = this.step2_applyBaseDistrict(input, profile, setbacks);
     const step3 = this.step3_applyOverlays(step1.overlays, step2);
     const step4 = this.step4_calculateCapacity(input, profile, setbacks);
-    const step5 = this.step5_identifyIncentives(profile);
+    const step5 = this.step5_identifyIncentives(profile, input);
     const step6 = this.step6_assessEntitlementPaths(step4, profile, input);
 
     let step7 = '';
@@ -123,7 +137,7 @@ export class ZoningApplicationPipeline {
     }
 
     const maturity = await this.knowledgeService.getJurisdictionMaturity(input.municipality);
-    const step8 = this.step8_scoreConfidence(profile, maturity);
+    const step8 = this.step8_scoreConfidence(profile, maturity, input);
 
     citations.push(...(profile?.crossReferences?.map(cr => cr.ref) || []));
     citations.push(...(profile?.incentives?.map(i => i.codeRef).filter(Boolean) as string[] || []));
@@ -177,10 +191,33 @@ export class ZoningApplicationPipeline {
     const maxFARGfa = dim?.maxFAR ? Math.round(dim.maxFAR * landAreaSf) : null;
     const maxLotCoverage = dim?.maxLotCoveragePct ? dim.maxLotCoveragePct : null;
 
-    const side = Math.sqrt(landAreaSf);
-    const effectiveWidth = Math.max(0, side - (2 * setbacks.side));
-    const effectiveDepth = Math.max(0, side - setbacks.front - setbacks.rear);
-    const buildableFootprint = effectiveWidth * effectiveDepth;
+    let buildableFootprint: number;
+    let footprintSource: string;
+
+    if (input.buildableAreaSF && input.buildableAreaSF > 0) {
+      buildableFootprint = input.buildableAreaSF;
+      footprintSource = 'property_boundary';
+    } else if (input.boundaryGeoJSON) {
+      buildableFootprint = this.calculateBuildableFromGeoJSON(input.boundaryGeoJSON, setbacks, landAreaSf);
+      footprintSource = 'geometry_calculated';
+    } else {
+      const side = Math.sqrt(landAreaSf);
+      const effectiveWidth = Math.max(0, side - (2 * setbacks.side));
+      const effectiveDepth = Math.max(0, side - setbacks.front - setbacks.rear);
+      buildableFootprint = effectiveWidth * effectiveDepth;
+      footprintSource = 'square_approximation';
+    }
+
+    let constraintAdjustment = 1.0;
+    if (input.constraints) {
+      if (input.constraints.floodplain) constraintAdjustment -= 0.15;
+      if (input.constraints.wetlands) constraintAdjustment -= 0.20;
+      if (input.constraints.protectedArea) constraintAdjustment -= 0.10;
+      if (input.constraints.easements?.length) {
+        constraintAdjustment -= Math.min(0.10, input.constraints.easements.length * 0.03);
+      }
+    }
+    buildableFootprint = Math.round(buildableFootprint * Math.max(0.3, constraintAdjustment));
 
     return {
       landAreaSf,
@@ -188,9 +225,67 @@ export class ZoningApplicationPipeline {
       maxDensityUnits,
       maxFARGfa,
       maxLotCoverage,
-      buildableFootprint: Math.round(buildableFootprint),
+      buildableFootprint,
       setbacks,
+      footprintSource,
+      constraintAdjustment: constraintAdjustment < 1.0 ? constraintAdjustment : undefined,
+      constraintFlags: input.constraints || undefined,
     };
+  }
+
+  private calculateBuildableFromGeoJSON(
+    geoJSON: any,
+    setbacks: { front: number; side: number; rear: number },
+    fallbackAreaSf: number
+  ): number {
+    try {
+      if (!geoJSON || !geoJSON.geometry?.coordinates) {
+        return this.fallbackBuildable(fallbackAreaSf, setbacks);
+      }
+
+      const coords = geoJSON.geometry.coordinates[0];
+      if (!Array.isArray(coords) || coords.length < 4) {
+        return this.fallbackBuildable(fallbackAreaSf, setbacks);
+      }
+
+      const avgSetbackFt = (setbacks.front + setbacks.rear + setbacks.side * 2) / 4;
+      const avgSetbackMeters = avgSetbackFt * 0.3048;
+
+      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+      for (const coord of coords) {
+        if (coord[0] < minLng) minLng = coord[0];
+        if (coord[0] > maxLng) maxLng = coord[0];
+        if (coord[1] < minLat) minLat = coord[1];
+        if (coord[1] > maxLat) maxLat = coord[1];
+      }
+
+      const centerLat = (minLat + maxLat) / 2;
+      const widthMeters = (maxLng - minLng) * 111320 * Math.cos(centerLat * Math.PI / 180);
+      const heightMeters = (maxLat - minLat) * 110574;
+
+      const effectiveWidth = Math.max(0, widthMeters - 2 * (setbacks.side * 0.3048));
+      const effectiveHeight = Math.max(0, heightMeters - (setbacks.front + setbacks.rear) * 0.3048);
+
+      const parcelAreaSqM = widthMeters * heightMeters;
+      const parcelAreaSqFt = parcelAreaSqM * 10.7639;
+
+      const irregularityFactor = fallbackAreaSf > 0 ? Math.min(1.0, fallbackAreaSf / parcelAreaSqFt) : 0.85;
+
+      const buildableAreaSqM = effectiveWidth * effectiveHeight * irregularityFactor;
+      const buildableAreaSqFt = buildableAreaSqM * 10.7639;
+
+      return Math.round(Math.max(0, buildableAreaSqFt));
+    } catch (e) {
+      console.error('GeoJSON buildable area calculation error:', e);
+      return this.fallbackBuildable(fallbackAreaSf, setbacks);
+    }
+  }
+
+  private fallbackBuildable(areaSf: number, setbacks: { front: number; side: number; rear: number }): number {
+    const side = Math.sqrt(areaSf);
+    const effectiveWidth = Math.max(0, side - (2 * setbacks.side));
+    const effectiveDepth = Math.max(0, side - setbacks.front - setbacks.rear);
+    return Math.round(effectiveWidth * effectiveDepth);
   }
 
   private step3_applyOverlays(overlays: any[], baseApplication: any): any[] {
@@ -298,16 +393,43 @@ export class ZoningApplicationPipeline {
     return scenarios;
   }
 
-  private step5_identifyIncentives(profile: ZoningDistrictProfile | null): IncentiveProgram[] {
-    if (!profile) return [];
+  private step5_identifyIncentives(
+    profile: ZoningDistrictProfile | null,
+    input?: PipelineInput
+  ): IncentiveProgram[] {
+    const programs: IncentiveProgram[] = [];
 
-    return profile.incentives.map(incentive => ({
-      program: incentive.program,
-      trigger: incentive.trigger,
-      benefit: incentive.benefit,
-      codeRef: incentive.codeRef,
-      applicable: true,
-    }));
+    if (profile) {
+      for (const incentive of profile.incentives) {
+        programs.push({
+          program: incentive.program,
+          trigger: incentive.trigger,
+          benefit: incentive.benefit,
+          codeRef: incentive.codeRef,
+          applicable: true,
+        });
+      }
+    }
+
+    if (input?.constraints?.floodplain) {
+      programs.push({
+        program: 'Flood Mitigation Credit',
+        trigger: 'Parcel located in floodplain zone' + (input.constraints.floodplainZone ? ` (${input.constraints.floodplainZone})` : ''),
+        benefit: 'Potential fee waivers or density transfers for flood-resilient design',
+        applicable: true,
+      });
+    }
+
+    if (input?.constraints?.wetlands) {
+      programs.push({
+        program: 'Wetlands Mitigation Banking',
+        trigger: 'Parcel contains wetlands requiring mitigation',
+        benefit: 'Conservation credits or density transfer to buildable portion of site',
+        applicable: true,
+      });
+    }
+
+    return programs;
   }
 
   private step6_assessEntitlementPaths(
@@ -383,7 +505,8 @@ Provide a clear, actionable recommendation. Consider risk-adjusted value, timeli
 
   private step8_scoreConfidence(
     profile: ZoningDistrictProfile | null,
-    maturity: { level: string; confidenceCap: number }
+    maturity: { level: string; confidenceCap: number },
+    input?: PipelineInput
   ): ConfidenceBreakdown {
     const hasProfile = !!profile;
     const hasDimensional = hasProfile && (profile!.dimensional.maxFAR != null || profile!.dimensional.maxDensityUnitsPerAcre != null);
@@ -391,11 +514,36 @@ Provide a clear, actionable recommendation. Consider risk-adjusted value, timeli
     const hasOverlays = hasProfile && profile!.applicableOverlays.length > 0;
     const hasIncentives = hasProfile && profile!.incentives.length > 0;
 
-    const dimensionalStandards = hasDimensional ? 90 : 50;
-    const parkingCalculations = hasParking ? 85 : 55;
-    const overlayApplication = hasOverlays ? 80 : 60;
-    const incentiveEligibility = hasIncentives ? 82 : 55;
-    const approvalProbability = 70;
+    let dimensionalStandards = hasDimensional ? 90 : 50;
+    let parkingCalculations = hasParking ? 85 : 55;
+    let overlayApplication = hasOverlays ? 80 : 60;
+    let incentiveEligibility = hasIncentives ? 82 : 55;
+    let approvalProbability = 70;
+
+    if (input?.dataSource === 'property_boundary') {
+      dimensionalStandards = Math.min(98, dimensionalStandards + 5);
+      parkingCalculations = Math.min(98, parkingCalculations + 3);
+    }
+
+    if (input?.buildableAreaSF && input.buildableAreaSF > 0) {
+      dimensionalStandards = Math.min(98, dimensionalStandards + 3);
+    }
+
+    if (input?.constraints) {
+      overlayApplication = Math.min(95, overlayApplication + 5);
+      if (input.constraints.floodplain !== undefined || input.constraints.wetlands !== undefined) {
+        incentiveEligibility = Math.min(95, incentiveEligibility + 5);
+      }
+    }
+
+    if (input?.boundaryUpdatedAt) {
+      const daysSinceUpdate = (Date.now() - new Date(input.boundaryUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceUpdate <= 30) {
+        dimensionalStandards = Math.min(98, dimensionalStandards + 3);
+      } else if (daysSinceUpdate > 180) {
+        dimensionalStandards = Math.max(40, dimensionalStandards - 5);
+      }
+    }
 
     const rawOverall = Math.round(
       dimensionalStandards * 0.30 +

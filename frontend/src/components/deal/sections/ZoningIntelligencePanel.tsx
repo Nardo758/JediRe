@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Loader2, Brain, MessageSquare, Shield, ChevronDown, ChevronUp,
   Sparkles, Target, BarChart3, Scale, AlertTriangle, BookOpen,
-  Send, Clock, Layers, TrendingUp, CheckCircle2, FileText
+  Send, Clock, Layers, TrendingUp, CheckCircle2, FileText, MapPin
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 
@@ -28,7 +28,18 @@ interface QueryResponse {
 
 interface AnalysisResult {
   step1_ruleStack: any;
-  step2_baseApplication: any;
+  step2_baseApplication: {
+    landAreaSf: number;
+    acres: number;
+    maxDensityUnits: number | null;
+    maxFARGfa: number | null;
+    buildableFootprint: number;
+    setbacks: { front: number; side: number; rear: number };
+    footprintSource?: string;
+    constraintAdjustment?: number;
+    constraintFlags?: any;
+    [key: string]: any;
+  };
   step3_overlayAdjustments: any[];
   step4_capacityScenarios: any[];
   step5_incentivePrograms: any[];
@@ -110,6 +121,44 @@ function ScenarioCard({ scenario, index }: { scenario: any; index: number }) {
   );
 }
 
+interface BoundaryResolution {
+  hasBoundary: boolean;
+  boundary: {
+    parcelAreaSF: number | null;
+    buildableAreaSF: number | null;
+    buildablePercentage: number | null;
+    setbacks: { front: number; side: number; rear: number } | null;
+    constraints: any;
+    centroid: any;
+    hasGeoJSON: boolean;
+    updatedAt: string | null;
+  } | null;
+  deal: {
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    acres: number | null;
+    projectType: string | null;
+    zoningCode: string | null;
+  } | null;
+  zoningLookup: {
+    districtCode: string | null;
+    municipality: string | null;
+    state: string | null;
+    source: string;
+  };
+  dataCompleteness: {
+    hasBoundary: boolean;
+    hasSetbacks: boolean;
+    hasConstraints: boolean;
+    hasZoningCode: boolean;
+    hasMunicipality: boolean;
+    hasLandArea: boolean;
+    score: number;
+  };
+}
+
 export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipality, state, landAreaSf }: ZoningIntelligencePanelProps) {
   const resolvedDealId = dealId || deal?.id;
   const [question, setQuestion] = useState('');
@@ -117,6 +166,9 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [queryResult, setQueryResult] = useState<QueryResponse | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [boundaryData, setBoundaryData] = useState<BoundaryResolution | null>(null);
+  const [boundaryLoading, setBoundaryLoading] = useState(false);
+  const [analysisSource, setAnalysisSource] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     scenarios: true,
     entitlements: true,
@@ -130,10 +182,29 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const resolvedDistrict = districtCode || deal?.zoning_code;
-  const resolvedMunicipality = municipality || deal?.city;
-  const resolvedState = state || deal?.state;
-  const resolvedLandArea = landAreaSf || deal?.lot_size_sqft;
+  useEffect(() => {
+    if (!resolvedDealId) return;
+    let cancelled = false;
+    setBoundaryLoading(true);
+
+    apiClient.get(`/api/v1/zoning-intelligence/resolve/${resolvedDealId}`)
+      .then((response: any) => {
+        if (!cancelled && response.data?.success) {
+          setBoundaryData(response.data.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setBoundaryLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [resolvedDealId]);
+
+  const resolvedDistrict = districtCode || boundaryData?.zoningLookup?.districtCode || deal?.zoning_code;
+  const resolvedMunicipality = municipality || boundaryData?.zoningLookup?.municipality || deal?.city;
+  const resolvedState = state || boundaryData?.zoningLookup?.state || deal?.state;
+  const resolvedLandArea = landAreaSf || boundaryData?.boundary?.parcelAreaSF || deal?.lot_size_sqft;
 
   const askQuestion = useCallback(async (q?: string) => {
     const question_text = q || question;
@@ -177,28 +248,27 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
   }, [question, resolvedDistrict, resolvedMunicipality, resolvedState, resolvedLandArea, resolvedDealId]);
 
   const runFullAnalysis = useCallback(async () => {
-    if (!resolvedDistrict || !resolvedMunicipality || !resolvedState || !resolvedLandArea) {
-      setError('Missing required data: district code, municipality, state, and land area must be set');
-      return;
-    }
-
     setAnalysisLoading(true);
     setError('');
+    setAnalysisSource(null);
 
     try {
-      const response = await apiClient.post('/api/v1/zoning-intelligence/analyze', {
+      const payload: any = {
         dealId: resolvedDealId,
-        municipality: resolvedMunicipality,
-        state: resolvedState,
-        districtCode: resolvedDistrict,
-        landAreaSf: resolvedLandArea,
-        address: deal?.address,
-        lat: deal?.lat,
-        lng: deal?.lng,
         propertyType: 'multifamily',
-      });
+      };
 
+      if (resolvedMunicipality) payload.municipality = resolvedMunicipality;
+      if (resolvedState) payload.state = resolvedState;
+      if (resolvedDistrict) payload.districtCode = resolvedDistrict;
+      if (resolvedLandArea) payload.landAreaSf = resolvedLandArea;
+      if (deal?.address) payload.address = deal.address;
+      if (deal?.lat) payload.lat = deal.lat;
+      if (deal?.lng) payload.lng = deal.lng;
+
+      const response = await apiClient.post('/api/v1/zoning-intelligence/analyze', payload);
       setAnalysisResult(response.data.data as AnalysisResult);
+      setAnalysisSource(response.data.resolvedFrom || 'manual');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Full analysis failed');
     } finally {
@@ -229,15 +299,60 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
           </button>
         </div>
 
+        {boundaryData && (
+          <div className={`p-3 rounded-lg border text-sm mb-4 ${boundaryData.hasBoundary ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin size={14} className={boundaryData.hasBoundary ? 'text-emerald-600' : 'text-gray-400'} />
+                <span className={boundaryData.hasBoundary ? 'text-emerald-800 font-medium' : 'text-gray-600'}>
+                  {boundaryData.hasBoundary ? 'Property boundary detected' : 'No property boundary set'}
+                </span>
+                {boundaryData.hasBoundary && (
+                  <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                    {boundaryData.boundary?.parcelAreaSF ? `${(boundaryData.boundary.parcelAreaSF / 43560).toFixed(2)} acres` : ''}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                  boundaryData.dataCompleteness.score >= 80 ? 'bg-green-100 text-green-700'
+                    : boundaryData.dataCompleteness.score >= 50 ? 'bg-yellow-100 text-yellow-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {boundaryData.dataCompleteness.score}% data ready
+                </span>
+              </div>
+            </div>
+            {boundaryData.hasBoundary && boundaryData.boundary?.constraints && (
+              <div className="flex items-center gap-2 mt-2">
+                {boundaryData.boundary.constraints.floodplain && (
+                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Floodplain</span>
+                )}
+                {boundaryData.boundary.constraints.wetlands && (
+                  <span className="text-xs px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full">Wetlands</span>
+                )}
+                {boundaryData.boundary.constraints.protectedArea && (
+                  <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">Protected</span>
+                )}
+                {boundaryData.boundary.setbacks && (
+                  <span className="text-xs text-gray-500">
+                    Setbacks: {boundaryData.boundary.setbacks.front}/{boundaryData.boundary.setbacks.side}/{boundaryData.boundary.setbacks.rear} ft
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2 mb-4">
             <AlertTriangle size={16} /> {error}
           </div>
         )}
 
-        {!resolvedDistrict && (
+        {!resolvedDistrict && !boundaryData?.zoningLookup?.districtCode && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-center gap-2 mb-4">
-            <AlertTriangle size={16} /> Look up a zoning code above to enable the intelligence agent
+            <AlertTriangle size={16} /> Look up a zoning code above or draw a property boundary to enable the intelligence agent
           </div>
         )}
 
@@ -345,6 +460,22 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               <div className="flex items-center gap-2">
                 <Target size={18} className="text-indigo-600" />
                 <h3 className="font-bold text-gray-900">Full Zoning Analysis</h3>
+                {analysisSource === 'property_boundary' && (
+                  <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                    From Boundary
+                  </span>
+                )}
+                {analysisResult.step2_baseApplication.footprintSource && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    analysisResult.step2_baseApplication.footprintSource === 'property_boundary' ? 'bg-emerald-100 text-emerald-700'
+                      : analysisResult.step2_baseApplication.footprintSource === 'geometry_calculated' ? 'bg-blue-100 text-blue-700'
+                      : 'bg-gray-100 text-gray-500'
+                  }`}>
+                    {analysisResult.step2_baseApplication.footprintSource === 'property_boundary' ? 'Measured Footprint'
+                      : analysisResult.step2_baseApplication.footprintSource === 'geometry_calculated' ? 'GeoJSON Calculated'
+                      : 'Estimated'}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-sm font-bold px-3 py-1 rounded-full ${

@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getPool } from '../../database/connection';
+import { PropertyBoundaryResolver } from '../../services/property-boundary-resolver.service';
+import { ZoningKnowledgeService } from '../../services/zoning-knowledge.service';
+import { ZoningReasoningService } from '../../services/zoning-reasoning.service';
+import { ZoningApplicationPipeline } from '../../services/zoning-application-pipeline.service';
 
 const router = Router();
 const pool = getPool();
@@ -135,7 +139,12 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
       );
     }
 
-    res.json(result.rows[0]);
+    const savedBoundary = result.rows[0];
+    res.json(savedBoundary);
+
+    triggerZoningAutoPopulate(dealId).catch(err => {
+      console.error('Auto-populate zoning capacity failed (non-blocking):', err);
+    });
   } catch (error: any) {
     console.error('Error saving boundary:', error);
 
@@ -149,6 +158,51 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message || 'Failed to save boundary' });
   }
 });
+
+async function triggerZoningAutoPopulate(dealId: string) {
+  try {
+    const resolver = new PropertyBoundaryResolver(pool);
+    const resolved = await resolver.resolveForDeal(dealId);
+
+    if (!resolved.pipelineInput.municipality || !resolved.pipelineInput.districtCode || !resolved.pipelineInput.landAreaSf) {
+      console.log(`Auto-populate skipped for deal ${dealId}: missing required zoning context`);
+      return;
+    }
+
+    const knowledgeService = new ZoningKnowledgeService(pool);
+    const reasoningService = new ZoningReasoningService(pool, knowledgeService);
+    const pipeline = new ZoningApplicationPipeline(pool, knowledgeService, reasoningService);
+
+    const analysisResult = await pipeline.execute(resolved.pipelineInput);
+
+    const byRight = analysisResult.step4_capacityScenarios.find((s: any) => s.name === 'By Right');
+    const moduleOutputs = {
+      zoningIntelligence: {
+        lastAnalysis: new Date().toISOString(),
+        byRightUnits: byRight?.maxUnits || null,
+        byRightGFA: byRight?.maxGFA || null,
+        limitingFactor: byRight?.limitingFactor || null,
+        buildableFootprint: analysisResult.step2_baseApplication.buildableFootprint,
+        footprintSource: analysisResult.step2_baseApplication.footprintSource,
+        confidence: analysisResult.step8_confidence.overall,
+        districtCode: resolved.pipelineInput.districtCode,
+        municipality: resolved.pipelineInput.municipality,
+        scenarioCount: analysisResult.step4_capacityScenarios.length,
+        incentiveCount: analysisResult.step5_incentivePrograms.length,
+        autoPopulated: true,
+      },
+    };
+
+    await pool.query(
+      `UPDATE deals SET module_outputs = COALESCE(module_outputs, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(moduleOutputs), dealId]
+    );
+
+    console.log(`Auto-populated zoning capacity for deal ${dealId}: ${byRight?.maxUnits || 0} by-right units, confidence ${analysisResult.step8_confidence.overall}%`);
+  } catch (err) {
+    console.error(`Auto-populate error for deal ${dealId}:`, err);
+  }
+}
 
 router.delete('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   try {
