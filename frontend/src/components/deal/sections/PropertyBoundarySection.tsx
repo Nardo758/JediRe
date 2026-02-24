@@ -60,6 +60,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const initialLoadDone = useRef(false);
   const [geocodingAddress, setGeocodingAddress] = useState(false);
 
   const [boundary, setBoundary] = useState<BoundaryData>({
@@ -243,6 +244,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       console.error('Address geocoding error:', err);
     } finally {
       setGeocodingAddress(false);
+      initialLoadDone.current = true;
     }
   };
 
@@ -324,6 +326,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         const dealAddress = deal?.address || deal?.propertyAddress || deal?.property_address;
         if (dealAddress) {
           geocodeDealAddress(map);
+        } else {
+          initialLoadDone.current = true;
         }
       }
     });
@@ -337,7 +341,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   }, []);
 
   useEffect(() => {
-    if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading && !geocodingAddress && !detectedLocation) {
+    if (boundary.boundaryGeoJSON && !zoningInfo && !zoningLoading && initialLoadDone.current) {
       lookupZoning();
     }
   }, [boundary.boundaryGeoJSON]);

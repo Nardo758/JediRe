@@ -66,21 +66,23 @@ export const CreateDealPage: React.FC = () => {
   const marker = useRef<mapboxgl.Marker | null>(null);
 
   useEffect(() => {
-    // Simplified property types for development deals
-    const developmentPropertyTypes = [
-      {
-        id: 1,
-        type_key: 'multifamily',
-        display_name: 'Multifamily',
-        category: 'Residential',
-        description: 'Multi-unit residential building',
-        icon: '🏢',
-      },
-      // Add more if needed in the future:
-      // { id: 2, type_key: 'mixed-use', display_name: 'Mixed-Use', category: 'Mixed', description: 'Residential with ground floor retail', icon: '🏪' },
-      // { id: 3, type_key: 'senior-housing', display_name: 'Senior Housing', category: 'Specialized', description: 'Age-restricted housing', icon: '🏥' },
-    ];
-    setAvailablePropertyTypes(developmentPropertyTypes);
+    const fetchPropertyTypes = async () => {
+      try {
+        const response = await apiClient.get('/api/v1/property-types') as any;
+        const body = response?.data || response;
+        const types = body?.data || body || [];
+        if (Array.isArray(types) && types.length > 0) {
+          setAvailablePropertyTypes(types);
+        }
+      } catch (err) {
+        console.error('Error fetching property types:', err);
+        const fallbackTypes = [
+          { id: 1, type_key: 'multifamily', display_name: 'Multifamily', category: 'Multifamily', description: 'Multi-unit residential building', icon: '🏢' },
+        ];
+        setAvailablePropertyTypes(fallbackTypes);
+      }
+    };
+    fetchPropertyTypes();
   }, []);
 
   useEffect(() => {
@@ -554,7 +556,7 @@ export const CreateDealPage: React.FC = () => {
                               className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left"
                             >
                               <div className="flex items-center gap-3">
-                                <div className="text-2xl">🏠</div>
+                                <div className="text-2xl">{type.icon || '🏠'}</div>
                                 <div className="flex-1">
                                   <h4 className="font-semibold text-gray-900 text-sm">
                                     {type.display_name}
