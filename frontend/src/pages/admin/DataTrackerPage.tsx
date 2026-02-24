@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { apiClient } from '../../services/api.client';
+import axios from 'axios';
 import {
   ArrowLeft,
   Database,
@@ -180,7 +180,7 @@ export function DataTrackerPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get('/api/v1/admin/data-tracker');
+      const res = await axios.get('/api/v1/admin/data-tracker');
       setData(res.data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load data tracker');

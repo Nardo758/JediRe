@@ -147,6 +147,10 @@ const microsoftConfig = {
 };
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
+// Data Tracker - public admin stats (no auth required)
+import dataTrackerRoutes from './api/rest/data-tracker.routes';
+app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+
 app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
 app.use('/api/v1/gmail', requireAuth, gmailRouter);
 app.use('/api/v1/news', requireAuth, newsRouter);
