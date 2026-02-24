@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Loader2, Building2, TrendingUp, Save, AlertTriangle,
-  ToggleLeft, ToggleRight, Search, CheckCircle2, Info
+  ToggleLeft, ToggleRight, Search, CheckCircle2, Info,
+  BarChart3, Zap, MapPin, ArrowRight, Crown, Layers,
+  Calculator, ChevronDown, ChevronUp, Sparkles, Target
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 
@@ -62,6 +64,32 @@ interface AvailableDistrict {
   max_units_per_acre: number | null;
 }
 
+interface EnvelopeResult {
+  buildableArea: number;
+  maxFootprint: number;
+  maxGFA: number;
+  maxFloors: number;
+  maxCapacity: number;
+  limitingFactor: string;
+  capacityByConstraint: { byDensity: number | null; byFAR: number | null; byHeight: number | null; byParking: number | null };
+  parkingRequired: number;
+  parkingArea: { surface: number; structured: number };
+}
+
+interface HBUResult {
+  propertyType: string;
+  maxCapacity: number;
+  maxGFA: number;
+  annualGrossRevenue: number;
+  estimatedNOI: number;
+  estimatedValue: number;
+  capRate: number;
+  expenseRatio: number;
+  limitingFactor: string;
+  recommended: boolean;
+  reasoning: string;
+}
+
 const BASE_ZONING_OPTIONS = [
   { value: 'residential', label: 'Residential' },
   { value: 'mixed-use', label: 'Mixed-Use' },
@@ -74,6 +102,25 @@ const LIMITING_FACTOR_LABELS: Record<string, string> = {
   far: 'FAR (floor area ratio)',
   height: 'Height limit',
   parking: 'Parking requirement',
+  unknown: 'Not calculated',
+};
+
+const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  multifamily: 'Multifamily',
+  office: 'Office',
+  retail: 'Retail',
+  industrial: 'Industrial',
+  'mixed-use': 'Mixed-Use',
+  hospitality: 'Hospitality',
+};
+
+const PROPERTY_TYPE_ICONS: Record<string, string> = {
+  multifamily: '🏢',
+  office: '🏛️',
+  retail: '🏪',
+  industrial: '🏭',
+  'mixed-use': '🏗️',
+  hospitality: '🏨',
 };
 
 export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapacitySectionProps) {
@@ -85,6 +132,16 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   const [availableDistricts, setAvailableDistricts] = useState<AvailableDistrict[]>([]);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [autoFillSource, setAutoFillSource] = useState<string | null>(null);
+  const [dataSource, setDataSource] = useState<'verified' | 'ai_retrieved' | null>(null);
+
+  const [envelopeLoading, setEnvelopeLoading] = useState(false);
+  const [envelope, setEnvelope] = useState<EnvelopeResult | null>(null);
+  const [hbuResults, setHbuResults] = useState<HBUResult[] | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
+  const [showHBU, setShowHBU] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+  const [selectedPropertyType, setSelectedPropertyType] = useState('multifamily');
+
   const [data, setData] = useState<ZoningCapacityData>({
     affordable_bonus_percent: 25,
     tdr_bonus_percent: 15,
@@ -104,11 +161,40 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     }
   }, [resolvedDealId]);
 
+  const recalculateLocally = useCallback((currentData: ZoningCapacityData) => {
+    const totalUnits = currentData.max_units_with_incentives || currentData.max_units_by_right || 0;
+    const avgRent = currentData.avg_rent_per_unit || 0;
+    const annualRevenue = avgRent * totalUnits * 12;
+    const noi = annualRevenue * 0.60;
+    const estimatedValue = noi > 0 ? noi / 0.05 : 0;
+
+    const unitMix = { ...currentData.unit_mix };
+    for (const key of ['studio', 'oneBR', 'twoBR', 'threeBR'] as const) {
+      if (unitMix[key]) {
+        unitMix[key] = {
+          percent: unitMix[key]!.percent,
+          count: Math.floor((unitMix[key]!.percent / 100) * totalUnits),
+        };
+      }
+    }
+
+    return {
+      ...currentData,
+      unit_mix: unitMix,
+      annual_revenue: annualRevenue > 0 ? Math.round(annualRevenue) : undefined,
+      pro_forma_noi: noi > 0 ? Math.round(noi) : undefined,
+      estimated_value: estimatedValue > 0 ? Math.round(estimatedValue) : undefined,
+    };
+  }, []);
+
   const fetchData = async () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-capacity`);
       if (response.data) {
         setData(response.data);
+        if (response.data.zoning_code) {
+          setDataSource('verified');
+        }
       } else {
         autoFillFromDeal();
       }
@@ -137,6 +223,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
         }));
         setAutoFillSource(result.data.district_name);
+        setDataSource(result.data.source === 'ai_retrieved' ? 'ai_retrieved' : 'verified');
       } else if (result.available_districts) {
         setAvailableDistricts(result.available_districts);
       }
@@ -168,6 +255,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
         }));
         setAutoFillSource(result.data.district_name);
+        setDataSource(result.data.source === 'ai_retrieved' ? 'ai_retrieved' : 'verified');
         setShowDistrictPicker(false);
       } else {
         setSaveMsg(`No matching district found for "${zoningCode}"`);
@@ -182,8 +270,9 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
 
   const loadAvailableDistricts = async () => {
     try {
+      const city = deal?.city || 'Atlanta';
       const response = await apiClient.get('/api/v1/zoning-districts/lookup', {
-        params: { municipality: 'Atlanta' },
+        params: { municipality: city },
       });
       if (Array.isArray(response.data)) {
         setAvailableDistricts(response.data);
@@ -196,6 +285,42 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
 
   const selectDistrict = (district: AvailableDistrict) => {
     lookupZoningCode(district.district_code);
+  };
+
+  const calculateEnvelope = async () => {
+    if (!resolvedDealId) return;
+    setEnvelopeLoading(true);
+    try {
+      const response = await apiClient.post(`/api/v1/deals/${resolvedDealId}/building-envelope`, {
+        propertyType: selectedPropertyType,
+        includeHBU: true,
+        includeAI: true,
+        maxDensity: data.max_density || null,
+        maxFAR: data.max_far || null,
+        maxHeight: data.max_height_feet || null,
+        maxStories: data.max_stories || null,
+        minParkingPerUnit: data.min_parking_per_unit || null,
+      });
+      const result = response.data;
+      setEnvelope(result.envelope);
+      setHbuResults(result.highestBestUse);
+      setAiRecommendations(result.aiRecommendations);
+
+      if (result.envelope) {
+        setData((prev) => ({
+          ...prev,
+          max_units_by_right: result.envelope.maxCapacity,
+          limiting_factor: result.envelope.limitingFactor,
+          buildable_sq_ft: result.envelope.buildableArea,
+        }));
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.error || 'Failed to calculate building envelope';
+      setSaveMsg(msg);
+      setTimeout(() => setSaveMsg(''), 5000);
+    } finally {
+      setEnvelopeLoading(false);
+    }
   };
 
   const saveData = async () => {
@@ -217,15 +342,24 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   };
 
   const updateField = (field: string, value: any) => {
-    setData((prev) => ({ ...prev, [field]: value }));
+    setData((prev) => {
+      const updated = { ...prev, [field]: value };
+      return recalculateLocally(updated);
+    });
   };
 
   const updateNumField = (field: string, value: string) => {
-    setData((prev) => ({ ...prev, [field]: value ? parseFloat(value) : null }));
+    setData((prev) => {
+      const updated = { ...prev, [field]: value ? parseFloat(value) : null };
+      return recalculateLocally(updated);
+    });
   };
 
   const updateIntField = (field: string, value: string) => {
-    setData((prev) => ({ ...prev, [field]: value ? parseInt(value) : null }));
+    setData((prev) => {
+      const updated = { ...prev, [field]: value ? parseInt(value) : null };
+      return recalculateLocally(updated);
+    });
   };
 
   const updateUnitMixPercent = (type: string, percent: number) => {
@@ -264,6 +398,20 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     (data.unit_mix?.twoBR?.percent || 0) +
     (data.unit_mix?.threeBR?.percent || 0);
 
+  const hasParams = !!(data.max_density || data.max_far || data.max_height_feet);
+  const byRightUnits = data.max_units_by_right || 0;
+  const withIncentivesUnits = data.max_units_with_incentives || 0;
+
+  const constraintValues: Record<string, number> = {};
+  if (envelope?.capacityByConstraint) {
+    const cbc = envelope.capacityByConstraint;
+    if (cbc.byDensity != null && cbc.byDensity > 0) constraintValues['density'] = cbc.byDensity;
+    if (cbc.byFAR != null && cbc.byFAR > 0) constraintValues['far'] = cbc.byFAR;
+    if (cbc.byHeight != null && cbc.byHeight > 0) constraintValues['height'] = cbc.byHeight;
+    if (cbc.byParking != null && cbc.byParking > 0) constraintValues['parking'] = cbc.byParking;
+  }
+  const maxConstraintVal = Math.max(...Object.values(constraintValues).filter(v => v > 0), 1);
+
   const inputClass = "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400";
   const labelClass = "block text-xs font-medium text-gray-500 mb-1";
 
@@ -279,27 +427,46 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             Multi-constraint analysis with density bonuses, unit mix, and revenue projection
           </p>
         </div>
-        <button
-          onClick={saveData}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-          {saving ? 'Saving...' : 'Calculate & Save'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={calculateEnvelope}
+            disabled={envelopeLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {envelopeLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
+            {envelopeLoading ? 'Analyzing...' : 'Analyze Envelope'}
+          </button>
+          <button
+            onClick={saveData}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? 'Saving...' : 'Calculate & Save'}
+          </button>
+        </div>
       </div>
 
       {autoFillSource && (
         <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
           <CheckCircle2 size={16} className="text-blue-600" />
           <span className="text-sm text-blue-800">
-            Auto-filled from <strong>{autoFillSource}</strong> — you can adjust any values below
+            Auto-filled from <strong>{autoFillSource}</strong>
           </span>
+          {dataSource && (
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${
+              dataSource === 'verified'
+                ? 'bg-green-100 text-green-700 border border-green-200'
+                : 'bg-purple-100 text-purple-700 border border-purple-200'
+            }`}>
+              {dataSource === 'verified' ? 'Verified' : 'AI-Retrieved'}
+            </span>
+          )}
         </div>
       )}
 
       {saveMsg && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${saveMsg.includes('Failed') || saveMsg.includes('No matching') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+        <div className={`px-4 py-2 rounded-lg text-sm ${saveMsg.includes('Failed') || saveMsg.includes('No matching') || saveMsg.includes('No land') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
           {saveMsg}
         </div>
       )}
@@ -308,7 +475,18 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         <div className="lg:col-span-2 space-y-6">
 
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Zoning Parameters</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Zoning Parameters</h3>
+              {dataSource && (
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                  dataSource === 'verified'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-purple-100 text-purple-700'
+                }`}>
+                  {dataSource === 'verified' ? '✓ Database Verified' : '⚡ AI-Retrieved'}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Zoning Code</label>
@@ -323,7 +501,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 </div>
                 <button onClick={loadAvailableDistricts}
                   className="mt-1 text-xs text-blue-600 hover:text-blue-800 hover:underline">
-                  Browse all Atlanta districts
+                  Browse all {deal?.city || 'Atlanta'} districts
                 </button>
               </div>
               <div>
@@ -362,6 +540,12 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   placeholder="e.g. 1.5" className={inputClass} />
               </div>
             </div>
+            {!hasParams && (
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                <MapPin size={20} className="text-gray-400 mx-auto mb-1" />
+                <p className="text-sm text-gray-500">Enter a zoning code and click the search icon to auto-fill parameters from the database</p>
+              </div>
+            )}
           </div>
 
           {showDistrictPicker && availableDistricts.length > 0 && (
@@ -472,7 +656,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                       <div className={`${color} rounded-full h-3 transition-all`}
                         style={{ width: `${item?.percent || 0}%` }} />
                     </div>
-                    <span className="text-sm text-gray-500 w-16 text-right">
+                    <span className="text-sm font-medium text-gray-700 w-20 text-right">
                       {item?.count || 0} units
                     </span>
                   </div>
@@ -483,11 +667,31 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
 
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Projection</h3>
-            <div>
-              <label className={labelClass}>Average Rent per Unit ($/month)</label>
-              <input type="number" step="50" value={data.avg_rent_per_unit ?? ''}
-                onChange={(e) => updateNumField('avg_rent_per_unit', e.target.value)}
-                placeholder="e.g. 1850" className={inputClass} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Average Rent per Unit ($/month)</label>
+                <input type="number" step="50" value={data.avg_rent_per_unit ?? ''}
+                  onChange={(e) => updateNumField('avg_rent_per_unit', e.target.value)}
+                  placeholder="e.g. 1850" className={inputClass} />
+              </div>
+              <div className="flex items-end">
+                {data.avg_rent_per_unit && (data.max_units_with_incentives || data.max_units_by_right) ? (
+                  <div className="w-full p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Monthly</span>
+                      <span className="font-medium text-gray-900">{formatCurrency((data.avg_rent_per_unit || 0) * (withIncentivesUnits || byRightUnits))}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mt-1">
+                      <span className="text-gray-600">Annual</span>
+                      <span className="font-bold text-green-700">{formatCurrency(data.annual_revenue)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-400">
+                    Enter rent to see revenue
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -506,38 +710,47 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <Building2 size={18} className="text-blue-600" />
               By Right
             </h3>
-            <div className="text-center mb-4">
-              <p className="text-4xl font-bold text-blue-700">{formatNumber(data.max_units_by_right)}</p>
-              <p className="text-xs text-gray-500 mt-1">Maximum Units</p>
-            </div>
-            {data.limiting_factor && data.limiting_factor !== 'unknown' && (
-              <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertTriangle size={14} className="text-amber-500" />
-                <span className="text-xs text-amber-700">
-                  Limited by: {LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}
-                </span>
+            {hasParams ? (
+              <>
+                <div className="text-center mb-4">
+                  <p className="text-4xl font-bold text-blue-700">{formatNumber(byRightUnits)}</p>
+                  <p className="text-xs text-gray-500 mt-1">Maximum Units</p>
+                </div>
+                {data.limiting_factor && data.limiting_factor !== 'unknown' && (
+                  <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle size={14} className="text-amber-500" />
+                    <span className="text-xs text-amber-700">
+                      Limited by: {LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}
+                    </span>
+                  </div>
+                )}
+                <div className="mt-3 space-y-2 text-sm">
+                  {data.max_density && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Density:</span>
+                      <span className="text-gray-900 font-medium">{data.max_density} units/acre</span>
+                    </div>
+                  )}
+                  {data.max_far && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">FAR:</span>
+                      <span className="text-gray-900 font-medium">{data.max_far}</span>
+                    </div>
+                  )}
+                  {data.max_height_feet && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Height:</span>
+                      <span className="text-gray-900 font-medium">{data.max_height_feet} ft</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <Target size={24} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">Enter zoning parameters to see capacity</p>
               </div>
             )}
-            <div className="mt-3 space-y-2 text-sm">
-              {data.max_density && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Density:</span>
-                  <span className="text-gray-900 font-medium">{data.max_density} units/acre</span>
-                </div>
-              )}
-              {data.max_far && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">FAR:</span>
-                  <span className="text-gray-900 font-medium">{data.max_far}</span>
-                </div>
-              )}
-              {data.max_stories && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Stories:</span>
-                  <span className="text-gray-900 font-medium">{data.max_stories}</span>
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-200 p-5 shadow-sm">
@@ -545,32 +758,74 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <TrendingUp size={18} className="text-green-600" />
               With Incentives
             </h3>
-            <div className="text-center mb-4">
-              <p className="text-4xl font-bold text-green-700">{formatNumber(data.max_units_with_incentives)}</p>
-              <p className="text-xs text-gray-500 mt-1">Maximum Units</p>
-            </div>
-            {(data.max_units_by_right && data.max_units_with_incentives) ? (
-              <div className="text-center mb-3">
-                <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 border border-green-200">
-                  +{data.max_units_with_incentives - data.max_units_by_right} units ({Math.round(((data.max_units_with_incentives - data.max_units_by_right) / data.max_units_by_right) * 100)}% increase)
-                </span>
+            {hasParams ? (
+              <>
+                <div className="text-center mb-4">
+                  <p className="text-4xl font-bold text-green-700">{formatNumber(withIncentivesUnits)}</p>
+                  <p className="text-xs text-gray-500 mt-1">Maximum Units</p>
+                </div>
+                {(byRightUnits > 0 && withIncentivesUnits > byRightUnits) && (
+                  <div className="text-center mb-3">
+                    <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 border border-green-200">
+                      +{withIncentivesUnits - byRightUnits} units ({Math.round(((withIncentivesUnits - byRightUnits) / byRightUnits) * 100)}% increase)
+                    </span>
+                  </div>
+                )}
+                <div className="mt-3 space-y-2 text-sm">
+                  {data.affordable_housing_bonus && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Affordable:</span>
+                      <span className="text-green-700 font-medium">+{data.affordable_bonus_percent || 25}%</span>
+                    </div>
+                  )}
+                  {data.tdr_available && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">TDR:</span>
+                      <span className="text-green-700 font-medium">+{data.tdr_bonus_percent || 15}%</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <Zap size={24} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">Enable density bonuses above to see impact</p>
               </div>
-            ) : null}
-            <div className="mt-3 space-y-2 text-sm">
-              {data.affordable_housing_bonus && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Affordable:</span>
-                  <span className="text-green-700 font-medium">+{data.affordable_bonus_percent || 25}%</span>
-                </div>
-              )}
-              {data.tdr_available && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">TDR:</span>
-                  <span className="text-green-700 font-medium">+{data.tdr_bonus_percent || 15}%</span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
+
+          {hasParams && byRightUnits > 0 && withIncentivesUnits > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <BarChart3 size={16} className="text-blue-600" />
+                Comparison
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">By Right</span>
+                    <span className="font-medium text-blue-700">{formatNumber(byRightUnits)}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4">
+                    <div className="bg-blue-500 rounded-full h-4 transition-all" style={{
+                      width: `${(byRightUnits / Math.max(withIncentivesUnits, byRightUnits)) * 100}%`
+                    }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">With Incentives</span>
+                    <span className="font-medium text-green-700">{formatNumber(withIncentivesUnits)}</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4">
+                    <div className="bg-green-500 rounded-full h-4 transition-all" style={{
+                      width: `${(withIncentivesUnits / Math.max(withIncentivesUnits, byRightUnits)) * 100}%`
+                    }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {(data.annual_revenue || data.avg_rent_per_unit) && (
             <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
@@ -580,8 +835,13 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   <span className="text-gray-500">Avg Rent:</span>
                   <span className="text-gray-900 font-medium">{formatCurrency(data.avg_rent_per_unit)}/mo</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Total Units:</span>
+                  <span className="text-gray-900 font-medium">{formatNumber(withIncentivesUnits || byRightUnits)}</span>
+                </div>
                 {data.annual_revenue && (
                   <>
+                    <div className="border-t border-gray-200 my-2" />
                     <div className="flex justify-between">
                       <span className="text-gray-500">Annual Revenue:</span>
                       <span className="text-gray-900 font-medium">{formatCurrency(data.annual_revenue)}</span>
@@ -600,26 +860,180 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             </div>
           )}
 
-          {data.buildable_sq_ft ? (
+          {envelope && (
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Buildable Area</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Layers size={18} className="text-blue-600" />
+                Building Envelope
+              </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Buildable:</span>
-                  <span className="text-gray-900 font-medium">{(data.buildable_sq_ft / 43560).toFixed(2)} acres</span>
+                  <span className="text-gray-500">Buildable Area:</span>
+                  <span className="text-gray-900 font-medium">{(envelope.buildableArea / 43560).toFixed(2)} acres</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Coverage:</span>
-                  <span className="text-gray-900 font-medium">{data.coverage_ratio?.toFixed(1)}%</span>
+                  <span className="text-gray-500">Max Footprint:</span>
+                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxFootprint)} sq ft</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Gross Sq Ft:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(data.buildable_sq_ft)}</span>
+                  <span className="text-gray-500">Max GFA:</span>
+                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxGFA)} sq ft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Max Floors:</span>
+                  <span className="text-gray-900 font-medium">{envelope.maxFloors}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Parking:</span>
+                  <span className="text-gray-900 font-medium">{envelope.parkingRequired} spaces ({formatNumber(envelope.parkingArea.structured)} sq ft structured)</span>
+                </div>
+                <div className="border-t border-gray-200 my-2" />
+                <div className="flex justify-between">
+                  <span className="text-gray-700 font-medium">Max Capacity:</span>
+                  <span className="text-lg font-bold text-blue-700">{formatNumber(envelope.maxCapacity)}</span>
                 </div>
               </div>
-            </div>
-          ) : null}
 
+              {Object.keys(constraintValues).length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Constraint Breakdown</p>
+                  <div className="space-y-2">
+                    {Object.entries(constraintValues)
+                      .filter(([, v]) => v > 0)
+                      .sort(([, a], [, b]) => a - b)
+                      .map(([constraint, value]) => (
+                        <div key={constraint}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className={`${constraint === envelope.limitingFactor ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
+                              {constraint === envelope.limitingFactor ? '⚠ ' : ''}{LIMITING_FACTOR_LABELS[constraint] || constraint}
+                            </span>
+                            <span className="font-medium">{formatNumber(value)}</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div className={`rounded-full h-2 transition-all ${
+                              constraint === envelope.limitingFactor ? 'bg-amber-500' : 'bg-blue-400'
+                            }`} style={{ width: `${(value / maxConstraintVal) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {hbuResults && hbuResults.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <button onClick={() => setShowHBU(!showHBU)}
+            className="w-full flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Crown size={18} className="text-amber-500" />
+              Highest & Best Use Analysis
+            </h3>
+            {showHBU ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+          </button>
+          {showHBU && (
+            <div className="mt-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-3 text-gray-500 font-medium">Property Type</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Max Capacity</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Annual Revenue</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-medium">NOI</th>
+                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Estimated Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hbuResults.map((result, idx) => (
+                      <tr key={result.propertyType}
+                        className={`border-b border-gray-100 ${result.recommended ? 'bg-amber-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span>{PROPERTY_TYPE_ICONS[result.propertyType] || '🏢'}</span>
+                            <span className={`font-medium ${result.recommended ? 'text-amber-800' : 'text-gray-900'}`}>
+                              {PROPERTY_TYPE_LABELS[result.propertyType] || result.propertyType}
+                            </span>
+                            {result.recommended && (
+                              <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium border border-amber-200">
+                                Best Use
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                          {formatNumber(result.maxCapacity)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                          {formatCurrency(result.annualGrossRevenue)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                          {formatCurrency(result.estimatedNOI)}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-bold ${result.recommended ? 'text-amber-700' : 'text-gray-900'}`}>
+                          {formatCurrency(result.estimatedValue)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {hbuResults[0]?.reasoning && (
+                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs font-medium text-amber-700 mb-1">Recommendation</p>
+                  <p className="text-sm text-amber-800">{hbuResults[0].reasoning}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {aiRecommendations && (
+        <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
+          <button onClick={() => setShowAI(!showAI)}
+            className="w-full flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Sparkles size={18} className="text-purple-600" />
+              AI Optimization Recommendations
+            </h3>
+            {showAI ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+          </button>
+          {showAI && (
+            <div className="mt-4 prose prose-sm max-w-none text-gray-700">
+              {aiRecommendations.split('\n').filter(line => line.trim()).map((line, i) => (
+                <p key={i} className="mb-2 text-sm leading-relaxed">{line}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Analysis Property Type:</label>
+            <select
+              value={selectedPropertyType}
+              onChange={(e) => setSelectedPropertyType(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-purple-500"
+            >
+              {Object.entries(PROPERTY_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={calculateEnvelope}
+            disabled={envelopeLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {envelopeLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            Run Full Analysis
+          </button>
         </div>
       </div>
     </div>
