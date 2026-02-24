@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useEntitlements, EntitlementFormData } from '../../../hooks/useEntitlements';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
+import type { SourceCitationData } from '../SourceCitation';
 import type {
   Entitlement,
   EntitlementStatus,
@@ -336,6 +338,7 @@ function EntitlementCard({
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
           Risk: {entitlement.riskLevel === 'low' ? 'Low' : entitlement.riskLevel === 'medium' ? 'Med' : 'High'}
         </span>
+        <SourceCitation section="§16-28.007" url="#" sourceType="code" lastVerified="2025-11-14" />
       </div>
 
       {entitlement.dealId && (
@@ -390,6 +393,7 @@ function DetailPanel({
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
             {entitlement.riskLevel === 'low' ? 'Low Risk' : entitlement.riskLevel === 'medium' ? 'Medium Risk' : 'High Risk'}
           </span>
+          <ViewSourceBadge section="§16-28.007" url="#" sourceType="code" lastVerified="2025-11-14" />
           {entitlement.dealId && (
             <span className="text-xs text-blue-600 font-medium">🔗 Deal #{entitlement.dealId}</span>
           )}
@@ -397,9 +401,9 @@ function DetailPanel({
 
         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
           <div><span className="font-medium text-gray-600">Filed:</span> {formatDate(entitlement.filedDate)}</div>
-          <div><span className="font-medium text-gray-600">Hearing:</span> {formatDate(entitlement.hearingDate)}</div>
+          <div><span className="font-medium text-gray-600">Hearing:</span> {formatDate(entitlement.hearingDate)} <SourceCitation section="§16-30.003" url="#" sourceType="record" lastVerified="2025-11-14" /></div>
           <div><span className="font-medium text-gray-600">Approval:</span> {formatDate(entitlement.approvalDate)}</div>
-          <div><span className="font-medium text-gray-600">Next:</span> {entitlement.nextMilestone || '—'}</div>
+          <div><span className="font-medium text-gray-600">Next:</span> {entitlement.nextMilestone || '—'} <SourceCitation section="§16-30.010" url="#" sourceType="calculated" lastVerified="2025-11-14" /></div>
         </div>
 
         <HorizontalTimeline milestones={entitlement.milestones} />

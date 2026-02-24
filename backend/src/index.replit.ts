@@ -65,6 +65,7 @@ import teamManagementRouter from './api/rest/team-management.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
 import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
+import zoningVerificationRouter from './api/rest/zoning-verification.routes';
 
 dotenv.config();
 
@@ -192,6 +193,7 @@ app.use('/api/v1', requireAuth, siteIntelligenceRouter);
 app.use('/api/v1', requireAuth, zoningCapacityRouter);
 app.use('/api/v1/zoning-intelligence', requireAuth, createZoningIntelligenceRoutes(pool));
 app.use('/api/v1/zoning-learning', requireAuth, createZoningLearningRoutes(pool));
+app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 

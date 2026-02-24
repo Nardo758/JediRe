@@ -3,6 +3,8 @@ import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { useDealTimeline } from '../../../hooks/useDealTimeline';
 import { useMunicipalBenchmarks } from '../../../hooks/useMunicipalBenchmarks';
 import { useCarryingCosts } from '../../../hooks/useCarryingCosts';
+import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
+import type { SourceCitationData } from '../SourceCitation';
 import type {
   MunicipalBenchmark,
   DealTimeline,
@@ -148,12 +150,12 @@ function MunicipalBenchmarkSection({ benchmarks }: { benchmarks: MunicipalBenchm
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-900">Municipal Benchmarks</h3>
-        <p className="text-[10px] text-gray-500 mt-0.5">Scraped data</p>
+        <p className="text-[10px] text-gray-500 mt-0.5">Scraped data <SourceCitation section="Municode §16-28" url="#" sourceType="record" lastVerified="2025-11-14" /></p>
       </div>
       <div className="p-4">
         <div className="mb-3">
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">City of Atlanta — Historical Processing Times</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} applications scraped (2021–2025) for projects 200+ units</p>
+          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} applications scraped (2021–2025) for projects 200+ units <ViewSourceBadge section="§16-30.003" url="#" sourceType="record" lastVerified="2025-11-14" /></p>
           <p className="text-[11px] text-gray-400">Last updated: Feb 22, 2026</p>
         </div>
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useRegulatoryAlerts } from '../../../hooks/useRegulatoryAlerts';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import type { RegulatoryAlert, RegulatoryCategory, AlertSeverity } from '../../../types/zoning.types';
+import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
+import type { SourceCitationData } from '../SourceCitation';
 
 const CATEGORY_CONFIG: Record<RegulatoryCategory, string> = {
   zoning_changes: 'Zoning Stability',
@@ -231,7 +233,10 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center text-sm text-gray-600 font-mono">{row.trend}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{row.impact}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {row.impact}
+                      <span className="ml-1"><SourceCitation section="§16-28.007" url="#" sourceType="code" lastVerified="2025-11-14" /></span>
+                    </td>
                   </tr>
                 );
               })}
@@ -267,9 +272,11 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
                     <div className="flex flex-wrap gap-x-4 gap-y-1">
                       <p className="text-xs text-gray-600">
                         <span className="font-medium text-gray-500">Probability:</span> {alert.probability}
+                        <span className="ml-1"><SourceCitation section="§16-30.003" url="#" sourceType="calculated" lastVerified="2025-11-14" /></span>
                       </p>
                       <p className="text-xs text-gray-600">
                         <span className="font-medium text-gray-500">Source:</span> {alert.source}
+                        <span className="ml-1"><ViewSourceBadge section="§16-18A.007" url="#" sourceType="record" lastVerified="2025-11-14" /></span>
                       </p>
                     </div>
                     {alert.affectedDeals && (

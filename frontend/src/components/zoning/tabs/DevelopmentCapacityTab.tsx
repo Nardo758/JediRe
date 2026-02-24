@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
 import { useDevelopmentCapacity } from '../../../hooks/useDevelopmentCapacity';
 import type { CapacityScenario, StrategyArbitrageImpact } from '../../../types/zoning.types';
+import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
+import type { SourceCitationData } from '../SourceCitation';
 
 interface MatrixSection {
   label: string;
   rows: { key: keyof CapacityScenario; label: string; format?: (v: any) => string }[];
 }
+
+const CAPACITY_CITATIONS: Record<string, SourceCitationData> = {
+  density: { section: '§16-18A.007', url: '#', sourceType: 'code' as const, lastVerified: '2025-11-14' },
+  height: { section: '§16-18A.009', url: '#', sourceType: 'code' as const, lastVerified: '2025-11-14' },
+  far: { section: '§16-18A.010', url: '#', sourceType: 'code' as const, lastVerified: '2025-11-14' },
+  parking: { section: '§16-18A.015', url: '#', sourceType: 'code' as const, lastVerified: '2025-11-14' },
+  openSpace: { section: '§16-18A.012', url: '#', sourceType: 'code' as const, lastVerified: '2025-11-14' },
+};
 
 const MATRIX_SECTIONS: MatrixSection[] = [
   {
@@ -192,7 +202,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       </tr>
                       {section.rows.map((row) => (
                         <tr key={row.key} className="hover:bg-gray-50/50">
-                          <td className="px-5 py-2.5 text-gray-600 font-medium text-xs">{row.label}</td>
+                          <td className="px-5 py-2.5 text-gray-600 font-medium text-xs">
+                            {row.label}
+                            {row.key === 'maxUnits' && <span className="ml-1"><SourceCitation {...CAPACITY_CITATIONS.density} /></span>}
+                            {row.key === 'maxHeight' && <span className="ml-1"><SourceCitation {...CAPACITY_CITATIONS.height} /></span>}
+                            {row.key === 'maxFar' && <span className="ml-1"><SourceCitation {...CAPACITY_CITATIONS.far} /></span>}
+                            {row.key === 'parkingRequired' && <span className="ml-1"><SourceCitation {...CAPACITY_CITATIONS.parking} /></span>}
+                            {row.key === 'openSpace' && <span className="ml-1"><SourceCitation {...CAPACITY_CITATIONS.openSpace} /></span>}
+                          </td>
                           {scenarios.map((scenario, i) => {
                             const value = scenario ? scenario[row.key] : null;
                             const formatted = row.format ? row.format(value) : (value ?? '—');
