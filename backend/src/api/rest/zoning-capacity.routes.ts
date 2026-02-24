@@ -289,6 +289,80 @@ router.get('/zoning-districts/lookup', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
+  try {
+    const { code, municipality, municipality_id } = req.query;
+    if (!code) {
+      return res.status(400).json({ error: 'Must provide zoning code' });
+    }
+
+    let result;
+    if (municipality_id) {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
+           AND (zd.municipality_id = $2)
+         LIMIT 1`,
+        [code, municipality_id]
+      );
+    } else if (municipality) {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
+           AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($2))
+         LIMIT 1`,
+        [code, municipality]
+      );
+    } else {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+         LIMIT 1`,
+        [code]
+      );
+    }
+
+    if (result.rows.length === 0) {
+      return res.json({ found: false });
+    }
+
+    const district = result.rows[0];
+
+    const relatedResult = await pool.query(
+      `SELECT id, COALESCE(zoning_code, district_code) as zoning_code, 
+              district_name, description, category,
+              COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
+              max_far,
+              COALESCE(max_height_feet, max_building_height_ft) as max_height,
+              max_stories
+       FROM zoning_districts
+       WHERE (municipality_id = $1 OR municipality = $2)
+         AND id != $3
+       ORDER BY COALESCE(max_density_per_acre, max_units_per_acre) DESC NULLS LAST`,
+      [district.municipality_id, district.municipality, district.id]
+    );
+
+    res.json({
+      found: true,
+      district,
+      relatedDistricts: relatedResult.rows,
+      rezoneTargets: relatedResult.rows.filter((d: any) => {
+        const currentDensity = district.max_density_per_acre || district.max_units_per_acre || 0;
+        return (d.max_density || 0) > currentDensity;
+      }).slice(0, 5),
+    });
+  } catch (error) {
+    console.error('Error fetching zoning district by code:', error);
+    res.status(500).json({ error: 'Failed to fetch district' });
+  }
+});
+
 router.get('/zoning-districts/:districtId', async (req: Request, res: Response) => {
   try {
     const { districtId } = req.params;
@@ -625,80 +699,6 @@ router.get('/zoning-districts/:id/detail', async (req: Request, res: Response) =
   } catch (error) {
     console.error('Error fetching zoning district detail:', error);
     res.status(500).json({ error: 'Failed to fetch district detail' });
-  }
-});
-
-router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
-  try {
-    const { code, municipality, municipality_id } = req.query;
-    if (!code) {
-      return res.status(400).json({ error: 'Must provide zoning code' });
-    }
-
-    let result;
-    if (municipality_id) {
-      result = await pool.query(
-        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
-         FROM zoning_districts zd
-         LEFT JOIN municipalities m ON m.id = zd.municipality_id
-         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
-           AND (zd.municipality_id = $2)
-         LIMIT 1`,
-        [code, municipality_id]
-      );
-    } else if (municipality) {
-      result = await pool.query(
-        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
-         FROM zoning_districts zd
-         LEFT JOIN municipalities m ON m.id = zd.municipality_id
-         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
-           AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($2))
-         LIMIT 1`,
-        [code, municipality]
-      );
-    } else {
-      result = await pool.query(
-        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
-         FROM zoning_districts zd
-         LEFT JOIN municipalities m ON m.id = zd.municipality_id
-         WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
-         LIMIT 1`,
-        [code]
-      );
-    }
-
-    if (result.rows.length === 0) {
-      return res.json({ found: false });
-    }
-
-    const district = result.rows[0];
-
-    const relatedResult = await pool.query(
-      `SELECT id, COALESCE(zoning_code, district_code) as zoning_code, 
-              district_name, description, category,
-              COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
-              max_far,
-              COALESCE(max_height_feet, max_building_height_ft) as max_height,
-              max_stories
-       FROM zoning_districts
-       WHERE (municipality_id = $1 OR municipality = $2)
-         AND id != $3
-       ORDER BY COALESCE(max_density_per_acre, max_units_per_acre) DESC NULLS LAST`,
-      [district.municipality_id, district.municipality, district.id]
-    );
-
-    res.json({
-      found: true,
-      district,
-      relatedDistricts: relatedResult.rows,
-      rezoneTargets: relatedResult.rows.filter((d: any) => {
-        const currentDensity = district.max_density_per_acre || district.max_units_per_acre || 0;
-        return (d.max_density || 0) > currentDensity;
-      }).slice(0, 5),
-    });
-  } catch (error) {
-    console.error('Error fetching zoning district by code:', error);
-    res.status(500).json({ error: 'Failed to fetch district' });
   }
 });
 

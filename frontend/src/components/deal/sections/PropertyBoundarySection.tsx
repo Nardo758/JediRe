@@ -81,7 +81,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [activeDrawMode, setActiveDrawMode] = useState<string | null>(null);
   const [zoningInfo, setZoningInfo] = useState<{ code: string; description: string; municipality: string; state: string } | null>(null);
   const [zoningLoading, setZoningLoading] = useState(false);
-  const [detectedLocation, setDetectedLocation] = useState<{ city: string; state: string; county: string; hasZoningData: boolean; municipalityId?: string } | null>(null);
+  const [detectedLocation, setDetectedLocation] = useState<{ city: string; state: string; county: string; hasZoningData: boolean; municipalityId?: string; address?: string } | null>(null);
   const [zoningDetail, setZoningDetail] = useState<any>(null);
   const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
 
@@ -319,6 +319,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               county: geoData.county,
               hasZoningData: geoData.hasZoningData,
               municipalityId: geoData.municipality?.id,
+              address: geoData.address || geoData.fullPlaceName || '',
             });
           }
         } catch (err) {
@@ -363,6 +364,20 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           if (detailData?.found) {
             setZoningDetail(detailData.district);
             setRezoneTargets(detailData.rezoneTargets || []);
+            const d = detailData.district;
+            const front = d.min_front_setback_ft ?? d.setback_front_ft;
+            const side = d.min_side_setback_ft ?? d.setback_side_ft;
+            const rear = d.min_rear_setback_ft ?? d.setback_rear_ft;
+            if (front != null || side != null || rear != null) {
+              setBoundary(prev => ({
+                ...prev,
+                setbacks: {
+                  front: front ?? prev.setbacks.front,
+                  side: side ?? prev.setbacks.side,
+                  rear: rear ?? prev.setbacks.rear,
+                }
+              }));
+            }
           }
         } catch (err) {
           console.error('Zoning detail lookup error:', err);
@@ -628,21 +643,21 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   </div>
 
                   {/* Setback Requirements from Zoning */}
-                  {(zoningDetail.min_front_setback_ft || zoningDetail.setback_front_ft) && (
+                  {(zoningDetail.min_front_setback_ft != null || zoningDetail.setback_front_ft != null) && (
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Required Setbacks</p>
                       <div className="grid grid-cols-3 gap-2 text-sm">
                         <div className="bg-gray-50 rounded p-2 text-center">
                           <p className="text-xs text-gray-500">Front</p>
-                          <p className="font-semibold">{zoningDetail.min_front_setback_ft || zoningDetail.setback_front_ft || '--'} ft</p>
+                          <p className="font-semibold">{zoningDetail.min_front_setback_ft ?? zoningDetail.setback_front_ft ?? '--'} ft</p>
                         </div>
                         <div className="bg-gray-50 rounded p-2 text-center">
                           <p className="text-xs text-gray-500">Side</p>
-                          <p className="font-semibold">{zoningDetail.min_side_setback_ft || zoningDetail.setback_side_ft || '--'} ft</p>
+                          <p className="font-semibold">{zoningDetail.min_side_setback_ft ?? zoningDetail.setback_side_ft ?? '--'} ft</p>
                         </div>
                         <div className="bg-gray-50 rounded p-2 text-center">
                           <p className="text-xs text-gray-500">Rear</p>
-                          <p className="font-semibold">{zoningDetail.min_rear_setback_ft || zoningDetail.setback_rear_ft || '--'} ft</p>
+                          <p className="font-semibold">{zoningDetail.min_rear_setback_ft ?? zoningDetail.setback_rear_ft ?? '--'} ft</p>
                         </div>
                       </div>
                     </div>
@@ -742,10 +757,10 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             <div className="mb-3 pb-3 border-b border-gray-100">
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Property Address</p>
               <p className="text-sm font-medium text-gray-900">
-                {deal?.address || deal?.propertyAddress || deal?.property_address || 'Not specified'}
+                {deal?.address || deal?.propertyAddress || deal?.property_address || detectedLocation?.address || 'Not specified'}
               </p>
               <p className="text-sm text-gray-600">
-                {[deal?.city || deal?.municipality, deal?.state].filter(Boolean).join(', ') || '--'}
+                {[detectedLocation?.city || deal?.city || deal?.municipality, detectedLocation?.state || deal?.state].filter(Boolean).join(', ') || '--'}
               </p>
             </div>
 
@@ -852,26 +867,15 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
           {/* Setbacks */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Setbacks</h3>
-            
-            <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Applied Setbacks</h3>
+            {zoningDetail && (zoningDetail.min_front_setback_ft != null || zoningDetail.setback_front_ft != null) && (
+              <p className="text-xs text-gray-500 mb-2">From {zoningDetail.zoning_code || zoningDetail.district_code} zoning code</p>
+            )}
+            <div className="space-y-2">
               {Object.entries(boundary.setbacks).map(([key, value]) => (
-                <div key={key}>
-                  <label className="text-xs text-gray-600 uppercase tracking-wide">
-                    {key} Setback
-                  </label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      type="number"
-                      value={value}
-                      onChange={(e) => setBoundary(prev => ({
-                        ...prev,
-                        setbacks: { ...prev.setbacks, [key]: Number(e.target.value) }
-                      }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <span className="text-sm text-gray-600">feet</span>
-                  </div>
+                <div key={key} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
+                  <span className="text-sm text-gray-600 capitalize">{key} Setback</span>
+                  <span className="text-sm font-semibold text-gray-900">{value} ft</span>
                 </div>
               ))}
             </div>
