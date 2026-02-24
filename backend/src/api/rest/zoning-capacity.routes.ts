@@ -531,6 +531,177 @@ router.get('/zoning/lookup', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/reverse-geocode', async (req: Request, res: Response) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) {
+      return res.status(400).json({ error: 'Must provide lat and lng' });
+    }
+
+    const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
+    if (!mapboxToken) {
+      return res.status(500).json({ error: 'Mapbox token not configured' });
+    }
+
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=place,locality&access_token=${mapboxToken}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!data.features || data.features.length === 0) {
+      return res.json({ found: false, message: 'No location found for coordinates' });
+    }
+
+    const feature = data.features[0];
+    const placeName = feature.text || '';
+    const context = feature.context || [];
+    const stateCtx = context.find((c: any) => c.id?.startsWith('region'));
+    const countyCtx = context.find((c: any) => c.id?.startsWith('district'));
+    const stateName = stateCtx?.short_code?.replace('US-', '') || stateCtx?.text || '';
+    const county = countyCtx?.text || '';
+
+    const muniResult = await pool.query(
+      `SELECT id, name, state, county FROM municipalities 
+       WHERE (UPPER(name) = UPPER($1) AND UPPER(state) = UPPER($2))
+          OR (UPPER(name) = UPPER($1))
+       LIMIT 1`,
+      [placeName, stateName]
+    );
+
+    const municipality = muniResult.rows.length > 0 ? muniResult.rows[0] : null;
+    const address = feature.place_name || '';
+
+    res.json({
+      found: true,
+      city: placeName,
+      state: stateName,
+      county,
+      address,
+      fullPlaceName: feature.place_name,
+      municipality,
+      hasZoningData: !!municipality,
+    });
+  } catch (error) {
+    console.error('Error reverse geocoding:', error);
+    res.status(500).json({ error: 'Failed to reverse geocode' });
+  }
+});
+
+router.get('/zoning-districts/:id/detail', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(
+      `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+       FROM zoning_districts zd
+       LEFT JOIN municipalities m ON m.id = zd.municipality_id
+       WHERE zd.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Zoning district not found' });
+    }
+
+    const district = result.rows[0];
+
+    const relatedResult = await pool.query(
+      `SELECT id, COALESCE(zoning_code, district_code) as zoning_code, 
+              district_name, description, category,
+              COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
+              max_far,
+              COALESCE(max_height_feet, max_building_height_ft) as max_height,
+              max_stories
+       FROM zoning_districts
+       WHERE (municipality_id = $1 OR municipality = $2)
+         AND id != $3
+       ORDER BY COALESCE(max_density_per_acre, max_units_per_acre) DESC NULLS LAST`,
+      [district.municipality_id, district.municipality, id]
+    );
+
+    res.json({
+      district,
+      relatedDistricts: relatedResult.rows,
+    });
+  } catch (error) {
+    console.error('Error fetching zoning district detail:', error);
+    res.status(500).json({ error: 'Failed to fetch district detail' });
+  }
+});
+
+router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
+  try {
+    const { code, municipality, municipality_id } = req.query;
+    if (!code) {
+      return res.status(400).json({ error: 'Must provide zoning code' });
+    }
+
+    let result;
+    if (municipality_id) {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
+           AND (zd.municipality_id = $2)
+         LIMIT 1`,
+        [code, municipality_id]
+      );
+    } else if (municipality) {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE (UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1))
+           AND (UPPER(COALESCE(zd.municipality, m.name)) = UPPER($2))
+         LIMIT 1`,
+        [code, municipality]
+      );
+    } else {
+      result = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+         LIMIT 1`,
+        [code]
+      );
+    }
+
+    if (result.rows.length === 0) {
+      return res.json({ found: false });
+    }
+
+    const district = result.rows[0];
+
+    const relatedResult = await pool.query(
+      `SELECT id, COALESCE(zoning_code, district_code) as zoning_code, 
+              district_name, description, category,
+              COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
+              max_far,
+              COALESCE(max_height_feet, max_building_height_ft) as max_height,
+              max_stories
+       FROM zoning_districts
+       WHERE (municipality_id = $1 OR municipality = $2)
+         AND id != $3
+       ORDER BY COALESCE(max_density_per_acre, max_units_per_acre) DESC NULLS LAST`,
+      [district.municipality_id, district.municipality, district.id]
+    );
+
+    res.json({
+      found: true,
+      district,
+      relatedDistricts: relatedResult.rows,
+      rezoneTargets: relatedResult.rows.filter((d: any) => {
+        const currentDensity = district.max_density_per_acre || district.max_units_per_acre || 0;
+        return (d.max_density || 0) > currentDensity;
+      }).slice(0, 5),
+    });
+  } catch (error) {
+    console.error('Error fetching zoning district by code:', error);
+    res.status(500).json({ error: 'Failed to fetch district' });
+  }
+});
+
 router.delete('/deals/:dealId/zoning-capacity', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;

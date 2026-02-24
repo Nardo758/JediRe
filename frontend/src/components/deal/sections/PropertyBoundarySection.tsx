@@ -81,6 +81,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [activeDrawMode, setActiveDrawMode] = useState<string | null>(null);
   const [zoningInfo, setZoningInfo] = useState<{ code: string; description: string; municipality: string; state: string } | null>(null);
   const [zoningLoading, setZoningLoading] = useState(false);
+  const [detectedLocation, setDetectedLocation] = useState<{ city: string; state: string; county: string; hasZoningData: boolean; municipalityId?: string } | null>(null);
+  const [zoningDetail, setZoningDetail] = useState<any>(null);
+  const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
 
   // Layer visibility toggles
   const [layers, setLayers] = useState({
@@ -293,34 +296,72 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   };
 
   const lookupZoning = async () => {
-    const city = deal?.city || deal?.municipality || '';
-    if (!city && !deal?.address) return;
-
-    const params: Record<string, string> = {};
-    if (city) params.city = city;
-    if (deal?.address) params.address = deal.address;
-    if (boundary.centroid) {
-      params.lat = String(boundary.centroid[1]);
-      params.lng = String(boundary.centroid[0]);
-    }
-
     try {
       setZoningLoading(true);
+
+      let cityName = deal?.city || deal?.municipality || '';
+      let stateName = deal?.state || '';
+      let municipalityId = '';
+
+      if (boundary.centroid) {
+        try {
+          const geoData = await apiClient.get(`/reverse-geocode`, {
+            params: { lat: boundary.centroid[1], lng: boundary.centroid[0] }
+          }) as any;
+
+          if (geoData?.found) {
+            cityName = geoData.city || cityName;
+            stateName = geoData.state || stateName;
+            municipalityId = geoData.municipality?.id || '';
+            setDetectedLocation({
+              city: geoData.city,
+              state: geoData.state,
+              county: geoData.county,
+              hasZoningData: geoData.hasZoningData,
+              municipalityId: geoData.municipality?.id,
+            });
+          }
+        } catch (err) {
+          console.error('Reverse geocode error:', err);
+        }
+      }
+
+      if (!cityName && !deal?.address) return;
+
+      const params: Record<string, string> = {};
+      if (cityName) params.city = cityName;
+      if (deal?.address) params.address = deal.address;
+
       const data = await apiClient.get(`/zoning/lookup`, { params }) as any;
       if (data && data.districts && data.districts.length > 0) {
         const district = data.districts[0];
+        const code = district.zoning_code || district.district_code || district.code || '--';
         setZoningInfo({
-          code: district.zoning_code || district.district_code || district.code || '--',
+          code,
           description: district.description || district.district_name || '--',
-          municipality: data.municipality?.name || city,
-          state: data.municipality?.state || deal?.state || '',
+          municipality: data.municipality?.name || cityName,
+          state: data.municipality?.state || stateName,
         });
+
+        try {
+          const detailParams: Record<string, string> = { code };
+          if (municipalityId) detailParams.municipality_id = municipalityId;
+          else if (cityName) detailParams.municipality = cityName;
+          
+          const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
+          if (detailData?.found) {
+            setZoningDetail(detailData.district);
+            setRezoneTargets(detailData.rezoneTargets || []);
+          }
+        } catch (err) {
+          console.error('Zoning detail lookup error:', err);
+        }
       } else if (data && data.municipality) {
         setZoningInfo({
           code: '--',
           description: 'No zoning district found',
-          municipality: data.municipality.name || city,
-          state: data.municipality.state || deal?.state || '',
+          municipality: data.municipality.name || cityName,
+          state: data.municipality.state || stateName,
         });
       }
     } catch (err: any) {
@@ -522,6 +563,152 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               ))}
             </div>
           </div>
+
+          {/* Zoning Code Details */}
+          {hasBoundary && (
+            <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Zoning Code Details</h3>
+              
+              {zoningLoading ? (
+                <p className="text-sm text-gray-400 italic">Loading zoning information...</p>
+              ) : zoningDetail ? (
+                <div className="space-y-4">
+                  {/* Current Code Header */}
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-lg font-bold text-blue-900">
+                        {zoningDetail.zoning_code || zoningDetail.district_code}
+                      </span>
+                      <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
+                        {zoningDetail.category || 'Zoning District'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-blue-800">{zoningDetail.description || zoningDetail.district_name}</p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      {zoningDetail.municipality_name || zoningDetail.municipality}, {zoningDetail.municipality_state || zoningDetail.state}
+                    </p>
+                  </div>
+
+                  {/* Development Standards */}
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Development Standards</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-xs text-gray-500">Max Density</p>
+                        <p className="font-semibold text-gray-900">
+                          {zoningDetail.max_density_per_acre || zoningDetail.max_units_per_acre || '--'} units/acre
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-xs text-gray-500">Max FAR</p>
+                        <p className="font-semibold text-gray-900">{zoningDetail.max_far || '--'}</p>
+                      </div>
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-xs text-gray-500">Max Height</p>
+                        <p className="font-semibold text-gray-900">
+                          {zoningDetail.max_building_height_ft || zoningDetail.max_height_feet || '--'} ft
+                        </p>
+                      </div>
+                      <div className="bg-gray-50 rounded p-2">
+                        <p className="text-xs text-gray-500">Max Stories</p>
+                        <p className="font-semibold text-gray-900">{zoningDetail.max_stories || '--'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Setback Requirements from Zoning */}
+                  {(zoningDetail.min_front_setback_ft || zoningDetail.setback_front_ft) && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Required Setbacks</p>
+                      <div className="grid grid-cols-3 gap-2 text-sm">
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-xs text-gray-500">Front</p>
+                          <p className="font-semibold">{zoningDetail.min_front_setback_ft || zoningDetail.setback_front_ft || '--'} ft</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-xs text-gray-500">Side</p>
+                          <p className="font-semibold">{zoningDetail.min_side_setback_ft || zoningDetail.setback_side_ft || '--'} ft</p>
+                        </div>
+                        <div className="bg-gray-50 rounded p-2 text-center">
+                          <p className="text-xs text-gray-500">Rear</p>
+                          <p className="font-semibold">{zoningDetail.min_rear_setback_ft || zoningDetail.setback_rear_ft || '--'} ft</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Permitted Uses By Right */}
+                  {zoningDetail.permitted_uses && zoningDetail.permitted_uses.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Permitted Uses (By Right)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {zoningDetail.permitted_uses.map((use: string, i: number) => (
+                          <span key={i} className="inline-block px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full border border-green-200">
+                            {use.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Conditional Uses */}
+                  {zoningDetail.conditional_uses && zoningDetail.conditional_uses.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Conditional Uses</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {zoningDetail.conditional_uses.map((use: string, i: number) => (
+                          <span key={i} className="inline-block px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full border border-yellow-200">
+                            {use.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rezone Targets */}
+                  {rezoneTargets.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Common Rezone Targets</p>
+                      <p className="text-xs text-gray-500 mb-2">Higher-density codes developers typically rezone to from {zoningDetail.zoning_code || zoningDetail.district_code}:</p>
+                      <div className="space-y-2">
+                        {rezoneTargets.map((target: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between bg-purple-50 rounded p-2 border border-purple-100">
+                            <div>
+                              <span className="text-sm font-semibold text-purple-900">{target.zoning_code}</span>
+                              <p className="text-xs text-purple-700">{target.description || target.district_name}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-purple-600">{target.max_density || '--'} units/acre</p>
+                              <p className="text-xs text-purple-500">FAR: {target.max_far || '--'}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Source Info */}
+                  {zoningDetail.source_url && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      Source: <a href={zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Municipal Code</a>
+                      {zoningDetail.last_verified_at && ` (Verified: ${new Date(zoningDetail.last_verified_at).toLocaleDateString()})`}
+                    </p>
+                  )}
+                </div>
+              ) : zoningInfo && zoningInfo.code !== '--' ? (
+                <div className="text-sm text-gray-600">
+                  <p><span className="font-medium">{zoningInfo.code}</span> - {zoningInfo.description}</p>
+                  <p className="text-xs text-gray-400 mt-1">Detailed zoning data not available for this district</p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  {detectedLocation?.hasZoningData === false 
+                    ? `Zoning data not yet available for ${detectedLocation.city}` 
+                    : 'Draw boundary to lookup zoning code'}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Metrics Panel */}
@@ -551,18 +738,36 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               </p>
             </div>
 
-            {/* Zoning Info */}
+            {/* Municipality & Zoning */}
             <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Zoning</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Municipality</p>
+              {detectedLocation ? (
+                <div className="mb-2">
+                  <p className="text-sm font-medium text-gray-900">{detectedLocation.city}, {detectedLocation.state}</p>
+                  {detectedLocation.county && (
+                    <p className="text-xs text-gray-500">{detectedLocation.county}</p>
+                  )}
+                  {detectedLocation.hasZoningData ? (
+                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <CheckCircle size={10} className="mr-1" /> Zoning Data Available
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                      <AlertCircle size={10} className="mr-1" /> No Zoning Data
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400 mb-2">{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
+              )}
+
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 mt-2">Zoning Code</p>
               {zoningLoading ? (
                 <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
               ) : zoningInfo ? (
                 <div>
                   <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
                   <p className="text-sm text-gray-600">{zoningInfo.description}</p>
-                  {zoningInfo.municipality && (
-                    <p className="text-xs text-gray-500 mt-1">{zoningInfo.municipality}, {zoningInfo.state}</p>
-                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400">{hasBoundary ? 'No zoning data available' : 'Draw boundary to lookup'}</p>
