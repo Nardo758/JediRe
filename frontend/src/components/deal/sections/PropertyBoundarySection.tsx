@@ -7,6 +7,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import * as turf from '@turf/turf';
+import { apiClient } from '../../../api/client';
 import { 
   Save, 
   Upload, 
@@ -177,19 +178,18 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/deals/${dealId}/boundary`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setBoundary(data);
+      const data = await apiClient.get(`/deals/${dealId}/boundary`);
+      if (data) {
+        setBoundary(data as any);
         
-        // Add to map if exists
-        if (data.boundaryGeoJSON && drawRef.current) {
-          drawRef.current.add(data.boundaryGeoJSON);
+        if ((data as any).boundaryGeoJSON && drawRef.current) {
+          drawRef.current.add((data as any).boundaryGeoJSON);
         }
       }
     } catch (err: any) {
-      console.error('Error loading boundary:', err);
+      if (err.response?.status !== 404) {
+        console.error('Error loading boundary:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -282,20 +282,10 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       setSaving(true);
       setError(null);
 
-      const response = await fetch(`/api/v1/deals/${dealId}/boundary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(boundary),
-      });
+      await apiClient.post(`/deals/${dealId}/boundary`, boundary);
 
-      if (!response.ok) {
-        throw new Error('Failed to save boundary');
-      }
-
-      // Notify parent component
       onUpdate?.();
       
-      // Show success message (could use toast notification)
       alert('Boundary saved successfully!');
 
     } catch (err: any) {
