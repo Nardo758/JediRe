@@ -60,6 +60,10 @@ import qwenRoutes from './qwen.routes';
 import competitionRoutes from './competition.routes';
 import errorsRoutes from './errors.routes';
 import dataTrackerRoutes from './data-tracker.routes';
+import entitlementRoutes from './entitlement.routes';
+import regulatoryAlertRoutes from './regulatory-alert.routes';
+import dealTimelineRoutes from './deal-timeline.routes';
+import zoningComparatorRoutes from './zoning-comparator.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -234,6 +238,18 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Tracker routes (Admin data coverage & completeness tracking)
   app.use(`${API_PREFIX}/admin/data-tracker`, dataTrackerRoutes);
+
+  // Entitlement Tracker routes (Zoning & Entitlements Module)
+  app.use(`${API_PREFIX}/entitlements`, entitlementRoutes);
+
+  // Regulatory Alert routes (Zoning & Entitlements Module)
+  app.use(`${API_PREFIX}/regulatory-alerts`, regulatoryAlertRoutes);
+
+  // Deal Timeline routes (Zoning & Entitlements Module - Time-to-Shovel)
+  app.use(`${API_PREFIX}/deal-timelines`, dealTimelineRoutes);
+
+  // Zoning Comparator routes (Zoning & Entitlements Module - District/Parcel/Jurisdiction comparison)
+  app.use(`${API_PREFIX}/zoning-comparator`, zoningComparatorRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

@@ -48,6 +48,7 @@ import {
   ActiveOwnersPage,
   FutureSupplyPage,
 } from './pages/MarketIntelligence';
+import { ZoningEntitlementsPage } from './pages/ZoningEntitlementsPage';
 
 
 function AppContent() {
@@ -90,6 +91,7 @@ function AppContent() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
+          <Route path="/zoning-entitlements" element={<ZoningEntitlementsPage />} />
           
           {/* Market Research Redirects */}
           <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
