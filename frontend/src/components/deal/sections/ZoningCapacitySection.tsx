@@ -6,6 +6,7 @@ import {
   Calculator, ChevronDown, ChevronUp, Sparkles, Target
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { ZoningIntelligencePanel } from './ZoningIntelligencePanel';
 
 interface ZoningCapacitySectionProps {
   deal?: any;
@@ -948,6 +949,15 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
         </div>
       )}
+
+      <ZoningIntelligencePanel
+        deal={deal}
+        dealId={resolvedDealId}
+        districtCode={data.zoning_code}
+        municipality={deal?.city}
+        state={deal?.state}
+        landAreaSf={deal?.lot_size_sqft}
+      />
     </div>
   );
 }
