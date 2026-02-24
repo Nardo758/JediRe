@@ -1,9 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getPool } from '../../database/connection';
+import { ZoningAgentService } from '../../services/zoning-agent.service';
 
 const router = Router();
 const pool = getPool();
+const zoningAgent = new ZoningAgentService(pool);
 
 const numField = z.preprocess(
   (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
@@ -710,6 +712,29 @@ router.delete('/deals/:dealId/zoning-capacity', async (req: Request, res: Respon
   } catch (error) {
     console.error('Error deleting zoning capacity:', error);
     res.status(500).json({ error: 'Failed to delete zoning capacity' });
+  }
+});
+
+router.post('/zoning-agent/retrieve', async (req: Request, res: Response) => {
+  try {
+    const { districtCode, districtName, municipality, state, municipalityId, districtId } = req.body;
+    if (!districtCode || !municipality || !state) {
+      return res.status(400).json({ error: 'Must provide districtCode, municipality, and state' });
+    }
+
+    const result = await zoningAgent.retrieveZoningData({
+      districtCode,
+      districtName,
+      municipality,
+      state,
+      municipalityId,
+      districtId,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Zoning agent retrieve error:', error);
+    res.status(500).json({ error: 'Failed to retrieve zoning data' });
   }
 });
 

@@ -19,7 +19,9 @@ import {
   AlertCircle,
   CheckCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Zap,
+  Loader2
 } from 'lucide-react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
@@ -84,6 +86,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [detectedLocation, setDetectedLocation] = useState<{ city: string; state: string; county: string; hasZoningData: boolean; municipalityId?: string; address?: string } | null>(null);
   const [zoningDetail, setZoningDetail] = useState<any>(null);
   const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [dataSource, setDataSource] = useState<'database' | 'ai_retrieved' | null>(null);
 
   // Layer visibility toggles
   const [layers, setLayers] = useState({
@@ -364,6 +368,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           if (detailData?.found) {
             setZoningDetail(detailData.district);
             setRezoneTargets(detailData.rezoneTargets || []);
+            setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
             const d = detailData.district;
             const front = d.min_front_setback_ft ?? d.setback_front_ft;
             const side = d.min_side_setback_ft ?? d.setback_side_ft;
@@ -394,6 +399,47 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       console.error('Zoning lookup error:', err);
     } finally {
       setZoningLoading(false);
+    }
+  };
+
+  const handleAgentRetrieve = async () => {
+    if (!zoningInfo?.code || zoningInfo.code === '--') return;
+    setAgentLoading(true);
+    try {
+      const result = await apiClient.post('/zoning-agent/retrieve', {
+        districtCode: zoningInfo.code,
+        districtName: zoningInfo.description,
+        municipality: detectedLocation?.city || deal?.city || '',
+        state: detectedLocation?.state || deal?.state || '',
+        municipalityId: detectedLocation?.municipalityId || '',
+      }) as any;
+
+      if (result?.success && result.district) {
+        setZoningDetail({
+          ...zoningDetail,
+          ...result.district,
+          zoning_code: zoningInfo.code,
+          district_code: zoningInfo.code,
+          municipality: detectedLocation?.city || deal?.city || '',
+          state: detectedLocation?.state || deal?.state || '',
+        });
+        setDataSource(result.source);
+        const d = result.district;
+        if (d.min_front_setback_ft != null || d.min_side_setback_ft != null || d.min_rear_setback_ft != null) {
+          setBoundary(prev => ({
+            ...prev,
+            setbacks: {
+              front: d.min_front_setback_ft ?? prev.setbacks.front,
+              side: d.min_side_setback_ft ?? prev.setbacks.side,
+              rear: d.min_rear_setback_ft ?? prev.setbacks.rear,
+            }
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Agent retrieve error:', err);
+    } finally {
+      setAgentLoading(false);
     }
   };
 
@@ -593,7 +639,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           {/* Zoning Code Details */}
           {hasBoundary && (
             <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Zoning Code Details</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-gray-700">Zoning Code Details</h3>
+                {dataSource && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                    dataSource === 'database' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-purple-100 text-purple-800'
+                  }`}>
+                    {dataSource === 'database' ? (
+                      <><CheckCircle size={10} /> Verified</>
+                    ) : (
+                      <><Zap size={10} /> AI-Retrieved</>
+                    )}
+                  </span>
+                )}
+              </div>
               
               {zoningLoading ? (
                 <p className="text-sm text-gray-400 italic">Loading zoning information...</p>
@@ -722,16 +783,47 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   )}
                 </div>
               ) : zoningInfo && zoningInfo.code !== '--' ? (
-                <div className="text-sm text-gray-600">
-                  <p><span className="font-medium">{zoningInfo.code}</span> - {zoningInfo.description}</p>
-                  <p className="text-xs text-gray-400 mt-1">Detailed zoning data not available for this district</p>
+                <div className="space-y-3">
+                  <div className="text-sm text-gray-600">
+                    <p><span className="font-medium">{zoningInfo.code}</span> - {zoningInfo.description}</p>
+                    <p className="text-xs text-gray-400 mt-1">Detailed zoning data not in municipal database</p>
+                  </div>
+                  <button
+                    onClick={handleAgentRetrieve}
+                    disabled={agentLoading}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-colors text-sm font-medium w-full justify-center"
+                  >
+                    {agentLoading ? (
+                      <><Loader2 size={16} className="animate-spin" /> Retrieving Zoning Data...</>
+                    ) : (
+                      <><Zap size={16} /> Retrieve with AI Agent</>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">
+                    AI will research {zoningInfo.code} regulations for {detectedLocation?.city || deal?.city || 'this municipality'}
+                  </p>
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">
-                  {detectedLocation?.hasZoningData === false 
-                    ? `Zoning data not yet available for ${detectedLocation.city}` 
-                    : 'Draw boundary to lookup zoning code'}
-                </p>
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-400">
+                    {detectedLocation?.hasZoningData === false 
+                      ? `Zoning data not yet available for ${detectedLocation.city}` 
+                      : 'Draw boundary to lookup zoning code'}
+                  </p>
+                  {detectedLocation && !detectedLocation.hasZoningData && zoningInfo && zoningInfo.code !== '--' && (
+                    <button
+                      onClick={handleAgentRetrieve}
+                      disabled={agentLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-colors text-sm font-medium w-full justify-center"
+                    >
+                      {agentLoading ? (
+                        <><Loader2 size={16} className="animate-spin" /> Retrieving...</>
+                      ) : (
+                        <><Zap size={16} /> Retrieve with AI Agent</>
+                      )}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
