@@ -131,16 +131,16 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
   if (!isExpanded) {
     return (
       <div
-        className="fixed bottom-0 left-0 right-0 z-40 bg-gray-900 text-white cursor-pointer hover:bg-gray-800 transition-colors"
+        className="absolute bottom-0 left-0 right-0 z-30 bg-gray-900 text-white cursor-pointer hover:bg-gray-800 transition-colors"
         onClick={() => setIsExpanded(true)}
       >
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
               <MessageCircle className="w-4 h-4" />
             </div>
             <span className="font-medium">Zoning Agent</span>
-            <span className="text-gray-400 text-sm">Ask anything about zoning, entitlements, or development capacity</span>
+            <span className="text-gray-400 text-sm hidden sm:inline">Ask anything about zoning, entitlements, or development capacity</span>
           </div>
           <ChevronUp className="w-5 h-5 text-gray-400" />
         </div>
@@ -149,7 +149,7 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t-2 border-blue-600 shadow-2xl" style={{ height: '400px' }}>
+    <div className="absolute bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-blue-600 shadow-2xl" style={{ maxHeight: '50%', height: '400px' }}>
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-6 py-3 bg-gray-900 text-white">
           <div className="flex items-center gap-3">

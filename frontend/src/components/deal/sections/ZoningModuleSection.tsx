@@ -57,7 +57,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId }: ZoningModuleSe
   };
 
   return (
-    <div className="flex flex-col h-full -m-6">
+    <div className="relative flex flex-col h-full -m-6">
       <div className="bg-white border-b border-gray-200 px-6 pt-4">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -84,7 +84,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId }: ZoningModuleSe
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pb-16">
         {renderActiveTab()}
       </div>
 

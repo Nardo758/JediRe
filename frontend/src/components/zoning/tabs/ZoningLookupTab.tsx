@@ -17,6 +17,7 @@ interface ZoningLookupTabProps {
 export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) {
   const [address, setAddress] = useState('');
   const { result, loading, error, lookup, clear } = useZoningLookup();
+  const autoLookupDone = React.useRef(false);
 
   const [verificationData, setVerificationData] = useState<VerificationData | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -24,6 +25,16 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
   const [trustGatePassed, setTrustGatePassed] = useState(false);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [sidePanelData, setSidePanelData] = useState<SourceCitationData | null>(null);
+
+  useEffect(() => {
+    if (autoLookupDone.current) return;
+    const dealAddress = deal?.address;
+    if (dealAddress && dealAddress.trim()) {
+      autoLookupDone.current = true;
+      setAddress(dealAddress);
+      lookup(dealAddress);
+    }
+  }, [deal?.address]);
 
   const handleOpenSourcePanel = useCallback((data: SourceCitationData) => {
     setSidePanelData(data);
