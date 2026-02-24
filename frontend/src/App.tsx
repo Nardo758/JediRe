@@ -36,6 +36,7 @@ import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { DataTrackerPage } from './pages/admin/DataTrackerPage';
 import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
@@ -88,6 +89,7 @@ function AppContent() {
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
+          <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
           
           {/* Market Research Redirects */}
           <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
