@@ -39,10 +39,14 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
     setVerificationLoading(true);
     setVerificationError(null);
     try {
+      const municipalityName = (zoningResult.district?.municipality || 'Atlanta').toLowerCase().replace(/\s+/g, '-');
+      const state = (zoningResult.district?.state || 'GA').toLowerCase();
+      const jurisdictionId = `${municipalityName}-${state}`;
       const response = await axios.post('/api/v1/zoning-verification/verify', {
         parcelId: zoningResult.district?.code || 'unknown',
         gisZoning: zoningResult.district?.code || '',
-        jurisdiction: zoningResult.district?.municipality || 'Atlanta',
+        jurisdictionId,
+        dealId: dealId || undefined,
       });
       setVerificationData(response.data);
     } catch (err: any) {

@@ -415,8 +415,8 @@ function FinancialImpactSection({ timeline }: { timeline: DealTimeline }) {
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Carrying Cost Analysis — Time = Money</p>
           <div className="h-px bg-gray-900 mt-1 mb-3" />
           <div className="flex items-center gap-6 text-[11px] text-gray-600 mb-3">
-            <span>Land Basis: <span className="font-semibold text-gray-900">{formatCurrency(timeline.landBasis)}</span></span>
-            <span>Acquisition Loan: <span className="font-semibold text-gray-900">{formatCurrency(timeline.loanAmount)}</span> (75% LTV, {timeline.loanRate}% rate)</span>
+            <span>Land Basis: <span className="font-semibold text-gray-900">{formatCurrency(timeline.landBasis)}</span> <SourceCitation section="Deed Records" url="#" sourceType="record" lastVerified="2025-11-14" /></span>
+            <span>Acquisition Loan: <span className="font-semibold text-gray-900">{formatCurrency(timeline.loanAmount)}</span> (75% LTV, {timeline.loanRate}% rate) <SourceCitation section="§Proforma" url="#" sourceType="calculated" lastVerified="2025-11-14" /></span>
           </div>
         </div>
 
