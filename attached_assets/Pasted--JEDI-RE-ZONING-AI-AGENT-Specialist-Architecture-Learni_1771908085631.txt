@@ -1,0 +1,924 @@
+# JEDI RE — ZONING AI AGENT
+## Specialist Architecture: Learning, Reasoning & Application
+
+---
+
+## THE CORE PROBLEM
+
+Zoning codes are the single most complex, fragmented, and misinterpreted data layer in real estate. Every municipality writes them differently. Cross-references are buried. Exceptions reference other exceptions. Overlay districts contradict base districts. And the people who understand them — zoning attorneys and experienced developers — charge $300-500/hour.
+
+The current wireframe treats zoning as a data lookup. That's a mistake. Zoning isn't a lookup problem — it's a **reasoning problem**. The Zoning AI Agent needs to do what a senior zoning attorney does: read the code, understand the context, apply it to a specific parcel's geometry and location, identify edge cases, and recommend the optimal path.
+
+This document redesigns the Zoning AI Agent as a true specialist that learns, reasons, and improves.
+
+---
+
+## AGENT DESIGN PHILOSOPHY
+
+### What Makes This Agent Different From General AI
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  GENERAL AI APPROACH (what most platforms do)                                            │
+│                                                                                         │
+│  User: "What can I build at 847 Peachtree?"                                             │
+│    → LLM searches docs for "847 Peachtree" + "zoning"                                   │
+│    → Returns whatever text chunks match                                                  │
+│    → No understanding of how codes INTERACT                                              │
+│    → No memory of similar questions                                                      │
+│    → Same cost/latency every time                                                        │
+│    → Wrong 15-20% of the time on edge cases                                              │
+│                                                                                         │
+│  SPECIALIST AGENT APPROACH (what we build)                                               │
+│                                                                                         │
+│  User: "What can I build at 847 Peachtree?"                                             │
+│    → Agent already knows MRC-3 rules (pre-compiled)                                      │
+│    → Checks if overlay districts apply to THIS parcel                                    │
+│    → Cross-references parking against MARTA proximity                                    │
+│    → Recalls that SAP variances in Midtown have 72% approval rate                        │
+│    → Knows the density bonus program changed in Nov 2025                                 │
+│    → Applies setbacks to actual parcel geometry (2.25 acres, irregular lot)               │
+│    → Returns answer with code citations, confidence score, and caveats                   │
+│    → Gets faster and more accurate every time this jurisdiction is queried               │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### The Three Capabilities
+
+1. **LEARN** — Ingest, structure, and continuously update zoning code knowledge
+2. **REASON** — Apply codes to specific parcels using multi-step logic chains
+3. **IMPROVE** — Get smarter from corrections, outcomes, and professional feedback
+
+---
+
+## LAYER 1: THE KNOWLEDGE ARCHITECTURE
+
+### How the Agent "Learns" a Jurisdiction
+
+The agent doesn't just embed raw text. It builds a **structured knowledge graph** per jurisdiction that mirrors how a zoning expert thinks.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  ZONING KNOWLEDGE GRAPH — Per Jurisdiction                                               │
+│                                                                                         │
+│  INGESTION PIPELINE:                                                                    │
+│                                                                                         │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐           │
+│  │ Raw Code │ →  │ Structured   │ →  │ Relationship │ →  │ Compiled         │           │
+│  │ Text     │    │ Extraction   │    │ Mapping      │    │ Jurisdiction     │           │
+│  │          │    │              │    │              │    │ Model            │           │
+│  │ Municode │    │ Districts    │    │ Cross-refs   │    │                  │           │
+│  │ PDF      │    │ Rules        │    │ Exceptions   │    │ Ready for        │           │
+│  │ HTML     │    │ Tables       │    │ Overlays     │    │ instant query    │           │
+│  └──────────┘    └──────────────┘    └──────────────┘    └──────────────────┘           │
+│                                                                                         │
+│  TIME: ~2-4 hours per new jurisdiction (one-time, then incremental updates)              │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step 1: Structured Extraction (LLM-Assisted Parsing)
+
+Raw zoning code text is useless in vector search. A query for "parking requirements" will return 40 chunks from different districts, different use types, different conditions. The agent needs STRUCTURED data.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  STRUCTURED EXTRACTION — What the Agent Builds Per District                              │
+│                                                                                         │
+│  For EVERY zoning district in a jurisdiction, the agent extracts:                        │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  ZoningDistrictProfile {                                                            │ │
+│  │                                                                                     │ │
+│  │    // IDENTITY                                                                      │ │
+│  │    code: "MRC-3",                                                                   │ │
+│  │    full_name: "Mixed Residential Commercial - 3",                                   │ │
+│  │    jurisdiction: "City of Atlanta",                                                 │ │
+│  │    code_section: "§16-18A.007",                                                     │ │
+│  │    last_amended: "2023-08-14",                                                      │ │
+│  │    amendment_history: [...],                                                         │ │
+│  │                                                                                     │ │
+│  │    // DIMENSIONAL STANDARDS (the hard numbers)                                      │ │
+│  │    dimensional: {                                                                   │ │
+│  │      max_density_units_per_acre: 109,                                               │ │
+│  │      max_height_ft: 225,                                                            │ │
+│  │      max_far: 3.2,                                                                  │ │
+│  │      max_lot_coverage_pct: 85,                                                      │ │
+│  │      min_open_space_pct: 15,                                                        │ │
+│  │      min_lot_size_sf: null,   // no minimum in MRC-3                                │ │
+│  │      min_lot_width_ft: null,                                                        │ │
+│  │      setbacks: { front: 0, side: 10, rear: 20 },                                   │ │
+│  │      setback_conditions: [                                                          │ │
+│  │        { condition: "adjacent_to_R_district", side: 25, rear: 30 },                 │ │
+│  │        { condition: "above_100ft_height", stepback: "10ft at 60ft" }                │ │
+│  │      ]                                                                              │ │
+│  │    },                                                                               │ │
+│  │                                                                                     │ │
+│  │    // USE PERMISSIONS (the allowed/conditional/prohibited lists)                     │ │
+│  │    uses: {                                                                          │ │
+│  │      by_right: [                                                                    │ │
+│  │        { use: "multi_family_residential", conditions: null },                       │ │
+│  │        { use: "live_work_units", conditions: "ground floor ≥ 500sf commercial" },   │ │
+│  │        { use: "retail", conditions: "ground floor only in mixed-use" },             │ │
+│  │        { use: "restaurant", conditions: null },                                     │ │
+│  │        { use: "office", conditions: null },                                         │ │
+│  │        { use: "hotel", conditions: "min 50 rooms" }                                 │ │
+│  │      ],                                                                             │ │
+│  │      conditional: [                                                                 │ │
+│  │        { use: "drive_through", approval: "CUP", typical_timeline_mo: 3.5 },         │ │
+│  │        { use: "outdoor_entertainment", approval: "CUP", conditions: "..." }         │ │
+│  │      ],                                                                             │ │
+│  │      prohibited: ["self_storage", "auto_repair", "industrial_manufacturing"],       │ │
+│  │    },                                                                               │ │
+│  │                                                                                     │ │
+│  │    // PARKING (the most misinterpreted section in any code)                         │ │
+│  │    parking: {                                                                       │ │
+│  │      residential: { per_unit: 1.0, guest_per_unit: 0.25 },                          │ │
+│  │      commercial: { per_1000sf: 3.0 },                                               │ │
+│  │      restaurant: { per_1000sf: 5.0 },                                               │ │
+│  │      hotel: { per_room: 0.75 },                                                     │ │
+│  │      bicycle: { per_n_units: 4, spaces: 1 },                                        │ │
+│  │      reductions: [                                                                  │ │
+│  │        { trigger: "within_0.5mi_transit", reduction_pct: 20,                        │ │
+│  │          code_ref: "§16-18A.024" },                                                 │ │
+│  │        { trigger: "shared_parking_agreement", reduction_pct: 15,                    │ │
+│  │          code_ref: "§16-18A.025" },                                                 │ │
+│  │        { trigger: "affordable_housing_20pct", reduction_pct: 10,                    │ │
+│  │          code_ref: "§16-28.028" }                                                   │ │
+│  │      ]                                                                              │ │
+│  │    },                                                                               │ │
+│  │                                                                                     │ │
+│  │    // CROSS-REFERENCES (the traps that catch everyone)                              │ │
+│  │    cross_references: [                                                              │ │
+│  │      { ref: "§16-28.007", topic: "General parking provisions",                      │ │
+│  │        note: "Overrides district parking when more restrictive" },                  │ │
+│  │      { ref: "§16-18A.032", topic: "BeltLine overlay",                               │ │
+│  │        note: "Additional streetscape requirements within 500ft" },                  │ │
+│  │      { ref: "§16-36", topic: "Historic preservation",                               │ │
+│  │        note: "Supersedes height limits in landmark districts" }                     │ │
+│  │    ],                                                                               │ │
+│  │                                                                                     │ │
+│  │    // INCENTIVE PROGRAMS (the opportunities most users miss)                        │ │
+│  │    incentives: [                                                                    │ │
+│  │      { program: "density_bonus", trigger: "10% units at 80% AMI",                   │ │
+│  │        benefit: "+15% density", code_ref: "§16-18A.039" },                          │ │
+│  │      { program: "parking_reduction_transit", trigger: "0.5mi of MARTA",             │ │
+│  │        benefit: "-20% parking", code_ref: "§16-18A.024" },                          │ │
+│  │      { program: "height_bonus", trigger: "LEED Gold certification",                 │ │
+│  │        benefit: "+10% height", code_ref: "§16-18A.041" }                            │ │
+│  │    ],                                                                               │ │
+│  │                                                                                     │ │
+│  │    // OVERLAY DISTRICTS that may apply                                              │ │
+│  │    applicable_overlays: [                                                           │ │
+│  │      { overlay: "SPI-16", name: "Midtown Special Public Interest",                  │ │
+│  │        overrides: ["min_retail_frontage", "streetscape_requirements"],               │ │
+│  │        additional_requirements: ["design_review_committee"] },                      │ │
+│  │      { overlay: "BeltLine_Overlay", name: "BeltLine Zoning Overlay",                │ │
+│  │        overrides: ["setback_front_0ft", "active_ground_floor_required"] }           │ │
+│  │    ]                                                                                │ │
+│  │  }                                                                                  │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  This is NOT raw text embedding. This is a COMPILED RULE ENGINE per district.            │
+│  The LLM does the hard work of extraction ONCE. After that, queries are fast             │
+│  and deterministic for dimensional lookups, with LLM reasoning reserved for              │
+│  edge cases and cross-reference resolution.                                              │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step 2: The Dual-Layer Knowledge System
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  DUAL-LAYER KNOWLEDGE ARCHITECTURE                                                      │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  LAYER A: STRUCTURED RULES (PostgreSQL + JSONB)                                     │ │
+│  │  ════════════════════════════════════════════                                       │ │
+│  │                                                                                     │ │
+│  │  • ZoningDistrictProfile objects (as shown above)                                   │ │
+│  │  • Deterministic lookups: "What's the FAR in MRC-3?" → 3.2 (instant, 100%)         │ │
+│  │  • Parking calculations: structured formula evaluation                              │ │
+│  │  • Setback computations: rule-based geometry                                        │ │
+│  │  • Use permission checks: by-right / conditional / prohibited                       │ │
+│  │                                                                                     │ │
+│  │  WHEN TO USE: Any question that has a single, deterministic answer                  │ │
+│  │  in the code. No LLM call needed. Fast. Cheap. Always accurate.                     │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  LAYER B: REASONING ENGINE (RAG + LLM)                                              │ │
+│  │  ═════════════════════════════════════                                              │ │
+│  │                                                                                     │ │
+│  │  • Vector-embedded full code text (Pinecone / pgvector)                              │ │
+│  │  • Cross-reference resolution: "Does the BeltLine overlay override MRC-3 setbacks?" │ │
+│  │  • Ambiguity interpretation: "The code says 'may' — is this discretionary?"         │ │
+│  │  • Hypothetical analysis: "Could I get a variance for 320 units?"                   │ │
+│  │  • Code comparison: "How does Atlanta's MRC-3 compare to Nashville's MU-D?"         │ │
+│  │  • Exception identification: "Are there any conditions that would block this use?"  │ │
+│  │                                                                                     │ │
+│  │  WHEN TO USE: Multi-step reasoning, cross-references, ambiguity,                    │ │
+│  │  hypotheticals, or anything that requires INTERPRETATION not just lookup.            │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  QUERY ROUTER — Decides Which Layer Handles Each Question                           │ │
+│  │                                                                                     │ │
+│  │  User Query                                                                         │ │
+│  │      │                                                                              │ │
+│  │      ▼                                                                              │ │
+│  │  Intent Classifier                                                                  │ │
+│  │      │                                                                              │ │
+│  │      ├── LOOKUP intent → Layer A (structured rules)                                 │ │
+│  │      │   "What's the height limit in MRC-3?"                                        │ │
+│  │      │   "How much parking for 320 units?"                                          │ │
+│  │      │   "Is restaurant a by-right use?"                                            │ │
+│  │      │   Response: immediate, deterministic, with code citation                     │ │
+│  │      │                                                                              │ │
+│  │      ├── CALCULATION intent → Layer A + geometry engine                              │ │
+│  │      │   "How many units can I build on this 2.25-acre lot?"                        │ │
+│  │      │   "What's the buildable envelope after setbacks?"                            │ │
+│  │      │   Response: computed from rules + parcel geometry                             │ │
+│  │      │                                                                              │ │
+│  │      ├── REASONING intent → Layer A context + Layer B (LLM)                         │ │
+│  │      │   "Can I get a variance for extra height?"                                   │ │
+│  │      │   "What overlays affect this parcel?"                                        │ │
+│  │      │   "How does the BeltLine overlay change my setbacks?"                        │ │
+│  │      │   Response: structured data as context → LLM reasons over it                 │ │
+│  │      │                                                                              │ │
+│  │      └── APPLICATION intent → Full pipeline (both layers + parcel data)             │ │
+│  │          "What can I build at 847 Peachtree?"                                       │ │
+│  │          "Run a full zoning analysis for this site"                                  │ │
+│  │          Response: complete ZoningAnalysis object with all dimensions,               │ │
+│  │          uses, parking, incentives, overlays, risks, and recommendations             │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  OPTIMIZATION IMPACT:                                                                   │
+│  • 60-70% of queries hit Layer A only (fast, cheap, deterministic)                      │
+│  • 20-25% need Layer A + B (medium cost, high accuracy)                                 │
+│  • 5-10% need full APPLICATION pipeline (higher cost, maximum intelligence)             │
+│  • Average response time drops from 3-5 sec → 200ms-1.5 sec                            │
+│  • LLM token cost drops 70% (most queries don't need it)                                │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## LAYER 2: THE APPLICATION ENGINE
+
+### How the Agent Applies Code to a Specific Property
+
+This is where the agent goes from "zoning lookup tool" to "AI zoning attorney." It doesn't just tell you the rules — it tells you what the rules **mean for your specific parcel**.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  PROPERTY APPLICATION PIPELINE                                                           │
+│                                                                                         │
+│  INPUT: Parcel ID or Address                                                             │
+│                                                                                         │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐               │
+│  │ STEP 1   │ →  │ STEP 2       │ →  │ STEP 3       │ →  │ STEP 4       │               │
+│  │ Identify │    │ Apply Base   │    │ Apply        │    │ Calculate    │               │
+│  │ All Rules│    │ District     │    │ Overlays +   │    │ Buildable    │               │
+│  │ That     │    │ Rules to     │    │ Exceptions   │    │ Capacity     │               │
+│  │ Apply    │    │ Parcel       │    │ to Parcel    │    │              │               │
+│  └──────────┘    └──────────────┘    └──────────────┘    └──────────────┘               │
+│       │                │                    │                    │                       │
+│       ▼                ▼                    ▼                    ▼                       │
+│  ┌──────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐               │
+│  │ STEP 5   │ →  │ STEP 6       │ →  │ STEP 7       │ →  │ STEP 8       │               │
+│  │ Identify │    │ Assess       │    │ Generate     │    │ Score        │               │
+│  │ Incentive│    │ Entitlement  │    │ Strategy     │    │ Confidence   │               │
+│  │ Programs │    │ Paths +      │    │ Recommen-    │    │ & Cite       │               │
+│  │          │    │ Risk         │    │ dation       │    │ Sources      │               │
+│  └──────────┘    └──────────────┘    └──────────────┘    └──────────────┘               │
+│                                                                                         │
+│  OUTPUT: ZoningApplicationReport                                                         │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Application Logic
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 1: IDENTIFY ALL RULES THAT APPLY                                                  │
+│  ══════════════════════════════════════                                                  │
+│                                                                                         │
+│  For parcel at 847 Peachtree St NE:                                                     │
+│                                                                                         │
+│  a) Base zoning district → MRC-3 (from GIS spatial query)                               │
+│  b) Overlay districts → SPI-16 Midtown (spatial intersection)                           │
+│  c) Special districts → None (check historic, conservation, etc.)                       │
+│  d) Proximity triggers:                                                                 │
+│     → 0.3 mi from MARTA station → parking reduction eligible                           │
+│     → Not within BeltLine overlay → no BeltLine requirements                            │
+│     → Not in floodplain → no FEMA restrictions                                          │
+│     → Not in historic district → no preservation requirements                           │
+│  e) Recent amendments → Check if any MRC-3 rules changed since last extraction          │
+│                                                                                         │
+│  RESULT: Rule stack = [MRC-3 base] + [SPI-16 overlay] + [transit proximity]             │
+│                                                                                         │
+│  STEP 2: APPLY BASE DISTRICT RULES TO PARCEL GEOMETRY                                   │
+│  ═══════════════════════════════════════════════════                                     │
+│                                                                                         │
+│  Parcel: 2.25 acres (98,010 SF), irregular polygon                                      │
+│                                                                                         │
+│  a) Max density: 109 units/acre × 2.25 acres = 245 units (by-right)                    │
+│  b) Max height: 225 ft                                                                  │
+│  c) Max FAR: 3.2 × 98,010 SF = 313,632 SF gross floor area                             │
+│  d) Max lot coverage: 85% × 98,010 SF = 83,309 SF footprint                            │
+│  e) Setbacks applied to parcel polygon:                                                 │
+│     → Front (0 ft): full frontage buildable                                             │
+│     → Side (10 ft): reduced by 20 ft total                                              │
+│     → Rear (20 ft): reduced by 20 ft                                                   │
+│     → Net buildable footprint: 78,240 SF                                                │
+│  f) Cross-check: adjacent to R-5 district on east side?                                 │
+│     → YES → side setback increases to 25 ft on that side                                │
+│     → Revised buildable footprint: 76,890 SF                                            │
+│     → ⚠️ This is a cross-reference catch most users would miss                          │
+│                                                                                         │
+│  STEP 3: APPLY OVERLAYS + EXCEPTIONS                                                    │
+│  ════════════════════════════════════                                                    │
+│                                                                                         │
+│  SPI-16 Midtown overlay adds:                                                           │
+│  a) Min 60% of ground floor must be "active use" (retail, restaurant)                   │
+│  b) Streetscape requirements: 20ft clear zone along Peachtree                           │
+│  c) Design review committee approval required (adds ~2 months)                          │
+│  d) No blank walls > 30 ft on street-facing facades                                     │
+│                                                                                         │
+│  Does SPI-16 OVERRIDE any MRC-3 rules?                                                  │
+│  → Yes: front setback explicitly 0 ft (confirms MRC-3)                                  │
+│  → No height override (MRC-3's 225 ft applies)                                          │
+│  → Additional: ground-floor transparency requirement (60% glazing)                      │
+│                                                                                         │
+│  STEP 4: CALCULATE BUILDABLE CAPACITY                                                   │
+│  ════════════════════════════════════                                                    │
+│                                                                                         │
+│  Three scenarios computed:                                                               │
+│                                                                                         │
+│  BY-RIGHT:                                                                              │
+│  → Units: min(245 by density, 313632/900sf avg = 348 by GFA) = 245 units               │
+│  → Density is the binding constraint, not FAR                                           │
+│  → Parking: 245 × 1.0 + 245 × 0.25 = 306 spaces (before reductions)                   │
+│  → Transit reduction: 306 × 0.80 = 245 spaces required                                 │
+│  → Parking structure: ~82,000 SF (at 330 SF/space)                                      │
+│                                                                                         │
+│  VARIANCE (SAP):                                                                        │
+│  → Target: 320 units (30% above by-right)                                               │
+│  → FAR check: 320 × 900 = 288,000 SF < 313,632 SF max → FAR OK                        │
+│  → Parking: 320 × 1.0 + 320 × 0.25 × 0.80 = 384 spaces                               │
+│  → Height check: 320u in 225ft = feasible at 16 units/floor × 20 floors                │
+│                                                                                         │
+│  REZONE (MRC-4):                                                                        │
+│  → Units: 185/acre × 2.25 = 416 units                                                  │
+│  → Height: 300 ft                                                                       │
+│  → FAR: 4.8 × 98,010 = 470,448 SF                                                     │
+│  → Parking: 416 × 1.0 + 416 × 0.20 × 0.80 = 483 spaces                               │
+│                                                                                         │
+│  STEP 5: IDENTIFY INCENTIVE PROGRAMS                                                    │
+│  ═══════════════════════════════════                                                     │
+│                                                                                         │
+│  Applicable to this parcel:                                                              │
+│  ✅ Density bonus: +15% if 10% units at 80% AMI                                         │
+│     → By-right: 245 → 281 units (+36)                                                   │
+│     → Cost: 24.5 affordable units at reduced rent = ~$180k/yr NOI reduction             │
+│     → Benefit: 36 additional market-rate units = ~$10.1M value                           │
+│     → NET BENEFIT: +$8.2M (massive positive)                                            │
+│  ✅ Transit parking reduction: -20% parking (already applied above)                      │
+│  ❌ LEED height bonus: not applicable in MRC-3 (only MRC-4+)                             │
+│  ❌ Historic tax credits: not in historic district                                       │
+│                                                                                         │
+│  STEP 6: ASSESS ENTITLEMENT PATHS + RISK                                                │
+│  ════════════════════════════════════════                                                │
+│                                                                                         │
+│  Path A: By-right (no entitlement needed)                                               │
+│  → Risk: 0/100 │ Timeline: 0 months │ Cost: $0                                         │
+│                                                                                         │
+│  Path B: By-right + Density Bonus                                                       │
+│  → Risk: 15/100 │ Timeline: 2 months (admin approval)                                  │
+│  → Must prove affordable unit commitment                                                │
+│                                                                                         │
+│  Path C: SAP Variance (320 units)                                                       │
+│  → Risk: 34/100 │ Timeline: 5.4 months (P50)                                           │
+│  → Based on: 67 comparable SAP applications in database                                 │
+│  → Approval rate in MRC-3 Midtown: 72%                                                  │
+│  → Key factors: NPU support (obtained), traffic study (clear)                           │
+│                                                                                         │
+│  Path D: Rezone to MRC-4                                                                │
+│  → Risk: 52/100 │ Timeline: 6.2 months (P50)                                           │
+│  → Based on: 89 comparable rezones in database                                          │
+│  → Approval rate MRC-3→MRC-4: 58%                                                      │
+│  → Key factors: comprehensive plan alignment (yes), council support (unknown)           │
+│                                                                                         │
+│  STEP 7: GENERATE STRATEGY RECOMMENDATION                                               │
+│  ══════════════════════════════════════════                                              │
+│                                                                                         │
+│  AI Recommendation (confidence: 87%):                                                   │
+│                                                                                         │
+│  "Optimal path: By-right (245u) + Density Bonus (281u). This captures                   │
+│  90% of the SAP variance value ($8.2M net benefit) with near-zero                       │
+│  entitlement risk (15/100) and a 2-month timeline vs 5.4 months for SAP.                │
+│                                                                                         │
+│  If pursuing maximum value: SAP variance to 320u, sequenced AFTER                       │
+│  density bonus approval, so you have a 281u fallback if SAP denied.                     │
+│                                                                                         │
+│  Avoid rezone to MRC-4: the 58% approval rate doesn't justify the                      │
+│  additional 12-18 month timeline for a project of this scale. The                       │
+│  density bonus + SAP combination captures 80% of MRC-4's unit count                    │
+│  at 1/3 the risk."                                                                      │
+│                                                                                         │
+│  STEP 8: CONFIDENCE SCORING + CITATIONS                                                 │
+│  ════════════════════════════════════════                                                │
+│                                                                                         │
+│  Overall Confidence: 87%                                                                │
+│                                                                                         │
+│  Confidence breakdown:                                                                  │
+│  • Dimensional standards:     95% (extracted from code, verified)                       │
+│  • Parking calculations:      92% (formula-based, transit reduction confirmed)           │
+│  • Overlay application:       88% (SPI-16 boundary confirmed via GIS)                   │
+│  • Adjacent district setback: 85% (GIS confirms R-5 adjacency)                         │
+│  • Density bonus eligibility: 90% (program active, conditions met)                      │
+│  • SAP approval probability:  78% (based on 67 comparables, but each case unique)       │
+│  • Financial projections:     82% (market-dependent assumptions)                        │
+│                                                                                         │
+│  Citations: §16-18A.007(a), §16-18A.024, §16-18A.039,                                  │
+│             SPI-16 §16-18M.003, §16-28.007(b)(2)                                       │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## LAYER 3: THE LEARNING ENGINE
+
+### How the Agent Gets Smarter Over Time
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  FOUR LEARNING CHANNELS                                                                  │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHANNEL 1: CODE UPDATE DETECTION (Automated)                                       │ │
+│  │  ═════════════════════════════════════════════                                      │ │
+│  │                                                                                     │ │
+│  │  • Municode change detection: diff checker runs weekly per jurisdiction              │ │
+│  │  • When amendment detected:                                                         │ │
+│  │    1. Agent re-extracts affected district profiles                                  │ │
+│  │    2. Compares old vs new structured rules                                          │ │
+│  │    3. Generates change summary for users                                            │ │
+│  │    4. Re-calculates all active deal analyses affected by change                     │ │
+│  │    5. Pushes regulatory alert to affected deals                                     │ │
+│  │                                                                                     │ │
+│  │  Example: "Atlanta amended §16-18A.024 on Feb 15, 2026.                             │ │
+│  │  Transit parking reduction increased from 20% to 25% within 0.25 mi.                │ │
+│  │  3 active deals affected. Recalculating parking requirements."                      │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHANNEL 2: PROFESSIONAL CORRECTION (User Feedback)                                 │ │
+│  │  ════════════════════════════════════════════════                                   │ │
+│  │                                                                                     │ │
+│  │  When a user (especially a zoning attorney or experienced developer)                 │ │
+│  │  corrects the agent:                                                                │ │
+│  │                                                                                     │ │
+│  │  Agent: "Parking requirement for 320 units: 400 spaces."                            │ │
+│  │  User: "That's wrong. The 2024 amendment reduced guest parking to 0.20              │ │
+│  │         per unit in transit zones, not 0.25."                                        │ │
+│  │                                                                                     │ │
+│  │  Correction pipeline:                                                               │ │
+│  │  1. Log correction with user credential weight (attorney > investor > public)       │ │
+│  │  2. Attempt to verify against code text (RAG lookup)                                │ │
+│  │  3. If verified: update structured rules immediately                                │ │
+│  │  4. If unverified: flag for manual review, mark confidence as reduced               │ │
+│  │  5. Track correction accuracy per user (builds trust scores)                        │ │
+│  │  6. After 3+ verified corrections from same user → elevate their weight             │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────┐                       │ │
+│  │  │  USER CREDIBILITY SCORING                                │                       │ │
+│  │  │                                                          │                       │ │
+│  │  │  Tier 1: Zoning Attorney (verified)    → Weight: 0.95   │                       │ │
+│  │  │  Tier 2: Developer (10+ deals)         → Weight: 0.80   │                       │ │
+│  │  │  Tier 3: Broker/Agent (verified)       → Weight: 0.65   │                       │ │
+│  │  │  Tier 4: Investor (general)            → Weight: 0.50   │                       │ │
+│  │  │  Tier 5: New user                      → Weight: 0.30   │                       │ │
+│  │  │                                                          │                       │ │
+│  │  │  Correction accuracy history adjusts weight ±0.15        │                       │ │
+│  │  └──────────────────────────────────────────────────────────┘                       │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHANNEL 3: OUTCOME TRACKING (Entitlement Results)                                  │ │
+│  │  ═══════════════════════════════════════════════                                    │ │
+│  │                                                                                     │ │
+│  │  The agent predicted: "SAP variance approval probability: 72%"                      │ │
+│  │  6 months later: variance was approved / denied / modified                          │ │
+│  │                                                                                     │ │
+│  │  Outcome feedback loop:                                                             │ │
+│  │  1. Track every prediction the agent makes (approval probability,                   │ │
+│  │     timeline estimate, capacity calculation)                                        │ │
+│  │  2. When outcome is known, compare prediction vs reality                            │ │
+│  │  3. Update statistical models:                                                      │ │
+│  │     → Approval rates per jurisdiction + district + type                              │ │
+│  │     → Timeline accuracy (predicted vs actual)                                       │ │
+│  │     → Cost accuracy (estimated vs actual entitlement cost)                          │ │
+│  │  4. Identify systematic biases:                                                     │ │
+│  │     → "Agent overestimates SAP approval by 8% in Midtown"                           │ │
+│  │     → "Agent underestimates rezone timeline by 1.3 months in Atlanta"               │ │
+│  │  5. Calibrate future predictions                                                    │ │
+│  │                                                                                     │ │
+│  │  This is the CRITICAL flywheel: more deals → more outcomes →                        │ │
+│  │  more accurate predictions → more trust → more users → more deals                   │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHANNEL 4: PRECEDENT LIBRARY (Case Law for Zoning)                                 │ │
+│  │  ══════════════════════════════════════════════════                                 │ │
+│  │                                                                                     │ │
+│  │  Every variance, rezone, CUP, and SAP decision becomes a "precedent"                │ │
+│  │  that informs future recommendations:                                               │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐                   │ │
+│  │  │  Precedent Record:                                           │                   │ │
+│  │  │                                                              │                   │ │
+│  │  │  Application: SAP-2025-0847                                  │                   │ │
+│  │  │  Address: 220 Ponce de Leon Ave                              │                   │ │
+│  │  │  Type: SAP Variance (height +25ft)                           │                   │ │
+│  │  │  District: MRC-3 (Midtown)                                   │                   │ │
+│  │  │  Outcome: APPROVED with conditions                           │                   │ │
+│  │  │  Conditions: additional 5% affordable units                  │                   │ │
+│  │  │  Key factors:                                                │                   │ │
+│  │  │    ✅ NPU support letter                                     │                   │ │
+│  │  │    ✅ Traffic study — no material impact                      │                   │ │
+│  │  │    ✅ Consistent with comprehensive plan                      │                   │ │
+│  │  │    ⚠️ Adjacent owner objection (overruled)                   │                   │ │
+│  │  │  Decision-makers: BZA vote 5-2                               │                   │ │
+│  │  │  Timeline: 5.1 months (filed → approved)                     │                   │ │
+│  │  │  Attorney: Smith & Associates                                │                   │ │
+│  │  │  Similar to: [847 Peachtree case]                            │                   │ │
+│  │  └──────────────────────────────────────────────────────────────┘                   │ │
+│  │                                                                                     │ │
+│  │  When a user asks about a variance, the agent searches precedents:                  │ │
+│  │  → Same district + same type + similar scale = highest relevance                    │ │
+│  │  → Identifies patterns: "5 of 6 SAP approvals in MRC-3 required                    │ │
+│  │    additional affordable units as a condition"                                      │ │
+│  │  → Warns: "The 1 denial was due to traffic study showing Level F                   │ │
+│  │    intersection impact — ensure your traffic study is clean"                         │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## CONFIDENCE SCORING FRAMEWORK
+
+### How the Agent Knows What It Knows (and What It Doesn't)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  CONFIDENCE SCORING — Per Claim                                                          │
+│                                                                                         │
+│  Every statement the agent makes carries a confidence score based on:                    │
+│                                                                                         │
+│  FACTOR                          WEIGHT    RANGE    MEANING                              │
+│  ──────────────────────────────  ──────    ─────    ───────────────────────────          │
+│  Source clarity                  25%       0-100    Is the code text unambiguous?        │
+│  Extraction freshness            15%       0-100    How recently was code re-extracted?  │
+│  Professional validation count   20%       0-100    How many experts confirmed this?     │
+│  Outcome calibration             20%       0-100    Do predictions match past outcomes?  │
+│  Cross-reference complexity      10%       0-100    How many interacting rules?          │
+│  Jurisdiction maturity           10%       0-100    How well does agent know this city?  │
+│                                                                                         │
+│  JURISDICTION MATURITY LEVELS:                                                          │
+│                                                                                         │
+│  Level 1 — NOVICE (new market, <30 days of data)                                        │
+│  • Structured extraction complete, but no precedent library                             │
+│  • No outcome tracking yet                                                              │
+│  • Confidence cap: 75%                                                                  │
+│  • Agent discloses: "Limited precedent data for this jurisdiction"                      │
+│                                                                                         │
+│  Level 2 — COMPETENT (30-180 days, some corrections + outcomes)                         │
+│  • 10+ precedent cases logged                                                           │
+│  • 5+ professional corrections incorporated                                            │
+│  • Timeline predictions calibrated against 3+ outcomes                                  │
+│  • Confidence cap: 88%                                                                  │
+│                                                                                         │
+│  Level 3 — EXPERT (180+ days, rich precedent library)                                   │
+│  • 50+ precedent cases                                                                  │
+│  • 20+ professional corrections (with accuracy tracking)                                │
+│  • Outcome tracking across all entitlement types                                        │
+│  • Seasonal patterns identified                                                         │
+│  • Decision-maker tendencies mapped                                                     │
+│  • Confidence cap: 95%                                                                  │
+│  • Agent discloses: "High confidence — based on 67 comparable cases"                    │
+│                                                                                         │
+│  Level 4 — AUTHORITY (1+ years, dominant data position)                                 │
+│  • 200+ precedent cases                                                                 │
+│  • Prediction accuracy tracked and calibrated                                           │
+│  • Agent can identify trends before they show in aggregate data                         │
+│  • "Atlanta approval rates for MRC-3 variances dropped 12%                              │
+│     since new council member took District 3 seat in Jan 2026"                          │
+│  • Confidence cap: 97%                                                                  │
+│  • THIS is the moat. No competitor can replicate years of outcomes.                     │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## AGENT SERVICE ARCHITECTURE
+
+### Technical Implementation
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  ZONING AI AGENT — SERVICE ARCHITECTURE                                                  │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        ZONING AGENT SERVICE (FastAPI)                                │ │
+│  │                                                                                     │ │
+│  │  Endpoints:                                                                         │ │
+│  │  POST /zoning/lookup          → Layer A (structured rules)                          │ │
+│  │  POST /zoning/apply           → Full 8-step application pipeline                    │ │
+│  │  POST /zoning/calculate       → Capacity calculation engine                         │ │
+│  │  POST /zoning/compare         → District/jurisdiction comparison                    │ │
+│  │  POST /zoning/chat            → Natural language interface (routes internally)       │ │
+│  │  POST /zoning/correct         → Professional correction submission                  │ │
+│  │  POST /zoning/outcome         → Entitlement outcome reporting                       │ │
+│  │  GET  /zoning/confidence      → Jurisdiction maturity + confidence details           │ │
+│  │  GET  /zoning/precedents      → Search precedent library                            │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                              │                                                           │
+│          ┌──────────────────┼──────────────────┐                                        │
+│          ▼                  ▼                  ▼                                        │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐                                │
+│  │ Rules DB     │   │ Vector Store │   │ Precedent DB │                                │
+│  │ (PostgreSQL) │   │ (pgvector)   │   │ (PostgreSQL) │                                │
+│  │              │   │              │   │              │                                │
+│  │ Structured   │   │ Full code    │   │ Outcomes     │                                │
+│  │ district     │   │ text chunks  │   │ Corrections  │                                │
+│  │ profiles     │   │ for RAG      │   │ Predictions  │                                │
+│  │ (JSONB)      │   │ reasoning    │   │ Calibration  │                                │
+│  └──────────────┘   └──────────────┘   └──────────────┘                                │
+│          │                  │                  │                                        │
+│          └──────────────────┼──────────────────┘                                        │
+│                             ▼                                                           │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  BACKGROUND WORKERS (Celery / Redis Queue)                                          │ │
+│  │                                                                                     │ │
+│  │  • code_update_checker    — Weekly: diff Municode for amendments                    │ │
+│  │  • jurisdiction_extractor — On-demand: parse new jurisdiction (2-4 hrs)             │ │
+│  │  • precedent_scraper      — Daily: scrape permit portals for new decisions          │ │
+│  │  • outcome_calibrator     — Weekly: compare predictions vs outcomes                 │ │
+│  │  • confidence_recalculator — On correction: update scores                           │ │
+│  │  • deal_impact_checker    — On code change: recalculate affected deals              │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  KAFKA EVENTS (Published)                                                           │ │
+│  │                                                                                     │ │
+│  │  zoning.code_updated        — Code amendment detected                               │ │
+│  │  zoning.analysis_complete   — Full application report ready                         │ │
+│  │  zoning.alert_generated     — Regulatory change affects active deal                 │ │
+│  │  zoning.correction_applied  — Professional correction incorporated                 │ │
+│  │  zoning.confidence_changed  — Jurisdiction maturity level changed                   │ │
+│  │  zoning.precedent_added     — New entitlement outcome logged                        │ │
+│  │                                                                                     │ │
+│  │  KAFKA EVENTS (Consumed)                                                            │ │
+│  │                                                                                     │ │
+│  │  deal.created               — Run initial zoning analysis for new deal              │ │
+│  │  deal.parcel_changed        — Re-run analysis for updated parcel                    │ │
+│  │  entitlement.status_changed — Update precedent library                              │ │
+│  │  user.correction_submitted  — Process correction through validation                 │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## CROSS-AGENT INTEGRATION
+
+### How the Zoning Agent Feeds the Platform
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  ZONING AGENT → OTHER AGENTS                                                             │
+│                                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐                │
+│  │  TO: Strategy Arbitrage Engine                                       │                │
+│  │                                                                      │                │
+│  │  Zoning agent provides:                                              │                │
+│  │  • Which strategies are POSSIBLE (use permissions)                   │                │
+│  │  • Which strategies are OPTIMAL (density × value per use type)       │                │
+│  │  • Strategy-specific constraints:                                    │                │
+│  │    → BTS: max units, height, FAR, parking structure cost             │                │
+│  │    → Flip: permitted residential uses, ADU eligibility               │                │
+│  │    → Rental: multi-family by-right, inclusionary requirements        │                │
+│  │    → STR: STR licensing allowed? Overlay restrictions?               │                │
+│  │                                                                      │                │
+│  │  Example output:                                                     │                │
+│  │  "BTS optimal: 281 units (density bonus), 22.7% IRR.                 │                │
+│  │   STR eliminated: MRC-3 + SPI-16 combination blocks STR licensing.   │                │
+│  │   Rental viable but inclusionary req reduces NOI by $180k/yr."       │                │
+│  └──────────────────────────────────────────────────────────────────────┘                │
+│                                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐                │
+│  │  TO: Development Feasibility Module                                  │                │
+│  │                                                                      │                │
+│  │  Zoning agent provides:                                              │                │
+│  │  • Buildable envelope (geometry after setbacks)                      │                │
+│  │  • Max capacity per scenario (by-right, variance, rezone)            │                │
+│  │  • Parking structure requirements (drives construction cost)         │                │
+│  │  • Entitlement timeline estimates (drives carrying cost)             │                │
+│  │  • Impact fees applicable to this parcel                             │                │
+│  │  • Design requirements (SPI-16 active ground floor, glazing %)       │                │
+│  │                                                                      │                │
+│  │  Dev Feasibility CANNOT produce accurate proformas without this.     │                │
+│  └──────────────────────────────────────────────────────────────────────┘                │
+│                                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐                │
+│  │  TO: Supply Agent (10-Year Forecasting)                              │                │
+│  │                                                                      │                │
+│  │  Zoning agent provides:                                              │                │
+│  │  • Total entitled capacity per submarket                             │                │
+│  │  • Zoning changes that increase/decrease future supply potential     │                │
+│  │  • "Entitled land = ready supply" signal                             │                │
+│  │  • Pipeline velocity: how fast are entitlements converting to starts?│                │
+│  │                                                                      │                │
+│  │  This is how JEDI predicts supply 3-5 years out, not just 12 months.│                │
+│  └──────────────────────────────────────────────────────────────────────┘                │
+│                                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐                │
+│  │  TO: Time-to-Shovel Engine (Tab 6)                                   │                │
+│  │                                                                      │                │
+│  │  Zoning agent provides:                                              │                │
+│  │  • Which entitlement steps are required for this parcel              │                │
+│  │  • Municipal benchmark data per step (scraped processing times)      │                │
+│  │  • Precedent-based timeline adjustment                               │                │
+│  │  • Risk-adjusted probability of approval at each gate               │                │
+│  │                                                                      │                │
+│  │  Without the zoning agent, Time-to-Shovel is just generic averages. │                │
+│  │  WITH the zoning agent, it's parcel-specific timeline intelligence.  │                │
+│  └──────────────────────────────────────────────────────────────────────┘                │
+│                                                                                         │
+│  ┌──────────────────────────────────────────────────────────────────────┐                │
+│  │  TO: Deal Capsule (Section 3: Regulatory & Land Use)                 │                │
+│  │                                                                      │                │
+│  │  Zoning agent auto-populates:                                        │                │
+│  │  • 3.1 Zoning classification + all parameters                        │                │
+│  │  • 3.2 Entitlement status + timeline                                 │                │
+│  │  • 3.3 Development capacity summary                                  │                │
+│  │  • 3.4 Regulatory risk flags                                         │                │
+│  │  • 3.5 Strategy impact matrix                                        │                │
+│  │  • 3.6 Time-to-shovel + carrying cost projection                     │                │
+│  │                                                                      │                │
+│  │  Zero re-entry. Agent fills it. User reviews it.                     │                │
+│  └──────────────────────────────────────────────────────────────────────┘                │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## THE COMPETITIVE MOAT
+
+### Why This Gets Harder to Replicate Over Time
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  THE ZONING AGENT FLYWHEEL                                                               │
+│                                                                                         │
+│                    ┌──────────────────┐                                                  │
+│               ┌───►│  More Users      │───┐                                              │
+│               │    └──────────────────┘   │                                              │
+│               │                           ▼                                              │
+│    ┌──────────────────┐        ┌──────────────────┐                                     │
+│    │  More Accurate   │        │  More Corrections │                                     │
+│    │  Predictions     │        │  + Outcomes        │                                     │
+│    └──────────────────┘        └──────────────────┘                                     │
+│               ▲                           │                                              │
+│               │    ┌──────────────────┐   │                                              │
+│               └────│  Richer Precedent│◄──┘                                              │
+│                    │  Library         │                                                   │
+│                    └──────────────────┘                                                  │
+│                                                                                         │
+│  DAY 1: Agent knows the code (any competitor can do this with RAG)                      │
+│  MONTH 6: Agent knows the code + 50 precedent outcomes (hard to replicate)              │
+│  YEAR 1: Agent knows the code + outcomes + professional corrections +                   │
+│           decision-maker patterns + seasonal trends (impossible to replicate             │
+│           without the same user base generating the same data)                           │
+│                                                                                         │
+│  THIS is why the agent architecture matters more than the UI.                            │
+│  The UI is the interface. The agent's accumulated knowledge is the moat.                 │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## UI OPTIMIZATIONS (What Changes in the Wireframe)
+
+### With a specialist agent, the UI simplifies:
+
+```
+BEFORE (Tab 1: Zoning Lookup — dumb data display):
+  User sees: static cards showing district parameters
+  User does: reads, interprets, cross-references manually
+
+AFTER (Tab 1: Zoning Intelligence — agent-powered):
+  User sees: conversational analysis with confidence badges
+  Agent does: all 8 application steps automatically
+  User gets: "Here's what you can build, here's the best path, here's the risk"
+
+BEFORE (Tab 2: Entitlement Tracker — manual Kanban):
+  User does: manually moves cards, updates timelines
+  
+AFTER (Tab 2: Entitlement Tracker — agent-monitored):
+  Agent does: scrapes permit portal for status changes
+  Agent does: detects hearing agenda items via News Agent
+  Agent does: auto-updates timeline based on precedent library
+  Agent does: alerts user when predicted timeline diverges from actual
+
+BEFORE (Tab 3: Development Capacity — three static scenarios):
+  User sees: pre-computed by-right / variance / rezone numbers
+  
+AFTER (Tab 3: Development Capacity — dynamic optimization):
+  Agent does: identifies the density bonus program most users miss
+  Agent does: computes the OPTIMAL path (not just three scenarios)
+  Agent does: sequences entitlement steps for maximum risk-adjusted value
+  Agent says: "Don't rezone. Use density bonus + SAP. 80% of the value, 1/3 risk."
+
+BEFORE (Tab 6: Time-to-Shovel — generic municipal averages):
+  User sees: P25/P50/P75 based on all applications in the database
+  
+AFTER (Tab 6: Time-to-Shovel — precedent-calibrated):
+  Agent does: filters to comparable projects (same district, same scale, same type)
+  Agent does: adjusts for trend ("approvals slowed 18% since new engagement req")
+  Agent does: identifies the specific decision-maker patterns for this district
+  Agent says: "Your SAP will be heard by the same BZA panel that approved 4 of 5
+              similar requests in 2025. But they added affordable unit conditions
+              to all 4. Budget for that."
+```
+
+---
+
+## BUILD PRIORITY FOR THE AGENT
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  PHASE 1: Foundation (Weeks 1-4)                               │
+│  • Structured extraction pipeline for first 3 jurisdictions    │
+│  • PostgreSQL schema for ZoningDistrictProfile (JSONB)         │
+│  • Layer A: deterministic lookup engine                        │
+│  • Basic query router (LOOKUP vs REASONING intent)             │
+│  • pgvector setup for Layer B (RAG)                            │
+│  • First end-to-end: address → zoning analysis                 │
+│                                                                │
+│  PHASE 2: Application Engine (Weeks 5-8)                       │
+│  • 8-step property application pipeline                        │
+│  • GIS integration for spatial queries (overlay detection)     │
+│  • Setback-to-geometry calculation                             │
+│  • Incentive program identification                            │
+│  • Confidence scoring (v1 — source clarity + freshness)        │
+│  • Deal Capsule Section 3 auto-population                      │
+│                                                                │
+│  PHASE 3: Learning Engine (Weeks 9-14)                         │
+│  • Professional correction pipeline + user credibility scoring │
+│  • Precedent library schema + first 50 records (manual seed)   │
+│  • Outcome tracking integration with Entitlement Tracker       │
+│  • Municode change detection worker (weekly diff)              │
+│  • Confidence scoring v2 (adds outcome calibration + maturity) │
+│  • Cross-agent event publishing (Kafka topics)                 │
+│                                                                │
+│  PHASE 4: Intelligence (Weeks 15-20)                           │
+│  • Precedent-based recommendation engine                       │
+│  • Decision-maker pattern detection                            │
+│  • Trend identification (approval rate changes)                │
+│  • Jurisdiction maturity dashboard                             │
+│  • Crowdsourced correction accuracy tracking                   │
+│  • Scale to 10 jurisdictions                                   │
+│                                                                │
+│  PHASE 5: Authority (Ongoing)                                  │
+│  • Automated jurisdiction onboarding pipeline                  │
+│  • Self-improving prediction calibration                       │
+│  • "Zoning Attorney in a Box" marketing positioning            │
+│  • API for third-party integrations                            │
+│  • Premium tier: real-time monitoring per deal                  │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
