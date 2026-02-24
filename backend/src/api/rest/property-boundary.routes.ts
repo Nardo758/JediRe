@@ -22,7 +22,7 @@ const BoundarySchema = z.object({
   parcelArea: z.number().nullable().optional(),
   parcelAreaSF: z.number().nullable().optional(),
   perimeter: z.number().nullable().optional(),
-  centroid: z.tuple([z.number(), z.number()]).nullable().optional(),
+  centroid: z.array(z.number()).length(2).nullable().optional(),
   setbacks: SetbacksSchema.optional(),
   buildableArea: z.number().nullable().optional(),
   buildableAreaSF: z.number().nullable().optional(),
@@ -35,7 +35,7 @@ const BoundarySchema = z.object({
     protectedArea: z.boolean().optional(),
   }).optional(),
   surveyDocumentUrl: z.string().url().optional(),
-});
+}).passthrough();
 
 router.get('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   try {
@@ -63,9 +63,13 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
 
     const validatedData = BoundarySchema.parse(req.body);
 
-    const centroidValue = validatedData.centroid
-      ? `(${validatedData.centroid[0]},${validatedData.centroid[1]})`
-      : null;
+    let centroidValue = null;
+    if (validatedData.centroid) {
+      const c = validatedData.centroid;
+      if (Array.isArray(c) && c.length >= 2) {
+        centroidValue = `(${c[0]},${c[1]})`;
+      }
+    }
 
     const existing = await pool.query(
       'SELECT id FROM property_boundaries WHERE deal_id = $1',
@@ -138,7 +142,7 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         error: 'Validation error',
-        details: error.errors,
+        details: error.issues,
       });
     }
 
