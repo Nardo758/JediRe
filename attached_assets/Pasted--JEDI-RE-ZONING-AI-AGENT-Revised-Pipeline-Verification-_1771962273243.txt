@@ -1,0 +1,973 @@
+# JEDI RE — ZONING AI AGENT
+## Revised Pipeline: Verification-First with Source Transparency
+
+---
+
+## THE REFRAME
+
+The old pipeline assumed the user was asking "What's my zoning?" That's wrong.
+
+The user already sees the zoning designation on the property boundary page. By the time they hit the Zoning & Entitlements module, they're asking two different questions:
+
+**Question 1:** "Is this zoning designation correct, and can I see the actual code?"
+**Question 2:** "Now that I trust the data, what does it mean for what I can build?"
+
+The old 8-step pipeline tried to answer both at once and skipped the trust-building step entirely. That's backwards. If the user doesn't trust the zoning designation, nothing else matters — the capacity calculations, the entitlement paths, the strategy recommendations are all built on a foundation the user hasn't verified.
+
+The new pipeline puts verification and source transparency FIRST, then layers intelligence on top of confirmed data.
+
+---
+
+## THE NEW STARTING POINT
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  WHAT THE USER SEES BEFORE THEY ARRIVE                                                   │
+│                                                                                         │
+│  PROPERTY BOUNDARY PAGE (upstream):                                                      │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  847 Peachtree St NE, Atlanta, GA 30308                                             │ │
+│  │                                                                                     │ │
+│  │  Parcel ID: 17-0042-0003-067-8                                                      │ │
+│  │  Lot Size: 2.25 acres (98,010 SF)                                                   │ │
+│  │  Zoning: MRC-3                          ← This is what the user already has          │ │
+│  │  Land Use: Mixed Residential Commercial                                              │ │
+│  │                                                                                     │ │
+│  │  [View Zoning Details →]                ← This link brings them to our module        │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  The "MRC-3" designation comes from the county GIS parcel layer. It's usually right.    │
+│  But "usually" isn't good enough when you're putting $12.5M into a deal. The user       │
+│  needs to see WHERE that designation came from and confirm it against the actual code.   │
+│                                                                                         │
+│  Common scenarios where the boundary page can be wrong or incomplete:                    │
+│                                                                                         │
+│  • GIS layer hasn't been updated after a recent rezone (lag of 30-120 days)             │
+│  • Parcel sits on a zoning boundary (split-zoned parcel)                                │
+│  • Overlay district not reflected in the base zoning field                              │
+│  • Conditional zoning approved but GIS still shows base district                        │
+│  • Annexation changed jurisdiction but county GIS hasn't synced                         │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## REVISED PIPELINE: 6-STEP VERIFY → APPLY → RECOMMEND
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  VERIFICATION-FIRST PIPELINE                                                             │
+│                                                                                         │
+│  INPUT: Zoning designation from Property Boundary Page + Parcel ID                       │
+│                                                                                         │
+│       PHASE 1: TRUST THE DATA                                                           │
+│       (Does the user believe the zoning is correct?)                                    │
+│                                                                                         │
+│  ┌──────────────┐    ┌──────────────┐                                                   │
+│  │ STEP 1       │ →  │ STEP 2       │                                                   │
+│  │ Source        │    │ Verify &     │                                                   │
+│  │ Resolution   │    │ Confirm      │                                                   │
+│  │              │    │              │                                                   │
+│  │ Find the     │    │ Cross-check  │                                                   │
+│  │ actual code  │    │ + show       │                                                   │
+│  │ text + URL   │    │ discrepancies│                                                   │
+│  └──────────────┘    └──────────────┘                                                   │
+│         │                   │                                                           │
+│         ▼                   ▼                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐   │
+│  │  USER TRUST GATE                                                                 │   │
+│  │  ─────────────                                                                   │   │
+│  │  The user sees: source links, verification status, any discrepancy flags.        │   │
+│  │  The user decides: "Yes, MRC-3 is correct" or "Wait, this needs investigation."  │   │
+│  │  Everything below this gate is built on CONFIRMED zoning.                        │   │
+│  └──────────────────────────────────────────────────────────────────────────────────┘   │
+│         │                                                                               │
+│         ▼                                                                               │
+│       PHASE 2: APPLY THE CODE                                                           │
+│       (What do the confirmed rules mean for this parcel?)                               │
+│                                                                                         │
+│  ┌──────────────┐    ┌──────────────┐                                                   │
+│  │ STEP 3       │ →  │ STEP 4       │                                                   │
+│  │ Rule Stack   │    │ Calculate    │                                                   │
+│  │ Assembly     │    │ Capacity     │                                                   │
+│  │              │    │              │                                                   │
+│  │ Base +       │    │ Apply rules  │                                                   │
+│  │ overlays +   │    │ to parcel    │                                                   │
+│  │ proximity    │    │ geometry     │                                                   │
+│  └──────────────┘    └──────────────┘                                                   │
+│         │                   │                                                           │
+│         ▼                   ▼                                                           │
+│       PHASE 3: RECOMMEND                                                                │
+│       (What should the user do with this information?)                                  │
+│                                                                                         │
+│  ┌──────────────┐    ┌──────────────┐                                                   │
+│  │ STEP 5       │ →  │ STEP 6       │                                                   │
+│  │ Entitlement  │    │ Strategy     │                                                   │
+│  │ Path         │    │ Synthesis    │                                                   │
+│  │ Analysis     │    │              │                                                   │
+│  │              │    │ Confidence   │                                                   │
+│  │ Incentives + │    │ score +      │                                                   │
+│  │ risk + time  │    │ citations    │                                                   │
+│  └──────────────┘    └──────────────┘                                                   │
+│                                                                                         │
+│  OUTPUT: Verified ZoningApplicationReport with source links at every claim               │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## STEP 1: SOURCE RESOLUTION
+
+### "Where does this zoning designation actually come from?"
+
+The agent's first job is to FIND the authoritative source for the zoning code that the property boundary page is showing. This isn't a lookup — it's a source-tracking operation.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 1: SOURCE RESOLUTION                                                               │
+│  ═════════════════════════                                                               │
+│                                                                                         │
+│  INPUT: Zoning = "MRC-3" (from property boundary page GIS layer)                        │
+│                                                                                         │
+│  The agent checks THREE source tiers, in priority order:                                │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  TIER 1: MUNICODE (Primary — covers ~90% of jurisdictions)                          │ │
+│  │  ═══════════════════════════════════════════════════════                             │ │
+│  │                                                                                     │ │
+│  │  Agent action:                                                                      │ │
+│  │  1. Resolve jurisdiction: "847 Peachtree" → City of Atlanta                         │ │
+│  │  2. Query Municode for Atlanta's zoning ordinance                                   │ │
+│  │  3. Locate the specific district section for "MRC-3"                                │ │
+│  │  4. Extract the canonical URL for that code section                                 │ │
+│  │  5. Pull the full text of the district regulations                                  │ │
+│  │                                                                                     │ │
+│  │  Source record generated:                                                           │ │
+│  │  ┌─────────────────────────────────────────────────────────────────────────────┐    │ │
+│  │  │  source_type: "municode"                                                    │    │ │
+│  │  │  jurisdiction: "City of Atlanta"                                            │    │ │
+│  │  │  code_title: "Code of Ordinances, Part 16 - Zoning"                        │    │ │
+│  │  │  section: "Chapter 18A - SPI-16 Midtown District"                          │    │ │
+│  │  │  subsection: "§16-18A.007 - MRC-3 District Regulations"                    │    │ │
+│  │  │  url: "https://library.municode.com/ga/atlanta/codes/                       │    │ │
+│  │  │        code_of_ordinances?nodeId=PTIIICOO(), CHAPTER_18A"                   │    │ │
+│  │  │  last_updated: "2025-11-14"                                                │    │ │
+│  │  │  confidence: 0.95                                                          │    │ │
+│  │  │  note: "Municode is the official codification partner for City of Atlanta" │    │ │
+│  │  └─────────────────────────────────────────────────────────────────────────────┘    │ │
+│  │                                                                                     │ │
+│  │  If Municode has the jurisdiction → proceed with Tier 1 source                      │ │
+│  │  If NOT on Municode → fall through to Tier 2                                        │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  TIER 2: MUNICIPAL DIRECT (Covers ~8% — cities with their own code portals)         │ │
+│  │  ════════════════════════════════════════════════════════════════════                │ │
+│  │                                                                                     │ │
+│  │  Some municipalities publish their own zoning code independent of Municode:         │ │
+│  │                                                                                     │ │
+│  │  • New York City → NYC Zoning Resolution (zr.planning.nyc.gov)                      │ │
+│  │  • Los Angeles → LAMC Chapter 1 (planning.lacity.org/odocument/zone-code)           │ │
+│  │  • Chicago → Municipal Code Title 17 (chicago.gov/city/en/depts/bldgs)              │ │
+│  │  • Houston → Chapter 42 (cohgis.houstontx.gov)                                     │ │
+│  │  • Some smaller cities that maintain their own portals                              │ │
+│  │                                                                                     │ │
+│  │  Agent action:                                                                      │ │
+│  │  1. Check JEDI's municipal source registry (pre-mapped per jurisdiction)            │ │
+│  │  2. Navigate to the correct portal and section                                      │ │
+│  │  3. Extract URL + code text                                                         │ │
+│  │  4. Flag source type as "municipal_direct"                                          │ │
+│  │                                                                                     │ │
+│  │  Source record:                                                                     │ │
+│  │  ┌─────────────────────────────────────────────────────────────────────────────┐    │ │
+│  │  │  source_type: "municipal_direct"                                            │    │ │
+│  │  │  jurisdiction: "City of New York"                                           │    │ │
+│  │  │  portal: "NYC Zoning Resolution"                                           │    │ │
+│  │  │  section: "Article VII, Chapter 4 - C6-4 District"                         │    │ │
+│  │  │  url: "https://zr.planning.nyc.gov/article-vii/chapter-4"                  │    │ │
+│  │  │  last_updated: "2025-09-30"                                                │    │ │
+│  │  │  confidence: 0.97                                                          │    │ │
+│  │  │  note: "Direct from NYC Dept of City Planning — highest authority"         │    │ │
+│  │  └─────────────────────────────────────────────────────────────────────────────┘    │ │
+│  │                                                                                     │ │
+│  │  Municipal direct sources get HIGHER confidence than Municode because               │ │
+│  │  they're the primary publisher, not a codification partner.                         │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  TIER 3: COUNTY / UNINCORPORATED (Covers ~2%)                                      │ │
+│  │  ═══════════════════════════════════════════                                        │ │
+│  │                                                                                     │ │
+│  │  For properties in unincorporated areas or county-governed zoning:                  │ │
+│  │                                                                                     │ │
+│  │  • County zoning ordinance (may be on Municode or county site)                      │ │
+│  │  • State-level land use codes (rare, but some states like Oregon)                   │ │
+│  │                                                                                     │ │
+│  │  Agent action:                                                                      │ │
+│  │  1. Determine if incorporated vs unincorporated via boundary check                  │ │
+│  │  2. Route to county code source                                                     │ │
+│  │  3. Flag higher uncertainty — county codes are updated less frequently              │ │
+│  │                                                                                     │ │
+│  │  confidence: 0.85 (county codes may lag municipal updates)                          │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  MUNICIPAL SOURCE REGISTRY (Pre-Built by JEDI)                                      │ │
+│  │  ═════════════════════════════════════════════                                      │ │
+│  │                                                                                     │ │
+│  │  JEDI maintains a mapping table:                                                    │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  jurisdiction_source_map {                                                   │   │ │
+│  │  │    jurisdiction_id    FK → jurisdictions                                     │   │ │
+│  │  │    source_tier        enum: 'municode' | 'municipal_direct' | 'county'       │   │ │
+│  │  │    base_url           text                                                   │   │ │
+│  │  │    zoning_code_path   text (path within portal to zoning chapter)             │   │ │
+│  │  │    api_available      boolean                                                │   │ │
+│  │  │    api_endpoint       text (if available)                                    │   │ │
+│  │  │    scrape_method      enum: 'api' | 'html_parse' | 'pdf_extract'             │   │ │
+│  │  │    last_verified      timestamp                                              │   │ │
+│  │  │    update_frequency   enum: 'weekly' | 'monthly' | 'quarterly'               │   │ │
+│  │  │    notes              text                                                   │   │ │
+│  │  │  }                                                                           │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  Example entries:                                                            │   │ │
+│  │  │  ┌──────────────────┬──────────────────┬────────────────────────────────┐    │   │ │
+│  │  │  │ Jurisdiction     │ Source Tier       │ URL Pattern                    │    │   │ │
+│  │  │  ├──────────────────┼──────────────────┼────────────────────────────────┤    │   │ │
+│  │  │  │ Atlanta, GA      │ municode         │ library.municode.com/ga/atlanta│    │   │ │
+│  │  │  │ Nashville, TN    │ municode         │ library.municode.com/tn/nash...│    │   │ │
+│  │  │  │ New York, NY     │ municipal_direct │ zr.planning.nyc.gov           │    │   │ │
+│  │  │  │ Los Angeles, CA  │ municipal_direct │ planning.lacity.org           │    │   │ │
+│  │  │  │ Miami, FL        │ municode         │ library.municode.com/fl/miami │    │   │ │
+│  │  │  │ Chicago, IL      │ municipal_direct │ chicago.gov/city/en/depts/... │    │   │ │
+│  │  │  │ Dekalb County,GA │ county           │ library.municode.com/ga/dek...│    │   │ │
+│  │  │  └──────────────────┴──────────────────┴────────────────────────────────┘    │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  │  This registry is how the agent knows WHERE to look for any jurisdiction.           │ │
+│  │  It's maintained by JEDI and expanded as new markets are added.                     │ │
+│  │  Start with 10-20 top markets, expand based on user demand.                         │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  STEP 1 OUTPUT:                                                                         │
+│  • The authoritative source URL for this jurisdiction's zoning code                     │
+│  • The specific section URL for this parcel's district                                  │
+│  • The full text of the district regulations, pulled from source                        │
+│  • Source tier + confidence rating                                                      │
+│  • Timestamp: when was this code section last verified by JEDI                          │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## STEP 2: VERIFY & CONFIRM
+
+### "Is what the property boundary page says actually correct?"
+
+This is the critical trust-building step. The agent cross-checks the GIS designation against the authoritative source and surfaces any discrepancies.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 2: VERIFY & CONFIRM                                                                │
+│  ════════════════════════                                                                │
+│                                                                                         │
+│  INPUT:                                                                                  │
+│  • Property boundary page says: "MRC-3"                                                  │
+│  • Source (from Step 1): Municode §16-18A.007                                            │
+│  • Parcel GIS coordinates                                                                │
+│                                                                                         │
+│  Agent runs FOUR verification checks:                                                    │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHECK 1: DESIGNATION MATCH                                                         │ │
+│  │  ─────────────────────────                                                          │ │
+│  │                                                                                     │ │
+│  │  Does the GIS zoning field match the municipality's official zoning map?             │ │
+│  │                                                                                     │ │
+│  │  Method: Compare boundary page designation against:                                 │ │
+│  │  a) Municipal zoning map layer (if available via ArcGIS/WMS)                        │ │
+│  │  b) County GIS zoning field (the boundary page's own source)                        │ │
+│  │  c) Recent rezone decisions (scraped from permit portal / council minutes)           │ │
+│  │                                                                                     │ │
+│  │  Outcomes:                                                                          │ │
+│  │  ✅ CONFIRMED — All sources agree: MRC-3                                             │ │
+│  │  ⚠️ STALE — GIS says MRC-3 but a rezone to MRC-4 was approved 45 days ago           │ │
+│  │  ⚠️ SPLIT — Parcel straddles MRC-3 / MRC-2 boundary (0.8 acres in MRC-2)           │ │
+│  │  ❌ CONFLICT — GIS says C-2 but municipal map shows MRC-3 (GIS data error)          │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHECK 2: OVERLAY DETECTION                                                         │ │
+│  │  ─────────────────────────                                                          │ │
+│  │                                                                                     │ │
+│  │  The property boundary page typically shows BASE zoning only.                       │ │
+│  │  Overlays are almost never in the GIS zoning field — this is where                  │ │
+│  │  the agent adds critical value the boundary page can't.                             │ │
+│  │                                                                                     │ │
+│  │  Method: Spatial query against overlay district boundaries:                         │ │
+│  │  a) Special Public Interest districts (SPIs)                                        │ │
+│  │  b) Historic preservation overlays                                                  │ │
+│  │  c) Transit-oriented development overlays                                           │ │
+│  │  d) Planned development districts                                                   │ │
+│  │  e) Environmental overlays (flood, wetland, watershed)                              │ │
+│  │  f) Design review / corridor overlays                                               │ │
+│  │                                                                                     │ │
+│  │  Result for 847 Peachtree:                                                          │ │
+│  │  ⚠️ OVERLAY FOUND: SPI-16 Midtown (not shown on boundary page)                     │ │
+│  │     Source: Municode §16-18M.001                                                    │ │
+│  │     URL: [clickable Municode link]                                                  │ │
+│  │     Impact: Additional design requirements, active ground-floor mandate             │ │
+│  │                                                                                     │ │
+│  │  This is often the most valuable check — overlays modify base rules                 │ │
+│  │  in ways the boundary page doesn't surface.                                         │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHECK 3: RECENT CHANGES                                                            │ │
+│  │  ────────────────────────                                                           │ │
+│  │                                                                                     │ │
+│  │  Has anything changed since the GIS data was last updated?                          │ │
+│  │                                                                                     │ │
+│  │  Method: Check JEDI's amendment tracking against code text:                         │ │
+│  │  a) Municode last-updated date vs GIS last-refresh date                             │ │
+│  │  b) Council meeting minutes referencing this district or parcel                     │ │
+│  │  c) Pending legislation that would affect this district                             │ │
+│  │                                                                                     │ │
+│  │  Outcomes:                                                                          │ │
+│  │  ✅ CURRENT — No amendments since last GIS refresh                                   │ │
+│  │  ⚠️ AMENDED — MRC-3 parking requirements updated Nov 2025                           │ │
+│  │     (GIS still shows MRC-3, but the RULES within MRC-3 have changed)                │ │
+│  │  ⚠️ PENDING — Council hearing scheduled for March 12 on MRC-3 height limits         │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  CHECK 4: CONDITIONAL / SPECIAL APPROVALS                                           │ │
+│  │  ─────────────────────────────────────────                                          │ │
+│  │                                                                                     │ │
+│  │  Is there a conditional zoning or special approval on THIS specific parcel?          │ │
+│  │                                                                                     │ │
+│  │  Method: Search permit portal + BZA records for parcel ID:                          │ │
+│  │  a) Active CUPs (Conditional Use Permits) on this parcel                            │ │
+│  │  b) Variance approvals that modify base district rules                              │ │
+│  │  c) Proffer/conditions tied to a previous rezone                                    │ │
+│  │  d) Development agreements                                                          │ │
+│  │                                                                                     │ │
+│  │  This catches the edge case where GIS correctly says "MRC-3" but                    │ │
+│  │  a previous owner obtained a variance that changes the actual                       │ │
+│  │  development parameters for this specific parcel.                                   │ │
+│  │                                                                                     │ │
+│  │  Outcomes:                                                                          │ │
+│  │  ✅ CLEAN — No special approvals on this parcel                                      │ │
+│  │  ⚠️ CONDITIONAL — CUP #2024-0847 allows drive-through (not normally by-right)       │ │
+│  │  ⚠️ VARIANCE — Height variance +30ft approved 2023 (still valid)                    │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│                                                                                         │
+│  ═══════════════════════════════════════════════════════════════════════════════════════  │
+│  STEP 2 OUTPUT: VERIFICATION CARD (What the User Actually Sees)                          │
+│  ═══════════════════════════════════════════════════════════════════════════════════════  │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                                     │ │
+│  │  ZONING VERIFICATION — 847 Peachtree St NE                                         │ │
+│  │                                                                                     │ │
+│  │  Base District: MRC-3 (Mixed Residential Commercial - 3)                            │ │
+│  │  Status: ✅ VERIFIED                                                                 │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  📋 SOURCE                                                                   │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  Municode — City of Atlanta Code of Ordinances                               │   │ │
+│  │  │  Part 16, Chapter 18A: SPI-16 Midtown District                               │   │ │
+│  │  │  §16-18A.007: MRC-3 District Regulations                                    │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  🔗 View Full Code Text →                                                    │   │ │
+│  │  │  https://library.municode.com/ga/atlanta/codes/code_of_ordinances            │   │ │
+│  │  │  ?nodeId=PTIIICOO(), CHAPTER_18A, SEC_16-18A.007                             │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  Last updated on Municode: November 14, 2025                                 │   │ │
+│  │  │  Last verified by JEDI: February 22, 2026 (2 days ago)                       │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  ⚠️ OVERLAY DETECTED                                                        │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  SPI-16: Midtown Special Public Interest District                            │   │ │
+│  │  │  (Not shown on property boundary page)                                       │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  🔗 View Overlay Code →                                                      │   │ │
+│  │  │  https://library.municode.com/ga/atlanta/.../SEC_16-18M.001                  │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  Impact: Design review required, active ground floor mandate,                │   │ │
+│  │  │  streetscape requirements within SPI-16 boundary.                             │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  ✅ No recent amendments to MRC-3 district rules                             │   │ │
+│  │  │  ✅ No conditional approvals or variances on this parcel                      │   │ │
+│  │  │  ✅ No pending legislation affecting this district                            │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  │  Verification Confidence: 95%                                                       │ │
+│  │  Factors: Municode is official codification partner (✓),                            │ │
+│  │  GIS designation matches municipal map (✓),                                         │ │
+│  │  code section verified within 48 hours (✓)                                          │ │
+│  │                                                                                     │ │
+│  │  ───────────────────────────────────────────────────────────────────────────────    │ │
+│  │                                                                                     │ │
+│  │  [✅ Confirm & Continue]          [⚠️ Flag for Review]          [📝 I Know More]   │ │
+│  │                                                                                     │ │
+│  │  "Confirm & Continue" → proceed to Steps 3-6 with MRC-3 + SPI-16 as confirmed     │ │
+│  │  "Flag for Review" → user believes something is wrong, opens investigation flow     │ │
+│  │  "I Know More" → user has local knowledge (e.g., "this was just rezoned last week  │ │
+│  │                  but GIS hasn't updated") — feeds into correction channel            │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## DISCREPANCY HANDLING: WHAT HAPPENS WHEN SOURCES DISAGREE
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  DISCREPANCY CARD — What the User Sees When Something Doesn't Match                     │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                                     │ │
+│  │  ZONING VERIFICATION — 1200 West Marietta St NW                                     │ │
+│  │                                                                                     │ │
+│  │  Base District: ❌ DISCREPANCY DETECTED                                              │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  Property Boundary Page says:    I-1 (Light Industrial)                      │   │ │
+│  │  │  Municipal Zoning Map shows:     MRC-2 (Mixed Residential Commercial - 2)    │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  LIKELY EXPLANATION:                                                         │   │ │
+│  │  │  Rezone application Z-25-0087 was approved by Atlanta City Council           │   │ │
+│  │  │  on December 12, 2025 (75 days ago). County GIS has not yet updated.         │   │ │
+│  │  │                                                                              │   │ │
+│  │  │  Evidence:                                                                   │   │ │
+│  │  │  🔗 Council meeting minutes (Dec 12, 2025) →                                 │   │ │
+│  │  │  🔗 Rezone application Z-25-0087 →                                           │   │ │
+│  │  │  🔗 Municode current text shows MRC-2 for this area →                        │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  │  🟡 RECOMMENDATION: Proceed with MRC-2 as the operative zoning.                    │ │
+│  │  Verify with Atlanta Department of City Planning (404-330-6145) before              │ │
+│  │  making financial commitments.                                                      │ │
+│  │                                                                                     │ │
+│  │  [Use MRC-2 (recommended)]    [Use I-1 (boundary page)]    [Contact City]          │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## THE SOURCE TRANSPARENCY PRINCIPLE
+
+### Every Claim Has a Clickable Receipt
+
+The old pipeline showed results. The new pipeline shows results WITH the exact source link for every piece of data. This applies not just to Steps 1-2, but carries through the entire pipeline.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  SOURCE ATTRIBUTION FORMAT — Used Throughout Steps 3-6                                   │
+│                                                                                         │
+│  Every data point in the UI carries a source badge:                                      │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                                                                                     │ │
+│  │  Max Height: 225 ft                                                                 │ │
+│  │  └─ 📋 §16-18A.007(c)(2) → [View Source]                                           │ │
+│  │                                                                                     │ │
+│  │  Max Density: 109 units/acre                                                        │ │
+│  │  └─ 📋 §16-18A.007(c)(1) → [View Source]                                           │ │
+│  │                                                                                     │ │
+│  │  Parking: 1.0 spaces/unit + 0.25 guest                                              │ │
+│  │  └─ 📋 §16-18A.009(a) → [View Source]                                               │ │
+│  │                                                                                     │ │
+│  │  Transit Parking Reduction: -20%                                                    │ │
+│  │  └─ 📋 §16-18A.024 → [View Source]                                                  │ │
+│  │  └─ 🗺️ MARTA station distance: 0.3 mi → [View on Map]                              │ │
+│  │                                                                                     │ │
+│  │  Front Setback: 0 ft                                                                │ │
+│  │  └─ 📋 §16-18A.007(d)(1) → [View Source]                                            │ │
+│  │                                                                                     │ │
+│  │  Side Setback: 25 ft (east side — adjacent R-5)                                     │ │
+│  │  └─ 📋 §16-18A.007(d)(2) → [View Source]                                            │ │
+│  │  └─ 📋 §16-28.007(b) (adjacency override) → [View Source]                           │ │
+│  │  └─ ⚠️ Cross-reference: base is 10 ft, but R-5 adjacency increases to 25 ft        │ │
+│  │                                                                                     │ │
+│  │  Active Ground Floor Required: Yes (60% min)                                        │ │
+│  │  └─ 📋 SPI-16 §16-18M.003(a)(4) → [View Source]                                    │ │
+│  │  └─ ℹ️ This is an overlay requirement, not base district                            │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  SOURCE BADGE TYPES:                                                                    │
+│                                                                                         │
+│  📋 = Code section (links to Municode or municipal portal)                              │
+│  🗺️ = GIS-derived measurement (links to map view showing measurement)                  │
+│  📊 = JEDI-calculated (shows formula + inputs used)                                     │
+│  📁 = Public record (links to permit portal / council minutes)                          │
+│  ⚠️ = Cross-reference alert (flags where multiple code sections interact)               │
+│  ℹ️ = Contextual note (agent adds interpretive context)                                 │
+│                                                                                         │
+│  CLICK BEHAVIOR:                                                                        │
+│                                                                                         │
+│  [View Source] → Opens the EXACT code section in a side panel or new tab                │
+│                  The agent highlights the specific paragraph or clause                   │
+│                  User can read the raw legal text and confirm for themselves             │
+│                                                                                         │
+│  This is NOT "trust me, the AI read the code."                                          │
+│  This IS "here's exactly where I found this — check it yourself."                       │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## STEPS 3-6: UNCHANGED LOGIC, NEW PRESENTATION
+
+Steps 3 through 6 retain the same analytical logic from the original pipeline — rule stack assembly, capacity calculation, entitlement path analysis, and strategy recommendation. What changes is HOW results are presented.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  STEP 3: RULE STACK ASSEMBLY (same logic, source-attributed)                             │
+│  ═══════════════════════════════════════════════════════════                              │
+│                                                                                         │
+│  The agent builds the complete rule stack from confirmed sources:                        │
+│                                                                                         │
+│  Layer 1: MRC-3 base district                                                           │
+│  └─ Source: §16-18A.007 → [Municode link]                                               │
+│                                                                                         │
+│  Layer 2: SPI-16 overlay (modifies/adds to base)                                        │
+│  └─ Source: §16-18M.001 through §16-18M.020 → [Municode link]                           │
+│  └─ Overrides: front setback confirmed 0ft, adds design review                          │
+│  └─ Additions: active ground floor, streetscape, glazing requirements                   │
+│                                                                                         │
+│  Layer 3: Proximity triggers                                                            │
+│  └─ Transit parking reduction: MARTA Arts Center 0.3 mi → [Map link]                   │
+│  └─ Source: §16-18A.024 → [Municode link]                                               │
+│                                                                                         │
+│  Layer 4: Parcel-specific adjustments                                                   │
+│  └─ Adjacent R-5 district (east): setback increase                                     │
+│  └─ Source: §16-28.007(b) → [Municode link]                                             │
+│  └─ GIS confirmation: [Map link showing adjacent parcel zoning]                         │
+│                                                                                         │
+│  Every layer cites its source. User can click through to verify any rule.                │
+│                                                                                         │
+│  ──────────────────────────────────────────────────────────────────────────────────────  │
+│                                                                                         │
+│  STEP 4: CALCULATE CAPACITY (same formulas, shows work)                                  │
+│  ══════════════════════════════════════════════════════                                   │
+│                                                                                         │
+│  The agent doesn't just show the answer — it shows the formula:                         │
+│                                                                                         │
+│  Max units: 245                                                                          │
+│  └─ Formula: 109 units/acre [§16-18A.007(c)(1)] × 2.25 acres [parcel data]             │
+│  └─ Binding constraint: density (not FAR)                                                │
+│  └─ FAR check: 3.2 [§16-18A.007(c)(3)] × 98,010 SF = 313,632 SF →                     │
+│     at 900 SF/unit avg = 348 units → density binds first at 245                         │
+│                                                                                         │
+│  Required parking: 245 spaces                                                            │
+│  └─ Base: 245 units × 1.0/unit [§16-18A.009(a)] = 245                                  │
+│  └─ Guest: 245 × 0.25 [§16-18A.009(a)] = 61                                            │
+│  └─ Subtotal: 306 spaces                                                                 │
+│  └─ Transit reduction: -20% [§16-18A.024, ≤0.5mi MARTA] = -61                          │
+│  └─ Final: 245 spaces                                                                    │
+│                                                                                         │
+│  Buildable footprint: 76,890 SF                                                          │
+│  └─ Gross parcel: 98,010 SF                                                              │
+│  └─ Front setback: 0 ft [§16-18A.007(d)(1)] → no reduction                             │
+│  └─ Side setback (west): 10 ft [§16-18A.007(d)(2)] → -1,420 SF                         │
+│  └─ Side setback (east): 25 ft [§16-28.007(b), adj R-5] → -3,550 SF                   │
+│  └─ Rear setback: 20 ft [§16-18A.007(d)(3)] → -4,150 SF                                │
+│  └─ Lot coverage check: 76,890/98,010 = 78.5% < 85% max [§16-18A.007(c)(4)] ✅        │
+│                                                                                         │
+│  Every number links to its source. The user can audit any calculation.                   │
+│                                                                                         │
+│  ──────────────────────────────────────────────────────────────────────────────────────  │
+│                                                                                         │
+│  STEP 5: ENTITLEMENT PATH ANALYSIS (same structure, precedent-sourced)                   │
+│  ═════════════════════════════════════════════════════════════════════                    │
+│                                                                                         │
+│  Sources for entitlement predictions are now explicit:                                   │
+│                                                                                         │
+│  Path C: SAP Variance (320 units)                                                       │
+│  → Approval probability: 72%                                                            │
+│    └─ Source: JEDI precedent database                                                   │
+│    └─ Based on: 67 SAP applications in MRC-3/MRC-4, 2020-2025                          │
+│    └─ 📁 [View comparable cases]                                                        │
+│  → Timeline: 5.4 months (P50)                                                           │
+│    └─ Source: Municipal permit portal (scraped processing times)                        │
+│    └─ 📁 [View benchmark data]                                                          │
+│  → Key risk: NPU opposition                                                             │
+│    └─ Source: NPU-E meeting agenda, Jan 2026                                            │
+│    └─ 📁 [View NPU agenda/minutes]                                                      │
+│                                                                                         │
+│  Precedent data is EXPLICITLY marked as JEDI-derived, not code-sourced.                 │
+│  The user understands: "This is statistical analysis, not legal certainty."              │
+│                                                                                         │
+│  ──────────────────────────────────────────────────────────────────────────────────────  │
+│                                                                                         │
+│  STEP 6: STRATEGY SYNTHESIS (same recommendations, clear source separation)              │
+│  ══════════════════════════════════════════════════════════════════════════               │
+│                                                                                         │
+│  The recommendation clearly separates what comes from CODE vs ANALYSIS:                  │
+│                                                                                         │
+│  ┌────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │  AI RECOMMENDATION                                                       87% conf │  │
+│  │                                                                                    │  │
+│  │  Optimal path: By-right (245u) + Density Bonus (281u)                              │  │
+│  │                                                                                    │  │
+│  │  Based on CODE (verified):                                                         │  │
+│  │  • MRC-3 allows 109 u/acre by-right [§16-18A.007 → View Source]                   │  │
+│  │  • Density bonus: +15% for 10% affordable [§16-18A.039 → View Source]              │  │
+│  │  • Transit parking reduction applies [§16-18A.024 → View Source]                   │  │
+│  │                                                                                    │  │
+│  │  Based on ANALYSIS (JEDI-derived):                                                 │  │
+│  │  • Density bonus captures 90% of SAP value at near-zero risk                       │  │
+│  │  • SAP variance 72% approval rate (67 comparable cases)                            │  │
+│  │  • $8.2M net benefit from density bonus program                                    │  │
+│  │  • Sequence: secure density bonus first, then pursue SAP as upside                 │  │
+│  │                                                                                    │  │
+│  │  Sources: 📋 Code (5 sections)  📊 JEDI Analysis  📁 67 Precedent Cases            │  │
+│  │                                                                                    │  │
+│  └────────────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                         │
+│  This separation matters. Users trust code citations (they can verify them).             │
+│  They evaluate analytical claims differently (statistical, not legal).                   │
+│  Mixing them without distinction erodes trust in both.                                   │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## DATA MODEL ADDITIONS
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  NEW / MODIFIED ENTITIES                                                                 │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  jurisdiction_source_map (NEW)                                                      │ │
+│  │  ─────────────────────────────                                                      │ │
+│  │  jurisdiction_id        FK → jurisdictions                                          │ │
+│  │  source_tier            enum: 'municode' | 'municipal_direct' | 'county'            │ │
+│  │  base_url               text (portal root URL)                                      │ │
+│  │  zoning_code_path       text (path to zoning chapter)                               │ │
+│  │  api_available          boolean                                                     │ │
+│  │  api_endpoint           text (nullable)                                             │ │
+│  │  scrape_method          enum: 'api' | 'html_parse' | 'pdf_extract'                 │ │
+│  │  last_verified          timestamptz                                                 │ │
+│  │  update_frequency       enum: 'weekly' | 'monthly' | 'quarterly'                   │ │
+│  │  notes                  text                                                        │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  zoning_source_citation (NEW)                                                       │ │
+│  │  ────────────────────────────                                                       │ │
+│  │  id                     UUID PK                                                     │ │
+│  │  jurisdiction_id        FK → jurisdictions                                          │ │
+│  │  source_tier            enum: 'municode' | 'municipal_direct' | 'county'            │ │
+│  │  code_title             text ("Code of Ordinances, Part 16 - Zoning")               │ │
+│  │  section_number         text ("§16-18A.007")                                        │ │
+│  │  section_title          text ("MRC-3 District Regulations")                         │ │
+│  │  subsection             text (nullable, for specific clause)                        │ │
+│  │  source_url             text (deep link to exact section)                           │ │
+│  │  full_text              text (cached full text of section)                          │ │
+│  │  full_text_hash         text (SHA-256 for change detection)                         │ │
+│  │  last_fetched           timestamptz                                                 │ │
+│  │  last_changed           timestamptz (when Municode/portal last updated)             │ │
+│  │  confidence             decimal (0.00-1.00)                                         │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  zoning_verification (NEW)                                                          │ │
+│  │  ─────────────────────────                                                          │ │
+│  │  id                     UUID PK                                                     │ │
+│  │  deal_capsule_id        FK → deal_capsules (nullable)                               │ │
+│  │  parcel_id              text                                                        │ │
+│  │  gis_designation        text (what boundary page shows: "MRC-3")                    │ │
+│  │  verified_designation   text (what source confirms: "MRC-3")                        │ │
+│  │  verification_status    enum: 'confirmed' | 'stale' | 'split' | 'conflict'         │ │
+│  │  discrepancy_detail     text (nullable — explanation if not confirmed)              │ │
+│  │  overlays_detected      text[] (array of overlay codes found)                       │ │
+│  │  recent_amendments      jsonb (any code changes since last GIS refresh)             │ │
+│  │  conditional_approvals  jsonb (CUPs, variances, dev agreements on parcel)           │ │
+│  │  source_citations       FK[] → zoning_source_citation (all sources used)            │ │
+│  │  user_action            enum: 'confirmed' | 'flagged' | 'corrected' (nullable)      │ │
+│  │  user_correction_detail text (nullable — what user reported)                        │ │
+│  │  verified_at            timestamptz                                                 │ │
+│  │  verified_by            enum: 'agent_auto' | 'user_confirmed' | 'expert_reviewed'  │ │
+│  │  confidence             decimal (0.00-1.00)                                         │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  MODIFIED: ZoningDistrictProfile                                                    │ │
+│  │  ──────────────────────────────                                                     │ │
+│  │  Add to every rule field:                                                           │ │
+│  │                                                                                     │ │
+│  │  dimensional: {                                                                     │ │
+│  │    max_height_ft: 225,                                                              │ │
+│  │    max_height_source: FK → zoning_source_citation,     ← NEW                       │ │
+│  │    max_density_units_per_acre: 109,                                                 │ │
+│  │    max_density_source: FK → zoning_source_citation,    ← NEW                       │ │
+│  │    max_far: 3.2,                                                                    │ │
+│  │    max_far_source: FK → zoning_source_citation,        ← NEW                       │ │
+│  │    ...                                                                              │ │
+│  │  }                                                                                  │ │
+│  │                                                                                     │ │
+│  │  Every extracted value now carries a pointer back to the exact                       │ │
+│  │  code section it was extracted from. This is what makes                              │ │
+│  │  [View Source] links possible on every data point.                                  │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## COMPONENT CHANGES
+
+### New/Modified Frontend Components
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  NEW COMPONENTS                                                                          │
+│                                                                                         │
+│  components/zoning/                                                                      │
+│  ├── VerificationCard.tsx              ← The main Step 2 output card                    │
+│  │   ├── VerificationStatusBadge.tsx   ← ✅ Confirmed / ⚠️ Stale / ❌ Conflict         │
+│  │   ├── SourcePanel.tsx               ← Shows source tier, URL, dates                  │
+│  │   ├── OverlayAlert.tsx              ← Surfaces overlays not on boundary page         │
+│  │   ├── AmendmentAlert.tsx            ← Flags recent code changes                      │
+│  │   ├── ConditionalApprovalAlert.tsx  ← Shows CUPs/variances on parcel                │
+│  │   └── DiscrepancyCard.tsx           ← Shown when sources disagree                   │
+│  │                                                                                      │
+│  ├── SourceCitation.tsx                ← Inline [View Source] badge component           │
+│  │   ├── props: { section, url, sourceType, lastVerified }                              │
+│  │   ├── onClick → opens source in side panel or new tab                                │
+│  │   └── badge types: 📋 Code | 🗺️ GIS | 📊 Calculated | 📁 Record                   │
+│  │                                                                                      │
+│  ├── SourceSidePanel.tsx               ← Slide-out panel showing raw code text          │
+│  │   ├── Loads full section text from zoning_source_citation                            │
+│  │   ├── Highlights the specific clause relevant to the data point                      │
+│  │   ├── Shows "Last verified" timestamp                                                │
+│  │   └── "Open in Municode →" external link                                            │
+│  │                                                                                      │
+│  ├── UserTrustGate.tsx                 ← The confirm/flag/correct action bar            │
+│  │   ├── [Confirm & Continue] → sets verification.user_action = 'confirmed'             │
+│  │   ├── [Flag for Review] → opens investigation flow                                  │
+│  │   └── [I Know More] → opens correction form (feeds Learning Engine)                  │
+│  │                                                                                      │
+│  └── CalculationBreakdown.tsx          ← Expandable formula view for Step 4             │
+│      ├── Shows formula: value = input × rate [source link]                              │
+│      ├── Expandable per calculation (density, parking, setbacks, coverage)               │
+│      └── Each input links to its source citation                                        │
+│                                                                                         │
+│  MODIFIED COMPONENTS                                                                     │
+│                                                                                         │
+│  All existing rule display components in Tabs 1-6 now accept                             │
+│  a `sourceCitation` prop and render the [View Source] badge inline.                      │
+│  This is a universal pattern, not a one-off.                                             │
+│                                                                                         │
+│  RecommendationCard.tsx                ← Modified for Step 6                            │
+│  ├── New section separator: "Based on CODE (verified)" vs "Based on ANALYSIS"           │
+│  └── Different badge types for code-sourced vs JEDI-derived claims                      │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## USER FLOW: THE VERIFICATION-FIRST EXPERIENCE
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  FLOW: User Arrives From Property Boundary Page                                          │
+│                                                                                         │
+│  1. User clicks [View Zoning Details →] on property boundary page                       │
+│     → Zoning module receives: parcel_id, gis_zoning = "MRC-3", coordinates              │
+│                                                                                         │
+│  2. Agent IMMEDIATELY runs Steps 1-2 (source resolution + verification)                 │
+│     → No user action required — this happens on page load                               │
+│     → Takes 1-3 seconds                                                                 │
+│                                                                                         │
+│  3. User sees: Verification Card at the TOP of the page                                 │
+│     → ✅ "MRC-3 — VERIFIED" with source link to Municode                                │
+│     → ⚠️ "Overlay detected: SPI-16 (not shown on boundary page)"                       │
+│     → ✅ "No recent amendments"                                                          │
+│     → ✅ "No conditional approvals on this parcel"                                       │
+│     → Confidence: 95%                                                                    │
+│                                                                                         │
+│  4. User clicks source link → side panel shows raw code text                            │
+│     → They can read §16-18A.007 themselves                                              │
+│     → They see "Last verified by JEDI: 2 days ago"                                     │
+│     → They see "Open in Municode →" to go to the original                              │
+│                                                                                         │
+│  5. User satisfied → clicks [Confirm & Continue]                                        │
+│     → Trust Gate passed                                                                 │
+│     → Steps 3-6 load below the Verification Card                                       │
+│     → All data points carry source citations                                            │
+│                                                                                         │
+│  6. User sees capacity calculations with FORMULAS showing work                          │
+│     → "245 units = 109 u/acre [§16-18A.007] × 2.25 acres [parcel]"                    │
+│     → Every number links back to a code section                                         │
+│     → Cross-references flagged: "⚠️ Side setback increased from 10ft to 25ft           │
+│        due to adjacent R-5 district [§16-28.007(b)]"                                    │
+│                                                                                         │
+│  7. User sees strategy recommendation with clear CODE vs ANALYSIS separation            │
+│     → Code-based claims: checkable, verified, linked                                    │
+│     → Analysis-based claims: clearly marked as statistical/predictive                   │
+│     → User trusts both MORE because the distinction is transparent                      │
+│                                                                                         │
+│  ──────────────────────────────────────────────────────────────────────────────────────  │
+│                                                                                         │
+│  ALTERNATE FLOW: Discrepancy Detected                                                    │
+│                                                                                         │
+│  3b. User sees: Discrepancy Card                                                        │
+│      → ❌ "Boundary page says I-1, but Municode shows MRC-2"                            │
+│      → Agent explains: "Rezone Z-25-0087 approved Dec 2025, GIS not updated"           │
+│      → Links to: council minutes, rezone application, Municode text                     │
+│      → User clicks [Use MRC-2 (recommended)]                                           │
+│      → Agent proceeds with MRC-2 for all subsequent analysis                            │
+│      → GIS correction flagged for data team                                             │
+│                                                                                         │
+│  ──────────────────────────────────────────────────────────────────────────────────────  │
+│                                                                                         │
+│  ALTERNATE FLOW: User Knows Something Agent Doesn't                                     │
+│                                                                                         │
+│  5b. User clicks [I Know More]                                                          │
+│      → Opens correction form                                                            │
+│      → "This parcel was rezoned last week. New designation: MRC-4"                      │
+│      → Agent: "I'll note this and verify at next Municode refresh.                      │
+│        For now, would you like me to run analysis with MRC-4?"                          │
+│      → User correction feeds into Learning Engine Channel 2                             │
+│      → Correction gets credibility-weighted based on user tier                          │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## WHAT THIS CHANGES IN THE WIREFRAME
+
+### Tab 1 Restructure
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│  TAB 1: ZONING INTELLIGENCE (Revised Layout)                                             │
+│                                                                                         │
+│  BEFORE: Address input → data cards → AI chat                                           │
+│                                                                                         │
+│  AFTER:                                                                                  │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  SECTION A: VERIFICATION (top of page — first thing user sees)                      │ │
+│  │                                                                                     │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  [Verification Card]                                                         │   │ │
+│  │  │  Status badge + source link + overlay alerts + trust gate buttons             │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────────────┘   │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  SECTION B: CONFIRMED RULES (loads after trust gate passed)                         │ │
+│  │                                                                                     │ │
+│  │  District parameters with [View Source] on EVERY value                              │ │
+│  │  Overlay requirements with [View Source] on EVERY requirement                       │ │
+│  │  Proximity triggers with [View on Map] for measurements                             │ │
+│  │                                                                                     │ │
+│  │  Expandable: "Show All Code Sections" → lists every citation used                   │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  SECTION C: CAPACITY ANALYSIS (expandable formulas)                                 │ │
+│  │                                                                                     │ │
+│  │  Results WITH calculation breakdowns                                                │ │
+│  │  "245 units = 109 u/acre [source] × 2.25 acres [parcel]"                          │ │
+│  │  Cross-reference alerts flagged inline                                              │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  SECTION D: AI RECOMMENDATION (code vs analysis separated)                          │ │
+│  │                                                                                     │ │
+│  │  "Based on CODE (verified):" + source links                                        │ │
+│  │  "Based on ANALYSIS (JEDI-derived):" + methodology notes                           │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────────────┐ │
+│  │  SOURCE SIDE PANEL (always available, slides in from right)                         │ │
+│  │                                                                                     │ │
+│  │  Any [View Source] click opens this panel showing:                                  │ │
+│  │  • Raw code text with relevant clause highlighted                                   │ │
+│  │  • "Last verified" timestamp                                                        │ │
+│  │  • "Open in Municode →" / "Open in [Municipal Portal] →"                           │ │
+│  │  • Related sections (cross-references from this section)                            │ │
+│  │                                                                                     │ │
+│  └─────────────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                         │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## BUILD PRIORITY IMPACT
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  WHAT MOVES EARLIER                                            │
+│                                                                │
+│  • jurisdiction_source_map registry (must exist before         │
+│    anything else — this is the routing table)                  │
+│  • zoning_source_citation schema + extraction pipeline         │
+│    (every value needs a source pointer from Day 1)             │
+│  • SourceCitation component + SourceSidePanel                  │
+│    (universal pattern used across all tabs)                    │
+│  • Verification Card + Trust Gate                              │
+│    (the first thing the user sees)                             │
+│                                                                │
+│  WHAT STAYS THE SAME                                           │
+│                                                                │
+│  • The analytical logic in Steps 3-6 is unchanged             │
+│  • The Learning Engine (4 channels) is unchanged              │
+│  • The confidence scoring framework is unchanged              │
+│  • The cross-agent integrations are unchanged                 │
+│                                                                │
+│  WHAT GETS EASIER                                              │
+│                                                                │
+│  • Professional correction pipeline: users naturally click     │
+│    [I Know More] when they spot an error, because the          │
+│    verification flow INVITES them to check the work            │
+│  • Confidence scoring: source verification status becomes      │
+│    a direct input to confidence calculations                   │
+│  • Trust: users who verify the code themselves trust the       │
+│    analytical steps that follow MORE, not less                 │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
