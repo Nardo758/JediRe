@@ -18,10 +18,10 @@ export function AdminDashboard() {
     },
     {
       icon: <Database className="w-8 h-8 text-green-600" />,
-      title: 'Data Management',
-      description: 'Manage property data, scrapers, and integrations',
-      path: '/admin/data-management',
-      status: 'Coming Soon',
+      title: 'Data Tracker',
+      description: 'Track data coverage, completeness, and gaps across all markets',
+      path: '/admin/data-tracker',
+      status: 'Active',
       color: 'bg-green-50 border-green-200',
     },
     {
