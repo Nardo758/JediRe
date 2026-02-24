@@ -323,10 +323,21 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           }
         } catch (err) {
           console.error('Reverse geocode error:', err);
+          if (cityName || deal?.address) {
+            setDetectedLocation({
+              city: cityName || deal?.city || '',
+              state: stateName || deal?.state || '',
+              county: '',
+              hasZoningData: false,
+            });
+          }
         }
       }
 
-      if (!cityName && !deal?.address) return;
+      if (!cityName && !deal?.address) {
+        setDetectedLocation(null);
+        return;
+      }
 
       const params: Record<string, string> = {};
       if (cityName) params.city = cityName;
