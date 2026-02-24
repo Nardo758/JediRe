@@ -17,7 +17,12 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
 
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+    if (!mapContainer.current) return;
+
+    if (map.current) {
+      map.current.remove();
+      map.current = null;
+    }
 
     let center: [number, number] = [-84.388, 33.749];
     if (deal.boundary && deal.boundary.type === 'Polygon' && deal.boundary.coordinates?.[0]?.[0]) {
@@ -48,7 +53,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         map.current = null;
       }
     };
-  }, []);
+  }, [deal.id]);
 
   const addBoundaryToMap = (m: mapboxgl.Map, boundary: any) => {
     m.addSource('deal-boundary', {

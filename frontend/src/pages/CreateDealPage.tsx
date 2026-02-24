@@ -273,7 +273,7 @@ export const CreateDealPage: React.FC = () => {
 
       // Redirect to the deal detail page
       if (result?.id) {
-        navigate(`/deals/${result.id}`);
+        navigate(`/deals/${result.id}/detail`);
       } else {
         // Fallback to list view
         if (dealCategory === 'pipeline') {
