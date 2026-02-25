@@ -10,7 +10,7 @@ import { Design3DError } from '../components/fallbacks/Design3DError';
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { currentDeal, loadDeal } = useDealStore();
+  const { selectedDeal: currentDeal, fetchDealById } = useDealStore();
   
   const [design3D, setDesign3D] = useState<Design3D | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,13 +30,19 @@ export const Design3DPage: React.FC = () => {
         
         // Load deal if not in store
         if (!currentDeal || currentDeal.id !== dealId) {
-          await loadDeal(dealId);
+          await fetchDealById(dealId);
         }
         
         // Load existing design if available
-        const response = await apiClient.get(`/api/v1/deals/${dealId}/design`);
-        if (response.data.success && response.data.data) {
-          setDesign3D(response.data.data);
+        try {
+          const response = await apiClient.get(`/api/v1/deals/${dealId}/design`);
+          if (response.data.success && response.data.data) {
+            setDesign3D(response.data.data);
+          }
+        } catch (designErr: any) {
+          if (designErr?.response?.status !== 404) {
+            console.warn('Could not load existing design:', designErr);
+          }
         }
       } catch (err) {
         console.error('Failed to load deal/design:', err);
@@ -47,7 +53,7 @@ export const Design3DPage: React.FC = () => {
     };
     
     loadDealData();
-  }, [dealId, currentDeal, loadDeal]);
+  }, [dealId, fetchDealById]);
 
   // Auto-save functionality
   useEffect(() => {
