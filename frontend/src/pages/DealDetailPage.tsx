@@ -44,7 +44,7 @@ import { RiskManagementSection } from '../components/deal/sections/RiskManagemen
 import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
-import { PropertyBoundarySection } from '../components/deal/sections/PropertyBoundarySection';
+
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
@@ -108,14 +108,8 @@ const DealDetailPage: React.FC = () => {
       component: OverviewSection 
     },
     { 
-      id: 'property-boundary', 
-      label: 'Property Boundary', 
-      icon: <MapPin size={16} />, 
-      component: PropertyBoundarySection 
-    },
-    { 
       id: 'zoning', 
-      label: 'Zoning & Entitlements', 
+      label: 'Property & Zoning', 
       icon: <Landmark size={16} />, 
       component: ZoningModuleSection 
     },
