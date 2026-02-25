@@ -1,8 +1,3 @@
-/**
- * Zoning Confirmation Tab - Step 2 of Zoning Analysis
- * Confirms zoning district and triggers full analysis
- */
-
 import React, { useState, useEffect } from 'react';
 import {
   MapPin,
@@ -12,6 +7,7 @@ import {
   Loader2,
   ChevronRight,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 
@@ -30,13 +26,28 @@ interface DetectedZoning {
   source: 'boundary' | 'address' | 'manual';
 }
 
+interface ZoningDistrict {
+  id: string;
+  zoning_code: string;
+  district_name: string;
+  category?: string;
+  max_density?: number;
+  max_far?: number;
+  max_height?: number;
+  max_stories?: number;
+}
+
 export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConfirmTabProps) {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [detectedZoning, setDetectedZoning] = useState<DetectedZoning | null>(null);
+  const [availableDistricts, setAvailableDistricts] = useState<ZoningDistrict[]>([]);
+  const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null);
+  const [districtSearch, setDistrictSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [manualEntry, setManualEntry] = useState(false);
   const [manualCode, setManualCode] = useState('');
+  const [locationInfo, setLocationInfo] = useState<{ city: string; state: string } | null>(null);
 
   useEffect(() => {
     fetchZoningFromBoundary();
@@ -76,16 +87,20 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       });
 
       const location = reverseGeoRes.data;
+      const cityName = location?.city || location?.municipality?.name || '';
+      const stateName = location?.state || location?.municipality?.state || '';
 
-      if (!location?.municipality?.id) {
-        setError('Could not determine municipality from boundary location.');
+      if (!cityName) {
+        setError('Could not determine city from boundary location. Try manual entry.');
         setLoading(false);
         return;
       }
 
+      setLocationInfo({ city: cityName, state: stateName });
+
       const zoningRes = await apiClient.get('/api/v1/zoning/lookup', {
         params: {
-          city: location.city,
+          city: cityName,
           address: deal?.address || boundary.address,
         },
       });
@@ -93,17 +108,31 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       const zoningData = zoningRes.data;
 
       if (zoningData?.found && zoningData.districts?.length > 0) {
-        const primaryDistrict = zoningData.districts[0];
+        const districts: ZoningDistrict[] = zoningData.districts;
+        setAvailableDistricts(districts);
+
+        const addressUpper = (deal?.address || '').toUpperCase();
+        let bestMatch = districts[0];
+
+        const residentialCodes = districts.filter(d => {
+          const code = (d.zoning_code || '').toUpperCase();
+          return code.startsWith('R-') || code.startsWith('MR-') || code.startsWith('RG-');
+        });
+        if (residentialCodes.length > 0) {
+          bestMatch = residentialCodes[0];
+        }
+
+        setSelectedDistrictId(bestMatch.id);
         setDetectedZoning({
-          code: primaryDistrict.district_code,
-          name: primaryDistrict.district_name,
-          municipality: location.city,
-          state: location.state,
-          confidence: 0.95,
+          code: bestMatch.zoning_code,
+          name: bestMatch.district_name,
+          municipality: cityName,
+          state: stateName,
+          confidence: location?.municipality?.id ? 0.85 : 0.7,
           source: 'boundary',
         });
       } else {
-        setError(`No zoning data found for ${location.city}, ${location.state}. You can enter it manually.`);
+        setError(`No zoning data found for ${cityName}, ${stateName}. You can enter it manually.`);
       }
     } catch (err: any) {
       console.error('Error fetching zoning:', err);
@@ -111,6 +140,22 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDistrictSelect = (district: ZoningDistrict) => {
+    setSelectedDistrictId(district.id);
+    setDetectedZoning(prev => prev ? {
+      ...prev,
+      code: district.zoning_code,
+      name: district.district_name,
+    } : {
+      code: district.zoning_code,
+      name: district.district_name,
+      municipality: locationInfo?.city || '',
+      state: locationInfo?.state || '',
+      confidence: 0.85,
+      source: 'boundary',
+    });
   };
 
   const handleConfirm = async () => {
@@ -128,27 +173,32 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       const analysisPayload = {
         dealId,
         zoningCode: zoneCode,
-        municipality: detectedZoning?.municipality,
-        state: detectedZoning?.state,
+        municipality: detectedZoning?.municipality || locationInfo?.city,
+        state: detectedZoning?.state || locationInfo?.state,
         landAreaSf: boundary.parcel_area_sf || boundary.parcelAreaSF || (boundary.parcel_area || boundary.parcelArea || 0) * 43560,
         dealType: deal?.strategy || deal?.dealType || 'BTS',
         boundaryId: boundary.id,
         setbacks: boundary.setbacks,
       };
 
-      const analysisRes = await apiClient.post('/api/v1/zoning-intelligence/analyze', analysisPayload);
+      let analysisData = null;
+      try {
+        const analysisRes = await apiClient.post('/api/v1/zoning-intelligence/analyze', analysisPayload);
+        analysisData = analysisRes.data;
+      } catch {
+      }
 
       const enrichedZoning = {
         ...detectedZoning,
         code: zoneCode,
-        analysisData: analysisRes.data,
+        analysisData,
         confirmed: true,
       };
 
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
         zoning_code: zoneCode,
-        municipality: detectedZoning?.municipality,
-        state: detectedZoning?.state,
+        municipality: detectedZoning?.municipality || locationInfo?.city,
+        state: detectedZoning?.state || locationInfo?.state,
         confirmed_at: new Date().toISOString(),
       });
 
@@ -157,11 +207,21 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       }
     } catch (err: any) {
       console.error('Error analyzing zoning:', err);
-      setError(err.response?.data?.error || 'Failed to analyze zoning');
+      setError(err.response?.data?.error || 'Failed to save zoning confirmation');
     } finally {
       setAnalyzing(false);
     }
   };
+
+  const filteredDistricts = availableDistricts.filter(d => {
+    if (!districtSearch) return true;
+    const search = districtSearch.toUpperCase();
+    return (
+      (d.zoning_code || '').toUpperCase().includes(search) ||
+      (d.district_name || '').toUpperCase().includes(search) ||
+      (d.category || '').toUpperCase().includes(search)
+    );
+  });
 
   if (loading) {
     return (
@@ -176,7 +236,6 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-blue-50 rounded-lg">
@@ -185,13 +244,14 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900 mb-1">Confirm Zoning District</h3>
             <p className="text-sm text-gray-600">
-              We detected the zoning district from your property boundary. Confirm it to unlock development capacity analysis.
+              {detectedZoning
+                ? 'We detected available zoning districts from your property boundary. Select the correct one and confirm.'
+                : 'We could not auto-detect the zoning district. You can enter it manually below.'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -202,7 +262,6 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         </div>
       )}
 
-      {/* Detected Zoning */}
       {detectedZoning && !manualEntry && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-start justify-between mb-4">
@@ -216,14 +275,14 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
               </p>
             </div>
             <div className="px-2 py-1 bg-green-50 text-green-700 text-xs font-medium rounded">
-              {Math.round(detectedZoning.confidence * 100)}% confidence
+              {availableDistricts.length} districts available
             </div>
           </div>
 
           <div className="border-t border-gray-100 pt-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs text-gray-500 mb-1">Zoning District</p>
+                <p className="text-xs text-gray-500 mb-1">Selected Zoning District</p>
                 <p className="text-2xl font-bold text-gray-900 mb-1">{detectedZoning.code}</p>
                 <p className="text-sm text-gray-600">{detectedZoning.name}</p>
               </div>
@@ -231,12 +290,52 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
             </div>
           </div>
 
+          {availableDistricts.length > 1 && (
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="text-xs font-medium text-gray-700 mb-2">
+                Not the right district? Select from {availableDistricts.length} available:
+              </p>
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
+                <input
+                  type="text"
+                  value={districtSearch}
+                  onChange={(e) => setDistrictSearch(e.target.value)}
+                  placeholder="Search districts..."
+                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
+                {filteredDistricts.map(d => (
+                  <button
+                    key={d.id}
+                    onClick={() => handleDistrictSelect(d)}
+                    className={`w-full text-left px-3 py-2 text-xs border-b border-gray-100 last:border-0 transition-colors ${
+                      selectedDistrictId === d.id
+                        ? 'bg-blue-50 text-blue-900'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span className="font-medium">{d.zoning_code}</span>
+                    <span className="text-gray-500 ml-2">{d.district_name}</span>
+                    {d.max_height && (
+                      <span className="text-gray-400 ml-2">({d.max_height}ft max)</span>
+                    )}
+                  </button>
+                ))}
+                {filteredDistricts.length === 0 && (
+                  <p className="px-3 py-2 text-xs text-gray-500">No matching districts</p>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-6 flex items-center justify-between">
             <button
               onClick={() => setManualEntry(true)}
               className="text-sm text-gray-600 hover:text-gray-900 underline"
             >
-              Not correct? Enter manually
+              Enter manually instead
             </button>
             <button
               onClick={handleConfirm}
@@ -260,7 +359,6 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         </div>
       )}
 
-      {/* Manual Entry */}
       {(manualEntry || (!detectedZoning && !loading)) && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h4 className="text-base font-semibold text-gray-900 mb-4">Enter Zoning Manually</h4>
@@ -315,7 +413,6 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         </div>
       )}
 
-      {/* Info box */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
         <p className="text-xs text-gray-600">
           <strong className="text-gray-900">What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity based on your <strong>{deal?.strategy || 'investment'}</strong> strategy.
