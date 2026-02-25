@@ -21,8 +21,15 @@ interface EnvelopeData {
 interface ZoningStandards {
   maxDensity: number | null;
   maxFAR: number | null;
+  residentialFAR: number | null;
+  nonresidentialFAR: number | null;
+  appliedFAR: number | null;
+  densityMethod: string | null;
+  dealType: string | null;
   maxHeight: number | null;
   maxStories: number | null;
+  heightBufferFt: number | null;
+  heightBeyondBufferFt: number | null;
   minParking: number | null;
   maxLotCoverage: number | null;
   setbacks: { front: number; side: number; rear: number };
@@ -129,19 +136,18 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const variance = scenarios.find(s => s.scenarioType === 'variance');
   const rezone = scenarios.find(s => s.scenarioType === 'rezone');
 
-  const densityUnits = zoningStandards.maxDensity != null
-    ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres)
-    : null;
+  const isFARDerived = zoningStandards.densityMethod === 'far_derived';
+  const hasSplitFAR = zoningStandards.residentialFAR != null || zoningStandards.nonresidentialFAR != null;
+  const effectiveFAR = zoningStandards.appliedFAR ?? zoningStandards.maxFAR;
+  const isConditionalVariant = parcelInfo.currentZoning?.match(/-[A-Z]{1,2}$/);
+
   const stories = zoningStandards.maxStories;
-  const parkingSpaces = zoningStandards.minParking != null && densityUnits != null
-    ? Math.ceil(zoningStandards.minParking * densityUnits)
-    : null;
   const lotCoveragePct = zoningStandards.maxLotCoverage;
   const lotCoverageCap = lotCoveragePct != null
     ? Math.round(parcelInfo.landAreaSF * (lotCoveragePct / 100))
     : null;
-  const gbaByFAR = zoningStandards.maxFAR != null
-    ? Math.round(zoningStandards.maxFAR * parcelInfo.landAreaSF)
+  const gbaByFAR = effectiveFAR != null
+    ? Math.round(effectiveFAR * parcelInfo.landAreaSF)
     : null;
   const gbaByHeight = envelope.maxFootprint != null && stories != null
     ? envelope.maxFootprint * stories
@@ -152,8 +158,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     ? (gbaByFAR <= gbaByHeight ? 'FAR' : 'Height + Coverage')
     : gbaByFAR != null ? 'FAR' : gbaByHeight != null ? 'Height + Coverage' : null;
 
+  const maxUnits = isFARDerived && netLeasable != null
+    ? Math.floor(netLeasable / 850)
+    : zoningStandards.maxDensity != null
+      ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres)
+      : envelope.maxCapacity;
+  const parkingSpaces = zoningStandards.minParking != null && maxUnits != null
+    ? Math.ceil(zoningStandards.minParking * maxUnits)
+    : null;
+
   const constraintEntries = [
-    { label: 'Density', value: densityUnits, displayValue: densityUnits, unit: 'units', isLimiting: envelope.limitingFactor === 'density' },
+    ...(!isFARDerived ? [{ label: 'Density', value: zoningStandards.maxDensity != null ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres) : null, displayValue: zoningStandards.maxDensity != null ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres) : null, unit: 'units', isLimiting: envelope.limitingFactor === 'density' }] : []),
     { label: 'FAR', value: gbaByFAR, displayValue: gbaByFAR, unit: 'SF', isLimiting: envelope.limitingFactor === 'FAR' },
     { label: 'Height', value: stories, displayValue: stories, unit: 'stories', isLimiting: envelope.limitingFactor === 'height' },
     { label: 'Lot Coverage', value: lotCoveragePct, displayValue: lotCoveragePct, unit: '%', isLimiting: false },
@@ -181,11 +196,27 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       </div>
 
+      {isConditionalVariant && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+          <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-amber-800">Conditional Variant Detected ({parcelInfo.currentZoning})</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              The "-C" suffix indicates a conditional ordinance from City Council that may impose additional restrictions on height, uses, density, or site plan elements. Review the conditional ordinance before finalizing numbers.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Max Units</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(densityUnits)}</p>
-          <p className="text-xs text-gray-400 mt-1">{zoningStandards.maxDensity} units/acre</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(maxUnits)}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {isFARDerived ? 'FAR-derived (no density cap)' : `${zoningStandards.maxDensity} units/acre`}
+          </p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Buildable Area</p>
@@ -268,7 +299,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           )}
           {gbaByFAR != null && (
             <div className="flex justify-between py-1.5 border-b border-gray-100">
-              <span className="text-gray-600">GBA by FAR ({zoningStandards.maxFAR})</span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-600">GBA by FAR ({effectiveFAR})</span>
+                {hasSplitFAR && (
+                  <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
+                    {zoningStandards.dealType === 'residential' ? 'Residential' : zoningStandards.dealType === 'commercial' ? 'Nonresidential' : 'Combined'} FAR applied
+                  </span>
+                )}
+              </div>
               <span className="font-medium text-gray-900">{formatNumber(gbaByFAR)} SF</span>
             </div>
           )}
@@ -290,21 +328,75 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Zoning Standards Applied</h3>
         </div>
         <div className="grid grid-cols-3 gap-px bg-gray-100">
-          {[
-            { label: 'Max Density', value: zoningStandards.maxDensity, suffix: ' units/acre' },
-            { label: 'Max FAR', value: zoningStandards.maxFAR, suffix: '' },
-            { label: 'Max Height', value: zoningStandards.maxHeight, suffix: ' ft' },
-            { label: 'Max Stories', value: zoningStandards.maxStories, suffix: '' },
-            { label: 'Parking Ratio', value: zoningStandards.minParking, suffix: ' per unit' },
-            { label: 'Lot Coverage', value: zoningStandards.maxLotCoverage, suffix: '%' },
-          ].map(item => (
-            <div key={item.label} className="bg-white p-3">
-              <p className="text-xs text-gray-500">{item.label}</p>
-              <p className="text-sm font-semibold text-gray-900">
-                {item.value != null ? `${item.value}${item.suffix}` : '--'}
-              </p>
-            </div>
-          ))}
+          {hasSplitFAR ? (
+            <>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Density Method</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {isFARDerived ? 'FAR-derived' : 'Units per acre'}
+                </p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Residential FAR</p>
+                <p className="text-sm font-semibold text-gray-900">{zoningStandards.residentialFAR ?? '--'}</p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Nonresidential FAR</p>
+                <p className="text-sm font-semibold text-gray-900">{zoningStandards.nonresidentialFAR ?? '--'}</p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Combined FAR</p>
+                <p className="text-sm font-semibold text-gray-900">{zoningStandards.maxFAR ?? '--'}</p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Applied FAR</p>
+                <p className="text-sm font-semibold text-blue-700">{effectiveFAR ?? '--'}</p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Max Height</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {zoningStandards.maxHeight != null ? `${zoningStandards.maxHeight} ft` : '--'}
+                </p>
+                {zoningStandards.heightBeyondBufferFt != null && (
+                  <p className="text-[10px] text-gray-400">{zoningStandards.heightBeyondBufferFt} ft beyond {zoningStandards.heightBufferFt} ft buffer</p>
+                )}
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Max Stories</p>
+                <p className="text-sm font-semibold text-gray-900">{zoningStandards.maxStories ?? '--'}</p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Parking Ratio</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {zoningStandards.minParking != null ? `${zoningStandards.minParking} per unit` : '--'}
+                </p>
+              </div>
+              <div className="bg-white p-3">
+                <p className="text-xs text-gray-500">Lot Coverage</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {zoningStandards.maxLotCoverage != null ? `${zoningStandards.maxLotCoverage}%` : '--'}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              {[
+                { label: 'Max Density', value: zoningStandards.maxDensity, suffix: ' units/acre' },
+                { label: 'Max FAR', value: zoningStandards.maxFAR, suffix: '' },
+                { label: 'Max Height', value: zoningStandards.maxHeight, suffix: ' ft' },
+                { label: 'Max Stories', value: zoningStandards.maxStories, suffix: '' },
+                { label: 'Parking Ratio', value: zoningStandards.minParking, suffix: ' per unit' },
+                { label: 'Lot Coverage', value: zoningStandards.maxLotCoverage, suffix: '%' },
+              ].map(item => (
+                <div key={item.label} className="bg-white p-3">
+                  <p className="text-xs text-gray-500">{item.label}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {item.value != null ? `${item.value}${item.suffix}` : '--'}
+                  </p>
+                </div>
+              ))}
+            </>
+          )}
         </div>
         <div className="border-t border-gray-100 px-5 py-3 bg-gray-50">
           <p className="text-xs text-gray-500">

@@ -95,10 +95,14 @@ export interface LotDimensions {
 export interface ZoningConstraints {
   maxDensity?: number | null;
   maxFAR?: number | null;
+  residentialFAR?: number | null;
+  nonresidentialFAR?: number | null;
+  appliedFAR?: number | null;
   maxHeight?: number | null;
   maxStories?: number | null;
   minParkingPerUnit?: number | null;
   maxLotCoverage?: number | null;
+  densityMethod?: 'units_per_acre' | 'far_derived' | null;
 }
 
 export interface DensityBonuses {
@@ -112,6 +116,7 @@ export interface BuildingEnvelopeInputs {
   lotDimensions?: LotDimensions | null;
   zoningConstraints: ZoningConstraints;
   propertyType: PropertyType;
+  dealType?: 'residential' | 'commercial' | 'mixed-use';
   densityBonuses?: DensityBonuses | null;
 }
 
@@ -162,6 +167,17 @@ export class BuildingEnvelopeService {
   calculateEnvelope(inputs: BuildingEnvelopeInputs): BuildingEnvelopeResult {
     const config = PROPERTY_TYPE_CONFIGS[inputs.propertyType];
     const { landArea, setbacks, lotDimensions, zoningConstraints, densityBonuses } = inputs;
+    const dealType = inputs.dealType || 'residential';
+
+    let appliedFAR = zoningConstraints.maxFAR;
+    if (zoningConstraints.residentialFAR != null || zoningConstraints.nonresidentialFAR != null) {
+      if (dealType === 'residential' && zoningConstraints.residentialFAR != null) {
+        appliedFAR = zoningConstraints.residentialFAR;
+      } else if (dealType === 'commercial' && zoningConstraints.nonresidentialFAR != null) {
+        appliedFAR = zoningConstraints.nonresidentialFAR;
+      }
+    }
+    zoningConstraints.appliedFAR = appliedFAR;
 
     const buildableArea = this.calculateBuildableArea(landArea, setbacks, lotDimensions);
 
@@ -174,8 +190,8 @@ export class BuildingEnvelopeService {
     const maxFloors = this.calculateMaxFloors(zoningConstraints, config.floorHeight);
 
     let maxGFA = maxFootprint * maxFloors;
-    if (zoningConstraints.maxFAR != null) {
-      const farLimit = zoningConstraints.maxFAR * landArea;
+    if (appliedFAR != null) {
+      const farLimit = appliedFAR * landArea;
       maxGFA = Math.min(maxGFA, farLimit);
     }
 
@@ -185,18 +201,28 @@ export class BuildingEnvelopeService {
       inputs, config, maxFootprint, maxFloors
     );
 
-    const constraintEntries: [string, number | null][] = [
-      ['density', capacityByConstraint.byDensity],
+    const constraintEntries: [string, number | null][] = [];
+    if (zoningConstraints.densityMethod !== 'far_derived') {
+      constraintEntries.push(['density', capacityByConstraint.byDensity]);
+    }
+    constraintEntries.push(
       ['FAR', capacityByConstraint.byFAR],
       ['height', capacityByConstraint.byHeight],
       ['parking', capacityByConstraint.byParking],
-    ];
+    );
 
     const validConstraints = constraintEntries.filter(([, v]) => v != null) as [string, number][];
     let limitingFactor = 'none';
     let maxCapacity: number;
 
-    if (validConstraints.length > 0) {
+    if (zoningConstraints.densityMethod === 'far_derived') {
+      const efficiencyFactor = 0.85;
+      maxCapacity = Math.floor((maxGFA * efficiencyFactor / config.avgUnitSize) * bonusMultiplier);
+      if (validConstraints.length > 0) {
+        validConstraints.sort((a, b) => a[1] - b[1]);
+        limitingFactor = validConstraints[0][0];
+      }
+    } else if (validConstraints.length > 0) {
       validConstraints.sort((a, b) => a[1] - b[1]);
       limitingFactor = validConstraints[0][0];
       maxCapacity = Math.floor(validConstraints[0][1] * bonusMultiplier);
@@ -321,8 +347,9 @@ export class BuildingEnvelopeService {
       ? Math.floor(zoningConstraints.maxDensity * acres)
       : null;
 
-    const byFAR = zoningConstraints.maxFAR != null
-      ? Math.floor((zoningConstraints.maxFAR * landArea) / config.avgUnitSize)
+    const effectiveFAR = zoningConstraints.appliedFAR ?? zoningConstraints.maxFAR;
+    const byFAR = effectiveFAR != null
+      ? Math.floor((effectiveFAR * landArea) / config.avgUnitSize)
       : null;
 
     const byHeight = maxFloors > 0

@@ -304,7 +304,9 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
 
     const devStandardFields = [
       'max_density_per_acre', 'max_units_per_acre', 'max_far',
+      'residential_far', 'nonresidential_far', 'density_method',
       'max_height_feet', 'max_building_height_ft', 'max_stories',
+      'height_buffer_ft', 'height_beyond_buffer_ft',
       'min_parking_per_unit', 'parking_per_unit',
       'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
       'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
@@ -343,11 +345,23 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
 
     const maxDensity = district ? parseFloat(district.max_density_per_acre || district.max_units_per_acre) || null : null;
     const maxFAR = district ? parseFloat(district.max_far) || null : null;
+    const residentialFAR = district ? parseFloat(district.residential_far) || null : null;
+    const nonresidentialFAR = district ? parseFloat(district.nonresidential_far) || null : null;
+    const densityMethod = district?.density_method || 'units_per_acre';
     const maxHeight = district ? parseFloat(district.max_height_feet || district.max_building_height_ft) || null : null;
     const maxStories = district ? parseInt(district.max_stories) || null : null;
     const minParking = district ? parseFloat(district.min_parking_per_unit || district.parking_per_unit) || null : null;
     const rawLotCoverage = district ? parseFloat(district.max_lot_coverage || district.max_lot_coverage_percent) || null : null;
     const maxLotCoverage = rawLotCoverage != null ? (rawLotCoverage <= 1 ? rawLotCoverage * 100 : rawLotCoverage) : null;
+
+    const dealResult = await pool.query('SELECT deal_type FROM deals WHERE id = $1', [dealId]);
+    const rawDealType = dealResult.rows[0]?.deal_type || '';
+    const dealTypeMap: Record<string, string> = {
+      'Rental': 'residential', 'BTS': 'residential', 'STR': 'residential', 'Flip': 'residential',
+      'Office': 'commercial', 'Retail': 'commercial', 'Industrial': 'commercial',
+      'Mixed-Use': 'mixed-use', 'Mixed Use': 'mixed-use',
+    };
+    const dealType = (dealTypeMap[rawDealType] || 'residential') as 'residential' | 'commercial' | 'mixed-use';
 
     const setbacks = {
       front: parseFloat(savedSetbacks.front) || parseFloat(district?.min_front_setback_ft || district?.setback_front_ft) || 25,
@@ -362,14 +376,26 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       zoningConstraints: {
         maxDensity,
         maxFAR,
+        residentialFAR,
+        nonresidentialFAR,
         maxHeight,
         maxStories,
         minParkingPerUnit: minParking,
         maxLotCoverage,
+        densityMethod: densityMethod as any,
       },
       propertyType: 'multifamily',
+      dealType,
     });
 
+    let appliedFAR = maxFAR;
+    if (residentialFAR != null || nonresidentialFAR != null) {
+      if (dealType === 'residential' && residentialFAR != null) {
+        appliedFAR = residentialFAR;
+      } else if (dealType === 'commercial' && nonresidentialFAR != null) {
+        appliedFAR = nonresidentialFAR;
+      }
+    }
     if (savedBuildableAreaSF > 0) {
       const lotCoverageFraction = maxLotCoverage != null ? maxLotCoverage / 100 : 1.0;
       const lotCoverageCap = parcelAreaSF * lotCoverageFraction;
@@ -377,8 +403,12 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       envelope.maxFootprint = Math.round(Math.min(savedBuildableAreaSF, lotCoverageCap));
       const maxFloors = envelope.maxFloors;
       const gbaByHeight = envelope.maxFootprint * maxFloors;
-      const gbaByFAR = maxFAR != null ? maxFAR * parcelAreaSF : Infinity;
+      const gbaByFAR = appliedFAR != null ? appliedFAR * parcelAreaSF : Infinity;
       envelope.maxGFA = Math.round(Math.min(gbaByHeight, gbaByFAR));
+
+      if (densityMethod === 'far_derived') {
+        envelope.maxCapacity = Math.floor((envelope.maxGFA * 0.85) / 850);
+      }
     }
 
     const scenarioMeta: Record<string, any> = {
@@ -497,8 +527,15 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       zoningStandards: {
         maxDensity,
         maxFAR,
+        residentialFAR,
+        nonresidentialFAR,
+        appliedFAR: appliedFAR ?? maxFAR,
+        densityMethod,
+        dealType,
         maxHeight,
         maxStories,
+        heightBufferFt: district ? parseInt(district.height_buffer_ft) || null : null,
+        heightBeyondBufferFt: district ? parseInt(district.height_beyond_buffer_ft) || null : null,
         minParking,
         maxLotCoverage,
         setbacks,

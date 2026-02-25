@@ -345,7 +345,9 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
 
     const devStandardFields = [
       'max_density_per_acre', 'max_units_per_acre', 'max_far',
+      'residential_far', 'nonresidential_far', 'density_method',
       'max_height_feet', 'max_building_height_ft', 'max_stories',
+      'height_buffer_ft', 'height_beyond_buffer_ft',
       'min_parking_per_unit', 'parking_per_unit',
       'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
       'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
