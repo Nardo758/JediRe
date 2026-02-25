@@ -14,11 +14,15 @@ export type FormulaId =
   | 'F01' | 'F02' | 'F03' | 'F04' | 'F05' | 'F06' | 'F07' | 'F08' | 'F09' | 'F10'
   | 'F11' | 'F12' | 'F13' | 'F14' | 'F15' | 'F16' | 'F17' | 'F18' | 'F19' | 'F20'
   | 'F21' | 'F22' | 'F23' | 'F24' | 'F25' | 'F26' | 'F27' | 'F28' | 'F29' | 'F30'
-  | 'F31' | 'F32' | 'F33' | 'F34' | 'F35';
+  | 'F31' | 'F32' | 'F33' | 'F34' | 'F35'
+  | 'F40' | 'F41' | 'F42' | 'F43' | 'F44' | 'F45' | 'F46' | 'F47' | 'F48' | 'F49'
+  | 'F50' | 'F51' | 'F52' | 'F53' | 'F54' | 'F55' | 'F56' | 'F57' | 'F58' | 'F59'
+  | 'F60' | 'F61' | 'F62' | 'F63' | 'F64' | 'F65' | 'F66';
 
 export type FormulaCategory =
   | 'Scoring' | 'Supply' | 'Demand' | 'Zoning' | 'Development'
-  | 'Financial' | 'Strategy' | 'Market' | 'Traffic' | 'Scenario' | 'Portfolio';
+  | 'Financial' | 'Strategy' | 'Market' | 'Traffic' | 'Scenario' | 'Portfolio'
+  | 'Capital Structure' | 'Rate Environment' | 'Equity Waterfall' | 'Debt Lifecycle';
 
 export type FormulaStatus = 'Built' | 'Partial' | 'New';
 
@@ -977,6 +981,598 @@ const F35_PortfolioPerformance: FormulaDefinition = {
 };
 
 // ============================================================================
+// Capital Structure Engine Formulas (F40-F66)
+// ============================================================================
+
+const F40_SeniorDebtSizing: FormulaDefinition = {
+  id: 'F40',
+  name: 'Senior Debt Sizing',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'min(max_LTC × cost, DSCR constraint, LTV constraint)',
+  inputKeys: ['total_cost', 'max_ltc', 'noi', 'dscr_min', 'property_value', 'max_ltv', 'interest_rate', 'amort_years'],
+  outputKey: 'max_senior_debt',
+  unit: '$',
+  updateTrigger: 'On stack or assumption change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_cost, max_ltc, noi, dscr_min, property_value, max_ltv, interest_rate, amort_years = 30 } = inputs;
+    const ltcConstraint = total_cost * max_ltc;
+    const ltvConstraint = property_value * max_ltv;
+    const monthlyRate = interest_rate / 100 / 12;
+    const n = amort_years * 12;
+    const maxPayment = noi / 12 / dscr_min;
+    const dscrConstraint = amort_years > 0
+      ? maxPayment * (Math.pow(1 + monthlyRate, n) - 1) / (monthlyRate * Math.pow(1 + monthlyRate, n))
+      : noi / (interest_rate / 100) / dscr_min;
+    return parseFloat(Math.min(ltcConstraint, ltvConstraint, dscrConstraint).toFixed(0));
+  },
+};
+
+const F41_MezzanineSizing: FormulaDefinition = {
+  id: 'F41',
+  name: 'Mezzanine Sizing',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'total_cost × max_combined_ltc - senior_debt',
+  inputKeys: ['total_cost', 'max_combined_ltc', 'senior_debt'],
+  outputKey: 'max_mezz',
+  unit: '$',
+  updateTrigger: 'On stack change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_cost, max_combined_ltc, senior_debt } = inputs;
+    return parseFloat(Math.max(0, total_cost * max_combined_ltc - senior_debt).toFixed(0));
+  },
+};
+
+const F42_TotalEquityRequired: FormulaDefinition = {
+  id: 'F42',
+  name: 'Total Equity Required',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'total_uses - total_debt',
+  inputKeys: ['total_uses', 'senior_debt', 'mezz_debt'],
+  outputKey: 'total_equity',
+  unit: '$',
+  updateTrigger: 'On stack change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_uses, senior_debt = 0, mezz_debt = 0 } = inputs;
+    return parseFloat(Math.max(0, total_uses - senior_debt - mezz_debt).toFixed(0));
+  },
+};
+
+const F43_LTV: FormulaDefinition = {
+  id: 'F43',
+  name: 'Loan-to-Value (Capital Structure)',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'total_debt / property_value × 100',
+  inputKeys: ['total_debt', 'property_value'],
+  outputKey: 'ltv',
+  unit: '%',
+  updateTrigger: 'On debt or value change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_debt, property_value } = inputs;
+    if (!property_value || property_value === 0) return 0;
+    return parseFloat(((total_debt / property_value) * 100).toFixed(2));
+  },
+};
+
+const F44_LTC: FormulaDefinition = {
+  id: 'F44',
+  name: 'Loan-to-Cost',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'total_debt / total_cost × 100',
+  inputKeys: ['total_debt', 'total_cost'],
+  outputKey: 'ltc',
+  unit: '%',
+  updateTrigger: 'On debt or cost change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_debt, total_cost } = inputs;
+    if (!total_cost || total_cost === 0) return 0;
+    return parseFloat(((total_debt / total_cost) * 100).toFixed(2));
+  },
+};
+
+const F45_WACC: FormulaDefinition = {
+  id: 'F45',
+  name: 'Weighted Avg Cost of Capital',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'Sum(layer_amount × layer_rate) / total_sources',
+  inputKeys: ['layers'],
+  outputKey: 'wacc',
+  unit: '%',
+  updateTrigger: 'On any layer change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { layers = [] } = inputs;
+    const totalSources = layers.reduce((sum: number, l: any) => sum + (l.amount || 0), 0);
+    if (totalSources === 0) return 0;
+    const weightedSum = layers.reduce((sum: number, l: any) => sum + (l.amount || 0) * (l.rate || 0), 0);
+    return parseFloat((weightedSum / totalSources).toFixed(2));
+  },
+};
+
+const F46_SourcesEqualsUses: FormulaDefinition = {
+  id: 'F46',
+  name: 'Sources = Uses Validation',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'total_sources - total_uses (must equal 0)',
+  inputKeys: ['total_sources', 'total_uses'],
+  outputKey: 'balance_check',
+  unit: '$/boolean',
+  updateTrigger: 'On any stack change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_sources, total_uses } = inputs;
+    const imbalance = total_sources - total_uses;
+    return { balanced: Math.abs(imbalance) < 1, imbalance: parseFloat(imbalance.toFixed(0)) };
+  },
+};
+
+const F47_CyclePhaseClassification: FormulaDefinition = {
+  id: 'F47',
+  name: 'Rate Cycle Phase',
+  modules: ['M11'],
+  category: 'Rate Environment',
+  description: 'Classify rate cycle from Fed direction, duration, yield curve slope',
+  inputKeys: ['fed_direction', 'duration_months', 'yield_curve_slope'],
+  outputKey: 'cycle_phase',
+  unit: 'Phase label',
+  updateTrigger: 'On rate data refresh',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { fed_direction, duration_months, yield_curve_slope } = inputs;
+    if (fed_direction === 'hiking') return duration_months > 12 ? 'peak' : 'tightening';
+    if (fed_direction === 'cutting') return duration_months > 12 ? 'trough' : 'easing';
+    return yield_curve_slope < 0 ? 'peak' : 'trough';
+  },
+};
+
+const F48_SpreadOverIndex: FormulaDefinition = {
+  id: 'F48',
+  name: 'All-In Rate from Spread',
+  modules: ['M11'],
+  category: 'Rate Environment',
+  description: 'index_rate + spread_bps / 100',
+  inputKeys: ['index_rate', 'spread_bps'],
+  outputKey: 'all_in_rate',
+  unit: '%',
+  updateTrigger: 'On rate or spread change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { index_rate, spread_bps } = inputs;
+    return parseFloat((index_rate + spread_bps / 100).toFixed(3));
+  },
+};
+
+const F49_LockVsFloat: FormulaDefinition = {
+  id: 'F49',
+  name: 'Lock vs Float NPV',
+  modules: ['M11'],
+  category: 'Rate Environment',
+  description: 'NPV comparison of locking rate now vs floating with expected rate trajectory',
+  inputKeys: ['loan_amount', 'lock_rate', 'expected_float_rates', 'term_months', 'discount_rate'],
+  outputKey: 'lock_vs_float',
+  unit: '$/recommendation',
+  updateTrigger: 'On rate forecast change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { loan_amount, lock_rate, expected_float_rates = [], term_months, discount_rate = 0.05 } = inputs;
+    const monthlyDiscount = discount_rate / 12;
+    let lockNPV = 0;
+    let floatNPV = 0;
+    for (let m = 0; m < term_months; m++) {
+      const df = 1 / Math.pow(1 + monthlyDiscount, m + 1);
+      const lockPayment = loan_amount * (lock_rate / 100 / 12);
+      const floatRate = expected_float_rates[Math.min(m, expected_float_rates.length - 1)] || lock_rate;
+      const floatPayment = loan_amount * (floatRate / 100 / 12);
+      lockNPV += lockPayment * df;
+      floatNPV += floatPayment * df;
+    }
+    return {
+      lock_npv: parseFloat(lockNPV.toFixed(0)),
+      float_npv: parseFloat(floatNPV.toFixed(0)),
+      savings: parseFloat((lockNPV - floatNPV).toFixed(0)),
+      recommendation: floatNPV < lockNPV ? 'float' : 'lock',
+    };
+  },
+};
+
+const F50_SpreadPercentile: FormulaDefinition = {
+  id: 'F50',
+  name: 'Spread vs Historical Percentile',
+  modules: ['M11'],
+  category: 'Rate Environment',
+  description: 'Where current spread sits relative to 5-year range',
+  inputKeys: ['current_spread', 'five_year_min', 'five_year_max'],
+  outputKey: 'spread_percentile',
+  unit: '% (0-100)',
+  updateTrigger: 'On spread data refresh',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { current_spread, five_year_min, five_year_max } = inputs;
+    const range = five_year_max - five_year_min;
+    if (range === 0) return 50;
+    return parseFloat(Math.max(0, Math.min(100, ((current_spread - five_year_min) / range) * 100)).toFixed(1));
+  },
+};
+
+const F51_RateSensitivity: FormulaDefinition = {
+  id: 'F51',
+  name: 'Rate Sensitivity',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'Impact of rate change on annual debt service over hold period',
+  inputKeys: ['loan_amount', 'rate_change_bps', 'hold_years'],
+  outputKey: 'rate_impact',
+  unit: '$',
+  updateTrigger: 'On rate or loan change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { loan_amount, rate_change_bps, hold_years } = inputs;
+    return parseFloat((loan_amount * (rate_change_bps / 10000) * hold_years).toFixed(0));
+  },
+};
+
+const F52_LPCapital: FormulaDefinition = {
+  id: 'F52',
+  name: 'LP Capital Contribution',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'total_equity × lp_percentage',
+  inputKeys: ['total_equity', 'lp_pct'],
+  outputKey: 'lp_capital',
+  unit: '$',
+  updateTrigger: 'On equity or split change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_equity, lp_pct } = inputs;
+    return parseFloat((total_equity * (lp_pct / 100)).toFixed(0));
+  },
+};
+
+const F53_GPCapital: FormulaDefinition = {
+  id: 'F53',
+  name: 'GP Co-Invest',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'total_equity × gp_percentage',
+  inputKeys: ['total_equity', 'gp_pct'],
+  outputKey: 'gp_capital',
+  unit: '$',
+  updateTrigger: 'On equity or split change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_equity, gp_pct } = inputs;
+    return parseFloat((total_equity * (gp_pct / 100)).toFixed(0));
+  },
+};
+
+const F54_PreferredReturn: FormulaDefinition = {
+  id: 'F54',
+  name: 'Preferred Return (Accrued)',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'lp_capital × pref_rate × years',
+  inputKeys: ['lp_capital', 'pref_rate', 'years'],
+  outputKey: 'pref_return',
+  unit: '$',
+  updateTrigger: 'On equity or pref change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { lp_capital, pref_rate, years } = inputs;
+    return parseFloat((lp_capital * (pref_rate / 100) * years).toFixed(0));
+  },
+};
+
+const F55_CatchUpDistribution: FormulaDefinition = {
+  id: 'F55',
+  name: 'GP Catch-Up',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'Catch-up to GP until GP share of cumulative = target split',
+  inputKeys: ['pref_distributed_to_lp', 'catch_up_pct', 'gp_target_split'],
+  outputKey: 'catch_up_amount',
+  unit: '$',
+  updateTrigger: 'On waterfall change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { pref_distributed_to_lp, catch_up_pct = 100, gp_target_split = 0.20 } = inputs;
+    // GP catch-up: bring GP to target_split of total distributed so far
+    const targetGP = pref_distributed_to_lp * gp_target_split / (1 - gp_target_split);
+    return parseFloat((targetGP * (catch_up_pct / 100)).toFixed(0));
+  },
+};
+
+const F56_TierDistribution: FormulaDefinition = {
+  id: 'F56',
+  name: 'Waterfall Tier Distribution',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'Split remaining proceeds by GP/LP split at each tier',
+  inputKeys: ['distributable_amount', 'gp_split', 'lp_split'],
+  outputKey: 'tier_distribution',
+  unit: '$/split',
+  updateTrigger: 'On waterfall change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { distributable_amount, gp_split, lp_split } = inputs;
+    return {
+      gp_distribution: parseFloat((distributable_amount * gp_split).toFixed(0)),
+      lp_distribution: parseFloat((distributable_amount * lp_split).toFixed(0)),
+      total: parseFloat(distributable_amount.toFixed(0)),
+    };
+  },
+};
+
+const F57_LPEquityMultiple: FormulaDefinition = {
+  id: 'F57',
+  name: 'LP Equity Multiple',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'total_lp_distributions / lp_capital',
+  inputKeys: ['total_lp_distributions', 'lp_capital'],
+  outputKey: 'lp_equity_multiple',
+  unit: 'x',
+  updateTrigger: 'On distribution change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { total_lp_distributions, lp_capital } = inputs;
+    if (!lp_capital || lp_capital === 0) return 0;
+    return parseFloat((total_lp_distributions / lp_capital).toFixed(2));
+  },
+};
+
+const F58_GPEffectiveShare: FormulaDefinition = {
+  id: 'F58',
+  name: 'GP Effective Percentage',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'gp_total_distributions / total_distributions',
+  inputKeys: ['gp_distributions', 'total_distributions'],
+  outputKey: 'gp_effective_share',
+  unit: '%',
+  updateTrigger: 'On distribution change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { gp_distributions, total_distributions } = inputs;
+    if (!total_distributions || total_distributions === 0) return 0;
+    return parseFloat((gp_distributions / total_distributions).toFixed(4));
+  },
+};
+
+const F59_WaterfallIRR: FormulaDefinition = {
+  id: 'F59',
+  name: 'Waterfall IRR (LP/GP)',
+  modules: ['M11'],
+  category: 'Equity Waterfall',
+  description: 'IRR from cash flow series for LP and GP separately',
+  inputKeys: ['initial_investment', 'cash_flows', 'terminal_value'],
+  outputKey: 'irr',
+  unit: '%',
+  updateTrigger: 'On distribution change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { initial_investment, cash_flows = [], terminal_value = 0 } = inputs;
+    // Newton-Raphson IRR approximation
+    const allFlows = [-initial_investment, ...cash_flows.slice(0, -1), (cash_flows[cash_flows.length - 1] || 0) + terminal_value];
+    let guess = 0.10;
+    for (let iter = 0; iter < 100; iter++) {
+      let npv = 0;
+      let dnpv = 0;
+      for (let t = 0; t < allFlows.length; t++) {
+        npv += allFlows[t] / Math.pow(1 + guess, t);
+        dnpv -= t * allFlows[t] / Math.pow(1 + guess, t + 1);
+      }
+      if (Math.abs(npv) < 0.01) break;
+      if (dnpv === 0) break;
+      guess = guess - npv / dnpv;
+    }
+    return parseFloat((guess * 100).toFixed(2));
+  },
+};
+
+const F60_ScenarioReturns: FormulaDefinition = {
+  id: 'F60',
+  name: 'Scenario Returns Bundle',
+  modules: ['M11'],
+  category: 'Scenario',
+  description: 'Calculate IRR, equity multiple, CoC, DSCR for a given capital scenario',
+  inputKeys: ['noi', 'total_equity', 'annual_cash_flow', 'exit_proceeds', 'loan_amount', 'interest_rate', 'amort_years', 'hold_years'],
+  outputKey: 'scenario_returns',
+  unit: 'Bundle',
+  updateTrigger: 'On scenario parameter change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { noi, total_equity, annual_cash_flow, exit_proceeds, loan_amount, interest_rate, amort_years = 30, hold_years = 5 } = inputs;
+    // DSCR
+    const monthlyRate = interest_rate / 100 / 12;
+    const n = amort_years * 12;
+    const monthlyPayment = n > 0 ? loan_amount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1) : loan_amount * monthlyRate;
+    const annualDS = monthlyPayment * 12;
+    const dscr = annualDS > 0 ? parseFloat((noi / annualDS).toFixed(2)) : 0;
+    // CoC
+    const cocReturn = total_equity > 0 ? parseFloat(((annual_cash_flow / total_equity) * 100).toFixed(2)) : 0;
+    // Equity Multiple
+    const totalDistributions = annual_cash_flow * hold_years + exit_proceeds;
+    const equityMultiple = total_equity > 0 ? parseFloat((totalDistributions / total_equity).toFixed(2)) : 0;
+    return { dscr, coc_return: cocReturn, equity_multiple: equityMultiple };
+  },
+};
+
+const F61_ScenarioDelta: FormulaDefinition = {
+  id: 'F61',
+  name: 'Scenario Delta',
+  modules: ['M11'],
+  category: 'Scenario',
+  description: 'Difference in IRR/EM/DSCR between two scenarios',
+  inputKeys: ['scenario_a_irr', 'scenario_b_irr', 'scenario_a_em', 'scenario_b_em', 'scenario_a_dscr', 'scenario_b_dscr'],
+  outputKey: 'scenario_delta',
+  unit: 'Spread',
+  updateTrigger: 'On scenario change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { scenario_a_irr, scenario_b_irr, scenario_a_em, scenario_b_em, scenario_a_dscr, scenario_b_dscr } = inputs;
+    return {
+      irr_delta: parseFloat((scenario_a_irr - scenario_b_irr).toFixed(2)),
+      em_delta: parseFloat((scenario_a_em - scenario_b_em).toFixed(2)),
+      dscr_delta: parseFloat((scenario_a_dscr - scenario_b_dscr).toFixed(2)),
+    };
+  },
+};
+
+const F62_RiskScore: FormulaDefinition = {
+  id: 'F62',
+  name: 'Capital Structure Risk Score',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'Composite risk from LTV, DSCR, rate type, term match',
+  inputKeys: ['ltv', 'dscr', 'rate_type', 'hold_years', 'loan_term_years', 'has_mezz'],
+  outputKey: 'capital_risk_score',
+  unit: 'Score (0-100)',
+  updateTrigger: 'On stack change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { ltv, dscr, rate_type, hold_years, loan_term_years, has_mezz } = inputs;
+    let risk = 0;
+    // LTV risk (0-30 pts)
+    if (ltv > 80) risk += 30;
+    else if (ltv > 75) risk += 20;
+    else if (ltv > 70) risk += 10;
+    // DSCR risk (0-25 pts)
+    if (dscr < 1.10) risk += 25;
+    else if (dscr < 1.20) risk += 18;
+    else if (dscr < 1.25) risk += 10;
+    // Rate type risk (0-15 pts)
+    if (rate_type === 'floating') risk += 15;
+    // Term mismatch risk (0-20 pts)
+    if (loan_term_years < hold_years) risk += 20;
+    else if (loan_term_years === hold_years) risk += 5;
+    // Mezz complexity (0-10 pts)
+    if (has_mezz) risk += 10;
+    return Math.min(100, risk);
+  },
+};
+
+const F63_BreakEvenOccupancy: FormulaDefinition = {
+  id: 'F63',
+  name: 'Break-Even Occupancy',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: '(opex + debt_service) / gross_potential_rent',
+  inputKeys: ['opex', 'annual_debt_service', 'gross_potential_rent'],
+  outputKey: 'breakeven_occupancy',
+  unit: '%',
+  updateTrigger: 'On financial change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { opex, annual_debt_service, gross_potential_rent } = inputs;
+    if (!gross_potential_rent || gross_potential_rent === 0) return 0;
+    return parseFloat(((opex + annual_debt_service) / gross_potential_rent * 100).toFixed(1));
+  },
+};
+
+const F64_DebtServiceCoverage: FormulaDefinition = {
+  id: 'F64',
+  name: 'Annual Debt Service (All Layers)',
+  modules: ['M11'],
+  category: 'Capital Structure',
+  description: 'Sum of annual payment across all debt layers (senior + mezz)',
+  inputKeys: ['debt_layers'],
+  outputKey: 'total_annual_debt_service',
+  unit: '$/yr',
+  updateTrigger: 'On stack change',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { debt_layers = [] } = inputs;
+    let totalDS = 0;
+    for (const layer of debt_layers) {
+      const { amount, rate, amort_years = 0 } = layer;
+      if (amort_years > 0) {
+        const mr = rate / 100 / 12;
+        const n = amort_years * 12;
+        totalDS += amount * (mr * Math.pow(1 + mr, n)) / (Math.pow(1 + mr, n) - 1) * 12;
+      } else {
+        // Interest-only
+        totalDS += amount * (rate / 100);
+      }
+    }
+    return parseFloat(totalDS.toFixed(0));
+  },
+};
+
+const F65_RefiProceeds: FormulaDefinition = {
+  id: 'F65',
+  name: 'Refinance Proceeds',
+  modules: ['M11'],
+  category: 'Debt Lifecycle',
+  description: 'stabilized_value × refi_ltv - existing_debt',
+  inputKeys: ['stabilized_value', 'refi_ltv', 'existing_debt'],
+  outputKey: 'refi_proceeds',
+  unit: '$',
+  updateTrigger: 'On refi analysis',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { stabilized_value, refi_ltv, existing_debt } = inputs;
+    return parseFloat((stabilized_value * refi_ltv - existing_debt).toFixed(0));
+  },
+};
+
+const F66_ConstructionDrawSchedule: FormulaDefinition = {
+  id: 'F66',
+  name: 'Construction Draw Progress',
+  modules: ['M11'],
+  category: 'Debt Lifecycle',
+  description: 'Cumulative draws / total commitment as construction progress %',
+  inputKeys: ['draws', 'total_commitment'],
+  outputKey: 'draw_progress',
+  unit: '%',
+  updateTrigger: 'On draw event',
+  agentRequired: false,
+  status: 'New',
+  calculate: (inputs) => {
+    const { draws = [], total_commitment } = inputs;
+    const totalDrawn = draws.reduce((sum: number, d: number) => sum + d, 0);
+    if (!total_commitment || total_commitment === 0) return 0;
+    return parseFloat(((totalDrawn / total_commitment) * 100).toFixed(1));
+  },
+};
+
+// ============================================================================
 // Formula Registry
 // ============================================================================
 
@@ -1016,6 +1612,34 @@ export const FORMULA_REGISTRY: Record<FormulaId, FormulaDefinition> = {
   F33: F33_NewsAdjustedVacancy,
   F34: F34_OptimalExitYear,
   F35: F35_PortfolioPerformance,
+  // Capital Structure Engine (F40-F66)
+  F40: F40_SeniorDebtSizing,
+  F41: F41_MezzanineSizing,
+  F42: F42_TotalEquityRequired,
+  F43: F43_LTV,
+  F44: F44_LTC,
+  F45: F45_WACC,
+  F46: F46_SourcesEqualsUses,
+  F47: F47_CyclePhaseClassification,
+  F48: F48_SpreadOverIndex,
+  F49: F49_LockVsFloat,
+  F50: F50_SpreadPercentile,
+  F51: F51_RateSensitivity,
+  F52: F52_LPCapital,
+  F53: F53_GPCapital,
+  F54: F54_PreferredReturn,
+  F55: F55_CatchUpDistribution,
+  F56: F56_TierDistribution,
+  F57: F57_LPEquityMultiple,
+  F58: F58_GPEffectiveShare,
+  F59: F59_WaterfallIRR,
+  F60: F60_ScenarioReturns,
+  F61: F61_ScenarioDelta,
+  F62: F62_RiskScore,
+  F63: F63_BreakEvenOccupancy,
+  F64: F64_DebtServiceCoverage,
+  F65: F65_RefiProceeds,
+  F66: F66_ConstructionDrawSchedule,
 };
 
 // ============================================================================

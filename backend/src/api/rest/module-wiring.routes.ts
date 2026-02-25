@@ -44,6 +44,12 @@ import {
   wirePortfolioPerformance,
   wireP2Pipeline,
   setupP2Subscriptions,
+  wireCapitalStack,
+  wireWaterfallCalculation,
+  wireScenarioComparison,
+  wireRateAnalysis,
+  wireCapitalStructurePipeline,
+  setupCapitalStructureSubscriptions,
 } from '../../services/module-wiring';
 import type { ModuleId, FormulaId } from '../../services/module-wiring';
 
@@ -576,7 +582,88 @@ router.post('/wire/subscriptions/all/setup', (_req: Request, res: Response) => {
   setupP0Subscriptions();
   setupP1Subscriptions();
   setupP2Subscriptions();
-  res.json({ status: 'All auto-cascade subscriptions initialized (P0 + P1 + P2)' });
+  setupCapitalStructureSubscriptions();
+  res.json({ status: 'All auto-cascade subscriptions initialized (P0 + P1 + P2 + CapStructure)' });
+});
+
+// ============================================================================
+// Capital Structure Engine Wiring Endpoints
+// ============================================================================
+
+/** POST /wiring/capital-structure/stack - Wire full capital stack */
+router.post('/wiring/capital-structure/stack', async (req: Request, res: Response) => {
+  try {
+    const { dealId, strategy, layers, uses, noi, propertyValue } = req.body;
+    if (!dealId || !strategy || !layers || !uses) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await wireCapitalStack(dealId, strategy, layers, uses, noi || 0, propertyValue || 0);
+    res.json({ status: 'Capital stack wired', dealId });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Capital stack wiring failed', detail: error.message });
+  }
+});
+
+/** POST /wiring/capital-structure/waterfall - Wire waterfall calculation */
+router.post('/wiring/capital-structure/waterfall', async (req: Request, res: Response) => {
+  try {
+    const { dealId, config, exitProceeds, holdYears, annualCashFlows } = req.body;
+    if (!dealId || !config || !exitProceeds) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await wireWaterfallCalculation(dealId, config, exitProceeds, holdYears || 5, annualCashFlows || []);
+    res.json({ status: 'Waterfall wired', dealId });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Waterfall wiring failed', detail: error.message });
+  }
+});
+
+/** POST /wiring/capital-structure/scenarios - Wire scenario comparison */
+router.post('/wiring/capital-structure/scenarios', async (req: Request, res: Response) => {
+  try {
+    const { dealId, scenarios, noi, propertyValue } = req.body;
+    if (!dealId || !scenarios) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await wireScenarioComparison(dealId, scenarios, noi || 0, propertyValue || 0);
+    res.json({ status: 'Scenarios compared', dealId });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Scenario comparison failed', detail: error.message });
+  }
+});
+
+/** POST /wiring/capital-structure/rate-analysis - Wire rate environment analysis */
+router.post('/wiring/capital-structure/rate-analysis', async (req: Request, res: Response) => {
+  try {
+    const { dealId, rateData } = req.body;
+    if (!dealId || !rateData) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    await wireRateAnalysis(dealId, rateData);
+    res.json({ status: 'Rate analysis wired', dealId });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Rate analysis failed', detail: error.message });
+  }
+});
+
+/** POST /wiring/capital-structure/pipeline - Wire full capital structure pipeline */
+router.post('/wiring/capital-structure/pipeline', async (req: Request, res: Response) => {
+  try {
+    const { dealId, ...params } = req.body;
+    if (!dealId) {
+      return res.status(400).json({ error: 'Missing required field: dealId' });
+    }
+    await wireCapitalStructurePipeline(dealId, params);
+    res.json({ status: 'Capital structure pipeline complete', dealId });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Capital structure pipeline failed', detail: error.message });
+  }
+});
+
+/** POST /wiring/capital-structure/subscriptions - Set up capital structure subscriptions */
+router.post('/wiring/capital-structure/subscriptions', (_req: Request, res: Response) => {
+  setupCapitalStructureSubscriptions();
+  res.json({ status: 'Capital structure subscriptions initialized' });
 });
 
 export default router;
