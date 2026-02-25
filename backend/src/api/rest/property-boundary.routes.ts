@@ -263,6 +263,7 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
     const boundary = boundaryResult.rows[0];
     const parcelAreaSF = parseFloat(boundary.parcel_area_sf) || (parseFloat(boundary.parcel_area) * 43560) || 0;
     const parcelAreaAcres = parseFloat(boundary.parcel_area) || (parcelAreaSF / 43560);
+    const savedBuildableAreaSF = parseFloat(boundary.buildable_area_sf) || 0;
     const savedSetbacks = boundary.setbacks || {};
 
     const confirmResult = await pool.query(
@@ -307,6 +308,7 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       'min_parking_per_unit', 'parking_per_unit',
       'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
       'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
+      'max_lot_coverage', 'max_lot_coverage_percent',
     ];
 
     if (district) {
@@ -367,6 +369,18 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       },
       propertyType: 'multifamily',
     });
+
+    if (savedBuildableAreaSF > 0) {
+      const lotCoverageFraction = maxLotCoverage != null ? maxLotCoverage / 100 : 1.0;
+      envelope.buildableArea = Math.round(savedBuildableAreaSF);
+      envelope.maxFootprint = Math.round(savedBuildableAreaSF * lotCoverageFraction);
+      const maxFloors = envelope.maxFloors;
+      let recalcGFA = envelope.maxFootprint * maxFloors;
+      if (maxFAR != null) {
+        recalcGFA = Math.min(recalcGFA, maxFAR * parcelAreaSF);
+      }
+      envelope.maxGFA = Math.round(recalcGFA);
+    }
 
     const scenarioMeta: Record<string, any> = {
       by_right: { timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95 },
