@@ -132,23 +132,31 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const densityUnits = zoningStandards.maxDensity != null
     ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres)
     : null;
-  const totalGFA = zoningStandards.maxFAR != null
-    ? Math.round(zoningStandards.maxFAR * parcelInfo.landAreaSF)
-    : null;
   const stories = zoningStandards.maxStories;
   const parkingSpaces = zoningStandards.minParking != null && densityUnits != null
     ? Math.ceil(zoningStandards.minParking * densityUnits)
     : null;
   const lotCoveragePct = zoningStandards.maxLotCoverage;
-  const maxFootprint = lotCoveragePct != null && envelope.buildableArea
-    ? Math.round(envelope.buildableArea * (lotCoveragePct / 100))
+  const lotCoverageCap = lotCoveragePct != null
+    ? Math.round(parcelInfo.landAreaSF * (lotCoveragePct / 100))
     : null;
+  const gbaByFAR = zoningStandards.maxFAR != null
+    ? Math.round(zoningStandards.maxFAR * parcelInfo.landAreaSF)
+    : null;
+  const gbaByHeight = envelope.maxFootprint != null && stories != null
+    ? envelope.maxFootprint * stories
+    : null;
+  const actualGBA = envelope.maxGFA;
+  const netLeasable = actualGBA ? Math.round(actualGBA * 0.85) : null;
+  const gbaGoverningFactor = gbaByFAR != null && gbaByHeight != null
+    ? (gbaByFAR <= gbaByHeight ? 'FAR' : 'Height + Coverage')
+    : gbaByFAR != null ? 'FAR' : gbaByHeight != null ? 'Height + Coverage' : null;
 
   const constraintEntries = [
     { label: 'Density', value: densityUnits, displayValue: densityUnits, unit: 'units', isLimiting: envelope.limitingFactor === 'density' },
-    { label: 'FAR', value: totalGFA, displayValue: totalGFA, unit: 'SF', isLimiting: envelope.limitingFactor === 'FAR' },
+    { label: 'FAR', value: gbaByFAR, displayValue: gbaByFAR, unit: 'SF', isLimiting: envelope.limitingFactor === 'FAR' },
     { label: 'Height', value: stories, displayValue: stories, unit: 'stories', isLimiting: envelope.limitingFactor === 'height' },
-    { label: 'Lot Coverage', value: maxFootprint, displayValue: maxFootprint, unit: 'SF footprint', isLimiting: false },
+    { label: 'Lot Coverage', value: lotCoveragePct, displayValue: lotCoveragePct, unit: '%', isLimiting: false },
     { label: 'Parking', value: parkingSpaces, displayValue: parkingSpaces, unit: 'spaces', isLimiting: envelope.limitingFactor === 'parking' },
   ].filter(c => c.value != null);
 
@@ -178,10 +186,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <p className="text-2xl font-bold text-gray-900">{formatNumber(densityUnits)}</p>
           <p className="text-xs text-gray-400 mt-1">{zoningStandards.maxDensity} units/acre</p>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total GFA</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(totalGFA)}</p>
-          <p className="text-xs text-gray-400 mt-1">FAR {zoningStandards.maxFAR}</p>
+        <div className="bg-white rounded-lg border border-blue-300 p-4 text-center">
+          <p className="text-xs text-blue-600 uppercase tracking-wide mb-1">Gross Buildable Area</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(actualGBA)} <span className="text-sm font-normal text-gray-500">SF</span></p>
+          <p className="text-xs text-gray-400 mt-1">{gbaGoverningFactor ? `Governed by ${gbaGoverningFactor}` : '--'}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Stories</p>
@@ -226,6 +234,55 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         </div>
       )}
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">GBA Breakdown</h3>
+          <p className="text-xs text-gray-500 mt-0.5">How Gross Buildable Area is calculated</p>
+        </div>
+        <div className="p-5 space-y-2 text-sm">
+          <div className="flex justify-between py-1.5 border-b border-gray-100">
+            <span className="text-gray-600">Lot Area</span>
+            <span className="font-medium text-gray-900">{formatNumber(parcelInfo.landAreaSF)} SF</span>
+          </div>
+          <div className="flex justify-between py-1.5 border-b border-gray-100">
+            <span className="text-gray-600">After Setbacks</span>
+            <span className="font-medium text-gray-900">{formatNumber(envelope.buildableArea)} SF</span>
+          </div>
+          {lotCoverageCap != null && (
+            <div className="flex justify-between py-1.5 border-b border-gray-100">
+              <span className="text-gray-600">Lot Coverage Cap ({lotCoveragePct}%)</span>
+              <span className="font-medium text-gray-900">{formatNumber(lotCoverageCap)} SF</span>
+            </div>
+          )}
+          <div className="flex justify-between py-1.5 border-b border-gray-100">
+            <span className="text-gray-600 font-medium">Max Footprint</span>
+            <span className="font-semibold text-gray-900">{formatNumber(envelope.maxFootprint)} SF</span>
+          </div>
+          {gbaByHeight != null && (
+            <div className="flex justify-between py-1.5 border-b border-gray-100">
+              <span className="text-gray-600">GBA by Height ({stories} stories)</span>
+              <span className="font-medium text-gray-900">{formatNumber(gbaByHeight)} SF</span>
+            </div>
+          )}
+          {gbaByFAR != null && (
+            <div className="flex justify-between py-1.5 border-b border-gray-100">
+              <span className="text-gray-600">GBA by FAR ({zoningStandards.maxFAR})</span>
+              <span className="font-medium text-gray-900">{formatNumber(gbaByFAR)} SF</span>
+            </div>
+          )}
+          <div className="flex justify-between py-2 bg-blue-50 rounded px-3 -mx-1">
+            <span className="text-blue-800 font-semibold">Actual GBA</span>
+            <span className="font-bold text-blue-900">{formatNumber(actualGBA)} SF</span>
+          </div>
+          {netLeasable != null && (
+            <div className="flex justify-between py-1.5 text-gray-500">
+              <span>Net Leasable (~85% efficiency)</span>
+              <span className="font-medium">{formatNumber(netLeasable)} SF</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">

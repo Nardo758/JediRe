@@ -372,14 +372,13 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
 
     if (savedBuildableAreaSF > 0) {
       const lotCoverageFraction = maxLotCoverage != null ? maxLotCoverage / 100 : 1.0;
+      const lotCoverageCap = parcelAreaSF * lotCoverageFraction;
       envelope.buildableArea = Math.round(savedBuildableAreaSF);
-      envelope.maxFootprint = Math.round(savedBuildableAreaSF * lotCoverageFraction);
+      envelope.maxFootprint = Math.round(Math.min(savedBuildableAreaSF, lotCoverageCap));
       const maxFloors = envelope.maxFloors;
-      let recalcGFA = envelope.maxFootprint * maxFloors;
-      if (maxFAR != null) {
-        recalcGFA = Math.min(recalcGFA, maxFAR * parcelAreaSF);
-      }
-      envelope.maxGFA = Math.round(recalcGFA);
+      const gbaByHeight = envelope.maxFootprint * maxFloors;
+      const gbaByFAR = maxFAR != null ? maxFAR * parcelAreaSF : Infinity;
+      envelope.maxGFA = Math.round(Math.min(gbaByHeight, gbaByFAR));
     }
 
     const scenarioMeta: Record<string, any> = {

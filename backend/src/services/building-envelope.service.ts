@@ -168,7 +168,8 @@ export class BuildingEnvelopeService {
     const lotCoverageFraction = zoningConstraints.maxLotCoverage != null
       ? zoningConstraints.maxLotCoverage / 100
       : 1.0;
-    const maxFootprint = buildableArea * lotCoverageFraction;
+    const lotCoverageCap = landArea * lotCoverageFraction;
+    const maxFootprint = Math.min(buildableArea, lotCoverageCap);
 
     const maxFloors = this.calculateMaxFloors(zoningConstraints, config.floorHeight);
 
