@@ -32,11 +32,11 @@ interface Scenario {
   scenarioType: string;
   label: string;
   maxUnits: number;
-  maxHeight: number;
-  maxFar: number;
-  maxGfa: number;
-  parkingRequired: string;
-  openSpace: number;
+  totalGFA: number;
+  stories: number | null;
+  heightFt: number | null;
+  parkingRequired: number;
+  parkingRatio: number | null;
   timeline: string;
   cost: string;
   riskLevel: string;
@@ -275,8 +275,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             <tbody>
               {[
                 { label: 'Max Units', key: 'maxUnits', format: (v: number) => formatNumber(v) },
-                { label: 'Max GFA', key: 'maxGfa', format: (v: number) => `${formatNumber(v)} SF` },
-                { label: 'Parking', key: 'parkingRequired', format: (v: string) => v },
+                { label: 'Total GFA', key: 'totalGFA', format: (v: number) => `${formatNumber(v)} SF` },
+                { label: 'Stories', key: 'stories', format: (v: number) => `${v}` },
+                { label: 'Height Limit', key: 'heightFt', format: (v: number) => `${v} ft` },
+                { label: 'Parking', key: 'parkingRequired', format: (v: number) => `${formatNumber(v)} spaces` },
                 { label: 'Timeline', key: 'timeline', format: (v: string) => v },
                 { label: 'Cost', key: 'cost', format: (v: string) => v },
                 { label: 'Risk', key: 'riskLevel', format: (v: string) => v.charAt(0).toUpperCase() + v.slice(1) },

@@ -367,56 +367,51 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       propertyType: 'multifamily',
     });
 
-    const varianceEnvelope = envelopeService.calculateEnvelope({
-      landArea: parcelAreaSF,
-      setbacks,
-      zoningConstraints: {
-        maxDensity: maxDensity ? maxDensity * 1.2 : null,
-        maxFAR: maxFAR ? maxFAR * 1.15 : null,
-        maxHeight: maxHeight ? maxHeight + 10 : null,
-        maxStories: maxStories ? maxStories + 1 : null,
-        minParkingPerUnit: minParking ? minParking * 0.85 : null,
-        maxLotCoverage,
+    const scenarioConfigs: Record<string, any> = {
+      by_right: {
+        densityMult: 1.0, farMult: 1.0, heightAdd: 0, storiesAdd: 0, parkingMult: 1.0,
+        timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95,
       },
-      propertyType: 'multifamily',
-    });
-
-    const rezoneEnvelope = envelopeService.calculateEnvelope({
-      landArea: parcelAreaSF,
-      setbacks,
-      zoningConstraints: {
-        maxDensity: maxDensity ? maxDensity * 1.6 : null,
-        maxFAR: maxFAR ? maxFAR * 1.5 : null,
-        maxHeight: maxHeight ? maxHeight * 1.5 : null,
-        maxStories: maxStories ? maxStories + 3 : null,
-        minParkingPerUnit: minParking ? minParking * 0.7 : null,
-        maxLotCoverage,
+      variance: {
+        densityMult: 1.2, farMult: 1.15, heightAdd: 10, storiesAdd: 1, parkingMult: 0.85,
+        timeline: '9-18 months', cost: '$100K-$350K', riskLevel: 'medium', successPercent: 65,
       },
-      propertyType: 'multifamily',
-    });
+      rezone: {
+        densityMult: 1.6, farMult: 1.5, heightAdd: maxHeight ? maxHeight * 0.5 : 0, storiesAdd: 3, parkingMult: 0.7,
+        timeline: '12-36 months', cost: '$200K-$750K', riskLevel: 'high', successPercent: 35,
+      },
+    };
 
-    const buildScenario = (env: any, type: string) => {
-      const meta: Record<string, any> = {
-        by_right: { timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95 },
-        variance: { timeline: '9-18 months', cost: '$100K-$350K', riskLevel: 'medium', successPercent: 65 },
-        rezone: { timeline: '12-36 months', cost: '$200K-$750K', riskLevel: 'high', successPercent: 35 },
-      };
-      const m = meta[type] || meta.by_right;
-      const estValue = Math.round(env.maxCapacity * 250000);
-      const byRightValue = Math.round(envelope.maxCapacity * 250000);
+    const byRightUnits = maxDensity ? Math.floor(maxDensity * parcelAreaAcres) : 0;
+
+    const buildScenario = (type: string) => {
+      const cfg = scenarioConfigs[type];
+      const sDensity = maxDensity ? maxDensity * cfg.densityMult : null;
+      const sFAR = maxFAR ? maxFAR * cfg.farMult : null;
+      const sHeight = maxHeight ? maxHeight + cfg.heightAdd : null;
+      const sStories = maxStories ? maxStories + cfg.storiesAdd : null;
+      const sParkingRatio = minParking ? minParking * cfg.parkingMult : null;
+
+      const units = sDensity ? Math.floor(sDensity * parcelAreaAcres) : 0;
+      const totalGFA = sFAR ? Math.round(sFAR * parcelAreaSF) : 0;
+      const parkingSpaces = sParkingRatio && units ? Math.ceil(sParkingRatio * units) : 0;
+
+      const estValue = Math.round(units * 250000);
+      const byRightValue = Math.round(byRightUnits * 250000);
+
       return {
         scenarioType: type,
         label: type === 'by_right' ? 'Current Zoning' : type === 'variance' ? 'Variance Path' : 'Rezone Path',
-        maxUnits: env.maxCapacity,
-        maxHeight: env.maxFloors * 10,
-        maxFar: maxFAR || 0,
-        maxGfa: Math.round(env.maxGFA),
-        parkingRequired: `${env.parkingRequired} spaces`,
-        openSpace: Math.round(parcelAreaSF * 0.15),
-        timeline: m.timeline,
-        cost: m.cost,
-        riskLevel: m.riskLevel,
-        successPercent: m.successPercent,
+        maxUnits: units,
+        totalGFA,
+        stories: sStories,
+        heightFt: sHeight ? Math.round(sHeight) : null,
+        parkingRequired: parkingSpaces,
+        parkingRatio: sParkingRatio ? parseFloat(sParkingRatio.toFixed(2)) : null,
+        timeline: cfg.timeline,
+        cost: cfg.cost,
+        riskLevel: cfg.riskLevel,
+        successPercent: cfg.successPercent,
         estimatedValue: estValue,
         deltaVsByRight: type === 'by_right' ? 0 : estValue - byRightValue,
         deltaPercent: type === 'by_right' ? 0 : byRightValue > 0 ? Math.round(((estValue - byRightValue) / byRightValue) * 100) : 0,
@@ -453,9 +448,9 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
         setbacks,
       },
       scenarios: [
-        buildScenario(envelope, 'by_right'),
-        buildScenario(varianceEnvelope, 'variance'),
-        buildScenario(rezoneEnvelope, 'rezone'),
+        buildScenario('by_right'),
+        buildScenario('variance'),
+        buildScenario('rezone'),
       ],
     });
   } catch (error: any) {
