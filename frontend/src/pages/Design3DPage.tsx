@@ -10,7 +10,12 @@ import { Design3DError } from '../components/fallbacks/Design3DError';
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { selectedDeal: currentDeal, fetchDealById } = useDealStore();
+  const { 
+    selectedDeal: currentDeal, 
+    fetchDealById,
+    isLoading: dealLoading,
+    error: dealError 
+  } = useDealStore();
   
   const [design3D, setDesign3D] = useState<Design3D | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -149,7 +154,7 @@ export const Design3DPage: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || dealLoading) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <div className="text-center">
@@ -160,13 +165,15 @@ export const Design3DPage: React.FC = () => {
     );
   }
 
-  if (error) {
+  // Show store error or local error
+  const displayError = dealError || error;
+  if (displayError) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Deal</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4">{displayError}</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => window.location.reload()}
