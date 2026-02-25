@@ -153,9 +153,9 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   }, [isResizing, minContentWidth, maxContentWidth]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col overflow-x-hidden max-w-full">
       <HorizontalBar onNewMap={onNewMap} />
-      <div className="flex-1 flex relative min-h-0">
+      <div className="flex-1 flex relative min-h-0 overflow-x-hidden max-w-full">
       {/* Panel 1: Views Sidebar */}
       {hasViewsPanel && showViews && views && onViewChange && activeView && (
         <aside className="w-20 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
