@@ -354,12 +354,14 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
     const rawLotCoverage = district ? parseFloat(district.max_lot_coverage || district.max_lot_coverage_percent) || null : null;
     const maxLotCoverage = rawLotCoverage != null ? (rawLotCoverage <= 1 ? rawLotCoverage * 100 : rawLotCoverage) : null;
 
-    const dealResult = await pool.query('SELECT deal_type FROM deals WHERE id = $1', [dealId]);
-    const rawDealType = dealResult.rows[0]?.deal_type || '';
+    const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
+    const rawDealType = dealResult.rows[0]?.project_type || '';
     const dealTypeMap: Record<string, string> = {
+      'multifamily': 'residential', 'residential': 'residential', 'single_family': 'residential',
       'Rental': 'residential', 'BTS': 'residential', 'STR': 'residential', 'Flip': 'residential',
+      'office': 'commercial', 'retail': 'commercial', 'industrial': 'commercial',
       'Office': 'commercial', 'Retail': 'commercial', 'Industrial': 'commercial',
-      'Mixed-Use': 'mixed-use', 'Mixed Use': 'mixed-use',
+      'mixed_use': 'mixed-use', 'mixed-use': 'mixed-use', 'Mixed-Use': 'mixed-use', 'Mixed Use': 'mixed-use',
     };
     const dealType = (dealTypeMap[rawDealType] || 'residential') as 'residential' | 'commercial' | 'mixed-use';
 
