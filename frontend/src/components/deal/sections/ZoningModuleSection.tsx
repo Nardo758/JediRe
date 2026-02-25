@@ -61,77 +61,36 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     }
 
     try {
-      // Check if boundary exists
-      console.log('[ZoningModule] Fetching boundary for deal:', resolvedDealId);
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
       
-      // Check multiple ways - sometimes the response structure varies
       const hasBoundary = !!(
         boundaryRes.data?.id || 
         boundaryRes.data?.boundary_geojson ||
         (boundaryRes.data && Object.keys(boundaryRes.data).length > 0)
       );
-      
-      console.log('[ZoningModule] Boundary check:', { 
-        hasBoundary, 
-        hasId: !!boundaryRes.data?.id,
-        hasGeoJSON: !!boundaryRes.data?.boundary_geojson,
-        boundaryId: boundaryRes.data?.id,
-        dealId: boundaryRes.data?.deal_id,
-        dataKeys: boundaryRes.data ? Object.keys(boundaryRes.data) : [],
-        fullResponse: boundaryRes.data 
-      });
       setBoundaryComplete(hasBoundary);
 
-      // Check if zoning confirmed
       let isConfirmed = false;
       try {
         const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
         isConfirmed = !!zoningRes.data?.confirmed_at;
-        console.log('[ZoningModule] Zoning confirmation check:', { isConfirmed, zoningData: zoningRes.data });
-      } catch (err) {
-        console.log('[ZoningModule] No zoning confirmation found (expected for new deals)');
+      } catch {
       }
 
-      // If boundary already exists, treat zoning as confirmed so all tabs are accessible
-      // The confirm step is for new deals; existing deals with boundaries should have full access
       if (!isConfirmed && hasBoundary) {
-        console.log('[ZoningModule] Boundary exists, unlocking all tabs');
         isConfirmed = true;
       }
 
       setZoningConfirmed(isConfirmed);
-      console.log('[ZoningModule] Final state:', { boundaryComplete: hasBoundary, zoningConfirmed: isConfirmed });
-
-      // Set initial tab based on completion
-      if (isConfirmed) {
-        setActiveTab('boundary');
-      } else {
-        setActiveTab('boundary');
-      }
+      setActiveTab('boundary');
     } catch (error: any) {
-      console.error('[ZoningModule] Error checking completion status:', {
-        error,
-        status: error?.response?.status,
-        statusText: error?.response?.statusText,
-        data: error?.response?.data,
-        message: error?.message,
-        dealId: resolvedDealId
-      });
-      
-      // If boundary API returns 404, it means no boundary exists yet
       if (error?.response?.status === 404) {
-        console.log('[ZoningModule] No boundary found (404), starting at Step 1');
         setStatusMessage('Draw property boundary to unlock zoning analysis');
-        setBoundaryComplete(false);
-        setZoningConfirmed(false);
       } else {
-        // Other errors (401, 500, network, etc.)
-        console.error('[ZoningModule] Unexpected error:', error?.response?.status || 'network error');
         setStatusMessage(`Error loading boundary data: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
-        setBoundaryComplete(false);
-        setZoningConfirmed(false);
       }
+      setBoundaryComplete(false);
+      setZoningConfirmed(false);
       setActiveTab('boundary');
     } finally {
       setLoading(false);
@@ -139,11 +98,9 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   };
 
   const handleBoundaryComplete = () => {
-    console.log('[ZoningModule] handleBoundaryComplete called');
     setBoundaryComplete(true);
-    setStatusMessage('Boundary complete! Confirm zoning to unlock analysis');
+    setStatusMessage(null);
     setActiveTab('confirm');
-    // Force re-check of completion status to ensure unlock happens
     checkCompletionStatus();
     if (onUpdate) onUpdate();
   };
@@ -206,10 +163,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           {/* Refresh button - useful if tabs don't unlock automatically */}
           {!zoningConfirmed && (
             <button
-              onClick={() => {
-                console.log('[ZoningModule] Manual refresh triggered');
-                checkCompletionStatus();
-              }}
+              onClick={() => checkCompletionStatus()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
               title="Refresh tab status"
             >
