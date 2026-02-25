@@ -36,7 +36,6 @@ import { FilesSection } from '../components/deal/sections/FilesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
-import { ZoningEntitlementsSection } from '../components/deal/sections/ZoningEntitlementsSection';
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';

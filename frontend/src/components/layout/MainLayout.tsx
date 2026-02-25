@@ -215,14 +215,6 @@ export const MainLayout: React.FC = () => {
                     Intelligence
                   </h3>
 
-                  {/* ZONING & ENTITLEMENTS */}
-                  <SidebarItem
-                    icon="🏛️"
-                    label="Zoning & Entitlements"
-                    path="/zoning-entitlements"
-                    isActive={isActivePrefix('/zoning-entitlements')}
-                  />
-
                   {/* MARKET INTELLIGENCE */}
                   <SidebarItem
                     icon="🧠"

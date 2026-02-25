@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
 import type {
   Entitlement,
   RegulatoryAlert,
@@ -71,11 +70,6 @@ function SyncLabel() {
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
         Auto-synced from Zoning Module
       </span>
-      <Link href="/zoning-entitlements">
-        <a className="text-[10px] text-purple-600 hover:text-purple-800 font-medium">
-          Open Module →
-        </a>
-      </Link>
     </div>
   );
 }
@@ -197,11 +191,7 @@ export const ZoningEntitlementsSection: React.FC<ZoningEntitlementsSectionProps>
         <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
           <span>🏛️</span> Section 3: Regulatory & Land Use
         </h3>
-        <Link href="/zoning-entitlements">
-          <a className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1">
-            Full Zoning Module →
-          </a>
-        </Link>
+        <span className="text-xs text-gray-400 italic">Property & Zoning tab</span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
