@@ -139,7 +139,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
             <h2 className="text-lg font-bold text-gray-900">Property & Zoning Intelligence</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Boundary, development capacity, and entitlement tracking
-              {deal?.strategy && <span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span>}
+              {deal?.strategy && <><span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span></>}
             </p>
           </div>
         </div>
