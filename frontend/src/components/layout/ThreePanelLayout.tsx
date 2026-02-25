@@ -153,9 +153,9 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   }, [isResizing, minContentWidth, maxContentWidth]);
 
   return (
-    <div className="h-full flex flex-col overflow-x-hidden max-w-full">
+    <div className="h-full flex flex-col overflow-hidden">
       <HorizontalBar onNewMap={onNewMap} />
-      <div className="flex-1 flex relative min-h-0 overflow-x-hidden max-w-full">
+      <div className="flex-1 flex relative min-h-0 min-w-0 overflow-hidden">
       {/* Panel 1: Views Sidebar */}
       {hasViewsPanel && showViews && views && onViewChange && activeView && (
         <aside className="w-20 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
@@ -191,7 +191,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         <>
           <div
             ref={contentRef}
-            className={`bg-gray-50 overflow-y-auto overflow-x-hidden border-r border-gray-200 ${
+            className={`bg-gray-50 overflow-y-auto overflow-x-hidden min-w-0 border-r border-gray-200 ${
               isContentMaximized || !showMap ? 'flex-1' : 'flex-shrink-0'
             }`}
             style={!isContentMaximized && showMap ? { width: `${contentWidth}px` } : undefined}
@@ -236,7 +236,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
 
       {/* Panel 3: Map */}
       {showMap && hasMap && (
-        <div className="flex-1 relative">
+        <div className="flex-1 min-w-0 relative">
           {renderMap!()}
         </div>
       )}

@@ -121,7 +121,7 @@ export const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-x-hidden max-w-full">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
       <MapTabsBar
         activeConfigId={activeConfig?.id}
         onConfigSelect={handleConfigSelect}
@@ -316,7 +316,7 @@ export const MainLayout: React.FC = () => {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 pr-10 max-w-full">
+        <main className="flex-1 min-w-0 overflow-y-auto p-6 pr-10">
           <Outlet context={{ layers, setLayers }} />
         </main>
       </div>
