@@ -106,6 +106,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       try {
         const parcelRes = await apiClient.get('/api/v1/zoning/parcel-lookup', {
           params: { lat, lng, address: deal?.address || boundary.address || '' },
+          timeout: 90000,
         });
         if (parcelRes.data?.found) {
           parcelZoning = parcelRes.data;

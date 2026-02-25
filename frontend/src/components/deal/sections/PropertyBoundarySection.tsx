@@ -93,6 +93,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'database' | 'ai_retrieved' | null>(null);
+  const [parcelSource, setParcelSource] = useState<{ url: string | null; name: string; confidence: number } | null>(null);
 
   // Layer visibility toggles
   const [layers, setLayers] = useState({
@@ -193,12 +194,17 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 const parcelParams: Record<string, string> = {};
                 if (lat && lng) { parcelParams.lat = String(lat); parcelParams.lng = String(lng); }
                 if (dealAddress) parcelParams.address = dealAddress;
-                const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams }) as any;
+                const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams, timeout: 90000 }) as any;
                 if (parcelData?.found && parcelData.zoningCode) {
                   code = parcelData.zoningCode;
                   description = parcelData.zoningName || parcelData.zoningCode;
                   if (parcelData.municipality) muniName = parcelData.municipality;
                   if (parcelData.state) stName = parcelData.state;
+                  setParcelSource({
+                    url: parcelData.sourceUrl || null,
+                    name: parcelData.sourceName || 'County Property Records',
+                    confidence: parcelData.confidence || 0.85,
+                  });
                 }
               } catch (parcelErr) {
                 console.warn('Parcel lookup failed, falling back to district list:', parcelErr);
@@ -536,12 +542,17 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           parcelParams.lng = String(boundary.centroid[0]);
         }
         if (deal?.address) parcelParams.address = deal.address;
-        const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams }) as any;
+        const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams, timeout: 90000 }) as any;
         if (parcelData?.found && parcelData.zoningCode) {
           code = parcelData.zoningCode;
           description = parcelData.zoningName || parcelData.zoningCode;
           if (parcelData.municipality) muniName = parcelData.municipality;
           if (parcelData.state) stName = parcelData.state;
+          setParcelSource({
+            url: parcelData.sourceUrl || null,
+            name: parcelData.sourceName || 'County Property Records',
+            confidence: parcelData.confidence || 0.85,
+          });
         }
       } catch (parcelErr) {
         console.warn('Parcel lookup failed, falling back to district list:', parcelErr);
@@ -993,7 +1004,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   {/* Source Info */}
                   {zoningDetail.source_url && (
                     <p className="text-xs text-gray-400 mt-2">
-                      Source: <a href={zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Municipal Code</a>
+                      Definition: <a href={zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Municipal Code</a>
                       {zoningDetail.last_verified_at && ` (Verified: ${new Date(zoningDetail.last_verified_at).toLocaleDateString()})`}
                     </p>
                   )}
@@ -1095,13 +1106,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 <p className="text-sm text-gray-400 mb-2">{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
               )}
 
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 mt-2">Zoning Code</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 mt-2">Zoning Designation</p>
               {zoningLoading ? (
                 <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
               ) : zoningInfo ? (
                 <div>
                   <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
                   <p className="text-sm text-gray-600">{zoningInfo.description}</p>
+                  {parcelSource && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      {parcelSource.url ? (
+                        <a href={parcelSource.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{parcelSource.name}</a>
+                      ) : (
+                        <span>{parcelSource.name}</span>
+                      )}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-gray-400">{hasBoundary ? 'No zoning data available' : 'Draw boundary to lookup'}</p>
