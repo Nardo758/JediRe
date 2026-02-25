@@ -203,6 +203,7 @@ app.use('/api/v1', requireAuth, developmentScenariosRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
+app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
