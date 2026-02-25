@@ -73,14 +73,34 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         return;
       }
 
-      const centroidStr = typeof boundary.centroid === 'string' ? boundary.centroid : `(${boundary.centroid[0]},${boundary.centroid[1]})`;
-      const match = centroidStr.match(/\(([^,]+),([^)]+)\)/);
-      if (!match) {
+      let lng: number, lat: number;
+      const c = boundary.centroid;
+      if (typeof c === 'object' && c !== null && 'x' in c && 'y' in c) {
+        lng = parseFloat(c.x);
+        lat = parseFloat(c.y);
+      } else if (typeof c === 'string') {
+        const match = c.match(/\(([^,]+),([^)]+)\)/);
+        if (!match) {
+          setError('Invalid boundary centroid data. Please redraw the boundary.');
+          setLoading(false);
+          return;
+        }
+        lng = parseFloat(match[1]);
+        lat = parseFloat(match[2]);
+      } else if (Array.isArray(c) && c.length >= 2) {
+        lng = parseFloat(c[0]);
+        lat = parseFloat(c[1]);
+      } else {
         setError('Invalid boundary centroid data. Please redraw the boundary.');
         setLoading(false);
         return;
       }
-      const [lng, lat] = [parseFloat(match[1]), parseFloat(match[2])];
+
+      if (isNaN(lng) || isNaN(lat)) {
+        setError('Invalid boundary coordinates. Please redraw the boundary.');
+        setLoading(false);
+        return;
+      }
 
       const reverseGeoRes = await apiClient.get('/api/v1/reverse-geocode', {
         params: { lat, lng },
