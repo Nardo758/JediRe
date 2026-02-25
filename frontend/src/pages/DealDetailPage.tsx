@@ -12,6 +12,7 @@ import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
 import { useDealStore } from '../stores/dealStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
+import { HorizontalBar } from '../components/map/HorizontalBar';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
@@ -326,6 +327,7 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6 -mr-10">
+        <HorizontalBar />
         <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
           <button
             className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1 transition-colors"
