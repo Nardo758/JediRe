@@ -63,11 +63,21 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       // Check if boundary exists
       console.log('[ZoningModule] Fetching boundary for deal:', resolvedDealId);
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
-      const hasBoundary = !!boundaryRes.data?.id;
+      
+      // Check multiple ways - sometimes the response structure varies
+      const hasBoundary = !!(
+        boundaryRes.data?.id || 
+        boundaryRes.data?.boundary_geojson ||
+        (boundaryRes.data && Object.keys(boundaryRes.data).length > 0)
+      );
+      
       console.log('[ZoningModule] Boundary check:', { 
         hasBoundary, 
+        hasId: !!boundaryRes.data?.id,
+        hasGeoJSON: !!boundaryRes.data?.boundary_geojson,
         boundaryId: boundaryRes.data?.id,
         dealId: boundaryRes.data?.deal_id,
+        dataKeys: boundaryRes.data ? Object.keys(boundaryRes.data) : [],
         fullResponse: boundaryRes.data 
       });
       setBoundaryComplete(hasBoundary);
@@ -128,9 +138,12 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   };
 
   const handleBoundaryComplete = () => {
+    console.log('[ZoningModule] handleBoundaryComplete called');
     setBoundaryComplete(true);
     setStatusMessage('Boundary complete! Confirm zoning to unlock analysis');
     setActiveTab('confirm');
+    // Force re-check of completion status to ensure unlock happens
+    checkCompletionStatus();
     if (onUpdate) onUpdate();
   };
 
