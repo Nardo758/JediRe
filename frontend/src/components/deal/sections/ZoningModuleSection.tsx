@@ -148,7 +148,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   }
 
   return (
-    <div className="relative flex flex-col h-full -m-6">
+    <div className="relative flex flex-col h-full -m-6 -mr-10">
       <div className="bg-white border-b border-gray-200 px-6 pt-4">
         <div className="flex items-center justify-between mb-3">
           <div>

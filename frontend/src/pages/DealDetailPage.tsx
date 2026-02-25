@@ -325,7 +325,7 @@ const DealDetailPage: React.FC = () => {
 
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div className="h-full flex flex-col bg-slate-50">
+      <div className="h-full flex flex-col bg-slate-50 -m-6 -mr-10">
         <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
           <button
             className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1 transition-colors"

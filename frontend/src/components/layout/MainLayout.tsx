@@ -316,7 +316,7 @@ export const MainLayout: React.FC = () => {
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto p-6 pr-10">
           <Outlet context={{ layers, setLayers }} />
         </main>
       </div>
