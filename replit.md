@@ -38,6 +38,13 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
 -   **Entitlement Strategy (By-Right/Variance/Rezone):** An endpoint calculates three entitlement paths (By-Right, Variance, Rezone) with associated risk, success rate, timeline, and cost. The frontend displays these strategies in a card layout with risk badges.
 -   **Asset Type Mapping Fix:** Ensures correct mapping of property type categories to `project_type` during deal creation and updates.
 -   **Contact Sync / Import:** Allows importing contacts from Microsoft Outlook or Google accounts using Microsoft Graph API and Google People API.
+-   **Module Wiring System:** Cross-module orchestration infrastructure at `backend/src/services/module-wiring/`. API: `/api/v1/module-wiring`. Components:
+    -   **Module Registry** (`module-registry.ts`): 25 modules (M01-M25) with typed definitions, dependencies, outputs, build status, and priority.
+    -   **Formula Engine** (`formula-engine.ts`): 35 formulas (F01-F35) as pure calculation functions (JEDI Score, NOI, Cap Rate, IRR, etc.).
+    -   **Data Flow Router** (`data-flow-router.ts`): Cross-module data routing with caching and readiness checks.
+    -   **Module Event Bus** (`module-event-bus.ts`): Real-time inter-module event propagation with debouncing.
+    -   **Strategy Arbitrage Engine** (`strategy-arbitrage-engine.ts`): 4-strategy scoring (Build-to-Sell, Flip, Rental, STR) with arbitrage detection.
+    -   **Module Wiring Orchestrator** (`module-wiring-orchestrator.ts`): Cascade execution, pipeline management, P0/P1/P2 priority ordering.
 
 ### Agent Dashboard (CRM Module)
 
