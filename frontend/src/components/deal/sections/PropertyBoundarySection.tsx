@@ -181,22 +181,48 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           const cityName = geoData.city || '';
           const municipalityId = geoData.municipality?.id || '';
 
-          if (cityName) {
+          if (cityName || dealAddress) {
             setZoningLoading(true);
             try {
-              const params: Record<string, string> = { city: cityName };
-              if (dealAddress) params.address = dealAddress;
-              const zData = await apiClient.get(`/zoning/lookup`, { params }) as any;
-              if (zData?.districts?.length > 0) {
-                const district = zData.districts[0];
-                const code = district.zoning_code || district.district_code || district.code || '--';
-                setZoningInfo({
-                  code,
-                  description: district.description || district.district_name || '--',
-                  municipality: zData.municipality?.name || cityName,
-                  state: zData.municipality?.state || geoData.state || '',
-                });
+              let code = '--';
+              let description = '--';
+              let muniName = cityName;
+              let stName = geoData.state || '';
 
+              try {
+                const parcelParams: Record<string, string> = {};
+                if (lat && lng) { parcelParams.lat = String(lat); parcelParams.lng = String(lng); }
+                if (dealAddress) parcelParams.address = dealAddress;
+                const parcelData = await apiClient.get(`/api/v1/zoning/parcel-lookup`, { params: parcelParams }) as any;
+                if (parcelData?.found && parcelData.zoningCode) {
+                  code = parcelData.zoningCode;
+                  description = parcelData.zoningName || parcelData.zoningCode;
+                  if (parcelData.municipality) muniName = parcelData.municipality;
+                  if (parcelData.state) stName = parcelData.state;
+                }
+              } catch (parcelErr) {
+                console.warn('Parcel lookup failed, falling back to district list:', parcelErr);
+              }
+
+              if (code === '--') {
+                const params: Record<string, string> = { city: cityName };
+                if (dealAddress) params.address = dealAddress;
+                const zData = await apiClient.get(`/zoning/lookup`, { params }) as any;
+                if (zData?.districts?.length > 0) {
+                  const district = zData.districts[0];
+                  code = district.zoning_code || district.district_code || district.code || '--';
+                  description = district.description || district.district_name || '--';
+                  muniName = zData.municipality?.name || cityName;
+                  stName = zData.municipality?.state || geoData.state || '';
+                } else if (zData?.municipality) {
+                  muniName = zData.municipality.name || cityName;
+                  stName = zData.municipality.state || geoData.state || '';
+                }
+              }
+
+              setZoningInfo({ code, description, municipality: muniName, state: stName });
+
+              if (code !== '--') {
                 try {
                   const detailParams: Record<string, string> = { code };
                   if (municipalityId) detailParams.municipality_id = municipalityId;
@@ -224,13 +250,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 } catch (err) {
                   console.error('Zoning detail lookup error:', err);
                 }
-              } else if (zData?.municipality) {
-                setZoningInfo({
-                  code: '--',
-                  description: 'No zoning district found',
-                  municipality: zData.municipality.name || cityName,
-                  state: zData.municipality.state || geoData.state || '',
-                });
               }
             } catch (err) {
               console.error('Zoning lookup error:', err);
@@ -505,26 +524,53 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         return;
       }
 
-      const params: Record<string, string> = {};
-      if (cityName) params.city = cityName;
-      if (deal?.address) params.address = deal.address;
+      let code = '--';
+      let description = '--';
+      let muniName = cityName;
+      let stName = stateName;
 
-      const data = await apiClient.get(`/zoning/lookup`, { params }) as any;
-      if (data && data.districts && data.districts.length > 0) {
-        const district = data.districts[0];
-        const code = district.zoning_code || district.district_code || district.code || '--';
-        setZoningInfo({
-          code,
-          description: district.description || district.district_name || '--',
-          municipality: data.municipality?.name || cityName,
-          state: data.municipality?.state || stateName,
-        });
+      try {
+        const parcelParams: Record<string, string> = {};
+        if (boundary.centroid) {
+          parcelParams.lat = String(boundary.centroid[1]);
+          parcelParams.lng = String(boundary.centroid[0]);
+        }
+        if (deal?.address) parcelParams.address = deal.address;
+        const parcelData = await apiClient.get(`/api/v1/zoning/parcel-lookup`, { params: parcelParams }) as any;
+        if (parcelData?.found && parcelData.zoningCode) {
+          code = parcelData.zoningCode;
+          description = parcelData.zoningName || parcelData.zoningCode;
+          if (parcelData.municipality) muniName = parcelData.municipality;
+          if (parcelData.state) stName = parcelData.state;
+        }
+      } catch (parcelErr) {
+        console.warn('Parcel lookup failed, falling back to district list:', parcelErr);
+      }
 
+      if (code === '--') {
+        const params: Record<string, string> = {};
+        if (cityName) params.city = cityName;
+        if (deal?.address) params.address = deal.address;
+        const data = await apiClient.get(`/zoning/lookup`, { params }) as any;
+        if (data?.districts?.length > 0) {
+          const district = data.districts[0];
+          code = district.zoning_code || district.district_code || district.code || '--';
+          description = district.description || district.district_name || '--';
+          muniName = data.municipality?.name || cityName;
+          stName = data.municipality?.state || stateName;
+        } else if (data?.municipality) {
+          muniName = data.municipality.name || cityName;
+          stName = data.municipality.state || stateName;
+        }
+      }
+
+      setZoningInfo({ code, description, municipality: muniName, state: stName });
+
+      if (code !== '--') {
         try {
           const detailParams: Record<string, string> = { code };
           if (municipalityId) detailParams.municipality_id = municipalityId;
           else if (cityName) detailParams.municipality = cityName;
-          
           const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
           if (detailData?.found) {
             setZoningDetail(detailData.district);
@@ -548,13 +594,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         } catch (err) {
           console.error('Zoning detail lookup error:', err);
         }
-      } else if (data && data.municipality) {
-        setZoningInfo({
-          code: '--',
-          description: 'No zoning district found',
-          municipality: data.municipality.name || cityName,
-          state: data.municipality.state || stateName,
-        });
       }
     } catch (err: any) {
       console.error('Zoning lookup error:', err);
