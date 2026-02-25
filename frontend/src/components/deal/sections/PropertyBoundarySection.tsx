@@ -31,6 +31,7 @@ interface PropertyBoundarySectionProps {
   dealId?: string;
   onUpdate?: () => void;
   onBack?: () => void;
+  embedded?: boolean; // Hide header when embedded in another module
 }
 
 interface BoundaryData {
@@ -54,7 +55,8 @@ interface BoundaryData {
 export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = ({ 
   deal, 
   dealId,
-  onUpdate 
+  onUpdate,
+  embedded = false
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -679,25 +681,27 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-            <MapPin className="text-blue-600" size={24} />
-            Property Boundary & Site Plan
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Define site boundary - becomes source of truth for zoning and 3D design
-          </p>
-        </div>
-        
-        {hasBoundary && (
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle className="text-green-600" size={16} />
-            <span className="text-green-700 font-medium">Boundary Defined</span>
+      {/* Header (hidden when embedded) */}
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <MapPin className="text-blue-600" size={24} />
+              Property Boundary & Site Plan
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Define site boundary - becomes source of truth for zoning and 3D design
+            </p>
           </div>
-        )}
-      </div>
+          
+          {hasBoundary && (
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle className="text-green-600" size={16} />
+              <span className="text-green-700 font-medium">Boundary Defined</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error message */}
       {error && (

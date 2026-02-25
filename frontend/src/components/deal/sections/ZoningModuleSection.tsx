@@ -61,23 +61,40 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     try {
       // Check if boundary exists
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
-      setBoundaryComplete(!!boundaryRes.data?.id);
+      const hasBoundary = !!boundaryRes.data?.id;
+      setBoundaryComplete(hasBoundary);
 
-      // Check if zoning confirmed
-      const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
-      setZoningConfirmed(!!zoningRes.data?.confirmed_at);
+      // Check if zoning confirmed OR if existing analysis data exists
+      const hasExistingAnalysis = deal?.module_outputs?.zoningIntelligence?.lastAnalysis;
+      
+      let confirmed = false;
+      try {
+        const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
+        confirmed = !!zoningRes.data?.confirmed_at;
+      } catch {
+        // Endpoint may not exist yet
+      }
+
+      const zoningReady = confirmed || hasExistingAnalysis;
+      setZoningConfirmed(zoningReady);
 
       // Set initial tab based on completion
-      if (zoningRes.data?.confirmed_at) {
+      if (zoningReady) {
         setActiveTab('tracker');
-      } else if (boundaryRes.data?.id) {
+      } else if (hasBoundary) {
         setActiveTab('confirm');
       } else {
         setActiveTab('boundary');
       }
     } catch (error) {
-      // If endpoints don't exist yet, start at boundary
-      setActiveTab('boundary');
+      // If endpoints don't exist yet, check for existing analysis
+      const hasExistingAnalysis = deal?.module_outputs?.zoningIntelligence?.lastAnalysis;
+      if (hasExistingAnalysis) {
+        setZoningConfirmed(true);
+        setActiveTab('tracker');
+      } else {
+        setActiveTab('boundary');
+      }
     } finally {
       setLoading(false);
     }
@@ -98,8 +115,9 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   const isTabUnlocked = (tabId: ExtendedTabId): boolean => {
     if (tabId === 'boundary') return true;
     if (tabId === 'confirm') return boundaryComplete;
-    // All other tabs require zoning confirmation
-    return zoningConfirmed;
+    // All other tabs require zoning confirmation OR existing analysis data
+    const hasExistingAnalysis = deal?.module_outputs?.zoningIntelligence?.lastAnalysis;
+    return zoningConfirmed || hasExistingAnalysis;
   };
 
   const renderActiveTab = () => {

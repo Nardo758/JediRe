@@ -25,6 +25,7 @@ export default function BoundaryTab({ deal, dealId, onComplete }: BoundaryTabPro
         deal={deal}
         dealId={dealId}
         onUpdate={handleBoundaryUpdate}
+        embedded={true}
       />
     </div>
   );
