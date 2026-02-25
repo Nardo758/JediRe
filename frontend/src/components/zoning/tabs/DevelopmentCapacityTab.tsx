@@ -175,8 +175,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
         <div className="w-px h-5 bg-gray-200" />
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 font-medium">Buildable:</span>
-          <span className="text-gray-900">{formatNumber(envelope.buildableArea)} SF</span>
+          <span className="text-gray-500 font-medium">GBA:</span>
+          <span className="text-gray-900 font-semibold">{formatNumber(actualGBA)} SF</span>
+          {gbaGoverningFactor && <span className="text-gray-400 text-xs">({gbaGoverningFactor})</span>}
         </div>
       </div>
 
@@ -186,10 +187,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <p className="text-2xl font-bold text-gray-900">{formatNumber(densityUnits)}</p>
           <p className="text-xs text-gray-400 mt-1">{zoningStandards.maxDensity} units/acre</p>
         </div>
-        <div className="bg-white rounded-lg border border-blue-300 p-4 text-center">
-          <p className="text-xs text-blue-600 uppercase tracking-wide mb-1">Gross Buildable Area</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(actualGBA)} <span className="text-sm font-normal text-gray-500">SF</span></p>
-          <p className="text-xs text-gray-400 mt-1">{gbaGoverningFactor ? `Governed by ${gbaGoverningFactor}` : '--'}</p>
+        <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Buildable Area</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(envelope.buildableArea)} <span className="text-sm font-normal text-gray-500">SF</span></p>
+          <p className="text-xs text-gray-400 mt-1">After setbacks</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Stories</p>
