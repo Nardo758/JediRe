@@ -212,7 +212,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pb-16">
+      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pr-10 pb-16">
         {renderActiveTab()}
       </div>
 
