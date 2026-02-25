@@ -20,3 +20,18 @@ build/
 .DS_Store
 Thumbs.db
 .local/share/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Backups & temp
+*.backup/
+jedi-re.backup/
+
+# Logs & memory
+memory/
+*.log
