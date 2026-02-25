@@ -365,7 +365,7 @@ const DealDetailPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden min-w-0">
           <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
             <div className="p-3">
               <div className="relative mb-3">

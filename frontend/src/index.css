@@ -5,13 +5,11 @@
 @layer base {
   html, body {
     @apply bg-gray-50 text-gray-900 antialiased;
-    overflow: hidden;
     width: 100%;
     max-width: 100vw;
   }
   
   #root {
-    overflow: hidden;
     width: 100%;
     max-width: 100vw;
     height: 100vh;
@@ -70,11 +68,6 @@
   
   .badge-info {
     @apply bg-blue-100 text-blue-800;
-  }
-  
-  /* Container overflow prevention */
-  .container-safe {
-    @apply overflow-x-hidden max-w-full;
   }
   
   /* Prevent all grids from causing horizontal overflow */

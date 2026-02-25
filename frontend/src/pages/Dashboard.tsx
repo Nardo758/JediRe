@@ -325,8 +325,8 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="space-y-4 max-w-full">
         {/* KPI Cards - Top Row */}
-        <div className="grid grid-cols-4 gap-3 max-w-full">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="grid grid-cols-4 gap-3 max-w-full overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
             <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
             <div className="text-2xl font-bold text-gray-900">
               ${(pipelineValue / 1000000).toFixed(1)}M
@@ -334,7 +334,7 @@ export const Dashboard: React.FC = () => {
             <div className="text-xs text-gray-500 mt-1">{deals.length} deals</div>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
             <div className="text-xs font-medium text-gray-600 mb-1">Active Deals</div>
             <div className="text-2xl font-bold text-blue-600">
               {activeDeals.length}
@@ -342,7 +342,7 @@ export const Dashboard: React.FC = () => {
             <div className="text-xs text-gray-500 mt-1">in progress</div>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
             <div className="text-xs font-medium text-gray-600 mb-1">Portfolio Assets</div>
             <div className="text-2xl font-bold text-green-600">
               {portfolioAssets.length}
@@ -350,7 +350,7 @@ export const Dashboard: React.FC = () => {
             <div className="text-xs text-gray-500 mt-1">owned</div>
           </div>
           
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
             <div className="text-xs font-medium text-gray-600 mb-1">Avg Days/Deal</div>
             <div className="text-2xl font-bold text-gray-900">
               {avgDays}
@@ -360,14 +360,14 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Two-Column Layout */}
-        <div className="grid grid-cols-5 gap-4 max-w-full">
+        <div className="grid grid-cols-5 gap-4 max-w-full overflow-hidden">
           {/* Left Column - Intelligence (40% - 2 cols) */}
-          <div className="col-span-2">
+          <div className="col-span-2 overflow-hidden">
             <KeyFindingsSection />
           </div>
 
           {/* Right Column - Deals (60% - 3 cols) */}
-          <div className="col-span-3">
+          <div className="col-span-3 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
               {Array.isArray(deals) && deals.length > 0 && (
@@ -427,9 +427,9 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Bottom Row - Portfolio Assets + Quick Actions */}
-        <div className="grid grid-cols-5 gap-4 max-w-full">
+        <div className="grid grid-cols-5 gap-4 max-w-full overflow-hidden">
           {/* Portfolio Assets (3 cols) */}
-          <div className="col-span-3">
+          <div className="col-span-3 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-700">PORTFOLIO ASSETS</h2>
               <Button onClick={() => navigate('/assets-owned')} size="sm" variant="secondary">
@@ -440,7 +440,7 @@ export const Dashboard: React.FC = () => {
           </div>
 
           {/* Quick Actions (2 cols) */}
-          <div className="col-span-2">
+          <div className="col-span-2 overflow-hidden">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">QUICK ACTIONS</h2>
             <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
               <Button 
