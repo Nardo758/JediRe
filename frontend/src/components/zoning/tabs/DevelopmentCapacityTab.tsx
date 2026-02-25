@@ -89,7 +89,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     setError(null);
     apiClient.get(`/api/v1/deals/${dealId}/development-capacity`)
       .then((res: any) => {
-        setData(res);
+        setData(res.data);
       })
       .catch((err: any) => {
         const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity analysis';
