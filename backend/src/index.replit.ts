@@ -67,6 +67,8 @@ import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
 import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
 import zoningVerificationRouter from './api/rest/zoning-verification.routes';
+import zoningProfileRouter from './api/rest/zoning-profile.routes';
+import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 
 dotenv.config();
 
@@ -195,6 +197,8 @@ app.use('/api/v1', requireAuth, zoningCapacityRouter);
 app.use('/api/v1/zoning-intelligence', requireAuth, createZoningIntelligenceRoutes(pool));
 app.use('/api/v1/zoning-learning', requireAuth, createZoningLearningRoutes(pool));
 app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
+app.use('/api/v1', requireAuth, zoningProfileRouter);
+app.use('/api/v1', requireAuth, developmentScenariosRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);

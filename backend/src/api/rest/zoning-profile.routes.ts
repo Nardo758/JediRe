@@ -16,21 +16,23 @@ router.get('/deals/:dealId/zoning-profile', async (req: Request, res: Response) 
     }
 
     const dealResult = await pool.query(
-      `SELECT d.project_type, pt.display_name as property_type_display, pt.category as property_type_category
-       FROM deals d
-       LEFT JOIN property_types pt ON pt.type_key = d.project_type OR pt.id::text = d.project_type
-       WHERE d.id = $1`,
+      `SELECT d.project_type FROM deals d WHERE d.id = $1`,
       [dealId]
     );
     const dealInfo = dealResult.rows[0] || {};
+
+    const projectTypeLabels: Record<string, string> = {
+      multifamily: 'Multifamily', residential: 'Residential', office: 'Commercial / Office',
+      retail: 'Retail', industrial: 'Industrial', hospitality: 'Hospitality',
+      mixed_use: 'Mixed-Use', land: 'Land', special_purpose: 'Special Purpose',
+    };
 
     res.json({
       exists: true,
       profile,
       deal: {
         project_type: dealInfo.project_type,
-        property_type_display: dealInfo.property_type_display,
-        property_type_category: dealInfo.property_type_category,
+        property_type_display: projectTypeLabels[dealInfo.project_type] || dealInfo.project_type,
       },
     });
   } catch (error: any) {

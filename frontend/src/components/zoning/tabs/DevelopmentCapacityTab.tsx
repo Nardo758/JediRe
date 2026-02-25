@@ -120,16 +120,23 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [profileExists, setProfileExists] = useState(true);
   const [resolving, setResolving] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, scenariosRes] = await Promise.all([
-        apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`),
-        apiClient.get(`/api/v1/deals/${dealId}/scenarios`),
-      ]);
-      const profileData = profileRes.data;
+      let profileRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+      let profileData = profileRes.data;
+
+      if (!profileData.exists && !autoResolve) {
+        try {
+          await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
+          profileRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+          profileData = profileRes.data;
+        } catch {
+        }
+      }
+
       if (!profileData.exists) {
         setProfileExists(false);
         setProfile(null);
@@ -138,7 +145,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setProfile(profileData.profile);
         setDealInfo(profileData.deal);
       }
-      setScenarios(scenariosRes.data.scenarios || []);
+
+      const scenariosRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+      let scenariosList = scenariosRes.data.scenarios || [];
+
+      if (profileData.exists && scenariosList.length === 0) {
+        try {
+          const projectType = profileData.deal?.project_type || 'multifamily';
+          const typeLabel = projectType.replace('_', '-').replace(/\b\w/g, (c: string) => c.toUpperCase());
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, {
+            name: `By-Right ${typeLabel}`,
+            use_mix: { residential_pct: 100 },
+            avg_unit_size_sf: 900,
+            efficiency_factor: 0.85,
+            is_active: true,
+          });
+          const refreshRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+          scenariosList = refreshRes.data.scenarios || [];
+        } catch {
+        }
+      }
+
+      setScenarios(scenariosList);
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
       setError(msg);
@@ -154,7 +182,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     setResolving(true);
     try {
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to resolve profile');
     } finally {
@@ -179,7 +207,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       setNewOfficePct(0);
       setNewUnitSize(900);
       setNewEfficiency(0.85);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to create scenario');
     }
@@ -189,7 +217,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     if (!dealId) return;
     try {
       await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}/activate`);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to activate scenario');
     }
@@ -199,7 +227,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     if (!dealId) return;
     try {
       await apiClient.delete(`/api/v1/deals/${dealId}/scenarios/${scenarioId}`);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to delete scenario');
     }
@@ -213,12 +241,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       });
       setEditingConstraint(null);
       setEditValue('');
-      await loadData();
+      await loadData(true);
       const scenarioIds = scenarios.map(s => s.id);
       for (const sid of scenarioIds) {
         await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${sid}`, {});
       }
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to save override');
     }
@@ -230,7 +258,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       await apiClient.patch(`/api/v1/deals/${dealId}`, { project_type: newType });
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
       setChangingAssetType(false);
-      await loadData();
+      await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to change asset type');
     }
