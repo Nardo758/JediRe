@@ -92,7 +92,7 @@ class CompetitionService {
     filters: CompetitionFilters
   ): Promise<CompetitorProperty[]> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/competitors`, {
+      const response = await api.get(`/deals/${dealId}/competitors`, {
         params: filters,
       });
       return response.data.competitors || [];
@@ -108,7 +108,7 @@ class CompetitionService {
    */
   async getAdvantageMatrix(dealId: string): Promise<AdvantageMatrix> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/advantage-matrix`);
+      const response = await api.get(`/deals/${dealId}/advantage-matrix`);
       return response.data.matrix;
     } catch (error) {
       console.error('Error fetching advantage matrix:', error);
@@ -124,7 +124,7 @@ class CompetitionService {
     radius: number
   ): Promise<WaitlistProperty[]> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/waitlist-properties`, {
+      const response = await api.get(`/deals/${dealId}/waitlist-properties`, {
         params: { radius },
       });
       return response.data.properties || [];
@@ -142,7 +142,7 @@ class CompetitionService {
     radius: number
   ): Promise<CompetitorProperty[]> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/aging-competitors`, {
+      const response = await api.get(`/deals/${dealId}/aging-competitors`, {
         params: { radius },
       });
       return response.data.competitors || [];
@@ -157,7 +157,7 @@ class CompetitionService {
    */
   async getAIInsights(dealId: string): Promise<string> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/competition-insights`);
+      const response = await api.get(`/deals/${dealId}/competition-insights`);
       return response.data.insights;
     } catch (error) {
       console.error('Error fetching AI insights:', error);
@@ -461,7 +461,7 @@ Your development's 9-point advantage score indicates strong differentiation pote
    */
   async exportAnalysis(dealId: string): Promise<Blob> {
     try {
-      const response = await api.get(`/api/v1/deals/${dealId}/competition-export`, {
+      const response = await api.get(`/deals/${dealId}/competition-export`, {
         responseType: 'blob',
       });
       return response.data;
