@@ -102,13 +102,23 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         return;
       }
 
+      let parcelZoning: any = null;
+      try {
+        const parcelRes = await apiClient.get('/api/v1/zoning/parcel-lookup', {
+          params: { lat, lng },
+        });
+        if (parcelRes.data?.found) {
+          parcelZoning = parcelRes.data;
+        }
+      } catch (_) {}
+
       const reverseGeoRes = await apiClient.get('/api/v1/reverse-geocode', {
         params: { lat, lng },
       });
 
       const location = reverseGeoRes.data;
-      const cityName = location?.city || location?.municipality?.name || '';
-      const stateName = location?.state || location?.municipality?.state || '';
+      const cityName = parcelZoning?.municipality || location?.city || location?.municipality?.name || '';
+      const stateName = parcelZoning?.state || location?.state || location?.municipality?.state || '';
 
       if (!cityName) {
         setError('Could not determine city from boundary location. Try manual entry.');
@@ -131,15 +141,43 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         const districts: ZoningDistrict[] = zoningData.districts;
         setAvailableDistricts(districts);
 
-        const bestMatch = districts[0];
-        setSelectedDistrictId(bestMatch.id);
+        if (parcelZoning) {
+          const matchingDistrict = districts.find(
+            (d: ZoningDistrict) => d.zoning_code?.toUpperCase() === parcelZoning.zoningCode?.toUpperCase()
+          );
+          if (matchingDistrict) {
+            setSelectedDistrictId(matchingDistrict.id);
+          } else {
+            setSelectedDistrictId(districts[0].id);
+          }
+          setDetectedZoning({
+            code: parcelZoning.zoningCode,
+            name: parcelZoning.zoningName || parcelZoning.zoningCode,
+            municipality: cityName,
+            state: stateName,
+            confidence: parcelZoning.confidence || 0.95,
+            source: parcelZoning.sourceName || 'Assessor GIS',
+          });
+        } else {
+          const bestMatch = districts[0];
+          setSelectedDistrictId(bestMatch.id);
+          setDetectedZoning({
+            code: bestMatch.zoning_code,
+            name: bestMatch.district_name,
+            municipality: cityName,
+            state: stateName,
+            confidence: location?.municipality?.id ? 0.85 : 0.7,
+            source: 'boundary',
+          });
+        }
+      } else if (parcelZoning) {
         setDetectedZoning({
-          code: bestMatch.zoning_code,
-          name: bestMatch.district_name,
+          code: parcelZoning.zoningCode,
+          name: parcelZoning.zoningName || parcelZoning.zoningCode,
           municipality: cityName,
           state: stateName,
-          confidence: location?.municipality?.id ? 0.85 : 0.7,
-          source: 'boundary',
+          confidence: parcelZoning.confidence || 0.95,
+          source: parcelZoning.sourceName || 'Assessor GIS',
         });
       } else {
         setError(`No zoning data found for ${cityName}, ${stateName}. You can enter it manually.`);
@@ -295,6 +333,11 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
                 <p className="text-xs text-gray-500 mb-1">Selected Zoning District</p>
                 <p className="text-2xl font-bold text-gray-900 mb-1">{detectedZoning.code}</p>
                 <p className="text-sm text-gray-600">{detectedZoning.name}</p>
+                {detectedZoning.source && detectedZoning.source !== 'boundary' && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Source: {detectedZoning.source}
+                  </p>
+                )}
               </div>
               <CheckCircle2 className="w-6 h-6 text-green-600" />
             </div>
