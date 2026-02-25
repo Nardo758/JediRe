@@ -61,16 +61,24 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     try {
       // Check if boundary exists
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
-      setBoundaryComplete(!!boundaryRes.data?.id);
+      const hasBoundary = !!boundaryRes.data?.id;
+      setBoundaryComplete(hasBoundary);
 
       // Check if zoning confirmed
       const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
-      setZoningConfirmed(!!zoningRes.data?.confirmed_at);
+      let isConfirmed = !!zoningRes.data?.confirmed_at;
+
+      // Also treat as confirmed if zoning analysis already exists from prior workflow
+      if (!isConfirmed && hasBoundary && deal?.module_outputs?.zoningIntelligence?.lastAnalysis) {
+        isConfirmed = true;
+      }
+
+      setZoningConfirmed(isConfirmed);
 
       // Set initial tab based on completion
-      if (zoningRes.data?.confirmed_at) {
+      if (isConfirmed) {
         setActiveTab('tracker');
-      } else if (boundaryRes.data?.id) {
+      } else if (hasBoundary) {
         setActiveTab('confirm');
       } else {
         setActiveTab('boundary');
