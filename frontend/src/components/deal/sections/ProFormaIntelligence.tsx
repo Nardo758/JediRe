@@ -8,7 +8,7 @@
  * Decision: "Do the numbers work? What assumptions am I betting on?"
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   proFormaAssumptions,
   incomeProjections,
@@ -17,6 +17,7 @@ import {
   type YearProjection,
   type ReturnsSummary,
 } from '@/data/enhancedProFormaMockData';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 
 interface ProFormaIntelligenceProps {
   deal?: any;
@@ -24,6 +25,40 @@ interface ProFormaIntelligenceProps {
 
 export const ProFormaIntelligence: React.FC<ProFormaIntelligenceProps> = () => {
   const [assumptionView, setAssumptionView] = useState<'all' | 'overrides'>('all');
+  const { capitalStructure, financial, updateFinancial, emitEvent, lastEvent } = useDealModule();
+
+  // M11+ → M09: When capital structure updates, recalculate cash-flow metrics
+  // This resolves the circular dependency: M09 provides NOI, M11+ sizes debt,
+  // then M11+ pushes debt service back here so we can calculate IRR/CoC/equity multiple.
+  const adjustedReturns = useMemo<ReturnsSummary>(() => {
+    if (!capitalStructure || !capitalStructure.annualDebtService) return returnsSummary;
+    const noi = returnsSummary.noi;
+    const cashFlow = noi - capitalStructure.annualDebtService;
+    const totalEquity = capitalStructure.totalEquity || returnsSummary.noi * 5;
+    const coc = totalEquity > 0 ? (cashFlow / totalEquity) * 100 : 0;
+    return {
+      ...returnsSummary,
+      dscr: capitalStructure.dscr,
+      cashOnCash: parseFloat(coc.toFixed(1)),
+    };
+  }, [capitalStructure, returnsSummary]);
+
+  // M09 → M11+: Emit financial-updated when NOI changes so Capital Structure can recalc DSCR
+  useEffect(() => {
+    if (adjustedReturns.noi && financial?.noi !== adjustedReturns.noi) {
+      updateFinancial({ noi: adjustedReturns.noi });
+      emitEvent({
+        source: 'M09-proforma',
+        type: 'financial-updated',
+        payload: {
+          noi: adjustedReturns.noi,
+          irr: adjustedReturns.irr,
+          equityMultiple: adjustedReturns.equityMultiple,
+          cashOnCash: adjustedReturns.cashOnCash,
+        },
+      });
+    }
+  }, []);
 
   return (
     <div className="space-y-5">

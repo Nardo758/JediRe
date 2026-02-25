@@ -7,7 +7,8 @@
  * Decision: "What could kill this deal and how do I protect against it?"
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 
 // ============================================================================
 // Mock Data
@@ -130,7 +131,7 @@ const riskCategories: RiskCategory[] = [
 ];
 
 // Composite risk score
-const compositeRiskScore = riskCategories.reduce((sum, cat) => sum + cat.score * (cat.weight / 100), 0);
+const adjustedCompositeScore = riskCategories.reduce((sum, cat) => sum + cat.score * (cat.weight / 100), 0);
 
 // ============================================================================
 // Component
@@ -138,6 +139,34 @@ const compositeRiskScore = riskCategories.reduce((sum, cat) => sum + cat.score *
 
 export const RiskIntelligence: React.FC = () => {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const { capitalStructure } = useDealModule();
+
+  // M11+ → M14: Augment risk categories with financial risk from Capital Structure
+  const augmentedCategories = useMemo(() => {
+    if (!capitalStructure) return riskCategories;
+    return riskCategories.map(cat => {
+      if (cat.id !== 'market') return cat;
+      // Inject DSCR/LTV covenant exposure into market risk
+      const dscrRisk = capitalStructure.dscr < 1.25 ? 15 : capitalStructure.dscr < 1.35 ? 8 : 0;
+      const ltvRisk = capitalStructure.ltv > 80 ? 12 : capitalStructure.ltv > 75 ? 6 : 0;
+      const financialAdjustment = dscrRisk + ltvRisk;
+      const adjustedScore = Math.min(100, cat.score + financialAdjustment);
+      return {
+        ...cat,
+        score: adjustedScore,
+        driver: financialAdjustment > 0
+          ? `${cat.driver} + Financial: DSCR ${capitalStructure.dscr.toFixed(2)}x / LTV ${capitalStructure.ltv.toFixed(0)}%`
+          : cat.driver,
+        severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
+      };
+    });
+  }, [capitalStructure]);
+
+  // Recalculate composite with augmented categories
+  const adjustedCompositeScore = useMemo(
+    () => augmentedCategories.reduce((sum, cat) => sum + cat.score * (cat.weight / 100), 0),
+    [augmentedCategories],
+  );
 
   return (
     <div className="space-y-5">
@@ -157,17 +186,17 @@ export const RiskIntelligence: React.FC = () => {
           <div className="text-right">
             <div className="text-[10px] font-mono text-stone-400 tracking-wider">COMPOSITE RISK</div>
             <div className={`text-3xl font-bold ${
-              compositeRiskScore < 40 ? 'text-emerald-600' :
-              compositeRiskScore < 60 ? 'text-amber-600' : 'text-red-600'
+              adjustedCompositeScore < 40 ? 'text-emerald-600' :
+              adjustedCompositeScore < 60 ? 'text-amber-600' : 'text-red-600'
             }`}>
-              {compositeRiskScore.toFixed(0)}<span className="text-sm text-stone-400">/100</span>
+              {adjustedCompositeScore.toFixed(0)}<span className="text-sm text-stone-400">/100</span>
             </div>
           </div>
         </div>
 
         {/* 2x3 Risk Card Grid */}
         <div className="grid grid-cols-3 gap-3">
-          {riskCategories.map(cat => (
+          {augmentedCategories.map(cat => (
             <RiskCard
               key={cat.id}
               category={cat}
@@ -193,7 +222,7 @@ export const RiskIntelligence: React.FC = () => {
         <p className="text-xs text-stone-500 mb-4">Track how each risk category is evolving</p>
 
         <div className="space-y-3">
-          {riskCategories.map(cat => (
+          {augmentedCategories.map(cat => (
             <div key={cat.id} className="flex items-center gap-4">
               <div className="w-28 text-xs font-medium text-stone-700">{cat.name}</div>
               <div className="flex-1 flex items-center gap-2">

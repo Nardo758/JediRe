@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
-  Building2, Target, Package, MapPin, CreditCard, Calculator,
+  Building2, Target, Package, MapPin, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box, Car,
   LogOut, Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
-  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat, Coins,
+  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
   Shield, Layers, BarChart2, Radar
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
@@ -30,7 +30,7 @@ import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligen
 import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
 import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
-import DebtSection from '../components/deal/sections/DebtSection.legacy';
+import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
 import ExitSection from '../components/deal/sections/ExitSection';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
@@ -47,7 +47,6 @@ import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
 import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
-import { CapitalEventsSection } from '../components/deal/sections/CapitalEventsSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
@@ -204,17 +203,11 @@ const DealDetailPage: React.FC = () => {
       icon: <Layers size={16} />,
       component: ProFormaIntelligence
     },
-    { 
-      id: 'capital-events', 
-      label: 'Capital Events', 
-      icon: <Coins size={16} />, 
-      component: CapitalEventsSection 
-    },
-    { 
-      id: 'debt', 
-      label: 'Debt & Financing', 
-      icon: <CreditCard size={16} />, 
-      component: DebtSection 
+    {
+      id: 'capital-structure',
+      label: 'Capital Structure',
+      icon: <DollarSign size={16} />,
+      component: CapitalStructureSection
     },
     { 
       id: 'exit', 

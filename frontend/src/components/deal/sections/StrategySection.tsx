@@ -3,9 +3,11 @@
  * Investment strategy planning and execution tracking
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { useDealModule } from '../../../contexts/DealModuleContext';
+import type { StrategyType } from '../../../contexts/DealModuleContext';
 import {
   strategyScores,
   heatmapData,
@@ -42,9 +44,30 @@ interface StrategySectionProps {
   deal: Deal;
 }
 
+// Map M08 strategy IDs → M11+ StrategyType for cross-module events
+const STRATEGY_ID_TO_TYPE: Record<string, StrategyType> = {
+  'core': 'rental_stabilized',
+  'value-add': 'rental_value_add',
+  'opportunistic': 'flip',
+  'development': 'build_to_sell',
+};
+
 export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
+  const { emitEvent, updateStrategy } = useDealModule();
+
+  // M08 → M11+ strategy event: emit when user selects a strategy
+  const handleStrategySelect = useCallback((strategyId: string) => {
+    setSelectedStrategy(strategyId);
+    const mappedType = STRATEGY_ID_TO_TYPE[strategyId] || 'rental_value_add';
+    updateStrategy({ selectedStrategy: mappedType });
+    emitEvent({
+      source: 'M08-strategy-arbitrage',
+      type: 'strategy-selected',
+      payload: { strategy: mappedType, originalId: strategyId },
+    });
+  }, [emitEvent, updateStrategy]);
 
   // Select data based on mode
   const stats = isPipeline ? acquisitionStats : performanceStats;
@@ -265,7 +288,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                   key={strategy.id}
                   strategy={strategy}
                   isSelected={selectedStrategy === strategy.id}
-                  onSelect={() => setSelectedStrategy(strategy.id)}
+                  onSelect={() => handleStrategySelect(strategy.id)}
                 />
               ))}
             </div>

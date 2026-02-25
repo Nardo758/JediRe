@@ -3,9 +3,10 @@
  * Exit strategy planning and readiness tracking
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 import {
   acquisitionExitStats,
   performanceExitStats,
@@ -36,6 +37,21 @@ interface ExitSectionProps {
 export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedScenario, setSelectedScenario] = useState<string>(isPipeline ? 'base-sale' : 'perf-base-sale');
+  const { capitalStructure } = useDealModule();
+
+  // M11+ → M12: Calculate net sale proceeds after debt payoff using Capital Structure data
+  const debtPayoffAtExit = useMemo(() => {
+    if (!capitalStructure) return null;
+    // Use loan balance at maturity year, or estimate from annual debt service
+    const totalDebt = capitalStructure.ltv > 0
+      ? (capitalStructure.annualDebtService / ((capitalStructure.dscr || 1) > 0 ? 1 : 1)) * 15 // rough estimate
+      : 0;
+    return {
+      outstandingBalance: totalDebt,
+      prepaymentPenalty: capitalStructure.prepaymentPenalty,
+      totalPayoff: totalDebt + capitalStructure.prepaymentPenalty,
+    };
+  }, [capitalStructure]);
 
   // Select data based on mode
   const stats = isPipeline ? acquisitionExitStats : performanceExitStats;
