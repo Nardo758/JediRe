@@ -1,0 +1,38 @@
+Scrutinized zoning calculations and identified FAR application errors
+Scrutinized zoning calculations and identified FAR application errors
+
+
+
+
+
+
+
+
+
+
+Good tool — the math mechanics are clean, but there are a few zoning interpretation issues that could significantly change your numbers:
+
+1. FAR Split — This is the big one
+
+You're using a blended 3.2 FAR as if you can allocate it however you want. But MRC-2 splits it:
+
+Nonresidential FAR: 2.50 (on net lot area)
+Residential FAR: 1.49 (on net lot area)
+Combined: 3.196
+To hit that full 670K SF, you'd need a true mixed-use project with ~523K SF of commercial and ~312K SF of residential. If this is primarily a multifamily play, your residential FAR caps at 1.49, which gives you only ~312,200 SF — roughly half of what's shown.
+
+2. Height may not be universally 52 ft
+
+The 52-ft / 5-story cap only applies to portions of the building within 150 feet of R-1 through R-5, R-G, MR, or PD-H districts. Everything beyond that 150-ft buffer can go up to 225 ft (~20 stories). Whether this matters depends on what's adjacent, but applying 52 ft across the whole 4.81 acres is likely too conservative — and if you're FAR-limited anyway, a taller/narrower building on part of the site could free up ground-level open space.
+
+3. The 65 units/acre density cap
+
+MRC-2 doesn't use a units-per-acre cap — it's FAR-driven. Your unit count should be derived from net leasable area ÷ average unit size, not a fixed density ratio. At 312K SF residential (1.49 FAR) with 85% efficiency and ~900 SF average unit, you'd get roughly 294 units, not 312.
+
+4. The "-C" conditional ordinance
+
+None of this accounts for whatever conditions were imposed by Council when this parcel was rezoned. That ordinance could restrict height, uses, density, or require specific site plan elements. This is a must-pull before locking any numbers.
+
+5. Minor: FAR on net vs. gross lot area
+
+The base FAR is calculated on net lot area (after dedications, easements, ROW). Residential uses get an open space bonus to calculate on gross. If 209,575 is gross and there are dedications, your nonresidential FAR denominator should be smaller.
