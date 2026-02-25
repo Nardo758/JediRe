@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, Send, X, ChevronUp, ChevronDown, Zap } from 'lucide-react';
-import axios from 'axios';
+import apiClient from '../../services/api.client';
 
 interface ChatMessage {
   id: string;
@@ -89,7 +89,7 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
     setIsLoading(true);
 
     try {
-      const response = await axios.post('/api/v1/zoning-intelligence/query', {
+      const response = await apiClient.post('/api/v1/zoning-intelligence/query', {
         query: text,
         districtCode,
         municipality,

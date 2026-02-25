@@ -7,7 +7,7 @@ import SourceCitation, { ViewSourceBadge, type SourceCitationData } from '../Sou
 import SourceSidePanel from '../SourceSidePanel';
 import CalculationBreakdown, { type CalculationSection } from '../CalculationBreakdown';
 import type { ZoningLookupResult, PermittedUse, StrategyAlignment } from '../../../types/zoning.types';
-import axios from 'axios';
+import apiClient from '../../../services/api.client';
 
 interface ZoningLookupTabProps {
   dealId?: string;
@@ -53,7 +53,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       const municipalityName = (zoningResult.district?.municipality || 'Atlanta').toLowerCase().replace(/\s+/g, '-');
       const state = (zoningResult.district?.state || 'GA').toLowerCase();
       const jurisdictionId = `${municipalityName}-${state}`;
-      const response = await axios.post('/api/v1/zoning-verification/verify', {
+      const response = await apiClient.post('/api/v1/zoning-verification/verify', {
         parcelId: zoningResult.district?.code || 'unknown',
         gisZoning: zoningResult.district?.code || '',
         jurisdictionId,
@@ -98,20 +98,20 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
 
   const handleConfirm = async (verificationId: string) => {
     try {
-      await axios.post(`/api/v1/zoning-verification/verify/${verificationId}/confirm`);
+      await apiClient.post(`/api/v1/zoning-verification/verify/${verificationId}/confirm`);
     } catch {}
     setTrustGatePassed(true);
   };
 
   const handleFlag = async (verificationId: string) => {
     try {
-      await axios.post(`/api/v1/zoning-verification/verify/${verificationId}/flag`);
+      await apiClient.post(`/api/v1/zoning-verification/verify/${verificationId}/flag`);
     } catch {}
   };
 
   const handleCorrect = async (verificationId: string, correctionDetail: string, newDesignation?: string) => {
     try {
-      await axios.post(`/api/v1/zoning-verification/verify/${verificationId}/correct`, {
+      await apiClient.post(`/api/v1/zoning-verification/verify/${verificationId}/correct`, {
         correctionDetail,
         newDesignation,
       });

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
+import apiClient from '../services/api.client';
 import type { ZoningLookupResult, ZoningDistrict, DevelopmentParameters, PermittedUse, StrategyAlignment } from '../types/zoning.types';
 
 interface UseZoningLookupReturn {
@@ -46,7 +47,7 @@ export function useZoningLookup(): UseZoningLookupReturn {
           if (geoRes.data.features?.length > 0) {
             const [lng, lat] = geoRes.data.features[0].center;
             try {
-              const revRes = await axios.get('/api/v1/reverse-geocode', { params: { lat, lng } });
+              const revRes = await apiClient.get('/api/v1/reverse-geocode', { params: { lat, lng } });
               const revData = revRes.data;
               if (revData?.found || revData?.city) {
                 cityName = revData.city || cityName;
@@ -65,7 +66,7 @@ export function useZoningLookup(): UseZoningLookupReturn {
         return;
       }
 
-      const lookupRes = await axios.get('/api/v1/zoning/lookup', {
+      const lookupRes = await apiClient.get('/api/v1/zoning/lookup', {
         params: { city: cityName, address }
       });
       const lookupData = lookupRes.data;
@@ -86,7 +87,7 @@ export function useZoningLookup(): UseZoningLookupReturn {
         if (municipalityId) detailParams.municipality_id = municipalityId;
         else if (cityName) detailParams.municipality = cityName;
 
-        const detailRes = await axios.get('/api/v1/zoning-districts/by-code', { params: detailParams });
+        const detailRes = await apiClient.get('/api/v1/zoning-districts/by-code', { params: detailParams });
         if (detailRes.data?.found) {
           detailDistrict = detailRes.data.district;
         }
