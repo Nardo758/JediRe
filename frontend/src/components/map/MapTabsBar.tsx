@@ -110,7 +110,7 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
 
   if (loading) {
     return (
-      <div className="bg-white border-b border-gray-200 px-4 h-12 flex items-center">
+      <div className="bg-white border-b border-gray-200 px-4 h-12 flex items-center flex-shrink-0">
         <div className="animate-pulse flex gap-2 flex-1">
           <div className="h-7 w-48 bg-gray-200 rounded" />
           <div className="h-7 w-24 bg-gray-200 rounded" />
@@ -120,7 +120,7 @@ export const MapTabsBar: React.FC<MapTabsBarProps> = ({
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 shadow-sm">
+    <div className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0 relative z-10">
       <div className="flex items-center px-3 py-1.5 gap-3">
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xl">🚀</span>
