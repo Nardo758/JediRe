@@ -46,6 +46,8 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
     -   **Strategy Arbitrage Engine** (`strategy-arbitrage-engine.ts`): 4-strategy scoring (Build-to-Sell, Flip, Rental, STR) with arbitrage detection.
     -   **Module Wiring Orchestrator** (`module-wiring-orchestrator.ts`): Cascade execution, pipeline management, P0/P1/P2 priority ordering.
     -   **P0 Service Adapters** (`p0-service-adapters.ts`): Connects existing services (JEDI Score, Demand Signal, Supply Signal, Risk Scoring) to the wiring infrastructure. 5 wiring chains: P0-1 (M25→M01), P0-2 (M19→M06+M04), P0-3 (M02→M03→M08), P0-4 (M04+M06→M14), P0-5 (Strategy Arbitrage). API endpoints at `/wire/*`.
+    -   **P1 Service Adapters** (`p1-service-adapters.ts`): Wires Pro Forma (M09), Scenarios (M10), Competition (M05), and Debt (M11). Chains: P1-1 (M09 Pro Forma sync/init), P1-2 (M10 Scenario generation), P1-3 (M05→M07 Competition→Market), P1-4 (M11 Debt Analysis). API endpoints at `/wire/proforma/*`, `/wire/scenarios/*`, `/wire/competition/*`, `/wire/debt/*`.
+    -   **P2 Service Adapters** (`p2-service-adapters.ts`): Wires Traffic (M16), Exit (M12), and Portfolio (M22). Chains: P2-1 (M16 Traffic Intelligence/Forecast), P2-2 (M12 Exit Analysis), P2-3 (M22 Portfolio Performance). API endpoints at `/wire/traffic/*`, `/wire/exit/*`, `/wire/portfolio`.
 
 ### Agent Dashboard (CRM Module)
 

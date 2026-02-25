@@ -116,3 +116,25 @@ export {
   wireP0Pipeline,
   setupP0Subscriptions,
 } from './p0-service-adapters';
+
+// P1 Service Adapters
+export {
+  wireProFormaSync,
+  wireProFormaInit,
+  wireScenarioGeneration,
+  wireScenarioRecalculate,
+  wireCompetitionToMarket,
+  wireDebtAnalysis,
+  wireP1Pipeline,
+  setupP1Subscriptions,
+} from './p1-service-adapters';
+
+// P2 Service Adapters
+export {
+  wireTrafficIntelligence,
+  wireTrafficForecast,
+  wireExitAnalysis,
+  wirePortfolioPerformance,
+  wireP2Pipeline,
+  setupP2Subscriptions,
+} from './p2-service-adapters';

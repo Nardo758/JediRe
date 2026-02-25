@@ -30,6 +30,20 @@ import {
   wireStrategyArbitrage,
   wireP0Pipeline,
   setupP0Subscriptions,
+  wireProFormaSync,
+  wireProFormaInit,
+  wireScenarioGeneration,
+  wireScenarioRecalculate,
+  wireCompetitionToMarket,
+  wireDebtAnalysis,
+  wireP1Pipeline,
+  setupP1Subscriptions,
+  wireTrafficIntelligence,
+  wireTrafficForecast,
+  wireExitAnalysis,
+  wirePortfolioPerformance,
+  wireP2Pipeline,
+  setupP2Subscriptions,
 } from '../../services/module-wiring';
 import type { ModuleId, FormulaId } from '../../services/module-wiring';
 
@@ -368,6 +382,185 @@ router.post('/wire/strategy/:dealId', async (req: Request, res: Response) => {
 router.post('/wire/subscriptions/setup', (_req: Request, res: Response) => {
   setupP0Subscriptions();
   res.json({ status: 'P0 auto-cascade subscriptions initialized' });
+});
+
+// ============================================================================
+// P1 Service Wiring Endpoints
+// ============================================================================
+
+/** POST /wire/p1/:dealId - Run full P1 pipeline for a deal */
+router.post('/wire/p1/:dealId', async (req: Request, res: Response) => {
+  try {
+    const result = await wireP1Pipeline(req.params.dealId, req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/proforma/sync/:dealId - Recalculate proforma assumptions */
+router.post('/wire/proforma/sync/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { triggerType, triggerEventId } = req.body;
+    await wireProFormaSync(req.params.dealId, triggerType || 'periodic_update', triggerEventId);
+    const proformaData = dataFlowRouter.getModuleData('M09', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...proformaData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/proforma/init/:dealId - Initialize proforma for a deal */
+router.post('/wire/proforma/init/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { strategy } = req.body;
+    await wireProFormaInit(req.params.dealId, strategy || 'rental');
+    const proformaData = dataFlowRouter.getModuleData('M09', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...proformaData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/scenarios/:dealId - Generate scenarios for a deal */
+router.post('/wire/scenarios/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireScenarioGeneration(req.params.dealId, req.body);
+    const scenarioData = dataFlowRouter.getModuleData('M10', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...scenarioData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/scenarios/recalculate/:scenarioId - Recalculate a specific scenario */
+router.post('/wire/scenarios/recalculate/:scenarioId', async (req: Request, res: Response) => {
+  try {
+    await wireScenarioRecalculate(req.params.scenarioId, req.body.userId);
+    res.json({ scenarioId: req.params.scenarioId, status: 'recalculated' });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/competition/:dealId - Wire competition -> market */
+router.post('/wire/competition/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { latitude, longitude, tradeAreaId, subjectRent } = req.body;
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
+    }
+    await wireCompetitionToMarket(req.params.dealId, { latitude, longitude, tradeAreaId, subjectRent });
+    const competitionData = dataFlowRouter.getModuleData('M05', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...competitionData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/debt/:dealId - Wire debt analysis */
+router.post('/wire/debt/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireDebtAnalysis(req.params.dealId, req.body);
+    const debtData = dataFlowRouter.getModuleData('M11', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...debtData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/subscriptions/p1/setup - Set up P1 auto-cascade subscriptions */
+router.post('/wire/subscriptions/p1/setup', (_req: Request, res: Response) => {
+  setupP1Subscriptions();
+  res.json({ status: 'P1 auto-cascade subscriptions initialized' });
+});
+
+// ============================================================================
+// P2 Service Wiring Endpoints
+// ============================================================================
+
+/** POST /wire/p2/:dealId - Run full P2 pipeline for a deal */
+router.post('/wire/p2/:dealId', async (req: Request, res: Response) => {
+  try {
+    const result = await wireP2Pipeline(req.params.dealId, req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/traffic/:dealId - Wire traffic intelligence */
+router.post('/wire/traffic/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
+    }
+    await wireTrafficIntelligence(req.params.dealId, req.body);
+    const trafficData = dataFlowRouter.getModuleData('M16', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...trafficData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/traffic/forecast/:dealId - Wire traffic forecast */
+router.post('/wire/traffic/forecast/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
+    }
+    await wireTrafficForecast(req.params.dealId, req.body);
+    const forecastData = dataFlowRouter.getModuleData('M16', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...forecastData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/exit/:dealId - Wire exit analysis */
+router.post('/wire/exit/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { purchasePrice } = req.body;
+    if (!purchasePrice) {
+      return res.status(400).json({ error: 'purchasePrice is required' });
+    }
+    await wireExitAnalysis(req.params.dealId, req.body);
+    const exitData = dataFlowRouter.getModuleData('M12', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...exitData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/portfolio - Wire portfolio performance */
+router.post('/wire/portfolio', async (req: Request, res: Response) => {
+  try {
+    const { assets } = req.body;
+    if (!assets || !Array.isArray(assets) || assets.length === 0) {
+      return res.status(400).json({ error: 'assets array is required with at least one entry' });
+    }
+    await wirePortfolioPerformance(assets);
+    const portfolioData = dataFlowRouter.getModuleData('M22', 'PORTFOLIO');
+    res.json(portfolioData?.data);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/subscriptions/p2/setup - Set up P2 auto-cascade subscriptions */
+router.post('/wire/subscriptions/p2/setup', (_req: Request, res: Response) => {
+  setupP2Subscriptions();
+  res.json({ status: 'P2 auto-cascade subscriptions initialized' });
+});
+
+/** POST /wire/subscriptions/all/setup - Set up all auto-cascade subscriptions (P0+P1+P2) */
+router.post('/wire/subscriptions/all/setup', (_req: Request, res: Response) => {
+  setupP0Subscriptions();
+  setupP1Subscriptions();
+  setupP2Subscriptions();
+  res.json({ status: 'All auto-cascade subscriptions initialized (P0 + P1 + P2)' });
 });
 
 export default router;
