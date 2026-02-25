@@ -1,7 +1,7 @@
 import React from 'react';
 import { CheckCircle, AlertTriangle, XCircle, ExternalLink, Shield, Clock, Layers, FileWarning, Scale, ChevronDown, ChevronUp } from 'lucide-react';
 
-export type VerificationStatus = 'confirmed' | 'stale' | 'split' | 'conflict';
+export type VerificationStatus = 'confirmed' | 'stale' | 'split' | 'conflict' | 'pending';
 
 export interface VerificationData {
   id: string;
@@ -70,6 +70,15 @@ const STATUS_CONFIG: Record<VerificationStatus, {
     text: 'text-red-700',
     border: 'border-red-200',
     badgeBg: 'bg-red-100',
+  },
+  pending: {
+    icon: AlertTriangle,
+    emoji: '🔍',
+    label: 'Pending Verification',
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-200',
+    badgeBg: 'bg-blue-100',
   },
 };
 

@@ -59,7 +59,30 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         jurisdictionId,
         dealId: dealId || undefined,
       });
-      setVerificationData(response.data);
+      const raw = response.data;
+      const statusMap: Record<string, VerificationData['status']> = {
+        confirmed: 'confirmed',
+        stale: 'stale',
+        split: 'split',
+        conflict: 'conflict',
+        pending: 'pending',
+      };
+      const mapped: VerificationData = {
+        id: raw.id,
+        parcelId: raw.parcelId,
+        gisDesignation: raw.gisDesignation || zoningResult.district?.code || 'Unknown',
+        verifiedDesignation: raw.verifiedDesignation,
+        status: statusMap[raw.verificationStatus] || 'confirmed',
+        discrepancyDetail: raw.discrepancyDetail,
+        confidence: typeof raw.confidence === 'number' && raw.confidence <= 1 ? Math.round(raw.confidence * 100) : (raw.confidence ?? 85),
+        sourceUrl: raw.sourceResolution?.baseUrl || undefined,
+        sourceName: raw.sourceResolution?.sourceTier === 'municode' ? 'Municode' : raw.sourceResolution?.jurisdictionName || undefined,
+        verifiedAt: raw.verifiedAt ? new Date(raw.verifiedAt).toISOString().split('T')[0] : undefined,
+        overlaysDetected: raw.overlaysDetected || [],
+        recentAmendments: raw.recentAmendments || [],
+        conditionalApprovals: raw.conditionalApprovals || [],
+      };
+      setVerificationData(mapped);
     } catch (err: any) {
       const fallbackVerification: VerificationData = {
         id: `vf-${Date.now()}`,
