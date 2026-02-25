@@ -31,6 +31,8 @@ interface ZoningStandards {
 interface Scenario {
   scenarioType: string;
   label: string;
+  matchedCode: string | null;
+  matchedName: string | null;
   maxUnits: number;
   totalGFA: number;
   stories: number | null;
@@ -260,15 +262,23 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 <th className="text-left px-5 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider w-[22%]" />
                 <th className="text-center px-4 py-3 w-[26%]">
                   <div className="text-xs font-bold text-gray-900">CURRENT ZONING</div>
-                  <div className="text-[10px] text-gray-500">(by-right)</div>
+                  <div className="text-[10px] text-gray-500">{parcelInfo.currentZoning}</div>
                 </th>
                 <th className="text-center px-4 py-3 w-[26%]">
                   <div className="text-xs font-bold text-gray-900">VARIANCE PATH</div>
-                  <div className="text-[10px] text-gray-500">(+20% density)</div>
+                  {variance?.matchedCode ? (
+                    <div className="text-[10px] text-blue-600 font-semibold">{variance.matchedCode}</div>
+                  ) : (
+                    <div className="text-[10px] text-gray-500">(+20% density)</div>
+                  )}
                 </th>
                 <th className="text-center px-4 py-3 w-[26%]">
                   <div className="text-xs font-bold text-gray-900">REZONE PATH</div>
-                  <div className="text-[10px] text-gray-500">(+60% density)</div>
+                  {rezone?.matchedCode ? (
+                    <div className="text-[10px] text-blue-600 font-semibold">{rezone.matchedCode}</div>
+                  ) : (
+                    <div className="text-[10px] text-gray-500">(+60% density)</div>
+                  )}
                 </th>
               </tr>
             </thead>

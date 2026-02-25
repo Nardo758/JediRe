@@ -367,30 +367,70 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       propertyType: 'multifamily',
     });
 
-    const scenarioConfigs: Record<string, any> = {
-      by_right: {
-        densityMult: 1.0, farMult: 1.0, heightAdd: 0, storiesAdd: 0, parkingMult: 1.0,
-        timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95,
-      },
-      variance: {
-        densityMult: 1.2, farMult: 1.15, heightAdd: 10, storiesAdd: 1, parkingMult: 0.85,
-        timeline: '9-18 months', cost: '$100K-$350K', riskLevel: 'medium', successPercent: 65,
-      },
-      rezone: {
-        densityMult: 1.6, farMult: 1.5, heightAdd: maxHeight ? maxHeight * 0.5 : 0, storiesAdd: 3, parkingMult: 0.7,
-        timeline: '12-36 months', cost: '$200K-$750K', riskLevel: 'high', successPercent: 35,
-      },
+    const scenarioMeta: Record<string, any> = {
+      by_right: { timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95 },
+      variance: { timeline: '9-18 months', cost: '$100K-$350K', riskLevel: 'medium', successPercent: 65 },
+      rezone: { timeline: '12-36 months', cost: '$200K-$750K', riskLevel: 'high', successPercent: 35 },
     };
 
     const byRightUnits = maxDensity ? Math.floor(maxDensity * parcelAreaAcres) : 0;
 
-    const buildScenario = (type: string) => {
-      const cfg = scenarioConfigs[type];
-      const sDensity = maxDensity ? maxDensity * cfg.densityMult : null;
-      const sFAR = maxFAR ? maxFAR * cfg.farMult : null;
-      const sHeight = maxHeight ? maxHeight + cfg.heightAdd : null;
-      const sStories = maxStories ? maxStories + cfg.storiesAdd : null;
-      const sParkingRatio = minParking ? minParking * cfg.parkingMult : null;
+    const findMatchingDistrict = async (targetDensity: number) => {
+      if (!targetDensity || !municipality) return null;
+      const result = await pool.query(
+        `SELECT zoning_code, district_name,
+                COALESCE(max_density_per_acre, max_units_per_acre) as density,
+                max_far, max_height_feet, max_building_height_ft,
+                max_stories, min_parking_per_unit, parking_per_unit
+         FROM zoning_districts
+         WHERE UPPER(COALESCE(municipality, '')) = UPPER($1)
+           AND COALESCE(max_density_per_acre, max_units_per_acre) >= $2
+           AND UPPER(COALESCE(zoning_code, district_code)) != UPPER($3)
+         ORDER BY COALESCE(max_density_per_acre, max_units_per_acre) ASC
+         LIMIT 1`,
+        [municipality, targetDensity, zoningCode]
+      );
+      return result.rows.length > 0 ? result.rows[0] : null;
+    };
+
+    const varianceTargetDensity = maxDensity ? maxDensity * 1.2 : 0;
+    const rezoneTargetDensity = maxDensity ? maxDensity * 1.6 : 0;
+
+    const [varianceMatch, rezoneMatch] = await Promise.all([
+      findMatchingDistrict(varianceTargetDensity),
+      findMatchingDistrict(rezoneTargetDensity),
+    ]);
+
+    const buildScenario = (type: string, matchedDistrict: any) => {
+      const m = scenarioMeta[type];
+      let sDensity: number | null, sFAR: number | null, sHeight: number | null, sStories: number | null, sParkingRatio: number | null;
+      let matchedCode: string | null = null;
+      let matchedName: string | null = null;
+
+      if (type === 'by_right') {
+        sDensity = maxDensity;
+        sFAR = maxFAR;
+        sHeight = maxHeight;
+        sStories = maxStories;
+        sParkingRatio = minParking;
+      } else if (matchedDistrict) {
+        matchedCode = matchedDistrict.zoning_code;
+        matchedName = matchedDistrict.district_name;
+        sDensity = parseFloat(matchedDistrict.density) || null;
+        sFAR = parseFloat(matchedDistrict.max_far) || null;
+        sHeight = parseFloat(matchedDistrict.max_height_feet || matchedDistrict.max_building_height_ft) || null;
+        sStories = parseInt(matchedDistrict.max_stories) || null;
+        sParkingRatio = parseFloat(matchedDistrict.min_parking_per_unit || matchedDistrict.parking_per_unit) || minParking;
+      } else {
+        const mult = type === 'variance'
+          ? { d: 1.2, f: 1.15, hAdd: 10, sAdd: 1, p: 0.85 }
+          : { d: 1.6, f: 1.5, hAdd: maxHeight ? maxHeight * 0.5 : 0, sAdd: 3, p: 0.7 };
+        sDensity = maxDensity ? maxDensity * mult.d : null;
+        sFAR = maxFAR ? maxFAR * mult.f : null;
+        sHeight = maxHeight ? maxHeight + mult.hAdd : null;
+        sStories = maxStories ? maxStories + mult.sAdd : null;
+        sParkingRatio = minParking ? minParking * mult.p : null;
+      }
 
       const units = sDensity ? Math.floor(sDensity * parcelAreaAcres) : 0;
       const totalGFA = sFAR ? Math.round(sFAR * parcelAreaSF) : 0;
@@ -402,16 +442,18 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       return {
         scenarioType: type,
         label: type === 'by_right' ? 'Current Zoning' : type === 'variance' ? 'Variance Path' : 'Rezone Path',
+        matchedCode,
+        matchedName,
         maxUnits: units,
         totalGFA,
         stories: sStories,
         heightFt: sHeight ? Math.round(sHeight) : null,
         parkingRequired: parkingSpaces,
         parkingRatio: sParkingRatio ? parseFloat(sParkingRatio.toFixed(2)) : null,
-        timeline: cfg.timeline,
-        cost: cfg.cost,
-        riskLevel: cfg.riskLevel,
-        successPercent: cfg.successPercent,
+        timeline: m.timeline,
+        cost: m.cost,
+        riskLevel: m.riskLevel,
+        successPercent: m.successPercent,
         estimatedValue: estValue,
         deltaVsByRight: type === 'by_right' ? 0 : estValue - byRightValue,
         deltaPercent: type === 'by_right' ? 0 : byRightValue > 0 ? Math.round(((estValue - byRightValue) / byRightValue) * 100) : 0,
@@ -448,9 +490,9 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
         setbacks,
       },
       scenarios: [
-        buildScenario('by_right'),
-        buildScenario('variance'),
-        buildScenario('rezone'),
+        buildScenario('by_right', null),
+        buildScenario('variance', varianceMatch),
+        buildScenario('rezone', rezoneMatch),
       ],
     });
   } catch (error: any) {
