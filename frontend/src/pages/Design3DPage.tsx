@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Building3DEditor } from '../components/design';
-import { useDealStore } from '../stores/dealStore';
 import { apiClient } from '../services/api.client';
 import type { Design3D } from '../types/financial.types';
 import { ThreeDErrorBoundary } from '../components/3DErrorBoundary';
@@ -10,13 +9,8 @@ import { Design3DError } from '../components/fallbacks/Design3DError';
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { 
-    selectedDeal: currentDeal, 
-    fetchDealById,
-    isLoading: dealLoading,
-    error: dealError 
-  } = useDealStore();
   
+  const [currentDeal, setCurrentDeal] = useState<any>(null);
   const [design3D, setDesign3D] = useState<Design3D | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -25,40 +19,46 @@ export const Design3DPage: React.FC = () => {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Load deal data on mount
   useEffect(() => {
     const loadDealData = async () => {
       if (!dealId) return;
       
       try {
         setIsLoading(true);
+        setError(null);
         
-        // Load deal if not in store
-        if (!currentDeal || currentDeal.id !== dealId) {
-          await fetchDealById(dealId);
+        const dealResponse = await apiClient.get(`/api/v1/deals/${dealId}`);
+        const dealData = dealResponse.data?.deal || dealResponse.data?.data || dealResponse.data;
+        if (!dealData || !dealData.id) {
+          setError('Deal not found');
+          return;
         }
+        setCurrentDeal(dealData);
         
-        // Load existing design if available
         try {
-          const response = await apiClient.get(`/api/v1/deals/${dealId}/design`);
-          if (response.data.success && response.data.data) {
-            setDesign3D(response.data.data);
+          const designResponse = await apiClient.get(`/api/v1/deals/${dealId}/design`);
+          if (designResponse.data?.success && designResponse.data?.data) {
+            setDesign3D(designResponse.data.data);
           }
         } catch (designErr: any) {
           if (designErr?.response?.status !== 404) {
             console.warn('Could not load existing design:', designErr);
           }
         }
-      } catch (err) {
-        console.error('Failed to load deal/design:', err);
-        setError('Failed to load deal data');
+      } catch (err: any) {
+        console.error('Failed to load deal:', err);
+        if (err?.response?.status === 404) {
+          setError('Deal not found');
+        } else {
+          setError(err?.response?.data?.message || err?.message || 'Failed to load deal data');
+        }
       } finally {
         setIsLoading(false);
       }
     };
     
     loadDealData();
-  }, [dealId, fetchDealById]);
+  }, [dealId]);
 
   // Auto-save functionality
   useEffect(() => {
@@ -154,7 +154,7 @@ export const Design3DPage: React.FC = () => {
     }
   };
 
-  if (isLoading || dealLoading) {
+  if (isLoading) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <div className="text-center">
@@ -165,15 +165,13 @@ export const Design3DPage: React.FC = () => {
     );
   }
 
-  // Show store error or local error
-  const displayError = dealError || error;
-  if (displayError) {
+  if (error) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Deal</h2>
-          <p className="text-gray-600 mb-4">{displayError}</p>
+          <p className="text-gray-600 mb-4">{error}</p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => window.location.reload()}
