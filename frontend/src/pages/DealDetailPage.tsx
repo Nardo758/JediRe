@@ -6,7 +6,8 @@ import {
   ClipboardCheck, Calendar, FolderOpen, Box, Car,
   LogOut, Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
-  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat, Coins
+  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat, Coins,
+  Shield, Layers, BarChart2, Radar
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
@@ -25,6 +26,10 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
+import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligence';
+import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
+import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
+import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import DebtSection from '../components/deal/sections/DebtSection.legacy';
 import ExitSection from '../components/deal/sections/ExitSection';
 
@@ -147,6 +152,18 @@ const DealDetailPage: React.FC = () => {
       icon: <Package size={16} />, 
       component: SupplyPipelinePage 
     },
+    {
+      id: 'supply-intelligence',
+      label: 'Supply Intelligence',
+      icon: <Radar size={16} />,
+      component: SupplyIntelligence
+    },
+    {
+      id: 'market-vitals',
+      label: 'Market Vitals',
+      icon: <BarChart2 size={16} />,
+      component: MarketIntelligence
+    },
     { 
       id: 'trends', 
       label: 'Trends Analysis', 
@@ -180,6 +197,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Financial Model', 
       icon: <Calculator size={16} />, 
       component: FinancialModelingSection 
+    },
+    {
+      id: 'proforma-intelligence',
+      label: 'Pro Forma Intelligence',
+      icon: <Layers size={16} />,
+      component: ProFormaIntelligence
     },
     { 
       id: 'capital-events', 
@@ -220,6 +243,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Risk Management', 
       icon: <AlertTriangle size={16} />, 
       component: RiskManagementSection 
+    },
+    {
+      id: 'risk-intelligence',
+      label: 'Risk Intelligence',
+      icon: <Shield size={16} />,
+      component: RiskIntelligence
     },
     { 
       id: 'environmental-esg', 
