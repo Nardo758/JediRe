@@ -237,6 +237,13 @@ export const CreateDealPage: React.FC = () => {
         coordinates: coordinates,
       };
 
+      const categoryToProjectType: Record<string, string> = {
+        'Residential': 'residential', 'Multifamily': 'multifamily',
+        'Commercial': 'office', 'Retail': 'retail', 'Industrial': 'industrial',
+        'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
+        'Land': 'land', 'Special Purpose': 'special_purpose',
+      };
+
       const dealPayload: any = {
         name: dealName,
         description,
@@ -244,6 +251,7 @@ export const CreateDealPage: React.FC = () => {
         development_type: developmentType!,
         property_type_id: propertyType?.id,
         property_type_key: propertyType?.type_key,
+        projectType: propertyType?.category ? categoryToProjectType[propertyType.category] || 'multifamily' : 'multifamily',
         address,
         boundary,
         purchase_price: purchasePrice ? parseFloat(purchasePrice.replace(/[^0-9.]/g, '')) : undefined,

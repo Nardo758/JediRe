@@ -32,9 +32,34 @@ export interface MarketState {
   lastUpdated: number;
 }
 
+export interface ZoningProfileState {
+  baseDistrictCode: string | null;
+  municipality: string | null;
+  appliedFar: number | null;
+  lotAreaSf: number | null;
+  buildableAreaSf: number | null;
+  constraintSource: string;
+  lastUpdated: number;
+}
+
+export interface ActiveScenarioState {
+  id: string;
+  name: string;
+  maxGba: number | null;
+  maxUnits: number | null;
+  netLeasableSf: number | null;
+  parkingRequired: number | null;
+  maxStories: number | null;
+  bindingConstraint: string | null;
+  appliedFar: number | null;
+  avgUnitSize: number;
+  efficiencyFactor: number;
+  lastUpdated: number;
+}
+
 export interface DealModuleEvent {
   source: string;
-  type: 'design-updated' | 'financial-updated' | 'market-updated' | 'navigate-to' | 'data-request';
+  type: 'design-updated' | 'financial-updated' | 'market-updated' | 'capacity-updated' | 'navigate-to' | 'data-request';
   payload?: any;
   timestamp: number;
 }
@@ -51,6 +76,12 @@ interface DealModuleContextValue {
 
   market: MarketState | null;
   updateMarket: (updates: Partial<MarketState>) => void;
+
+  zoningProfile: ZoningProfileState | null;
+  updateZoningProfile: (updates: Partial<ZoningProfileState>) => void;
+
+  activeScenario: ActiveScenarioState | null;
+  updateActiveScenario: (updates: Partial<ActiveScenarioState>) => void;
 
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
@@ -79,6 +110,8 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [design3D, setDesign3D] = useState<Design3DState | null>(null);
   const [financial, setFinancial] = useState<FinancialState | null>(null);
   const [market, setMarket] = useState<MarketState | null>(null);
+  const [zoningProfile, setZoningProfile] = useState<ZoningProfileState | null>(null);
+  const [activeScenario, setActiveScenario] = useState<ActiveScenarioState | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
 
   const updateDesign3D = useCallback((updates: Partial<Design3DState>) => {
@@ -113,6 +146,32 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     }));
   }, []);
 
+  const updateZoningProfile = useCallback((updates: Partial<ZoningProfileState>) => {
+    setZoningProfile(prev => ({
+      ...(prev || {
+        baseDistrictCode: null, municipality: null, appliedFar: null,
+        lotAreaSf: null, buildableAreaSf: null, constraintSource: 'auto', lastUpdated: 0,
+      }),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
+  const updateActiveScenario = useCallback((updates: Partial<ActiveScenarioState>) => {
+    setActiveScenario(prev => {
+      const updated = {
+        ...(prev || {
+          id: '', name: '', maxGba: null, maxUnits: null, netLeasableSf: null,
+          parkingRequired: null, maxStories: null, bindingConstraint: null,
+          appliedFar: null, avgUnitSize: 900, efficiencyFactor: 0.85, lastUpdated: 0,
+        }),
+        ...updates,
+        lastUpdated: Date.now(),
+      };
+      return updated;
+    });
+  }, []);
+
   const emitEvent = useCallback((event: Omit<DealModuleEvent, 'timestamp'>) => {
     const fullEvent: DealModuleEvent = { ...event, timestamp: Date.now() };
     setLastEvent(fullEvent);
@@ -134,11 +193,15 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateFinancial,
     market,
     updateMarket,
+    zoningProfile,
+    updateZoningProfile,
+    activeScenario,
+    updateActiveScenario,
     emitEvent,
     lastEvent,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, emitEvent, lastEvent, navigateToTab, activeTab]);
+  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, emitEvent, lastEvent, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -159,6 +222,10 @@ export const useDealModule = (): DealModuleContextValue => {
       updateFinancial: () => {},
       market: null,
       updateMarket: () => {},
+      zoningProfile: null,
+      updateZoningProfile: () => {},
+      activeScenario: null,
+      updateActiveScenario: () => {},
       emitEvent: () => {},
       lastEvent: null,
       navigateToTab: () => {},

@@ -39,13 +39,16 @@ export const createDealSchema = z.object({
   tier: z.enum(['basic', 'professional', 'enterprise']).optional(),
   deal_category: z.enum(['pipeline', 'owned']).optional(),
   development_type: z.string().optional(),
+  property_type_id: z.number().int().positive().nullable().optional(),
+  property_type_key: z.string().optional(),
   address: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
-});
+}).passthrough();
 
 export const updateDealSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   projectType: z.string().optional(),
+  project_type: z.string().optional(),
   projectIntent: z.string().nullable().optional(),
   targetUnits: z.number().int().positive().nullable().optional(),
   budget: z.number().positive().nullable().optional(),

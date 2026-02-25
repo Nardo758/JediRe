@@ -5,9 +5,11 @@ import { PropertyBoundaryResolver } from '../../services/property-boundary-resol
 import { ZoningKnowledgeService } from '../../services/zoning-knowledge.service';
 import { ZoningReasoningService } from '../../services/zoning-reasoning.service';
 import { ZoningApplicationPipeline } from '../../services/zoning-application-pipeline.service';
+import { ZoningProfileService } from '../../services/zoning-profile.service';
 
 const router = Router();
 const pool = getPool();
+const zoningProfileService = new ZoningProfileService(pool);
 
 const SetbacksSchema = z.object({
   front: z.number().min(0).max(100),
@@ -144,6 +146,10 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
 
     triggerZoningAutoPopulate(dealId).catch(err => {
       console.error('Auto-populate zoning capacity failed (non-blocking):', err);
+    });
+
+    zoningProfileService.resolveProfile(dealId).catch(err => {
+      console.error('Auto-resolve zoning profile failed (non-blocking):', err);
     });
   } catch (error: any) {
     console.error('Error saving boundary:', error);
@@ -584,6 +590,10 @@ router.post('/deals/:dealId/zoning-confirmation', async (req: Request, res: Resp
     }
 
     res.json(result.rows[0]);
+
+    zoningProfileService.resolveProfile(dealId).catch(err => {
+      console.error('Auto-resolve zoning profile after confirmation failed (non-blocking):', err);
+    });
   } catch (error: any) {
     console.error('Error saving zoning confirmation:', error);
     res.status(500).json({ error: error.message || 'Failed to save zoning confirmation' });

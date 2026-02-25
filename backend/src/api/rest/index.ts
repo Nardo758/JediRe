@@ -65,6 +65,8 @@ import regulatoryAlertRoutes from './regulatory-alert.routes';
 import dealTimelineRoutes from './deal-timeline.routes';
 import zoningComparatorRoutes from './zoning-comparator.routes';
 import zoningVerificationRoutes from './zoning-verification.routes';
+import zoningProfileRoutes from './zoning-profile.routes';
+import developmentScenariosRoutes from './development-scenarios.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -254,6 +256,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Zoning Verification routes (Verification-First Pipeline)
   app.use(`${API_PREFIX}/zoning-verification`, zoningVerificationRoutes);
+
+  // Zoning Profile routes (Constraint Set per deal)
+  app.use(`${API_PREFIX}`, zoningProfileRoutes);
+
+  // Development Scenarios routes (Use-mix scenario modeling)
+  app.use(`${API_PREFIX}`, developmentScenariosRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

@@ -124,8 +124,26 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     const {
       name, boundary, projectType, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
-      deal_category, development_type, address, description
+      deal_category, development_type, address, description,
+      property_type_key
     } = req.body;
+
+    let resolvedProjectType = projectType;
+    if (!resolvedProjectType && property_type_key) {
+      const ptResult = await client.query(
+        'SELECT category FROM property_types WHERE type_key = $1 LIMIT 1',
+        [property_type_key]
+      );
+      if (ptResult.rows.length > 0) {
+        const categoryMap: Record<string, string> = {
+          'Residential': 'residential', 'Multifamily': 'multifamily',
+          'Commercial': 'office', 'Retail': 'retail', 'Industrial': 'industrial',
+          'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
+          'Land': 'land', 'Special Purpose': 'special_purpose',
+        };
+        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'multifamily';
+      }
+    }
 
     const userTier = tier || 'basic';
     const boundaryGeom = boundary.type === 'Point'
@@ -143,7 +161,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       req.user!.userId,
       name,
       JSON.stringify(boundary),
-      projectType || 'multifamily',
+      resolvedProjectType || 'multifamily',
       projectIntent || null,
       targetUnits || null,
       budget || null,
@@ -197,7 +215,8 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
     }
 
     const allowedFields: Record<string, string> = {
-      name: 'name', projectType: 'project_type', projectIntent: 'project_intent',
+      name: 'name', projectType: 'project_type', project_type: 'project_type',
+      projectIntent: 'project_intent',
       targetUnits: 'target_units', budget: 'budget', status: 'status',
       timelineStart: 'timeline_start', timelineEnd: 'timeline_end',
       description: 'description', address: 'address',
