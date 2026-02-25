@@ -326,12 +326,27 @@ export class MicrosoftGraphService {
   }
 
   // ======================
+  // CONTACTS
+  // ======================
+
+  async getContacts(top: number = 250): Promise<{ value: any[] }> {
+    return this.graphRequest<{ value: any[] }>(
+      'GET',
+      `/me/contacts?$top=${top}&$select=id,displayName,emailAddresses,businessPhones,mobilePhone,companyName,jobTitle&$orderby=displayName`
+    );
+  }
+
+  async getPeople(top: number = 100): Promise<{ value: any[] }> {
+    return this.graphRequest<{ value: any[] }>(
+      'GET',
+      `/me/people?$top=${top}&$select=id,displayName,emailAddresses,phones,companyName,jobTitle`
+    );
+  }
+
+  // ======================
   // USER PROFILE
   // ======================
 
-  /**
-   * Get user profile
-   */
   async getUserProfile(): Promise<{
     id: string;
     displayName: string;

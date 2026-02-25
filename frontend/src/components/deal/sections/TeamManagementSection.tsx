@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import {
   Loader2, Users, Plus, CheckCircle, Clock, AlertCircle,
   Save, Trash2, MessageSquare, ChevronDown, ChevronRight,
-  UserPlus, ClipboardList, X
+  UserPlus, ClipboardList, X, Download
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { ContactImportModal } from './ContactImportModal';
 
 interface TeamManagementSectionProps {
   deal?: any;
@@ -73,6 +74,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [showImportContacts, setShowImportContacts] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [taskComments, setTaskComments] = useState<Record<string, Comment[]>>({});
   const [newComment, setNewComment] = useState('');
@@ -245,7 +247,14 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
 
       {activeView === 'members' && (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowImportContacts(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Download size={16} />
+              Import from Email
+            </button>
             <button
               onClick={() => setShowAddMember(!showAddMember)}
               className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
@@ -500,6 +509,13 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
             )}
           </div>
         </div>
+      )}
+      {showImportContacts && resolvedDealId && (
+        <ContactImportModal
+          dealId={resolvedDealId}
+          onClose={() => setShowImportContacts(false)}
+          onImported={() => fetchMembers()}
+        />
       )}
     </div>
   );

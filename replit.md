@@ -31,6 +31,7 @@ JEDI RE features a lightweight, map-agnostic architecture with a Node.js/TypeScr
 -   **Municipal Zoning Database:** Covers 43 municipalities across 13 SE + TX states with verified ArcGIS REST API connectors for major cities.
 -   **Data Tracker Admin Page:** Monitors data coverage and completeness with KPIs and alerts.
 -   **Building Envelope Service:** Universal calculation engine for 6 property types, determining buildable area, GFA, capacity by constraint, and performing Highest & Best Use analysis. Includes Claude-powered optimization recommendations.
+-   **Contact Sync / Import:** Team members can be imported from connected Microsoft Outlook or Google accounts. Backend service `contacts-sync.service.ts` fetches contacts via Microsoft Graph API (`/me/contacts`, `/me/people`) and Google People API. Routes in `contacts-sync.routes.ts`: `GET /contacts/status`, `GET /contacts/microsoft`, `GET /contacts/google`, `POST /deals/:dealId/team/members/import`. Frontend: `ContactImportModal.tsx` with provider selection, search, multi-select, and bulk import. Leverages existing OAuth tokens from `microsoft_accounts` and `user_email_accounts` tables.
 
 ### Agent Dashboard (CRM Module)
 

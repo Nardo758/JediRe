@@ -62,6 +62,7 @@ import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
 import teamManagementRouter from './api/rest/team-management.routes';
+import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
 import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
@@ -195,6 +196,7 @@ app.use('/api/v1/zoning-intelligence', requireAuth, createZoningIntelligenceRout
 app.use('/api/v1/zoning-learning', requireAuth, createZoningLearningRoutes(pool));
 app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
+app.use('/api/v1', requireAuth, contactsSyncRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
