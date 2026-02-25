@@ -1,0 +1,26 @@
+The development capacity tool shouldn't be a standalone calculator — it should be a deal-level module that pulls from and writes to other modules in the deal.
+Here's how I'd rethink it:
+Step 1: Zoning Interpreter feeds the capacity engine
+Instead of the user manually inputting FAR, height limits, setbacks, and lot coverage, the Zoning Interpreter module should parse the district code and output a constraint object — a structured data set with every applicable rule, including conditional splits like MRC-2's residential vs. nonresidential FAR. The user confirms or overrides (for "-C" conditions, overlays, variances), but the defaults come from the zoning lookup.
+Step 2: The capacity tool becomes scenario-driven, not single-output
+The user defines a development program — a use mix — and the engine calculates the envelope for that program. "I want 80% residential, 20% retail" produces one result. "100% residential" produces another. The tool shows both side by side with the binding constraint for each clearly flagged. This is where rigid UI fails — you need the user to express intent, not just feed numbers.
+Step 3: Adjacency awareness
+Since Jedi RE is deal-based and properties have locations, you can pull adjacent parcel zoning from GIS data to auto-calculate where the 52-ft height restriction applies vs. the 225-ft zone. This turns a guess into a spatial model. Even a rough version — "south boundary abuts R-4, 150-ft buffer applies" — dramatically improves accuracy.
+Step 4: The constraint object flows downstream
+The capacity output (max GBA, unit count range, parking demand, public space requirement) feeds directly into Financial Analysis Pro for the pro forma, Dev Budget Tracker for hard cost estimates, and the Site Plan Analyzer for massing studies. No re-keying data between modules.
+Step 5: AI Agent layer handles the messy stuff
+The conditional "-C" ordinance, overlay text, bonus provisions — this is where the AI agent earns its keep. User uploads or pastes the conditional ordinance, the agent extracts constraints and flags them as overrides to the base zoning. Same with SPI overlays or BeltLine requirements. The structured calculator handles math; the agent handles interpretation.
+Data model for the module:
+Deal
+  └── Site (geometry, lot area, adjacencies)
+       └── Zoning Profile
+            ├── Base District (MRC-2 → lookup table)
+            ├── Overlays[] (SPI, BeltLine, Historic)
+            ├── Conditional Ordinance (parsed text → constraint overrides)
+            └── Constraint Set (FAR by use, height by zone, setbacks, coverage, parking, open space)
+       └── Development Scenarios[]
+            ├── Use Mix (% residential, commercial, retail)
+            ├── Calculated Envelope (GBA, footprint, stories, units)
+            ├── Binding Constraint
+            └── Flags/Notes (from AI agent)
+This fits cleanly into the module API pattern you've already designed — the AI agent reads/writes through the same standardized interface, and Financial Analysis Pro can pull the active scenario's output to seed the pro forma.

@@ -1,0 +1,42 @@
+Alright, let me walk through it line by line using your numbers and the actual MRC-2 code.
+Line 1: Lot Area — 209,575 SF ✅
+4.81 acres × 43,560 SF/acre = 209,574 SF. Checks out. But an important distinction right away: MRC-2 calculates FAR on net lot area, which means lot area minus any public right-of-way dedications, easements, or land set aside for public infrastructure. If the 209,575 is gross, you may need to reduce this. For now I'll assume net = gross.
+Line 2: After Setbacks — 164,194 SF
+This is the buildable footprint area once you pull setbacks from all property lines. That's a reduction of ~45,400 SF, or roughly 21.7% of the lot consumed by setback zones. I couldn't pull the specific MRC-2 setback dimensions from the ordinance text (the eLaws site blocked me), so I can't verify this number — but it's plausible depending on lot geometry, street frontages, and whether there's a supplemental zone requirement along sidewalks. MRC districts require sidewalk and supplemental zones that function like enhanced setbacks, typically 5–20 feet depending on the street classification.
+Line 3: Lot Coverage Cap (85%) — 178,139 SF
+209,575 × 0.85 = 178,139 SF. The math is right, but I couldn't confirm 85% is the actual MRC-2 lot coverage cap from the code. MRC districts in Atlanta don't always state an explicit lot coverage percentage the way R districts do — the envelope is more often controlled by FAR, height, setbacks, and open space requirements. The 20% public space requirement for lots over 1 acre effectively acts as a coverage cap of ~80% (since 20% must be public space), which would actually bring this down to ~167,660 SF, slightly more restrictive than the 85% figure.
+Line 4: Max Footprint — 164,194 SF ✅ (mechanically)
+Your tool correctly takes the lesser of after-setbacks (164,194) and lot coverage (178,139), so setbacks are the binding constraint on footprint. If the public space requirement is factored in instead of 85%, it still wouldn't change this — 164,194 remains smaller.
+Line 5: GBA by Height (5 stories) — 820,970 SF
+164,194 × 5 = 820,970. Math is correct, but the assumption of a uniform 5-story / 52-ft cap across the entire site is where this breaks down. The 52-ft limit only applies to portions of the building within 150 feet of R-1 through R-5, R-G, MR-1, MR-2, or PD-H districts. Everything beyond that 150-ft buffer can go to 225 feet. On a 4.81-acre site, depending on the shape and what's adjacent, you could have a significant portion of the parcel in the 225-ft zone. So this line could be much higher — or lower on parts of the site — depending on how you mass the building.
+Line 6: GBA by FAR (3.2) — 670,640 SF
+209,575 × 3.2 = 670,640. Math checks out. But this is the core problem — you can't use 3.2 as a single blended number and allocate it however you want. The code splits it:
+
+Nonresidential: 2.50 FAR → 523,938 SF max
+Residential: 1.49 FAR → 312,267 SF max
+Combined: 3.196 → 670,205 SF (your 3.2 rounds up slightly)
+
+If you're building a primarily residential project, say 250 units of multifamily with ground-floor retail, you'd be looking at something like:
+
+Residential: 1.49 × 209,575 = ~312,267 SF
+Retail (ground floor, say 15% of footprint): ~24,600 SF
+Total: ~336,900 SF — roughly half of what the tool shows
+
+You only unlock the full 670K if you're building roughly equal parts commercial and residential, which is a very different project.
+Line 7: Actual GBA — 670,639 SF
+Your tool correctly picks the lesser of height-based (820,970) and FAR-based (670,640). FAR is the binding constraint. This logic is sound — the issue is just what goes into the FAR number.
+Line 8: Net Leasable (~85%) — 570,043 SF
+670,639 × 0.85 = 570,043. The 85% efficiency factor is reasonable for a mixed-use building. For pure multifamily it might be slightly higher (87–88%), for office-heavy slightly lower (80–82%).
+
+So where does this actually land for a realistic project?
+If you're planning a multifamily-dominant development with ground-floor retail, the honest envelope is probably:
+
+Residential GBA: ~312K SF
+Commercial GBA: ~25–50K SF (ground floor retail/restaurant)
+Total GBA: ~337–362K SF
+Net leasable residential (~87%): ~271K SF
+Units at 900 SF avg: ~301 units
+Net leasable retail: ~25–50K SF
+
+Still a strong project on 4.81 acres. Just not 670K SF unless the commercial component is massive.
+Want me to check whether there are bonus FAR provisions that could push the residential allocation higher? The code mentions an affordable housing bonus that could help.
