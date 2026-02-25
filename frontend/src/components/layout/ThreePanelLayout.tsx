@@ -191,7 +191,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
         <>
           <div
             ref={contentRef}
-            className={`bg-gray-50 overflow-y-auto border-r border-gray-200 ${
+            className={`bg-gray-50 overflow-y-auto overflow-x-hidden border-r border-gray-200 ${
               isContentMaximized || !showMap ? 'flex-1' : 'flex-shrink-0'
             }`}
             style={!isContentMaximized && showMap ? { width: `${contentWidth}px` } : undefined}

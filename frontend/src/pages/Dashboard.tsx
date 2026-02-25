@@ -323,9 +323,9 @@ export const Dashboard: React.FC = () => {
       : 0;
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 max-w-full">
         {/* KPI Cards - Top Row */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-4 gap-3 max-w-full">
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
             <div className="text-2xl font-bold text-gray-900">
@@ -360,7 +360,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Two-Column Layout */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-5 gap-4 max-w-full">
           {/* Left Column - Intelligence (40% - 2 cols) */}
           <div className="col-span-2">
             <KeyFindingsSection />
@@ -427,7 +427,7 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {/* Bottom Row - Portfolio Assets + Quick Actions */}
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-5 gap-4 max-w-full">
           {/* Portfolio Assets (3 cols) */}
           <div className="col-span-3">
             <div className="flex items-center justify-between mb-3">
