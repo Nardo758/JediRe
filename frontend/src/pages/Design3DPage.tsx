@@ -21,18 +21,28 @@ export const Design3DPage: React.FC = () => {
 
   useEffect(() => {
     const loadDealData = async () => {
-      if (!dealId) return;
+      if (!dealId) {
+        setError('No deal ID provided');
+        setIsLoading(false);
+        return;
+      }
       
       try {
         setIsLoading(true);
         setError(null);
         
+        console.log('[Design3DPage] Fetching deal:', dealId);
         const dealResponse = await apiClient.get(`/api/v1/deals/${dealId}`);
+        console.log('[Design3DPage] Deal response:', dealResponse.data);
+        
         const dealData = dealResponse.data?.deal || dealResponse.data?.data || dealResponse.data;
         if (!dealData || !dealData.id) {
-          setError('Deal not found');
+          console.error('[Design3DPage] Invalid deal data:', dealData);
+          setError('Deal not found - API returned empty data');
+          setIsLoading(false);
           return;
         }
+        console.log('[Design3DPage] Deal loaded:', dealData.id, dealData.name);
         setCurrentDeal(dealData);
         
         try {
@@ -46,12 +56,21 @@ export const Design3DPage: React.FC = () => {
           }
         }
       } catch (err: any) {
-        console.error('Failed to load deal:', err);
+        console.error('[Design3DPage] Error loading deal:', err);
+        console.error('[Design3DPage] Error details:', {
+          status: err?.response?.status,
+          data: err?.response?.data,
+          message: err?.message
+        });
+        
         if (err?.response?.status === 404) {
-          setError('Deal not found');
+          setError(`Deal with ID "${dealId}" not found`);
+        } else if (err?.code === 'ERR_NETWORK' || err?.message?.includes('Network')) {
+          setError('Cannot connect to server. Please check if the backend is running.');
         } else {
           setError(err?.response?.data?.message || err?.message || 'Failed to load deal data');
         }
+        setIsLoading(false);
       } finally {
         setIsLoading(false);
       }
