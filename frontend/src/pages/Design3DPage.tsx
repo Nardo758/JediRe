@@ -160,6 +160,32 @@ export const Design3DPage: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-white flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Deal</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Retry
+            </button>
+            <Link 
+              to="/deals" 
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+            >
+              Back to Deals
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentDeal) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center">
