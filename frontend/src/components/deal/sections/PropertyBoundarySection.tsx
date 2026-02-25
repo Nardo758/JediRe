@@ -193,7 +193,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 const parcelParams: Record<string, string> = {};
                 if (lat && lng) { parcelParams.lat = String(lat); parcelParams.lng = String(lng); }
                 if (dealAddress) parcelParams.address = dealAddress;
-                const parcelData = await apiClient.get(`/api/v1/zoning/parcel-lookup`, { params: parcelParams }) as any;
+                const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams }) as any;
                 if (parcelData?.found && parcelData.zoningCode) {
                   code = parcelData.zoningCode;
                   description = parcelData.zoningName || parcelData.zoningCode;
@@ -536,7 +536,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           parcelParams.lng = String(boundary.centroid[0]);
         }
         if (deal?.address) parcelParams.address = deal.address;
-        const parcelData = await apiClient.get(`/api/v1/zoning/parcel-lookup`, { params: parcelParams }) as any;
+        const parcelData = await apiClient.get(`/zoning/parcel-lookup`, { params: parcelParams }) as any;
         if (parcelData?.found && parcelData.zoningCode) {
           code = parcelData.zoningCode;
           description = parcelData.zoningName || parcelData.zoningCode;
