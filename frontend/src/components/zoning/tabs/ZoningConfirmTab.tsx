@@ -131,17 +131,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         const districts: ZoningDistrict[] = zoningData.districts;
         setAvailableDistricts(districts);
 
-        const addressUpper = (deal?.address || '').toUpperCase();
-        let bestMatch = districts[0];
-
-        const residentialCodes = districts.filter(d => {
-          const code = (d.zoning_code || '').toUpperCase();
-          return code.startsWith('R-') || code.startsWith('MR-') || code.startsWith('RG-');
-        });
-        if (residentialCodes.length > 0) {
-          bestMatch = residentialCodes[0];
-        }
-
+        const bestMatch = districts[0];
         setSelectedDistrictId(bestMatch.id);
         setDetectedZoning({
           code: bestMatch.zoning_code,
