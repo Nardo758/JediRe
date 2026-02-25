@@ -139,11 +139,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const parkingSpaces = zoningStandards.minParking != null && densityUnits != null
     ? Math.ceil(zoningStandards.minParking * densityUnits)
     : null;
+  const lotCoveragePct = zoningStandards.maxLotCoverage;
+  const maxFootprint = lotCoveragePct != null && envelope.buildableArea
+    ? Math.round(envelope.buildableArea * (lotCoveragePct / 100))
+    : null;
 
   const constraintEntries = [
     { label: 'Density', value: densityUnits, displayValue: densityUnits, unit: 'units', isLimiting: envelope.limitingFactor === 'density' },
     { label: 'FAR', value: totalGFA, displayValue: totalGFA, unit: 'SF', isLimiting: envelope.limitingFactor === 'FAR' },
     { label: 'Height', value: stories, displayValue: stories, unit: 'stories', isLimiting: envelope.limitingFactor === 'height' },
+    { label: 'Lot Coverage', value: maxFootprint, displayValue: maxFootprint, unit: 'SF footprint', isLimiting: false },
     { label: 'Parking', value: parkingSpaces, displayValue: parkingSpaces, unit: 'spaces', isLimiting: envelope.limitingFactor === 'parking' },
   ].filter(c => c.value != null);
 

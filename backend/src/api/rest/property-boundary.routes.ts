@@ -344,7 +344,8 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
     const maxHeight = district ? parseFloat(district.max_height_feet || district.max_building_height_ft) || null : null;
     const maxStories = district ? parseInt(district.max_stories) || null : null;
     const minParking = district ? parseFloat(district.min_parking_per_unit || district.parking_per_unit) || null : null;
-    const maxLotCoverage = district ? parseFloat(district.max_lot_coverage || district.max_lot_coverage_percent) || null : null;
+    const rawLotCoverage = district ? parseFloat(district.max_lot_coverage || district.max_lot_coverage_percent) || null : null;
+    const maxLotCoverage = rawLotCoverage != null ? (rawLotCoverage <= 1 ? rawLotCoverage * 100 : rawLotCoverage) : null;
 
     const setbacks = {
       front: parseFloat(savedSetbacks.front) || parseFloat(district?.min_front_setback_ft || district?.setback_front_ft) || 25,

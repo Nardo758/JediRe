@@ -1183,6 +1183,26 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                     {formatNumber((boundary.buildablePercentage || 0) * 100, 0)}%
                   </span>
                 </div>
+                {zoningDetail && (zoningDetail.max_lot_coverage != null || zoningDetail.max_lot_coverage_percent != null) && (() => {
+                  const rawCoverage = parseFloat(zoningDetail.max_lot_coverage || zoningDetail.max_lot_coverage_percent);
+                  const coveragePct = rawCoverage <= 1 ? rawCoverage * 100 : rawCoverage;
+                  const coverageFraction = rawCoverage <= 1 ? rawCoverage : rawCoverage / 100;
+                  const maxFootprint = boundary.buildableAreaSF ? Math.round(boundary.buildableAreaSF * coverageFraction) : null;
+                  return (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Lot Coverage:</span>
+                        <span className="font-medium text-gray-900">{coveragePct.toFixed(0)}%</span>
+                      </div>
+                      {maxFootprint != null && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Max Footprint:</span>
+                          <span className="font-medium text-gray-900">{maxFootprint.toLocaleString()} SF</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
               {hasBoundary && boundary.buildablePercentage && boundary.buildablePercentage < 0.7 && (
                 <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
