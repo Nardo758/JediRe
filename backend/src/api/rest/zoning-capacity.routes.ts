@@ -341,7 +341,57 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
       return res.json({ found: false });
     }
 
-    const district = result.rows[0];
+    let district = result.rows[0];
+
+    const devStandardFields = [
+      'max_density_per_acre', 'max_units_per_acre', 'max_far',
+      'max_height_feet', 'max_building_height_ft', 'max_stories',
+      'min_parking_per_unit', 'parking_per_unit',
+      'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
+      'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
+      'max_lot_coverage', 'max_lot_coverage_percent',
+    ];
+    const hasNoStandards = devStandardFields.every(f => district[f] == null);
+    if (hasNoStandards) {
+      const codeStr = (code as string).toUpperCase();
+      const baseMatch = codeStr.match(/^(.+)-[A-Z]{1,2}$/);
+      if (baseMatch) {
+        const baseCode = baseMatch[1];
+        const baseResult = await pool.query(
+          `SELECT zd.* FROM zoning_districts zd
+           WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+             AND (zd.municipality_id = $2 OR UPPER(COALESCE(zd.municipality, '')) = UPPER($3))
+           LIMIT 1`,
+          [baseCode, district.municipality_id || '', district.municipality || municipality || '']
+        );
+        if (baseResult.rows.length > 0) {
+          const base = baseResult.rows[0];
+          const mergeFields = [
+            ...devStandardFields,
+            'district_name', 'description', 'permitted_uses', 'conditional_uses',
+            'prohibited_uses', 'full_code_text', 'code_section',
+          ];
+          for (const field of mergeFields) {
+            if (district[field] == null || district[field] === '' ||
+                (Array.isArray(district[field]) && district[field].length === 0)) {
+              if (base[field] != null && base[field] !== '' &&
+                  !(Array.isArray(base[field]) && base[field].length === 0)) {
+                district[field] = base[field];
+              }
+            }
+          }
+          if (district.district_name?.startsWith('http')) {
+            if (!district.source_url) district.source_url = district.district_name;
+            district.district_name = base.district_name || district.zoning_code || district.district_code;
+          }
+        }
+      }
+    }
+
+    if (district.district_name?.startsWith('http')) {
+      if (!district.source_url) district.source_url = district.district_name;
+      district.district_name = district.zoning_code || district.district_code || 'Unknown';
+    }
 
     const relatedResult = await pool.query(
       `SELECT id, COALESCE(zoning_code, district_code) as zoning_code, 
