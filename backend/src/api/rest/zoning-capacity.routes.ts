@@ -617,114 +617,106 @@ router.get('/zoning/lookup', async (req: Request, res: Response) => {
 router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
   try {
     const { lat, lng, municipality_id, address } = req.query;
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'Must provide lat and lng' });
-    }
-
-    const latNum = parseFloat(lat as string);
-    const lngNum = parseFloat(lng as string);
     const addressStr = (address as string) || '';
+    const latNum = lat != null ? parseFloat(lat as string) : null;
+    const lngNum = lng != null ? parseFloat(lng as string) : null;
+    const hasCoords = latNum !== null && lngNum !== null && Number.isFinite(latNum) && Number.isFinite(lngNum);
+
+    if (!addressStr && !hasCoords) {
+      return res.status(400).json({ error: 'Must provide address or lat/lng' });
+    }
 
     let muniId = municipality_id as string | undefined;
     let cityName = '';
     let stateName = '';
+    let countyName = '';
 
-    const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
-    if (mapboxToken) {
-      const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lngNum},${latNum}.json?types=place,locality&access_token=${mapboxToken}`;
-      const geoRes = await fetch(geoUrl);
-      const geoData = await geoRes.json();
-      if (geoData.features?.length > 0) {
-        cityName = geoData.features[0].text || '';
-        const context = geoData.features[0].context || [];
-        const stateCtx = context.find((c: any) => c.id?.startsWith('region'));
-        stateName = stateCtx?.short_code?.replace('US-', '') || '';
+    if (hasCoords) {
+      const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
+      if (mapboxToken) {
+        const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lngNum},${latNum}.json?types=place,locality,district&access_token=${mapboxToken}`;
+        const geoRes = await fetch(geoUrl);
+        const geoData = await geoRes.json();
+        if (geoData.features?.length > 0) {
+          cityName = geoData.features[0].text || '';
+          const context = geoData.features[0].context || [];
+          const stateCtx = context.find((c: any) => c.id?.startsWith('region'));
+          const countyCtx = context.find((c: any) => c.id?.startsWith('district'));
+          stateName = stateCtx?.short_code?.replace('US-', '') || '';
+          countyName = countyCtx?.text || '';
 
-        if (!muniId) {
-          const muniResult = await pool.query(
-            `SELECT id FROM municipalities WHERE UPPER(name) = UPPER($1) AND UPPER(state) = UPPER($2) LIMIT 1`,
-            [cityName, stateName]
-          );
-          if (muniResult.rows.length > 0) {
-            muniId = muniResult.rows[0].id;
-          }
-        }
-      }
-    }
-
-    let arcgisResult: any = null;
-    if (muniId) {
-      const cityConfig = CITY_APIS[muniId];
-      if (cityConfig?.verified) {
-        try {
-          const connector = new ArcGISConnector(cityConfig.serviceUrl, cityConfig.token);
-          const result = await connector.queryByLocation(cityConfig.layerId || 0, latNum, lngNum);
-
-          if (result) {
-            const codeField = cityConfig.fields?.code || 'ZONING_CLASSIFICATION';
-            const nameField = cityConfig.fields?.name || 'ZONEDESC';
-            const zoningCode = result[codeField] || result.ZONING || result.ZONE_CODE || null;
-            const zoningName = result[nameField] || result.ZONE_DESC || result.ZONING_DESC || '';
-
-            if (zoningCode) {
-              return res.json({
-                found: true,
-                zoningCode,
-                zoningName,
-                source: 'assessor_api',
-                sourceName: `${cityConfig.name} GIS`,
-                municipality: cityConfig.name,
-                state: cityConfig.state,
-                municipalityId: muniId,
-                confidence: 0.95,
-              });
+          if (!muniId) {
+            const muniResult = await pool.query(
+              `SELECT id FROM municipalities WHERE UPPER(name) = UPPER($1) AND UPPER(state) = UPPER($2) LIMIT 1`,
+              [cityName, stateName]
+            );
+            if (muniResult.rows.length > 0) {
+              muniId = muniResult.rows[0].id;
             }
           }
-        } catch (arcErr: any) {
-          console.warn('ArcGIS lookup failed, falling back to AI:', arcErr.message);
         }
       }
     }
 
-    if (!cityName && !addressStr) {
-      return res.json({ found: false, source: 'none', message: 'Could not determine location for zoning lookup' });
+    const arcgisApis: string[] = [];
+    if (muniId) {
+      const cityConfig = CITY_APIS[muniId];
+      if (cityConfig?.verified && cityConfig.serviceUrl) {
+        arcgisApis.push(cityConfig.serviceUrl);
+      }
     }
 
-    const locationDesc = addressStr
-      ? `${addressStr} (coordinates: ${latNum}, ${lngNum})`
-      : `coordinates ${latNum}, ${lngNum} in ${cityName}, ${stateName}`;
+    const arcgisContext = arcgisApis.length > 0
+      ? `\n\nAVAILABLE GIS APIs - Try these first:\n${arcgisApis.map(url => `- ArcGIS REST API: ${url}`).join('\n')}\nYou can query these by appending /0/query?where=1%3D1&outFields=*&f=json to browse available data, or use spatial queries with the coordinates.`
+      : '';
 
-    const aiPrompt = `I need to find the exact zoning classification/designation for a property located at ${locationDesc}.
+    const coordsContext = hasCoords
+      ? `\nCoordinates: ${latNum}, ${lngNum}`
+      : '';
 
-Search the ${cityName || 'local'} ${stateName ? stateName + ' ' : ''}county or city property assessor website, GIS portal, or zoning map to find:
-1. The zoning district code (e.g., R-1, C-2, MU-3, PD, etc.)
-2. The zoning district name/description
-3. The source URL where you found this information
+    const locationContext = cityName
+      ? `\nCity: ${cityName}, ${stateName}${countyName ? ` (${countyName})` : ''}`
+      : '';
+
+    const aiPrompt = `Find the exact current zoning classification for the property at:
+
+Address: ${addressStr || 'Unknown'}${coordsContext}${locationContext}
+${arcgisContext}
+
+INSTRUCTIONS (follow in order):
+1. FIRST, if GIS APIs are listed above, try querying them to find the zoning code for this parcel. Use spatial queries with the coordinates or search by address/parcel ID.
+2. If the API doesn't return results, search the web for the ${countyName || cityName || 'local'} county property assessor or tax assessor website. Look up this specific address to find its zoning designation.
+3. Also try searching the city's GIS/zoning map portal for the property's zoning district.
+4. Cross-reference multiple sources if possible.
 
 IMPORTANT:
-- Search the official county/city property assessor, GIS, or zoning websites
-- Look for the CURRENT zoning designation, not proposed or historical
-- If you find the parcel, provide the exact zoning code shown on the assessor record
+- I need the CURRENT official zoning designation from government records
+- The zoning code is typically something like R-1, R-4, C-1, MR, PD, etc.
+- Do NOT guess — only report what you find in official records
+- Include the URL where you found the information
 
-Respond in this exact JSON format:
+Respond with ONLY this JSON (no other text):
 {
-  "found": true/false,
-  "zoningCode": "the zoning district code",
+  "found": true,
+  "zoningCode": "the exact zoning code",
   "zoningName": "full name of the zoning district",
-  "sourceUrl": "the URL where you found this data",
-  "sourceName": "name of the data source (e.g., Fulton County Tax Assessor)",
-  "notes": "any relevant context"
-}`;
+  "sourceUrl": "URL where you found this",
+  "sourceName": "name of the source (e.g. Fulton County Property Assessor)",
+  "notes": "any relevant details about the zoning"
+}
+
+If you cannot find it, respond with:
+{ "found": false, "notes": "explanation of what you tried" }`;
 
     try {
       const message = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
+        max_tokens: 4096,
         tools: [
           {
             type: 'web_search_20250305',
             name: 'web_search',
-            max_uses: 5,
+            max_uses: 10,
           } as any,
         ],
         messages: [
@@ -745,20 +737,25 @@ Respond in this exact JSON format:
         try {
           parsed = JSON.parse(jsonMatch[0]);
         } catch {
-          return res.json({ found: false, source: 'ai_web_search', message: 'Failed to parse AI response' });
+          const innerMatch = responseText.match(/\{[^{}]*\}/);
+          if (innerMatch) {
+            try { parsed = JSON.parse(innerMatch[0]); } catch {}
+          }
         }
-        if (parsed.found && parsed.zoningCode) {
+
+        if (parsed?.found && parsed?.zoningCode) {
+          const usedApi = arcgisApis.length > 0 && parsed.sourceUrl?.includes('arcgis');
           return res.json({
             found: true,
             zoningCode: parsed.zoningCode,
             zoningName: parsed.zoningName || parsed.zoningCode,
-            source: 'ai_web_search',
-            sourceName: parsed.sourceName || `${cityName} Property Assessor (AI-verified)`,
+            source: usedApi ? 'assessor_api' : 'ai_web_search',
+            sourceName: parsed.sourceName || `${cityName || 'County'} Property Records (AI-verified)`,
             sourceUrl: parsed.sourceUrl || null,
             municipality: cityName,
             state: stateName,
             municipalityId: muniId || null,
-            confidence: 0.85,
+            confidence: usedApi ? 0.95 : 0.85,
             notes: parsed.notes || null,
           });
         }
@@ -767,14 +764,14 @@ Respond in this exact JSON format:
       return res.json({
         found: false,
         source: 'ai_web_search',
-        message: 'AI search could not determine the zoning code for this location',
+        message: 'Could not determine the zoning code for this property',
       });
     } catch (aiErr: any) {
-      console.error('AI web search fallback failed:', aiErr.message);
+      console.error('AI zoning lookup failed:', aiErr.message);
       return res.json({
         found: false,
         source: 'error',
-        message: 'Both assessor API and AI web search failed',
+        message: 'AI zoning lookup failed: ' + (aiErr.message || 'Unknown error'),
       });
     }
   } catch (error: any) {

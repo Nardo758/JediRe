@@ -276,7 +276,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-600">Detecting zoning from property boundary...</p>
+          <p className="text-sm text-gray-600">Looking up zoning from property assessor records...</p>
         </div>
       </div>
     );
