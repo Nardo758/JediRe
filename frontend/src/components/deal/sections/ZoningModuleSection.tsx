@@ -46,6 +46,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   const [boundaryComplete, setBoundaryComplete] = useState(false);
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Check completion status on mount
   useEffect(() => {
@@ -62,19 +63,28 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       // Check if boundary exists
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
       const hasBoundary = !!boundaryRes.data?.id;
+      console.log('[ZoningModule] Boundary check:', { hasBoundary, boundaryData: boundaryRes.data });
       setBoundaryComplete(hasBoundary);
 
       // Check if zoning confirmed
-      const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
-      let isConfirmed = !!zoningRes.data?.confirmed_at;
+      let isConfirmed = false;
+      try {
+        const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
+        isConfirmed = !!zoningRes.data?.confirmed_at;
+        console.log('[ZoningModule] Zoning confirmation check:', { isConfirmed, zoningData: zoningRes.data });
+      } catch (err) {
+        console.log('[ZoningModule] No zoning confirmation found (expected for new deals)');
+      }
 
       // If boundary already exists, treat zoning as confirmed so all tabs are accessible
       // The confirm step is for new deals; existing deals with boundaries should have full access
       if (!isConfirmed && hasBoundary) {
+        console.log('[ZoningModule] Boundary exists, unlocking all tabs');
         isConfirmed = true;
       }
 
       setZoningConfirmed(isConfirmed);
+      console.log('[ZoningModule] Final state:', { boundaryComplete: hasBoundary, zoningConfirmed: isConfirmed });
 
       // Set initial tab based on completion
       if (isConfirmed) {
@@ -82,8 +92,15 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       } else {
         setActiveTab('boundary');
       }
-    } catch (error) {
-      // If endpoints don't exist yet, start at boundary
+    } catch (error: any) {
+      console.error('[ZoningModule] Error checking completion status:', error);
+      // If boundary API returns 404, it means no boundary exists yet
+      if (error?.response?.status === 404) {
+        console.log('[ZoningModule] No boundary found (404), starting at Step 1');
+        setStatusMessage('Draw property boundary to unlock zoning analysis');
+        setBoundaryComplete(false);
+        setZoningConfirmed(false);
+      }
       setActiveTab('boundary');
     } finally {
       setLoading(false);
@@ -92,12 +109,14 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
 
   const handleBoundaryComplete = () => {
     setBoundaryComplete(true);
+    setStatusMessage('Boundary complete! Confirm zoning to unlock analysis');
     setActiveTab('confirm');
     if (onUpdate) onUpdate();
   };
 
   const handleZoningConfirm = () => {
     setZoningConfirmed(true);
+    setStatusMessage(null);
     setActiveTab('tracker');
     if (onUpdate) onUpdate();
   };
@@ -150,6 +169,14 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
             </p>
           </div>
         </div>
+
+        {/* Status Banner */}
+        {statusMessage && !zoningConfirmed && (
+          <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center gap-2">
+            <Lock className="w-3 h-3" />
+            {statusMessage}
+          </div>
+        )}
 
         <div className="flex gap-0.5 overflow-x-auto">
           {TABS.map(tab => {
