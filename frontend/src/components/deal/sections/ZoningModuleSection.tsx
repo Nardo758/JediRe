@@ -61,9 +61,15 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
 
     try {
       // Check if boundary exists
+      console.log('[ZoningModule] Fetching boundary for deal:', resolvedDealId);
       const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
       const hasBoundary = !!boundaryRes.data?.id;
-      console.log('[ZoningModule] Boundary check:', { hasBoundary, boundaryData: boundaryRes.data });
+      console.log('[ZoningModule] Boundary check:', { 
+        hasBoundary, 
+        boundaryId: boundaryRes.data?.id,
+        dealId: boundaryRes.data?.deal_id,
+        fullResponse: boundaryRes.data 
+      });
       setBoundaryComplete(hasBoundary);
 
       // Check if zoning confirmed
@@ -93,11 +99,25 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         setActiveTab('boundary');
       }
     } catch (error: any) {
-      console.error('[ZoningModule] Error checking completion status:', error);
+      console.error('[ZoningModule] Error checking completion status:', {
+        error,
+        status: error?.response?.status,
+        statusText: error?.response?.statusText,
+        data: error?.response?.data,
+        message: error?.message,
+        dealId: resolvedDealId
+      });
+      
       // If boundary API returns 404, it means no boundary exists yet
       if (error?.response?.status === 404) {
         console.log('[ZoningModule] No boundary found (404), starting at Step 1');
         setStatusMessage('Draw property boundary to unlock zoning analysis');
+        setBoundaryComplete(false);
+        setZoningConfirmed(false);
+      } else {
+        // Other errors (401, 500, network, etc.)
+        console.error('[ZoningModule] Unexpected error:', error?.response?.status || 'network error');
+        setStatusMessage(`Error loading boundary data: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
         setBoundaryComplete(false);
         setZoningConfirmed(false);
       }
