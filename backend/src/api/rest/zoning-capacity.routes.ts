@@ -658,10 +658,46 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
       }
     }
 
+    if (hasCoords && muniId) {
+      const cityConfig = CITY_APIS[muniId];
+      if (cityConfig?.verified && cityConfig.serviceUrl && cityConfig.apiType !== 'assessment') {
+        try {
+          const codeField = cityConfig.fields?.code || 'ZONING';
+          const nameField = cityConfig.fields?.name || 'ZONE_DESC';
+          const layerId = cityConfig.layerId ?? 0;
+          const queryUrl = `${cityConfig.serviceUrl}/${layerId}/query`;
+          const arcRes = await fetch(`${queryUrl}?geometry=${lngNum},${latNum}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`);
+          const arcData = await arcRes.json();
+          if (arcData.features?.length > 0) {
+            const attrs = arcData.features[0].attributes;
+            const zoningCode = attrs[codeField] || '';
+            const zoningName = attrs[nameField] || zoningCode;
+            if (zoningCode) {
+              return res.json({
+                found: true,
+                zoningCode,
+                zoningName,
+                source: 'assessor_api',
+                sourceName: `${cityConfig.name} GIS Zoning Map`,
+                sourceUrl: `${cityConfig.serviceUrl}/${layerId}`,
+                municipality: cityName,
+                state: stateName,
+                municipalityId: muniId || null,
+                confidence: 0.95,
+                notes: `Direct spatial query from ${cityConfig.name} ArcGIS`,
+              });
+            }
+          }
+        } catch (arcErr: any) {
+          console.warn('Direct ArcGIS spatial query failed, falling back to AI:', arcErr.message);
+        }
+      }
+    }
+
     const arcgisApis: string[] = [];
     if (muniId) {
       const cityConfig = CITY_APIS[muniId];
-      if (cityConfig?.verified && cityConfig.serviceUrl) {
+      if (cityConfig?.verified && cityConfig.serviceUrl && cityConfig.apiType !== 'assessment') {
         arcgisApis.push(cityConfig.serviceUrl);
       }
     }

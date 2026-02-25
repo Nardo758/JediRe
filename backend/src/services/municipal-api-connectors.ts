@@ -140,6 +140,7 @@ export class ArcGISConnector {
 export const CITY_APIS: Record<string, any> = {
   'atlanta-ga': {
     type: 'arcgis',
+    apiType: 'zoning',
     name: 'Atlanta',
     state: 'GA',
     serviceUrl: 'https://gis.atlantaga.gov/dpcd/rest/services/LandUsePlanning/LotsWithZoning/MapServer',
@@ -147,7 +148,7 @@ export const CITY_APIS: Record<string, any> = {
     verified: true,
     fields: {
       code: 'ZONING_CLASSIFICATION',
-      name: 'ZONEDESC',
+      name: 'ZONINGCODE',
     },
   },
   'charlotte-nc': {
