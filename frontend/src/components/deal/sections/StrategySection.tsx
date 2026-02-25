@@ -7,6 +7,18 @@ import React, { useState } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import {
+  strategyScores,
+  heatmapData,
+  signalNames,
+  strategyNames,
+  roiHeadToHead,
+  arbitrageAlert,
+  type StrategyScore as EnhancedStrategyScore,
+  type HeatmapCell,
+  type ROIMetric,
+  type ArbitrageAlert,
+} from '../../../data/enhancedStrategyMockData';
+import {
   acquisitionStats,
   performanceStats,
   strategyCards,
@@ -62,6 +74,179 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
 
       {/* Quick Stats */}
       <QuickStatsGrid stats={stats} />
+
+      {/* ======== ENHANCED: Strategy Intelligence Layer ======== */}
+      {isPipeline && (
+        <>
+          {/* Arbitrage Alert Banner (conditional) */}
+          {arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />}
+
+          {/* 4-Strategy Score Matrix */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-gray-900">4-Strategy Score Matrix</h3>
+              <span className="text-[10px] font-mono text-gray-400 tracking-widest">F23 × STRATEGY WEIGHTS</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              Each strategy scored against 5 JEDI signals with strategy-specific weights
+            </p>
+
+            <div className="grid grid-cols-4 gap-4">
+              {strategyScores.map((s) => (
+                <div
+                  key={s.id}
+                  className={`${s.bgColor} rounded-xl p-5 border-2 ${s.rank === 1 ? s.borderColor : 'border-transparent'} relative`}
+                >
+                  {s.rank === 1 && (
+                    <div className="absolute -top-2 left-3 bg-amber-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider">
+                      RECOMMENDED
+                    </div>
+                  )}
+                  <div className={`text-3xl font-bold ${s.color} mb-1`}>{s.score}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-3">{s.label}</div>
+                  <div className="space-y-1.5 text-xs text-gray-600">
+                    <div className="flex justify-between">
+                      <span>{s.roiLabel}:</span>
+                      <span className="font-semibold text-gray-900">{s.roiValue}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Hold:</span>
+                      <span className="font-semibold text-gray-900">{s.holdPeriod}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Risk:</span>
+                      <span className={`font-semibold ${
+                        s.riskLevel === 'low' ? 'text-emerald-600' :
+                        s.riskLevel === 'medium' ? 'text-amber-600' : 'text-red-600'
+                      }`}>
+                        {s.riskLevel.charAt(0).toUpperCase() + s.riskLevel.slice(1)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Insight */}
+            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
+                Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
+                Most investors would default to Rental — the platform sees the development play.
+              </p>
+            </div>
+          </div>
+
+          {/* Signal Heatmap (5 signals × 4 strategies) */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-gray-900">Signal Heatmap</h3>
+              <span className="text-[10px] font-mono text-gray-400 tracking-widest">5 SIGNALS × 4 STRATEGIES</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Weighted signal scores — darker cells indicate stronger contribution to strategy score
+            </p>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-200">
+                    <th className="text-left py-2 px-3 text-xs font-mono text-gray-400">Signal</th>
+                    {strategyNames.map(name => (
+                      <th key={name} className="text-center py-2 px-3 text-xs font-mono text-gray-400">{name}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {signalNames.map(signal => (
+                    <tr key={signal} className="border-b border-gray-100">
+                      <td className="py-2 px-3 font-medium text-gray-700 text-xs">{signal}</td>
+                      {strategyNames.map(strategy => {
+                        const cell = heatmapData.find(c => c.signal === signal && c.strategy === strategy);
+                        if (!cell) return <td key={strategy} />;
+                        const bgClass =
+                          cell.intensity === 'strong' ? 'bg-emerald-100 text-emerald-800' :
+                          cell.intensity === 'moderate' ? 'bg-emerald-50 text-emerald-700' :
+                          cell.intensity === 'weak' ? 'bg-gray-50 text-gray-600' :
+                          'bg-red-50 text-red-600';
+                        return (
+                          <td key={strategy} className="py-1 px-1 text-center">
+                            <div className={`${bgClass} rounded px-2 py-1.5 font-mono text-xs font-semibold`} title={cell.tooltip}>
+                              {cell.weightedScore}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {/* Totals row */}
+                  <tr className="border-t-2 border-gray-300 font-bold">
+                    <td className="py-2 px-3 text-xs text-gray-700">TOTAL</td>
+                    {strategyNames.map(strategy => {
+                      const total = heatmapData
+                        .filter(c => c.strategy === strategy)
+                        .reduce((sum, c) => sum + c.weightedScore, 0);
+                      return (
+                        <td key={strategy} className="py-2 px-3 text-center text-sm font-bold text-gray-900">
+                          {total.toFixed(1)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 text-[11px] text-gray-400">
+              Hover any cell to see: raw score × strategy weight = weighted contribution.
+              BTS dominates Demand+Supply. Flip wins on Momentum. STR killed by regulatory risk.
+            </div>
+          </div>
+
+          {/* ROI Head-to-Head */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">ROI Head-to-Head</h3>
+            <p className="text-sm text-gray-500 mb-4">Key return metrics compared across all 4 strategies</p>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs font-mono text-gray-400">Metric</th>
+                  {strategyScores.map(s => (
+                    <th key={s.id} className={`text-center py-2 px-3 text-xs font-semibold ${s.color}`}>{s.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {roiHeadToHead.map((row, idx) => (
+                  <tr key={idx} className="border-b border-gray-100">
+                    <td className="py-2.5 px-3 text-xs font-medium text-gray-600">{row.label}</td>
+                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'bts' ? 'font-bold text-amber-700 bg-amber-50' : 'text-gray-700'}`}>
+                      {row.bts}
+                    </td>
+                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'rental' ? 'font-bold text-blue-700 bg-blue-50' : 'text-gray-700'}`}>
+                      {row.rental}
+                    </td>
+                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'flip' ? 'font-bold text-emerald-700 bg-emerald-50' : 'text-gray-700'}`}>
+                      {row.flip}
+                    </td>
+                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'str' ? 'font-bold text-violet-700 bg-violet-50' : 'text-gray-700'}`}>
+                      {row.str}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-800 leading-relaxed">
+                BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
+                Risk-adjusted, BTS wins because you recycle capital 3x faster.
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Strategy Cards - Only show in Acquisition Mode */}
       {isPipeline && (
@@ -767,5 +952,33 @@ const ExitScenariosSection: React.FC<ExitScenariosSectionProps> = ({ scenarios }
     </div>
   );
 };
+
+/** Arbitrage Alert Banner — appears when F24 detects significant strategy gap */
+const ArbitrageAlertBanner: React.FC<{ alert: ArbitrageAlert }> = ({ alert }) => (
+  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-5">
+    <div className="flex items-start gap-4">
+      <div className="text-3xl flex-shrink-0">&#9889;</div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-bold text-amber-800 tracking-wide">ARBITRAGE DETECTED</span>
+          <span className="text-xs font-mono bg-amber-200 text-amber-900 px-2 py-0.5 rounded">
+            +{alert.delta}pt gap
+          </span>
+        </div>
+        <p className="text-sm text-amber-900 mb-2">
+          <span className="font-semibold">{alert.recommendedLabel}</span> outscores{' '}
+          <span className="font-semibold">{alert.defaultLabel}</span> by {alert.delta} points.{' '}
+          {alert.insight}
+        </p>
+        <p className="text-xs text-amber-700">
+          {alert.keyUnlock}
+        </p>
+      </div>
+      <button className="flex-shrink-0 bg-amber-600 text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors">
+        Explore Arbitrage &rarr;
+      </button>
+    </div>
+  </div>
+);
 
 export default StrategySection;
