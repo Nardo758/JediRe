@@ -105,3 +105,14 @@ export type {
   CascadeResult,
   OrchestratorStatus,
 } from './module-wiring-orchestrator';
+
+// P0 Service Adapters
+export {
+  wireJediScore,
+  wireNewsToSignals,
+  wireZoningToStrategy,
+  wireSignalsToRisk,
+  wireStrategyArbitrage,
+  wireP0Pipeline,
+  setupP0Subscriptions,
+} from './p0-service-adapters';

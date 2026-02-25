@@ -45,6 +45,7 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
     -   **Module Event Bus** (`module-event-bus.ts`): Real-time inter-module event propagation with debouncing.
     -   **Strategy Arbitrage Engine** (`strategy-arbitrage-engine.ts`): 4-strategy scoring (Build-to-Sell, Flip, Rental, STR) with arbitrage detection.
     -   **Module Wiring Orchestrator** (`module-wiring-orchestrator.ts`): Cascade execution, pipeline management, P0/P1/P2 priority ordering.
+    -   **P0 Service Adapters** (`p0-service-adapters.ts`): Connects existing services (JEDI Score, Demand Signal, Supply Signal, Risk Scoring) to the wiring infrastructure. 5 wiring chains: P0-1 (M25→M01), P0-2 (M19→M06+M04), P0-3 (M02→M03→M08), P0-4 (M04+M06→M14), P0-5 (Strategy Arbitrage). API endpoints at `/wire/*`.
 
 ### Agent Dashboard (CRM Module)
 

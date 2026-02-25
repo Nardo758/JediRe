@@ -23,6 +23,13 @@ import {
   STRATEGY_WEIGHTS,
   moduleWiringOrchestrator,
   WIRING_PIPELINES,
+  wireJediScore,
+  wireNewsToSignals,
+  wireZoningToStrategy,
+  wireSignalsToRisk,
+  wireStrategyArbitrage,
+  wireP0Pipeline,
+  setupP0Subscriptions,
 } from '../../services/module-wiring';
 import type { ModuleId, FormulaId } from '../../services/module-wiring';
 
@@ -278,6 +285,89 @@ router.get('/orchestrator/validate', (_req: Request, res: Response) => {
 router.get('/orchestrator/deal-readiness/:dealId', (req: Request, res: Response) => {
   const readiness = moduleWiringOrchestrator.getDealReadiness(req.params.dealId);
   res.json({ dealId: req.params.dealId, readiness });
+});
+
+// ============================================================================
+// P0 Service Wiring Endpoints
+// ============================================================================
+
+/** POST /wire/p0/:dealId - Run full P0 pipeline for a deal */
+router.post('/wire/p0/:dealId', async (req: Request, res: Response) => {
+  try {
+    const result = await wireP0Pipeline(req.params.dealId, req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/jedi-score/:dealId - Wire JEDI Score calculation */
+router.post('/wire/jedi-score/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireJediScore(req.params.dealId, req.body.triggerType);
+    const scoreData = dataFlowRouter.getModuleData('M25', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...scoreData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/news/:dealId - Wire a news event through demand/supply */
+router.post('/wire/news/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireNewsToSignals(req.params.dealId, req.body);
+    res.json({ dealId: req.params.dealId, status: 'routed' });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/zoning/:dealId - Wire zoning -> dev cap -> strategy */
+router.post('/wire/zoning/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireZoningToStrategy(req.params.dealId, req.body);
+    const strategyData = dataFlowRouter.getModuleData('M08', req.params.dealId);
+    const devCapData = dataFlowRouter.getModuleData('M03', req.params.dealId);
+    res.json({
+      dealId: req.params.dealId,
+      devCap: devCapData?.data,
+      strategy: strategyData?.data,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/risk/:dealId - Wire supply + demand -> risk */
+router.post('/wire/risk/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { tradeAreaId } = req.body;
+    if (!tradeAreaId) {
+      return res.status(400).json({ error: 'tradeAreaId is required' });
+    }
+    await wireSignalsToRisk(req.params.dealId, tradeAreaId);
+    const riskData = dataFlowRouter.getModuleData('M14', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...riskData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/strategy/:dealId - Wire strategy arbitrage */
+router.post('/wire/strategy/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireStrategyArbitrage(req.params.dealId);
+    const strategyData = dataFlowRouter.getModuleData('M08', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...strategyData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/subscriptions/setup - Set up auto-cascade subscriptions */
+router.post('/wire/subscriptions/setup', (_req: Request, res: Response) => {
+  setupP0Subscriptions();
+  res.json({ status: 'P0 auto-cascade subscriptions initialized' });
 });
 
 export default router;
