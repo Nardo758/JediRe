@@ -257,53 +257,205 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
     );
 
     if (boundaryResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Boundary not defined' });
+      return res.status(404).json({ error: 'No property boundary saved. Draw a boundary in the Property Boundary tab first.' });
     }
 
     const boundary = boundaryResult.rows[0];
+    const parcelAreaSF = parseFloat(boundary.parcel_area_sf) || (parseFloat(boundary.parcel_area) * 43560) || 0;
+    const parcelAreaAcres = parseFloat(boundary.parcel_area) || (parcelAreaSF / 43560);
+    const savedSetbacks = boundary.setbacks || {};
 
-    const zoningResult = await pool.query(
-      'SELECT * FROM zoning_capacity WHERE deal_id = $1',
+    const confirmResult = await pool.query(
+      'SELECT * FROM deal_zoning_confirmations WHERE deal_id = $1',
       [dealId]
     );
 
-    const zoning = zoningResult.rows[0] || {};
+    if (confirmResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Zoning not confirmed. Confirm zoning in the Confirm Zoning tab first.' });
+    }
 
-    const maxUnitsPerAcre = zoning.max_density || 60;
-    const maxFAR = zoning.max_far || 2.5;
-    const maxStories = zoning.max_stories || 6;
-    const maxHeight = zoning.max_height || 75;
-    const parkingRatio = zoning.parking_per_unit || 1.5;
+    const confirmation = confirmResult.rows[0];
+    const zoningCode = confirmation.zoning_code;
+    const municipality = confirmation.municipality;
 
-    const byRightMaxUnits = Math.floor(
-      (boundary.buildable_area || 0) * maxUnitsPerAcre
+    let districtResult = await pool.query(
+      `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+       FROM zoning_districts zd
+       LEFT JOIN municipalities m ON m.id = zd.municipality_id
+       WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+         AND UPPER(COALESCE(zd.municipality, m.name, '')) = UPPER($2)
+       LIMIT 1`,
+      [zoningCode, municipality]
     );
-    const byRightMaxBuildingSF = Math.floor(
-      (boundary.parcel_area_sf || 0) * maxFAR
-    );
 
-    const withVariancesMaxUnits = Math.floor(byRightMaxUnits * 1.2);
+    if (districtResult.rows.length === 0) {
+      districtResult = await pool.query(
+        `SELECT zd.*, m.name as municipality_name, m.state as municipality_state
+         FROM zoning_districts zd
+         LEFT JOIN municipalities m ON m.id = zd.municipality_id
+         WHERE UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)
+         LIMIT 1`,
+        [zoningCode]
+      );
+    }
 
-    const capacity = {
-      parcelArea: boundary.parcel_area,
-      buildableArea: boundary.buildable_area,
-      byRight: {
-        maxUnits: byRightMaxUnits,
-        maxBuildingSF: byRightMaxBuildingSF,
-        maxStories,
-        maxHeight,
-        parkingRequired: Math.ceil(byRightMaxUnits * parkingRatio),
-      },
-      withVariances: {
-        densityBonus: {
-          available: true,
-          bonusUnits: withVariancesMaxUnits - byRightMaxUnits,
-          maxUnits: withVariancesMaxUnits,
-        },
-      },
+    let district = districtResult.rows[0] || null;
+
+    const devStandardFields = [
+      'max_density_per_acre', 'max_units_per_acre', 'max_far',
+      'max_height_feet', 'max_building_height_ft', 'max_stories',
+      'min_parking_per_unit', 'parking_per_unit',
+      'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
+      'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
+    ];
+
+    if (district) {
+      const hasMissingStandards = devStandardFields.some(f => district[f] == null);
+      const baseMatch = zoningCode.toUpperCase().match(/^(.+)-[A-Z]{1,2}$/);
+      if (hasMissingStandards && baseMatch) {
+        const baseParams: any[] = [baseMatch[1]];
+        let baseWhere = 'UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($1)';
+        if (district.municipality_id) {
+          baseWhere += ' AND zd.municipality_id = $2';
+          baseParams.push(district.municipality_id);
+        } else if (district.municipality || municipality) {
+          baseWhere += ' AND UPPER(COALESCE(zd.municipality, \'\')) = UPPER($2)';
+          baseParams.push(district.municipality || municipality);
+        }
+        const baseResult = await pool.query(
+          `SELECT zd.* FROM zoning_districts zd WHERE ${baseWhere} LIMIT 1`,
+          baseParams
+        );
+        if (baseResult.rows.length > 0) {
+          const base = baseResult.rows[0];
+          for (const field of [...devStandardFields, 'district_name', 'description', 'permitted_uses']) {
+            if (district[field] == null || district[field] === '') {
+              if (base[field] != null && base[field] !== '') {
+                district[field] = base[field];
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const maxDensity = district ? parseFloat(district.max_density_per_acre || district.max_units_per_acre) || null : null;
+    const maxFAR = district ? parseFloat(district.max_far) || null : null;
+    const maxHeight = district ? parseFloat(district.max_height_feet || district.max_building_height_ft) || null : null;
+    const maxStories = district ? parseInt(district.max_stories) || null : null;
+    const minParking = district ? parseFloat(district.min_parking_per_unit || district.parking_per_unit) || null : null;
+    const maxLotCoverage = district ? parseFloat(district.max_lot_coverage || district.max_lot_coverage_percent) || null : null;
+
+    const setbacks = {
+      front: parseFloat(savedSetbacks.front) || parseFloat(district?.min_front_setback_ft || district?.setback_front_ft) || 25,
+      side: parseFloat(savedSetbacks.side) || parseFloat(district?.min_side_setback_ft || district?.setback_side_ft) || 10,
+      rear: parseFloat(savedSetbacks.rear) || parseFloat(district?.min_rear_setback_ft || district?.setback_rear_ft) || 20,
     };
 
-    res.json(capacity);
+    const envelopeService = new (require('../../services/building-envelope.service').BuildingEnvelopeService)();
+    const envelope = envelopeService.calculateEnvelope({
+      landArea: parcelAreaSF,
+      setbacks,
+      zoningConstraints: {
+        maxDensity,
+        maxFAR,
+        maxHeight,
+        maxStories,
+        minParkingPerUnit: minParking,
+        maxLotCoverage,
+      },
+      propertyType: 'multifamily',
+    });
+
+    const varianceEnvelope = envelopeService.calculateEnvelope({
+      landArea: parcelAreaSF,
+      setbacks,
+      zoningConstraints: {
+        maxDensity: maxDensity ? maxDensity * 1.2 : null,
+        maxFAR: maxFAR ? maxFAR * 1.15 : null,
+        maxHeight: maxHeight ? maxHeight + 10 : null,
+        maxStories: maxStories ? maxStories + 1 : null,
+        minParkingPerUnit: minParking ? minParking * 0.85 : null,
+        maxLotCoverage,
+      },
+      propertyType: 'multifamily',
+    });
+
+    const rezoneEnvelope = envelopeService.calculateEnvelope({
+      landArea: parcelAreaSF,
+      setbacks,
+      zoningConstraints: {
+        maxDensity: maxDensity ? maxDensity * 1.6 : null,
+        maxFAR: maxFAR ? maxFAR * 1.5 : null,
+        maxHeight: maxHeight ? maxHeight * 1.5 : null,
+        maxStories: maxStories ? maxStories + 3 : null,
+        minParkingPerUnit: minParking ? minParking * 0.7 : null,
+        maxLotCoverage,
+      },
+      propertyType: 'multifamily',
+    });
+
+    const buildScenario = (env: any, type: string) => {
+      const meta: Record<string, any> = {
+        by_right: { timeline: '6-9 months', cost: '$50K-$150K', riskLevel: 'low', successPercent: 95 },
+        variance: { timeline: '9-18 months', cost: '$100K-$350K', riskLevel: 'medium', successPercent: 65 },
+        rezone: { timeline: '12-36 months', cost: '$200K-$750K', riskLevel: 'high', successPercent: 35 },
+      };
+      const m = meta[type] || meta.by_right;
+      const estValue = Math.round(env.maxCapacity * 250000);
+      const byRightValue = Math.round(envelope.maxCapacity * 250000);
+      return {
+        scenarioType: type,
+        label: type === 'by_right' ? 'Current Zoning' : type === 'variance' ? 'Variance Path' : 'Rezone Path',
+        maxUnits: env.maxCapacity,
+        maxHeight: env.maxFloors * 10,
+        maxFar: maxFAR || 0,
+        maxGfa: Math.round(env.maxGFA),
+        parkingRequired: `${env.parkingRequired} spaces`,
+        openSpace: Math.round(parcelAreaSF * 0.15),
+        timeline: m.timeline,
+        cost: m.cost,
+        riskLevel: m.riskLevel,
+        successPercent: m.successPercent,
+        estimatedValue: estValue,
+        deltaVsByRight: type === 'by_right' ? 0 : estValue - byRightValue,
+        deltaPercent: type === 'by_right' ? 0 : byRightValue > 0 ? Math.round(((estValue - byRightValue) / byRightValue) * 100) : 0,
+      };
+    };
+
+    res.json({
+      parcelInfo: {
+        address: confirmation.municipality ? `${zoningCode} — ${confirmation.municipality}, ${confirmation.state || ''}` : zoningCode,
+        lotSize: `${parcelAreaAcres.toFixed(2)} acres (${Math.round(parcelAreaSF).toLocaleString()} SF)`,
+        currentZoning: zoningCode,
+        districtName: district?.district_name || zoningCode,
+      },
+      envelope: {
+        buildableArea: Math.round(envelope.buildableArea),
+        maxFootprint: Math.round(envelope.maxFootprint),
+        maxFloors: envelope.maxFloors,
+        maxGFA: Math.round(envelope.maxGFA),
+        maxCapacity: envelope.maxCapacity,
+        limitingFactor: envelope.limitingFactor,
+        parkingRequired: envelope.parkingRequired,
+        parkingArea: envelope.parkingArea,
+        capacityByConstraint: envelope.capacityByConstraint,
+      },
+      zoningStandards: {
+        maxDensity,
+        maxFAR,
+        maxHeight,
+        maxStories,
+        minParking,
+        maxLotCoverage,
+        setbacks,
+      },
+      scenarios: [
+        buildScenario(envelope, 'by_right'),
+        buildScenario(varianceEnvelope, 'variance'),
+        buildScenario(rezoneEnvelope, 'rezone'),
+      ],
+    });
   } catch (error: any) {
     console.error('Error calculating capacity:', error);
     res.status(500).json({ error: error.message || 'Failed to calculate capacity' });
