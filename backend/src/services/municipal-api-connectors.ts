@@ -110,6 +110,7 @@ export class ArcGISConnector {
         params: {
           geometry: `${lng},${lat}`,
           geometryType: 'esriGeometryPoint',
+          inSR: '4326',
           spatialRel: 'esriSpatialRelIntersects',
           outFields: '*',
           returnGeometry: 'true',
