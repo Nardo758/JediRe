@@ -8,6 +8,7 @@ import {
   GitCompareArrows,
   Clock,
   Lock,
+  RefreshCw,
 } from 'lucide-react';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { ZoningAgentChat } from '../../zoning/ZoningAgentChat';
@@ -201,6 +202,21 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
               {deal?.strategy && <><span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span></>}
             </p>
           </div>
+          
+          {/* Refresh button - useful if tabs don't unlock automatically */}
+          {!zoningConfirmed && (
+            <button
+              onClick={() => {
+                console.log('[ZoningModule] Manual refresh triggered');
+                checkCompletionStatus();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh tab status"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh</span>
+            </button>
+          )}
         </div>
 
         {/* Status Banner */}
