@@ -12,7 +12,7 @@ import {
   MapViewSection,
   MarketIntelligenceSection,
   DebtMarketSection,
-  DebtSection,
+  CapitalStructureSection,
   AIAgentSection,
   FinancialSection,
   StrategySection,
@@ -167,7 +167,7 @@ export const DealPageEnhanced: React.FC = () => {
               { id: 'properties', icon: '🏢', title: 'Properties' },
               { id: 'financial', icon: '💰', title: 'Financial' },
               { id: 'market-intelligence', icon: '📊', title: 'Market Intel' },
-              { id: 'debt', icon: '💳', title: 'Debt' },
+              { id: 'capital', icon: '◈', title: 'Capital Structure' },
               { id: 'strategy', icon: '🎯', title: 'Strategy' },
               { id: 'exit', icon: '🚪', title: 'Exit' },
               { id: 'due-diligence', icon: '✅', title: 'DD' },
@@ -267,15 +267,15 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 7. Debt & Financing */}
-          <div id="section-debt">
+          {/* 7. Capital Structure Engine */}
+          <div id="section-capital">
             <DealSection
-              id="debt"
-              icon="💳"
-              title="Debt"
+              id="capital"
+              icon="◈"
+              title="Capital Structure"
               isPremium={true}
             >
-              <DebtSection deal={deal} />
+              <CapitalStructureSection deal={deal} />
             </DealSection>
           </div>
 

@@ -12,7 +12,7 @@ import { OverviewSection } from '../components/deal/sections/OverviewSection';
 import { AIAgentSection } from '../components/deal/sections/AIAgentSection';
 import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
 import { SupplySection } from '../components/deal/sections/SupplySection';
-import { DebtSection } from '../components/deal/sections/DebtSection';
+import { DebtSection } from '../components/deal/sections/DebtSection.legacy';
 import { FinancialSection } from '../components/deal/sections/FinancialSection';
 import { MarketSection } from '../components/deal/sections/MarketSection';
 import { StrategySection } from '../components/deal/sections/StrategySection';

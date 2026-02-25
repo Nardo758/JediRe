@@ -70,6 +70,7 @@ import zoningVerificationRouter from './api/rest/zoning-verification.routes';
 import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
+import capitalStructureRouter from './api/rest/capital-structure.routes';
 
 dotenv.config();
 
@@ -204,6 +205,7 @@ app.use('/api/v1', requireAuth, teamManagementRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
+app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));

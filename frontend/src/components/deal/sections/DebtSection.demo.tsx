@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { DebtSection } from './DebtSection';
+import { DebtSection } from './DebtSection.legacy';
 
 // Mock deal data for testing
 const mockAcquisitionDeal = {

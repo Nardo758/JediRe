@@ -40,7 +40,7 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
 -   **Contact Sync / Import:** Allows importing contacts from Microsoft Outlook or Google accounts using Microsoft Graph API and Google People API.
 -   **Module Wiring System:** Cross-module orchestration infrastructure at `backend/src/services/module-wiring/`. API: `/api/v1/module-wiring`. Components:
     -   **Module Registry** (`module-registry.ts`): 25 modules (M01-M25) with typed definitions, dependencies, outputs, build status, and priority.
-    -   **Formula Engine** (`formula-engine.ts`): 35 formulas (F01-F35) as pure calculation functions (JEDI Score, NOI, Cap Rate, IRR, etc.).
+    -   **Formula Engine** (`formula-engine.ts`): 62 formulas (F01-F35, F40-F66) as pure calculation functions (JEDI Score, NOI, Cap Rate, IRR, debt sizing, WACC, waterfall, rate analysis, etc.).
     -   **Data Flow Router** (`data-flow-router.ts`): Cross-module data routing with caching and readiness checks.
     -   **Module Event Bus** (`module-event-bus.ts`): Real-time inter-module event propagation with debouncing.
     -   **Strategy Arbitrage Engine** (`strategy-arbitrage-engine.ts`): 4-strategy scoring (Build-to-Sell, Flip, Rental, STR) with arbitrage detection.
@@ -48,6 +48,8 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
     -   **P0 Service Adapters** (`p0-service-adapters.ts`): Connects existing services (JEDI Score, Demand Signal, Supply Signal, Risk Scoring) to the wiring infrastructure. 5 wiring chains: P0-1 (M25→M01), P0-2 (M19→M06+M04), P0-3 (M02→M03→M08), P0-4 (M04+M06→M14), P0-5 (Strategy Arbitrage). API endpoints at `/wire/*`.
     -   **P1 Service Adapters** (`p1-service-adapters.ts`): Wires Pro Forma (M09), Scenarios (M10), Competition (M05), and Debt (M11). Chains: P1-1 (M09 Pro Forma sync/init), P1-2 (M10 Scenario generation), P1-3 (M05→M07 Competition→Market), P1-4 (M11 Debt Analysis). API endpoints at `/wire/proforma/*`, `/wire/scenarios/*`, `/wire/competition/*`, `/wire/debt/*`.
     -   **P2 Service Adapters** (`p2-service-adapters.ts`): Wires Traffic (M16), Exit (M12), and Portfolio (M22). Chains: P2-1 (M16 Traffic Intelligence/Forecast), P2-2 (M12 Exit Analysis), P2-3 (M22 Portfolio Performance). API endpoints at `/wire/traffic/*`, `/wire/exit/*`, `/wire/portfolio`.
+    -   **Capital Structure Adapter** (`capital-structure-adapter.ts`): Wires Capital Structure Engine (M11) with stack, waterfall, scenarios, rate analysis, and full pipeline. Cross-module subscriptions: M09→M11, M08→M11. API endpoints at `/wiring/capital-structure/*`.
+-   **Capital Structure Engine (M11):** Full capital stack design with 7-tab frontend component, backend service (`capital-structure.service.ts`), and 13 REST endpoints (`/api/v1/capital-structure/*`). Features: stack builder, debt sizing, product filtering, mismatch detection, rate analysis, equity waterfall, scenario comparison, and AI insights. M11 upgraded from "Debt Analysis" with 29 formulas (F21-F22, F40-F66) and 13 outputs.
 
 ### Agent Dashboard (CRM Module)
 

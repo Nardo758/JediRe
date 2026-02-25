@@ -138,3 +138,13 @@ export {
   wireP2Pipeline,
   setupP2Subscriptions,
 } from './p2-service-adapters';
+
+// Capital Structure Engine Adapter (M11+)
+export {
+  wireCapitalStack,
+  wireWaterfallCalculation,
+  wireScenarioComparison,
+  wireRateAnalysis,
+  wireCapitalStructurePipeline,
+  setupCapitalStructureSubscriptions,
+} from './capital-structure-adapter';

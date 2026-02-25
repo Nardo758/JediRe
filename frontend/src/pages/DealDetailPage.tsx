@@ -25,7 +25,7 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
-import DebtSection from '../components/deal/sections/DebtSection';
+import DebtSection from '../components/deal/sections/DebtSection.legacy';
 import ExitSection from '../components/deal/sections/ExitSection';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
