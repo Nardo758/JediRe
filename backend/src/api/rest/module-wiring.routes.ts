@@ -30,6 +30,14 @@ import {
   wireStrategyArbitrage,
   wireP0Pipeline,
   setupP0Subscriptions,
+  wireProFormaSync,
+  wireProFormaInit,
+  wireScenarioGeneration,
+  wireScenarioRecalculate,
+  wireCompetitionToMarket,
+  wireDebtAnalysis,
+  wireP1Pipeline,
+  setupP1Subscriptions,
 } from '../../services/module-wiring';
 import type { ModuleId, FormulaId } from '../../services/module-wiring';
 
@@ -368,6 +376,113 @@ router.post('/wire/strategy/:dealId', async (req: Request, res: Response) => {
 router.post('/wire/subscriptions/setup', (_req: Request, res: Response) => {
   setupP0Subscriptions();
   res.json({ status: 'P0 auto-cascade subscriptions initialized' });
+});
+
+// ============================================================================
+// P1 Service Wiring Endpoints
+// ============================================================================
+
+/** POST /wire/p1/:dealId - Run full P1 pipeline for a deal */
+router.post('/wire/p1/:dealId', async (req: Request, res: Response) => {
+  try {
+    const result = await wireP1Pipeline(req.params.dealId, req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/proforma/sync/:dealId - Recalculate proforma assumptions */
+router.post('/wire/proforma/sync/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { triggerType, triggerEventId } = req.body;
+    await wireProFormaSync(req.params.dealId, triggerType || 'periodic_update', triggerEventId);
+    const proformaData = dataFlowRouter.getModuleData('M09', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...proformaData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/proforma/init/:dealId - Initialize proforma for a deal */
+router.post('/wire/proforma/init/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { strategy } = req.body;
+    await wireProFormaInit(req.params.dealId, strategy || 'rental');
+    const proformaData = dataFlowRouter.getModuleData('M09', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...proformaData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/scenarios/:dealId - Generate scenarios for a deal */
+router.post('/wire/scenarios/:dealId', async (req: Request, res: Response) => {
+  try {
+    await wireScenarioGeneration(req.params.dealId, req.body);
+    const scenarioData = dataFlowRouter.getModuleData('M10', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...scenarioData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/scenarios/recalculate/:scenarioId - Recalculate a specific scenario */
+router.post('/wire/scenarios/recalculate/:scenarioId', async (req: Request, res: Response) => {
+  try {
+    await wireScenarioRecalculate(req.params.scenarioId, req.body.userId);
+    res.json({ scenarioId: req.params.scenarioId, status: 'recalculated' });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/competition/:dealId - Wire competition → market */
+router.post('/wire/competition/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { latitude, longitude, tradeAreaId, subjectRent } = req.body;
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
+    }
+    await wireCompetitionToMarket(req.params.dealId, { latitude, longitude, tradeAreaId, subjectRent });
+    const compData = dataFlowRouter.getModuleData('M15', req.params.dealId);
+    const marketData = dataFlowRouter.getModuleData('M05', req.params.dealId);
+    res.json({
+      dealId: req.params.dealId,
+      competition: compData?.data,
+      market: marketData?.data,
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/debt/:dealId - Wire debt analysis */
+router.post('/wire/debt/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { purchasePrice, loanAmount, interestRate, amortizationYears, loanTermYears, totalEquity } = req.body;
+    if (!purchasePrice || !loanAmount || !interestRate) {
+      return res.status(400).json({ error: 'purchasePrice, loanAmount, and interestRate are required' });
+    }
+    await wireDebtAnalysis(req.params.dealId, {
+      purchasePrice,
+      loanAmount,
+      interestRate,
+      amortizationYears,
+      loanTermYears,
+      totalEquity,
+    });
+    const debtData = dataFlowRouter.getModuleData('M11', req.params.dealId);
+    res.json({ dealId: req.params.dealId, ...debtData?.data });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/** POST /wire/subscriptions/p1/setup - Set up P1 auto-cascade subscriptions */
+router.post('/wire/subscriptions/p1/setup', (_req: Request, res: Response) => {
+  setupP1Subscriptions();
+  res.json({ status: 'P1 auto-cascade subscriptions initialized' });
 });
 
 export default router;
