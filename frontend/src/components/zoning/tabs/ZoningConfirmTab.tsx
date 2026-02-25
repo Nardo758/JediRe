@@ -53,8 +53,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
     setError(null);
 
     try {
-      // Check if boundary exists
-      const boundaryRes = await apiClient.get(`/deals/${dealId}/boundary`);
+      const boundaryRes = await apiClient.get(`/api/v1/deals/${dealId}/boundary`);
       const boundary = boundaryRes.data;
 
       if (!boundary?.centroid) {
@@ -63,10 +62,16 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         return;
       }
 
-      // Use boundary centroid for reverse geocode + zoning lookup
-      const [lng, lat] = boundary.centroid.match(/\(([^,]+),([^)]+)\)/).slice(1).map(parseFloat);
+      const centroidStr = typeof boundary.centroid === 'string' ? boundary.centroid : `(${boundary.centroid[0]},${boundary.centroid[1]})`;
+      const match = centroidStr.match(/\(([^,]+),([^)]+)\)/);
+      if (!match) {
+        setError('Invalid boundary centroid data. Please redraw the boundary.');
+        setLoading(false);
+        return;
+      }
+      const [lng, lat] = [parseFloat(match[1]), parseFloat(match[2])];
 
-      const reverseGeoRes = await apiClient.get('/reverse-geocode', {
+      const reverseGeoRes = await apiClient.get('/api/v1/reverse-geocode', {
         params: { lat, lng },
       });
 
@@ -78,8 +83,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         return;
       }
 
-      // Lookup zoning at this location
-      const zoningRes = await apiClient.get('/zoning/lookup', {
+      const zoningRes = await apiClient.get('/api/v1/zoning/lookup', {
         params: {
           city: location.city,
           address: deal?.address || boundary.address,
@@ -118,23 +122,21 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
     try {
       const zoneCode = detectedZoning?.code || manualCode;
 
-      // Fetch boundary data
-      const boundaryRes = await apiClient.get(`/deals/${dealId}/boundary`);
+      const boundaryRes = await apiClient.get(`/api/v1/deals/${dealId}/boundary`);
       const boundary = boundaryRes.data;
 
-      // Trigger full zoning analysis with deal type
       const analysisPayload = {
         dealId,
         zoningCode: zoneCode,
         municipality: detectedZoning?.municipality,
         state: detectedZoning?.state,
-        landAreaSf: boundary.parcelAreaSF || boundary.parcelArea * 43560,
-        dealType: deal?.strategy || deal?.dealType || 'BTS', // ← DEAL TYPE INTEGRATION
+        landAreaSf: boundary.parcel_area_sf || boundary.parcelAreaSF || (boundary.parcel_area || boundary.parcelArea || 0) * 43560,
+        dealType: deal?.strategy || deal?.dealType || 'BTS',
         boundaryId: boundary.id,
         setbacks: boundary.setbacks,
       };
 
-      const analysisRes = await apiClient.post('/zoning-intelligence/analyze', analysisPayload);
+      const analysisRes = await apiClient.post('/api/v1/zoning-intelligence/analyze', analysisPayload);
 
       const enrichedZoning = {
         ...detectedZoning,
@@ -143,8 +145,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         confirmed: true,
       };
 
-      // Store confirmation
-      await apiClient.post(`/deals/${dealId}/zoning-confirmation`, {
+      await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
         zoning_code: zoneCode,
         municipality: detectedZoning?.municipality,
         state: detectedZoning?.state,

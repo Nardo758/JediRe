@@ -61,18 +61,17 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     }
 
     try {
-      const boundaryRes = await apiClient.get(`/deals/${resolvedDealId}/boundary`);
+      const boundaryRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/boundary`);
       
       const hasBoundary = !!(
         boundaryRes.data?.id || 
-        boundaryRes.data?.boundary_geojson ||
-        (boundaryRes.data && Object.keys(boundaryRes.data).length > 0)
+        boundaryRes.data?.boundary_geojson
       );
       setBoundaryComplete(hasBoundary);
 
       let isConfirmed = false;
       try {
-        const zoningRes = await apiClient.get(`/deals/${resolvedDealId}/zoning-confirmation`);
+        const zoningRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-confirmation`);
         isConfirmed = !!zoningRes.data?.confirmed_at;
       } catch {
       }
