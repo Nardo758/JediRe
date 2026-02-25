@@ -310,4 +310,60 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
   }
 });
 
+// Zoning Confirmation endpoints
+router.post('/deals/:dealId/zoning-confirmation', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { zoning_code, municipality, state, confirmed_at } = req.body;
+
+    const existing = await pool.query(
+      'SELECT id FROM deal_zoning_confirmations WHERE deal_id = $1',
+      [dealId]
+    );
+
+    let result;
+    if (existing.rows.length > 0) {
+      result = await pool.query(
+        `UPDATE deal_zoning_confirmations 
+         SET zoning_code = $1, municipality = $2, state = $3, confirmed_at = $4, updated_at = NOW()
+         WHERE deal_id = $5
+         RETURNING *`,
+        [zoning_code, municipality, state, confirmed_at, dealId]
+      );
+    } else {
+      result = await pool.query(
+        `INSERT INTO deal_zoning_confirmations (deal_id, zoning_code, municipality, state, confirmed_at)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [dealId, zoning_code, municipality, state, confirmed_at]
+      );
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Error saving zoning confirmation:', error);
+    res.status(500).json({ error: error.message || 'Failed to save zoning confirmation' });
+  }
+});
+
+router.get('/deals/:dealId/zoning-confirmation', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const result = await pool.query(
+      'SELECT * FROM deal_zoning_confirmations WHERE deal_id = $1',
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ confirmed_at: null });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Error fetching zoning confirmation:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch zoning confirmation' });
+  }
+});
+
 export default router;

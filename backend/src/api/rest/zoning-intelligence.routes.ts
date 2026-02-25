@@ -68,7 +68,7 @@ export function createZoningIntelligenceRoutes(pool: Pool): Router {
 
   router.post('/analyze', async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { dealId, address, lat, lng, municipality, state, districtCode, landAreaSf, setbacks, propertyType } = req.body;
+      const { dealId, address, lat, lng, municipality, state, districtCode, landAreaSf, setbacks, propertyType, dealType } = req.body;
 
       if (dealId && (!municipality || !districtCode || !landAreaSf)) {
         try {
@@ -89,11 +89,15 @@ export function createZoningIntelligenceRoutes(pool: Pool): Router {
             });
           }
 
-          const result = await pipeline.execute(resolved.pipelineInput);
+          const result = await pipeline.execute({
+            ...resolved.pipelineInput,
+            dealType: dealType || 'BTS', // Pass deal type to pipeline
+          });
 
           return res.json({
             success: true,
             data: result,
+            dealType: dealType || 'BTS',
             resolvedFrom: 'property_boundary',
             dataCompleteness: resolved.dataCompleteness,
             boundarySource: resolved.zoningLookup.source,
@@ -113,9 +117,10 @@ export function createZoningIntelligenceRoutes(pool: Pool): Router {
 
       const result = await pipeline.execute({
         dealId, address, lat, lng, municipality, state, districtCode, landAreaSf, setbacks, propertyType,
+        dealType: dealType || 'BTS', // Pass deal type to pipeline
       });
 
-      res.json({ success: true, data: result });
+      res.json({ success: true, data: result, dealType: dealType || 'BTS' });
     } catch (error: any) {
       console.error('Zoning intelligence analysis error:', error);
       res.status(500).json({ success: false, error: error.message });
