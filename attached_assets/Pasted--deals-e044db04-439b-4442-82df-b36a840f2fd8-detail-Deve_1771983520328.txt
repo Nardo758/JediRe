@@ -1,0 +1,255 @@
+
+/deals/e044db04-439b-4442-82df-b36a840f2fd8/detail
+
+Developer Tools
+Access debugging tools, monitor resources, and manage your development environment
+Dependencies
+SSH
+bash start.sh
+43m
+ • 
+44 minutes ago
+Production
+Status
+Leon published 13 days ago
+Visibility
+Public
+Domain
+https://jedi-re.replit.app
+Type
+Autoscale
+(4 vCPU / 8 GiB RAM / 3 Max)
+See all usage
+Database
+Production database connected
+daa88b33
+LD
+mdixon5030
+Leon
+failed to publish 13 days ago
+5a515c32
+LD
+mdixon5030
+Leon
+failed to publish 13 days ago
+ea1a8cce
+LD
+mdixon5030
+Leon
+failed to publish 13 days ago
+5969ce66
+LD
+mdixon5030
+Leon
+failed to publish 13 days ago
+e6c1d402
+LD
+mdixon5030
+Leon
+published 13 days ago
+8f342aeb
+LD
+mdixon5030
+Leon
+failed to publish 13 days ago
+f1cd4b1e
+LD
+mdixon5030
+Leon
+published 13 days ago
+6a701527
+LD
+mdixon5030
+Leon
+published 13 days ago
+71ac3f3e
+LD
+mdixon5030
+Leon
+published 13 days ago
+dd3cccc8
+LD
+mdixon5030
+Leon
+published 13 days ago
+77530662
+LD
+mdixon5030
+Leon
+published 14 days ago
+0dda0965
+LD
+mdixon5030
+Leon
+published 14 days ago
+73fb2135
+LD
+mdixon5030
+Leon
+published 14 days ago
+804d7cdf
+LD
+mdixon5030
+Leon
+published 14 days ago
+95b58342
+LD
+mdixon5030
+Leon
+published 14 days ago
+54cae43b
+LD
+mdixon5030
+Leon
+published 14 days ago
+5b46b177
+LD
+mdixon5030
+Leon
+published 14 days ago
+21723053
+LD
+mdixon5030
+Leon
+failed to publish 14 days ago
+333003d2
+LD
+mdixon5030
+Leon
+failed to publish 14 days ago
+b255924d
+LD
+mdixon5030
+Leon
+failed to publish 14 days ago
+6a916f35
+LD
+mdixon5030
+Leon
+published 16 days ago
+908481d7
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+57fef4df
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+6c350f63
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+c9e20697
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+e1c532d2
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+4e793354
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+80f6ce6a
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+06619f67
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+6e517380
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+45c08c72
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+e99309b6
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+01893176
+LD
+mdixon5030
+Leon
+failed to publish 16 days ago
+cfb7fbb6
+LD
+mdixon5030
+Leon
+published 23 days ago
+b7fdd1a1
+LD
+mdixon5030
+Leon
+failed to publish 23 days ago
+4750dc67
+LD
+mdixon5030
+Leon
+failed to publish 23 days ago
+32068071
+LD
+mdixon5030
+Leon
+failed to publish 23 days ago
+f949b620
+LD
+mdixon5030
+Leon
+failed to publish 23 days ago
+2e6b1369
+LD
+mdixon5030
+Leon
+failed to publish 23 days ago
+Secrets
+Secrets are accessible to anyone who has access to this App. To restrict secret access, you must update App invite permissions. For more information, visit our documentation.
+SESSION_SECRET
+••••••••
+MICROSOFT_CLIENT_ID
+••••••••
+MICROSOFT_TENANT_ID
+••••••••
+MICROSOFT_CLIENT_SECRET
+••••••••
+TOKEN_ENCRYPTION_KEY
+••••••••
+VITE_MAPBOX_TOKEN
+••••••••
+GOOGLE_CALLBACK_URL
+••••••••
+GOOGLE_CLIENT_SECRET
+••••••••
+GOOGLE_CLIENT_ID
+••••••••
+APARTMENT_LOCATOR_API_KEY
+••••••••
+HUGGINGFACE_TOKEN
+••••••••
+AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+••••••••
+AI_INTEGRATIONS_ANTHROPIC_API_KEY
+••••••••
+Configurations
+Configurations are similar to secrets, but should only be used for non-sensitive information. They're useful for having a variable that's different between your published app and when testing on Replit.
+JWT_REFRESH_SECRET
+jedi-re-refresh-secret-2026-secure-token
+PORT
+4000
+Unsupported state: your index is currently locked. This can happen if multiple git processes are running operations at the same time.
+Please resolve the issue by ending those git operations. If you are sure you do not have git operations running, you can delete your .git/index.lock file
