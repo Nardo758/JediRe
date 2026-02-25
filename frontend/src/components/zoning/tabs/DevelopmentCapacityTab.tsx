@@ -50,6 +50,8 @@ interface CapacityData {
   parcelInfo: {
     address: string;
     lotSize: string;
+    landAreaSF: number;
+    landAreaAcres: number;
     currentZoning: string;
     districtName: string;
   };
@@ -125,12 +127,22 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const variance = scenarios.find(s => s.scenarioType === 'variance');
   const rezone = scenarios.find(s => s.scenarioType === 'rezone');
 
-  const constraints = envelope.capacityByConstraint;
+  const densityUnits = zoningStandards.maxDensity != null
+    ? Math.floor(zoningStandards.maxDensity * parcelInfo.landAreaAcres)
+    : null;
+  const totalGFA = zoningStandards.maxFAR != null
+    ? Math.round(zoningStandards.maxFAR * parcelInfo.landAreaSF)
+    : null;
+  const stories = zoningStandards.maxStories;
+  const parkingSpaces = zoningStandards.minParking != null && densityUnits != null
+    ? Math.ceil(zoningStandards.minParking * densityUnits)
+    : null;
+
   const constraintEntries = [
-    { label: 'Density', value: constraints.byDensity, isLimiting: envelope.limitingFactor === 'density' },
-    { label: 'FAR', value: constraints.byFAR, isLimiting: envelope.limitingFactor === 'FAR' },
-    { label: 'Height', value: constraints.byHeight, isLimiting: envelope.limitingFactor === 'height' },
-    { label: 'Parking', value: constraints.byParking, isLimiting: envelope.limitingFactor === 'parking' },
+    { label: 'Density', value: densityUnits, displayValue: densityUnits, unit: 'units', isLimiting: envelope.limitingFactor === 'density' },
+    { label: 'FAR', value: totalGFA, displayValue: totalGFA, unit: 'SF', isLimiting: envelope.limitingFactor === 'FAR' },
+    { label: 'Height', value: stories, displayValue: stories, unit: 'stories', isLimiting: envelope.limitingFactor === 'height' },
+    { label: 'Parking', value: parkingSpaces, displayValue: parkingSpaces, unit: 'spaces', isLimiting: envelope.limitingFactor === 'parking' },
   ].filter(c => c.value != null);
 
   return (
@@ -156,23 +168,23 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Max Units</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(envelope.maxCapacity)}</p>
-          <p className="text-xs text-gray-400 mt-1">by-right</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(densityUnits)}</p>
+          <p className="text-xs text-gray-400 mt-1">{zoningStandards.maxDensity} units/acre</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Max GFA</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(envelope.maxGFA)}</p>
-          <p className="text-xs text-gray-400 mt-1">gross SF</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total GFA</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(totalGFA)}</p>
+          <p className="text-xs text-gray-400 mt-1">FAR {zoningStandards.maxFAR}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Max Floors</p>
-          <p className="text-2xl font-bold text-gray-900">{envelope.maxFloors}</p>
+          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Stories</p>
+          <p className="text-2xl font-bold text-gray-900">{stories ?? '--'}</p>
           <p className="text-xs text-gray-400 mt-1">{zoningStandards.maxHeight ? `${zoningStandards.maxHeight} ft limit` : '--'}</p>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Parking Req</p>
-          <p className="text-2xl font-bold text-gray-900">{formatNumber(envelope.parkingRequired)}</p>
-          <p className="text-xs text-gray-400 mt-1">spaces</p>
+          <p className="text-2xl font-bold text-gray-900">{formatNumber(parkingSpaces)}</p>
+          <p className="text-xs text-gray-400 mt-1">{zoningStandards.minParking} per unit</p>
         </div>
       </div>
 
@@ -187,18 +199,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <div className="p-5">
             <div className="space-y-3">
               {constraintEntries.map(c => {
-                const maxVal = Math.max(...constraintEntries.map(e => e.value || 0));
-                const pct = maxVal > 0 ? ((c.value || 0) / maxVal) * 100 : 0;
                 return (
                   <div key={c.label} className="flex items-center gap-4">
-                    <span className={`text-xs font-medium w-16 ${c.isLimiting ? 'text-red-600' : 'text-gray-600'}`}>{c.label}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                    <span className={`text-xs font-medium w-16 ${c.isLimiting ? 'text-red-600 font-bold' : 'text-gray-600'}`}>{c.label}</span>
+                    <div className="flex-1 bg-gray-100 rounded-lg h-8 relative overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${c.isLimiting ? 'bg-red-400' : 'bg-blue-400'}`}
-                        style={{ width: `${Math.max(pct, 3)}%` }}
+                        className={`h-full rounded-lg transition-all ${c.isLimiting ? 'bg-red-100 border border-red-300' : 'bg-blue-50 border border-blue-200'}`}
+                        style={{ width: '100%' }}
                       />
-                      <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-gray-800">
-                        {formatNumber(c.value)} units
+                      <span className={`absolute inset-0 flex items-center justify-between px-4 text-xs font-semibold ${c.isLimiting ? 'text-red-700' : 'text-gray-700'}`}>
+                        <span>{formatNumber(c.displayValue)} {c.unit}</span>
+                        {c.isLimiting && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">BINDING</span>}
                       </span>
                     </div>
                   </div>

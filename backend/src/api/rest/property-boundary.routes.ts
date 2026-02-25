@@ -427,6 +427,8 @@ router.get('/deals/:dealId/development-capacity', async (req: Request, res: Resp
       parcelInfo: {
         address: confirmation.municipality ? `${zoningCode} — ${confirmation.municipality}, ${confirmation.state || ''}` : zoningCode,
         lotSize: `${parcelAreaAcres.toFixed(2)} acres (${Math.round(parcelAreaSF).toLocaleString()} SF)`,
+        landAreaSF: Math.round(parcelAreaSF),
+        landAreaAcres: parseFloat(parcelAreaAcres.toFixed(2)),
         currentZoning: zoningCode,
         districtName: district?.district_name || zoningCode,
       },
