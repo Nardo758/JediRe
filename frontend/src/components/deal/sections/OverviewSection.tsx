@@ -8,7 +8,8 @@
  * Decision this page drives: "Should I spend 5 more minutes on this deal?"
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 import { ActionStatusPanel } from '../ActionStatusPanel';
 import { StrategyAnalysisResults } from '../StrategyAnalysisResults';
 import {
@@ -40,6 +41,8 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   onStrategySelected,
   onTabChange,
 }) => {
+  const { capitalStructure, strategy: strategyCtx } = useDealModule();
+
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>({
     phase: 'initializing',
     progress: 0,
@@ -236,6 +239,22 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 
       {/* Row 2: Top Risk Alert (conditional) */}
       {riskAlert.show && <TopRiskAlertBanner alert={riskAlert} onNavigate={navigateToTab} />}
+
+      {/* Capital Structure Summary (M11+ → M01) */}
+      {capitalStructure?.structureSummary && (
+        <button
+          className="w-full bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 flex items-center justify-between hover:border-indigo-300 transition-colors text-left group"
+          onClick={() => navigateToTab('capital-structure')}
+        >
+          <div>
+            <div className="text-[10px] font-mono text-indigo-500 tracking-widest mb-0.5">CAPITAL STRUCTURE</div>
+            <div className="text-sm font-semibold text-indigo-900 group-hover:text-indigo-700">
+              {capitalStructure.structureSummary}
+            </div>
+          </div>
+          <div className="text-indigo-400 text-xs font-medium">View Details →</div>
+        </button>
+      )}
 
       {/* Row 3: Quick Stats Grid (4 columns with context) */}
       <div className="grid grid-cols-4 gap-4">

@@ -8,13 +8,14 @@
  * Strategy-aware: when strategy changes, the entire capital structure template reloads.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type {
   StrategyType,
   CapitalLayer,
   CapitalScenario,
   MetricInsight,
 } from '../../../types/capital-structure.types';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 import {
   strategyTemplates,
   defaultCapitalStack,
@@ -83,8 +84,89 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
   const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
 
+  const {
+    financial,
+    capitalStructure,
+    updateCapitalStructure,
+    strategy: strategyCtx,
+    emitEvent,
+    lastEvent,
+  } = useDealModule();
+
   const template = strategyTemplates[selectedStrategy];
   const stack = defaultCapitalStack;
+
+  // ========================================================================
+  // Cross-Module Wiring: M08 → M11+ (Strategy → Capital Structure)
+  // Listen for strategy-selected events and auto-load matching debt template
+  // ========================================================================
+  useEffect(() => {
+    if (lastEvent?.type === 'strategy-selected' && lastEvent.payload?.strategy) {
+      const incoming = lastEvent.payload.strategy as StrategyType;
+      if (incoming !== selectedStrategy && strategyTemplates[incoming]) {
+        setSelectedStrategy(incoming);
+        setLayers(strategyTemplates[incoming].defaultStack?.layers || defaultCapitalStack.layers);
+      }
+    }
+  }, [lastEvent]);
+
+  // ========================================================================
+  // Cross-Module Wiring: M11+ → M09, M14, M12 (Capital → consumers)
+  // Emit capital-updated and push state whenever strategy/layers change
+  // ========================================================================
+  const emitCapitalUpdate = useCallback(() => {
+    const totalDebt = layers
+      .filter(l => l.layerType === 'senior' || l.layerType === 'mezz')
+      .reduce((s, l) => s + l.amount, 0);
+    const totalEquity = layers
+      .filter(l => ['lpEquity', 'gpEquity', 'prefEquity'].includes(l.layerType))
+      .reduce((s, l) => s + l.amount, 0);
+    const seniorLayer = layers.find(l => l.layerType === 'senior');
+    const seniorRate = seniorLayer?.rate || 0;
+    const seniorTerm = seniorLayer?.term || 0;
+
+    // Calculate annual debt service (interest-only approximation from mock)
+    const annualDebtService = totalDebt * (seniorRate / 100);
+    // NOI from ProForma context (M09 → M11+)
+    const noi = financial?.noi || stack.metrics.dscr * annualDebtService || 0;
+    const dscr = annualDebtService > 0 ? noi / annualDebtService : 0;
+    const totalValue = layers.reduce((s, l) => s + l.amount, 0);
+    const ltv = totalValue > 0 ? (totalDebt / totalValue) * 100 : 0;
+
+    const capitalPayload = {
+      annualDebtService,
+      interestOnlyPeriod: seniorLayer?.ioMonths || 0,
+      amortizationSchedule: [],
+      totalEquity,
+      lpEquity: layers.find(l => l.layerType === 'lpEquity')?.amount || 0,
+      gpEquity: layers.find(l => l.layerType === 'gpEquity')?.amount || 0,
+      weightedCostOfCapital: stack.metrics.wacc,
+      loanMaturityYear: seniorTerm,
+      dscr,
+      ltv,
+      ltc: stack.metrics.ltc,
+      debtYield: stack.metrics.debtYield,
+      loanBalance: [],
+      prepaymentPenalty: 0,
+      capitalRiskScore: 0,
+      structureSummary: `${ltv.toFixed(0)}% LTV ${template.label} │ ${stack.metrics.cocReturn.toFixed(1)}% CoC │ ${dscr.toFixed(2)}x DSCR`,
+    };
+
+    // Push to context state (available to all consumers)
+    updateCapitalStructure(capitalPayload);
+
+    // Emit event for reactive listeners (M09, M14, M12, M01)
+    emitEvent({
+      source: 'M11-capital-structure',
+      type: 'capital-updated',
+      payload: capitalPayload,
+    });
+  }, [layers, financial, selectedStrategy, template, stack, updateCapitalStructure, emitEvent]);
+
+  // Fire capital-updated on mount and whenever layers/strategy change
+  useEffect(() => {
+    emitCapitalUpdate();
+  }, [selectedStrategy, layers]);
 
   // Sources = Uses validation
   const totalSources = useMemo(() => layers.reduce((s, l) => s + l.amount, 0), [layers]);
@@ -118,7 +200,15 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         return (
           <button
             key={key}
-            onClick={() => setSelectedStrategy(key)}
+            onClick={() => {
+              setSelectedStrategy(key);
+              setLayers(strategyTemplates[key].defaultStack?.layers || defaultCapitalStack.layers);
+              emitEvent({
+                source: 'M11-capital-structure',
+                type: 'strategy-selected',
+                payload: { strategy: key },
+              });
+            }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
               isActive
                 ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'

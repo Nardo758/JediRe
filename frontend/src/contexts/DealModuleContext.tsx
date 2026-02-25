@@ -57,9 +57,59 @@ export interface ActiveScenarioState {
   lastUpdated: number;
 }
 
+// M11+ Capital Structure state — pushed to M09, M12, M14, M01
+export interface CapitalStructureState {
+  annualDebtService: number;
+  interestOnlyPeriod: number;
+  amortizationSchedule: number[];
+  totalEquity: number;
+  lpEquity: number;
+  gpEquity: number;
+  weightedCostOfCapital: number;
+  loanMaturityYear: number;
+  dscr: number;
+  ltv: number;
+  ltc: number;
+  debtYield: number;
+  loanBalance: number[];
+  prepaymentPenalty: number;
+  capitalRiskScore: number;
+  structureSummary: string;
+  lastUpdated: number;
+}
+
+// M08 Strategy state — pushed to M11+, M09
+export type StrategyType = 'build_to_sell' | 'flip' | 'rental_value_add' | 'rental_stabilized' | 'str';
+
+export interface StrategyState {
+  selectedStrategy: StrategyType;
+  strategyScores: { strategy: StrategyType; score: number }[];
+  arbitrageFlag: boolean;
+  arbitrageDelta: number;
+  lastUpdated: number;
+}
+
+export type DealModuleEventType =
+  | 'design-updated'
+  | 'financial-updated'
+  | 'market-updated'
+  | 'capacity-updated'
+  | 'navigate-to'
+  | 'data-request'
+  // Capital Structure events (M11+)
+  | 'capital-updated'
+  | 'capital-stack-updated'
+  | 'capital-returns-updated'
+  | 'capital-rate-analyzed'
+  | 'capital-scenarios-compared'
+  // Strategy events (M08)
+  | 'strategy-selected'
+  // Risk events (M14)
+  | 'risk-updated';
+
 export interface DealModuleEvent {
   source: string;
-  type: 'design-updated' | 'financial-updated' | 'market-updated' | 'capacity-updated' | 'navigate-to' | 'data-request';
+  type: DealModuleEventType;
   payload?: any;
   timestamp: number;
 }
@@ -82,6 +132,12 @@ interface DealModuleContextValue {
 
   activeScenario: ActiveScenarioState | null;
   updateActiveScenario: (updates: Partial<ActiveScenarioState>) => void;
+
+  capitalStructure: CapitalStructureState | null;
+  updateCapitalStructure: (updates: Partial<CapitalStructureState>) => void;
+
+  strategy: StrategyState | null;
+  updateStrategy: (updates: Partial<StrategyState>) => void;
 
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
@@ -112,6 +168,8 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [market, setMarket] = useState<MarketState | null>(null);
   const [zoningProfile, setZoningProfile] = useState<ZoningProfileState | null>(null);
   const [activeScenario, setActiveScenario] = useState<ActiveScenarioState | null>(null);
+  const [capitalStructure, setCapitalStructure] = useState<CapitalStructureState | null>(null);
+  const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
 
   const updateDesign3D = useCallback((updates: Partial<Design3DState>) => {
@@ -172,6 +230,31 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     });
   }, []);
 
+  const updateCapitalStructure = useCallback((updates: Partial<CapitalStructureState>) => {
+    setCapitalStructure(prev => ({
+      ...(prev || {
+        annualDebtService: 0, interestOnlyPeriod: 0, amortizationSchedule: [],
+        totalEquity: 0, lpEquity: 0, gpEquity: 0, weightedCostOfCapital: 0,
+        loanMaturityYear: 0, dscr: 0, ltv: 0, ltc: 0, debtYield: 0,
+        loanBalance: [], prepaymentPenalty: 0, capitalRiskScore: 0,
+        structureSummary: '', lastUpdated: 0,
+      }),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
+  const updateStrategy = useCallback((updates: Partial<StrategyState>) => {
+    setStrategy(prev => ({
+      ...(prev || {
+        selectedStrategy: 'rental_value_add' as StrategyType,
+        strategyScores: [], arbitrageFlag: false, arbitrageDelta: 0, lastUpdated: 0,
+      }),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
   const emitEvent = useCallback((event: Omit<DealModuleEvent, 'timestamp'>) => {
     const fullEvent: DealModuleEvent = { ...event, timestamp: Date.now() };
     setLastEvent(fullEvent);
@@ -197,11 +280,15 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateZoningProfile,
     activeScenario,
     updateActiveScenario,
+    capitalStructure,
+    updateCapitalStructure,
+    strategy,
+    updateStrategy,
     emitEvent,
     lastEvent,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, emitEvent, lastEvent, navigateToTab, activeTab]);
+  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, emitEvent, lastEvent, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -226,6 +313,10 @@ export const useDealModule = (): DealModuleContextValue => {
       updateZoningProfile: () => {},
       activeScenario: null,
       updateActiveScenario: () => {},
+      capitalStructure: null,
+      updateCapitalStructure: () => {},
+      strategy: null,
+      updateStrategy: () => {},
       emitEvent: () => {},
       lastEvent: null,
       navigateToTab: () => {},
