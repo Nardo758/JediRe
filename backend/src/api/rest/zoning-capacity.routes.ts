@@ -1,8 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import Anthropic from '@anthropic-ai/sdk';
 import { getPool } from '../../database/connection';
 import { ZoningAgentService } from '../../services/zoning-agent.service';
 import { ArcGISConnector, CITY_APIS } from '../../services/municipal-api-connectors';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+});
 
 const router = Router();
 const pool = getPool();
@@ -610,30 +616,34 @@ router.get('/zoning/lookup', async (req: Request, res: Response) => {
 
 router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
   try {
-    const { lat, lng, municipality_id } = req.query;
+    const { lat, lng, municipality_id, address } = req.query;
     if (!lat || !lng) {
       return res.status(400).json({ error: 'Must provide lat and lng' });
     }
 
     const latNum = parseFloat(lat as string);
     const lngNum = parseFloat(lng as string);
+    const addressStr = (address as string) || '';
 
     let muniId = municipality_id as string | undefined;
+    let cityName = '';
+    let stateName = '';
 
-    if (!muniId) {
-      const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
-      if (mapboxToken) {
-        const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lngNum},${latNum}.json?types=place,locality&access_token=${mapboxToken}`;
-        const geoRes = await fetch(geoUrl);
-        const geoData = await geoRes.json();
-        if (geoData.features?.length > 0) {
-          const placeName = geoData.features[0].text || '';
-          const context = geoData.features[0].context || [];
-          const stateCtx = context.find((c: any) => c.id?.startsWith('region'));
-          const stateName = stateCtx?.short_code?.replace('US-', '') || '';
+    const mapboxToken = process.env.VITE_MAPBOX_TOKEN;
+    if (mapboxToken) {
+      const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lngNum},${latNum}.json?types=place,locality&access_token=${mapboxToken}`;
+      const geoRes = await fetch(geoUrl);
+      const geoData = await geoRes.json();
+      if (geoData.features?.length > 0) {
+        cityName = geoData.features[0].text || '';
+        const context = geoData.features[0].context || [];
+        const stateCtx = context.find((c: any) => c.id?.startsWith('region'));
+        stateName = stateCtx?.short_code?.replace('US-', '') || '';
+
+        if (!muniId) {
           const muniResult = await pool.query(
             `SELECT id FROM municipalities WHERE UPPER(name) = UPPER($1) AND UPPER(state) = UPPER($2) LIMIT 1`,
-            [placeName, stateName]
+            [cityName, stateName]
           );
           if (muniResult.rows.length > 0) {
             muniId = muniResult.rows[0].id;
@@ -642,48 +652,131 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
       }
     }
 
-    if (!muniId) {
-      return res.json({ found: false, source: 'none', message: 'Could not determine municipality' });
+    let arcgisResult: any = null;
+    if (muniId) {
+      const cityConfig = CITY_APIS[muniId];
+      if (cityConfig?.verified) {
+        try {
+          const connector = new ArcGISConnector(cityConfig.serviceUrl, cityConfig.token);
+          const result = await connector.queryByLocation(cityConfig.layerId || 0, latNum, lngNum);
+
+          if (result) {
+            const codeField = cityConfig.fields?.code || 'ZONING_CLASSIFICATION';
+            const nameField = cityConfig.fields?.name || 'ZONEDESC';
+            const zoningCode = result[codeField] || result.ZONING || result.ZONE_CODE || null;
+            const zoningName = result[nameField] || result.ZONE_DESC || result.ZONING_DESC || '';
+
+            if (zoningCode) {
+              return res.json({
+                found: true,
+                zoningCode,
+                zoningName,
+                source: 'assessor_api',
+                sourceName: `${cityConfig.name} GIS`,
+                municipality: cityConfig.name,
+                state: cityConfig.state,
+                municipalityId: muniId,
+                confidence: 0.95,
+              });
+            }
+          }
+        } catch (arcErr: any) {
+          console.warn('ArcGIS lookup failed, falling back to AI:', arcErr.message);
+        }
+      }
     }
 
-    const cityConfig = CITY_APIS[muniId];
-    if (!cityConfig || !cityConfig.verified) {
-      return res.json({ found: false, source: 'none', message: 'No assessor API available for this municipality' });
+    if (!cityName && !addressStr) {
+      return res.json({ found: false, source: 'none', message: 'Could not determine location for zoning lookup' });
     }
 
-    const connector = new ArcGISConnector(cityConfig.serviceUrl, cityConfig.token);
-    const result = await connector.queryByLocation(cityConfig.layerId || 0, latNum, lngNum);
+    const locationDesc = addressStr
+      ? `${addressStr} (coordinates: ${latNum}, ${lngNum})`
+      : `coordinates ${latNum}, ${lngNum} in ${cityName}, ${stateName}`;
 
-    if (!result) {
-      return res.json({ found: false, source: 'assessor_api', message: 'No parcel found at these coordinates' });
-    }
+    const aiPrompt = `I need to find the exact zoning classification/designation for a property located at ${locationDesc}.
 
-    const codeField = cityConfig.fields?.code || 'ZONING_CLASSIFICATION';
-    const nameField = cityConfig.fields?.name || 'ZONEDESC';
-    const zoningCode = result[codeField] || result.ZONING || result.ZONE_CODE || null;
-    const zoningName = result[nameField] || result.ZONE_DESC || result.ZONING_DESC || '';
+Search the ${cityName || 'local'} ${stateName ? stateName + ' ' : ''}county or city property assessor website, GIS portal, or zoning map to find:
+1. The zoning district code (e.g., R-1, C-2, MU-3, PD, etc.)
+2. The zoning district name/description
+3. The source URL where you found this information
 
-    if (!zoningCode) {
+IMPORTANT:
+- Search the official county/city property assessor, GIS, or zoning websites
+- Look for the CURRENT zoning designation, not proposed or historical
+- If you find the parcel, provide the exact zoning code shown on the assessor record
+
+Respond in this exact JSON format:
+{
+  "found": true/false,
+  "zoningCode": "the zoning district code",
+  "zoningName": "full name of the zoning district",
+  "sourceUrl": "the URL where you found this data",
+  "sourceName": "name of the data source (e.g., Fulton County Tax Assessor)",
+  "notes": "any relevant context"
+}`;
+
+    try {
+      const message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        tools: [
+          {
+            type: 'web_search_20250305',
+            name: 'web_search',
+            max_uses: 5,
+          } as any,
+        ],
+        messages: [
+          { role: 'user', content: aiPrompt }
+        ],
+      });
+
+      let responseText = '';
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          responseText += block.text;
+        }
+      }
+
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          return res.json({ found: false, source: 'ai_web_search', message: 'Failed to parse AI response' });
+        }
+        if (parsed.found && parsed.zoningCode) {
+          return res.json({
+            found: true,
+            zoningCode: parsed.zoningCode,
+            zoningName: parsed.zoningName || parsed.zoningCode,
+            source: 'ai_web_search',
+            sourceName: parsed.sourceName || `${cityName} Property Assessor (AI-verified)`,
+            sourceUrl: parsed.sourceUrl || null,
+            municipality: cityName,
+            state: stateName,
+            municipalityId: muniId || null,
+            confidence: 0.85,
+            notes: parsed.notes || null,
+          });
+        }
+      }
+
       return res.json({
         found: false,
-        source: 'assessor_api',
-        message: 'Parcel found but no zoning code in response',
-        rawAttributes: Object.keys(result),
+        source: 'ai_web_search',
+        message: 'AI search could not determine the zoning code for this location',
+      });
+    } catch (aiErr: any) {
+      console.error('AI web search fallback failed:', aiErr.message);
+      return res.json({
+        found: false,
+        source: 'error',
+        message: 'Both assessor API and AI web search failed',
       });
     }
-
-    res.json({
-      found: true,
-      zoningCode,
-      zoningName,
-      source: 'assessor_api',
-      sourceName: `${cityConfig.name} GIS`,
-      municipality: cityConfig.name,
-      state: cityConfig.state,
-      municipalityId: muniId,
-      confidence: 0.95,
-      rawAttributes: result,
-    });
   } catch (error: any) {
     console.error('Error in parcel-lookup:', error.message);
     res.json({ found: false, source: 'error', message: error.message || 'Parcel lookup failed' });

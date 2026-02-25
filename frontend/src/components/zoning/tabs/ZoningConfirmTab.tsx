@@ -23,7 +23,7 @@ interface DetectedZoning {
   municipality: string;
   state: string;
   confidence: number;
-  source: 'boundary' | 'address' | 'manual';
+  source: string;
 }
 
 interface ZoningDistrict {
@@ -105,7 +105,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       let parcelZoning: any = null;
       try {
         const parcelRes = await apiClient.get('/api/v1/zoning/parcel-lookup', {
-          params: { lat, lng },
+          params: { lat, lng, address: deal?.address || boundary.address || '' },
         });
         if (parcelRes.data?.found) {
           parcelZoning = parcelRes.data;
@@ -334,12 +334,19 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
                 <p className="text-2xl font-bold text-gray-900 mb-1">{detectedZoning.code}</p>
                 <p className="text-sm text-gray-600">{detectedZoning.name}</p>
                 {detectedZoning.source && detectedZoning.source !== 'boundary' && (
-                  <p className="text-xs text-blue-600 mt-1">
+                  <p className="text-xs mt-1" style={{ color: detectedZoning.confidence >= 0.9 ? '#059669' : '#2563eb' }}>
                     Source: {detectedZoning.source}
                   </p>
                 )}
               </div>
-              <CheckCircle2 className="w-6 h-6 text-green-600" />
+              {detectedZoning.confidence >= 0.9 ? (
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+              ) : (
+                <div className="flex flex-col items-center">
+                  <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                  <span className="text-[10px] text-blue-500 mt-0.5">AI-verified</span>
+                </div>
+              )}
             </div>
           </div>
 
