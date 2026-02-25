@@ -69,6 +69,7 @@ import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
 import zoningVerificationRouter from './api/rest/zoning-verification.routes';
 import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
+import moduleWiringRouter from './api/rest/module-wiring.routes';
 
 dotenv.config();
 
