@@ -938,6 +938,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                         <p className="text-xs text-gray-500">Max Stories</p>
                         <p className="font-semibold text-gray-900">{zoningDetail.max_stories || '--'}</p>
                       </div>
+                      {(zoningDetail.max_lot_coverage != null || zoningDetail.max_lot_coverage_percent != null) && (() => {
+                        const raw = parseFloat(zoningDetail.max_lot_coverage || zoningDetail.max_lot_coverage_percent);
+                        const pct = raw <= 1 ? raw * 100 : raw;
+                        return (
+                          <div className="bg-gray-50 rounded p-2">
+                            <p className="text-xs text-gray-500">Lot Coverage</p>
+                            <p className="font-semibold text-gray-900">{pct.toFixed(0)}%</p>
+                          </div>
+                        );
+                      })()}
+                      {zoningDetail.min_parking_per_unit != null && (
+                        <div className="bg-gray-50 rounded p-2">
+                          <p className="text-xs text-gray-500">Parking Ratio</p>
+                          <p className="font-semibold text-gray-900">{zoningDetail.min_parking_per_unit} per unit</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 

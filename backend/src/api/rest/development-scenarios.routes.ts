@@ -97,6 +97,176 @@ async function calculateScenarioEnvelope(profile: any, scenario: any, projectTyp
   };
 }
 
+router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const profile = await profileService.getProfile(dealId);
+    if (!profile) {
+      return res.status(400).json({ error: 'No zoning profile exists. Confirm zoning first.' });
+    }
+
+    const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
+    const projectType = dealResult.rows[0]?.project_type || 'multifamily';
+
+    const lotAreaSf = parseFloat(String(profile.lot_area_sf)) || 0;
+    let appliedFar = profile.applied_far;
+    const dealType = mapProjectTypeToDealType(projectType);
+
+    const inputs = {
+      landArea: lotAreaSf,
+      setbacks: {
+        front: parseInt(String(profile.setback_front_ft)) || 0,
+        side: parseInt(String(profile.setback_side_ft)) || 0,
+        rear: parseInt(String(profile.setback_rear_ft)) || 0,
+      },
+      zoningConstraints: {
+        maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(String(profile.max_density_per_acre)) || null),
+        maxFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
+        residentialFAR: parseFloat(String(profile.residential_far)) || null,
+        nonresidentialFAR: parseFloat(String(profile.nonresidential_far)) || null,
+        appliedFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
+        maxHeight: parseInt(String(profile.max_height_ft)) || null,
+        maxStories: parseInt(String(profile.max_stories)) || null,
+        minParkingPerUnit: parseFloat(String(profile.min_parking_per_unit)) || null,
+        maxLotCoverage: parseFloat(String(profile.max_lot_coverage_pct)) || null,
+        densityMethod: (profile.density_method as any) || 'units_per_acre',
+      },
+      dealType: dealType as 'residential' | 'commercial' | 'mixed-use',
+    };
+
+    const results = envelopeService.calculateHighestBestUse(inputs);
+
+    res.json({ hbu: results, dealType, projectType });
+  } catch (error: any) {
+    console.error('Error calculating HBU:', error);
+    res.status(500).json({ error: error.message || 'Failed to calculate highest & best use' });
+  }
+});
+
+router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const profile = await profileService.getProfile(dealId);
+    if (!profile) {
+      return res.status(400).json({ error: 'No zoning profile exists. Confirm zoning first.' });
+    }
+
+    const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
+    const projectType = dealResult.rows[0]?.project_type || 'multifamily';
+    const propType = mapProjectTypeToEnvelopeType(projectType);
+    const dealType = mapProjectTypeToDealType(projectType);
+
+    const lotAreaSf = parseFloat(profile.lot_area_sf) || 0;
+    const setbacks = {
+      front: parseInt(profile.setback_front_ft) || 0,
+      side: parseInt(profile.setback_side_ft) || 0,
+      rear: parseInt(profile.setback_rear_ft) || 0,
+    };
+
+    const baseConstraints = {
+      maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(profile.max_density_per_acre) || null),
+      maxFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
+      residentialFAR: parseFloat(profile.residential_far) || null,
+      nonresidentialFAR: parseFloat(profile.nonresidential_far) || null,
+      appliedFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
+      maxHeight: parseInt(profile.max_height_ft) || null,
+      maxStories: parseInt(profile.max_stories) || null,
+      minParkingPerUnit: parseFloat(profile.min_parking_per_unit) || null,
+      maxLotCoverage: parseFloat(profile.max_lot_coverage_pct) || null,
+      densityMethod: profile.density_method || 'units_per_acre',
+    };
+
+    const strategies = [
+      {
+        name: 'By-Right',
+        description: 'Development under existing zoning with no approvals beyond standard permits.',
+        risk: 'Low',
+        successRate: '95%',
+        timeline: '3-6 months',
+        estimatedCost: '$5K-$15K',
+        multipliers: { density: 1.0, far: 1.0, height: 0, parking: 1.0 },
+      },
+      {
+        name: 'Variance',
+        description: 'Request specific deviations from zoning standards through Board of Zoning Appeals.',
+        risk: 'Medium',
+        successRate: '60-75%',
+        timeline: '6-12 months',
+        estimatedCost: '$25K-$75K',
+        multipliers: { density: 1.2, far: 1.15, height: 10, parking: 0.85 },
+      },
+      {
+        name: 'Rezone',
+        description: 'Full rezoning petition to City Council for higher-density district designation.',
+        risk: 'High',
+        successRate: '35-50%',
+        timeline: '12-24 months',
+        estimatedCost: '$75K-$200K',
+        multipliers: { density: 1.6, far: 1.5, height: 0.5, parking: 0.70 },
+      },
+    ];
+
+    const results = strategies.map(strategy => {
+      const m = strategy.multipliers;
+      const adjustedConstraints = {
+        ...baseConstraints,
+        maxDensity: baseConstraints.maxDensity != null ? baseConstraints.maxDensity * m.density : null,
+        maxFAR: baseConstraints.maxFAR != null ? baseConstraints.maxFAR * m.far : null,
+        appliedFAR: baseConstraints.appliedFAR != null ? baseConstraints.appliedFAR * m.far : null,
+        residentialFAR: baseConstraints.residentialFAR != null ? baseConstraints.residentialFAR * m.far : null,
+        nonresidentialFAR: baseConstraints.nonresidentialFAR != null ? baseConstraints.nonresidentialFAR * m.far : null,
+        maxHeight: baseConstraints.maxHeight != null ? Math.round(baseConstraints.maxHeight + (baseConstraints.maxHeight * m.height !== 0 ? m.height : 0)) : null,
+        minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * m.parking : null,
+      };
+
+      if (strategy.name === 'Variance' && baseConstraints.maxHeight != null) {
+        adjustedConstraints.maxHeight = baseConstraints.maxHeight + 10;
+      }
+      if (strategy.name === 'Rezone' && baseConstraints.maxHeight != null) {
+        adjustedConstraints.maxHeight = Math.round(baseConstraints.maxHeight * 1.5);
+      }
+
+      const envelope = envelopeService.calculateEnvelope({
+        landArea: lotAreaSf,
+        setbacks,
+        zoningConstraints: adjustedConstraints as any,
+        propertyType: propType,
+        dealType,
+      });
+
+      return {
+        name: strategy.name,
+        description: strategy.description,
+        risk: strategy.risk,
+        successRate: strategy.successRate,
+        timeline: strategy.timeline,
+        estimatedCost: strategy.estimatedCost,
+        maxUnits: envelope.maxCapacity,
+        maxGba: Math.round(envelope.maxGFA),
+        maxStories: envelope.maxFloors,
+        appliedFar: adjustedConstraints.appliedFAR,
+        parkingRequired: envelope.parkingRequired,
+        maxHeight: adjustedConstraints.maxHeight,
+        bindingConstraint: envelope.limitingFactor,
+      };
+    });
+
+    const byRight = results[0];
+    const recommendations = results.map(r => ({
+      ...r,
+      deltaUnits: byRight.maxUnits > 0 ? Math.round(((r.maxUnits - byRight.maxUnits) / byRight.maxUnits) * 100) : 0,
+      deltaGba: byRight.maxGba > 0 ? Math.round(((r.maxGba - byRight.maxGba) / byRight.maxGba) * 100) : 0,
+    }));
+
+    res.json({ recommendations });
+  } catch (error: any) {
+    console.error('Error fetching recommendations:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch recommendations' });
+  }
+});
+
 router.get('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;

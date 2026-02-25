@@ -343,17 +343,20 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
 
     let district = result.rows[0];
 
-    const devStandardFields = [
+    const coreStandardFields = [
       'max_density_per_acre', 'max_units_per_acre', 'max_far',
-      'residential_far', 'nonresidential_far', 'density_method',
+      'residential_far', 'nonresidential_far',
       'max_height_feet', 'max_building_height_ft', 'max_stories',
-      'height_buffer_ft', 'height_beyond_buffer_ft',
       'min_parking_per_unit', 'parking_per_unit',
       'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
       'min_front_setback_ft', 'min_side_setback_ft', 'min_rear_setback_ft',
       'max_lot_coverage', 'max_lot_coverage_percent',
     ];
-    const hasNoStandards = devStandardFields.every(f => district[f] == null);
+    const devStandardFields = [
+      ...coreStandardFields,
+      'density_method', 'height_buffer_ft', 'height_beyond_buffer_ft',
+    ];
+    const hasNoStandards = coreStandardFields.every(f => district[f] == null);
     if (hasNoStandards) {
       const codeStr = (code as string).toUpperCase();
       const baseMatch = codeStr.match(/^(.+)-[A-Z]{1,2}$/);

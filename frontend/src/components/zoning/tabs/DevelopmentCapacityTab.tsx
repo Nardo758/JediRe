@@ -51,6 +51,20 @@ interface Scenario {
   flags: string[];
 }
 
+interface HBUResult {
+  propertyType: string;
+  maxCapacity: number;
+  maxGFA: number;
+  annualGrossRevenue: number;
+  estimatedNOI: number;
+  estimatedValue: number;
+  capRate: number;
+  expenseRatio: number;
+  limitingFactor: string;
+  recommended: boolean;
+  reasoning: string;
+}
+
 interface DevelopmentCapacityTabProps {
   dealId?: string;
   deal?: any;
@@ -119,6 +133,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [expandedScenario, setExpandedScenario] = useState<string | null>(null);
   const [profileExists, setProfileExists] = useState(true);
   const [resolving, setResolving] = useState(false);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loadingRecs, setLoadingRecs] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(true);
+  const [hbuResults, setHbuResults] = useState<HBUResult[]>([]);
+  const [hbuLoading, setHbuLoading] = useState(false);
+  const [hbuExpanded, setHbuExpanded] = useState(false);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -167,6 +187,18 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       }
 
       setScenarios(scenariosList);
+
+      if (profileData.exists) {
+        setLoadingRecs(true);
+        try {
+          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`);
+          setRecommendations(recsRes.data.recommendations || []);
+        } catch {
+          setRecommendations([]);
+        } finally {
+          setLoadingRecs(false);
+        }
+      }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
       setError(msg);
@@ -261,6 +293,23 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to change asset type');
+    }
+  };
+
+  const loadHBU = async () => {
+    if (!dealId || hbuResults.length > 0) {
+      setHbuExpanded(!hbuExpanded);
+      return;
+    }
+    setHbuLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/hbu`);
+      setHbuResults(res.data.hbu || []);
+      setHbuExpanded(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to load HBU analysis');
+    } finally {
+      setHbuLoading(false);
     }
   };
 
@@ -775,6 +824,186 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <button
+          onClick={loadHBU}
+          className="w-full px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+        >
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Highest & Best Use Analysis</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Evaluate 6 property types ranked by estimated value</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {hbuLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />}
+            <svg className={`h-4 w-4 text-gray-400 transition-transform ${hbuExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+
+        {hbuExpanded && hbuResults.length > 0 && (
+          <div>
+            {hbuResults.filter(r => r.recommended).map(rec => (
+              <div key={rec.propertyType} className="px-5 py-3 bg-amber-50 border-b border-amber-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold uppercase">Best Use</span>
+                  <span className="text-sm font-bold text-amber-900 capitalize">{rec.propertyType}</span>
+                </div>
+                <p className="text-xs text-amber-800">{rec.reasoning}</p>
+              </div>
+            ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/50">
+                    <th className="text-left px-5 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Property Type</th>
+                    <th className="text-right px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Max Capacity</th>
+                    <th className="text-right px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Max GFA</th>
+                    <th className="text-right px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Annual Revenue</th>
+                    <th className="text-right px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">NOI</th>
+                    <th className="text-right px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Est. Value</th>
+                    <th className="text-center px-4 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider">Limiting Factor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hbuResults.map(result => (
+                    <tr key={result.propertyType} className={`border-b border-gray-50 ${result.recommended ? 'bg-amber-50/50' : 'hover:bg-gray-50/50'}`}>
+                      <td className="px-5 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold capitalize ${result.recommended ? 'text-amber-900' : 'text-gray-900'}`}>{result.propertyType}</span>
+                          {result.recommended && (
+                            <span className="text-[9px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full font-bold">BEST</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-right px-4 py-2.5 text-xs text-gray-900">{formatNumber(result.maxCapacity)}</td>
+                      <td className="text-right px-4 py-2.5 text-xs text-gray-900">{formatNumber(Math.round(result.maxGFA))} SF</td>
+                      <td className="text-right px-4 py-2.5 text-xs text-gray-900">${formatNumber(Math.round(result.annualGrossRevenue))}</td>
+                      <td className="text-right px-4 py-2.5 text-xs text-gray-900">${formatNumber(Math.round(result.estimatedNOI))}</td>
+                      <td className={`text-right px-4 py-2.5 text-xs font-semibold ${result.recommended ? 'text-amber-900' : 'text-gray-900'}`}>${formatNumber(Math.round(result.estimatedValue))}</td>
+                      <td className="text-center px-4 py-2.5">
+                        <span className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded border border-red-200">{getLimitingLabel(result.limitingFactor)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {recommendations.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setShowRecommendations(!showRecommendations)}
+            className="w-full px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between"
+          >
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Strategy</h3>
+              <p className="text-xs text-gray-500 mt-0.5">By-Right, Variance, and Rezone scenario comparison</p>
+            </div>
+            <svg className={`h-4 w-4 text-gray-400 transition-transform ${showRecommendations ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showRecommendations && (
+            <div className="p-5">
+              <div className="grid grid-cols-3 gap-4">
+                {recommendations.map((rec: any) => {
+                  const riskColors: Record<string, string> = {
+                    Low: 'bg-green-50 text-green-700 border-green-200',
+                    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
+                    High: 'bg-red-50 text-red-700 border-red-200',
+                  };
+                  const riskBorderColors: Record<string, string> = {
+                    Low: 'border-green-300',
+                    Medium: 'border-amber-300',
+                    High: 'border-red-300',
+                  };
+                  const riskColor = riskColors[rec.risk] || riskColors.Low;
+                  const borderColor = riskBorderColors[rec.risk] || '';
+
+                  return (
+                    <div key={rec.name} className={`border rounded-lg overflow-hidden ${rec.name === 'By-Right' ? 'border-green-300 ring-1 ring-green-100' : borderColor}`}>
+                      <div className={`px-4 py-3 ${rec.name === 'By-Right' ? 'bg-green-50' : rec.name === 'Variance' ? 'bg-amber-50' : 'bg-red-50'}`}>
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-bold text-gray-900">{rec.name}</h4>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${riskColor}`}>
+                            {rec.risk} Risk
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1">{rec.description}</p>
+                      </div>
+
+                      <div className="px-4 py-3 space-y-2">
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">Units</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.maxUnits)}</span>
+                            {rec.deltaUnits > 0 && (
+                              <span className="text-[10px] text-green-600 font-medium">+{rec.deltaUnits}%</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">GBA</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.maxGba)} SF</span>
+                            {rec.deltaGba > 0 && (
+                              <span className="text-[10px] text-green-600 font-medium">+{rec.deltaGba}%</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">Stories</span>
+                          <span className="text-sm font-semibold text-gray-900">{rec.maxStories ?? '--'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">Height</span>
+                          <span className="text-sm font-semibold text-gray-900">{rec.maxHeight ? `${rec.maxHeight} ft` : '--'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">Applied FAR</span>
+                          <span className="text-sm font-semibold text-gray-900">{rec.appliedFar != null ? rec.appliedFar.toFixed(2) : '--'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-xs text-gray-500">Parking</span>
+                          <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.parkingRequired)} spaces</span>
+                        </div>
+                      </div>
+
+                      <div className="px-4 py-3 bg-gray-50 space-y-1.5">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Success Rate</span>
+                          <span className="font-medium text-gray-900">{rec.successRate}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Timeline</span>
+                          <span className="font-medium text-gray-900">{rec.timeline}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-gray-500">Est. Cost</span>
+                          <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {loadingRecs && recommendations.length === 0 && (
+        <div className="flex items-center justify-center py-6">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+          <span className="ml-2 text-gray-500 text-xs">Loading entitlement strategies...</span>
         </div>
       )}
     </div>
