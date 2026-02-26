@@ -1049,6 +1049,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium border border-violet-200">REZONE OPPORTUNITY</span>
               </div>
               <p className="text-xs text-violet-700 mt-0.5">{rezoneAnalysis.bestTarget.insight}</p>
+              {rezoneAnalysis.bestTarget.evidence && rezoneAnalysis.bestTarget.evidence.count > 0 && (
+                <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+                  <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200 font-medium">
+                    {rezoneAnalysis.bestTarget.evidence.count} similar rezonings: {rezoneAnalysis.bestTarget.evidence.approvalRate}% approved, avg {Math.round(rezoneAnalysis.bestTarget.evidence.avgDays / 30)} months
+                  </span>
+                  <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
+                    Data Source: Real District Data ({rezoneAnalysis.bestTarget.evidence.count} projects)
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-right flex-shrink-0">
               <p className="text-sm font-bold text-violet-900">+{rezoneAnalysis.bestTarget.delta?.additionalUnits || 0} units</p>
@@ -1058,6 +1068,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               )}
             </div>
           </div>
+          {rezoneAnalysis.bestTarget.evidence?.examples && rezoneAnalysis.bestTarget.evidence.examples.length > 0 && (
+            <div className="px-5 py-2 border-t border-violet-200 bg-violet-50/50">
+              <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide mb-1">Recent Precedents</p>
+              <div className="space-y-1">
+                {rezoneAnalysis.bestTarget.evidence.examples.slice(0, 3).map((ex: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px] text-violet-700">
+                    {ex.docketNumber && <span className="font-mono font-medium">{ex.docketNumber}</span>}
+                    {ex.fromZone && ex.toZone && <span>{ex.fromZone} → {ex.toZone}</span>}
+                    {ex.outcome && <span className={`px-1 py-0.5 rounded ${ex.outcome === 'approved' ? 'bg-green-100 text-green-700' : ex.outcome === 'denied' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{ex.outcome}</span>}
+                    {ex.totalDays != null && <span>{Math.round(ex.totalDays / 30)}mo</span>}
+                    {ex.ordinanceUrl && (
+                      <a href={ex.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">PDF</a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {rezoneAnalysis.bestTarget.districtMunicodeUrl && (
             <div className="px-5 py-2 border-t border-violet-200 bg-violet-50/50 flex items-center gap-2">
               <span className="text-[10px] text-violet-500">Target District:</span>
@@ -1169,8 +1197,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                           <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
                         </div>
                         {rec.source === 'rezone-analysis' && (
-                          <div className="flex items-center gap-1 pt-1">
-                            <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">Real District Data</span>
+                          <div className="flex items-center gap-1 pt-1 flex-wrap">
+                            <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
+                              Data Source: Real District Data{rec.evidence?.count ? ` (${rec.evidence.count} projects)` : ''}
+                            </span>
                             {rec.districtMunicodeUrl && (
                               <MunicodeLink url={rec.districtMunicodeUrl} label={rec.targetDistrictCode} />
                             )}

@@ -225,6 +225,25 @@ function ModeDescription({ mode }: { mode: ComparisonMode }) {
 // Next-Best Zoning Section
 // ============================================================================
 
+interface RezoneEvidenceData {
+  count: number;
+  approvalRate: number;
+  avgDays: number;
+  medianDays: number;
+  outcomes: { approved: number; denied: number; withdrawn: number; pending: number };
+  examples: Array<{
+    docketNumber: string | null;
+    ordinanceNumber: string | null;
+    ordinanceUrl: string | null;
+    fromZone: string | null;
+    toZone: string | null;
+    outcome: string | null;
+    totalDays: number | null;
+    address: string | null;
+    units: number | null;
+  }>;
+}
+
 interface RezoneOpportunityData {
   targetDistrictCode: string;
   targetDistrictName: string | null;
@@ -240,6 +259,7 @@ interface RezoneOpportunityData {
   estimatedCost: string;
   recommended: boolean;
   insight: string;
+  evidence?: RezoneEvidenceData | null;
 }
 
 function formatCurrency(val: number): string {
@@ -327,15 +347,18 @@ function NextBestZoningSection({ dealId }: { dealId?: string }) {
                       <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
                       <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Density</th>
                       <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Height</th>
-                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">GFA</th>
                       <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">+Units</th>
                       <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Approval</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Timeline</th>
                       <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Risk</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {opportunities.map(d => {
                       const riskInfo = getRiskLabel(d.risk);
+                      const ev = d.evidence;
+                      const hasEvidence = ev && ev.count > 0;
                       return (
                         <tr key={d.targetDistrictId} className={`hover:bg-gray-50 ${d.recommended ? 'bg-amber-50/30' : ''}`}>
                           <td className="py-2.5 px-3">
@@ -346,7 +369,9 @@ function NextBestZoningSection({ dealId }: { dealId?: string }) {
                               )}
                             </div>
                             {d.targetDistrictName && <div className="text-[10px] text-gray-500">{d.targetDistrictName}</div>}
-                            <div className="text-[10px] text-gray-400 mt-0.5">{d.estimatedTimeline}</div>
+                            {hasEvidence && (
+                              <div className="text-[9px] text-green-600 mt-0.5">{ev.count} precedents</div>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
                             {d.delta.unitUpliftPct > 0 ? `+${d.delta.unitUpliftPct}%` : '—'}
@@ -354,14 +379,23 @@ function NextBestZoningSection({ dealId }: { dealId?: string }) {
                           <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
                             {d.delta.heightDifference > 0 ? `+${d.delta.heightDifference} floors` : '—'}
                           </td>
-                          <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
-                            {d.delta.additionalGFA > 0 ? `+${d.delta.additionalGFA.toLocaleString()} sf` : '—'}
-                          </td>
                           <td className="py-2.5 px-3 text-center text-xs font-bold text-gray-900">
                             {d.delta.additionalUnits > 0 ? `+${d.delta.additionalUnits}` : '—'}
                           </td>
                           <td className="py-2.5 px-3 text-center text-xs font-bold text-green-700">
                             {d.revenue.valueUplift > 0 ? `+${formatCurrency(d.revenue.valueUplift)}` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs font-medium">
+                            {hasEvidence ? (
+                              <span className={ev.approvalRate >= 70 ? 'text-green-700' : ev.approvalRate >= 40 ? 'text-amber-700' : 'text-red-600'}>
+                                {ev.approvalRate}%
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs text-gray-700">
+                            {d.estimatedTimeline}
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${riskInfo.className}`}>

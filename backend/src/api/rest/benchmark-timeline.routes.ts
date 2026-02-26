@@ -151,6 +151,23 @@ router.post('/compare-paths', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/benchmark-timeline/ingest/atlanta
+ * Trigger Atlanta GIS benchmark data ingestion.
+ */
+router.post('/ingest/atlanta', async (req: Request, res: Response) => {
+  try {
+    const { atlantaBenchmarkIngestionService } = await import('../../services/atlanta-benchmark-ingestion.service');
+    logger.info('[API] Starting Atlanta benchmark ingestion...');
+    const stats = await atlantaBenchmarkIngestionService.ingest();
+    logger.info(`[API] Atlanta ingestion complete: ${JSON.stringify(stats)}`);
+    res.json({ success: true, stats });
+  } catch (error) {
+    logger.error('[API] Atlanta ingestion failed:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Helper to generate benchmark summary from synthetic data
 function generateBenchmarkSummary(county: string, state: string, entitlementType?: string) {
   const types = entitlementType ? [entitlementType] : ['by_right', 'variance', 'rezone'];

@@ -98,6 +98,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [locationInfo, setLocationInfo] = useState<{ city: string; state: string } | null>(null);
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
   const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
+  const [rezonePrecedent, setRezonePrecedent] = useState<any>(null);
 
   const fetchDistrictDetails = useCallback(async (code: string, municipality?: string) => {
     try {
@@ -106,6 +107,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       const res = await apiClient.get('/api/v1/zoning-districts/by-code', { params });
       if (res.data?.found !== false) {
         setDistrictDetails(res.data);
+        setRezonePrecedent(res.data?.rezone_precedent || null);
       }
     } catch {}
   }, []);
@@ -643,6 +645,50 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     </div>
                   );
                 })()}
+
+                {rezonePrecedent && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Rezoning Precedent</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Rezoned FROM this district</p>
+                        <p className="text-sm font-bold text-gray-900">{rezonePrecedent.rezoned_from_count} projects</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Rezoned TO this district</p>
+                        <p className="text-sm font-bold text-gray-900">{rezonePrecedent.rezoned_to_count} projects</p>
+                      </div>
+                    </div>
+                    {rezonePrecedent.avg_rezone_days && (
+                      <p className="text-xs text-gray-600">
+                        Avg {rezonePrecedent.avg_rezone_days} days | {rezonePrecedent.approval_rate}% approval rate
+                      </p>
+                    )}
+                    {rezonePrecedent.recent_rezonings?.length > 0 && (
+                      <div className="space-y-1">
+                        {rezonePrecedent.recent_rezonings.map((r: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-1.5 border border-amber-100">
+                            <div className="flex items-center gap-1.5">
+                              {r.ordinance_url ? (
+                                <a href={r.ordinance_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                                  {r.docket_number || 'View'}
+                                </a>
+                              ) : (
+                                <span className="font-medium text-gray-700">{r.docket_number || r.address || '--'}</span>
+                              )}
+                              <span className="text-gray-400">{r.from_code} → {r.to_code}</span>
+                            </div>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              r.outcome === 'approved' ? 'bg-green-100 text-green-700' :
+                              r.outcome === 'denied' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>{r.outcome || 'pending'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* District selection dropdown */}
                 {availableDistricts.length > 1 && !zoningConfirmed && (

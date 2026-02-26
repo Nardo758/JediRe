@@ -25,6 +25,27 @@ export interface RezoneAnalysisInput {
   };
 }
 
+export interface RezoneEvidenceExample {
+  docketNumber: string | null;
+  ordinanceNumber: string | null;
+  ordinanceUrl: string | null;
+  fromZone: string | null;
+  toZone: string | null;
+  outcome: string | null;
+  totalDays: number | null;
+  address: string | null;
+  units: number | null;
+}
+
+export interface RezoneEvidence {
+  count: number;
+  approvalRate: number;
+  avgDays: number;
+  medianDays: number;
+  outcomes: { approved: number; denied: number; withdrawn: number; pending: number };
+  examples: RezoneEvidenceExample[];
+}
+
 export interface RezoneOpportunity {
   targetDistrictCode: string;
   targetDistrictName: string | null;
@@ -65,6 +86,7 @@ export interface RezoneOpportunity {
   estimatedCost: string;
   recommended: boolean;
   insight: string;
+  evidence: RezoneEvidence | null;
 }
 
 export interface RezoneAnalysisResult {
@@ -224,7 +246,30 @@ export class RezoneAnalysisService {
         estimatedCost: '$75K-$200K',
         recommended: false,
         insight,
+        evidence: null,
       });
+    }
+
+    for (const opp of opportunities) {
+      try {
+        const evidence = await this.getRezoneEvidence(
+          municipalityId,
+          input.currentDistrictCode,
+          opp.targetDistrictCode,
+        );
+        opp.evidence = evidence;
+        if (evidence && evidence.count > 0) {
+          if (evidence.approvalRate >= 80) {
+            opp.risk = 'Low';
+          } else if (evidence.approvalRate >= 50) {
+            opp.risk = 'Medium';
+          }
+          if (evidence.avgDays > 0) {
+            const months = Math.round(evidence.avgDays / 30);
+            opp.estimatedTimeline = `~${months} months`;
+          }
+        }
+      } catch {}
     }
 
     opportunities.sort((a, b) => b.revenue.valueUplift - a.revenue.valueUplift);
@@ -397,6 +442,122 @@ export class RezoneAnalysisService {
     );
 
     return result.rows;
+  }
+
+  async getRezoneEvidence(
+    municipalityId: string | null,
+    fromDistrictCode: string,
+    toDistrictCode: string,
+  ): Promise<RezoneEvidence | null> {
+    let municipalityName: string | null = null;
+    if (municipalityId) {
+      const munResult = await this.pool.query(
+        `SELECT name FROM municipalities WHERE id = $1`,
+        [municipalityId],
+      );
+      municipalityName = munResult.rows[0]?.name || null;
+    }
+
+    const municipalityFilter = municipalityName
+      ? `AND bp.municipality ILIKE $3`
+      : `AND TRUE`;
+    const params: any[] = [fromDistrictCode, toDistrictCode];
+    if (municipalityName) params.push(`%${municipalityName}%`);
+
+    const result = await this.pool.query(
+      `SELECT bp.docket_number, bp.ordinance_number, bp.ordinance_url,
+              COALESCE(zf.zoning_code, zf.district_code) as from_zone,
+              COALESCE(zt.zoning_code, zt.district_code) as to_zone,
+              bp.outcome, bp.total_entitlement_days, bp.address, bp.unit_count
+       FROM benchmark_projects bp
+       LEFT JOIN zoning_districts zf ON zf.id = bp.zoning_from_district_id
+       LEFT JOIN zoning_districts zt ON zt.id = bp.zoning_to_district_id
+       WHERE bp.zoning_from_district_id IS NOT NULL
+         AND bp.zoning_to_district_id IS NOT NULL
+         AND UPPER(COALESCE(zf.zoning_code, zf.district_code)) = UPPER($1)
+         AND UPPER(COALESCE(zt.zoning_code, zt.district_code)) = UPPER($2)
+         ${municipalityFilter}
+       ORDER BY bp.created_at DESC NULLS LAST
+       LIMIT 20`,
+      params,
+    );
+
+    if (result.rows.length === 0) {
+      const broadParams: any[] = [toDistrictCode];
+      const broadMunFilter = municipalityName
+        ? `AND bp.municipality ILIKE $2`
+        : `AND TRUE`;
+      if (municipalityName) broadParams.push(`%${municipalityName}%`);
+
+      const broadResult = await this.pool.query(
+        `SELECT bp.docket_number, bp.ordinance_number, bp.ordinance_url,
+                COALESCE(zf.zoning_code, zf.district_code) as from_zone,
+                COALESCE(zt.zoning_code, zt.district_code) as to_zone,
+                bp.outcome, bp.total_entitlement_days, bp.address, bp.unit_count
+         FROM benchmark_projects bp
+         LEFT JOIN zoning_districts zf ON zf.id = bp.zoning_from_district_id
+         LEFT JOIN zoning_districts zt ON zt.id = bp.zoning_to_district_id
+         WHERE bp.zoning_to_district_id IS NOT NULL
+           AND UPPER(COALESCE(zt.zoning_code, zt.district_code)) = UPPER($1)
+           ${broadMunFilter}
+         ORDER BY bp.created_at DESC NULLS LAST
+         LIMIT 20`,
+        broadParams,
+      );
+
+      if (broadResult.rows.length === 0) return null;
+      return this.buildEvidenceFromRows(broadResult.rows);
+    }
+
+    return this.buildEvidenceFromRows(result.rows);
+  }
+
+  private buildEvidenceFromRows(rows: any[]): RezoneEvidence {
+    const outcomes = { approved: 0, denied: 0, withdrawn: 0, pending: 0 };
+    const daysList: number[] = [];
+
+    for (const row of rows) {
+      const o = (row.outcome || '').toLowerCase();
+      if (o === 'approved') outcomes.approved++;
+      else if (o === 'denied') outcomes.denied++;
+      else if (o === 'withdrawn') outcomes.withdrawn++;
+      else outcomes.pending++;
+
+      if (row.total_entitlement_days != null && row.total_entitlement_days > 0) {
+        daysList.push(Number(row.total_entitlement_days));
+      }
+    }
+
+    const decided = outcomes.approved + outcomes.denied;
+    const approvalRate = decided > 0 ? Math.round((outcomes.approved / decided) * 100) : 0;
+    const avgDays = daysList.length > 0 ? Math.round(daysList.reduce((a, b) => a + b, 0) / daysList.length) : 0;
+    const sortedDays = [...daysList].sort((a, b) => a - b);
+    const medianDays = sortedDays.length > 0
+      ? sortedDays.length % 2 === 0
+        ? Math.round((sortedDays[sortedDays.length / 2 - 1] + sortedDays[sortedDays.length / 2]) / 2)
+        : sortedDays[Math.floor(sortedDays.length / 2)]
+      : 0;
+
+    const examples: RezoneEvidenceExample[] = rows.slice(0, 5).map(r => ({
+      docketNumber: r.docket_number || null,
+      ordinanceNumber: r.ordinance_number || null,
+      ordinanceUrl: r.ordinance_url || null,
+      fromZone: r.from_zone || null,
+      toZone: r.to_zone || null,
+      outcome: r.outcome || null,
+      totalDays: r.total_entitlement_days != null ? Number(r.total_entitlement_days) : null,
+      address: r.address || null,
+      units: r.unit_count != null ? Number(r.unit_count) : null,
+    }));
+
+    return {
+      count: rows.length,
+      approvalRate,
+      avgDays,
+      medianDays,
+      outcomes,
+      examples,
+    };
   }
 
   private generateInsight(

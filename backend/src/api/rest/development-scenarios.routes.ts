@@ -254,11 +254,13 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
 
         if (rezoneData.bestTarget) {
           const best = rezoneData.bestTarget;
+          const ev = best.evidence;
+          const hasEvidence = ev && ev.count > 0;
           rezoneResult = {
             name: 'Rezone',
             description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
-            risk: 'High',
-            successRate: '35-50%',
+            risk: best.risk || 'High',
+            successRate: hasEvidence ? `${ev.approvalRate}%` : '35-50%',
             timeline: best.estimatedTimeline || '12-24 months',
             estimatedCost: best.estimatedCost || '$75K-$200K',
             maxUnits: best.targetEnvelope.maxCapacity,
@@ -274,6 +276,7 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
             districtMunicodeUrl: best.districtMunicodeUrl,
             delta: best.delta,
             revenue: best.revenue,
+            evidence: ev || null,
           };
         }
       }

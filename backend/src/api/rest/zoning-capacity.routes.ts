@@ -427,6 +427,58 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
       [district.municipality_id, district.municipality, district.id]
     );
 
+    let rezone_precedent = null;
+    try {
+      const fromCountResult = await pool.query(
+        `SELECT COUNT(*)::int as cnt FROM benchmark_projects WHERE zoning_from_district_id = $1`,
+        [district.id]
+      );
+      const toCountResult = await pool.query(
+        `SELECT COUNT(*)::int as cnt FROM benchmark_projects WHERE zoning_to_district_id = $1`,
+        [district.id]
+      );
+      const rezoned_from_count = fromCountResult.rows[0]?.cnt || 0;
+      const rezoned_to_count = toCountResult.rows[0]?.cnt || 0;
+
+      if (rezoned_from_count > 0 || rezoned_to_count > 0) {
+        const statsResult = await pool.query(
+          `SELECT 
+             COUNT(*)::int as total,
+             COUNT(*) FILTER (WHERE outcome = 'approved')::int as approved,
+             ROUND(AVG(total_entitlement_days) FILTER (WHERE total_entitlement_days > 0))::int as avg_days
+           FROM benchmark_projects
+           WHERE zoning_from_district_id = $1 OR zoning_to_district_id = $1`,
+          [district.id]
+        );
+        const stats = statsResult.rows[0] || {};
+        const total = stats.total || 0;
+        const approved = stats.approved || 0;
+
+        const recentResult = await pool.query(
+          `SELECT bp.docket_number, bp.ordinance_url, bp.outcome, bp.total_entitlement_days, bp.address,
+                  COALESCE(zf.zoning_code, zf.district_code) as from_code,
+                  COALESCE(zt.zoning_code, zt.district_code) as to_code
+           FROM benchmark_projects bp
+           LEFT JOIN zoning_districts zf ON zf.id = bp.zoning_from_district_id
+           LEFT JOIN zoning_districts zt ON zt.id = bp.zoning_to_district_id
+           WHERE bp.zoning_from_district_id = $1 OR bp.zoning_to_district_id = $1
+           ORDER BY bp.created_at DESC
+           LIMIT 5`,
+          [district.id]
+        );
+
+        rezone_precedent = {
+          rezoned_from_count,
+          rezoned_to_count,
+          avg_rezone_days: stats.avg_days || null,
+          approval_rate: total > 0 ? Math.round((approved / total) * 100) : null,
+          recent_rezonings: recentResult.rows,
+        };
+      }
+    } catch (err) {
+      console.warn('Could not fetch rezone precedent:', err);
+    }
+
     res.json({
       found: true,
       district,
@@ -435,10 +487,71 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
         const currentDensity = district.max_density_per_acre || district.max_units_per_acre || 0;
         return (d.max_density || 0) > currentDensity;
       }).slice(0, 5),
+      rezone_precedent,
     });
   } catch (error) {
     console.error('Error fetching zoning district by code:', error);
     res.status(500).json({ error: 'Failed to fetch district' });
+  }
+});
+
+router.get('/zoning-districts/:districtId/rezone-history', async (req: Request, res: Response) => {
+  try {
+    const { districtId } = req.params;
+
+    const fromResult = await pool.query(
+      `SELECT bp.id, bp.project_name, bp.permit_number, bp.docket_number, bp.ordinance_number,
+              bp.ordinance_url, bp.address, bp.unit_count, bp.total_entitlement_days,
+              bp.outcome, bp.land_acres, bp.assessed_value,
+              bp.created_at,
+              zd_to.id as to_district_id,
+              COALESCE(zd_to.zoning_code, zd_to.district_code) as to_district_code,
+              zd_to.district_name as to_district_name
+       FROM benchmark_projects bp
+       LEFT JOIN zoning_districts zd_to ON zd_to.id = bp.zoning_to_district_id
+       WHERE bp.zoning_from_district_id = $1
+       ORDER BY bp.created_at DESC`,
+      [districtId]
+    );
+
+    const toResult = await pool.query(
+      `SELECT bp.id, bp.project_name, bp.permit_number, bp.docket_number, bp.ordinance_number,
+              bp.ordinance_url, bp.address, bp.unit_count, bp.total_entitlement_days,
+              bp.outcome, bp.land_acres, bp.assessed_value,
+              bp.created_at,
+              zd_from.id as from_district_id,
+              COALESCE(zd_from.zoning_code, zd_from.district_code) as from_district_code,
+              zd_from.district_name as from_district_name
+       FROM benchmark_projects bp
+       LEFT JOIN zoning_districts zd_from ON zd_from.id = bp.zoning_from_district_id
+       WHERE bp.zoning_to_district_id = $1
+       ORDER BY bp.created_at DESC`,
+      [districtId]
+    );
+
+    const allProjects = [...fromResult.rows, ...toResult.rows];
+    const approvedCount = allProjects.filter((p: any) => p.outcome === 'approved').length;
+    const withDays = allProjects.filter((p: any) => p.total_entitlement_days != null && p.total_entitlement_days > 0);
+    const avgDays = withDays.length > 0
+      ? Math.round(withDays.reduce((sum: number, p: any) => sum + Number(p.total_entitlement_days), 0) / withDays.length)
+      : null;
+    const approvalRate = allProjects.length > 0
+      ? Math.round((approvedCount / allProjects.length) * 100)
+      : null;
+
+    res.json({
+      districtId,
+      rezoned_from_count: fromResult.rows.length,
+      rezoned_to_count: toResult.rows.length,
+      total_projects: allProjects.length,
+      approval_rate: approvalRate,
+      avg_rezone_days: avgDays,
+      rezoned_from: fromResult.rows.slice(0, 10),
+      rezoned_to: toResult.rows.slice(0, 10),
+    });
+  } catch (error) {
+    console.error('Error fetching rezone history:', error);
+    res.status(500).json({ error: 'Failed to fetch rezone history' });
   }
 });
 

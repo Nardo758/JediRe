@@ -236,7 +236,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   else if (cityName) detailParams.municipality = cityName;
                   const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
                   if (detailData?.found) {
-                    setZoningDetail(detailData.district);
+                    const districtWithPrecedent = { ...detailData.district, _rezone_precedent: detailData.rezone_precedent || null };
+                    setZoningDetail(districtWithPrecedent);
                     setRezoneTargets(detailData.rezoneTargets || []);
                     setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
                     const d = detailData.district;
@@ -586,7 +587,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           else if (cityName) detailParams.municipality = cityName;
           const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
           if (detailData?.found) {
-            setZoningDetail(detailData.district);
+            const districtWithPrecedent = { ...detailData.district, _rezone_precedent: detailData.rezone_precedent || null };
+            setZoningDetail(districtWithPrecedent);
             setRezoneTargets(detailData.rezoneTargets || []);
             setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
             const d = detailData.district;
@@ -1026,6 +1028,63 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Rezoning Precedent */}
+                  {zoningDetail._rezone_precedent && (
+                    <div>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Rezoning Precedent</p>
+                      <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <p className="text-xs text-gray-500">Rezoned FROM this district</p>
+                            <p className="text-lg font-bold text-gray-900">{zoningDetail._rezone_precedent.rezoned_from_count}
+                              <span className="text-xs font-normal text-gray-500 ml-1">projects</span>
+                            </p>
+                            {zoningDetail._rezone_precedent.avg_rezone_days && (
+                              <p className="text-xs text-gray-500">avg {zoningDetail._rezone_precedent.avg_rezone_days} days, {zoningDetail._rezone_precedent.approval_rate}% approved</p>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Rezoned TO this district</p>
+                            <p className="text-lg font-bold text-gray-900">{zoningDetail._rezone_precedent.rezoned_to_count}
+                              <span className="text-xs font-normal text-gray-500 ml-1">projects</span>
+                            </p>
+                          </div>
+                        </div>
+                        {zoningDetail._rezone_precedent.recent_rezonings?.length > 0 && (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1.5">Recent Rezonings</p>
+                            <div className="space-y-1.5">
+                              {zoningDetail._rezone_precedent.recent_rezonings.map((r: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between bg-white rounded p-2 border border-amber-100 text-xs">
+                                  <div className="flex items-center gap-2">
+                                    {r.ordinance_url ? (
+                                      <a href={r.ordinance_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                                        {r.docket_number || 'View'}
+                                      </a>
+                                    ) : (
+                                      <span className="font-medium text-gray-700">{r.docket_number || r.address || '--'}</span>
+                                    )}
+                                    <span className="text-gray-400">{r.from_code} → {r.to_code}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {r.total_entitlement_days && (
+                                      <span className="text-gray-500">{r.total_entitlement_days}d</span>
+                                    )}
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                      r.outcome === 'approved' ? 'bg-green-100 text-green-700' :
+                                      r.outcome === 'denied' ? 'bg-red-100 text-red-700' :
+                                      'bg-gray-100 text-gray-600'
+                                    }`}>{r.outcome || 'pending'}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
