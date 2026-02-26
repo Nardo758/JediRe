@@ -49,7 +49,31 @@ const MUNICIPALITIES = {
     municodeUrl: 'https://library.municode.com/tx/el_paso/codes/code_of_ordinances',
     zoningChapterPath: '?nodeId=TIT20ZO',
   },
-  // Add remaining 20 cities...
+  // Florida Cities
+  'st-petersburg-fl': {
+    name: 'St. Petersburg',
+    state: 'FL',
+    municodeUrl: 'https://library.municode.com/fl/st._petersburg/codes/code_of_ordinances',
+    zoningChapterPath: '?nodeId=PTIICOOR_CH16ZO',
+  },
+  'hialeah-fl': {
+    name: 'Hialeah',
+    state: 'FL',
+    municodeUrl: 'https://library.municode.com/fl/hialeah/codes/code_of_ordinances',
+    zoningChapterPath: '?nodeId=PTIICOOR_CH29ZO',
+  },
+  'cape-coral-fl': {
+    name: 'Cape Coral',
+    state: 'FL',
+    municodeUrl: 'https://library.municode.com/fl/cape_coral/codes/code_of_ordinances',
+    zoningChapterPath: '?nodeId=PTIIICOOR_CH27ZO',
+  },
+  'port-st-lucie-fl': {
+    name: 'Port St. Lucie',
+    state: 'FL',
+    municodeUrl: 'https://library.municode.com/fl/port_st._lucie/codes/code_of_ordinances',
+    zoningChapterPath: '?nodeId=COOR_CH19UNDECO',
+  },
 };
 
 export default {
