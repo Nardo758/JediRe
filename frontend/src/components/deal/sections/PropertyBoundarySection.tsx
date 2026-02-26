@@ -93,7 +93,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'database' | 'ai_retrieved' | null>(null);
-  const [parcelSource, setParcelSource] = useState<{ url: string | null; name: string; confidence: number } | null>(null);
+  const [parcelSource, setParcelSource] = useState<{ url: string | null; planningUrl: string | null; name: string; confidence: number } | null>(null);
 
   // Layer visibility toggles
   const [layers, setLayers] = useState({
@@ -201,7 +201,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   if (parcelData.municipality) muniName = parcelData.municipality;
                   if (parcelData.state) stName = parcelData.state;
                   setParcelSource({
-                    url: parcelData.sourceUrl || null,
+                    url: parcelData.planningUrl || parcelData.sourceUrl || null,
+                    planningUrl: parcelData.planningUrl || null,
                     name: parcelData.sourceName || 'County Property Records',
                     confidence: parcelData.confidence || 0.85,
                   });
@@ -549,7 +550,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           if (parcelData.municipality) muniName = parcelData.municipality;
           if (parcelData.state) stName = parcelData.state;
           setParcelSource({
-            url: parcelData.sourceUrl || null,
+            url: parcelData.planningUrl || parcelData.sourceUrl || null,
+            planningUrl: parcelData.planningUrl || null,
             name: parcelData.sourceName || 'County Property Records',
             confidence: parcelData.confidence || 0.85,
           });
@@ -1029,11 +1031,19 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   )}
 
                   {/* Source Info */}
-                  {zoningDetail.source_url && (
-                    <p className="text-xs text-gray-400 mt-2">
-                      Definition: <a href={zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Municipal Code</a>
-                      {zoningDetail.last_verified_at && ` (Verified: ${new Date(zoningDetail.last_verified_at).toLocaleDateString()})`}
-                    </p>
+                  {(zoningDetail.municode_url || zoningDetail.source_url || parcelSource?.planningUrl) && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 mt-2">
+                      <span>Definition:</span>
+                      {parcelSource?.planningUrl && (
+                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Planning & Zoning</a>
+                      )}
+                      {(zoningDetail.municode_url || zoningDetail.source_url) && (
+                        <a href={zoningDetail.municode_url || zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Municipal Code</a>
+                      )}
+                      {zoningDetail.last_verified_at && (
+                        <span>(Verified: {new Date(zoningDetail.last_verified_at).toLocaleDateString()})</span>
+                      )}
+                    </div>
                   )}
                 </div>
               ) : zoningInfo && zoningInfo.code !== '--' ? (
@@ -1142,7 +1152,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   <p className="text-sm text-gray-600">{zoningInfo.description}</p>
                   {parcelSource && (
                     <p className="text-xs text-gray-400 mt-1">
-                      {parcelSource.url ? (
+                      {parcelSource.planningUrl ? (
+                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Planning & Zoning</a>
+                      ) : parcelSource.url ? (
                         <a href={parcelSource.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{parcelSource.name}</a>
                       ) : (
                         <span>{parcelSource.name}</span>
