@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { municodeUrlService } from './municode-url.service';
 
 export interface ZoningDistrictProfile {
   code: string;
@@ -6,6 +7,7 @@ export interface ZoningDistrictProfile {
   jurisdiction: string;
   state: string;
   codeSection?: string;
+  municodeUrl?: string | null;
   lastAmended?: string;
 
   dimensional: {
@@ -90,9 +92,15 @@ export class ZoningKnowledgeService {
     }
 
     const row = result.rows[0];
+    const municipalityId = row.municipality_id;
 
     if (row.district_profile) {
       const profile = row.district_profile as ZoningDistrictProfile;
+      if (municipalityId && !profile.municodeUrl) {
+        try {
+          profile.municodeUrl = await municodeUrlService.buildDistrictUrl(municipalityId, districtCode);
+        } catch {}
+      }
       return {
         found: true,
         source: 'structured',
@@ -105,6 +113,11 @@ export class ZoningKnowledgeService {
     }
 
     const profile = this.buildProfileFromFlat(row);
+    if (municipalityId) {
+      try {
+        profile.municodeUrl = await municodeUrlService.buildDistrictUrl(municipalityId, districtCode);
+      } catch {}
+    }
     return {
       found: true,
       source: 'flat',

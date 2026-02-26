@@ -4,8 +4,7 @@ import { apiClient } from '../../../services/api.client';
 import { useDealTimeline } from '../../../hooks/useDealTimeline';
 import { useMunicipalBenchmarks } from '../../../hooks/useMunicipalBenchmarks';
 import { useCarryingCosts } from '../../../hooks/useCarryingCosts';
-import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
-import type { SourceCitationData } from '../SourceCitation';
+import SourceCitation from '../SourceCitation';
 import type {
   MunicipalBenchmark,
   DealTimeline,
@@ -151,12 +150,12 @@ function MunicipalBenchmarkSection({ benchmarks }: { benchmarks: MunicipalBenchm
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-900">Municipal Benchmarks</h3>
-        <p className="text-[10px] text-gray-500 mt-0.5">Scraped data <SourceCitation section="Municode §16-28" url="#" sourceType="record" lastVerified="2025-11-14" /></p>
+        <p className="text-[10px] text-gray-500 mt-0.5">Scraped data <SourceCitation section="Municode §16-28" sourceType="record" lastVerified="2025-11-14" /></p>
       </div>
       <div className="p-4">
         <div className="mb-3">
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">City of Atlanta — Historical Processing Times</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} applications scraped (2021–2025) for projects 200+ units <ViewSourceBadge section="§16-30.003" url="#" sourceType="record" lastVerified="2025-11-14" /></p>
+          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} applications scraped (2021–2025) for projects 200+ units</p>
           <p className="text-[11px] text-gray-400">Last updated: Feb 22, 2026</p>
         </div>
 
@@ -416,8 +415,8 @@ function FinancialImpactSection({ timeline }: { timeline: DealTimeline }) {
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Carrying Cost Analysis — Time = Money</p>
           <div className="h-px bg-gray-900 mt-1 mb-3" />
           <div className="flex items-center gap-6 text-[11px] text-gray-600 mb-3">
-            <span>Land Basis: <span className="font-semibold text-gray-900">{formatCurrency(timeline.landBasis)}</span> <SourceCitation section="Deed Records" url="#" sourceType="record" lastVerified="2025-11-14" /></span>
-            <span>Acquisition Loan: <span className="font-semibold text-gray-900">{formatCurrency(timeline.loanAmount)}</span> (75% LTV, {timeline.loanRate}% rate) <SourceCitation section="§Proforma" url="#" sourceType="calculated" lastVerified="2025-11-14" /></span>
+            <span>Land Basis: <span className="font-semibold text-gray-900">{formatCurrency(timeline.landBasis)}</span> <SourceCitation section="Deed Records" sourceType="record" /></span>
+            <span>Acquisition Loan: <span className="font-semibold text-gray-900">{formatCurrency(timeline.loanAmount)}</span> (75% LTV, {timeline.loanRate}% rate) <SourceCitation section="Pro Forma" sourceType="calculated" /></span>
           </div>
         </div>
 

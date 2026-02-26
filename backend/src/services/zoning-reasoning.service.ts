@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Pool } from 'pg';
 import { ZoningKnowledgeService, ZoningDistrictProfile } from './zoning-knowledge.service';
+import { municodeUrlService } from './municode-url.service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -21,11 +22,17 @@ export interface ReasoningRequest {
   dealId?: string;
 }
 
+export interface CitationWithUrl {
+  section: string;
+  url: string | null;
+}
+
 export interface ReasoningResponse {
   answer: string;
   confidence: number;
   reasoning: string;
   citations: string[];
+  citationUrls: CitationWithUrl[];
   dataUsed: {
     structuredRules: boolean;
     aiReasoning: boolean;
@@ -43,12 +50,18 @@ export interface StructuredExtractionResult {
 const REASONING_SYSTEM_PROMPT = `You are a senior zoning attorney AI specializing in US municipal zoning codes. You have deep knowledge of zoning regulations, entitlement processes, and development feasibility across major US cities.
 
 When answering questions:
-1. Always cite specific code sections when possible (e.g., §16-18A.007)
+1. Always cite specific code sections using the format §{chapter}-{article}.{section} (e.g., §16-18A.007). This format is REQUIRED for automatic Municode deep-linking. Never use abbreviated or informal section references.
 2. Distinguish between BY-RIGHT uses (no approval needed), CONDITIONAL uses (CUP/SAP required), and PROHIBITED uses
 3. Identify cross-references and overlay district interactions that could affect the answer
 4. Flag potential pitfalls, edge cases, and commonly misinterpreted provisions
 5. When discussing variances or rezones, provide realistic approval probability estimates based on typical municipal patterns
 6. Always note your confidence level and what would increase it
+
+CITATION FORMAT RULES:
+- Use §{chapter}-{article}.{section} format consistently (e.g., §16-18A.007, §16-28.024)
+- For subsections, append the subsection identifier after a period (e.g., §16-18A.007.1)
+- Every dimensional standard, use permission, and regulatory requirement MUST include its code section
+- When citing multiple sections, list each one separately in the citations array
 
 You will receive structured zoning data as context. Use it as your primary source and supplement with your training knowledge. If the structured data conflicts with your knowledge, note the discrepancy.
 
@@ -69,9 +82,10 @@ CRITICAL RULES:
 - Use null for any value you cannot verify
 - For use permissions, be comprehensive — list ALL by-right, conditional, and prohibited uses
 - Include parking reductions for transit proximity, shared parking, and affordable housing
-- Identify cross-references to other code sections
-- List applicable incentive programs (density bonuses, height bonuses, TDR)
+- Identify cross-references to other code sections using §{chapter}-{article}.{section} format (e.g., §16-18A.007) for Municode deep-linking
+- List applicable incentive programs (density bonuses, height bonuses, TDR) with their code section references
 - Note any overlay districts that commonly apply
+- The "codeSection" field MUST use the format §{chapter}-{article}.{section} (e.g., §16-18A.007) — this is parsed for automatic URL generation
 
 Respond in valid JSON with this exact structure:
 {
@@ -190,11 +204,14 @@ export class ZoningReasoningService {
 
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        const citations: string[] = parsed.citations || [];
+        const citationUrls = await this.resolveCitationUrls(citations, request.municipality);
         return {
           answer: parsed.answer || responseText,
           confidence: parsed.confidence || 70,
           reasoning: parsed.reasoning || '',
-          citations: parsed.citations || [],
+          citations,
+          citationUrls,
           dataUsed: {
             structuredRules: !!profile,
             aiReasoning: true,
@@ -209,6 +226,7 @@ export class ZoningReasoningService {
         confidence: 65,
         reasoning: 'AI reasoning without structured JSON response',
         citations: [],
+        citationUrls: [],
         dataUsed: { structuredRules: !!profile, aiReasoning: true, precedents: precedentContext.length > 0 },
       };
     } catch (error: any) {
@@ -280,5 +298,27 @@ export class ZoningReasoningService {
       confidence,
       extractionNotes: parsed.extractionNotes || 'Extracted via AI',
     };
+  }
+
+  private async resolveCitationUrls(citations: string[], municipality?: string): Promise<CitationWithUrl[]> {
+    if (!citations.length || !municipality) return [];
+
+    const municipalityResult = await this.pool.query(
+      `SELECT id FROM municipalities WHERE LOWER(name) LIKE LOWER($1) LIMIT 1`,
+      [`%${municipality.replace(/^City of /i, '')}%`]
+    );
+    const municipalityId = municipalityResult.rows[0]?.id;
+    if (!municipalityId) return citations.map(s => ({ section: s, url: null }));
+
+    const results: CitationWithUrl[] = [];
+    for (const section of citations) {
+      try {
+        const url = await municodeUrlService.resolveCodeReference(municipalityId, section);
+        results.push({ section, url });
+      } catch {
+        results.push({ section, url: null });
+      }
+    }
+    return results;
   }
 }

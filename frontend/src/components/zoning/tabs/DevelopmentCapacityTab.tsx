@@ -3,6 +3,7 @@ import { apiClient } from '../../../services/api.client';
 import PathSelection from './PathSelection';
 import PathComparisonTable from './PathComparisonTable';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import { MunicodeLink } from '../SourceCitation';
 
 interface ZoningProfile {
   id: string;
@@ -142,6 +143,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [hbuResults, setHbuResults] = useState<HBUResult[]>([]);
   const [hbuLoading, setHbuLoading] = useState(false);
   const [hbuExpanded, setHbuExpanded] = useState(false);
+  const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -167,6 +169,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setProfileExists(true);
         setProfile(profileData.profile);
         setDealInfo(profileData.deal);
+
+        if (profileData.profile?.base_district_code && profileData.profile?.municipality) {
+          try {
+            const municipalityId = `${(profileData.profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profileData.profile.state || 'ga').toLowerCase()}`;
+            const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
+              params: { municipality: municipalityId, section: profileData.profile.base_district_code },
+            });
+            if (municodeRes.data?.url) setMunicodeUrl(municodeRes.data.url);
+          } catch {}
+        }
       }
 
       const scenariosRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
@@ -390,6 +402,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <span className="text-gray-500 font-medium">Zoning:</span>
           <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
           {profile.municipality && <span className="text-gray-400">({profile.municipality})</span>}
+          {municodeUrl && <MunicodeLink url={municodeUrl} />}
         </div>
         <div className="w-px h-5 bg-gray-200" />
         <div className="flex items-center gap-2">

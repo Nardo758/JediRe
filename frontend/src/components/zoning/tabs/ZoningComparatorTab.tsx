@@ -2,8 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { ComparisonMode, ComparisonDelta } from '../../../types/zoning.types';
 import { useZoningComparison } from '../../../hooks/useZoningComparison';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
-import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
-import type { SourceCitationData } from '../SourceCitation';
+import SourceCitation from '../SourceCitation';
 
 const MODE_OPTIONS: { mode: ComparisonMode; label: string }[] = [
   { mode: 'district', label: 'District vs District' },
@@ -177,7 +176,9 @@ function ComparisonTable({ deltas, labelA, labelB }: { deltas: ComparisonDelta[]
                   {isAdvA && (
                     <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-[10px]">✓</span>
                   )}
-                  <span className="ml-1"><SourceCitation section="§16-18A.007" url="#" sourceType="code" lastVerified="2025-11-14" /></span>
+                  {row.citationA && (
+                    <span className="ml-1"><SourceCitation section={row.citationA.section} url={row.citationA.url} sourceType="code" /></span>
+                  )}
                 </td>
                 <td
                   className={`py-3 px-4 text-center font-mono text-sm ${
@@ -188,7 +189,9 @@ function ComparisonTable({ deltas, labelA, labelB }: { deltas: ComparisonDelta[]
                   {isAdvB && (
                     <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-[10px]">✓</span>
                   )}
-                  <span className="ml-1"><SourceCitation section="§16-18A.009" url="#" sourceType="code" lastVerified="2025-11-14" /></span>
+                  {row.citationB && (
+                    <span className="ml-1"><SourceCitation section={row.citationB.section} url={row.citationB.url} sourceType="code" /></span>
+                  )}
                 </td>
                 <td className={`py-3 px-4 text-center font-mono text-sm ${
                   row.delta !== null && row.delta !== undefined
@@ -196,7 +199,6 @@ function ComparisonTable({ deltas, labelA, labelB }: { deltas: ComparisonDelta[]
                     : 'text-gray-400'
                 }`}>
                   {formatDeltaPercent(row.delta, row.valueA)}
-                  <span className="ml-1"><ViewSourceBadge section="§16-18A.010" url="#" sourceType="calculated" lastVerified="2025-11-14" /></span>
                 </td>
               </tr>
             );

@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getPool } from '../../database/connection';
 import { ZoningAgentService } from '../../services/zoning-agent.service';
 import { ArcGISConnector, CITY_APIS } from '../../services/municipal-api-connectors';
+import { municodeUrlService } from '../../services/municode-url.service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -396,6 +397,16 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
     if (district.district_name?.startsWith('http')) {
       if (!district.source_url) district.source_url = district.district_name;
       district.district_name = district.zoning_code || district.district_code || 'Unknown';
+    }
+
+    if (district.municipality_id) {
+      try {
+        const districtCode = district.zoning_code || district.district_code;
+        district.municode_url = await municodeUrlService.buildDistrictUrl(
+          district.municipality_id,
+          districtCode,
+        );
+      } catch {}
     }
 
     const relatedResult = await pool.query(

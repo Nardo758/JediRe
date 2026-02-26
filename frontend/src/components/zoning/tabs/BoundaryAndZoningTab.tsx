@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
+import { MunicodeLink } from '../SourceCitation';
 
 interface BoundaryAndZoningTabProps {
   deal?: any;
@@ -38,6 +39,7 @@ interface DetectedZoning {
   state: string;
   confidence: number;
   source: string;
+  municodeUrl?: string;
 }
 
 interface ZoningDistrictOption {
@@ -192,11 +194,23 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         const districts: ZoningDistrictOption[] = zoningData.districts;
         setAvailableDistricts(districts);
 
+        const municipalityId = `${cityName.toLowerCase().replace(/\s+/g, '-')}-${stateName.toLowerCase()}`;
+        let municodeUrl: string | undefined;
+        const resolveDistrictMunicode = async (code: string) => {
+          try {
+            const res = await apiClient.get('/api/v1/municode/resolve', {
+              params: { municipality: municipalityId, section: code },
+            });
+            return res.data?.url || undefined;
+          } catch { return undefined; }
+        };
+
         if (parcelZoning) {
           const matchingDistrict = districts.find(
             (d) => d.zoning_code?.toUpperCase() === parcelZoning.zoningCode?.toUpperCase()
           );
           setSelectedDistrictId(matchingDistrict ? matchingDistrict.id : districts[0].id);
+          municodeUrl = await resolveDistrictMunicode(parcelZoning.zoningCode);
           setDetectedZoning({
             code: parcelZoning.zoningCode,
             name: parcelZoning.zoningName || parcelZoning.zoningCode,
@@ -204,10 +218,12 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             state: stateName,
             confidence: parcelZoning.confidence || 0.95,
             source: parcelZoning.sourceName || 'Assessor GIS',
+            municodeUrl,
           });
         } else {
           const bestMatch = districts[0];
           setSelectedDistrictId(bestMatch.id);
+          municodeUrl = await resolveDistrictMunicode(bestMatch.zoning_code);
           setDetectedZoning({
             code: bestMatch.zoning_code,
             name: bestMatch.district_name,
@@ -215,9 +231,18 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             state: stateName,
             confidence: location?.municipality?.id ? 0.85 : 0.7,
             source: 'boundary',
+            municodeUrl,
           });
         }
       } else if (parcelZoning) {
+        let municodeUrl: string | undefined;
+        try {
+          const municipalityId = `${cityName.toLowerCase().replace(/\s+/g, '-')}-${stateName.toLowerCase()}`;
+          const res = await apiClient.get('/api/v1/municode/resolve', {
+            params: { municipality: municipalityId, section: parcelZoning.zoningCode },
+          });
+          municodeUrl = res.data?.url || undefined;
+        } catch {}
         setDetectedZoning({
           code: parcelZoning.zoningCode,
           name: parcelZoning.zoningName || parcelZoning.zoningCode,
@@ -225,6 +250,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
           state: stateName,
           confidence: parcelZoning.confidence || 0.95,
           source: parcelZoning.sourceName || 'Assessor GIS',
+          municodeUrl,
         });
       } else {
         setError(`No zoning data found for ${cityName}, ${stateName}. You can enter it manually.`);
@@ -391,6 +417,11 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                       <span className="text-2xl font-bold text-gray-900">{detectedZoning.code}</span>
                       <span className="text-sm text-gray-600">{detectedZoning.name}</span>
                     </div>
+                    {detectedZoning.municodeUrl && (
+                      <div className="mt-1">
+                        <MunicodeLink url={detectedZoning.municodeUrl} label={`${detectedZoning.code} on Municode`} />
+                      </div>
+                    )}
                   </div>
                   {detectedZoning.confidence >= 0.9 ? (
                     <CheckCircle2 className="w-5 h-5 text-green-600" />

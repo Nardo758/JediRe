@@ -407,6 +407,8 @@ export interface ComparisonDelta {
   valueB: string | number | null;
   delta: number | null;
   advantage: 'a' | 'b' | 'neutral';
+  citationA?: { section: string; url?: string };
+  citationB?: { section: string; url?: string };
 }
 
 export interface ZoningLookupResult {

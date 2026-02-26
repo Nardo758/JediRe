@@ -1,5 +1,6 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { municodeUrlService } from './municode-url.service';
 
 export interface SourceResolutionResult {
   jurisdictionId: string;
@@ -329,6 +330,17 @@ export class ZoningVerificationService {
   }
 
   async createCitation(citation: Omit<SourceCitation, 'id'>): Promise<SourceCitation> {
+    let sourceUrl = citation.sourceUrl;
+    if (!sourceUrl && citation.sectionNumber && citation.jurisdictionId) {
+      try {
+        const municipalityId = await this.getMunicipalityIdFromJurisdiction(citation.jurisdictionId);
+        if (municipalityId) {
+          const resolved = await municodeUrlService.resolveCodeReference(municipalityId, citation.sectionNumber);
+          if (resolved) sourceUrl = resolved;
+        }
+      } catch {}
+    }
+
     const result = await query(
       `INSERT INTO zoning_source_citation 
         (jurisdiction_id, source_tier, code_title, section_number, section_title, 
@@ -342,7 +354,7 @@ export class ZoningVerificationService {
         citation.sectionNumber,
         citation.sectionTitle,
         citation.subsection,
-        citation.sourceUrl,
+        sourceUrl,
         citation.fullText,
         citation.fullText ? this.hashText(citation.fullText) : null,
         citation.confidence
@@ -350,6 +362,17 @@ export class ZoningVerificationService {
     );
 
     return this.rowToCitation(result.rows[0]);
+  }
+
+  private async getMunicipalityIdFromJurisdiction(jurisdictionId: string): Promise<string | null> {
+    const result = await query(
+      `SELECT m.id FROM municipalities m
+       JOIN jurisdiction_source_map jsm ON LOWER(jsm.jurisdiction_name) = LOWER(m.name)
+       WHERE jsm.id = $1
+       LIMIT 1`,
+      [jurisdictionId]
+    );
+    return result.rows[0]?.id || null;
   }
 
   private getConfidenceForTier(tier: string): number {

@@ -79,6 +79,7 @@ import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
+import municodeRouter from './api/rest/municode.routes';
 
 dotenv.config();
 
@@ -222,6 +223,7 @@ app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
 app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
 app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
+app.use('/api/v1/municode', requireAuth, municodeRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));

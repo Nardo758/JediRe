@@ -67,6 +67,16 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         conflict: 'conflict',
         pending: 'pending',
       };
+      let resolvedSourceUrl = raw.sourceResolution?.baseUrl || undefined;
+      if (!resolvedSourceUrl && zoningResult.district?.code) {
+        try {
+          const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
+            params: { municipality: jurisdictionId, section: zoningResult.district.codeSection || zoningResult.district.code },
+          });
+          if (municodeRes.data?.url) resolvedSourceUrl = municodeRes.data.url;
+        } catch {}
+      }
+
       const mapped: VerificationData = {
         id: raw.id,
         parcelId: raw.parcelId,
@@ -75,7 +85,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         status: statusMap[raw.verificationStatus] || 'confirmed',
         discrepancyDetail: raw.discrepancyDetail,
         confidence: typeof raw.confidence === 'number' && raw.confidence <= 1 ? Math.round(raw.confidence * 100) : (raw.confidence ?? 85),
-        sourceUrl: raw.sourceResolution?.baseUrl || undefined,
+        sourceUrl: resolvedSourceUrl,
         sourceName: raw.sourceResolution?.sourceTier === 'municode' ? 'Municode' : raw.sourceResolution?.jurisdictionName || undefined,
         verifiedAt: raw.verifiedAt ? new Date(raw.verifiedAt).toISOString().split('T')[0] : undefined,
         overlaysDetected: raw.overlaysDetected || [],
@@ -84,14 +94,28 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       };
       setVerificationData(mapped);
     } catch (err: any) {
+      let fallbackUrl: string | undefined;
+      const distCode = zoningResult.district?.code;
+      if (distCode) {
+        try {
+          const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
+            params: {
+              municipality: `${(zoningResult.district?.municipality || 'Atlanta').toLowerCase().replace(/\s+/g, '-')}-${(zoningResult.district?.state || 'GA').toLowerCase()}`,
+              section: zoningResult.district?.codeSection || distCode,
+            },
+          });
+          if (municodeRes.data?.url) fallbackUrl = municodeRes.data.url;
+        } catch {}
+      }
+
       const fallbackVerification: VerificationData = {
         id: `vf-${Date.now()}`,
-        parcelId: zoningResult.district?.code,
-        gisDesignation: zoningResult.district?.code || 'Unknown',
-        verifiedDesignation: zoningResult.district?.code,
+        parcelId: distCode,
+        gisDesignation: distCode || 'Unknown',
+        verifiedDesignation: distCode,
         status: 'confirmed',
         confidence: 85,
-        sourceUrl: zoningResult.district?.codeReference ? `https://library.municode.com/ga/atlanta/codes/code_of_ordinances?nodeId=${zoningResult.district.codeReference}` : undefined,
+        sourceUrl: fallbackUrl,
         sourceName: 'Municode',
         verifiedAt: new Date().toISOString().split('T')[0],
         overlaysDetected: [],
