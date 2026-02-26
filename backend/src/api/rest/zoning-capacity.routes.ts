@@ -402,10 +402,13 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
     if (district.municipality_id) {
       try {
         const districtCode = district.zoning_code || district.district_code;
-        district.municode_url = await municodeUrlService.buildDistrictUrl(
+        const ruleUrls = await municodeUrlService.getDistrictRuleUrls(
           district.municipality_id,
           districtCode,
         );
+        district.municode_url = ruleUrls.districtUrl;
+        district.municode_chapter_url = ruleUrls.chapterUrl;
+        district.source_rules = ruleUrls.rules;
       } catch {}
     }
 

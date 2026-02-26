@@ -33,7 +33,7 @@ class MunicodeUrlService {
   async buildDistrictUrl(municipalityId: string, districtCode: string): Promise<string | null> {
     const result = await query(
       `SELECT municode_node_id, code_section FROM zoning_districts
-       WHERE municipality_id = $1 AND district_code = $2
+       WHERE municipality_id = $1 AND UPPER(COALESCE(zoning_code, district_code)) = UPPER($2)
        LIMIT 1`,
       [municipalityId, districtCode],
     );
@@ -51,6 +51,84 @@ class MunicodeUrlService {
     }
 
     return this.buildChapterUrl(municipalityId);
+  }
+
+  async getDistrictRuleUrls(municipalityId: string, districtCode: string): Promise<{
+    districtUrl: string | null;
+    chapterUrl: string | null;
+    rules: Array<{
+      field: string;
+      displayLabel: string;
+      sectionNumber: string | null;
+      sectionTitle: string | null;
+      sourceUrl: string | null;
+      sourceType: 'municode' | 'search' | 'chapter';
+    }>;
+  }> {
+    const result = await query(
+      `SELECT zd.code_section, zd.municode_node_id,
+              zd.dimensional_section, zd.parking_section,
+              zd.density_section, zd.height_section,
+              zd.setback_section, zd.far_section
+       FROM zoning_districts zd
+       WHERE zd.municipality_id = $1 AND UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($2)
+       LIMIT 1`,
+      [municipalityId, districtCode],
+    );
+
+    const row = result.rows[0];
+    const base = await this.getMunicipality(municipalityId);
+    const districtUrl = await this.buildDistrictUrl(municipalityId, districtCode);
+    const chapterUrl = await this.buildChapterUrl(municipalityId);
+
+    const ruleCategories = [
+      { field: 'maxHeight', displayLabel: 'Maximum Height', sectionCol: 'height_section' },
+      { field: 'maxStories', displayLabel: 'Maximum Stories', sectionCol: 'height_section' },
+      { field: 'maxFAR', displayLabel: 'Floor Area Ratio', sectionCol: 'far_section' },
+      { field: 'maxDensity', displayLabel: 'Maximum Density', sectionCol: 'density_section' },
+      { field: 'frontSetback', displayLabel: 'Front Setback', sectionCol: 'setback_section' },
+      { field: 'sideSetback', displayLabel: 'Side Setback', sectionCol: 'setback_section' },
+      { field: 'rearSetback', displayLabel: 'Rear Setback', sectionCol: 'setback_section' },
+      { field: 'lotCoverage', displayLabel: 'Maximum Lot Coverage', sectionCol: 'dimensional_section' },
+      { field: 'parking', displayLabel: 'Parking Requirement', sectionCol: 'parking_section' },
+    ];
+
+    const rules = await Promise.all(
+      ruleCategories.map(async (cat) => {
+        const sectionNumber = row?.[cat.sectionCol] || row?.code_section || null;
+        let sourceUrl: string | null = null;
+        let sourceType: 'municode' | 'search' | 'chapter' = 'chapter';
+        let sectionTitle: string | null = null;
+
+        if (sectionNumber && base?.municodeUrl) {
+          const mapping = await this.lookupSection(municipalityId, sectionNumber);
+          if (mapping) {
+            sourceUrl = `${base.municodeUrl}?nodeId=${mapping.nodeId}`;
+            sectionTitle = mapping.title;
+            sourceType = 'municode';
+          } else {
+            sourceUrl = await this.buildSearchUrl(municipalityId, `section ${sectionNumber}`);
+            sourceType = 'search';
+          }
+        }
+
+        if (!sourceUrl) {
+          sourceUrl = chapterUrl;
+          sourceType = 'chapter';
+        }
+
+        return {
+          field: cat.field,
+          displayLabel: cat.displayLabel,
+          sectionNumber,
+          sectionTitle,
+          sourceUrl,
+          sourceType,
+        };
+      }),
+    );
+
+    return { districtUrl, chapterUrl, rules };
   }
 
   async buildSearchUrl(municipalityId: string, searchTerm: string): Promise<string | null> {
@@ -92,7 +170,7 @@ class MunicodeUrlService {
        LEFT JOIN municode_section_map msm
          ON msm.municipality_id = zd.municipality_id
          AND msm.section_number = zd.code_section
-       WHERE zd.municipality_id = $1 AND zd.district_code = $2
+       WHERE zd.municipality_id = $1 AND UPPER(COALESCE(zd.zoning_code, zd.district_code)) = UPPER($2)
        LIMIT 1`,
       [municipalityId, districtCode],
     );
