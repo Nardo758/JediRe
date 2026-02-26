@@ -1,0 +1,602 @@
+# JEDI RE — Zoning Module: Revised Implementation Plan
+
+**Date:** February 26, 2026  
+**Version:** 2 — Corrected architecture (replaces v1)  
+**Module:** M02 Zoning & Entitlements
+
+---
+
+## Architecture Reality (What We're Actually Working With)
+
+| Layer | Status | Detail |
+|-------|--------|--------|
+| **Data** | ✅ Stored | PostgreSQL structured tables — district codes, setbacks, height, FAR, parking, etc. |
+| **Source References** | ⚠️ Partial | Section numbers stored per rule, but no full Municode URLs |
+| **Agent** | ✅ Functional | Queries stored data, returns structured results per zoning district |
+| **Interpretation** | ⚠️ Split | Agent returns raw values; UI currently does the property-specific math/comparison |
+| **Source Links** | ✅ On detection card | T002 delivered Planning & Zoning + Municode + Search buttons on the detected zoning card |
+| **Source Links** | ❌ Not on interpreted results | Individual rules (setback, FAR, height) don't trace back to their code section |
+
+## What This Plan Solves
+
+**Problem 1 — Source URLs don't exist yet.** Section numbers are stored but can't link anywhere. Users need to click through to the exact Municode section or planning department page to verify.
+
+**Problem 2 — Interpretation lives in the wrong place.** The UI is doing math (lot depth minus setbacks = buildable depth) that the Agent should own. The Agent should return *contextualized* results: "Your buildable depth is 70ft" not just "rear setback is 20ft."
+
+**Problem 3 — Source tracing stops at the detection card.** T002 gives you three link buttons when zoning is first detected. But as the user moves through the 7 tabs (Dev Capacity, Regulatory Risk, Comparator, etc.), every interpreted rule should still trace back to its source.
+
+---
+
+## Phase 1: Municode URL Construction
+
+**Goal:** Turn stored section numbers into clickable Municode URLs  
+**Effort:** 2–3 days  
+**Prerequisite for:** Everything else — source tracing depends on resolvable URLs
+
+### How Municode URLs Work
+
+Municode URLs follow a predictable pattern:
+
+```
+https://library.municode.com/{state}/{municipality}/codes/{code_name}?nodeId={node_id}
+```
+
+Examples:
+```
+# Atlanta Zoning - Chapter 16
+https://library.municode.com/ga/atlanta/codes/code_of_ordinances?nodeId=PTIIICOO(), AM_PT16ZO
+
+# Specific section - 16-06.007 (MRC district dimensional requirements)
+https://library.municode.com/ga/atlanta/codes/code_of_ordinances?nodeId=PTIIICOOAM_PT16ZO_CH6MIDEDI_S16-06.007DIMIRE
+```
+
+The `nodeId` is the key. It's derivable from the section number but isn't always a clean transformation — some municipalities use hierarchical IDs, others use encoded section numbers.
+
+### Task T003: Build URL Resolver Service
+
+Create a service that maps stored section numbers to full Municode URLs.
+
+**Approach A — Lookup table (recommended for MVP):**
+
+```sql
+-- Add to existing schema or create new table
+CREATE TABLE municode_section_urls (
+    id SERIAL PRIMARY KEY,
+    municipality_id INTEGER REFERENCES municipalities(id),
+    section_number VARCHAR(50) NOT NULL,       -- e.g., "16-06.007"
+    chapter VARCHAR(100),                       -- e.g., "Chapter 6 - Mixed Use Districts"
+    municode_url TEXT,                          -- Full resolved URL
+    municode_node_id VARCHAR(200),             -- nodeId parameter
+    title VARCHAR(500),                         -- Section title for display
+    last_verified TIMESTAMP,                   -- When URL was last confirmed working
+    UNIQUE(municipality_id, section_number)
+);
+```
+
+Populate for Atlanta first — the zoning ordinance has a finite number of sections. This can be done by scraping the Municode table of contents for Atlanta once, extracting section numbers and their corresponding nodeIds.
+
+**Approach B — Algorithmic resolution (future):**
+
+Build a URL generator that constructs the nodeId from section number patterns per municipality. This scales better but requires understanding each municipality's URL scheme.
+
+**Recommendation:** Start with Approach A for Atlanta metro. You only need a few hundred rows (one per zoning code section). Scrape once, verify, store. Fall back to the web search URL (from T002) when a section number doesn't have a resolved URL yet.
+
+### Task T004: Add URL Resolution to Agent Response
+
+When the Agent returns structured zoning data, enrich each field with its source URL.
+
+**Current Agent response (conceptual):**
+```json
+{
+  "district": "MRC-3",
+  "maxHeight": 225,
+  "maxDensity": 109,
+  "frontSetback": 0,
+  "sideSetback": 10,
+  "rearSetback": 20,
+  "parkingRatio": 1.0,
+  "maxFAR": 3.2
+}
+```
+
+**Enhanced Agent response:**
+```json
+{
+  "district": "MRC-3",
+  "rules": [
+    {
+      "field": "maxHeight",
+      "value": 225,
+      "unit": "ft",
+      "displayLabel": "Maximum Height",
+      "sectionNumber": "16-06.007",
+      "sectionTitle": "Dimensional Requirements — MRC Districts",
+      "sourceUrl": "https://library.municode.com/ga/atlanta/codes/...",
+      "sourceType": "municode"
+    },
+    {
+      "field": "frontSetback",
+      "value": 0,
+      "unit": "ft",
+      "displayLabel": "Front Setback",
+      "sectionNumber": "16-06.007",
+      "sectionTitle": "Dimensional Requirements — MRC Districts",
+      "sourceUrl": "https://library.municode.com/ga/atlanta/codes/...",
+      "sourceType": "municode"
+    },
+    {
+      "field": "parkingRatio",
+      "value": 1.0,
+      "unit": "spaces/unit",
+      "displayLabel": "Parking Requirement",
+      "sectionNumber": "16-10.003",
+      "sectionTitle": "Off-Street Parking Requirements",
+      "sourceUrl": "https://library.municode.com/ga/atlanta/codes/...",
+      "sourceType": "municode"
+    }
+  ]
+}
+```
+
+Note: Different rules may come from different sections of the code. Setbacks and height might be in the dimensional requirements section, while parking is in a completely separate chapter. Each rule traces to its own source.
+
+### Task T005: Fallback URL Strategy
+
+When a section number doesn't have a resolved Municode URL in the lookup table:
+
+1. **First fallback:** Generate the `webSearchUrl` (already built in T001) using the section number as the search term
+2. **Second fallback:** Link to the municipality's `planningUrl` (already built in T001)
+3. **Display:** Show the section number as text with a "Search on Municode" link instead of a direct link
+
+```typescript
+function getSourceUrl(rule: ZoningRule, municipality: Municipality): SourceLink {
+  if (rule.sourceUrl) {
+    // Direct Municode link available
+    return { url: rule.sourceUrl, label: "View on Municode", type: "direct" };
+  }
+  if (rule.sectionNumber) {
+    // Generate search URL
+    const searchUrl = `https://www.google.com/search?q=${municipality.name}+${municipality.state}+zoning+section+${rule.sectionNumber}+site:municode.com`;
+    return { url: searchUrl, label: `Search §${rule.sectionNumber}`, type: "search" };
+  }
+  if (municipality.planningUrl) {
+    // Fall back to planning department
+    return { url: municipality.planningUrl, label: "Planning & Zoning", type: "general" };
+  }
+  return null;
+}
+```
+
+---
+
+## Phase 2: Move Interpretation Into the Agent
+
+**Goal:** Agent returns property-contextualized insights, not just raw district rules  
+**Effort:** 3–4 days  
+**Why this matters:** The Agent should be the brain. The UI should display conclusions, not compute them.
+
+### The Interpretation Gap
+
+**What happens now:**
+```
+Agent: "MRC-3 rear setback = 20ft"
+UI:    (user enters lot depth 90ft)
+UI:    (calculates 90 - 20 = 70ft buildable depth)
+UI:    displays "Buildable depth: 70ft"
+```
+
+**What should happen:**
+```
+Agent receives: district MRC-3 + lot dimensions (90ft depth, 60ft width, 5,400 sqft)
+Agent returns:  "Buildable depth: 70ft (90ft lot - 20ft rear setback per §16-06.007)"
+                "Buildable width: 50ft (60ft lot - 0ft front + 10ft side per §16-06.007)"  
+                "Buildable area: 3,500 sqft (70ft × 50ft)"
+                "Maximum units: 13 (5,400 sqft × 109 units/acre density per §16-06.005)"
+```
+
+The Agent does the math. The Agent cites the source. The UI just displays.
+
+### Task T006: Property-Aware Agent Query
+
+Update the Agent to accept property-specific inputs alongside the zoning district lookup.
+
+**Current flow:**
+```
+Frontend → POST /zoning/query { districtCode: "MRC-3" }
+Agent    → SELECT * FROM zoning_rules WHERE district = 'MRC-3'
+Agent    → return raw rules
+```
+
+**New flow:**
+```
+Frontend → POST /zoning/interpret {
+  districtCode: "MRC-3",
+  property: {
+    lotSizeSqft: 5400,
+    lotWidthFt: 60,
+    lotDepthFt: 90,
+    currentUse: "commercial",
+    isCornerLot: false,
+    yearBuilt: 1965
+  }
+}
+Agent    → SELECT * FROM zoning_rules WHERE district = 'MRC-3'
+Agent    → JOIN municode_section_urls ON section_number
+Agent    → apply property dimensions to rules
+Agent    → return interpreted results with source citations
+```
+
+### Task T007: Interpretation Engine
+
+Build the interpretation logic inside the Agent (or as a service the Agent calls). This is the math that currently lives scattered across the frontend.
+
+```python
+class ZoningInterpreter:
+    """
+    Takes raw zoning rules + property dimensions
+    Returns contextualized, source-cited insights
+    """
+    
+    def interpret(self, rules: dict, property: dict) -> list[Interpretation]:
+        interpretations = []
+        
+        # Buildable envelope
+        if property.get('lotDepthFt') and rules.get('rearSetback'):
+            buildable_depth = property['lotDepthFt'] - rules['rearSetback']['value'] - rules['frontSetback']['value']
+            interpretations.append({
+                'category': 'envelope',
+                'field': 'buildableDepth',
+                'value': buildable_depth,
+                'unit': 'ft',
+                'calculation': f"{property['lotDepthFt']}ft lot - {rules['frontSetback']['value']}ft front - {rules['rearSetback']['value']}ft rear",
+                'sources': [rules['frontSetback']['source'], rules['rearSetback']['source']],
+                'insight': self._assess_envelope_quality(buildable_depth, property)
+            })
+        
+        # Density / max units
+        if property.get('lotSizeSqft') and rules.get('maxDensity'):
+            lot_acres = property['lotSizeSqft'] / 43560
+            max_units = int(lot_acres * rules['maxDensity']['value'])
+            interpretations.append({
+                'category': 'density',
+                'field': 'maxUnits',
+                'value': max_units,
+                'unit': 'units',
+                'calculation': f"{lot_acres:.3f} acres × {rules['maxDensity']['value']} units/acre",
+                'sources': [rules['maxDensity']['source']],
+                'insight': f"By-right maximum of {max_units} units on this parcel"
+            })
+        
+        # FAR-based max
+        if property.get('lotSizeSqft') and rules.get('maxFAR'):
+            max_gfa = property['lotSizeSqft'] * rules['maxFAR']['value']
+            interpretations.append({
+                'category': 'density',
+                'field': 'maxGFA',
+                'value': max_gfa,
+                'unit': 'sqft',
+                'calculation': f"{property['lotSizeSqft']:,} sqft lot × {rules['maxFAR']['value']} FAR",
+                'sources': [rules['maxFAR']['source']],
+                'insight': f"Maximum gross floor area: {max_gfa:,.0f} sqft"
+            })
+        
+        # Parking requirements
+        if rules.get('parkingRatio') and 'maxUnits' in [i['field'] for i in interpretations]:
+            max_units = next(i['value'] for i in interpretations if i['field'] == 'maxUnits')
+            parking_needed = int(max_units * rules['parkingRatio']['value'])
+            interpretations.append({
+                'category': 'parking',
+                'field': 'parkingRequired',
+                'value': parking_needed,
+                'unit': 'spaces',
+                'calculation': f"{max_units} units × {rules['parkingRatio']['value']} spaces/unit",
+                'sources': [rules['parkingRatio']['source']],
+                'insight': f"{parking_needed} spaces required at {rules['parkingRatio']['value']} per unit"
+            })
+        
+        # Controlling constraint
+        controlling = self._find_controlling_constraint(interpretations, rules, property)
+        interpretations.append({
+            'category': 'summary',
+            'field': 'controllingConstraint',
+            'value': controlling['factor'],
+            'insight': controlling['explanation'],
+            'sources': controlling['sources']
+        })
+        
+        return interpretations
+```
+
+### Task T008: Insight Generation (the "So What")
+
+Beyond math, the Agent should generate a one-line insight for each category:
+
+| Category | Raw Data | Interpreted Insight |
+|----------|----------|-------------------|
+| Envelope | Setbacks: 0/10/20 | "Your buildable footprint is 3,500 sqft — 65% of lot area. Above average for MRC districts." |
+| Density | Max 109 units/acre | "By-right maximum: 13 units. Current zoning allows 3× the existing 4-unit structure." |
+| Height | Max 225ft | "Height limit of 225ft (≈20 stories) is not the constraint here — density and lot size are." |
+| Parking | 1.0 spaces/unit | "13 parking spaces needed. Surface parking would consume ~3,900 sqft — consider structured." |
+| Summary | — | "Density is the controlling factor. Variance for additional units would require SAP review (§16-26.003)." |
+
+This is where the Agent earns its value — it doesn't just regurgitate rules, it tells the user what matters for *their specific property*.
+
+**Implementation:** This can be rule-based for common patterns (no LLM needed for standard calculations). Reserve LLM calls for edge cases: overlay districts, conditional uses, variance likelihood.
+
+---
+
+## Phase 3: Source-Linked Display in the UI
+
+**Goal:** Every interpreted value in the 7-tab UI links back to its Municode section  
+**Effort:** 3–4 days  
+**Depends on:** Phase 1 (URLs exist) + Phase 2 (Agent returns source-enriched data)
+
+### Task T009: Source Citation Component
+
+Build a reusable component that displays a zoning rule with its source link. This component appears everywhere — every tab, every rule, every calculation.
+
+```tsx
+// SourceCitedValue.tsx
+// Reusable across all 7 tabs
+
+interface SourceCitedValueProps {
+  label: string;            // "Rear Setback"
+  value: string | number;   // 20
+  unit?: string;            // "ft"
+  calculation?: string;     // "90ft lot - 20ft setback"
+  insight?: string;         // "Buildable depth: 70ft"
+  source: {
+    sectionNumber: string;  // "16-06.007"
+    sectionTitle?: string;  // "Dimensional Requirements"
+    url?: string;           // Full Municode URL or search fallback
+    sourceType: 'municode' | 'search' | 'planning';
+  };
+}
+
+function SourceCitedValue({ label, value, unit, calculation, insight, source }: SourceCitedValueProps) {
+  return (
+    <div className="flex justify-between items-start py-2 border-b border-gray-100">
+      <div>
+        <span className="text-sm text-gray-500">{label}</span>
+        <div className="font-semibold">{value}{unit && ` ${unit}`}</div>
+        {calculation && (
+          <span className="text-xs text-gray-400">{calculation}</span>
+        )}
+        {insight && (
+          <p className="text-sm text-blue-700 mt-1">{insight}</p>
+        )}
+      </div>
+      <SourceLink source={source} />
+    </div>
+  );
+}
+
+function SourceLink({ source }: { source: SourceCitedValueProps['source'] }) {
+  if (!source.url && !source.sectionNumber) return null;
+  
+  const icon = source.sourceType === 'municode' ? BookOpen 
+             : source.sourceType === 'planning' ? MapPin 
+             : Search;
+  
+  const colors = source.sourceType === 'municode' ? 'text-violet-600 hover:text-violet-800'
+               : source.sourceType === 'planning' ? 'text-emerald-600 hover:text-emerald-800'
+               : 'text-gray-500 hover:text-gray-700';
+
+  return (
+    <a 
+      href={source.url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className={`flex items-center gap-1 text-xs ${colors} whitespace-nowrap`}
+      title={source.sectionTitle || `Section ${source.sectionNumber}`}
+    >
+      <Icon component={icon} size={12} />
+      §{source.sectionNumber}
+    </a>
+  );
+}
+```
+
+**Design principle:** The source link is always visible but unobtrusive — a small `§16-06.007` link in violet next to each value. Not a full button like T002's detection card — that level of prominence is right for the initial confirmation but too heavy for every field in the detailed tabs.
+
+### Task T010: Update Confirm Zoning Tab (Tab 2)
+
+This is where the user first sees the full zoning rules for their property. Currently shows raw values. Updated version shows interpreted values with source citations.
+
+**Current layout:**
+```
+District: MRC-3
+Max Height: 225 ft
+Max Density: 109 units/acre
+Setbacks: 0 / 10 / 20
+Parking: 1.0 spaces/unit
+```
+
+**Updated layout:**
+```
+District: MRC-3 (Mixed Residential Commercial)          §16-06.001 ↗
+
+DIMENSIONAL STANDARDS                                    §16-06.007 ↗
+├── Max Height:        225 ft (≈20 stories)              §16-06.007 ↗
+├── Front Setback:     0 ft                              §16-06.007 ↗
+├── Side Setback:      10 ft                             §16-06.007 ↗
+├── Rear Setback:      20 ft                             §16-06.007 ↗
+├── Max FAR:           3.2                               §16-06.007 ↗
+└── Max Lot Coverage:  80%                               §16-06.007 ↗
+
+APPLIED TO YOUR PROPERTY (5,400 sqft lot, 60×90)
+├── Buildable Footprint:  3,500 sqft (65% of lot)
+├── Max Gross Floor Area: 17,280 sqft (5,400 × 3.2 FAR)
+├── Max Units (by-right): 13 units
+├── Controlling Factor:   DENSITY                        §16-06.005 ↗
+└── Parking Required:     13 spaces                      §16-10.003 ↗
+
+💡 Zoning allows 3× the existing 4-unit structure.
+   Most investors would stop at value-add — the density 
+   unlock makes BTS worth evaluating.
+
+[Planning & Zoning ↗]  [View on Municode ↗]  [Search Code ↗]
+```
+
+Note the two-tier display: **raw rules** (with per-field source links) → **applied to your property** (with the math shown). The T002 buttons remain at the bottom as general navigation, while the inline `§` links provide field-level traceability.
+
+### Task T011: Update Dev Capacity Tab (Tab 4)
+
+Dev Capacity currently calculates the building envelope but the math lives in the frontend. Move it into the Agent response and add source citations.
+
+The Agent's interpreted response for Dev Capacity should include:
+
+```json
+{
+  "envelope": {
+    "buildableWidthFt": 50,
+    "buildableDepthFt": 70,
+    "buildableAreaSqft": 3500,
+    "maxGFASqft": 17280,
+    "maxUnits": 13,
+    "maxHeightFt": 225,
+    "maxStories": 20,
+    "controllingConstraint": "density",
+    "sources": {
+      "setbacks": { "section": "16-06.007", "url": "..." },
+      "density": { "section": "16-06.005", "url": "..." },
+      "far": { "section": "16-06.007", "url": "..." },
+      "height": { "section": "16-06.007", "url": "..." }
+    }
+  },
+  "variancePotential": {
+    "sapMaxUnits": 17,
+    "explanation": "SAP (Special Administrative Permit) allows density bonus up to 130% of by-right in MRC districts",
+    "source": { "section": "16-26.003", "url": "..." }
+  }
+}
+```
+
+This is also the data that feeds downstream into Strategy Arbitrage (the ZM-2 wiring gap). Once the Agent returns structured, source-cited Dev Capacity data, wiring it to M08 becomes straightforward.
+
+### Task T012: Source Citation Pattern for Remaining Tabs
+
+Apply the same `SourceCitedValue` component across:
+
+| Tab | What Gets Source Links |
+|-----|----------------------|
+| Tab 3: Entitlement Tracker | Permit types required + their code basis |
+| Tab 5: Regulatory Risk | Overlay districts, pending code amendments |
+| Tab 6: Comparator | How this district compares to adjacent districts (each district's rules linked) |
+| Tab 7: Time-to-Shovel | Required approvals traced to code sections |
+
+Not every tab needs the same depth of source tracing on day one. Tabs 2 (Confirm Zoning) and 4 (Dev Capacity) are the priority — those are where users make decisions based on code interpretation.
+
+---
+
+## Phase 4: DevCapacity → Strategy Arbitrage Wiring
+
+**Goal:** Complete the P0-3 data chain  
+**Effort:** 2–3 days  
+**Depends on:** Phase 2 (Agent returns property-contextualized Dev Capacity data)
+
+This is unchanged from the previous plan (Tasks T007-T010 in v1) but now it's easier because the Agent already returns structured, interpreted Dev Capacity data from Phase 2. Strategy Arbitrage just consumes it.
+
+### Task T013: Emit Dev Capacity Output to Store
+
+When the Zoning Agent returns interpreted Dev Capacity results, store them in the deal's Zustand store:
+
+```typescript
+// In zoningStore or dealStore
+interface DevCapacityOutput {
+  maxUnits: number;
+  maxGFA: number;
+  buildableAreaSqft: number;
+  controllingConstraint: string;
+  developmentProbability: number;     // calculated from interpretation
+  estimatedTotalDevCost: number;      // maxGFA × cost/sqft estimate
+  variancePotential: {
+    maxUnits: number;
+    mechanism: string;                 // "SAP", "rezoning", etc.
+  } | null;
+  sources: Record<string, SourceRef>; // every value traced
+  confidence: 'high' | 'medium' | 'low';
+  calculatedAt: string;
+}
+```
+
+### Task T014: Strategy Arbitrage Consumes Dev Capacity
+
+When M08 calculates the BTS strategy score:
+
+1. Check for DevCapacity output in the deal store
+2. If present: use `maxUnits`, `estimatedTotalDevCost`, `developmentProbability` for real BTS scoring
+3. If absent: flag BTS as "unscored" with prompt "Run Zoning Analysis to unlock Build-to-Sell scoring"
+4. The `controllingConstraint` and `variancePotential` inform the arbitrage narrative: *"Zoning allows 3× current density (§16-06.005). BTS outscores Rental by 15 points."*
+
+---
+
+## Implementation Sequence
+
+```
+PHASE 1 — URL Construction (2-3 days)
+├── T003: Build municode_section_urls table + scrape Atlanta TOC
+├── T004: Add URL resolution to Agent response
+└── T005: Fallback URL strategy (search link when direct URL missing)
+
+PHASE 2 — Agent Interpretation (3-4 days)
+├── T006: Property-aware Agent query endpoint
+├── T007: Interpretation engine (math + constraint analysis)
+└── T008: Insight generation (the "so what" layer)
+
+PHASE 3 — Source-Linked UI (3-4 days)
+├── T009: SourceCitedValue reusable component
+├── T010: Update Confirm Zoning tab
+├── T011: Update Dev Capacity tab
+└── T012: Apply pattern to remaining tabs (Tabs 3, 5, 6, 7)
+
+PHASE 4 — Strategy Arbitrage Wiring (2-3 days)
+├── T013: Emit Dev Capacity output to deal store
+└── T014: Strategy Arbitrage consumes Dev Capacity
+
+Total: ~12-14 days (1 developer)
+```
+
+---
+
+## What Changed From Plan v1
+
+| v1 (Wrong Assumptions) | v2 (Correct Architecture) |
+|------------------------|--------------------------|
+| Build municipal API connectors to acquire data | Data already stored — build interpretation layer |
+| Scrape Municode for zoning codes | Municode data already in PostgreSQL |
+| Build RAG pipeline for code text | Structured data covers common questions; RAG deferred |
+| Monte Carlo for Time-to-Shovel | Deferred — focus on core interpretation first |
+| ~5-6 weeks estimated | ~2-3 weeks estimated |
+
+**Key insight:** The v1 plan had 5 phases. The v2 plan has 4, and the first 3 phases are about making the *existing* data pipeline smarter, not building new data pipelines. That's a fundamentally different (and faster) effort.
+
+---
+
+## Dependency Map
+
+```
+PostgreSQL zoning_rules (EXISTS)
+  ↓
+T003: municode_section_urls table ──→ T004: Agent enriches with URLs
+  ↓                                      ↓
+T005: Fallback URL strategy          T006-T008: Agent interprets
+  ↓                                      ↓
+  └──────────────── both feed ──────→ T009: SourceCitedValue component
+                                         ↓
+                                    T010-T012: Tab updates
+                                         ↓
+                                    T013-T014: Strategy Arbitrage wiring
+```
+
+---
+
+## What This Looks Like for the User
+
+**Before (current):**
+User opens Zoning tab → sees "MRC-3" with raw dimensional values → has to manually look up what the code says → does their own math to figure out what they can build → no way to verify the numbers without leaving the platform.
+
+**After (this plan):**
+User opens Zoning tab → sees "MRC-3" with applied calculations specific to their lot → every value has a `§16-06.007` link they can click to verify on Municode → the Agent explains what matters ("density is your constraint, not height") → Dev Capacity flows into Strategy Arbitrage so BTS scoring uses real zoning data → all of this traces back to specific code sections the user can independently verify.
+
+The verification-first philosophy stays intact: the platform interprets the code, but the user can always trace any answer back to its authoritative source.
