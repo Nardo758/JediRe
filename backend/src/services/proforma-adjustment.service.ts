@@ -634,6 +634,10 @@ export class ProFormaAdjustmentService {
     return (await this.getProForma(dealId))!;
   }
   
+  /**
+   * Update platform layer from Traffic Engine v2 (M07 → M09).
+   * Called by trafficToProFormaService when predictions are refreshed.
+   */
   async updatePlatformLayer(
     dealId: string,
     platformValues: {

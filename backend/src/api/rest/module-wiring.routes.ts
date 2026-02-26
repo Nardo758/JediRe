@@ -225,6 +225,24 @@ router.post('/strategy/compare', (req: Request, res: Response) => {
   res.json(result);
 });
 
+/** POST /strategy/analyze-with-envelope/:dealId - Run envelope-adjusted strategy analysis */
+router.post('/strategy/analyze-with-envelope/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { envelope, signals } = req.body;
+    if (!envelope?.development_path || !envelope?.max_units) {
+      return res.status(400).json({ error: 'envelope with development_path and max_units required' });
+    }
+    const result = await strategyArbitrageEngine.analyzeWithEnvelope(
+      req.params.dealId,
+      envelope,
+      signals,
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // ============================================================================
 // Orchestrator Endpoints
 // ============================================================================
@@ -342,7 +360,7 @@ router.post('/wire/news/:dealId', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /wire/zoning/:dealId - Wire zoning -> dev cap -> strategy */
+/** POST /wire/zoning/:dealId - Wire zoning → dev cap → strategy */
 router.post('/wire/zoning/:dealId', async (req: Request, res: Response) => {
   try {
     await wireZoningToStrategy(req.params.dealId, req.body);
@@ -358,7 +376,7 @@ router.post('/wire/zoning/:dealId', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /wire/risk/:dealId - Wire supply + demand -> risk */
+/** POST /wire/risk/:dealId - Wire supply + demand → risk */
 router.post('/wire/risk/:dealId', async (req: Request, res: Response) => {
   try {
     const { tradeAreaId } = req.body;
@@ -449,7 +467,7 @@ router.post('/wire/scenarios/recalculate/:scenarioId', async (req: Request, res:
   }
 });
 
-/** POST /wire/competition/:dealId - Wire competition -> market */
+/** POST /wire/competition/:dealId - Wire competition → market */
 router.post('/wire/competition/:dealId', async (req: Request, res: Response) => {
   try {
     const { latitude, longitude, tradeAreaId, subjectRent } = req.body;
@@ -457,8 +475,13 @@ router.post('/wire/competition/:dealId', async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'latitude and longitude are required' });
     }
     await wireCompetitionToMarket(req.params.dealId, { latitude, longitude, tradeAreaId, subjectRent });
-    const competitionData = dataFlowRouter.getModuleData('M05', req.params.dealId);
-    res.json({ dealId: req.params.dealId, ...competitionData?.data });
+    const compData = dataFlowRouter.getModuleData('M15', req.params.dealId);
+    const marketData = dataFlowRouter.getModuleData('M05', req.params.dealId);
+    res.json({
+      dealId: req.params.dealId,
+      competition: compData?.data,
+      market: marketData?.data,
+    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -467,7 +490,18 @@ router.post('/wire/competition/:dealId', async (req: Request, res: Response) => 
 /** POST /wire/debt/:dealId - Wire debt analysis */
 router.post('/wire/debt/:dealId', async (req: Request, res: Response) => {
   try {
-    await wireDebtAnalysis(req.params.dealId, req.body);
+    const { purchasePrice, loanAmount, interestRate, amortizationYears, loanTermYears, totalEquity } = req.body;
+    if (!purchasePrice || !loanAmount || !interestRate) {
+      return res.status(400).json({ error: 'purchasePrice, loanAmount, and interestRate are required' });
+    }
+    await wireDebtAnalysis(req.params.dealId, {
+      purchasePrice,
+      loanAmount,
+      interestRate,
+      amortizationYears,
+      loanTermYears,
+      totalEquity,
+    });
     const debtData = dataFlowRouter.getModuleData('M11', req.params.dealId);
     res.json({ dealId: req.params.dealId, ...debtData?.data });
   } catch (error) {
@@ -498,12 +532,12 @@ router.post('/wire/p2/:dealId', async (req: Request, res: Response) => {
 /** POST /wire/traffic/:dealId - Wire traffic intelligence */
 router.post('/wire/traffic/:dealId', async (req: Request, res: Response) => {
   try {
-    const { latitude, longitude } = req.body;
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: 'latitude and longitude are required' });
+    const { propertyId } = req.body;
+    if (!propertyId) {
+      return res.status(400).json({ error: 'propertyId is required' });
     }
-    await wireTrafficIntelligence(req.params.dealId, req.body);
-    const trafficData = dataFlowRouter.getModuleData('M16', req.params.dealId);
+    await wireTrafficIntelligence(req.params.dealId, propertyId);
+    const trafficData = dataFlowRouter.getModuleData('M07', req.params.dealId);
     res.json({ dealId: req.params.dealId, ...trafficData?.data });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -513,12 +547,12 @@ router.post('/wire/traffic/:dealId', async (req: Request, res: Response) => {
 /** POST /wire/traffic/forecast/:dealId - Wire traffic forecast */
 router.post('/wire/traffic/forecast/:dealId', async (req: Request, res: Response) => {
   try {
-    const { latitude, longitude } = req.body;
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: 'latitude and longitude are required' });
+    const { propertyId, weeks } = req.body;
+    if (!propertyId) {
+      return res.status(400).json({ error: 'propertyId is required' });
     }
-    await wireTrafficForecast(req.params.dealId, req.body);
-    const forecastData = dataFlowRouter.getModuleData('M16', req.params.dealId);
+    await wireTrafficForecast(req.params.dealId, propertyId, weeks || 12);
+    const forecastData = dataFlowRouter.getModuleData('M07', req.params.dealId);
     res.json({ dealId: req.params.dealId, ...forecastData?.data });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -561,7 +595,7 @@ router.post('/wire/subscriptions/p2/setup', (_req: Request, res: Response) => {
   res.json({ status: 'P2 auto-cascade subscriptions initialized' });
 });
 
-/** POST /wire/subscriptions/all/setup - Set up all auto-cascade subscriptions (P0+P1+P2+CapStructure) */
+/** POST /wire/subscriptions/all/setup - Set up all auto-cascade subscriptions (P0+P1+P2) */
 router.post('/wire/subscriptions/all/setup', (_req: Request, res: Response) => {
   setupP0Subscriptions();
   setupP1Subscriptions();

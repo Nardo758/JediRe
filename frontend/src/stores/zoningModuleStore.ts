@@ -12,6 +12,8 @@ import type {
   TimelineScenario,
   MunicipalBenchmark,
   DealTimeline,
+  DevelopmentPath,
+  BuildingEnvelope,
   ZoningModuleState,
 } from '../types/zoning.types';
 
@@ -25,7 +27,7 @@ const DEFAULT_LAYERS: Record<string, boolean> = {
 };
 
 export const useZoningModuleStore = create<ZoningModuleState>((set) => ({
-  activeTab: 'lookup',
+  activeTab: 'boundary_zoning',
   selectedParcel: null,
   selectedZoning: null,
   entitlements: [],
@@ -48,6 +50,11 @@ export const useZoningModuleStore = create<ZoningModuleState>((set) => ({
   dealTimeline: null,
   timelineComparisonMarkets: [],
   layerVisibility: { ...DEFAULT_LAYERS },
+
+  // Phase 2: Development Path Selection
+  development_path: null,
+  selected_envelope: null,
+  path_target_code: null,
 
   setActiveTab: (tab: ZoningTabId) => set({ activeTab: tab }),
 
@@ -85,4 +92,7 @@ export const useZoningModuleStore = create<ZoningModuleState>((set) => ({
         [layerId]: !state.layerVisibility[layerId],
       },
     })),
+
+  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null) =>
+    set({ development_path: path, selected_envelope: envelope }),
 }));

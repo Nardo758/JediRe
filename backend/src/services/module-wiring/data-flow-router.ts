@@ -48,9 +48,12 @@ export interface DataFlowResult {
 const DATA_FLOW_CONNECTIONS: DataFlowConnection[] = [
   // M02 Zoning outputs
   { from: 'M02', to: 'M03', dataKeys: ['zoning_code', 'far', 'setbacks', 'max_density'], strength: 'required', description: 'Zoning constraints for development capacity' },
-  { from: 'M02', to: 'M08', dataKeys: ['entitlement_risk_score'], strength: 'optional', description: 'Regulatory constraints per strategy' },
-  { from: 'M02', to: 'M09', dataKeys: ['zoning_code', 'far'], strength: 'optional', description: 'Zoning-adjusted proforma assumptions' },
-  { from: 'M02', to: 'M14', dataKeys: ['entitlement_risk_score'], strength: 'optional', description: 'Regulatory risk factors' },
+  { from: 'M02', to: 'M08', dataKeys: ['entitlement_risk_score', 'development_path', 'selected_envelope', 'max_units_by_path', 'entitlement_timeline_months'], strength: 'optional', description: 'Zoning path + envelope constraints per strategy' },
+  { from: 'M02', to: 'M09', dataKeys: ['zoning_code', 'far', 'development_path', 'selected_envelope'], strength: 'optional', description: 'Zoning-adjusted proforma assumptions + path envelope' },
+  { from: 'M02', to: 'M11', dataKeys: ['development_path', 'selected_envelope', 'entitlement_timeline_months'], strength: 'optional', description: 'Path selection for capital structure timeline' },
+  { from: 'M02', to: 'M14', dataKeys: ['entitlement_risk_score', 'development_path', 'entitlement_timeline_months'], strength: 'optional', description: 'Regulatory risk factors + path risk' },
+  { from: 'M02', to: 'M18', dataKeys: ['auto_milestones', 'entitlement_type', 'required_hearings'], strength: 'optional', description: 'Auto-milestones from path selection → Context Tracker' },
+  { from: 'M18', to: 'M02', dataKeys: ['entitlement_progress_pct', 'entitlement_status'], strength: 'optional', description: 'Entitlement progress → Zoning module' },
 
   // M03 Dev Capacity outputs
   { from: 'M03', to: 'M08', dataKeys: ['max_units_by_right', 'envelope_dimensions'], strength: 'required', description: 'Max buildable for strategy feasibility' },

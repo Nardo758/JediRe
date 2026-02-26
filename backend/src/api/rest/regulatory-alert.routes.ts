@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { RegulatoryAlertService } from '../../services/regulatory-alert.service';
+import { regulatoryRiskScoringService } from '../../services/regulatory-risk-scoring.service';
 
 const router = Router();
 const pool = getPool();
@@ -104,6 +105,31 @@ router.patch('/:id/deactivate', async (req: Request, res: Response) => {
     res.json({ success: true, data: alert });
   } catch (error: any) {
     console.error('Deactivate alert error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
+// Regulatory Risk Scoring (Phase 4b — M14 integration)
+// ============================================================================
+
+/** POST /score-risk - Calculate composite regulatory risk score */
+router.post('/score-risk', async (req: Request, res: Response) => {
+  try {
+    const { dealId, municipality, state, developmentPath, categories } = req.body;
+    if (!dealId || !categories?.length) {
+      return res.status(400).json({ error: 'Required: dealId, categories[]' });
+    }
+    const result = await regulatoryRiskScoringService.scoreRegulatory({
+      dealId,
+      municipality: municipality || '',
+      state: state || '',
+      developmentPath,
+      categories,
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.error('Regulatory risk scoring error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

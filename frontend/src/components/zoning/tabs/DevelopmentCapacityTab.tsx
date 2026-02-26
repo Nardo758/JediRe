@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../../services/api.client';
+import PathSelection from './PathSelection';
+import PathComparisonTable from './PathComparisonTable';
+import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 
 interface ZoningProfile {
   id: string;
@@ -895,6 +898,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+
+      {/* ─── PATH SELECTION ─── */}
+      {profile && activeScenario && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden p-5">
+          <PathSelection
+            byRightUnits={activeScenario.max_units || 0}
+            overlayBonusPct={profile.overlays?.length > 0 ? (profile.overlays[0]?.density_bonus_pct ?? null) : null}
+            lotAcres={(profile.lot_area_sf || 0) / 43560}
+            maxDensityPerAcre={profile.max_density_per_acre || 0}
+            avgUnitSizeSf={activeScenario.avg_unit_size_sf || 900}
+          />
+          <div className="mt-4">
+            <PathComparisonTable
+              byRightUnits={activeScenario.max_units || 0}
+              overlayBonusPct={profile.overlays?.length > 0 ? (profile.overlays[0]?.density_bonus_pct ?? null) : null}
+              lotAcres={(profile.lot_area_sf || 0) / 43560}
+              maxDensityPerAcre={profile.max_density_per_acre || 0}
+              avgUnitSizeSf={activeScenario.avg_unit_size_sf || 900}
+            />
+          </div>
+        </div>
+      )}
 
       {recommendations.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

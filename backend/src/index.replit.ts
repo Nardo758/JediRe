@@ -76,6 +76,9 @@ import uploadTemplatesRouter from './api/rest/upload-templates.routes';
 import uploadRouter from './api/rest/upload.routes';
 import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
+import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
+import entitlementRouter from './api/rest/entitlement.routes';
+import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 
 dotenv.config();
 
@@ -216,6 +219,9 @@ app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
 app.use('/api/v1/uploads', requireAuth, uploadRouter);
 app.use('/api/v1/comps', requireAuth, compQueryRouter);
 app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
+app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
+app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
+app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));

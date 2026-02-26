@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { ComparisonMode, ComparisonDelta } from '../../../types/zoning.types';
 import { useZoningComparison } from '../../../hooks/useZoningComparison';
+import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import SourceCitation, { ViewSourceBadge } from '../SourceCitation';
 import type { SourceCitationData } from '../SourceCitation';
 
@@ -217,6 +218,186 @@ function ModeDescription({ mode }: { mode: ComparisonMode }) {
   );
 }
 
+// ============================================================================
+// Next-Best Zoning Section
+// ============================================================================
+
+interface NextBestDistrict {
+  code: string;
+  name: string;
+  densityBoost: string;
+  heightBoost: string;
+  farBoost: string;
+  additionalUnits: number;
+  revenueUplift: string;
+  distance: string;
+  feasibility: 'High' | 'Medium' | 'Low';
+}
+
+const MOCK_NEXT_BEST: NextBestDistrict[] = [
+  { code: 'MRC-3-C', name: 'Mixed Residential Commercial 3-C', densityBoost: '+40%', heightBoost: '+60 ft', farBoost: '+1.2', additionalUnits: 98, revenueUplift: '+$12.4M', distance: 'Rezone required', feasibility: 'Medium' },
+  { code: 'SPI-1', name: 'Special Public Interest 1', densityBoost: '+25%', heightBoost: '+40 ft', farBoost: '+0.8', additionalUnits: 61, revenueUplift: '+$7.8M', distance: 'Overlay available', feasibility: 'High' },
+  { code: 'MR-5A', name: 'Multi-Res 5A (High-Density)', densityBoost: '+60%', heightBoost: '+90 ft', farBoost: '+2.0', additionalUnits: 147, revenueUplift: '+$18.6M', distance: 'Rezone required', feasibility: 'Low' },
+];
+
+function NextBestZoningSection() {
+  const { development_path } = useZoningModuleStore();
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-gray-200 flex items-center justify-between"
+      >
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Next-Best Zoning Analysis</h3>
+          <p className="text-xs text-gray-500 mt-0.5">What if this parcel had a different zoning code?</p>
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="p-4">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Density</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Height</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">FAR</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">+Units</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Feasibility</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {MOCK_NEXT_BEST.map(d => (
+                  <tr key={d.code} className="hover:bg-gray-50">
+                    <td className="py-2.5 px-3">
+                      <div className="text-xs font-bold text-gray-900">{d.code}</div>
+                      <div className="text-[10px] text-gray-500">{d.name}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5">{d.distance}</div>
+                    </td>
+                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.densityBoost}</td>
+                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.heightBoost}</td>
+                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.farBoost}</td>
+                    <td className="py-2.5 px-3 text-center text-xs font-bold text-gray-900">+{d.additionalUnits}</td>
+                    <td className="py-2.5 px-3 text-center text-xs font-bold text-green-700">{d.revenueUplift}</td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                        d.feasibility === 'High' ? 'bg-green-50 text-green-700' :
+                        d.feasibility === 'Medium' ? 'bg-amber-50 text-amber-700' :
+                        'bg-red-50 text-red-700'
+                      }`}>{d.feasibility}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-start gap-2">
+              <span className="text-base">💡</span>
+              <div>
+                <p className="text-xs text-blue-900 font-medium">AI Recommendation</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  SPI-1 overlay offers the best risk-adjusted return: +61 units with high feasibility
+                  through an overlay application rather than full rezone. Estimated 2-4 month process.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Rezoning Pathway Section
+// ============================================================================
+
+function RezoningPathwaySection() {
+  const [expanded, setExpanded] = useState(false);
+
+  const steps = [
+    { step: 1, name: 'Pre-Application Meeting', duration: '2-4 weeks', cost: '$0', status: 'required', description: 'Meet with planning staff to discuss feasibility and requirements' },
+    { step: 2, name: 'Community Engagement', duration: '4-8 weeks', cost: '$5-15K', status: 'recommended', description: 'NPU meetings, neighborhood outreach, address concerns early' },
+    { step: 3, name: 'Rezone Application Filing', duration: '1-2 weeks', cost: '$2,500', status: 'required', description: 'Submit formal application with site plan, impact studies, traffic analysis' },
+    { step: 4, name: 'Staff Review', duration: '6-12 weeks', cost: '$15-25K (studies)', status: 'required', description: 'Planning department technical review, may require revisions' },
+    { step: 5, name: 'Zoning Review Board', duration: '2-4 weeks', cost: '$0', status: 'required', description: 'Public hearing, staff recommendation, conditional approval possible' },
+    { step: 6, name: 'City Council Vote', duration: '2-6 weeks', cost: '$50-100K (legal)', status: 'required', description: 'Final approval, may include conditions/proffers' },
+    { step: 7, name: 'Post-Approval Compliance', duration: '2-4 weeks', cost: 'Varies', status: 'if applicable', description: 'Record conditions, update permits, begin site plan under new zoning' },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-gray-200 flex items-center justify-between"
+      >
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Rezoning Pathway Guide</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Step-by-step process, costs, and timeline for rezoning in this jurisdiction</p>
+        </div>
+        <svg className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="p-4">
+          <div className="space-y-3">
+            {steps.map((s, i) => (
+              <div key={s.step} className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">{s.step}</div>
+                  {i < steps.length - 1 && <div className="w-px flex-1 bg-purple-200 mt-1" />}
+                </div>
+                <div className="flex-1 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-900">{s.name}</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                      s.status === 'required' ? 'bg-blue-50 text-blue-700' :
+                      s.status === 'recommended' ? 'bg-green-50 text-green-700' :
+                      'bg-gray-50 text-gray-600'
+                    }`}>{s.status}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
+                  <div className="flex gap-4 mt-1">
+                    <span className="text-[10px] text-gray-400">⏱ {s.duration}</span>
+                    <span className="text-[10px] text-gray-400">💰 {s.cost}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Total Timeline</div>
+              <div className="text-lg font-bold text-gray-900">8-18 months</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Total Est. Cost</div>
+              <div className="text-lg font-bold text-gray-900">$75-145K</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 text-center">
+              <div className="text-xs text-gray-500">Success Rate (County)</div>
+              <div className="text-lg font-bold text-gray-900">38%</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface ZoningComparatorTabProps {
   dealId?: string;
   deal?: any;
@@ -386,6 +567,9 @@ export default function ZoningComparatorTab({ dealId, deal }: ZoningComparatorTa
           </div>
         </div>
       )}
+
+      <NextBestZoningSection />
+      <RezoningPathwaySection />
 
       {!comparison && !loading && !error && (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">

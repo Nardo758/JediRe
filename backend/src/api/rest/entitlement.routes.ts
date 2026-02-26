@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { EntitlementService } from '../../services/entitlement.service';
+import { entitlementSyncService } from '../../services/entitlement-sync.service';
 
 const router = Router();
 const pool = getPool();
@@ -140,6 +141,49 @@ router.patch('/milestones/:milestoneId', async (req: Request, res: Response) => 
     console.error('Update milestone error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+// ============================================================================
+// Entitlement Sync (Phase 5 — M02 ↔ M18 bidirectional wiring)
+// ============================================================================
+
+/** POST /sync/path-selected - Auto-create milestones from path selection */
+router.post('/sync/path-selected', async (req: Request, res: Response) => {
+  try {
+    const { dealId, developmentPath, envelope } = req.body;
+    if (!dealId || !developmentPath) {
+      return res.status(400).json({ error: 'Required: dealId, developmentPath' });
+    }
+    const result = await entitlementSyncService.onPathSelected(dealId, developmentPath, envelope);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Path sync error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** POST /sync/status-changed - Notify M02 of entitlement status change */
+router.post('/sync/status-changed', async (req: Request, res: Response) => {
+  try {
+    const { dealId, entitlementId, newStatus, oldStatus } = req.body;
+    if (!dealId || !entitlementId || !newStatus) {
+      return res.status(400).json({ error: 'Required: dealId, entitlementId, newStatus' });
+    }
+    const result = await entitlementSyncService.onEntitlementStatusChanged(
+      dealId, entitlementId, newStatus, oldStatus || 'unknown'
+    );
+    res.json(result);
+  } catch (error: any) {
+    console.error('Status sync error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/** GET /sync/milestone-template/:path - Get milestone template for a path */
+router.get('/sync/milestone-template/:path', (req: Request, res: Response) => {
+  const templates = entitlementSyncService.getMilestoneTemplate(req.params.path);
+  const documents = entitlementSyncService.getRequiredDocuments(req.params.path);
+  res.json({ path: req.params.path, milestones: templates, requiredDocuments: documents });
 });
 
 export default router;

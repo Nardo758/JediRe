@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   MapPin,
   CheckCircle2,
-  ClipboardList,
   BarChart3,
   ShieldAlert,
   GitCompareArrows,
@@ -10,12 +9,9 @@ import {
   Lock,
   RefreshCw,
 } from 'lucide-react';
-import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { ZoningAgentChat } from '../../zoning/ZoningAgentChat';
 import { apiClient } from '../../../services/api.client';
-import BoundaryTab from '../../zoning/tabs/BoundaryTab';
-import ZoningConfirmTab from '../../zoning/tabs/ZoningConfirmTab';
-import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
+import BoundaryAndZoningTab from '../../zoning/tabs/BoundaryAndZoningTab';
 import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import ZoningComparatorTab from '../../zoning/tabs/ZoningComparatorTab';
@@ -29,23 +25,18 @@ interface ZoningModuleSectionProps {
   onBack?: () => void;
 }
 
-type ExtendedTabId = 'boundary' | 'confirm' | ZoningTabId;
-
-const TABS: { id: ExtendedTabId; label: string; icon: React.ReactNode; step: number }[] = [
-  { id: 'boundary', label: 'Property Boundary', icon: <MapPin className="w-4 h-4" />, step: 1 },
-  { id: 'confirm', label: 'Confirm Zoning', icon: <CheckCircle2 className="w-4 h-4" />, step: 2 },
-  { id: 'tracker', label: 'Entitlement Tracker', icon: <ClipboardList className="w-4 h-4" />, step: 3 },
-  { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 4 },
-  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 5 },
-  { id: 'comparator', label: 'Zoning Comparator', icon: <GitCompareArrows className="w-4 h-4" />, step: 6 },
-  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 7 },
+const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
+  { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
+  { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
+  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 3 },
+  { id: 'comparator', label: 'Zoning Comparator', icon: <GitCompareArrows className="w-4 h-4" />, step: 4 },
+  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const resolvedDealId = propDealId || deal?.id;
-  const [activeTab, setActiveTab] = useState<ExtendedTabId>('boundary');
-  const [boundaryComplete, setBoundaryComplete] = useState(false);
-  const [zoningConfirmed, setZoningConfirmed] = useState(false);
+  const [activeTab, setActiveTab] = useState<ZoningTabId>('boundary_zoning');
+  const [boundaryAndZoningComplete, setBoundaryAndZoningComplete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -62,70 +53,63 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
 
     try {
       const boundaryRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/boundary`);
-      
+
       const hasBoundary = !!(
-        boundaryRes.data?.id || 
+        boundaryRes.data?.id ||
         boundaryRes.data?.boundary_geojson
       );
-      setBoundaryComplete(hasBoundary);
 
       let isConfirmed = false;
-      try {
-        const zoningRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-confirmation`);
-        isConfirmed = !!zoningRes.data?.confirmed_at;
-      } catch {
+      if (hasBoundary) {
+        try {
+          const zoningRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-confirmation`);
+          isConfirmed = !!zoningRes.data?.confirmed_at;
+        } catch {
+          // Treat boundary existence as implicit confirmation for legacy deals
+          isConfirmed = true;
+        }
       }
 
-      if (!isConfirmed && hasBoundary) {
-        isConfirmed = true;
-      }
+      setBoundaryAndZoningComplete(isConfirmed);
 
-      setZoningConfirmed(isConfirmed);
-      setActiveTab('boundary');
+      if (!hasBoundary) {
+        setStatusMessage('Draw property boundary to unlock zoning analysis');
+      }
     } catch (error: any) {
       if (error?.response?.status === 404) {
         setStatusMessage('Draw property boundary to unlock zoning analysis');
       } else {
         setStatusMessage(`Error loading boundary data: ${error?.response?.data?.error || error?.message || 'Unknown error'}`);
       }
-      setBoundaryComplete(false);
-      setZoningConfirmed(false);
-      setActiveTab('boundary');
+      setBoundaryAndZoningComplete(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBoundaryComplete = () => {
-    setBoundaryComplete(true);
+  const handleBoundaryAndZoningComplete = (zoningData?: any) => {
+    setBoundaryAndZoningComplete(true);
     setStatusMessage(null);
-    setActiveTab('confirm');
+    setActiveTab('capacity');
     checkCompletionStatus();
     if (onUpdate) onUpdate();
   };
 
-  const handleZoningConfirm = () => {
-    setZoningConfirmed(true);
-    setStatusMessage(null);
-    setActiveTab('tracker');
-    if (onUpdate) onUpdate();
-  };
-
-  const isTabUnlocked = (tabId: ExtendedTabId): boolean => {
-    if (tabId === 'boundary') return true;
-    if (tabId === 'confirm') return boundaryComplete;
-    // All other tabs require zoning confirmation
-    return zoningConfirmed;
+  const isTabUnlocked = (tabId: ZoningTabId): boolean => {
+    if (tabId === 'boundary_zoning') return true;
+    return boundaryAndZoningComplete;
   };
 
   const renderActiveTab = () => {
     switch (activeTab) {
-      case 'boundary':
-        return <BoundaryTab dealId={resolvedDealId} deal={deal} onComplete={handleBoundaryComplete} />;
-      case 'confirm':
-        return <ZoningConfirmTab dealId={resolvedDealId} deal={deal} onConfirm={handleZoningConfirm} />;
-      case 'tracker':
-        return <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />;
+      case 'boundary_zoning':
+        return (
+          <BoundaryAndZoningTab
+            dealId={resolvedDealId}
+            deal={deal}
+            onComplete={handleBoundaryAndZoningComplete}
+          />
+        );
       case 'capacity':
         return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} />;
       case 'risk':
@@ -135,7 +119,13 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
       default:
-        return <BoundaryTab dealId={resolvedDealId} deal={deal} onComplete={handleBoundaryComplete} />;
+        return (
+          <BoundaryAndZoningTab
+            dealId={resolvedDealId}
+            deal={deal}
+            onComplete={handleBoundaryAndZoningComplete}
+          />
+        );
     }
   };
 
@@ -154,13 +144,13 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           <div>
             <h2 className="text-lg font-bold text-gray-900">Property & Zoning Intelligence</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Boundary, development capacity, and entitlement tracking
+              Boundary, zoning verification, development capacity & entitlement timeline
               {deal?.strategy && <><span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span></>}
             </p>
           </div>
-          
-          {/* Refresh button - useful if tabs don't unlock automatically */}
-          {!zoningConfirmed && (
+
+          {/* Refresh button */}
+          {!boundaryAndZoningComplete && (
             <button
               onClick={() => checkCompletionStatus()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -173,7 +163,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         </div>
 
         {/* Status Banner */}
-        {statusMessage && !zoningConfirmed && (
+        {statusMessage && !boundaryAndZoningComplete && (
           <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center gap-2">
             <Lock className="w-3 h-3" />
             {statusMessage}
@@ -183,9 +173,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         <div className="flex gap-0.5 overflow-x-auto">
           {TABS.map(tab => {
             const unlocked = isTabUnlocked(tab.id);
-            const completed = 
-              (tab.id === 'boundary' && boundaryComplete) || 
-              (tab.id === 'confirm' && zoningConfirmed);
+            const completed =
+              tab.id === 'boundary_zoning' && boundaryAndZoningComplete;
 
             return (
               <button
@@ -199,7 +188,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
                     ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     : 'border-transparent text-gray-300 cursor-not-allowed'
                 }`}
-                title={!unlocked ? 'Complete previous steps to unlock' : ''}
+                title={!unlocked ? 'Complete boundary & zoning verification to unlock' : ''}
               >
                 {!unlocked && <Lock className="w-3 h-3" />}
                 {completed && <CheckCircle2 className="w-3 h-3 text-green-600" />}
@@ -217,7 +206,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       </div>
 
       <ZoningAgentChat
-        activeTab={activeTab as any}
+        activeTab={activeTab}
         dealId={resolvedDealId}
       />
     </div>
