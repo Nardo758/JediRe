@@ -1,0 +1,21 @@
+All done. Here's what was implemented in commit `1f78bd2`:
+
+**M07 → M09 Traffic→ProForma Integration** (5 files, +1,775 lines)
+
+**Backend:**
+- **`trafficToProFormaService.ts`** (new, ~480 lines) — The core translation service. `pushTrafficToProForma()` loads projections + learned rates, builds the handoff data structure (10yr annual traffic predictions, occupancy/rent trajectories, leasing velocity), translates into 5 three-layer assumptions (vacancy, rent growth, absorption, opex growth, exit cap), generates 10-year income statements for both platform and baseline layers, calculates returns comparison (IRR, equity multiple, CoC, exit value, DSCR), and persists the platform layer to `proforma_assumptions`.
+
+- **`proforma-adjustment.service.ts`** (updated) — Added `updatePlatformLayer()` method so the Traffic Engine can push platform-adjusted values without triggering the full news-event recalculation pipeline.
+
+- **`proforma.routes.ts`** (updated) — Two new endpoints:
+  - `GET /proforma/:dealId/traffic-integration` — Full integration data (handoff, assumptions, income statement, returns)
+  - `POST /proforma/:dealId/traffic-refresh` — Force refresh of platform layer
+
+**Frontend:**
+- **`ProFormaWithTrafficSection.tsx`** (new, ~630 lines) — 4-tab TypeScript React component:
+  - **Traffic → ProForma**: Shows the 4 translation pipes (occupancy→vacancy, rent→growth, velocity→absorption, lease-up→timeline) with formula, current value, impact, and confidence
+  - **3-Layer Assumptions**: Interactive layer selector (Baseline/Platform/Override) with expandable 10-year comparison grid and confidence decay bars
+  - **10-Year Income Statement**: Combined grid showing M07 traffic predictions, translated assumptions, and financial outcomes side-by-side with Baseline/Platform toggle
+  - **Returns**: Platform vs Baseline comparison for IRR, equity multiple, CoC, exit value, and DSCR
+
+- **`DealDetailPage.tsx`** (updated) — Swapped Pro Forma tab from `ProFormaIntelligence` to `ProFormaWithTrafficSection`

@@ -28,6 +28,7 @@ import TrafficEngineV2Section from '../components/deal/sections/TrafficEngineV2S
 
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
 import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligence';
+import ProFormaWithTrafficSection from '../components/deal/sections/ProFormaWithTrafficSection';
 import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
 import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
@@ -200,9 +201,9 @@ const DealDetailPage: React.FC = () => {
     },
     {
       id: 'proforma-intelligence',
-      label: 'Pro Forma Intelligence',
+      label: 'Pro Forma + Traffic',
       icon: <Layers size={16} />,
-      component: ProFormaIntelligence
+      component: ProFormaWithTrafficSection
     },
     {
       id: 'capital-structure',

@@ -10,6 +10,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { proformaAdjustmentService } from '../../services/proforma-adjustment.service';
+import { trafficToProForma } from '../../services/trafficToProFormaService';
 
 const logger = { 
   error: (...args: any[]) => console.error(...args),
@@ -458,5 +459,64 @@ ${comparison.recentAdjustments.map((adj: any, i: number) =>
   
   return md;
 }
+
+// ============================================================================
+// Traffic → ProForma Integration (M07 → M09)
+// ============================================================================
+
+router.get('/:dealId/traffic-integration', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { dealId } = req.params;
+    const { propertyId } = req.query;
+
+    if (!propertyId) {
+      return res.status(400).json({ success: false, error: 'propertyId query parameter required' });
+    }
+
+    const result = await trafficToProForma.pushTrafficToProForma(
+      propertyId as string,
+      dealId
+    );
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    logger.error('Error in traffic→proforma integration:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/:dealId/traffic-refresh', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { dealId } = req.params;
+    const { propertyId } = req.body;
+
+    if (!propertyId) {
+      return res.status(400).json({ success: false, error: 'propertyId required in request body' });
+    }
+
+    const result = await trafficToProForma.pushTrafficToProForma(
+      propertyId,
+      dealId
+    );
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Traffic → ProForma platform layer refreshed',
+        modelConfidence: result.handoff.modelConfidence,
+        dataWeeks: result.handoff.dataWeeks,
+        assumptions: result.assumptions.map((a: any) => ({
+          id: a.id,
+          label: a.label,
+          platformValue: a.platform.values[0],
+          baselineValue: a.baseline.values[0],
+        })),
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error refreshing traffic→proforma:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 export default router;

@@ -634,6 +634,58 @@ export class ProFormaAdjustmentService {
     return (await this.getProForma(dealId))!;
   }
   
+  async updatePlatformLayer(
+    dealId: string,
+    platformValues: {
+      vacancy?: number;
+      rentGrowth?: number;
+      absorption?: number;
+      exitCap?: number;
+    },
+    source: string = 'M07 Traffic Engine v2'
+  ): Promise<ProFormaAssumptions> {
+    let proforma = await this.getProForma(dealId);
+
+    if (!proforma) {
+      proforma = await this.initializeProForma(dealId, 'rental');
+    }
+
+    const updates: string[] = [];
+    const params: any[] = [dealId];
+    let paramIdx = 2;
+
+    if (platformValues.vacancy !== undefined) {
+      updates.push(`vacancy_current = $${paramIdx++}`);
+      params.push(platformValues.vacancy);
+    }
+    if (platformValues.rentGrowth !== undefined) {
+      updates.push(`rent_growth_current = $${paramIdx++}`);
+      params.push(platformValues.rentGrowth);
+    }
+    if (platformValues.absorption !== undefined) {
+      updates.push(`absorption_current = $${paramIdx++}`);
+      params.push(platformValues.absorption);
+    }
+    if (platformValues.exitCap !== undefined) {
+      updates.push(`exit_cap_current = $${paramIdx++}`);
+      params.push(platformValues.exitCap);
+    }
+
+    if (updates.length > 0) {
+      updates.push('last_recalculation = NOW()');
+      updates.push('updated_at = NOW()');
+
+      await query(
+        `UPDATE proforma_assumptions SET ${updates.join(', ')} WHERE deal_id = $1`,
+        params
+      );
+
+      logger.info('ProForma platform layer updated from traffic', { dealId, source, platformValues });
+    }
+
+    return (await this.getProForma(dealId))!;
+  }
+
   /**
    * Get comparison: baseline vs. adjusted
    */
