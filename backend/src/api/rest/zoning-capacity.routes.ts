@@ -739,6 +739,14 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
             const zoningCode = attrs[codeField] || '';
             const zoningName = attrs[nameField] || zoningCode;
             if (zoningCode) {
+              let planningUrl: string | null = null;
+              if (muniId) {
+                const muniRow = await pool.query(
+                  `SELECT planning_url FROM municipalities WHERE id = $1`, [muniId]
+                );
+                planningUrl = muniRow.rows[0]?.planning_url || null;
+              }
+              const webSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${cityName} ${stateName} zoning ordinance ${zoningCode}`)}`;
               return res.json({
                 found: true,
                 zoningCode,
@@ -746,6 +754,8 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
                 source: 'assessor_api',
                 sourceName: `${cityConfig.name} GIS Zoning Map`,
                 sourceUrl: `${cityConfig.serviceUrl}/${layerId}`,
+                planningUrl,
+                webSearchUrl,
                 municipality: cityName,
                 state: stateName,
                 municipalityId: muniId || null,
@@ -847,6 +857,14 @@ If you cannot find it, respond with:
 
         if (parsed?.found && parsed?.zoningCode) {
           const usedApi = arcgisApis.length > 0 && parsed.sourceUrl?.includes('arcgis');
+          let planningUrl: string | null = null;
+          if (muniId) {
+            const muniRow = await pool.query(
+              `SELECT planning_url FROM municipalities WHERE id = $1`, [muniId]
+            );
+            planningUrl = muniRow.rows[0]?.planning_url || null;
+          }
+          const webSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${cityName || 'local'} ${stateName} zoning ordinance ${parsed.zoningCode}`)}`;
           return res.json({
             found: true,
             zoningCode: parsed.zoningCode,
@@ -854,6 +872,8 @@ If you cannot find it, respond with:
             source: usedApi ? 'assessor_api' : 'ai_web_search',
             sourceName: parsed.sourceName || `${cityName || 'County'} Property Records (AI-verified)`,
             sourceUrl: parsed.sourceUrl || null,
+            planningUrl,
+            webSearchUrl,
             municipality: cityName,
             state: stateName,
             municipalityId: muniId || null,

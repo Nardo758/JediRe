@@ -21,6 +21,7 @@ import {
   Sparkles,
   Search,
   ExternalLink,
+  BookOpen,
 } from 'lucide-react';
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
@@ -40,6 +41,8 @@ interface DetectedZoning {
   confidence: number;
   source: string;
   municodeUrl?: string;
+  planningUrl?: string;
+  webSearchUrl?: string;
 }
 
 interface ZoningDistrictOption {
@@ -219,6 +222,8 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             confidence: parcelZoning.confidence || 0.95,
             source: parcelZoning.sourceName || 'Assessor GIS',
             municodeUrl,
+            planningUrl: parcelZoning.planningUrl || undefined,
+            webSearchUrl: parcelZoning.webSearchUrl || undefined,
           });
         } else {
           const bestMatch = districts[0];
@@ -251,6 +256,8 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
           confidence: parcelZoning.confidence || 0.95,
           source: parcelZoning.sourceName || 'Assessor GIS',
           municodeUrl,
+          planningUrl: parcelZoning.planningUrl || undefined,
+          webSearchUrl: parcelZoning.webSearchUrl || undefined,
         });
       } else {
         setError(`No zoning data found for ${cityName}, ${stateName}. You can enter it manually.`);
@@ -407,21 +414,61 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     <div className="flex items-center gap-2 mb-1">
                       <MapPin className="w-3.5 h-3.5 text-gray-400" />
                       <span className="text-xs text-gray-500">{detectedZoning.municipality}, {detectedZoning.state}</span>
-                      {detectedZoning.source && detectedZoning.source !== 'boundary' && detectedZoning.source !== 'confirmed' && (
-                        <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                          Source: {detectedZoning.source}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-bold text-gray-900">{detectedZoning.code}</span>
                       <span className="text-sm text-gray-600">{detectedZoning.name}</span>
                     </div>
-                    {detectedZoning.municodeUrl && (
-                      <div className="mt-1">
-                        <MunicodeLink url={detectedZoning.municodeUrl} label={`${detectedZoning.code} on Municode`} />
-                      </div>
-                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      {detectedZoning.planningUrl && (
+                        <a
+                          href={detectedZoning.planningUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded hover:bg-emerald-50 transition-colors"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          Planning & Zoning
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
+                      {detectedZoning.municodeUrl && (
+                        <a
+                          href={detectedZoning.municodeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-violet-700 bg-white border border-violet-200 rounded hover:bg-violet-50 transition-colors"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          View on Municode
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
+                      {!detectedZoning.planningUrl && !detectedZoning.municodeUrl && detectedZoning.webSearchUrl && (
+                        <a
+                          href={detectedZoning.webSearchUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                        >
+                          <Search className="w-3 h-3" />
+                          Search Zoning Code
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
+                      {!detectedZoning.municodeUrl && detectedZoning.webSearchUrl && detectedZoning.planningUrl && (
+                        <a
+                          href={detectedZoning.webSearchUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                        >
+                          <Search className="w-3 h-3" />
+                          Search Zoning Code
+                          <ExternalLink className="w-2.5 h-2.5" />
+                        </a>
+                      )}
+                    </div>
                   </div>
                   {detectedZoning.confidence >= 0.9 ? (
                     <CheckCircle2 className="w-5 h-5 text-green-600" />
