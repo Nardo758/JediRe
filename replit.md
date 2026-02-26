@@ -50,6 +50,7 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
     -   **P2 Service Adapters** (`p2-service-adapters.ts`): Wires Traffic (M16), Exit (M12), and Portfolio (M22). Chains: P2-1 (M16 Traffic Intelligence/Forecast), P2-2 (M12 Exit Analysis), P2-3 (M22 Portfolio Performance). API endpoints at `/wire/traffic/*`, `/wire/exit/*`, `/wire/portfolio`.
     -   **Capital Structure Adapter** (`capital-structure-adapter.ts`): Wires Capital Structure Engine (M11) with stack, waterfall, scenarios, rate analysis, and full pipeline. Cross-module subscriptions: M09→M11, M08→M11. API endpoints at `/wiring/capital-structure/*`.
 -   **Capital Structure Engine (M11):** Full capital stack design with 7-tab frontend component, backend service (`capital-structure.service.ts`), and 13 REST endpoints (`/api/v1/capital-structure/*`). Features: stack builder, debt sizing, product filtering, mismatch detection, rate analysis, equity waterfall, scenario comparison, and AI insights. M11 upgraded from "Debt Analysis" with 29 formulas (F21-F22, F40-F66) and 13 outputs.
+-   **Traffic Engine Module Wiring (M07):** Cross-module wiring connecting Traffic Engine to JEDI Score (M25), Strategy Arbitrage (M08), ProForma (M09), Risk (M14), and Deal Capsule. Backend services: `traffic-correlation.service.ts` (T-04 correlation signal, T-07 trajectory, T-09 competitive share) and `traffic-module-wiring.ts`. Database: 8 traffic tables across 3 migrations (021, 028, 032).
 
 ### Agent Dashboard (CRM Module)
 
