@@ -9,7 +9,7 @@
  * Section 2: Zoning Verification & Parameters (inline ZoningConfirmTab content)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   MapPin,
   Building2,
@@ -26,6 +26,7 @@ import {
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
 import { MunicodeLink } from '../SourceCitation';
+import SourceCitedValue from '../SourceCitedValue';
 
 interface BoundaryAndZoningTabProps {
   deal?: any;
@@ -56,6 +57,32 @@ interface ZoningDistrictOption {
   max_stories?: number;
 }
 
+interface SourceRule {
+  field: string;
+  displayLabel: string;
+  sectionNumber: string | null;
+  sectionTitle: string | null;
+  sourceUrl: string | null;
+  sourceType: 'municode' | 'search' | 'chapter';
+}
+
+interface DistrictDetails {
+  max_density_per_acre?: number | null;
+  max_far?: number | null;
+  max_height_feet?: number | null;
+  max_stories?: number | null;
+  min_parking_per_unit?: number | null;
+  parking_per_1000_sqft?: number | null;
+  setbacks?: {
+    front?: number | null;
+    side?: number | null;
+    rear?: number | null;
+  };
+  max_lot_coverage?: number | null;
+  source_rules?: SourceRule[];
+  municode_url?: string | null;
+}
+
 export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: BoundaryAndZoningTabProps) {
   const [boundaryComplete, setBoundaryComplete] = useState(false);
   const [zoningExpanded, setZoningExpanded] = useState(false);
@@ -70,6 +97,18 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [manualCode, setManualCode] = useState('');
   const [locationInfo, setLocationInfo] = useState<{ city: string; state: string } | null>(null);
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
+  const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
+
+  const fetchDistrictDetails = useCallback(async (code: string, municipality?: string) => {
+    try {
+      const params: Record<string, string> = { code };
+      if (municipality) params.municipality = municipality;
+      const res = await apiClient.get('/api/v1/zoning-districts/by-code', { params });
+      if (res.data?.found !== false) {
+        setDistrictDetails(res.data);
+      }
+    } catch {}
+  }, []);
 
   // When boundary is completed, auto-expand zoning section and fetch data
   const handleBoundaryComplete = () => {
@@ -91,14 +130,19 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-confirmation`);
             if (zoningRes.data?.confirmed_at) {
               setZoningConfirmed(true);
+              const confirmedCode = zoningRes.data.zoning_code || '';
+              const confirmedMunicipality = zoningRes.data.municipality || '';
               setDetectedZoning({
-                code: zoningRes.data.zoning_code || '',
-                name: zoningRes.data.district_name || zoningRes.data.zoning_code || '',
-                municipality: zoningRes.data.municipality || '',
+                code: confirmedCode,
+                name: zoningRes.data.district_name || confirmedCode,
+                municipality: confirmedMunicipality,
                 state: zoningRes.data.state || '',
                 confidence: 1.0,
                 source: 'confirmed',
               });
+              if (confirmedCode) {
+                fetchDistrictDetails(confirmedCode, confirmedMunicipality || undefined);
+              }
             } else {
               // Boundary exists but zoning not confirmed — fetch zoning options
               setZoningExpanded(true);
@@ -225,6 +269,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             planningUrl: parcelZoning.planningUrl || undefined,
             webSearchUrl: parcelZoning.webSearchUrl || undefined,
           });
+          fetchDistrictDetails(parcelZoning.zoningCode, cityName);
         } else {
           const bestMatch = districts[0];
           setSelectedDistrictId(bestMatch.id);
@@ -238,6 +283,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             source: 'boundary',
             municodeUrl,
           });
+          fetchDistrictDetails(bestMatch.zoning_code, cityName);
         }
       } else if (parcelZoning) {
         let municodeUrl: string | undefined;
@@ -259,6 +305,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
           planningUrl: parcelZoning.planningUrl || undefined,
           webSearchUrl: parcelZoning.webSearchUrl || undefined,
         });
+        fetchDistrictDetails(parcelZoning.zoningCode, cityName);
       } else {
         setError(`No zoning data found for ${cityName}, ${stateName}. You can enter it manually.`);
       }
@@ -283,6 +330,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       confidence: 0.85,
       source: 'boundary',
     });
+    fetchDistrictDetails(district.zoning_code, locationInfo?.city || detectedZoning?.municipality);
   };
 
   const handleConfirm = async () => {
@@ -468,26 +516,133 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                   )}
                 </div>
 
-                {/* Selected district parameters preview */}
-                {selectedDistrictId && availableDistricts.length > 0 && (
-                  <div className="grid grid-cols-4 gap-3 bg-gray-50 rounded-lg p-3">
-                    {(() => {
-                      const d = availableDistricts.find(x => x.id === selectedDistrictId);
-                      if (!d) return null;
-                      return [
-                        { label: 'Max Density', value: d.max_density ? `${d.max_density}/acre` : '—' },
-                        { label: 'Max FAR', value: d.max_far ?? '—' },
-                        { label: 'Max Height', value: d.max_height ? `${d.max_height} ft` : '—' },
-                        { label: 'Max Stories', value: d.max_stories ?? '—' },
-                      ].map((m, i) => (
-                        <div key={i} className="text-center">
-                          <div className="text-xs font-bold text-gray-900">{m.value}</div>
-                          <div className="text-[9px] text-gray-400">{m.label}</div>
+                {/* Selected district parameters preview with source citations */}
+                {((selectedDistrictId && availableDistricts.length > 0) || districtDetails) && (() => {
+                  const d = selectedDistrictId ? availableDistricts.find(x => x.id === selectedDistrictId) : null;
+                  const rules = districtDetails?.source_rules || [];
+                  const findRule = (field: string) => rules.find(r => r.field === field);
+                  const rDensity = findRule('maxDensity');
+                  const rFAR = findRule('maxFAR');
+                  const rHeight = findRule('maxHeight');
+                  const rStories = findRule('maxStories');
+                  const rParking = findRule('parking');
+                  const rFrontSetback = findRule('frontSetback');
+                  const rSideSetback = findRule('sideSetback');
+                  const rRearSetback = findRule('rearSetback');
+                  const rLotCoverage = findRule('lotCoverage');
+
+                  const density = districtDetails?.max_density_per_acre ?? d?.max_density;
+                  const far = districtDetails?.max_far ?? d?.max_far;
+                  const height = districtDetails?.max_height_feet ?? d?.max_height;
+                  const stories = districtDetails?.max_stories ?? d?.max_stories;
+                  const parking = districtDetails?.min_parking_per_unit;
+                  const parkingComm = districtDetails?.parking_per_1000_sqft;
+                  const setbacks = districtDetails?.setbacks;
+                  const lotCoverage = districtDetails?.max_lot_coverage;
+
+                  return (
+                    <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+                      <div className="grid grid-cols-4 gap-3">
+                        <SourceCitedValue
+                          label="Max Density"
+                          value={density ?? null}
+                          unit={density ? '/acre' : undefined}
+                          sectionNumber={rDensity?.sectionNumber || undefined}
+                          sectionTitle={rDensity?.sectionTitle || undefined}
+                          sourceUrl={rDensity?.sourceUrl || undefined}
+                        />
+                        <SourceCitedValue
+                          label="Max FAR"
+                          value={far ?? null}
+                          sectionNumber={rFAR?.sectionNumber || undefined}
+                          sectionTitle={rFAR?.sectionTitle || undefined}
+                          sourceUrl={rFAR?.sourceUrl || undefined}
+                        />
+                        <SourceCitedValue
+                          label="Max Height"
+                          value={height ?? null}
+                          unit={height ? 'ft' : undefined}
+                          sectionNumber={rHeight?.sectionNumber || undefined}
+                          sectionTitle={rHeight?.sectionTitle || undefined}
+                          sourceUrl={rHeight?.sourceUrl || undefined}
+                        />
+                        <SourceCitedValue
+                          label="Max Stories"
+                          value={stories ?? null}
+                          sectionNumber={rStories?.sectionNumber || undefined}
+                          sectionTitle={rStories?.sectionTitle || undefined}
+                          sourceUrl={rStories?.sourceUrl || undefined}
+                        />
+                      </div>
+                      {(parking != null || parkingComm != null || setbacks?.front != null || setbacks?.side != null || setbacks?.rear != null || lotCoverage != null) && (
+                        <div className="border-t border-gray-200 pt-2">
+                          <div className="grid grid-cols-4 gap-3">
+                            {parking != null && (
+                              <SourceCitedValue
+                                label="Parking"
+                                value={parking}
+                                unit="/unit"
+                                sectionNumber={rParking?.sectionNumber || undefined}
+                                sectionTitle={rParking?.sectionTitle || undefined}
+                                sourceUrl={rParking?.sourceUrl || undefined}
+                              />
+                            )}
+                            {parkingComm != null && parking == null && (
+                              <SourceCitedValue
+                                label="Parking"
+                                value={parkingComm}
+                                unit="/1000 sf"
+                                sectionNumber={rParking?.sectionNumber || undefined}
+                                sectionTitle={rParking?.sectionTitle || undefined}
+                                sourceUrl={rParking?.sourceUrl || undefined}
+                              />
+                            )}
+                            {setbacks?.front != null && (
+                              <SourceCitedValue
+                                label="Front Setback"
+                                value={setbacks.front}
+                                unit="ft"
+                                sectionNumber={rFrontSetback?.sectionNumber || undefined}
+                                sectionTitle={rFrontSetback?.sectionTitle || undefined}
+                                sourceUrl={rFrontSetback?.sourceUrl || undefined}
+                              />
+                            )}
+                            {setbacks?.side != null && (
+                              <SourceCitedValue
+                                label="Side Setback"
+                                value={setbacks.side}
+                                unit="ft"
+                                sectionNumber={rSideSetback?.sectionNumber || undefined}
+                                sectionTitle={rSideSetback?.sectionTitle || undefined}
+                                sourceUrl={rSideSetback?.sourceUrl || undefined}
+                              />
+                            )}
+                            {setbacks?.rear != null && (
+                              <SourceCitedValue
+                                label="Rear Setback"
+                                value={setbacks.rear}
+                                unit="ft"
+                                sectionNumber={rRearSetback?.sectionNumber || undefined}
+                                sectionTitle={rRearSetback?.sectionTitle || undefined}
+                                sourceUrl={rRearSetback?.sourceUrl || undefined}
+                              />
+                            )}
+                            {lotCoverage != null && (
+                              <SourceCitedValue
+                                label="Lot Coverage"
+                                value={lotCoverage}
+                                unit="%"
+                                sectionNumber={rLotCoverage?.sectionNumber || undefined}
+                                sectionTitle={rLotCoverage?.sectionTitle || undefined}
+                                sourceUrl={rLotCoverage?.sourceUrl || undefined}
+                              />
+                            )}
+                          </div>
                         </div>
-                      ));
-                    })()}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* District selection dropdown */}
                 {availableDistricts.length > 1 && !zoningConfirmed && (

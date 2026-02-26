@@ -2,11 +2,13 @@ import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { ZoningProfileService } from '../../services/zoning-profile.service';
 import { BuildingEnvelopeService, PropertyType } from '../../services/building-envelope.service';
+import { RezoneAnalysisService } from '../../services/rezone-analysis.service';
 
 const router = Router();
 const pool = getPool();
 const profileService = new ZoningProfileService(pool);
 const envelopeService = new BuildingEnvelopeService();
+const rezoneService = new RezoneAnalysisService(pool);
 
 function mapProjectTypeToEnvelopeType(projectType: string): PropertyType {
   const map: Record<string, PropertyType> = {
@@ -178,86 +180,148 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
       densityMethod: profile.density_method || 'units_per_acre',
     };
 
-    const strategies = [
-      {
-        name: 'By-Right',
-        description: 'Development under existing zoning with no approvals beyond standard permits.',
-        risk: 'Low',
-        successRate: '95%',
-        timeline: '3-6 months',
-        estimatedCost: '$5K-$15K',
-        multipliers: { density: 1.0, far: 1.0, height: 0, parking: 1.0 },
-      },
-      {
-        name: 'Variance',
-        description: 'Request specific deviations from zoning standards through Board of Zoning Appeals.',
-        risk: 'Medium',
-        successRate: '60-75%',
-        timeline: '6-12 months',
-        estimatedCost: '$25K-$75K',
-        multipliers: { density: 1.2, far: 1.15, height: 10, parking: 0.85 },
-      },
-      {
+    const byRightEnvelope = envelopeService.calculateEnvelope({
+      landArea: lotAreaSf,
+      setbacks,
+      zoningConstraints: baseConstraints as any,
+      propertyType: propType,
+      dealType,
+    });
+
+    const byRightResult = {
+      name: 'By-Right',
+      description: 'Development under existing zoning with no approvals beyond standard permits.',
+      risk: 'Low',
+      successRate: '95%',
+      timeline: '3-6 months',
+      estimatedCost: '$5K-$15K',
+      maxUnits: byRightEnvelope.maxCapacity,
+      maxGba: Math.round(byRightEnvelope.maxGFA),
+      maxStories: byRightEnvelope.maxFloors,
+      appliedFar: baseConstraints.appliedFAR,
+      parkingRequired: byRightEnvelope.parkingRequired,
+      maxHeight: baseConstraints.maxHeight,
+      bindingConstraint: byRightEnvelope.limitingFactor,
+      source: 'by-right' as const,
+    };
+
+    const varianceMultipliers = { density: 1.2, far: 1.15, height: 10, parking: 0.85 };
+    const varianceConstraints = {
+      ...baseConstraints,
+      maxDensity: baseConstraints.maxDensity != null ? baseConstraints.maxDensity * varianceMultipliers.density : null,
+      maxFAR: baseConstraints.maxFAR != null ? baseConstraints.maxFAR * varianceMultipliers.far : null,
+      appliedFAR: baseConstraints.appliedFAR != null ? baseConstraints.appliedFAR * varianceMultipliers.far : null,
+      residentialFAR: baseConstraints.residentialFAR != null ? baseConstraints.residentialFAR * varianceMultipliers.far : null,
+      nonresidentialFAR: baseConstraints.nonresidentialFAR != null ? baseConstraints.nonresidentialFAR * varianceMultipliers.far : null,
+      maxHeight: baseConstraints.maxHeight != null ? baseConstraints.maxHeight + 10 : null,
+      minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * varianceMultipliers.parking : null,
+    };
+    const varianceEnvelope = envelopeService.calculateEnvelope({
+      landArea: lotAreaSf,
+      setbacks,
+      zoningConstraints: varianceConstraints as any,
+      propertyType: propType,
+      dealType,
+    });
+    const varianceResult = {
+      name: 'Variance',
+      description: 'Request specific deviations from zoning standards through Board of Zoning Appeals.',
+      risk: 'Medium',
+      successRate: '60-75%',
+      timeline: '6-12 months',
+      estimatedCost: '$25K-$75K',
+      maxUnits: varianceEnvelope.maxCapacity,
+      maxGba: Math.round(varianceEnvelope.maxGFA),
+      maxStories: varianceEnvelope.maxFloors,
+      appliedFar: varianceConstraints.appliedFAR,
+      parkingRequired: varianceEnvelope.parkingRequired,
+      maxHeight: varianceConstraints.maxHeight,
+      bindingConstraint: varianceEnvelope.limitingFactor,
+      source: 'variance-multiplier' as const,
+    };
+
+    let rezoneResult: any = null;
+    try {
+      if (profile.base_district_code && profile.municipality) {
+        const rezoneData = await rezoneService.analyze({
+          currentDistrictCode: profile.base_district_code,
+          municipality: profile.municipality,
+          municipalityId: undefined,
+          lotAreaSf,
+          propertyType: propType,
+          dealType,
+        });
+
+        if (rezoneData.bestTarget) {
+          const best = rezoneData.bestTarget;
+          rezoneResult = {
+            name: 'Rezone',
+            description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
+            risk: 'High',
+            successRate: '35-50%',
+            timeline: best.estimatedTimeline || '12-24 months',
+            estimatedCost: best.estimatedCost || '$75K-$200K',
+            maxUnits: best.targetEnvelope.maxCapacity,
+            maxGba: best.targetEnvelope.maxGFA,
+            maxStories: best.targetEnvelope.maxFloors,
+            appliedFar: null,
+            parkingRequired: 0,
+            maxHeight: null,
+            bindingConstraint: best.targetEnvelope.limitingFactor,
+            source: 'rezone-analysis' as const,
+            targetDistrictCode: best.targetDistrictCode,
+            targetDistrictName: best.targetDistrictName,
+            districtMunicodeUrl: best.districtMunicodeUrl,
+            delta: best.delta,
+            revenue: best.revenue,
+          };
+        }
+      }
+    } catch {}
+
+    if (!rezoneResult) {
+      const rezoneMultipliers = { density: 1.6, far: 1.5, parking: 0.70 };
+      const rezoneConstraints = {
+        ...baseConstraints,
+        maxDensity: baseConstraints.maxDensity != null ? baseConstraints.maxDensity * rezoneMultipliers.density : null,
+        maxFAR: baseConstraints.maxFAR != null ? baseConstraints.maxFAR * rezoneMultipliers.far : null,
+        appliedFAR: baseConstraints.appliedFAR != null ? baseConstraints.appliedFAR * rezoneMultipliers.far : null,
+        residentialFAR: baseConstraints.residentialFAR != null ? baseConstraints.residentialFAR * rezoneMultipliers.far : null,
+        nonresidentialFAR: baseConstraints.nonresidentialFAR != null ? baseConstraints.nonresidentialFAR * rezoneMultipliers.far : null,
+        maxHeight: baseConstraints.maxHeight != null ? Math.round(baseConstraints.maxHeight * 1.5) : null,
+        minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * rezoneMultipliers.parking : null,
+      };
+      const rezoneEnvelope = envelopeService.calculateEnvelope({
+        landArea: lotAreaSf,
+        setbacks,
+        zoningConstraints: rezoneConstraints as any,
+        propertyType: propType,
+        dealType,
+      });
+      rezoneResult = {
         name: 'Rezone',
         description: 'Full rezoning petition to City Council for higher-density district designation.',
         risk: 'High',
         successRate: '35-50%',
         timeline: '12-24 months',
         estimatedCost: '$75K-$200K',
-        multipliers: { density: 1.6, far: 1.5, height: 0.5, parking: 0.70 },
-      },
-    ];
-
-    const results = strategies.map(strategy => {
-      const m = strategy.multipliers;
-      const adjustedConstraints = {
-        ...baseConstraints,
-        maxDensity: baseConstraints.maxDensity != null ? baseConstraints.maxDensity * m.density : null,
-        maxFAR: baseConstraints.maxFAR != null ? baseConstraints.maxFAR * m.far : null,
-        appliedFAR: baseConstraints.appliedFAR != null ? baseConstraints.appliedFAR * m.far : null,
-        residentialFAR: baseConstraints.residentialFAR != null ? baseConstraints.residentialFAR * m.far : null,
-        nonresidentialFAR: baseConstraints.nonresidentialFAR != null ? baseConstraints.nonresidentialFAR * m.far : null,
-        maxHeight: baseConstraints.maxHeight != null ? Math.round(baseConstraints.maxHeight + (baseConstraints.maxHeight * m.height !== 0 ? m.height : 0)) : null,
-        minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * m.parking : null,
+        maxUnits: rezoneEnvelope.maxCapacity,
+        maxGba: Math.round(rezoneEnvelope.maxGFA),
+        maxStories: rezoneEnvelope.maxFloors,
+        appliedFar: rezoneConstraints.appliedFAR,
+        parkingRequired: rezoneEnvelope.parkingRequired,
+        maxHeight: rezoneConstraints.maxHeight,
+        bindingConstraint: rezoneEnvelope.limitingFactor,
+        source: 'rezone-multiplier' as const,
       };
+    }
 
-      if (strategy.name === 'Variance' && baseConstraints.maxHeight != null) {
-        adjustedConstraints.maxHeight = baseConstraints.maxHeight + 10;
-      }
-      if (strategy.name === 'Rezone' && baseConstraints.maxHeight != null) {
-        adjustedConstraints.maxHeight = Math.round(baseConstraints.maxHeight * 1.5);
-      }
+    const results = [byRightResult, varianceResult, rezoneResult];
 
-      const envelope = envelopeService.calculateEnvelope({
-        landArea: lotAreaSf,
-        setbacks,
-        zoningConstraints: adjustedConstraints as any,
-        propertyType: propType,
-        dealType,
-      });
-
-      return {
-        name: strategy.name,
-        description: strategy.description,
-        risk: strategy.risk,
-        successRate: strategy.successRate,
-        timeline: strategy.timeline,
-        estimatedCost: strategy.estimatedCost,
-        maxUnits: envelope.maxCapacity,
-        maxGba: Math.round(envelope.maxGFA),
-        maxStories: envelope.maxFloors,
-        appliedFar: adjustedConstraints.appliedFAR,
-        parkingRequired: envelope.parkingRequired,
-        maxHeight: adjustedConstraints.maxHeight,
-        bindingConstraint: envelope.limitingFactor,
-      };
-    });
-
-    const byRight = results[0];
     const recommendations = results.map(r => ({
       ...r,
-      deltaUnits: byRight.maxUnits > 0 ? Math.round(((r.maxUnits - byRight.maxUnits) / byRight.maxUnits) * 100) : 0,
-      deltaGba: byRight.maxGba > 0 ? Math.round(((r.maxGba - byRight.maxGba) / byRight.maxGba) * 100) : 0,
+      deltaUnits: byRightResult.maxUnits > 0 ? Math.round(((r.maxUnits - byRightResult.maxUnits) / byRightResult.maxUnits) * 100) : 0,
+      deltaGba: byRightResult.maxGba > 0 ? Math.round(((r.maxGba - byRightResult.maxGba) / byRightResult.maxGba) * 100) : 0,
     }));
 
     res.json({ recommendations });
@@ -430,6 +494,102 @@ router.delete('/deals/:dealId/scenarios/:id', async (req: Request, res: Response
   } catch (error: any) {
     console.error('Error deleting scenario:', error);
     res.status(500).json({ error: error.message || 'Failed to delete scenario' });
+  }
+});
+
+router.get('/deals/:dealId/rezone-analysis', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const profile = await profileService.getProfile(dealId);
+    if (!profile) {
+      return res.status(400).json({ error: 'No zoning profile exists. Confirm zoning first.' });
+    }
+
+    if (!profile.base_district_code || !profile.municipality) {
+      return res.status(400).json({ error: 'Zoning district code and municipality required for rezone analysis.' });
+    }
+
+    const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
+    const projectType = dealResult.rows[0]?.project_type || 'multifamily';
+
+    const result = await rezoneService.analyze({
+      currentDistrictCode: profile.base_district_code,
+      municipality: profile.municipality,
+      municipalityId: undefined,
+      lotAreaSf: parseFloat(String(profile.lot_area_sf)) || 0,
+      propertyType: mapProjectTypeToEnvelopeType(projectType),
+      dealType: mapProjectTypeToDealType(projectType),
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error performing rezone analysis:', error);
+    res.status(500).json({ error: error.message || 'Failed to perform rezone analysis' });
+  }
+});
+
+router.get('/deals/:dealId/envelope-enrichment', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const profile = await profileService.getProfile(dealId);
+    if (!profile) {
+      return res.status(400).json({ error: 'No zoning profile exists.' });
+    }
+
+    const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
+    const projectType = dealResult.rows[0]?.project_type || 'multifamily';
+    const propType = mapProjectTypeToEnvelopeType(projectType);
+    const dealType = mapProjectTypeToDealType(projectType);
+
+    const lotAreaSf = parseFloat(String(profile.lot_area_sf)) || 0;
+
+    let sourceRules: any[] = [];
+    if (profile.base_district_code && profile.municipality) {
+      try {
+        const { MunicodeUrlService } = await import('../../services/municode-url.service');
+        const municodeService = new MunicodeUrlService();
+        const municipalityId = `${(profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profile.state || 'ga').toLowerCase()}`;
+        const ruleUrls = await municodeService.getDistrictRuleUrls(municipalityId, profile.base_district_code);
+        sourceRules = ruleUrls.rules || [];
+      } catch {}
+    }
+
+    const envelope = envelopeService.calculateEnvelope({
+      landArea: lotAreaSf,
+      setbacks: {
+        front: parseInt(String(profile.setback_front_ft)) || 0,
+        side: parseInt(String(profile.setback_side_ft)) || 0,
+        rear: parseInt(String(profile.setback_rear_ft)) || 0,
+      },
+      zoningConstraints: {
+        maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(String(profile.max_density_per_acre)) || null),
+        maxFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
+        residentialFAR: parseFloat(String(profile.residential_far)) || null,
+        nonresidentialFAR: parseFloat(String(profile.nonresidential_far)) || null,
+        appliedFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
+        maxHeight: parseInt(String(profile.max_height_ft)) || null,
+        maxStories: parseInt(String(profile.max_stories)) || null,
+        minParkingPerUnit: parseFloat(String(profile.min_parking_per_unit)) || null,
+        maxLotCoverage: parseFloat(String(profile.max_lot_coverage_pct)) || null,
+        densityMethod: (profile.density_method as any) || 'units_per_acre',
+      },
+      propertyType: propType,
+      dealType,
+      sourceRules,
+    });
+
+    res.json({
+      sources: envelope.sources,
+      calculations: envelope.calculations,
+      insights: envelope.insights,
+      limitingFactor: envelope.limitingFactor,
+      capacityByConstraint: envelope.capacityByConstraint,
+    });
+  } catch (error: any) {
+    console.error('Error fetching envelope enrichment:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch envelope enrichment' });
   }
 });
 

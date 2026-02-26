@@ -45,6 +45,7 @@ interface PathSelectionProps {
   lotAcres: number;
   maxDensityPerAcre: number;
   avgUnitSizeSf: number;
+  rezoneAnalysis?: any;
 }
 
 export default function PathSelection({
@@ -53,6 +54,7 @@ export default function PathSelection({
   lotAcres,
   maxDensityPerAcre,
   avgUnitSizeSf,
+  rezoneAnalysis,
 }: PathSelectionProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
 
@@ -61,8 +63,23 @@ export default function PathSelection({
       ? Math.floor(byRightUnits * (1 + overlayBonusPct / 100))
       : null;
 
-    const varianceUnits = Math.floor(byRightUnits * 1.15); // +15% typical
-    const rezoneUnits = Math.floor(lotAcres * maxDensityPerAcre * 1.5); // rough estimate for higher-density zone
+    const varianceUnits = Math.floor(byRightUnits * 1.15);
+
+    const bestTarget = rezoneAnalysis?.bestTarget;
+    const rezoneUnits = bestTarget
+      ? bestTarget.targetEnvelope.maxCapacity
+      : Math.floor(lotAcres * maxDensityPerAcre * 1.5);
+    const rezoneUpliftPct = byRightUnits > 0
+      ? Math.round(((rezoneUnits - byRightUnits) / byRightUnits) * 100)
+      : 0;
+    const rezoneLabel = bestTarget
+      ? `${rezoneUnits} units (+${rezoneUpliftPct}%)`
+      : `${rezoneUnits} units (est.)`;
+    const rezoneDesc = bestTarget
+      ? `Rezone to ${bestTarget.targetDistrictCode}${bestTarget.targetDistrictName ? ` (${bestTarget.targetDistrictName})` : ''}. Based on actual target district data.`
+      : 'Petition to change zoning code entirely. Requires political support.';
+    const rezoneCost = bestTarget?.estimatedCost || '$275-500K';
+    const rezoneTimeline = bestTarget?.estimatedTimeline ? `+${bestTarget.estimatedTimeline}` : '+8-18 months';
 
     return [
       {
@@ -105,16 +122,16 @@ export default function PathSelection({
         id: 'rezone' as DevelopmentPath,
         label: 'D: Full Rezone',
         icon: <Building2 className="w-5 h-5" />,
-        units: `${rezoneUnits} units (max)`,
-        timeline: '+8-18 months',
-        entitlementCost: '$275-500K',
+        units: rezoneLabel,
+        timeline: rezoneTimeline,
+        entitlementCost: rezoneCost,
         risk: 'High',
         riskColor: 'text-red-600 bg-red-50',
         when: 'Value creation >> cost + risk',
-        description: 'Petition to change zoning code entirely. Requires political support.',
+        description: rezoneDesc,
       },
     ];
-  }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre]);
+  }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre, rezoneAnalysis]);
 
   const handleSelect = (pathId: DevelopmentPath) => {
     // Build a basic envelope for the selected path

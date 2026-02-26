@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { ComparisonMode, ComparisonDelta } from '../../../types/zoning.types';
 import { useZoningComparison } from '../../../hooks/useZoningComparison';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import { apiClient } from '../../../services/api.client';
 import SourceCitation from '../SourceCitation';
 
 const MODE_OPTIONS: { mode: ComparisonMode; label: string }[] = [
@@ -224,27 +225,62 @@ function ModeDescription({ mode }: { mode: ComparisonMode }) {
 // Next-Best Zoning Section
 // ============================================================================
 
-interface NextBestDistrict {
-  code: string;
-  name: string;
-  densityBoost: string;
-  heightBoost: string;
-  farBoost: string;
-  additionalUnits: number;
-  revenueUplift: string;
-  distance: string;
-  feasibility: 'High' | 'Medium' | 'Low';
+interface RezoneOpportunityData {
+  targetDistrictCode: string;
+  targetDistrictName: string | null;
+  targetDistrictId: string;
+  category: string | null;
+  currentEnvelope: { maxCapacity: number; maxGFA: number; maxFloors: number; limitingFactor: string };
+  targetEnvelope: { maxCapacity: number; maxGFA: number; maxFloors: number; limitingFactor: string };
+  delta: { additionalUnits: number; additionalGFA: number; heightDifference: number; unitUpliftPct: number; gfaUpliftPct: number };
+  revenue: { currentAnnualRevenue: number; targetAnnualRevenue: number; revenueUplift: number; currentEstimatedValue: number; targetEstimatedValue: number; valueUplift: number };
+  districtMunicodeUrl: string | null;
+  risk: string;
+  estimatedTimeline: string;
+  estimatedCost: string;
+  recommended: boolean;
+  insight: string;
 }
 
-const MOCK_NEXT_BEST: NextBestDistrict[] = [
-  { code: 'MRC-3-C', name: 'Mixed Residential Commercial 3-C', densityBoost: '+40%', heightBoost: '+60 ft', farBoost: '+1.2', additionalUnits: 98, revenueUplift: '+$12.4M', distance: 'Rezone required', feasibility: 'Medium' },
-  { code: 'SPI-1', name: 'Special Public Interest 1', densityBoost: '+25%', heightBoost: '+40 ft', farBoost: '+0.8', additionalUnits: 61, revenueUplift: '+$7.8M', distance: 'Overlay available', feasibility: 'High' },
-  { code: 'MR-5A', name: 'Multi-Res 5A (High-Density)', densityBoost: '+60%', heightBoost: '+90 ft', farBoost: '+2.0', additionalUnits: 147, revenueUplift: '+$18.6M', distance: 'Rezone required', feasibility: 'Low' },
-];
+function formatCurrency(val: number): string {
+  if (Math.abs(val) >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(val) >= 1_000) return `$${(val / 1_000).toFixed(0)}K`;
+  return `$${val.toLocaleString()}`;
+}
 
-function NextBestZoningSection() {
-  const { development_path } = useZoningModuleStore();
+function NextBestZoningSection({ dealId }: { dealId?: string }) {
   const [expanded, setExpanded] = useState(true);
+  const [opportunities, setOpportunities] = useState<RezoneOpportunityData[]>([]);
+  const [bestTarget, setBestTarget] = useState<RezoneOpportunityData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadRezoneAnalysis = useCallback(async () => {
+    if (!dealId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
+      setOpportunities(res.data.opportunities || []);
+      setBestTarget(res.data.bestTarget || null);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to load rezone analysis');
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId]);
+
+  useEffect(() => {
+    loadRezoneAnalysis();
+  }, [loadRezoneAnalysis]);
+
+  const getRiskLabel = (risk: string): { label: string; className: string } => {
+    switch (risk) {
+      case 'Low': return { label: 'Low', className: 'bg-green-50 text-green-700' };
+      case 'Medium': return { label: 'Medium', className: 'bg-amber-50 text-amber-700' };
+      default: return { label: 'High', className: 'bg-red-50 text-red-700' };
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -263,57 +299,97 @@ function NextBestZoningSection() {
 
       {expanded && (
         <div className="p-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Density</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Height</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">FAR</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">+Units</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
-                  <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Feasibility</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {MOCK_NEXT_BEST.map(d => (
-                  <tr key={d.code} className="hover:bg-gray-50">
-                    <td className="py-2.5 px-3">
-                      <div className="text-xs font-bold text-gray-900">{d.code}</div>
-                      <div className="text-[10px] text-gray-500">{d.name}</div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">{d.distance}</div>
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.densityBoost}</td>
-                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.heightBoost}</td>
-                    <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">{d.farBoost}</td>
-                    <td className="py-2.5 px-3 text-center text-xs font-bold text-gray-900">+{d.additionalUnits}</td>
-                    <td className="py-2.5 px-3 text-center text-xs font-bold text-green-700">{d.revenueUplift}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                        d.feasibility === 'High' ? 'bg-green-50 text-green-700' :
-                        d.feasibility === 'Medium' ? 'bg-amber-50 text-amber-700' :
-                        'bg-red-50 text-red-700'
-                      }`}>{d.feasibility}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-start gap-2">
-              <span className="text-base">💡</span>
-              <div>
-                <p className="text-xs text-blue-900 font-medium">AI Recommendation</p>
-                <p className="text-xs text-blue-700 mt-0.5">
-                  SPI-1 overlay offers the best risk-adjusted return: +61 units with high feasibility
-                  through an overlay application rather than full rezone. Estimated 2-4 month process.
-                </p>
-              </div>
+          {loading && (
+            <div className="flex items-center justify-center py-8 gap-2 text-sm text-gray-500">
+              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              Loading rezone analysis...
             </div>
-          </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-600">
+              {error}
+            </div>
+          )}
+
+          {!loading && !error && opportunities.length === 0 && (
+            <div className="text-center py-6">
+              <p className="text-sm text-gray-500">No higher-density rezone targets found for this district.</p>
+            </div>
+          )}
+
+          {!loading && opportunities.length > 0 && (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Density</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Height</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">GFA</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">+Units</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                      <th className="text-center py-2 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Risk</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {opportunities.map(d => {
+                      const riskInfo = getRiskLabel(d.risk);
+                      return (
+                        <tr key={d.targetDistrictId} className={`hover:bg-gray-50 ${d.recommended ? 'bg-amber-50/30' : ''}`}>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-bold text-gray-900">{d.targetDistrictCode}</span>
+                              {d.recommended && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Best</span>
+                              )}
+                            </div>
+                            {d.targetDistrictName && <div className="text-[10px] text-gray-500">{d.targetDistrictName}</div>}
+                            <div className="text-[10px] text-gray-400 mt-0.5">{d.estimatedTimeline}</div>
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
+                            {d.delta.unitUpliftPct > 0 ? `+${d.delta.unitUpliftPct}%` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
+                            {d.delta.heightDifference > 0 ? `+${d.delta.heightDifference} floors` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs text-green-700 font-medium">
+                            {d.delta.additionalGFA > 0 ? `+${d.delta.additionalGFA.toLocaleString()} sf` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs font-bold text-gray-900">
+                            {d.delta.additionalUnits > 0 ? `+${d.delta.additionalUnits}` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-xs font-bold text-green-700">
+                            {d.revenue.valueUplift > 0 ? `+${formatCurrency(d.revenue.valueUplift)}` : '—'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${riskInfo.className}`}>
+                              {riskInfo.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {bestTarget && (
+                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-base">💡</span>
+                    <div>
+                      <p className="text-xs text-blue-900 font-medium">Top Rezone Opportunity</p>
+                      <p className="text-xs text-blue-700 mt-0.5">
+                        {bestTarget.insight}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -570,7 +646,7 @@ export default function ZoningComparatorTab({ dealId, deal }: ZoningComparatorTa
         </div>
       )}
 
-      <NextBestZoningSection />
+      <NextBestZoningSection dealId={dealId} />
       <RezoningPathwaySection />
 
       {!comparison && !loading && !error && (

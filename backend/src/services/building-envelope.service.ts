@@ -110,6 +110,15 @@ export interface DensityBonuses {
   tdrBonusPercent?: number;
 }
 
+export interface SourceRule {
+  field: string;
+  displayLabel: string;
+  sectionNumber: string | null;
+  sectionTitle: string | null;
+  sourceUrl: string | null;
+  sourceType: 'municode' | 'search' | 'chapter';
+}
+
 export interface BuildingEnvelopeInputs {
   landArea: number;
   setbacks: Setbacks;
@@ -118,6 +127,7 @@ export interface BuildingEnvelopeInputs {
   propertyType: PropertyType;
   dealType?: 'residential' | 'commercial' | 'mixed-use';
   densityBonuses?: DensityBonuses | null;
+  sourceRules?: SourceRule[] | null;
 }
 
 export interface CapacityByConstraint {
@@ -125,6 +135,34 @@ export interface CapacityByConstraint {
   byFAR: number | null;
   byHeight: number | null;
   byParking: number | null;
+}
+
+export interface SourceCitation {
+  field: string;
+  displayLabel: string;
+  value: number | string | null;
+  unit: string;
+  sectionNumber: string | null;
+  sectionTitle: string | null;
+  sourceUrl: string | null;
+  sourceType: 'municode' | 'search' | 'chapter' | 'derived';
+}
+
+export interface CalculationBreakdown {
+  name: string;
+  formula: string;
+  result: number;
+  unit: string;
+  sectionNumber: string | null;
+  sourceUrl: string | null;
+}
+
+export interface EnvelopeInsights {
+  envelope: string;
+  density: string;
+  height: string;
+  parking: string;
+  controllingFactor: string;
 }
 
 export interface BuildingEnvelopeResult {
@@ -139,6 +177,9 @@ export interface BuildingEnvelopeResult {
   parkingArea: { surface: number; structured: number };
   propertyType: PropertyType;
   config: PropertyTypeConfig;
+  sources: Record<string, SourceCitation>;
+  calculations: CalculationBreakdown[];
+  insights: EnvelopeInsights;
 }
 
 export interface RevenueAssumptions {
@@ -166,8 +207,15 @@ export interface HighestBestUseResult {
 export class BuildingEnvelopeService {
   calculateEnvelope(inputs: BuildingEnvelopeInputs): BuildingEnvelopeResult {
     const config = PROPERTY_TYPE_CONFIGS[inputs.propertyType];
-    const { landArea, setbacks, lotDimensions, zoningConstraints, densityBonuses } = inputs;
+    const { landArea, setbacks, lotDimensions, zoningConstraints, densityBonuses, sourceRules } = inputs;
     const dealType = inputs.dealType || 'residential';
+
+    const ruleMap = new Map<string, SourceRule>();
+    if (sourceRules) {
+      for (const rule of sourceRules) {
+        ruleMap.set(rule.field, rule);
+      }
+    }
 
     let appliedFAR = zoningConstraints.maxFAR;
     if (zoningConstraints.residentialFAR != null || zoningConstraints.nonresidentialFAR != null) {
@@ -236,6 +284,16 @@ export class BuildingEnvelopeService {
       structured: Math.ceil(parkingRequired * 300),
     };
 
+    const sources = this.buildSourceCitations(zoningConstraints, setbacks, ruleMap);
+    const calculations = this.buildCalculationBreakdowns(
+      inputs, config, buildableArea, maxFootprint, maxFloors, maxGFA, maxCapacity,
+      appliedFAR, parkingRequired, capacityByConstraint, ruleMap
+    );
+    const insights = this.buildInsights(
+      inputs, config, buildableArea, maxFootprint, maxFloors, maxGFA,
+      maxCapacity, limitingFactor, capacityByConstraint, parkingRequired
+    );
+
     return {
       buildableArea: Math.round(buildableArea * 100) / 100,
       maxFootprint: Math.round(maxFootprint * 100) / 100,
@@ -248,6 +306,9 @@ export class BuildingEnvelopeService {
       parkingArea,
       propertyType: inputs.propertyType,
       config,
+      sources,
+      calculations,
+      insights,
     };
   }
 
@@ -427,6 +488,265 @@ export class BuildingEnvelopeService {
       default:
         return 0;
     }
+  }
+
+  private buildSourceCitations(
+    constraints: ZoningConstraints,
+    setbacks: Setbacks,
+    ruleMap: Map<string, SourceRule>
+  ): Record<string, SourceCitation> {
+    const sources: Record<string, SourceCitation> = {};
+
+    const addSource = (
+      key: string,
+      displayLabel: string,
+      value: number | string | null | undefined,
+      unit: string,
+      ruleField: string
+    ) => {
+      const rule = ruleMap.get(ruleField);
+      sources[key] = {
+        field: key,
+        displayLabel,
+        value: value ?? null,
+        unit,
+        sectionNumber: rule?.sectionNumber ?? null,
+        sectionTitle: rule?.sectionTitle ?? null,
+        sourceUrl: rule?.sourceUrl ?? null,
+        sourceType: rule?.sourceType ?? 'derived',
+      };
+    };
+
+    addSource('maxHeight', 'Maximum Height', constraints.maxHeight, 'ft', 'maxHeight');
+    addSource('maxStories', 'Maximum Stories', constraints.maxStories, 'stories', 'maxStories');
+    addSource('maxFAR', 'Floor Area Ratio', constraints.appliedFAR ?? constraints.maxFAR, '', 'maxFAR');
+    addSource('maxDensity', 'Maximum Density', constraints.maxDensity, 'units/acre', 'maxDensity');
+    addSource('maxLotCoverage', 'Maximum Lot Coverage', constraints.maxLotCoverage, '%', 'lotCoverage');
+    addSource('parking', 'Parking Requirement', constraints.minParkingPerUnit, 'spaces/unit', 'parking');
+    addSource('frontSetback', 'Front Setback', setbacks.front, 'ft', 'frontSetback');
+    addSource('sideSetback', 'Side Setback', setbacks.side, 'ft', 'sideSetback');
+    addSource('rearSetback', 'Rear Setback', setbacks.rear, 'ft', 'rearSetback');
+
+    return sources;
+  }
+
+  private buildCalculationBreakdowns(
+    inputs: BuildingEnvelopeInputs,
+    config: PropertyTypeConfig,
+    buildableArea: number,
+    maxFootprint: number,
+    maxFloors: number,
+    maxGFA: number,
+    maxCapacity: number,
+    appliedFAR: number | null | undefined,
+    parkingRequired: number,
+    capacity: CapacityByConstraint,
+    ruleMap: Map<string, SourceRule>
+  ): CalculationBreakdown[] {
+    const calcs: CalculationBreakdown[] = [];
+    const { landArea, setbacks, lotDimensions, zoningConstraints } = inputs;
+
+    const hasLotDims = lotDimensions && lotDimensions.frontage > 0 && lotDimensions.depth > 0;
+    if (hasLotDims) {
+      calcs.push({
+        name: 'Buildable Area',
+        formula: `(${lotDimensions!.frontage}ft frontage - 2×${setbacks.side}ft side setback) × (${lotDimensions!.depth}ft depth - ${setbacks.front}ft front - ${setbacks.rear}ft rear) = ${Math.round(buildableArea).toLocaleString()} sqft`,
+        result: Math.round(buildableArea),
+        unit: 'sqft',
+        sectionNumber: ruleMap.get('frontSetback')?.sectionNumber ?? null,
+        sourceUrl: ruleMap.get('frontSetback')?.sourceUrl ?? null,
+      });
+    } else {
+      const side = Math.sqrt(landArea);
+      calcs.push({
+        name: 'Buildable Area',
+        formula: `√${landArea.toLocaleString()} sqft lot ≈ ${Math.round(side)}ft side, minus setbacks (F:${setbacks.front}ft, S:${setbacks.side}ft, R:${setbacks.rear}ft) = ${Math.round(buildableArea).toLocaleString()} sqft`,
+        result: Math.round(buildableArea),
+        unit: 'sqft',
+        sectionNumber: ruleMap.get('frontSetback')?.sectionNumber ?? null,
+        sourceUrl: ruleMap.get('frontSetback')?.sourceUrl ?? null,
+      });
+    }
+
+    if (zoningConstraints.maxLotCoverage != null) {
+      calcs.push({
+        name: 'Max Footprint (Lot Coverage)',
+        formula: `min(${Math.round(buildableArea).toLocaleString()} sqft buildable, ${landArea.toLocaleString()} sqft × ${zoningConstraints.maxLotCoverage}%) = ${Math.round(maxFootprint).toLocaleString()} sqft`,
+        result: Math.round(maxFootprint),
+        unit: 'sqft',
+        sectionNumber: ruleMap.get('lotCoverage')?.sectionNumber ?? null,
+        sourceUrl: ruleMap.get('lotCoverage')?.sourceUrl ?? null,
+      });
+    }
+
+    if (zoningConstraints.maxHeight != null) {
+      const heightRule = ruleMap.get('maxHeight');
+      calcs.push({
+        name: 'Max Floors (by Height)',
+        formula: `${zoningConstraints.maxHeight}ft max height ÷ ${config.floorHeight}ft floor height = ${maxFloors} floors`,
+        result: maxFloors,
+        unit: 'floors',
+        sectionNumber: heightRule?.sectionNumber ?? null,
+        sourceUrl: heightRule?.sourceUrl ?? null,
+      });
+    }
+
+    if (appliedFAR != null) {
+      const farRule = ruleMap.get('maxFAR');
+      calcs.push({
+        name: 'Max GFA (by FAR)',
+        formula: `${appliedFAR} FAR × ${landArea.toLocaleString()} sqft lot = ${Math.round(appliedFAR * landArea).toLocaleString()} sqft`,
+        result: Math.round(appliedFAR * landArea),
+        unit: 'sqft',
+        sectionNumber: farRule?.sectionNumber ?? null,
+        sourceUrl: farRule?.sourceUrl ?? null,
+      });
+    }
+
+    calcs.push({
+      name: 'Max GFA (by Envelope)',
+      formula: `${Math.round(maxFootprint).toLocaleString()} sqft footprint × ${maxFloors} floors = ${Math.round(maxFootprint * maxFloors).toLocaleString()} sqft`,
+      result: Math.round(maxGFA),
+      unit: 'sqft',
+      sectionNumber: null,
+      sourceUrl: null,
+    });
+
+    const acres = landArea / 43560;
+    if (capacity.byDensity != null && zoningConstraints.maxDensity != null) {
+      const densityRule = ruleMap.get('maxDensity');
+      calcs.push({
+        name: 'Capacity by Density',
+        formula: `${zoningConstraints.maxDensity} units/acre × ${acres.toFixed(2)} acres = ${capacity.byDensity} units`,
+        result: capacity.byDensity,
+        unit: 'units',
+        sectionNumber: densityRule?.sectionNumber ?? null,
+        sourceUrl: densityRule?.sourceUrl ?? null,
+      });
+    }
+
+    if (capacity.byFAR != null && appliedFAR != null) {
+      const farRule = ruleMap.get('maxFAR');
+      calcs.push({
+        name: 'Capacity by FAR',
+        formula: `(${appliedFAR} FAR × ${landArea.toLocaleString()} sqft) ÷ ${config.avgUnitSize} sqft/unit = ${capacity.byFAR} units`,
+        result: capacity.byFAR,
+        unit: 'units',
+        sectionNumber: farRule?.sectionNumber ?? null,
+        sourceUrl: farRule?.sourceUrl ?? null,
+      });
+    }
+
+    if (capacity.byHeight != null) {
+      const heightRule = ruleMap.get('maxHeight');
+      calcs.push({
+        name: 'Capacity by Height',
+        formula: `(${Math.round(maxFootprint).toLocaleString()} sqft × ${maxFloors} floors) ÷ ${config.avgUnitSize} sqft/unit = ${capacity.byHeight} units`,
+        result: capacity.byHeight,
+        unit: 'units',
+        sectionNumber: heightRule?.sectionNumber ?? null,
+        sourceUrl: heightRule?.sourceUrl ?? null,
+      });
+    }
+
+    calcs.push({
+      name: 'Max Capacity',
+      formula: `Binding constraint (${inputs.zoningConstraints.densityMethod === 'far_derived' ? 'FAR-derived' : 'lowest of all constraints'}) = ${maxCapacity} ${config.densityMetric === 'units/acre' ? 'units' : config.densityMetric === 'rooms/acre' ? 'rooms' : 'units'}`,
+      result: maxCapacity,
+      unit: config.densityMetric === 'units/acre' ? 'units' : config.densityMetric === 'rooms/acre' ? 'rooms' : 'units',
+      sectionNumber: null,
+      sourceUrl: null,
+    });
+
+    const parkingRule = ruleMap.get('parking');
+    calcs.push({
+      name: 'Parking Required',
+      formula: `${maxCapacity} units × ${zoningConstraints.minParkingPerUnit ?? config.parkingRatio} spaces/${config.parkingRatioUnit} = ${Math.ceil(parkingRequired)} spaces`,
+      result: Math.ceil(parkingRequired),
+      unit: 'spaces',
+      sectionNumber: parkingRule?.sectionNumber ?? null,
+      sourceUrl: parkingRule?.sourceUrl ?? null,
+    });
+
+    return calcs;
+  }
+
+  private buildInsights(
+    inputs: BuildingEnvelopeInputs,
+    config: PropertyTypeConfig,
+    buildableArea: number,
+    maxFootprint: number,
+    maxFloors: number,
+    maxGFA: number,
+    maxCapacity: number,
+    limitingFactor: string,
+    capacity: CapacityByConstraint,
+    parkingRequired: number
+  ): EnvelopeInsights {
+    const { landArea, setbacks, zoningConstraints } = inputs;
+    const coveragePercent = landArea > 0 ? Math.round((maxFootprint / landArea) * 100) : 0;
+
+    const envelope = `After setbacks (F:${setbacks.front}ft, S:${setbacks.side}ft, R:${setbacks.rear}ft), the buildable area is ${Math.round(buildableArea).toLocaleString()} sqft (${coveragePercent}% of lot). ` +
+      `The building envelope allows up to ${maxFloors} floor${maxFloors !== 1 ? 's' : ''} with a maximum GFA of ${Math.round(maxGFA).toLocaleString()} sqft.`;
+
+    let density: string;
+    if (zoningConstraints.densityMethod === 'far_derived') {
+      density = `Density is derived from FAR (${zoningConstraints.appliedFAR ?? zoningConstraints.maxFAR}). ` +
+        `At 85% efficiency with ${config.avgUnitSize} sqft average unit size, this yields ${maxCapacity} units.`;
+    } else if (zoningConstraints.maxDensity != null) {
+      const acres = landArea / 43560;
+      density = `Zoning allows ${zoningConstraints.maxDensity} units per acre. On this ${acres.toFixed(2)}-acre site, ` +
+        `that's ${capacity.byDensity ?? 0} units by density alone.`;
+    } else {
+      density = `No explicit density limit is set. Capacity of ${maxCapacity} units is determined by building envelope and FAR constraints.`;
+    }
+
+    let height: string;
+    if (zoningConstraints.maxHeight != null && zoningConstraints.maxStories != null) {
+      height = `Height is limited to ${zoningConstraints.maxHeight}ft and ${zoningConstraints.maxStories} stories. ` +
+        `With ${config.floorHeight}ft floor heights, this allows ${maxFloors} floors.`;
+    } else if (zoningConstraints.maxHeight != null) {
+      height = `Height is limited to ${zoningConstraints.maxHeight}ft. With ${config.floorHeight}ft floor heights, this allows ${maxFloors} floors.`;
+    } else if (zoningConstraints.maxStories != null) {
+      height = `Building is limited to ${zoningConstraints.maxStories} stories (${maxFloors} floors).`;
+    } else {
+      height = `No height limit is specified. The envelope defaults to ${maxFloors} floor${maxFloors !== 1 ? 's' : ''}.`;
+    }
+
+    let parking: string;
+    const parkingRatio = zoningConstraints.minParkingPerUnit ?? config.parkingRatio;
+    parking = `Parking requires ${parkingRatio} spaces ${config.parkingRatioUnit}, totaling ${Math.ceil(parkingRequired)} spaces. ` +
+      `This needs approximately ${Math.ceil(parkingRequired * 350).toLocaleString()} sqft for surface parking or ` +
+      `${Math.ceil(parkingRequired * 300).toLocaleString()} sqft for structured parking.`;
+    if (capacity.byParking != null && limitingFactor === 'parking') {
+      parking += ` Parking is the binding constraint, limiting capacity to ${capacity.byParking} units.`;
+    }
+
+    const constraintLabels: Record<string, string> = {
+      density: 'maximum density',
+      FAR: 'floor area ratio',
+      height: 'building height',
+      parking: 'parking requirements',
+      none: 'no single constraint',
+    };
+    const factorLabel = constraintLabels[limitingFactor] || limitingFactor;
+
+    let controllingFactor: string;
+    if (limitingFactor === 'none') {
+      controllingFactor = `No single constraint is binding. Capacity of ${maxCapacity} units is derived from the overall building envelope.`;
+    } else {
+      const constraintValues: Record<string, number | null> = {
+        density: capacity.byDensity,
+        FAR: capacity.byFAR,
+        height: capacity.byHeight,
+        parking: capacity.byParking,
+      };
+      const bindingValue = constraintValues[limitingFactor];
+      controllingFactor = `The controlling factor is ${factorLabel}, which limits development to ${bindingValue ?? maxCapacity} units. ` +
+        `This is the most restrictive of all applicable zoning constraints.`;
+    }
+
+    return { envelope, density, height, parking, controllingFactor };
   }
 
   private buildReasoning(

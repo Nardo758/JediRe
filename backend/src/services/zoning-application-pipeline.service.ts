@@ -1,7 +1,9 @@
 import { Pool } from 'pg';
 import { ZoningKnowledgeService, ZoningDistrictProfile } from './zoning-knowledge.service';
 import { ZoningReasoningService } from './zoning-reasoning.service';
-import { BuildingEnvelopeService, PropertyType, PROPERTY_TYPE_CONFIGS } from './building-envelope.service';
+import { BuildingEnvelopeService, PropertyType, PROPERTY_TYPE_CONFIGS, SourceRule, SourceCitation, CalculationBreakdown, EnvelopeInsights } from './building-envelope.service';
+import { municodeUrlService } from './municode-url.service';
+import { RezoneAnalysisService, RezoneAnalysisResult, RezoneOpportunity } from './rezone-analysis.service';
 
 export interface PipelineInput {
   dealId?: string;
@@ -75,6 +77,7 @@ export interface PipelineResult {
     baseDistrict: ZoningDistrictProfile | null;
     overlays: any[];
     proximityTriggers: string[];
+    sourceRules?: SourceRule[];
   };
   step2_baseApplication: {
     landAreaSf: number;
@@ -87,6 +90,7 @@ export interface PipelineResult {
     footprintSource?: string;
     constraintAdjustment?: number;
     constraintFlags?: any;
+    sources?: Record<string, SourceCitation>;
   };
   step3_overlayAdjustments: any[];
   step4_capacityScenarios: CapacityScenario[];
@@ -95,6 +99,9 @@ export interface PipelineResult {
   step7_strategyRecommendation: string;
   step8_confidence: ConfidenceBreakdown;
   citations: string[];
+  sources?: Record<string, SourceCitation>;
+  calculations?: CalculationBreakdown[];
+  insights?: EnvelopeInsights;
   processingTimeMs: number;
 }
 
@@ -103,12 +110,14 @@ export class ZoningApplicationPipeline {
   private knowledgeService: ZoningKnowledgeService;
   private reasoningService: ZoningReasoningService;
   private envelopeService: BuildingEnvelopeService;
+  private rezoneService: RezoneAnalysisService;
 
   constructor(pool: Pool, knowledgeService: ZoningKnowledgeService, reasoningService: ZoningReasoningService) {
     this.pool = pool;
     this.knowledgeService = knowledgeService;
     this.reasoningService = reasoningService;
     this.envelopeService = new BuildingEnvelopeService();
+    this.rezoneService = new RezoneAnalysisService(pool);
   }
 
   async execute(input: PipelineInput): Promise<PipelineResult> {
@@ -123,9 +132,23 @@ export class ZoningApplicationPipeline {
     const profile = step1.baseDistrict;
     const setbacks = input.setbacks || profile?.dimensional.setbacks || { front: 25, side: 10, rear: 20 };
 
-    const step2 = this.step2_applyBaseDistrict(input, profile, setbacks);
+    const step2 = this.step2_applyBaseDistrict(input, profile, setbacks, step1.sourceRules);
     const step3 = this.step3_applyOverlays(step1.overlays, step2);
-    const step4 = this.step4_calculateCapacity(input, profile, setbacks);
+
+    let rezoneResult: RezoneAnalysisResult | null = null;
+    try {
+      rezoneResult = await this.rezoneService.analyze({
+        currentDistrictCode: input.districtCode,
+        municipality: input.municipality,
+        municipalityId: step1.baseDistrict ? undefined : undefined,
+        lotAreaSf: input.landAreaSf,
+        propertyType: input.propertyType || 'multifamily',
+      });
+    } catch (e) {
+      console.warn('Rezone analysis unavailable, falling back to multiplier:', e);
+    }
+
+    const step4 = this.step4_calculateCapacity(input, profile, setbacks, step1.sourceRules, rezoneResult);
     const step5 = this.step5_identifyIncentives(profile, input);
     const step6 = this.step6_assessEntitlementPaths(step4, profile, input);
 
@@ -142,6 +165,8 @@ export class ZoningApplicationPipeline {
     citations.push(...(profile?.crossReferences?.map(cr => cr.ref) || []));
     citations.push(...(profile?.incentives?.map(i => i.codeRef).filter(Boolean) as string[] || []));
 
+    const envelopeData = this.getEnvelopeEnrichedData(input, profile, setbacks, step1.sourceRules);
+
     const result: PipelineResult = {
       step1_ruleStack: step1,
       step2_baseApplication: step2,
@@ -152,6 +177,9 @@ export class ZoningApplicationPipeline {
       step7_strategyRecommendation: step7,
       step8_confidence: step8,
       citations: [...new Set(citations)],
+      sources: envelopeData.sources,
+      calculations: envelopeData.calculations,
+      insights: envelopeData.insights,
       processingTimeMs: Date.now() - startTime,
     };
 
@@ -175,13 +203,24 @@ export class ZoningApplicationPipeline {
       }
     }
 
-    return { baseDistrict: profile, overlays, proximityTriggers };
+    let sourceRules: SourceRule[] | undefined;
+    if (lookup.municipalityId) {
+      try {
+        const ruleUrls = await municodeUrlService.getDistrictRuleUrls(lookup.municipalityId, input.districtCode);
+        sourceRules = ruleUrls.rules;
+      } catch (e) {
+        console.warn('Failed to fetch district rule URLs:', e);
+      }
+    }
+
+    return { baseDistrict: profile, overlays, proximityTriggers, sourceRules };
   }
 
   private step2_applyBaseDistrict(
     input: PipelineInput,
     profile: ZoningDistrictProfile | null,
-    setbacks: { front: number; side: number; rear: number }
+    setbacks: { front: number; side: number; rear: number },
+    sourceRules?: SourceRule[]
   ): PipelineResult['step2_baseApplication'] {
     const landAreaSf = input.landAreaSf;
     const acres = landAreaSf / 43560;
@@ -219,6 +258,35 @@ export class ZoningApplicationPipeline {
     }
     buildableFootprint = Math.round(buildableFootprint * Math.max(0.3, constraintAdjustment));
 
+    let sources: Record<string, SourceCitation> | undefined;
+    if (sourceRules && sourceRules.length > 0) {
+      sources = {};
+      for (const rule of sourceRules) {
+        const valueMap: Record<string, { value: number | string | null | undefined; unit: string }> = {
+          maxHeight: { value: dim?.maxHeightFt, unit: 'ft' },
+          maxStories: { value: dim?.maxStories, unit: 'stories' },
+          maxFAR: { value: dim?.maxFAR, unit: '' },
+          maxDensity: { value: dim?.maxDensityUnitsPerAcre, unit: 'units/acre' },
+          lotCoverage: { value: dim?.maxLotCoveragePct, unit: '%' },
+          parking: { value: profile?.parking.residential?.perUnit, unit: 'spaces/unit' },
+          frontSetback: { value: setbacks.front, unit: 'ft' },
+          sideSetback: { value: setbacks.side, unit: 'ft' },
+          rearSetback: { value: setbacks.rear, unit: 'ft' },
+        };
+        const mapped = valueMap[rule.field];
+        sources[rule.field] = {
+          field: rule.field,
+          displayLabel: rule.displayLabel,
+          value: mapped?.value ?? null,
+          unit: mapped?.unit ?? '',
+          sectionNumber: rule.sectionNumber,
+          sectionTitle: rule.sectionTitle,
+          sourceUrl: rule.sourceUrl,
+          sourceType: rule.sourceType,
+        };
+      }
+    }
+
     return {
       landAreaSf,
       acres,
@@ -230,6 +298,7 @@ export class ZoningApplicationPipeline {
       footprintSource,
       constraintAdjustment: constraintAdjustment < 1.0 ? constraintAdjustment : undefined,
       constraintFlags: input.constraints || undefined,
+      sources,
     };
   }
 
@@ -301,7 +370,9 @@ export class ZoningApplicationPipeline {
   private step4_calculateCapacity(
     input: PipelineInput,
     profile: ZoningDistrictProfile | null,
-    setbacks: { front: number; side: number; rear: number }
+    setbacks: { front: number; side: number; rear: number },
+    sourceRules?: SourceRule[],
+    rezoneResult?: RezoneAnalysisResult | null
   ): CapacityScenario[] {
     const scenarios: CapacityScenario[] = [];
     const propertyType = input.propertyType || 'multifamily';
@@ -319,6 +390,7 @@ export class ZoningApplicationPipeline {
         maxLotCoverage: dim?.maxLotCoveragePct || null,
       },
       propertyType,
+      sourceRules: sourceRules || null,
     });
 
     scenarios.push({
@@ -347,6 +419,7 @@ export class ZoningApplicationPipeline {
         },
         propertyType,
         densityBonuses: { affordableBonusPercent: 15 },
+        sourceRules: sourceRules || null,
       });
 
       scenarios.push({
@@ -376,19 +449,36 @@ export class ZoningApplicationPipeline {
       estimatedCost: 75000,
     });
 
-    const rezoneMultiplier = 1.7;
-    const rezoneUnits = Math.floor(envelopeResult.maxCapacity * rezoneMultiplier);
-    scenarios.push({
-      name: 'Rezone',
-      description: `Rezone to higher-density district (~70% increase to ${rezoneUnits} units)`,
-      maxUnits: rezoneUnits,
-      maxGFA: Math.round(envelopeResult.maxGFA * rezoneMultiplier),
-      limitingFactor: 'rezone_cap',
-      parkingRequired: Math.ceil(envelopeResult.parkingRequired * rezoneMultiplier),
-      riskScore: 55,
-      timelineMonths: 8,
-      estimatedCost: 150000,
-    });
+    const bestRezone = rezoneResult?.bestTarget;
+    if (bestRezone) {
+      const targetCode = bestRezone.targetDistrictCode;
+      const upliftPct = bestRezone.delta.unitUpliftPct;
+      scenarios.push({
+        name: 'Rezone',
+        description: `Rezone to ${targetCode} — ${bestRezone.delta.additionalUnits} additional units (+${upliftPct}% uplift)`,
+        maxUnits: bestRezone.targetEnvelope.maxCapacity,
+        maxGFA: bestRezone.targetEnvelope.maxGFA,
+        limitingFactor: bestRezone.targetEnvelope.limitingFactor,
+        parkingRequired: Math.ceil(bestRezone.targetEnvelope.maxCapacity * (envelopeResult.parkingRequired / Math.max(1, envelopeResult.maxCapacity))),
+        riskScore: 55,
+        timelineMonths: 12,
+        estimatedCost: 150000,
+      });
+    } else {
+      const rezoneMultiplier = 1.7;
+      const rezoneUnits = Math.floor(envelopeResult.maxCapacity * rezoneMultiplier);
+      scenarios.push({
+        name: 'Rezone',
+        description: `Rezone to higher-density district (~70% increase to ${rezoneUnits} units)`,
+        maxUnits: rezoneUnits,
+        maxGFA: Math.round(envelopeResult.maxGFA * rezoneMultiplier),
+        limitingFactor: 'rezone_cap',
+        parkingRequired: Math.ceil(envelopeResult.parkingRequired * rezoneMultiplier),
+        riskScore: 55,
+        timelineMonths: 8,
+        estimatedCost: 150000,
+      });
+    }
 
     return scenarios;
   }
@@ -579,6 +669,37 @@ Provide a clear, actionable recommendation. Consider risk-adjusted value, timeli
       default:
         return [];
     }
+  }
+
+  private getEnvelopeEnrichedData(
+    input: PipelineInput,
+    profile: ZoningDistrictProfile | null,
+    setbacks: { front: number; side: number; rear: number },
+    sourceRules?: SourceRule[]
+  ): { sources: Record<string, SourceCitation>; calculations: CalculationBreakdown[]; insights: EnvelopeInsights } {
+    const propertyType = input.propertyType || 'multifamily';
+    const dim = profile?.dimensional;
+
+    const envelopeResult = this.envelopeService.calculateEnvelope({
+      landArea: input.landAreaSf,
+      setbacks,
+      zoningConstraints: {
+        maxDensity: dim?.maxDensityUnitsPerAcre || null,
+        maxFAR: dim?.maxFAR || null,
+        maxHeight: dim?.maxHeightFt || null,
+        maxStories: dim?.maxStories || null,
+        minParkingPerUnit: profile?.parking.residential?.perUnit || null,
+        maxLotCoverage: dim?.maxLotCoveragePct || null,
+      },
+      propertyType,
+      sourceRules: sourceRules || null,
+    });
+
+    return {
+      sources: envelopeResult.sources,
+      calculations: envelopeResult.calculations,
+      insights: envelopeResult.insights,
+    };
   }
 
   private async saveAnalysis(input: PipelineInput, result: PipelineResult): Promise<void> {

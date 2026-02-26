@@ -30,6 +30,7 @@ interface PathComparisonTableProps {
   maxDensityPerAcre: number;
   avgUnitSizeSf: number;
   costPerSf?: number;
+  rezoneAnalysis?: any;
 }
 
 export default function PathComparisonTable({
@@ -39,6 +40,7 @@ export default function PathComparisonTable({
   maxDensityPerAcre,
   avgUnitSizeSf,
   costPerSf = 185,
+  rezoneAnalysis,
 }: PathComparisonTableProps) {
   const { development_path } = useZoningModuleStore();
 
@@ -47,7 +49,10 @@ export default function PathComparisonTable({
       ? Math.floor(byRightUnits * (1 + overlayBonusPct / 100))
       : 0;
     const varianceUnits = Math.floor(byRightUnits * 1.15);
-    const rezoneUnits = Math.floor(lotAcres * maxDensityPerAcre * 1.5);
+    const bestTarget = rezoneAnalysis?.bestTarget;
+    const rezoneUnits = bestTarget
+      ? bestTarget.targetEnvelope.maxCapacity
+      : Math.floor(lotAcres * maxDensityPerAcre * 1.5);
 
     const estConstructionCost = (units: number) => {
       const gfa = units * avgUnitSizeSf;
@@ -110,10 +115,10 @@ export default function PathComparisonTable({
       },
       {
         id: 'rezone',
-        label: 'Full Rezone',
+        label: bestTarget ? `Rezone to ${bestTarget.targetDistrictCode}` : 'Full Rezone',
         units: rezoneUnits,
-        timeline: '8-18 mo',
-        entitlementCost: '$275-500K',
+        timeline: bestTarget?.estimatedTimeline || '8-18 mo',
+        entitlementCost: bestTarget?.estimatedCost || '$275-500K',
         constructionCost: estConstructionCost(rezoneUnits),
         estimatedIrr: estIrr(rezoneUnits, 13, 4),
         riskLevel: 'High',
@@ -123,7 +128,7 @@ export default function PathComparisonTable({
     );
 
     return result;
-  }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre, avgUnitSizeSf, costPerSf]);
+  }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre, avgUnitSizeSf, costPerSf, rezoneAnalysis]);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

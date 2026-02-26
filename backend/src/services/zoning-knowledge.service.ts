@@ -50,6 +50,7 @@ export interface LookupResult {
   profile: ZoningDistrictProfile | null;
   flatData: any | null;
   districtId: string | null;
+  municipalityId: string | null;
   confidence: number;
   citations: string[];
 }
@@ -88,7 +89,7 @@ export class ZoningKnowledgeService {
     );
 
     if (result.rows.length === 0) {
-      return { found: false, source: 'none', profile: null, flatData: null, districtId: null, confidence: 0, citations: [] };
+      return { found: false, source: 'none', profile: null, flatData: null, districtId: null, municipalityId: null, confidence: 0, citations: [] };
     }
 
     const row = result.rows[0];
@@ -107,6 +108,7 @@ export class ZoningKnowledgeService {
         profile,
         flatData: row,
         districtId: row.id,
+        municipalityId: municipalityId || null,
         confidence: row.confidence_score || 85,
         citations: profile.crossReferences?.map((cr: any) => cr.ref) || [],
       };
@@ -124,6 +126,7 @@ export class ZoningKnowledgeService {
       profile,
       flatData: row,
       districtId: row.id,
+      municipalityId: municipalityId || null,
       confidence: row.confidence_score || 70,
       citations: [],
     };

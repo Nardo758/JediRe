@@ -3,6 +3,7 @@ import {
   MapPin,
   CheckCircle2,
   BarChart3,
+  TrendingUp,
   ShieldAlert,
   GitCompareArrows,
   Clock,
@@ -16,6 +17,7 @@ import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import ZoningComparatorTab from '../../zoning/tabs/ZoningComparatorTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
+import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 
 interface ZoningModuleSectionProps {
@@ -28,9 +30,10 @@ interface ZoningModuleSectionProps {
 const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
-  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 3 },
-  { id: 'comparator', label: 'Zoning Comparator', icon: <GitCompareArrows className="w-4 h-4" />, step: 4 },
-  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
+  { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
+  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
+  { id: 'comparator', label: 'Zoning Comparator', icon: <GitCompareArrows className="w-4 h-4" />, step: 5 },
+  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 6 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
@@ -112,6 +115,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         );
       case 'capacity':
         return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} />;
+      case 'hbu':
+        return <HighestBestUseTab dealId={resolvedDealId} deal={deal} />;
       case 'risk':
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'comparator':
