@@ -1,0 +1,136 @@
+/**
+ * JEDI RE: Comp Query Routes
+ * ============================
+ * Place in: backend/src/api/rest/comp.routes.ts
+ * Mount in index.ts: app.use('/api/v1/comps', compRoutes);
+ */
+
+import { Router, Request, Response } from 'express';
+import {
+  searchComps,
+  getRentComps,
+  getSubmarketStats,
+  type CompSearchParams,
+  type CompSortField,
+} from '../../services/compQueryEngine';
+// Import your Drizzle db instance
+// import { db } from '../../db';
+
+const router = Router();
+
+const VALID_SORT_FIELDS: CompSortField[] = [
+  't12_avg_rent',
+  't12_total_noi',
+  't12_avg_noi_per_unit',
+  't12_avg_occupancy',
+  't12_avg_opex_ratio',
+  'total_units',
+  'year_built',
+];
+
+/**
+ * GET /api/v1/comps/search
+ * Search for comps by geography, property characteristics, and financial metrics.
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const params: CompSearchParams = {
+      msaId: req.query.msa_id as string | undefined,
+      submarketId: req.query.submarket_id as string | undefined,
+      state: req.query.state as string | undefined,
+      city: req.query.city as string | undefined,
+      propertyType: req.query.property_type as string | undefined,
+      productType: req.query.product_type as string | undefined,
+      minUnits: req.query.min_units ? Number(req.query.min_units) : undefined,
+      maxUnits: req.query.max_units ? Number(req.query.max_units) : undefined,
+      minYearBuilt: req.query.min_year_built ? Number(req.query.min_year_built) : undefined,
+      maxYearBuilt: req.query.max_year_built ? Number(req.query.max_year_built) : undefined,
+      minRent: req.query.min_rent ? Number(req.query.min_rent) : undefined,
+      maxRent: req.query.max_rent ? Number(req.query.max_rent) : undefined,
+      minOccupancy: req.query.min_occupancy ? Number(req.query.min_occupancy) : undefined,
+      minNoiPerUnit: req.query.min_noi_per_unit ? Number(req.query.min_noi_per_unit) : undefined,
+      maxOpexRatio: req.query.max_opex_ratio ? Number(req.query.max_opex_ratio) : undefined,
+      excludePropertyId: req.query.exclude_property_id as string | undefined,
+      sortBy: VALID_SORT_FIELDS.includes(req.query.sort_by as CompSortField)
+        ? (req.query.sort_by as CompSortField)
+        : 't12_avg_noi_per_unit',
+      sortDesc: req.query.sort_desc !== 'false',
+      limit: req.query.limit ? Math.min(Number(req.query.limit), 200) : 50,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+    };
+
+    // TODO: Pass your db instance
+    // const result = await searchComps(db, params);
+    // return res.json(result);
+
+    // Placeholder until db is wired
+    return res.json({
+      results: [],
+      totalCount: 0,
+      stats: null,
+      filtersApplied: params,
+      message: 'Wire db instance to activate',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Search failed';
+    return res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/v1/comps/rent-comps/:propertyId
+ * F27: Rent comp analysis for a subject property.
+ * Finds nearby comps and calculates rent premium/discount.
+ */
+router.get('/rent-comps/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const radiusMiles = req.query.radius ? Number(req.query.radius) : 3.0;
+
+    if (radiusMiles < 0.5 || radiusMiles > 25) {
+      return res.status(400).json({ error: 'Radius must be between 0.5 and 25 miles' });
+    }
+
+    // TODO: Pass your db instance
+    // const result = await getRentComps(db, propertyId, radiusMiles);
+    // return res.json(result);
+
+    return res.json({
+      propertyId,
+      radiusMiles,
+      comps: [],
+      subjectRent: null,
+      avgCompRent: null,
+      rentPremiumPct: null,
+      message: 'Wire db instance to activate',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Rent comp query failed';
+    return res.status(500).json({ error: message });
+  }
+});
+
+/**
+ * GET /api/v1/comps/submarket-stats/:submarketId
+ * Aggregate comp stats for a submarket — feeds F26 Submarket Rank.
+ */
+router.get('/submarket-stats/:submarketId', async (req: Request, res: Response) => {
+  try {
+    const { submarketId } = req.params;
+
+    // TODO: Pass your db instance
+    // const stats = await getSubmarketStats(db, submarketId);
+    // return res.json({ submarketId, stats });
+
+    return res.json({
+      submarketId,
+      stats: null,
+      message: 'Wire db instance to activate',
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Stats query failed';
+    return res.status(500).json({ error: message });
+  }
+});
+
+export default router;
