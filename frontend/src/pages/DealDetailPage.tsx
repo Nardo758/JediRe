@@ -54,6 +54,26 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
+import { useZoningModuleStore } from '../stores/zoningModuleStore';
+import type { DevelopmentPath } from '../types/zoning.types';
+
+const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
+  by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
+  overlay_bonus: { label: 'Overlay Bonus', color: 'bg-blue-100 text-blue-700' },
+  variance: { label: 'Variance', color: 'bg-amber-100 text-amber-700' },
+  rezone: { label: 'Full Rezone', color: 'bg-red-100 text-red-700' },
+};
+
+function DevPathBadge() {
+  const { development_path } = useZoningModuleStore();
+  if (!development_path) return null;
+  const cfg = DEV_PATH_CONFIG[development_path];
+  return (
+    <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
+      {cfg.label}
+    </span>
+  );
+}
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -374,6 +394,7 @@ const DealDetailPage: React.FC = () => {
                 {deal.status}
               </span>
             )}
+            <DevPathBadge />
           </div>
           <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
             {(deal.address || deal.location) && (

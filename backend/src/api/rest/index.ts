@@ -68,6 +68,7 @@ import zoningVerificationRoutes from './zoning-verification.routes';
 import zoningProfileRoutes from './zoning-profile.routes';
 import developmentScenariosRoutes from './development-scenarios.routes';
 import moduleWiringRoutes from './module-wiring.routes';
+import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -266,6 +267,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Module Wiring routes (Module Registry, Formula Engine, Data Flow, Strategy, Orchestrator)
   app.use(`${API_PREFIX}/module-wiring`, moduleWiringRoutes);
+
+  // Benchmark Timeline routes (Monte Carlo simulations for Time-to-Shovel)
+  app.use(`${API_PREFIX}/benchmark-timeline`, benchmarkTimelineRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

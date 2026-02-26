@@ -225,6 +225,24 @@ router.post('/strategy/compare', (req: Request, res: Response) => {
   res.json(result);
 });
 
+/** POST /strategy/analyze-with-envelope/:dealId - Run envelope-adjusted strategy analysis */
+router.post('/strategy/analyze-with-envelope/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { envelope, signals } = req.body;
+    if (!envelope?.development_path || !envelope?.max_units) {
+      return res.status(400).json({ error: 'envelope with development_path and max_units required' });
+    }
+    const result = await strategyArbitrageEngine.analyzeWithEnvelope(
+      req.params.dealId,
+      envelope,
+      signals,
+    );
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // ============================================================================
 // Orchestrator Endpoints
 // ============================================================================

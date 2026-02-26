@@ -3,8 +3,10 @@ import { apiClient } from '../../../services/api.client';
 import {
   MessageSquare, Clock, Users, FolderOpen, DollarSign,
   Calendar, FileText, AlertTriangle, Plus, Trash2, Pin,
-  CheckCircle, XCircle, Edit2, Save, X, ChevronDown, ChevronUp
+  CheckCircle, XCircle, Edit2, Save, X, ChevronDown, ChevronUp,
+  ClipboardList,
 } from 'lucide-react';
+import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 
 interface ContextTrackerSectionProps {
   deal?: any;
@@ -22,6 +24,7 @@ const TABS = [
   { id: 'dates', name: 'Key Dates', icon: Calendar, color: 'rose' },
   { id: 'decisions', name: 'Decision Log', icon: FileText, color: 'indigo' },
   { id: 'risks', name: 'Risk Flags', icon: AlertTriangle, color: 'red' },
+  { id: 'entitlements', name: 'Entitlements', icon: ClipboardList, color: 'teal' },
 ];
 
 export const ContextTrackerSection: React.FC<ContextTrackerSectionProps> = ({ deal, dealId: propDealId }) => {
@@ -66,6 +69,7 @@ export const ContextTrackerSection: React.FC<ContextTrackerSectionProps> = ({ de
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
         {activeTab === 'risks' && <RisksTab dealId={resolvedDealId} />}
+        {activeTab === 'entitlements' && <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />}
       </div>
     </div>
   );

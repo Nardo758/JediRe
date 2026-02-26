@@ -311,6 +311,106 @@ class StrategyArbitrageEngine {
   getStrategyWeights(): Record<StrategyType, StrategyWeights> {
     return { ...STRATEGY_WEIGHTS };
   }
+
+  /**
+   * Adjust strategy scores based on zoning envelope data from M02.
+   *
+   * When a development path is selected, it modifies the feasibility of each strategy:
+   * - by_right: boosts BTS (fast to market), slightly boosts Rental
+   * - overlay_bonus: boosts BTS and Rental (more units, moderate timeline)
+   * - variance: neutral-to-positive across strategies
+   * - rezone: boosts BTS (max density), penalizes STR (regulatory risk)
+   *
+   * @returns Adjusted ArbitrageResult with envelope-aware scores
+   */
+  async analyzeWithEnvelope(
+    dealId: string,
+    envelope: {
+      development_path: string;
+      max_units: number;
+      max_gfa_sf: number;
+      entitlement_timeline_months: number;
+      entitlement_risk_score?: number;
+    },
+    signals?: StrategySignalInputs,
+  ): Promise<ArbitrageResult> {
+    // Start with base analysis
+    const baseResult = await this.analyze(dealId, signals);
+
+    // Apply envelope-based adjustments
+    const pathAdjustments: Record<string, Record<StrategyType, number>> = {
+      by_right: { build_to_sell: 8, flip: 2, rental: 5, str: 3 },
+      overlay_bonus: { build_to_sell: 6, flip: 1, rental: 7, str: 2 },
+      variance: { build_to_sell: 3, flip: 2, rental: 4, str: 1 },
+      rezone: { build_to_sell: 10, flip: -2, rental: 5, str: -5 },
+    };
+
+    const adjustments = pathAdjustments[envelope.development_path] || {};
+
+    // Timeline penalty: longer entitlement = penalize time-sensitive strategies
+    const timelinePenalty = Math.min(10, envelope.entitlement_timeline_months * 0.5);
+    const timelineSensitivity: Record<StrategyType, number> = {
+      build_to_sell: 0.7,
+      flip: 1.0,
+      rental: 0.3,
+      str: 0.8,
+    };
+
+    // Scale boost: more units = more opportunity for BTS/Rental
+    const scaleBonus = envelope.max_units > 200 ? 5 : envelope.max_units > 100 ? 3 : 0;
+    const scaleAffinity: Record<StrategyType, number> = {
+      build_to_sell: 1.0,
+      flip: 0,
+      rental: 0.8,
+      str: 0.3,
+    };
+
+    // Apply adjustments
+    for (const strategy of baseResult.strategies) {
+      const pathAdj = adjustments[strategy.strategy] || 0;
+      const timePen = timelinePenalty * (timelineSensitivity[strategy.strategy] || 0.5);
+      const scaleAdj = scaleBonus * (scaleAffinity[strategy.strategy] || 0);
+      const riskAdj = (envelope.entitlement_risk_score ?? 0) * -0.1;
+
+      strategy.score = parseFloat(
+        Math.max(0, Math.min(100, strategy.score + pathAdj - timePen + scaleAdj + riskAdj)).toFixed(2)
+      );
+    }
+
+    // Re-sort and re-rank
+    baseResult.strategies.sort((a, b) => b.score - a.score);
+    baseResult.strategies.forEach((s, i) => { s.rank = i + 1; });
+
+    // Update recommended
+    const recommended = baseResult.strategies[0];
+    const secondBest = baseResult.strategies[1];
+    baseResult.recommended = recommended.strategy;
+    baseResult.recommendedScore = recommended.score;
+    baseResult.secondBest = secondBest.strategy;
+    baseResult.secondBestScore = secondBest.score;
+    baseResult.arbitrageDelta = parseFloat((recommended.score - secondBest.score).toFixed(2));
+    baseResult.arbitrageFlag = baseResult.arbitrageDelta > 15 && recommended.score > 70;
+
+    // Re-publish with envelope context
+    dataFlowRouter.publishModuleData('M08', dealId, {
+      strategy_scores: Object.fromEntries(baseResult.strategies.map(s => [s.strategy, s.score])),
+      roi_comparison_matrix: baseResult.roiComparison,
+      recommended_strategy: recommended.strategy,
+      arbitrage_flag: baseResult.arbitrageFlag,
+      arbitrage_delta: baseResult.arbitrageDelta,
+      envelope_adjusted: true,
+      development_path: envelope.development_path,
+    });
+
+    logger.info('Strategy analysis with envelope complete', {
+      dealId,
+      path: envelope.development_path,
+      recommended: recommended.strategy,
+      score: recommended.score,
+    });
+
+    return baseResult;
+  }
 }
 
 // ============================================================================

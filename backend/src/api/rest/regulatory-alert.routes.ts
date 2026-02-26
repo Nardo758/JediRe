@@ -108,4 +108,30 @@ router.patch('/:id/deactivate', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// Regulatory Risk Scoring (Phase 4b — M14 integration)
+// ============================================================================
+import { regulatoryRiskScoringService } from '../../services/regulatory-risk-scoring.service';
+
+/** POST /score-risk - Calculate composite regulatory risk score */
+router.post('/score-risk', async (req: Request, res: Response) => {
+  try {
+    const { dealId, municipality, state, developmentPath, categories } = req.body;
+    if (!dealId || !categories?.length) {
+      return res.status(400).json({ error: 'Required: dealId, categories[]' });
+    }
+    const result = await regulatoryRiskScoringService.scoreRegulatory({
+      dealId,
+      municipality: municipality || '',
+      state: state || '',
+      developmentPath,
+      categories,
+    });
+    res.json(result);
+  } catch (error: any) {
+    console.error('Regulatory risk scoring error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
