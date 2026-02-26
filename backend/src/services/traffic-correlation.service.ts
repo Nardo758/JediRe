@@ -257,6 +257,19 @@ export interface TrafficTrajectory {
   eight_week_change_pct: number;
   data_points: number;
   weekly_series: Array<{ week: number; year: number; walk_ins: number }>;
+
+  // v2 extensions
+  funnel_trajectory?: {
+    tours_trend: 'accelerating' | 'stable' | 'decelerating' | 'insufficient_data';
+    leases_trend: 'accelerating' | 'stable' | 'decelerating' | 'insufficient_data';
+    occupancy_trend: 'accelerating' | 'stable' | 'decelerating' | 'insufficient_data';
+  };
+  extended_series?: Array<{
+    week: number; year: number;
+    walk_ins: number;
+    tours?: number; apps?: number; net_leases?: number;
+    occupancy_pct?: number; effective_rent?: number;
+  }>;
 }
 
 export class TrafficTrajectoryService {
@@ -330,6 +343,63 @@ export class TrafficTrajectoryService {
         walk_ins: s.weekly_walk_ins
       }))
     };
+  }
+
+  /**
+   * v2: Extended trajectory with full funnel metrics
+   * Uses traffic_prediction_history v2 columns for tours, apps, leases, occ, rent
+   */
+  async calculateExtendedTrajectory(propertyId: string, weeks: number = 12): Promise<TrafficTrajectory> {
+    const base = await this.calculateTrajectory(propertyId);
+
+    // Try to load extended funnel data
+    const result = await pool.query(`
+      SELECT prediction_week, prediction_year, weekly_walk_ins,
+             in_person_tours, applications, net_leases,
+             occupancy_pct, effective_rent
+      FROM traffic_prediction_history
+      WHERE property_id = $1
+      ORDER BY prediction_year DESC, prediction_week DESC
+      LIMIT $2
+    `, [propertyId, weeks]);
+
+    const extended = result.rows.reverse();
+    if (extended.length < 4) return base;
+
+    // Calculate funnel trends
+    const halfPoint = Math.floor(extended.length / 2);
+    const fh = extended.slice(0, halfPoint);
+    const sh = extended.slice(halfPoint);
+
+    const trendFromSlopes = (field: string): 'accelerating' | 'stable' | 'decelerating' | 'insufficient_data' => {
+      const fhVals = fh.filter((r: any) => r[field] != null);
+      const shVals = sh.filter((r: any) => r[field] != null);
+      if (fhVals.length < 2 || shVals.length < 2) return 'insufficient_data';
+      const fhAvg = fhVals.reduce((s: number, r: any) => s + Number(r[field]), 0) / fhVals.length;
+      const shAvg = shVals.reduce((s: number, r: any) => s + Number(r[field]), 0) / shVals.length;
+      if (fhAvg <= 0) return 'stable';
+      const change = (shAvg - fhAvg) / fhAvg * 100;
+      return change > 5 ? 'accelerating' : change < -5 ? 'decelerating' : 'stable';
+    };
+
+    base.funnel_trajectory = {
+      tours_trend: trendFromSlopes('in_person_tours'),
+      leases_trend: trendFromSlopes('net_leases'),
+      occupancy_trend: trendFromSlopes('occupancy_pct'),
+    };
+
+    base.extended_series = extended.map((r: any) => ({
+      week: r.prediction_week,
+      year: r.prediction_year,
+      walk_ins: r.weekly_walk_ins,
+      tours: r.in_person_tours ?? undefined,
+      apps: r.applications ?? undefined,
+      net_leases: r.net_leases ?? undefined,
+      occupancy_pct: r.occupancy_pct ? parseFloat(r.occupancy_pct) : undefined,
+      effective_rent: r.effective_rent ? parseFloat(r.effective_rent) : undefined,
+    }));
+
+    return base;
   }
 }
 

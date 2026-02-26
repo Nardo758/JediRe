@@ -24,6 +24,7 @@ import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
+import TrafficEngineV2Section from '../components/deal/sections/TrafficEngineV2Section';
 
 import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
 import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligence';
@@ -169,11 +170,11 @@ const DealDetailPage: React.FC = () => {
       icon: <LineChart size={16} />, 
       component: TrendsAnalysisSection 
     },
-    { 
-      id: 'traffic', 
-      label: 'Traffic Engine', 
-      icon: <Car size={16} />, 
-      component: TrafficAnalysisSection 
+    {
+      id: 'traffic',
+      label: 'Traffic Engine v2',
+      icon: <Car size={16} />,
+      component: TrafficEngineV2Section
     },
   ];
 

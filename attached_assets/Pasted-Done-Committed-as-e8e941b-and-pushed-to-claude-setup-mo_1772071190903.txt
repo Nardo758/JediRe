@@ -1,0 +1,51 @@
+Done. Committed as `e8e941b` and pushed to `claude/setup-module-wiring-qlj4C`.
+
+**Summary of the Traffic Engine v2 upgrade** (8 files, +2,784 lines):
+
+### New Backend Services
+1. **`trafficLearningService.ts`** (~530 lines) — The learning loop:
+   - Excel upload parser (7-metric funnel: traffic, tours, apps, net leases, occupancy, eff rent, closing ratio)
+   - EMA recalibration (α=0.15 standard, α=0.05 for outliers with z-score > 2.5)
+   - Per-conversion-rate learning: tour_rate, app_rate, lease_rate (only when both sides reported)
+   - Bias detection: >75% same-direction across 4+ consecutive uploads triggers correction
+   - Confidence scoring: cold_start(0wk) → early(4) → calibrating(13) → trained(52) → high_fidelity(104+)
+
+2. **`tenYearProjectionService.ts`** (~370 lines) — 10-year forward projections:
+   - Weekly granularity: 104 weeks (years 1-2) with full funnel
+   - Monthly: 36 months (years 3-5) with confidence bands
+   - Quarterly: 20 quarters (years 6-10)
+   - Lease-up timeline detection (weeks to 90%/93%/95%)
+   - Seasonal risk windows (weeks where occ dips below threshold)
+
+### Updated Backend Services
+3. **`trafficPredictionEngine.ts`** — Added `predictTrafficV2()`:
+   - Full 7-metric chain: traffic → tours → apps → net_leases → occupancy → eff_rent
+   - Uses learned conversion rates instead of v1 static multipliers
+   - Occupancy feedback loop: occ<90% → ×1.3, >96% → ×0.7
+   - Seasonal index from learned data
+
+4. **`traffic-module-wiring.ts`** — v2 cross-module integration:
+   - Enhanced JEDI Score: net leases velocity + occupancy signals
+   - Enhanced Strategy: lease-up timeline + occupancy trajectory
+   - Direct ProForma override: vacancy, rent growth, absorption, concession budget, 5yr trajectories
+   - Risk module: seasonal risk windows
+
+5. **`traffic-correlation.service.ts`** — Extended trajectory with funnel trends
+
+### Database
+6. **`043_traffic_engine_v2.sql`** — Schema for v2:
+   - ALTER traffic_predictions/history for funnel columns
+   - traffic_learned_rates (EMA rates + seasonal + bias tracking)
+   - traffic_upload_history (Excel pipeline)
+   - traffic_projections (10-year cache)
+
+### Frontend
+7. **`TrafficEngineV2Section.tsx`** (~580 lines) — 6-tab component:
+   - Leasing Funnel (predicted vs actual, conversion rates, implied annual)
+   - Upload & Validate (drag-drop Excel, schema docs, upload history)
+   - Learning Loop (EMA formula, learned rates visualization, confidence tiers)
+   - 10-Year Projection (bar chart, year summaries)
+   - Seasonal Pattern (52-week heatmap, peak/risk callouts)
+   - Cross-Module Impact (ProForma, Strategy, JEDI adjustments)
+
+8. **`DealDetailPage.tsx`** — Swapped Traffic tab to v2
