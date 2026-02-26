@@ -16,7 +16,7 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
 
 -   **Backend:** Node.js/TypeScript with Express, GraphQL, and WebSockets.
 -   **Frontend:** React with Mapbox integration for map building and deal management.
--   **Database:** PostgreSQL with Drizzle ORM.
+-   **Database:** PostgreSQL with raw SQL queries via `query()` from `backend/src/database/connection.ts`. Drizzle ORM schema at `backend/src/db/schema/dataPipeline.ts` provides TypeScript types (`DealMonthlyActual`, `ProformaTemplate`, `Property`, etc.) for type safety — but queries remain raw SQL.
 -   **Python Integration:** TypeScript-to-Python bridge for geospatial engines (GeoPandas, PostGIS) and zoning code processing.
 -   **JEDI Score Engine:** A 5-signal scoring system (0-100) with demand integration and alerts.
 -   **Map Layer System:** Photoshop-like layer architecture supporting five types with drag-and-drop reordering.

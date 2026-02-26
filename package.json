@@ -6,6 +6,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@turf/area": "^7.3.4",
     "csv-parse": "^6.1.0",
+    "drizzle-orm": "^0.45.1",
     "drizzle-zod": "^0.8.3",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
