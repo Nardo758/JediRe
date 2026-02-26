@@ -5,7 +5,124 @@ export type AlertSeverity = 'critical' | 'warning' | 'watch' | 'info';
 export type RegulatoryCategory = 'zoning_changes' | 'rent_control' | 'str_restrictions' | 'impact_fees' | 'inclusionary_housing' | 'environmental' | 'moratorium' | 'other';
 export type TimelineScenario = 'by_right' | 'variance' | 'rezone';
 export type ComparisonMode = 'district' | 'parcel' | 'jurisdiction';
-export type ZoningTabId = 'lookup' | 'tracker' | 'capacity' | 'risk' | 'comparator' | 'timeline';
+export type ZoningTabId = 'boundary_zoning' | 'capacity' | 'risk' | 'comparator' | 'timeline';
+
+// ============================================================================
+// Development Path Selection (Phase 2 enhancement)
+// ============================================================================
+
+export type DevelopmentPath = 'by_right' | 'overlay_bonus' | 'variance' | 'rezone';
+
+export interface BuildingEnvelope {
+  max_units: number;
+  max_gfa_sf: number;
+  max_stories: number;
+  max_footprint_sf: number;
+  buildable_polygon: any | null; // GeoJSON.Polygon -> 3D model footprint
+  required_parking_spaces: number;
+  parking_structure_type: 'surface' | 'podium' | 'underground' | 'garage';
+  parking_levels: number;
+  residential_floors: number;
+  ground_floor_retail_sf: number;
+  construction_type: 'wood_frame' | 'podium_wood' | 'steel_concrete';
+}
+
+export interface PathAnalysis {
+  envelope: BuildingEnvelope;
+  entitlement_cost: number;
+  entitlement_timeline_months: { min: number; median: number; max: number };
+  construction_timeline_months: { min: number; median: number; max: number };
+  total_construction_cost: number;
+  estimated_exit_value: number;
+  estimated_irr: number;
+  risk_level: 'low' | 'moderate' | 'high' | 'very_high';
+  approval_probability: number;
+}
+
+export interface DevCapacityOutput {
+  selected_path: DevelopmentPath;
+  selected_envelope: BuildingEnvelope;
+  all_paths: {
+    by_right: PathAnalysis;
+    overlay_bonus: PathAnalysis | null;
+    variance: PathAnalysis;
+    rezone: PathAnalysis;
+  };
+  binding_constraint: 'density' | 'far' | 'height' | 'coverage' | 'parking';
+}
+
+/** Downstream to 3D Model (Design Dashboard) */
+export interface ParcelFor3D {
+  polygon: any; // GeoJSON.Polygon
+  lot_size_sf: number;
+  frontage: { road: string; length_ft: number }[];
+  is_corner: boolean;
+  topography: {
+    min_elev_ft: number;
+    max_elev_ft: number;
+    avg_slope_pct: number;
+  };
+  setbacks: {
+    front_ft: number;
+    side_ft: number;
+    rear_ft: number;
+    stepped?: { threshold_ft: number; step_factor: number };
+  };
+  max_height_ft: number;
+  max_lot_coverage_pct: number;
+  open_space_required_pct: number;
+  overlay_modifiers: {
+    name: string;
+    height_modifier_ft?: number;
+    density_modifier_pct?: number;
+    design_requirements?: string[];
+  }[];
+}
+
+/** Downstream to Financial Model (M09 ProForma) */
+export interface ZoningForFinance {
+  max_density_units_per_acre: number;
+  max_height_ft: number;
+  far_allowed: number;
+  far_applied: number;
+  far_utilization_pct: number;
+  parking_ratio: number;
+  parking_guest_ratio: number;
+  parking_reduction_eligible: boolean;
+  open_space_pct: number;
+  overlay_cost_impacts: {
+    name: string;
+    est_additional_cost: number;
+    est_additional_months: number;
+  }[];
+  tree_mitigation_risk: boolean;
+}
+
+/** Full Tab 1 output — Boundary + Zoning combined */
+export interface BoundaryAndZoningOutput {
+  parcel: ParcelFor3D;
+  zoning: {
+    code: string;
+    verification_status: 'MATCH' | 'MISMATCH' | 'UNVERIFIED';
+    source_link: string;
+    source_section: string;
+    municipality: string;
+    parameters: ZoningForFinance;
+    permitted_uses: string[];
+    conditional_uses: string[];
+    overlay_districts: OverlayDistrict[];
+  };
+}
+
+export interface OverlayDistrict {
+  id: string;
+  name: string;
+  code: string;
+  density_bonus_pct: number | null;
+  height_modifier_ft: number | null;
+  additional_requirements: string[];
+  source_link: string | null;
+}
 
 export interface ZoningDistrict {
   id: string;
@@ -334,6 +451,12 @@ export interface ZoningModuleState {
   dealTimeline: DealTimeline | null;
   timelineComparisonMarkets: string[];
   layerVisibility: Record<string, boolean>;
+
+  // Phase 2: Development Path Selection
+  development_path: DevelopmentPath | null;
+  selected_envelope: BuildingEnvelope | null;
+  path_target_code: string | null;
+
   setActiveTab: (tab: ZoningTabId) => void;
   selectParcel: (parcel: Parcel | null) => void;
   setSelectedZoning: (zoning: ZoningDistrict | null) => void;
@@ -348,4 +471,5 @@ export interface ZoningModuleState {
   setDealTimeline: (timeline: DealTimeline | null) => void;
   setMunicipalBenchmarks: (benchmarks: MunicipalBenchmark[]) => void;
   toggleLayer: (layerId: string) => void;
+  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null) => void;
 }
