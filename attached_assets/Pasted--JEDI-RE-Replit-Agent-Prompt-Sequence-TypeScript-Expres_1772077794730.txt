@@ -1,0 +1,620 @@
+# JEDI RE — Replit Agent Prompt Sequence (TypeScript/Express/Drizzle)
+
+## Your Actual Stack
+- **Runtime:** Node.js + TypeScript
+- **Web Framework:** Express
+- **ORM:** Drizzle ORM
+- **Database:** PostgreSQL (with PostGIS)
+- **Validation:** Zod
+- **File uploads:** Multer
+- **Excel parsing:** xlsx (SheetJS)
+
+Feed these prompts **one at a time, in order**. Test each before moving on.
+
+---
+
+## PROMPT 1: Database Schema + Geographic Foundation
+
+```
+I have an existing Node.js/TypeScript backend using Express and Drizzle ORM with PostgreSQL. I need to add new database tables for a real estate intelligence platform's data architecture.
+
+Create Drizzle ORM schema files and a migration for these foundation tables. Use the existing project structure — put schema in the appropriate schema/ or db/ directory.
+
+IMPORTANT: Use Drizzle ORM syntax (pgTable, uuid, varchar, decimal, integer, boolean, timestamp, etc). Use drizzle-kit for migrations.
+
+Enable PostGIS extension in the migration.
+
+TABLE: msas
+- id: uuid primary key (defaultRandom())
+- cbsaCode: varchar(5), unique, notNull
+- name: varchar(255), notNull
+- stateCodes: text array (use text('state_codes').array())
+- population: integer
+- createdAt: timestamp with timezone, default now()
+- updatedAt: timestamp with timezone, default now()
+
+TABLE: submarkets
+- id: uuid primary key
+- msaId: uuid, references msas(id), notNull
+- name: varchar(255), notNull
+- zipCodes: text array, notNull
+- censusTracts: text array
+- createdAt, updatedAt: timestamp with timezone
+
+TABLE: properties
+- id: uuid primary key
+- submarketId: uuid, references submarkets(id)
+- msaId: uuid, references msas(id)
+- userId: uuid, references users(id)
+- address: varchar(500), notNull
+- city: varchar(100)
+- state: varchar(2)
+- zip: varchar(10)
+- county: varchar(100)
+- latitude: decimal(10, 7), notNull
+- longitude: decimal(10, 7), notNull
+- propertyType: varchar(50), notNull (enum values: garden_style, mid_rise, high_rise, sfr, townhome, manufactured)
+- productType: varchar(50)
+- stories: integer
+- yearBuilt: integer
+- totalUnits: integer
+- totalSf: integer
+- acreage: decimal(10, 4)
+- assetClass: varchar(1) (A, B, C, D)
+- dealStatus: varchar(30), default 'prospect'
+- isOwnedAsset: boolean, default false
+- createdAt, updatedAt: timestamp with timezone
+
+Add indexes:
+- properties on submarketId
+- properties on (propertyType, stories, yearBuilt)
+- properties on (userId, isOwnedAsset) where isOwnedAsset = true
+
+Also add a users table if one doesn't already exist:
+- id: uuid primary key
+- email: varchar(255), unique, notNull
+- name: varchar(255)
+- company: varchar(255)
+- subscriptionTier: varchar(20), default 'basic'
+- createdAt: timestamp
+
+Create a seed script (TypeScript) that inserts:
+- 1 MSA: Dallas-Fort Worth-Arlington, TX (CBSA 19100)
+- 3 submarkets: Frisco/Prosper (zips 75034,75035,75078), McKinney (75069,75070,75071), Plano (75023,75024,75025)
+- 1 test user
+- 3 test properties (one per submarket, all garden_style, isOwnedAsset=true)
+
+Create Express route GET /api/v1/health that confirms DB connection and returns OK.
+
+Use the existing Express app setup — don't create a new server file. Add these routes to the existing router structure.
+```
+
+**✅ Test:** Hit /api/v1/health. Run the seed script. Query the properties table.
+
+---
+
+## PROMPT 2: Deals + Monthly Actuals
+
+```
+Add new Drizzle ORM schema tables and a migration. Use the same patterns as the existing codebase (pgTable, uuid, relations, etc).
+
+TABLE: deals
+- id: uuid primary key (defaultRandom())
+- userId: uuid, references users(id), notNull
+- propertyId: uuid, references properties(id), notNull
+- dealName: varchar(255)
+- dealStatus: varchar(30), default 'prospect'
+- strategy: varchar(30) — values: bts, flip, rental, str
+- acquisitionPrice: decimal(14, 2)
+- acquisitionDate: date
+- pricePerUnit: decimal(10, 2)
+- pricePerSf: decimal(10, 2)
+- capRateGoingIn: decimal(6, 4)
+- projectedIrr: decimal(6, 4)
+- projectedEquityMultiple: decimal(6, 3)
+- projectedCocReturn: decimal(6, 4)
+- jediScoreAtIntake: decimal(5, 2)
+- jediScoreCurrent: decimal(5, 2)
+- createdAt, updatedAt: timestamp with timezone
+
+TABLE: dealMonthlyActuals
+- id: uuid primary key
+- dealId: uuid, references deals(id), notNull
+- propertyId: uuid, references properties(id), notNull
+- userId: uuid, references users(id), notNull
+- period: date, notNull (first of month)
+- grossPotentialRent: decimal(12, 2)
+- vacancyLoss: decimal(12, 2)
+- concessions: decimal(12, 2)
+- otherIncome: decimal(12, 2)
+- effectiveGrossIncome: decimal(12, 2)
+- taxes: decimal(12, 2)
+- insurance: decimal(12, 2)
+- utilities: decimal(12, 2)
+- repairsMaintenance: decimal(12, 2)
+- managementFee: decimal(12, 2)
+- payroll: decimal(12, 2)
+- marketing: decimal(12, 2)
+- adminGeneral: decimal(12, 2)
+- contractServices: decimal(12, 2)
+- reserves: decimal(12, 2)
+- totalExpenses: decimal(12, 2)
+- expensePerUnit: decimal(10, 2)
+- expenseRatio: decimal(6, 4)
+- noi: decimal(12, 2)
+- noiPerUnit: decimal(10, 2)
+- occupancyRate: decimal(6, 4)
+- avgRentAchieved: decimal(10, 2)
+- avgRentPsf: decimal(10, 4)
+- leasesSigned: integer
+- leasesExpired: integer
+- turns: integer
+- turnCostAvg: decimal(10, 2)
+- toursCount: integer
+- walkInCount: integer
+- phoneInquiries: integer
+- webLeads: integer
+- trafficToLeaseRatio: decimal(6, 4)
+- source: varchar(30), default 'user_upload'
+- UNIQUE constraint on (dealId, period)
+
+Indexes: dealMonthlyActuals on (propertyId, period DESC), on (userId, period DESC)
+
+Define Drizzle relations between deals ↔ properties, deals ↔ users, dealMonthlyActuals ↔ deals.
+
+Create Zod validation schemas for request/response types.
+
+Express routes:
+- POST /api/v1/deals — create deal (body validated with Zod)
+- GET /api/v1/deals — list user's deals (with query filters for status, strategy)
+- GET /api/v1/deals/:dealId — get deal with its monthly actuals
+- POST /api/v1/deals/:dealId/actuals — bulk insert monthly actuals (accepts array)
+- GET /api/v1/deals/:dealId/actuals — get all monthly actuals for a deal
+
+Seed data: 1 deal for the first test property (strategy='rental', dealStatus='owned', 290 units). Insert 6 months of realistic monthly actuals for a 290-unit garden-style apartment in Frisco TX (GPR ~$420K/mo, vacancy ~5%, total opex ~$120K/mo, occupancy ~94%).
+```
+
+**✅ Test:** POST a deal, POST actuals, GET them back. Confirm seed data.
+
+---
+
+## PROMPT 3: Excel/CSV Upload with Column Mapping
+
+```
+Add a file upload endpoint for monthly P&L data. Users upload Excel or CSV files and the system maps columns to the dealMonthlyActuals table.
+
+Install and use: multer (file upload middleware), xlsx (SheetJS for Excel parsing), csv-parse for CSV files.
+
+Endpoint: POST /api/v1/deals/:dealId/actuals/upload
+- Use multer for multipart/form-data handling
+- Accept file field named "file" (xlsx or csv)
+- Accept JSON string field named "columnMapping" with mappings like:
+  { "Month": "period", "Gross Potential Rent": "grossPotentialRent", "Vacancy": "vacancyLoss", ... }
+
+The handler should:
+1. Parse the uploaded file (use xlsx for .xlsx, csv-parse for .csv)
+2. Apply the column mapping to rename columns
+3. Parse period values into Date objects (first of month)
+4. Parse percentage strings ("94.2%") into decimals (0.942)
+5. Strip $ and commas from currency values
+6. Calculate derived fields:
+   - effectiveGrossIncome = grossPotentialRent - vacancyLoss - concessions + otherIncome
+   - totalExpenses = taxes + insurance + utilities + repairsMaintenance + managementFee + payroll + marketing + adminGeneral + contractServices + reserves
+   - noi = effectiveGrossIncome - totalExpenses
+   - Get totalUnits from the deal's property to calculate expensePerUnit (totalExpenses / totalUnits) and noiPerUnit
+7. Upsert into dealMonthlyActuals (use Drizzle's onConflictDoUpdate on the unique constraint of dealId + period)
+8. Return: { rowsImported: number, dateRange: { from, to }, errors: string[] }
+
+Also add: GET /api/v1/upload-templates/:templateType
+- Returns a downloadable CSV file with expected column headers
+- templateType values: monthly_pnl, rent_roll, traffic_leasing, construction
+- For monthly_pnl headers: Month, Gross Potential Rent, Vacancy, Concessions, Other Revenue, Taxes, Insurance, Utilities, Repairs & Maintenance, Management Fee, Payroll, Marketing, Admin & General, Contract Services, Reserves, Occupancy %, Avg Rent, Walk-ins, Tours, Web Leads, Leases Signed
+- Set Content-Type to text/csv and Content-Disposition header for download
+
+Also add: POST /api/v1/deals/:dealId/actuals/detect-columns
+- Accept the file via multer
+- Read column headers from the file
+- Auto-match to dealMonthlyActuals field names using simple fuzzy matching (Levenshtein distance or includes-based matching)
+- Return: { detectedColumns: string[], suggestedMapping: Record<string, string>, unmatched: string[] }
+
+Create a utility function fuzzyMatchColumn(fileColumn: string, targetFields: string[]): string | null that tries to match by:
+  1. Exact match (case-insensitive)
+  2. Contains match ("Gross Potential Rent" contains "rent" → grossPotentialRent)
+  3. Common aliases map: { "RE Taxes": "taxes", "Property Insurance": "insurance", "R&M": "repairsMaintenance", "Maint & Repairs": "repairsMaintenance", "Mgmt Fee": "managementFee", "Occ%": "occupancyRate", "Occupancy %": "occupancyRate" }
+```
+
+**✅ Test:** Download template CSV. Fill in 3 rows. Upload via the endpoint. Confirm data in dealMonthlyActuals.
+
+---
+
+## PROMPT 4: Comp Query Engine
+
+```
+Build the comp search engine. This finds comparable properties from the user's portfolio (owned assets with uploaded actuals) and ranks them by match quality.
+
+First, create a Drizzle query (or raw SQL if needed for the subquery) that acts as the comp pool:
+
+The comp query should:
+- Join properties → deals (where dealStatus = 'owned') → dealMonthlyActuals (last 12 months)
+- Aggregate monthly actuals into trailing-12 averages: avgExpensePerUnit, avgNoiPerUnit, avgOccupancy, avgRentAchieved, avgRentPsf, monthsOfData, latestPeriod
+- Only include where monthsOfData >= 3
+
+Create a service class CompService with method:
+
+async searchComps(params: {
+  userId: string;
+  propertyType: string;
+  stories?: number;
+  yearBuilt?: number;
+  totalUnits?: number;
+  latitude: number;
+  longitude: number;
+  maxDistanceMiles?: number; // default 10
+  limit?: number; // default 10
+}): Promise<CompResult[]>
+
+The method should:
+1. Query the comp pool for the given userId
+2. Filter by propertyType (exact or similar — garden_style can match garden_style and mid_rise)
+3. Filter by distance: use the Haversine formula in SQL or JS to calculate distance between two lat/lng pairs in miles. If PostGIS is available, use ST_DWithin. If not, use this formula in a WHERE clause:
+   distance_miles = 3959 * acos(cos(radians(lat1)) * cos(radians(lat2)) * cos(radians(lng2) - radians(lng1)) + sin(radians(lat1)) * sin(radians(lat2)))
+4. Calculate compScore (0-100) for each result:
+   - Type match: 40 pts if propertyType AND stories match, 30 if just propertyType, 10 otherwise
+   - Proximity: max(0, 25 - (distanceMiles * 5))
+   - Vintage: 15 pts if yearBuilt within ±2 years, 10 if ±5, 5 otherwise
+   - Scale: 10 pts if totalUnits within ±30%, 5 otherwise
+   - Recency: 10 pts if latestPeriod within 3 months, 7 if within 6, 3 otherwise
+5. Sort by compScore DESC, limit results
+
+Return type CompResult:
+{
+  propertyId: string;
+  propertyName: string; // from properties.address or a name field
+  propertyType: string;
+  stories: number;
+  yearBuilt: number;
+  totalUnits: number;
+  distanceMiles: number;
+  compScore: number;
+  avgExpensePerUnit: number;
+  avgNoiPerUnit: number;
+  avgOccupancy: number;
+  avgRentAchieved: number;
+  monthsOfData: number;
+  source: 'your_portfolio';
+}
+
+Express route:
+POST /api/v1/comps/search — accepts search params, returns { comps: CompResult[], totalFound: number }
+```
+
+**✅ Test:** Call comp search with coordinates near your seed properties. Confirm it returns them ranked with scores.
+
+---
+
+## PROMPT 5: Market Snapshots + Supply Pipeline
+
+```
+Add market data tables. New Drizzle schema + migration.
+
+TABLE: marketSnapshots
+- id: uuid primary key
+- submarketId: uuid, references submarkets(id), notNull
+- snapshotDate: date, notNull
+- avgRent: decimal(10, 2)
+- avgRentPsf: decimal(10, 4)
+- rentGrowthYoy: decimal(6, 4)
+- vacancyRate: decimal(6, 4)
+- absorptionUnits: integer
+- pipelinePermitted: integer
+- pipelineUnderConstruction: integer
+- pipelineDelivered: integer
+- existingInventory: integer
+- monthsOfSupply: decimal(6, 2)
+- supplyPressureRatio: decimal(6, 4)
+- population: integer
+- households: integer
+- medianHhIncome: decimal(12, 2)
+- employmentTotal: integer
+- source: varchar(50), notNull
+- confidence: decimal(4, 2), default 1.0
+- UNIQUE on (submarketId, snapshotDate, source)
+
+Index: marketSnapshots on (submarketId, snapshotDate DESC)
+
+TABLE: supplyPipeline
+- id: uuid primary key
+- submarketId: uuid, references submarkets(id), notNull
+- msaId: uuid, references msas(id), notNull
+- projectName: varchar(255)
+- developer: varchar(255)
+- address: varchar(500)
+- latitude: decimal(10, 7)
+- longitude: decimal(10, 7)
+- totalUnits: integer, notNull
+- propertyType: varchar(50)
+- stories: integer
+- assetClass: varchar(1)
+- status: varchar(30), notNull (proposed, permitted, under_construction, delivered, absorbed)
+- permitDate: date
+- constructionStart: date
+- expectedDelivery: date
+- actualDelivery: date
+- avgAskingRent: decimal(10, 2)
+- priceTier: varchar(20)
+- threatScore: decimal(4, 2)
+- isDirectCompetitor: boolean, default false
+- source: varchar(50)
+- lastVerified: timestamp with timezone
+- createdAt, updatedAt: timestamp with timezone
+
+Express routes:
+- GET /api/v1/markets/:submarketId/snapshots — get time series, optional query params: limit, after (date)
+- POST /api/v1/markets/:submarketId/snapshots — add a snapshot
+- GET /api/v1/markets/:submarketId/supply — get pipeline projects
+- POST /api/v1/supply — add a pipeline project
+- GET /api/v1/supply/nearby?lat=X&lng=Y&radiusMiles=5 — nearby pipeline (use Haversine)
+
+Seed: 12 months of market snapshots per submarket (realistic DFW: avg rent ~$1,800, vacancy ~5.5%, rent growth ~3.5%). 5 supply pipeline projects across submarkets.
+```
+
+**✅ Test:** GET snapshots for a submarket. GET supply nearby a coordinate.
+
+---
+
+## PROMPT 6: JEDI Score Engine
+
+```
+Build the JEDI Score calculation service. This is a TypeScript service class that calculates 5 sub-scores and combines them.
+
+New Drizzle table + migration:
+
+TABLE: jediScores
+- id: uuid primary key
+- propertyId: uuid, references properties(id), notNull
+- scoredAt: timestamp with timezone, default now()
+- jediScore: decimal(5, 2), notNull
+- confidence: decimal(4, 2)
+- demandScore: decimal(5, 2)
+- supplyScore: decimal(5, 2)
+- momentumScore: decimal(5, 2)
+- positionScore: decimal(5, 2)
+- riskScore: decimal(5, 2)
+- btsScore: decimal(5, 2)
+- flipScore: decimal(5, 2)
+- rentalScore: decimal(5, 2)
+- strScore: decimal(5, 2)
+- arbitrageFlag: boolean, default false
+- recommendedStrategy: varchar(30)
+- triggerEvent: varchar(100)
+- inputSnapshot: jsonb
+
+Index: jediScores on (propertyId, scoredAt DESC)
+
+Create: src/services/jediScoreEngine.ts
+
+export class JEDIScoreEngine {
+  constructor(private db: DrizzleDB) {}
+
+  async calculateSupplyScore(submarketId: string): Promise<number>
+  // Query latest marketSnapshot. 
+  // supplyPressure = (pipelinePermitted + pipelineUnderConstruction) / (existingInventory * absorptionRate * 12)
+  // supplyScore = Math.max(0, Math.min(100, 100 - (supplyPressure * 100)))
+
+  async calculateDemandScore(submarketId: string): Promise<number>
+  // Get latest 2 marketSnapshots to calculate YoY changes
+  // demandScore = Math.min(100, (popGrowthPct * 1000) + (employmentGrowthPct * 500))
+  // Clamp 0-100
+
+  async calculateMomentumScore(submarketId: string): Promise<number>
+  // From latest marketSnapshot:
+  // rentComponent = Math.min(40, rentGrowthYoy * 1000)
+  // vacancyComponent = Math.min(30, Math.max(0, (0.08 - vacancyRate) * 1000))
+  // absorptionComponent = Math.min(30, absorptionUnits / 10)
+  // Return sum, clamped 0-100
+
+  async calculatePositionScore(propertyId: string): Promise<number>
+  // MVP: return 50 (placeholder for submarket ranking)
+
+  async calculateRiskScore(submarketId: string): Promise<number>
+  // supplyRisk from supplyPressureRatio: >1.5→80, >1.0→60, >0.5→40, else 20
+  // demandRisk = 100 - demandScore
+  // riskComposite = (supplyRisk * 0.5) + (demandRisk * 0.5)
+  // riskScore = Math.max(0, 100 - riskComposite) // higher = lower risk
+
+  async calculateJEDIScore(propertyId: string): Promise<JEDIScoreResult>
+  // Get property's submarketId
+  // Calculate all 5 sub-scores
+  // Composite: (demand * 0.30) + (supply * 0.25) + (momentum * 0.20) + (position * 0.15) + (risk * 0.10)
+  // Strategy scores with different weights:
+  //   BTS:    demand 0.30, supply 0.25, momentum 0.20, position 0.15, risk 0.10
+  //   Flip:   demand 0.15, supply 0.20, momentum 0.30, position 0.20, risk 0.15
+  //   Rental: demand 0.30, supply 0.25, momentum 0.20, position 0.15, risk 0.10
+  //   STR:    demand 0.25, supply 0.20, momentum 0.25, position 0.20, risk 0.10
+  // arbitrageFlag = max(strategyScores) - secondMax > 15
+  // recommendedStrategy = key of highest score
+  // Insert into jediScores table
+  // Return the record
+}
+
+Express routes:
+- POST /api/v1/properties/:propertyId/score — calculate and save
+- GET /api/v1/properties/:propertyId/scores — get history (latest first)
+- GET /api/v1/properties/:propertyId/score/latest — most recent only
+
+After creating, run scoring for all 3 seed properties.
+```
+
+**✅ Test:** Score a property, GET it back, verify math. Check arbitrage flag logic.
+
+---
+
+## PROMPT 7: Proforma Templates
+
+```
+Add proforma template storage.
+
+TABLE: proformaTemplates (new Drizzle schema + migration)
+- id: uuid primary key
+- userId: uuid, references users(id), notNull
+- name: varchar(255), notNull
+- strategy: varchar(30), notNull
+- productType: varchar(50)
+- sourceDealId: uuid, references deals(id), nullable
+- assumptions: jsonb, notNull
+- metadata: jsonb
+- timesUsed: integer, default 0
+- lastUsedAt: timestamp with timezone
+- createdAt, updatedAt: timestamp with timezone
+
+TABLE: dealProformaSnapshots
+- id: uuid primary key
+- dealId: uuid, references deals(id), notNull
+- templateId: uuid, references proformaTemplates(id), nullable
+- snapshotType: varchar(20), notNull (underwriting, updated, actual_trailing)
+- snapshotDate: date, notNull
+- strategy: varchar(30), notNull
+- assumptions: jsonb, notNull
+- returns: jsonb
+- assumptionSources: jsonb
+- createdAt: timestamp
+
+The assumptions JSONB structure:
+{
+  "income": { "rentPsf": 1.92, "rentGrowthAnnual": 0.035, "vacancyRate": 0.055, "concessionRate": 0.02, "otherIncomePerUnit": 125 },
+  "expenses": { "taxPerUnit": 1420, "insurancePerUnit": 680, "utilitiesPerUnit": 780, "repairsPerUnit": 890, "mgmtFeePct": 0.035, "payrollPerUnit": 520, "totalOpexPerUnit": 5100, "expenseGrowth": 0.025 },
+  "capital": { "renovationPerUnit": 15000, "capexReservesPerUnit": 300 },
+  "exit": { "holdPeriodYears": 5, "exitCapRate": 0.0525, "sellingCostsPct": 0.02 },
+  "debt": { "ltv": 0.75, "interestRate": 0.0585, "amortizationYears": 30, "ioMonths": 24, "termYears": 5 }
+}
+
+Create Zod schemas for validating these JSONB structures.
+
+Express routes:
+- POST /api/v1/templates — create a template
+- GET /api/v1/templates — list user's templates (query filter: strategy, productType)
+- GET /api/v1/templates/:id — get single
+- PUT /api/v1/templates/:id — update
+- DELETE /api/v1/templates/:id — delete
+- POST /api/v1/templates/:id/apply/:dealId — copies template assumptions into a new dealProformaSnapshot, increments timesUsed
+
+Seed: 1 template "Garden Value-Add — DFW 2024" with realistic garden rental value-add assumptions.
+```
+
+**✅ Test:** Create template, apply to deal, verify snapshot created.
+
+---
+
+## PROMPT 8: 3-Layer ProForma Generator
+
+```
+Build the integration that ties everything together. When a user generates a proforma for a deal, it pulls from 3 sources automatically.
+
+Create: src/services/proformaGenerator.ts
+
+export class ProformaGenerator {
+  constructor(
+    private db: DrizzleDB,
+    private compService: CompService,
+    private scoreEngine: JEDIScoreEngine
+  ) {}
+
+  async generate(params: {
+    dealId: string;
+    strategy: string;
+    templateId?: string;
+    useComps?: boolean;        // default true
+    useMarketData?: boolean;   // default true
+    compMaxDistanceMiles?: number; // default 10
+  }): Promise<ThreeLayerProforma>
+}
+
+The generate method should:
+
+1. Load the deal + property (need propertyType, stories, yearBuilt, totalUnits, lat/lng, submarketId)
+
+2. MARKET DATA (Layer 2 — Platform Intelligence):
+   - Get latest marketSnapshot for property's submarket
+   - Extract: avgRentPsf, vacancyRate, rentGrowthYoy
+   - Build market assumptions object
+
+3. COMP DATA (Layer 3 — Your Data):
+   - Call compService.searchComps() with the property's attributes
+   - If comps found, calculate weighted averages (weight by compScore):
+     weightedAvg = sum(comp.value * comp.compScore) / sum(comp.compScores)
+   - Extract: avgExpensePerUnit, avgOccupancy, avgRentAchieved, avgRentPsf
+
+4. TEMPLATE (Layer 1 — Template/Broker):
+   - If templateId provided, load the template's assumptions
+
+5. Build a 3-layer result for EACH assumption field:
+
+interface ThreeLayerAssumption {
+  market: number | null;      // from marketSnapshots
+  comp: number | null;        // from user's owned assets
+  template: number | null;    // from saved template
+  recommended: number;        // weighted blend
+  confidence: 'high' | 'medium' | 'low';
+  sourceDetails: {
+    market?: string;          // "Frisco/Prosper submarket avg, Jan 2026"
+    comp?: string;            // "Weighted avg of 3 assets (Parkway: 92, Cedar: 74)"
+    template?: string;        // "Garden Value-Add — DFW 2024"
+  };
+}
+
+Recommended value logic:
+- If comp exists: 50% comp + 30% market + 20% template (or 60% comp + 40% market if no template)
+- If no comp but market exists: 70% market + 30% template (or 100% market if no template)
+- If only template: 100% template
+- Confidence: 'high' if comp data, 'medium' if market only, 'low' if template only
+
+6. Save as dealProformaSnapshot with snapshotType = 'underwriting'
+7. Also run JEDI scoring for this property and include the score
+
+Return type ThreeLayerProforma:
+{
+  dealId: string;
+  propertyId: string;
+  strategy: string;
+  assumptions: Record<string, ThreeLayerAssumption>;  // keyed by field name
+  compsUsed: CompResult[];
+  marketSource: { submarket: string, snapshotDate: string };
+  templateApplied: string | null;
+  jediScore: JEDIScoreResult;
+  snapshotId: string;  // the saved snapshot ID
+}
+
+Express route:
+POST /api/v1/deals/:dealId/proforma/generate
+- Body: { strategy, templateId?, useComps?, useMarketData?, compMaxDistanceMiles? }
+- Returns the ThreeLayerProforma
+
+This is the collision analysis — the user sees all three data sources side by side for every assumption.
+```
+
+**✅ Test:** Generate proforma for a deal. Confirm it pulls market data, finds comps from portfolio, builds 3-layer assumptions with confidence levels. Verify that having comp data produces 'high' confidence.
+
+---
+
+## SUMMARY: What You Have After 8 Prompts
+
+| # | What | Key Files | Endpoint |
+|---|------|-----------|----------|
+| 1 | Geographic hierarchy + properties | schema/msas.ts, schema/submarkets.ts, schema/properties.ts | GET /health |
+| 2 | Deals + monthly actuals | schema/deals.ts, schema/dealMonthlyActuals.ts | CRUD /api/v1/deals |
+| 3 | Excel/CSV upload + column mapper | routes/upload.ts, utils/columnMapper.ts | POST .../actuals/upload |
+| 4 | Comp search engine | services/compService.ts | POST /api/v1/comps/search |
+| 5 | Market data + supply pipeline | schema/marketSnapshots.ts, schema/supplyPipeline.ts | GET /api/v1/markets/... |
+| 6 | JEDI Score engine | services/jediScoreEngine.ts | POST .../score |
+| 7 | Proforma templates | schema/proformaTemplates.ts | CRUD /api/v1/templates |
+| 8 | 3-layer proforma generator | services/proformaGenerator.ts | POST .../proforma/generate |
+
+All TypeScript. All Drizzle ORM. All Express. All fitting into your existing codebase structure.
+
+## NEXT PROMPTS (9+):
+
+After these 8 are working:
+- **Prompt 9:** Wire the Traffic Engine services (2,869 lines already exist) — create the missing DB migrations, mount the routes in index.ts, connect to JEDI Score
+- **Prompt 10:** Frontend Module Libraries upload UI (React component matching the wireframe)
+- **Prompt 11:** Wire Strategy Arbitrage M08 to consume all signal modules
+- **Prompt 12:** News Intelligence ingestion pipeline
