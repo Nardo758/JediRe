@@ -54,6 +54,14 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
 -   **Traffic Engine v2:** Upgraded with 7-metric leasing funnel (traffic→tours→apps→net_leases→occupancy→eff_rent→closing_ratio), EMA learning loop (`trafficLearningService.ts`), 10-year projections (`tenYearProjectionService.ts`), and 6-tab frontend (`TrafficEngineV2Section.tsx`). Database: migration 043 adds `traffic_learned_rates`, `traffic_upload_history`, `traffic_projections` tables.
 -   **Opus Pro Forma Builder:** AI-powered financial modeling using Anthropic Claude, leveraging cross-module context and a Data Library.
 -   **M07→M09 Traffic→ProForma Integration:** `trafficToProFormaService.ts` translates traffic predictions into 3-layer pro forma assumptions (baseline/platform/override). 4-tab frontend (`ProFormaWithTrafficSection.tsx`): Translation Pipes, 3-Layer Assumptions, 10-Year Income Statement, Returns Comparison. API endpoints: `GET /proforma/:dealId/traffic-integration`, `POST /proforma/:dealId/traffic-refresh`. `proforma-adjustment.service.ts` extended with `updatePlatformLayer()` method.
+-   **Data Pipeline Foundation (M24):** Core data infrastructure with 5 tables, 3 views, and 2 trigger functions:
+    -   **`deal_monthly_actuals`**: Granular P&L table (45+ columns) covering revenue, expenses, NOI, debt service, capex, leasing metrics, and STR metrics. Auto-calculates derived fields (occupancy_rate, opex_ratio, noi, noi_per_unit, cash_flow_before_tax, renewal_rate) via `fn_calculate_actuals_derived` trigger.
+    -   **`data_uploads` + `upload_templates`**: CSV/Excel upload tracking with column mapping. 3 seeded templates (Manual, AppFolio, Yardi). Service: `data-upload.service.ts` with fuzzy column matching, csv-parse for robust parsing.
+    -   **`proforma_templates` + `proforma_snapshots`**: Reusable assumption sets (30+ fields) and generated 3-layer proforma results. Service: `proforma-template.service.ts` (CRUD), `proforma-generator.service.ts` (3-layer generator with F16-F22 return calculations).
+    -   **Comp Query Engine**: `comp-query.service.ts` queries `v_comp_search` view with 5-factor scoring (type 40pts, proximity 25pts, vintage 15pts, scale 10pts, recency 10pts). All queries fully parameterized.
+    -   **Views**: `v_latest_actuals`, `v_actual_vs_budget`, `v_comp_search` (trailing-12 averages with geographic joins).
+    -   **API endpoints**: `POST /properties/:id/actuals/upload`, `POST /properties/:id/actuals/detect-columns`, `GET /properties/:id/actuals`, `GET /upload-templates/:format`, `POST /comps/search`, `GET /comps/property/:id`, `POST /properties/:id/proforma/generate`, `GET /properties/:id/proforma/snapshots`, CRUD `/properties/templates`.
+    -   **Seed data**: 2 DFW properties (Parkway 290 Frisco, Cedar Hills McKinney) with 18 months of monthly actuals each. 1 system proforma template (Garden Value-Add DFW 2024).
 
 ### Agent Dashboard (CRM Module)
 

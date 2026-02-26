@@ -71,6 +71,10 @@ import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
 import capitalStructureRouter from './api/rest/capital-structure.routes';
+import dataUploadRouter from './api/rest/data-upload.routes';
+import uploadTemplatesRouter from './api/rest/upload-templates.routes';
+import compQueryRouter from './api/rest/comp-query.routes';
+import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 
 dotenv.config();
 
@@ -206,6 +210,10 @@ app.use('/api/v1', requireAuth, contactsSyncRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
+app.use('/api/v1/properties', requireAuth, dataUploadRouter);
+app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
+app.use('/api/v1/comps', requireAuth, compQueryRouter);
+app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
