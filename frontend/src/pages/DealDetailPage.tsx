@@ -54,6 +54,7 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
+import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 
@@ -370,7 +371,7 @@ const DealDetailPage: React.FC = () => {
 
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6 -mr-10">
+      <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6">
         <HorizontalBar />
         <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
           <button
@@ -510,9 +511,14 @@ const DealDetailPage: React.FC = () => {
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 overflow-y-auto p-6 pr-10">
+          <main className="flex-1 min-w-0 overflow-y-auto p-6 pr-6">
             <ActiveComponent deal={deal} dealId={dealId} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
           </main>
+
+          <ZoningAgentChat
+            activeTab={activeTab}
+            dealId={dealId}
+          />
         </div>
       </div>
     </DealModuleProvider>

@@ -10,7 +10,6 @@ import {
   Lock,
   RefreshCw,
 } from 'lucide-react';
-import { ZoningAgentChat } from '../../zoning/ZoningAgentChat';
 import { apiClient } from '../../../services/api.client';
 import BoundaryAndZoningTab from '../../zoning/tabs/BoundaryAndZoningTab';
 import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
@@ -206,14 +205,9 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pr-10 pb-16">
+      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pr-10 pb-6">
         {renderActiveTab()}
       </div>
-
-      <ZoningAgentChat
-        activeTab={activeTab}
-        dealId={resolvedDealId}
-      />
     </div>
   );
 }
