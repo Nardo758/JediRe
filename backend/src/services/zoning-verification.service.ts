@@ -8,6 +8,9 @@ export interface SourceResolutionResult {
   state: string;
   sourceTier: 'municode' | 'municipal_direct' | 'county';
   baseUrl: string;
+  planningUrl: string | null;
+  municodeUrl: string | null;
+  webSearchUrl: string | null;
   zoningCodePath: string | null;
   apiAvailable: boolean;
   apiEndpoint: string | null;
@@ -52,10 +55,10 @@ export interface VerificationResult {
 
 export class ZoningVerificationService {
 
-  async resolveSource(jurisdictionId: string): Promise<SourceResolutionResult | null> {
+  async resolveSource(jurisdictionId: string, zoningCode?: string): Promise<SourceResolutionResult | null> {
     try {
       const result = await query(
-        `SELECT jsm.*, m.name as municipality_name, m.state
+        `SELECT jsm.*, m.name as municipality_name, m.state, m.planning_url, m.municode_url
          FROM jurisdiction_source_map jsm
          JOIN municipalities m ON m.id = jsm.jurisdiction_id
          WHERE jsm.jurisdiction_id = $1`,
@@ -67,12 +70,19 @@ export class ZoningVerificationService {
       }
 
       const row = result.rows[0];
+      const planningUrl = row.planning_url || null;
+      const municodeUrl = await this.resolveMunicodeUrl(jurisdictionId, zoningCode || null);
+      const webSearchUrl = this.buildWebSearchUrl(row.municipality_name, row.state, zoningCode || null);
+
       return {
         jurisdictionId: row.jurisdiction_id,
         jurisdictionName: row.municipality_name,
         state: row.state,
         sourceTier: row.source_tier,
         baseUrl: row.base_url,
+        planningUrl,
+        municodeUrl,
+        webSearchUrl,
         zoningCodePath: row.zoning_code_path,
         apiAvailable: row.api_available,
         apiEndpoint: row.api_endpoint,
@@ -89,7 +99,7 @@ export class ZoningVerificationService {
   async resolveSourceByAddress(municipality: string, state: string): Promise<SourceResolutionResult | null> {
     try {
       const result = await query(
-        `SELECT jsm.*, m.name as municipality_name, m.state
+        `SELECT jsm.*, m.name as municipality_name, m.state, m.planning_url, m.municode_url
          FROM jurisdiction_source_map jsm
          JOIN municipalities m ON m.id = jsm.jurisdiction_id
          WHERE LOWER(m.name) LIKE LOWER($1) AND m.state = $2`,
@@ -101,12 +111,19 @@ export class ZoningVerificationService {
       }
 
       const row = result.rows[0];
+      const planningUrl = row.planning_url || null;
+      const municodeUrl = await this.resolveMunicodeUrl(row.jurisdiction_id, null);
+      const webSearchUrl = this.buildWebSearchUrl(row.municipality_name, row.state, null);
+
       return {
         jurisdictionId: row.jurisdiction_id,
         jurisdictionName: row.municipality_name,
         state: row.state,
         sourceTier: row.source_tier,
         baseUrl: row.base_url,
+        planningUrl,
+        municodeUrl,
+        webSearchUrl,
         zoningCodePath: row.zoning_code_path,
         apiAvailable: row.api_available,
         apiEndpoint: row.api_endpoint,
@@ -128,7 +145,7 @@ export class ZoningVerificationService {
   }): Promise<VerificationResult> {
     const { parcelId, gisZoning, jurisdictionId, dealId } = params;
 
-    const sourceResolution = await this.resolveSource(jurisdictionId);
+    const sourceResolution = await this.resolveSource(jurisdictionId, gisZoning);
 
     const districtResult = await query(
       `SELECT zd.*, m.name as municipality_name, m.state
@@ -275,7 +292,7 @@ export class ZoningVerificationService {
       `SELECT zv.*, 
          jsm.source_tier, jsm.base_url, jsm.zoning_code_path, jsm.api_available,
          jsm.api_endpoint, jsm.last_verified as source_last_verified, jsm.notes as source_notes,
-         m.name as municipality_name, m.state
+         m.name as municipality_name, m.state, m.planning_url, m.municode_url
        FROM zoning_verification zv
        LEFT JOIN jurisdiction_source_map jsm ON jsm.jurisdiction_id = zv.jurisdiction_id
        LEFT JOIN municipalities m ON m.id = zv.jurisdiction_id
@@ -291,12 +308,19 @@ export class ZoningVerificationService {
     const verificationResult = await this.rowToVerificationResult(row);
 
     if (row.source_tier) {
+      const zoningCode = row.gis_designation || row.verified_designation || null;
+      const municodeUrl = await this.resolveMunicodeUrl(row.jurisdiction_id, zoningCode);
+      const webSearchUrl = this.buildWebSearchUrl(row.municipality_name || '', row.state || '', zoningCode);
+
       verificationResult.sourceResolution = {
         jurisdictionId: row.jurisdiction_id,
         jurisdictionName: row.municipality_name || '',
         state: row.state || '',
         sourceTier: row.source_tier,
         baseUrl: row.base_url || '',
+        planningUrl: row.planning_url || null,
+        municodeUrl,
+        webSearchUrl,
         zoningCodePath: row.zoning_code_path,
         apiAvailable: row.api_available || false,
         apiEndpoint: row.api_endpoint,
@@ -440,5 +464,30 @@ export class ZoningVerificationService {
     );
 
     return result.rows.map(this.rowToCitation);
+  }
+
+  private async resolveMunicodeUrl(jurisdictionId: string, zoningCode: string | null): Promise<string | null> {
+    try {
+      if (zoningCode) {
+        const sectionUrl = await municodeUrlService.resolveCodeReference(jurisdictionId, zoningCode);
+        if (sectionUrl) return sectionUrl;
+
+        const searchUrl = await municodeUrlService.buildSearchUrl(jurisdictionId, zoningCode);
+        if (searchUrl) return searchUrl;
+      }
+
+      const chapterUrl = await municodeUrlService.buildChapterUrl(jurisdictionId);
+      if (chapterUrl) return chapterUrl;
+    } catch (error) {
+      logger.error('Municode URL resolution failed:', error);
+    }
+    return null;
+  }
+
+  private buildWebSearchUrl(municipalityName: string, state: string, zoningCode: string | null): string | null {
+    if (!municipalityName || !state) return null;
+    const terms = [municipalityName, state, 'zoning ordinance'];
+    if (zoningCode) terms.push(zoningCode);
+    return `https://www.google.com/search?q=${encodeURIComponent(terms.join(' '))}`;
   }
 }

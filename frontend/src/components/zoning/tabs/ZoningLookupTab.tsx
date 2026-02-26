@@ -67,15 +67,10 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         conflict: 'conflict',
         pending: 'pending',
       };
-      let resolvedSourceUrl = raw.sourceResolution?.baseUrl || undefined;
-      if (!resolvedSourceUrl && zoningResult.district?.code) {
-        try {
-          const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
-            params: { municipality: jurisdictionId, section: zoningResult.district.codeSection || zoningResult.district.code },
-          });
-          if (municodeRes.data?.url) resolvedSourceUrl = municodeRes.data.url;
-        } catch {}
-      }
+      const sr = raw.sourceResolution;
+      const planningUrl = sr?.planningUrl || sr?.baseUrl || undefined;
+      const municodeUrl = sr?.municodeUrl || undefined;
+      const webSearchUrl = sr?.webSearchUrl || undefined;
 
       const mapped: VerificationData = {
         id: raw.id,
@@ -85,8 +80,10 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         status: statusMap[raw.verificationStatus] || 'confirmed',
         discrepancyDetail: raw.discrepancyDetail,
         confidence: typeof raw.confidence === 'number' && raw.confidence <= 1 ? Math.round(raw.confidence * 100) : (raw.confidence ?? 85),
-        sourceUrl: resolvedSourceUrl,
-        sourceName: raw.sourceResolution?.sourceTier === 'municode' ? 'Municode' : raw.sourceResolution?.jurisdictionName || undefined,
+        sourceUrl: planningUrl,
+        sourceName: sr?.jurisdictionName ? `${sr.jurisdictionName} Planning` : undefined,
+        municodeUrl,
+        webSearchUrl,
         verifiedAt: raw.verifiedAt ? new Date(raw.verifiedAt).toISOString().split('T')[0] : undefined,
         overlaysDetected: raw.overlaysDetected || [],
         recentAmendments: raw.recentAmendments || [],
@@ -94,18 +91,24 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       };
       setVerificationData(mapped);
     } catch (err: any) {
-      let fallbackUrl: string | undefined;
+      let fallbackMunicodeUrl: string | undefined;
+      let fallbackWebSearchUrl: string | undefined;
       const distCode = zoningResult.district?.code;
+      const municipality = zoningResult.district?.municipality;
+      const stateCode = zoningResult.district?.state;
       if (distCode) {
         try {
           const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
             params: {
-              municipality: `${(zoningResult.district?.municipality || 'Atlanta').toLowerCase().replace(/\s+/g, '-')}-${(zoningResult.district?.state || 'GA').toLowerCase()}`,
+              municipality: `${(municipality || 'Atlanta').toLowerCase().replace(/\s+/g, '-')}-${(stateCode || 'GA').toLowerCase()}`,
               section: zoningResult.district?.codeSection || distCode,
             },
           });
-          if (municodeRes.data?.url) fallbackUrl = municodeRes.data.url;
+          if (municodeRes.data?.url) fallbackMunicodeUrl = municodeRes.data.url;
         } catch {}
+      }
+      if (!fallbackMunicodeUrl && municipality && stateCode) {
+        fallbackWebSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${municipality} ${stateCode} zoning ordinance ${distCode || ''}`)}`;
       }
 
       const fallbackVerification: VerificationData = {
@@ -115,8 +118,8 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
         verifiedDesignation: distCode,
         status: 'confirmed',
         confidence: 85,
-        sourceUrl: fallbackUrl,
-        sourceName: 'Municode',
+        municodeUrl: fallbackMunicodeUrl,
+        webSearchUrl: fallbackWebSearchUrl,
         verifiedAt: new Date().toISOString().split('T')[0],
         overlaysDetected: [],
         recentAmendments: [],

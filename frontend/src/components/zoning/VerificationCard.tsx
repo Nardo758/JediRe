@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, AlertTriangle, XCircle, ExternalLink, Shield, Clock, Layers, FileWarning, Scale, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, AlertTriangle, XCircle, ExternalLink, Shield, Clock, Layers, FileWarning, Scale, ChevronDown, ChevronUp, BookOpen, MapPin, Search } from 'lucide-react';
 
 export type VerificationStatus = 'confirmed' | 'stale' | 'split' | 'conflict' | 'pending';
 
@@ -17,6 +17,8 @@ export interface VerificationData {
   confidence: number;
   sourceUrl?: string;
   sourceName?: string;
+  municodeUrl?: string;
+  webSearchUrl?: string;
   verifiedAt?: string;
   userAction?: 'confirmed' | 'flagged' | 'corrected';
 }
@@ -117,13 +119,31 @@ export default function VerificationCard({ data, onViewSource }: VerificationCar
               Verified {data.verifiedAt}
             </span>
           )}
-          {data.sourceUrl && (
+          {data.sourceUrl && !data.sourceUrl.includes('/rest/services/') && !data.sourceUrl.includes('/MapServer/') && (
             <button
               onClick={() => onViewSource ? onViewSource(data.sourceUrl!) : window.open(data.sourceUrl, '_blank', 'noopener,noreferrer')}
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-indigo-600 bg-white border border-indigo-200 rounded hover:bg-indigo-50 transition-colors"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded hover:bg-emerald-50 transition-colors"
             >
-              <ExternalLink className="w-3 h-3" />
-              {data.sourceName || 'View Source'}
+              <MapPin className="w-3 h-3" />
+              {data.sourceName || 'Planning & Zoning'}
+            </button>
+          )}
+          {data.municodeUrl && (
+            <button
+              onClick={() => window.open(data.municodeUrl, '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-violet-700 bg-white border border-violet-200 rounded hover:bg-violet-50 transition-colors"
+            >
+              <BookOpen className="w-3 h-3" />
+              View on Municode
+            </button>
+          )}
+          {!data.municodeUrl && data.webSearchUrl && (
+            <button
+              onClick={() => window.open(data.webSearchUrl, '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+            >
+              <Search className="w-3 h-3" />
+              Search Zoning Code
             </button>
           )}
         </div>
