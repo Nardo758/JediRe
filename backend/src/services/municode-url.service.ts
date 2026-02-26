@@ -53,8 +53,13 @@ class MunicodeUrlService {
     return this.buildChapterUrl(municipalityId);
   }
 
+  async buildDistrictSearchUrl(municipalityId: string, districtCode: string): Promise<string | null> {
+    return this.buildSearchUrl(municipalityId, districtCode);
+  }
+
   async getDistrictRuleUrls(municipalityId: string, districtCode: string): Promise<{
     districtUrl: string | null;
+    districtSearchUrl: string | null;
     chapterUrl: string | null;
     rules: Array<{
       field: string;
@@ -79,6 +84,7 @@ class MunicodeUrlService {
     const row = result.rows[0];
     const base = await this.getMunicipality(municipalityId);
     const districtUrl = await this.buildDistrictUrl(municipalityId, districtCode);
+    const districtSearchUrl = await this.buildDistrictSearchUrl(municipalityId, districtCode);
     const chapterUrl = await this.buildChapterUrl(municipalityId);
 
     const ruleCategories = [
@@ -128,7 +134,7 @@ class MunicodeUrlService {
       }),
     );
 
-    return { districtUrl, chapterUrl, rules };
+    return { districtUrl, districtSearchUrl, chapterUrl, rules };
   }
 
   async buildSearchUrl(municipalityId: string, searchTerm: string): Promise<string | null> {

@@ -407,6 +407,7 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
           districtCode,
         );
         district.municode_url = ruleUrls.districtUrl;
+        district.municode_search_url = ruleUrls.districtSearchUrl;
         district.municode_chapter_url = ruleUrls.chapterUrl;
         district.source_rules = ruleUrls.rules;
       } catch {}

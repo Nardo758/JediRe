@@ -1031,14 +1031,14 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   )}
 
                   {/* Source Info */}
-                  {(zoningDetail.municode_url || zoningDetail.source_url || parcelSource?.planningUrl) && (
+                  {(zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url || parcelSource?.planningUrl) && (
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 mt-2">
                       <span>Definition:</span>
                       {parcelSource?.planningUrl && (
                         <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Planning & Zoning</a>
                       )}
-                      {(zoningDetail.municode_url || zoningDetail.source_url) && (
-                        <a href={zoningDetail.municode_url || zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Municipal Code</a>
+                      {(zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url) && (
+                        <a href={zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Municipal Code</a>
                       )}
                       {zoningDetail.last_verified_at && (
                         <span>(Verified: {new Date(zoningDetail.last_verified_at).toLocaleDateString()})</span>
