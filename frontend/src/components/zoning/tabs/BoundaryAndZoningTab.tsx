@@ -444,19 +444,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                           <ExternalLink className="w-2.5 h-2.5" />
                         </a>
                       )}
-                      {!detectedZoning.planningUrl && !detectedZoning.municodeUrl && detectedZoning.webSearchUrl && (
-                        <a
-                          href={detectedZoning.webSearchUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-                        >
-                          <Search className="w-3 h-3" />
-                          Search Zoning Code
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                      {!detectedZoning.municodeUrl && detectedZoning.webSearchUrl && detectedZoning.planningUrl && (
+                      {!detectedZoning.municodeUrl && detectedZoning.webSearchUrl && (
                         <a
                           href={detectedZoning.webSearchUrl}
                           target="_blank"
