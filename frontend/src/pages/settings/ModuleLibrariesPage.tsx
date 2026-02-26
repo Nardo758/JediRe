@@ -1,480 +1,557 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
-const LIBRARIES = [
-  {
-    id: "comp",
-    name: "Comp Library",
-    icon: "\u2B21",
-    tagline: "Your deals become your edge",
-    description: "Every owned asset's actuals become searchable, matchable comps. When you build a proforma for a new deal, the system finds the best expense, rent, and operations comps from YOUR portfolio — ranked by property type, proximity, vintage, and scale.",
-    dbTables: ["comp_eligible_properties", "deal_monthly_actuals", "anonymized_comps"],
-    moduleConnections: ["M09 ProForma", "M05 Market", "M08 Strategy", "M15 Competition"],
-    sections: [
-      {
-        name: "Expense Comps",
-        description: "Actual operating expenses from your owned assets, organized by line item. When M09 ProForma needs expense assumptions, it queries this library first.",
-        fields: [
-          { label: "Taxes/unit", example: "$1,420", source: "Deal: Parkway 290 (Monthly Actuals)" },
-          { label: "Insurance/unit", example: "$680", source: "Deal: Parkway 290 (Monthly Actuals)" },
-          { label: "Mgmt Fee %", example: "3.2%", source: "Deal: Parkway 290 (Monthly Actuals)" },
-          { label: "R&M/unit", example: "$890", source: "Deal: Parkway 290 (Monthly Actuals)" },
-          { label: "Total OpEx/unit", example: "$4,980", source: "Trailing 12 Average" },
-        ],
-        matchCriteria: "Property type + stories + vintage \u00B1 5yr + proximity + unit count \u00B1 30%",
-        howItWorks: "User uploads monthly actuals \u2192 system indexes by property attributes \u2192 comp_eligible_properties materialized view refreshes nightly \u2192 ProForma queries on deal open \u2192 Layer 3 auto-populated"
-      },
-      {
-        name: "Rent Comps",
-        description: "Achieved rents from your portfolio vs asking rents. Reveals the gap between what brokers quote and what you actually collect.",
-        fields: [
-          { label: "Avg Rent Achieved", example: "$1,785/mo", source: "Rent roll upload" },
-          { label: "Avg Rent PSF", example: "$1.92", source: "Calculated from rent roll" },
-          { label: "Concession Rate", example: "4.2%", source: "Lease-up tracking" },
-          { label: "Loss-to-Lease", example: "2.8%", source: "Market rent vs in-place" },
-          { label: "Renewal Rate", example: "58%", source: "Lease expiration tracking" },
-        ],
-        matchCriteria: "Submarket + asset class + unit mix similarity + vintage",
-        howItWorks: "Rent rolls uploaded monthly \u2192 system extracts unit-level rents \u2192 aggregates to property level \u2192 available as comp when proximity + type match"
-      },
-      {
-        name: "Operations Comps",
-        description: "Leasing velocity, turn costs, occupancy ramp \u2014 the operational metrics that make or break a proforma's accuracy.",
-        fields: [
-          { label: "Lease-up Velocity", example: "22 units/mo", source: "Leasing tracker" },
-          { label: "Turn Cost", example: "$3,200/unit", source: "Maintenance records" },
-          { label: "Days to Stabilize", example: "14 months", source: "Occupancy history" },
-          { label: "Occupancy (Stabilized)", example: "94.2%", source: "Trailing 6mo avg" },
-          { label: "Bad Debt %", example: "1.8%", source: "Collection records" },
-        ],
-        matchCriteria: "Property type + market cycle position + asset class",
-        howItWorks: "Operations data uploaded \u2192 feeds proforma lease-up schedule and expense escalation \u2192 validated against predictions to improve model accuracy"
-      }
-    ],
-    exampleQuery: {
-      scenario: "You're underwriting a 3-story garden, 250 units, built 2022, in Frisco TX \u2014 2.1 miles from your Parkway 290 asset.",
-      result: "Comp Library returns: Parkway 290 (score: 92/100) \u2014 same type, 280 units, built 2020, 2.1mi away, 18mo of actuals. OpEx: $4,980/unit. Also returns: Cedar Hills (score: 74) \u2014 garden 2-story, 180 units, built 2019, 4.8mi, 12mo actuals. OpEx: $5,340/unit.",
-      proformaImpact: "Layer 3 auto-fills: $5,060/unit (weighted avg: 60% Parkway, 40% Cedar Hills). Broker's OM said $5,400 \u2014 you know from YOUR data that's 7% high. Confidence: HIGH."
-    }
-  },
-  {
-    id: "data",
-    name: "Data Library",
-    icon: "\u25C8",
-    tagline: "One place for everything you've contributed",
-    description: "Central repository for all user-contributed data: monthly actuals, rent rolls, traffic counts, construction budgets, lease abstracts. This is the raw material that feeds every other library. Upload once, use everywhere.",
-    dbTables: ["deal_monthly_actuals", "deal_proforma_snapshots", "traffic_predictions", "training_datasets"],
-    moduleConnections: ["M07 Traffic", "M09 ProForma", "M22 Portfolio", "M25 JEDI Score"],
-    sections: [
-      {
-        name: "Monthly Financials",
-        description: "Upload actual P&L by property by month. This is the core training data \u2014 every month you add makes predictions better for you AND for properties in that submarket.",
-        fields: [
-          { label: "Revenue (GPR, Vacancy, Concessions, Other)", example: "Auto-parsed from template", source: "Excel/CSV upload" },
-          { label: "Expenses (8 categories)", example: "Mapped to standard chart of accounts", source: "Excel/CSV upload" },
-          { label: "NOI", example: "Calculated: EGI - OpEx", source: "Derived" },
-          { label: "Occupancy", example: "94.2%", source: "Unit-level or property-level" },
-          { label: "Avg Rent", example: "$1,785", source: "From rent roll or summary" },
-        ],
-        matchCriteria: "N/A \u2014 this is input, not queried as comp directly",
-        howItWorks: "Upload Excel \u2192 template mapper normalizes columns \u2192 writes to deal_monthly_actuals \u2192 triggers comp_eligible_properties refresh \u2192 triggers model retraining if threshold met"
-      },
-      {
-        name: "Traffic & Leasing Data",
-        description: "Walk-ins, tours, web leads, leases signed \u2014 the data that trains M07 Traffic Engine. More data = better predictions for every property in that submarket.",
-        fields: [
-          { label: "Walk-in Count", example: "47/week", source: "Property management system" },
-          { label: "Tours Given", example: "31/week", source: "Leasing software" },
-          { label: "Web Leads", example: "89/week", source: "ILS platforms" },
-          { label: "Leases Signed", example: "8/week", source: "Lease management" },
-          { label: "Traffic-to-Lease Ratio", example: "5.9:1", source: "Calculated" },
-        ],
-        matchCriteria: "N/A \u2014 feeds training pipeline",
-        howItWorks: "Upload leasing reports \u2192 parsed into deal_monthly_actuals traffic columns \u2192 Traffic Engine compares predicted vs actual \u2192 adjusts model coefficients \u2192 confidence score increases for that submarket"
-      },
-      {
-        name: "Construction & Development",
-        description: "Hard costs, soft costs, timelines from your development projects. Feeds M03 Dev Capacity cost estimates and M09 BTS proformas.",
-        fields: [
-          { label: "Hard Cost/Unit", example: "$165,000", source: "GC draw schedule" },
-          { label: "Soft Cost/Unit", example: "$28,000", source: "Development budget" },
-          { label: "Land Cost/Unit", example: "$32,000", source: "Acquisition records" },
-          { label: "Months to Deliver", example: "18", source: "Project timeline" },
-          { label: "Cost Overrun %", example: "+8.2%", source: "Budget vs actual" },
-        ],
-        matchCriteria: "Property type + stories + geography + vintage",
-        howItWorks: "Upload development budgets \u2192 system indexes construction costs by type/geography \u2192 feeds M03 development cost estimates \u2192 BTS strategy scoring in M08 gets real cost basis instead of market averages"
-      }
-    ],
-    exampleQuery: {
-      scenario: "You've uploaded 18 months of actuals for Parkway 290. Your leasing team logged 1,200 walk-ins and 190 leases over that period.",
-      result: "Traffic Engine now has a validated traffic-to-lease ratio of 6.3:1 for garden-style in Frisco. Previous estimate was 7.8:1 (from market averages). Your data shows higher conversion \u2014 likely because of the property's corner visibility.",
-      proformaImpact: "Every new garden-style deal within 5 miles of Parkway 290 now gets Traffic Engine predictions with 'HIGH confidence' instead of 'LOW'. The lease-up schedule in M09 ProForma tightens by 2 months, improving IRR by ~80bps."
-    }
-  },
-  {
-    id: "template",
-    name: "Template Library",
-    icon: "\u25C7",
-    tagline: "Build once, apply everywhere",
-    description: "Save entire proforma configurations, assumption sets, and underwriting templates. When you dial in the perfect assumption set for a garden-style value-add in Dallas, save it. Next time, one click to apply \u2014 then override only what's different.",
-    dbTables: ["deal_proforma_snapshots", "proforma_templates", "assumption_presets"],
-    moduleConnections: ["M09 ProForma", "M10 Scenario", "M11 Debt", "M12 Exit"],
-    sections: [
-      {
-        name: "Proforma Templates",
-        description: "Complete proforma configurations: income assumptions, expense structure, debt terms, exit modeling. Saved per strategy \u00D7 product type combination.",
-        fields: [
-          { label: "Template Name", example: "Garden Value-Add \u2014 DFW 2024", source: "User-defined" },
-          { label: "Strategy", example: "Rental (Value-Add)", source: "M08 Strategy type" },
-          { label: "Product Type", example: "Garden 1-3 Stories", source: "Strategy Matrix" },
-          { label: "Income Assumptions", example: "Rent growth 3.5%, Vacancy 5.5%, Concessions 2%", source: "Saved from deal" },
-          { label: "Expense Assumptions", example: "OpEx/unit $5,100, Mgmt 3.5%, Tax escalation 2.5%", source: "Saved from deal" },
-        ],
-        matchCriteria: "User selects template \u2192 auto-filters by strategy + product type",
-        howItWorks: "User finalizes proforma \u2192 clicks 'Save as Template' \u2192 stored in proforma_templates with all assumption values + sources \u2192 retrievable when creating new deals of same type"
-      },
-      {
-        name: "Scenario Presets",
-        description: "Bull/Base/Bear parameter sets tailored to specific market conditions. 'Supply Glut Bear Case' uses different parameters than 'Demand Shock Bear Case.'",
-        fields: [
-          { label: "Preset Name", example: "Supply Glut \u2014 High Delivery Market", source: "User-defined" },
-          { label: "Vacancy Adjustment", example: "+200bps from base", source: "Based on supply analysis" },
-          { label: "Rent Growth Adjustment", example: "-150bps from base", source: "Based on comp absorption" },
-          { label: "Exit Cap Adjustment", example: "+25bps from base", source: "Risk premium" },
-          { label: "Probability Weight", example: "25%", source: "User assessment" },
-        ],
-        matchCriteria: "User selects based on market conditions",
-        howItWorks: "User creates scenario in M10 \u2192 saves as preset \u2192 applies to future deals with one click \u2192 adjustments override base proforma \u2192 M10 recalculates probability-weighted returns"
-      },
-      {
-        name: "Debt & Capital Templates",
-        description: "Pre-configured debt structures for common deal types. Agency debt terms, bridge loan structures, preferred equity waterfalls.",
-        fields: [
-          { label: "Template Name", example: "Freddie Mac SBL \u2014 5yr Fixed", source: "User-defined" },
-          { label: "LTV / LTC", example: "75% LTV", source: "Lender terms" },
-          { label: "Rate Structure", example: "Fixed 5.85%, 5yr term, 30yr amort", source: "Rate lock" },
-          { label: "IO Period", example: "24 months", source: "Lender terms" },
-          { label: "Prepayment", example: "Yield maintenance \u2192 1% in final year", source: "Loan docs" },
-        ],
-        matchCriteria: "Strategy + deal size + asset class",
-        howItWorks: "User closes deal with specific debt terms \u2192 saves structure as template \u2192 applies to M11 Debt module on future deals \u2192 auto-calculates DSCR, debt yield from new deal's NOI"
-      }
-    ],
-    exampleQuery: {
-      scenario: "You successfully closed a garden value-add in Frisco \u2014 dialed in assumptions over 6 months of DD. Now you're looking at another garden value-add 4 miles away.",
-      result: "Template Library shows: 'Garden Value-Add \u2014 DFW 2024' with all 40+ assumption cells pre-filled. One click to apply. Platform flags 3 assumptions that should differ: (1) tax rate is different parcel, (2) insurance differs by flood zone, (3) submarket vacancy shifted +30bps since template was saved.",
-      proformaImpact: "Instead of building a proforma from scratch (2-3 hours), you start from a validated template and only adjust what changed. Time to first proforma: 15 minutes. Confidence: HIGH because template is battle-tested against actuals."
-    }
-  },
-  {
-    id: "benchmark",
-    name: "Market Benchmarks",
-    icon: "\u25C9",
-    tagline: "Know where you stand vs the market",
-    description: "Platform-wide anonymized benchmarks derived from all user data + market sources. See how your assets perform relative to submarket, MSA, and national averages. This is Domain 1 (Market Data) made accessible.",
-    dbTables: ["market_snapshots", "anonymized_comps", "demographic_snapshots"],
-    moduleConnections: ["M05 Market", "M09 ProForma", "M14 Risk", "M25 JEDI Score"],
-    sections: [
-      {
-        name: "Expense Benchmarks",
-        description: "How do your operating expenses compare? Anonymized data from all platform users + market sources, segmented by property type, geography, and vintage.",
-        fields: [
-          { label: "Your OpEx/unit", example: "$4,980", source: "Your actuals" },
-          { label: "Submarket Median", example: "$5,280", source: "47 properties reporting" },
-          { label: "MSA Median", example: "$5,420", source: "312 properties reporting" },
-          { label: "Your Percentile", example: "23rd (better than 77%)", source: "Calculated" },
-          { label: "Category Breakdown", example: "Taxes: 15th pctile, R&M: 45th, Payroll: 62nd", source: "Line-item comparison" },
-        ],
-        matchCriteria: "Auto-matched by property type + submarket + vintage tier",
-        howItWorks: "anonymized_comps table aggregates all users' actuals (bucketed, never raw) \u2192 user sees their position relative to market \u2192 identifies specific expense categories to improve"
-      },
-      {
-        name: "Performance Benchmarks",
-        description: "Occupancy, rent growth, NOI margin, traffic conversion \u2014 how does your portfolio perform vs peers?",
-        fields: [
-          { label: "Your Occupancy", example: "94.2%", source: "Your actuals" },
-          { label: "Submarket Avg", example: "92.8%", source: "Market data" },
-          { label: "Your Rent Growth", example: "3.8% YoY", source: "Your rent rolls" },
-          { label: "Submarket Rent Growth", example: "4.1% YoY", source: "Apartments.com" },
-          { label: "Your NOI Margin", example: "62.4%", source: "Your actuals" },
-        ],
-        matchCriteria: "Submarket + asset class + vintage",
-        howItWorks: "Combines user actuals with market_snapshots \u2192 shows relative positioning \u2192 flags underperformance for operational improvement \u2192 feeds M14 Risk assessment"
-      },
-      {
-        name: "Market Assumptions",
-        description: "What's the market saying about forward-looking assumptions? Platform-derived consensus for rent growth, vacancy, cap rates \u2014 sourced from actual data, not broker guesses.",
-        fields: [
-          { label: "Consensus Rent Growth (1yr)", example: "3.2%", source: "Trailing trend + demand signals" },
-          { label: "Consensus Vacancy", example: "5.8%", source: "Current + supply pipeline" },
-          { label: "Consensus Exit Cap", example: "5.25%", source: "Recent transactions" },
-          { label: "Construction Cost/unit", example: "$172K", source: "Platform user dev data" },
-          { label: "Absorption Rate", example: "22 units/mo/project", source: "Pipeline tracking" },
-        ],
-        matchCriteria: "Submarket + property type",
-        howItWorks: "Derived from market_snapshots + supply_pipeline + demand_events \u2192 these become M09 ProForma Layer 2 (Platform Intelligence) defaults \u2192 user can override but sees market consensus"
-      }
-    ],
-    exampleQuery: {
-      scenario: "You want to know if your Parkway 290 expenses are competitive, and what assumptions to use for your next deal in the same submarket.",
-      result: "Market Benchmarks shows: your total OpEx is 23rd percentile (great). But your R&M is 45th \u2014 there may be deferred maintenance catching up. Forward assumptions for Frisco: 3.2% rent growth, 5.8% vacancy, $172K/unit construction.",
-      proformaImpact: "ProForma Layer 2 auto-fills with these market-derived assumptions. Your Layer 3 comp data refines them. Collision analysis shows where broker's OM deviates from both market AND your experience."
-    }
-  },
-  {
-    id: "model",
-    name: "Model Library",
-    icon: "\u25C6",
-    tagline: "See how your data trains the AI",
-    description: "Transparency into the predictive models your data feeds. See what the Traffic Engine has learned from your properties, how expense benchmarks are calibrated, and which predictions have been validated against your actuals.",
-    dbTables: ["training_datasets", "model_coefficients", "traffic_predictions"],
-    moduleConnections: ["M07 Traffic", "M25 JEDI Score", "M08 Strategy"],
-    sections: [
-      {
-        name: "Traffic Model Status",
-        description: "Which properties are training the Traffic Engine? How accurate are predictions? Where does the model need more data?",
-        fields: [
-          { label: "Properties Contributing", example: "3 of 5 owned assets", source: "Validation check" },
-          { label: "Total Data Points", example: "54 months of traffic data", source: "deal_monthly_actuals" },
-          { label: "Prediction Accuracy (MAE)", example: "\u00B12.1 leases/week", source: "Validation pipeline" },
-          { label: "Best Predicted Property", example: "Parkway 290 \u2014 91% accuracy", source: "Per-property validation" },
-          { label: "Needs More Data", example: "Cedar Hills \u2014 only 3 months, need 6+", source: "Threshold check" },
-        ],
-        matchCriteria: "N/A \u2014 status dashboard",
-        howItWorks: "Shows user which of their properties actively contribute to model training \u2192 accuracy metrics per property \u2192 identifies where uploading more data would improve predictions the most"
-      },
-      {
-        name: "Prediction Validation",
-        description: "Side-by-side: what JEDI RE predicted vs what actually happened. The feedback loop that builds trust.",
-        fields: [
-          { label: "Prediction", example: "8.2 leases/week for Parkway 290", source: "Traffic Engine v3" },
-          { label: "Actual", example: "7.8 leases/week (trailing 4 weeks)", source: "User actuals" },
-          { label: "Error", example: "+5.1% (slightly optimistic)", source: "Calculated" },
-          { label: "Trend", example: "Error decreasing \u2014 was \u00B112% at 6mo, now \u00B15%", source: "Validation history" },
-          { label: "Model Adjustment", example: "Garden-style capture rate adjusted -0.03", source: "Auto-calibration" },
-        ],
-        matchCriteria: "Per-property, per-model",
-        howItWorks: "Monthly reconciliation: predicted values vs uploaded actuals \u2192 error tracking over time \u2192 model auto-adjusts when systematic bias detected \u2192 user sees predictions getting more accurate"
-      },
-      {
-        name: "Confidence Map",
-        description: "Where does JEDI RE have high confidence predictions, and where is it guessing? Directly tied to data density in each submarket.",
-        fields: [
-          { label: "High Confidence Zones", example: "Frisco, Prosper, McKinney (12+ contributing properties)", source: "Data density" },
-          { label: "Medium Confidence", example: "Allen, Plano (5-11 properties)", source: "Data density" },
-          { label: "Low Confidence", example: "Celina, Anna (< 5 properties)", source: "Data density" },
-          { label: "Your Impact", example: "Your 3 Frisco assets improved confidence from MED\u2192HIGH", source: "Contribution tracking" },
-          { label: "Data Gaps", example: "No mid-rise data in Frisco \u2014 upload would create new segment", source: "Gap analysis" },
-        ],
-        matchCriteria: "Geographic \u2014 MSA, submarket, property type",
-        howItWorks: "Visualizes data density across user's markets \u2192 shows where their contributions have improved predictions \u2192 identifies strategic data gaps where uploading would create outsized prediction improvement"
-      }
-    ],
-    exampleQuery: {
-      scenario: "You want to know how much your data contributions have improved JEDI RE's predictions in your market.",
-      result: "Model Library shows: Your 3 Frisco properties contributed 54 months of data. Traffic prediction accuracy improved from \u00B118% (market average only) to \u00B15.1% (your validated data). Expense predictions now have HIGH confidence for garden-style in Frisco. Your data also helped 43 other users get better predictions in that submarket (anonymized).",
-      proformaImpact: "Every deal you evaluate in Frisco now carries 'HIGH confidence' badges on Traffic, Expense, and Rent predictions. Investors and lenders see this confidence level in deal memos \u2014 it's a trust signal."
-    }
-  }
+const OWNED_ASSETS = [
+  { id: "p1", name: "Parkway at 290", type: "Garden 3-Story", units: 290, built: 2020, city: "Frisco, TX", monthsData: 18, lastUpload: "2026-01-15", status: "complete" },
+  { id: "p2", name: "Cedar Hills", type: "Garden 2-Story", units: 180, built: 2019, city: "McKinney, TX", monthsData: 12, lastUpload: "2026-01-15", status: "complete" },
+  { id: "p3", name: "Summit Ridge", type: "Mid-Rise 4-Story", units: 220, built: 2022, city: "Plano, TX", monthsData: 6, lastUpload: "2025-12-01", status: "partial" },
+  { id: "p4", name: "Magnolia Station", type: "Garden 3-Story", units: 310, built: 2021, city: "Allen, TX", monthsData: 3, lastUpload: "2025-11-01", status: "partial" },
+  { id: "p5", name: "Westpark Lofts", type: "Mid-Rise 5-Story", units: 150, built: 2023, city: "Frisco, TX", monthsData: 0, lastUpload: null, status: "empty" },
 ];
 
-const DATA_FLOW = {
-  steps: [
-    { id: 1, label: "UPLOAD", desc: "User uploads actuals, rent rolls, traffic data", icon: "\u2191", color: "amber" },
-    { id: 2, label: "NORMALIZE", desc: "Template mapper standardizes to JEDI schema", icon: "\u2699", color: "purple" },
-    { id: 3, label: "INDEX", desc: "Data tagged by geography, property type, vintage", icon: "\u25C8", color: "blue" },
-    { id: 4, label: "ENRICH", desc: "Cross-referenced with market data + other user data (anonymized)", icon: "\u2B21", color: "emerald" },
-    { id: 5, label: "SERVE", desc: "Available as comps, benchmarks, training data, and templates", icon: "\u25C7", color: "red" },
-  ]
-};
+const UPLOAD_TEMPLATES = [
+  { id: "monthly_pnl", name: "Monthly P&L", description: "Revenue, expenses, NOI by month", format: "xlsx/csv" },
+  { id: "rent_roll", name: "Rent Roll", description: "Unit-level rents, lease dates, status", format: "xlsx/csv" },
+  { id: "traffic_leasing", name: "Traffic & Leasing", description: "Walk-ins, tours, web leads, leases signed", format: "xlsx/csv" },
+  { id: "construction", name: "Construction Budget", description: "Hard costs, soft costs, draw schedule", format: "xlsx/csv" },
+  { id: "t12", name: "Trailing 12 Summary", description: "Annualized P&L with per-unit metrics", format: "xlsx/csv" },
+];
 
-const COLOR_MAP: Record<string, { border: string; bg: string; text: string }> = {
-  amber: { border: "border-amber-400", bg: "bg-amber-50", text: "text-amber-700" },
-  purple: { border: "border-purple-400", bg: "bg-purple-50", text: "text-purple-700" },
-  blue: { border: "border-blue-400", bg: "bg-blue-50", text: "text-blue-700" },
-  emerald: { border: "border-emerald-400", bg: "bg-emerald-50", text: "text-emerald-700" },
-  red: { border: "border-red-400", bg: "bg-red-50", text: "text-red-700" },
+const SAVED_TEMPLATES = [
+  { id: "t1", name: "Garden Value-Add — DFW 2024", strategy: "Rental", productType: "Garden 1-3 Stories", createdFrom: "Parkway at 290", createdDate: "2025-08-15", assumptions: 42, lastUsed: "2026-01-20", timesUsed: 3 },
+  { id: "t2", name: "Mid-Rise Stabilized — Plano", strategy: "Rental", productType: "Mid-Rise 4-5 Stories", createdFrom: "Summit Ridge", createdDate: "2025-11-01", assumptions: 38, lastUsed: "2025-12-10", timesUsed: 1 },
+];
+
+const AUTO_COMPS = [
+  { id: "c1", source: "Parkway at 290", type: "Garden 3-Story", distance: "—", compScore: 100, opexPU: "$4,980", noiPU: "$8,420", occupancy: "94.2%", rentPSF: "$1.92", dataMonths: 18, status: "Your Asset" },
+  { id: "c2", source: "Cedar Hills", type: "Garden 2-Story", distance: "4.8mi", compScore: 74, opexPU: "$5,340", noiPU: "$7,890", occupancy: "92.1%", rentPSF: "$1.78", dataMonths: 12, status: "Your Asset" },
+  { id: "c3", source: "Magnolia Station", type: "Garden 3-Story", distance: "6.2mi", compScore: 68, opexPU: "$5,180", noiPU: "$8,100", occupancy: "93.5%", rentPSF: "$1.85", dataMonths: 3, status: "Your Asset" },
+  { id: "c4", source: "Submarket Avg (anon)", type: "Garden 1-3 Story", distance: "< 5mi", compScore: 55, opexPU: "$5,280", noiPU: "$7,650", occupancy: "92.8%", rentPSF: "$1.80", dataMonths: null, status: "47 Properties" },
+  { id: "c5", source: "MSA Avg (anon)", type: "All Garden", distance: "< 15mi", compScore: 35, opexPU: "$5,420", noiPU: "$7,400", occupancy: "91.9%", rentPSF: "$1.74", dataMonths: null, status: "312 Properties" },
+];
+
+const TABS = [
+  { id: "upload", label: "Upload Data", icon: "↑" },
+  { id: "assets", label: "My Data Assets", icon: "◈" },
+  { id: "comps", label: "Comp Library", icon: "⬡" },
+  { id: "templates", label: "Templates", icon: "◇" },
+  { id: "models", label: "Model Training", icon: "◆" },
+];
+
+const MAPPING_ROWS = [
+  { fileCol: "Month", jediField: "period", sample: "2025-01, 2025-02, 2025-03...", matched: true },
+  { fileCol: "Gross Potential Rent", jediField: "gross_potential_rent", sample: "$421,500, $421,500, $423,200...", matched: true },
+  { fileCol: "Vacancy", jediField: "vacancy_loss", sample: "$24,300, $22,100, $19,800...", matched: true },
+  { fileCol: "Concessions", jediField: "concessions", sample: "$8,400, $6,200, $4,100...", matched: true },
+  { fileCol: "Other Rev", jediField: "other_income", sample: "$12,800, $13,100, $12,900...", matched: true },
+  { fileCol: "RE Taxes", jediField: "taxes", sample: "$34,200, $34,200, $34,200...", matched: true },
+  { fileCol: "Property Insurance", jediField: "insurance", sample: "$16,400, $16,400, $16,400...", matched: true },
+  { fileCol: "Electric/Gas/Water", jediField: "utilities", sample: "$18,900, $21,200, $19,400...", matched: true },
+  { fileCol: "Maint & Repairs", jediField: "repairs_maintenance", sample: "$21,500, $19,800, $24,100...", matched: true },
+  { fileCol: "Mgmt Fee", jediField: "management_fee", sample: "$12,800, $13,100, $12,900...", matched: true },
+  { fileCol: "Occupancy %", jediField: "occupancy_rate", sample: "92.1%, 93.5%, 94.8%...", matched: true },
+  { fileCol: "Avg Rent", jediField: "avg_rent_achieved", sample: "$1,745, $1,762, $1,785...", matched: true },
+  { fileCol: "Walk-ins", jediField: "walk_in_count", sample: "42, 38, 51...", matched: true },
+  { fileCol: "Leases Signed", jediField: "leases_signed", sample: "7, 6, 9...", matched: true },
+];
+
+const PREVIEW_ROWS = [
+  ["Jul 2024", "$421.5K", "$24.3K", "$401.6K", "$34.2K", "$16.4K", "$21.5K", "$12.8K", "$120.1K", "$281.5K", "92.1%", "$1,745", "42", "7"],
+  ["Aug 2024", "$421.5K", "$22.1K", "$405.6K", "$34.2K", "$16.4K", "$19.8K", "$13.1K", "$118.2K", "$287.4K", "93.5%", "$1,762", "38", "6"],
+  ["Sep 2024", "$423.2K", "$19.8K", "$409.5K", "$34.2K", "$16.4K", "$24.1K", "$12.9K", "$122.8K", "$286.7K", "94.8%", "$1,785", "51", "9"],
+  ["Oct 2024", "$423.2K", "$18.2K", "$412.1K", "$34.2K", "$16.4K", "$18.9K", "$13.2K", "$116.4K", "$295.7K", "95.1%", "$1,788", "44", "8"],
+  ["Nov 2024", "$425.0K", "$17.8K", "$414.0K", "$34.2K", "$16.4K", "$22.3K", "$13.0K", "$119.6K", "$294.4K", "95.4%", "$1,792", "35", "5"],
+  ["Dec 2024", "$425.0K", "$19.1K", "$411.8K", "$34.2K", "$16.4K", "$26.8K", "$12.8K", "$124.9K", "$286.9K", "94.8%", "$1,790", "28", "4"],
+];
+
+const PREVIEW_HEADERS = ["Period", "GPR", "Vacancy", "EGI", "Taxes", "Insurance", "R&M", "Mgmt", "Total OpEx", "NOI", "Occ%", "Avg Rent", "Walk-ins", "Leases"];
+
+const MODEL_CARDS = [
+  { model: "Traffic-to-Lease", icon: "◆", accuracy: "±5.1%", trend: "improving", yourContrib: "54 months", properties: 3, status: "Training", color: "purple" },
+  { model: "Expense Benchmark", icon: "◉", accuracy: "±8.3%", trend: "stable", yourContrib: "39 months", properties: 3, status: "Active", color: "blue" },
+  { model: "Rent Achievement", icon: "⬡", accuracy: "±4.7%", trend: "improving", yourContrib: "36 months", properties: 3, status: "Active", color: "emerald" },
+];
+
+const VALIDATION_ROWS = [
+  { property: "Parkway 290", metric: "Leases/week", predicted: "8.2", actual: "7.8", error: "+5.1%", verdict: "close" },
+  { property: "Parkway 290", metric: "OpEx/unit", predicted: "$5,100", actual: "$4,980", error: "+2.4%", verdict: "close" },
+  { property: "Cedar Hills", metric: "Leases/week", predicted: "5.4", actual: "4.9", error: "+10.2%", verdict: "off" },
+  { property: "Cedar Hills", metric: "Occupancy", predicted: "93.5%", actual: "92.1%", error: "+1.5%", verdict: "close" },
+  { property: "Summit Ridge", metric: "Leases/week", predicted: "6.8", actual: "—", error: "—", verdict: "pending" },
+];
+
+const MODEL_COLOR: Record<string, { border: string; bg: string; text: string; bar: string }> = {
+  purple: { border: "border-purple-300", bg: "bg-purple-50", text: "text-purple-700", bar: "bg-purple-500" },
+  blue: { border: "border-blue-300", bg: "bg-blue-50", text: "text-blue-700", bar: "bg-blue-500" },
+  emerald: { border: "border-emerald-300", bg: "bg-emerald-50", text: "text-emerald-700", bar: "bg-emerald-500" },
 };
 
 export function ModuleLibrariesPage() {
-  const [selectedLib, setSelectedLib] = useState("comp");
-  const [expandedSection, setExpandedSection] = useState(0);
-  const [showDataFlow, setShowDataFlow] = useState(false);
-  const [showSchema, setShowSchema] = useState(false);
+  const [activeTab, setActiveTab] = useState("upload");
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState("monthly_pnl");
+  const [uploadStep, setUploadStep] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
 
-  const lib = LIBRARIES.find(l => l.id === selectedLib);
+  const handleDrag = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(true); }, []);
+  const handleDragLeave = useCallback(() => setDragOver(false), []);
+  const handleDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(false); setUploadStep(1); }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b-2 border-amber-500 px-6 py-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="bg-white border-b-2 border-amber-500 px-6 py-3.5 shrink-0">
         <div className="flex justify-between items-center">
           <div>
-            <div className="text-[10px] font-mono text-amber-600 tracking-[4px] mb-0.5">SETTINGS \u2192 M24</div>
-            <h1 className="text-xl font-bold text-gray-900">Module Libraries</h1>
-            <p className="text-xs text-gray-500 mt-0.5">The central hub for all proprietary user intelligence \u2014 comps, data, templates, benchmarks, and model training</p>
+            <div className="text-[9px] font-mono text-amber-600 tracking-[4px]">SETTINGS → MODULE LIBRARIES</div>
+            <h1 className="text-xl font-bold text-gray-900 mt-0.5">Your Intelligence Hub</h1>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowDataFlow(!showDataFlow)} className={`px-3 py-1.5 rounded-md text-xs font-semibold font-mono border transition-colors ${showDataFlow ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
-              {showDataFlow ? "Hide" : "Show"} Data Flow
-            </button>
-            <button onClick={() => setShowSchema(!showSchema)} className={`px-3 py-1.5 rounded-md text-xs font-semibold font-mono border transition-colors ${showSchema ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-500 hover:border-gray-400'}`}>
-              {showSchema ? "Hide" : "Show"} DB Tables
+          <div className="flex gap-3 items-center">
+            <div className="text-right mr-3">
+              <div className="text-[11px] text-gray-500">{OWNED_ASSETS.length} assets · {OWNED_ASSETS.reduce((a, p) => a + p.monthsData, 0)} months of data</div>
+              <div className="text-[10px] text-gray-400">{AUTO_COMPS.filter(c => c.status === "Your Asset").length} active comps · {SAVED_TEMPLATES.length} saved templates</div>
+            </div>
+            <button className="px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 transition-colors">
+              ↑ Upload Data
             </button>
           </div>
         </div>
 
-        {showDataFlow && (
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {DATA_FLOW.steps.map((step, i) => {
-              const c = COLOR_MAP[step.color];
-              return (
-                <div key={step.id} className="flex items-center gap-2">
-                  <div className={`min-w-[180px] bg-white border ${c.border} rounded-lg p-3 border-t-2`}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className={`text-base ${c.text}`}>{step.icon}</span>
-                      <span className={`text-[10px] font-mono ${c.text} tracking-[2px]`}>STEP {step.id}: {step.label}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 leading-snug">{step.desc}</p>
-                  </div>
-                  {i < DATA_FLOW.steps.length - 1 && <span className="text-lg text-gray-300">\u2192</span>}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="flex" style={{ height: showDataFlow ? 'calc(100vh - 170px)' : 'calc(100vh - 90px)' }}>
-        <div className="w-60 bg-white border-r border-gray-200 overflow-y-auto py-2">
-          <div className="px-3.5 py-1.5 text-[9px] font-mono text-gray-400 tracking-[3px]">LIBRARIES</div>
-          {LIBRARIES.map(l => (
-            <button key={l.id} onClick={() => { setSelectedLib(l.id); setExpandedSection(0); }}
-              className={`w-full text-left px-3.5 py-3 border-l-[3px] transition-all ${selectedLib === l.id ? 'bg-gray-50 border-amber-500' : 'border-transparent hover:bg-gray-50'}`}>
-              <div className="flex items-center gap-2.5">
-                <span className={`text-xl leading-none ${selectedLib === l.id ? 'text-amber-600' : 'text-gray-400'}`}>{l.icon}</span>
-                <div>
-                  <div className={`text-[13px] ${selectedLib === l.id ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>{l.name}</div>
-                  <div className="text-[10px] text-gray-400 mt-0.5">{l.tagline}</div>
-                </div>
-              </div>
+        <div className="flex gap-0.5 mt-3">
+          {TABS.map(tab => (
+            <button key={tab.id} onClick={() => { setActiveTab(tab.id); if (tab.id === "upload") setUploadStep(0); }}
+              className={`px-4 py-2 rounded-t-lg text-[13px] transition-colors border-b-2 ${activeTab === tab.id ? 'bg-gray-100 text-gray-900 font-semibold border-amber-500' : 'bg-transparent text-gray-500 border-transparent hover:text-gray-700'}`}>
+              <span className="mr-1.5 text-sm">{tab.icon}</span>{tab.label}
             </button>
           ))}
-
-          <div className="mx-3.5 mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-[9px] font-mono text-gray-400 tracking-[2px] mb-1.5">DATA DOMAINS</div>
-            <div className="text-[11px] text-gray-500 leading-relaxed space-y-1">
-              <div><span className="text-blue-500">\u25CF</span> Market Data \u2192 Benchmarks</div>
-              <div><span className="text-amber-500">\u25CF</span> User Data \u2192 Comps, Data, Templates</div>
-              <div><span className="text-emerald-500">\u25CF</span> Derived Intel \u2192 Models</div>
-            </div>
-          </div>
         </div>
+      </div>
 
-        {lib && (
-          <div className="flex-1 overflow-y-auto p-5">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <div className="flex items-center gap-2.5 mb-1">
-                  <span className="text-3xl text-amber-600">{lib.icon}</span>
-                  <h2 className="text-2xl font-bold text-gray-900">{lib.name}</h2>
-                </div>
-                <p className="text-sm text-gray-500 leading-relaxed max-w-[700px]">{lib.description}</p>
-              </div>
-            </div>
+      <div className="flex-1 overflow-y-auto p-5">
 
-            {showSchema && (
-              <div className="flex gap-3 mb-4">
-                <div className="flex-1 bg-white border border-blue-200 rounded-lg p-3">
-                  <div className="text-[9px] font-mono text-blue-600 tracking-[2px] mb-1.5">DATABASE TABLES</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {lib.dbTables.map(t => (
-                      <span key={t} className="text-[11px] font-mono px-2.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700">{t}</span>
+        {activeTab === "upload" && (
+          <div>
+            {uploadStep === 0 && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-2">① SELECT PROPERTY</div>
+                  <div className="flex flex-col gap-1.5">
+                    {OWNED_ASSETS.map(a => (
+                      <button key={a.id} onClick={() => setSelectedAsset(a.id)}
+                        className={`text-left p-3 rounded-lg border transition-colors ${selectedAsset === a.id ? 'border-amber-500 border-2 bg-amber-50/50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-900">{a.name}</div>
+                            <div className="text-[11px] text-gray-500 mt-0.5">{a.type} · {a.units} units · {a.city}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-xs font-mono ${a.monthsData > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                              {a.monthsData > 0 ? `${a.monthsData}mo data` : "No data"}
+                            </div>
+                            {a.lastUpload && <div className="text-[10px] text-gray-400">Last: {a.lastUpload}</div>}
+                          </div>
+                        </div>
+                        {a.status === "empty" && (
+                          <div className="mt-1.5 px-2 py-1 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-700">
+                            No data uploaded — this asset isn't generating comps yet
+                          </div>
+                        )}
+                      </button>
                     ))}
+                    <button className="text-center p-3 rounded-lg border border-dashed border-gray-300 text-gray-500 text-[13px] hover:border-gray-400 transition-colors">
+                      + Add New Property
+                    </button>
                   </div>
                 </div>
-                <div className="flex-1 bg-white border border-amber-200 rounded-lg p-3">
-                  <div className="text-[9px] font-mono text-amber-600 tracking-[2px] mb-1.5">FEEDS MODULES</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {lib.moduleConnections.map(m => (
-                      <span key={m} className="text-[11px] font-mono px-2.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">{m}</span>
+
+                <div>
+                  <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-2">② SELECT DATA TYPE</div>
+                  <div className="flex flex-col gap-1.5 mb-4">
+                    {UPLOAD_TEMPLATES.map(t => (
+                      <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
+                        className={`text-left px-3.5 py-2.5 rounded-lg border transition-colors ${selectedTemplate === t.id ? 'border-amber-500 border-2 bg-amber-50/50' : 'border-gray-200 bg-white hover:bg-gray-50'}`}>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-[13px] font-medium text-gray-900">{t.name}</span>
+                            <span className="text-[11px] text-gray-400 ml-2">{t.description}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{t.format}</span>
+                        </div>
+                      </button>
                     ))}
+                  </div>
+
+                  <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-2">③ DROP YOUR FILE</div>
+                  <div onDragOver={handleDrag} onDragLeave={handleDragLeave} onDrop={handleDrop} onClick={() => setUploadStep(1)}
+                    className={`border-2 border-dashed rounded-xl py-10 px-5 text-center cursor-pointer transition-colors ${dragOver ? 'border-amber-500 bg-amber-50/30' : 'border-gray-300 hover:border-amber-400'}`}>
+                    <div className={`text-4xl mb-2 ${dragOver ? 'text-amber-600' : 'text-gray-400'}`}>↑</div>
+                    <div className="text-[15px] font-semibold text-gray-900 mb-1">
+                      Drag & drop your {UPLOAD_TEMPLATES.find(t => t.id === selectedTemplate)?.name} file
+                    </div>
+                    <div className="text-xs text-gray-500 mb-3">Excel (.xlsx) or CSV — or click to browse</div>
+                    <button className="px-4 py-1.5 rounded-md bg-gray-100 border border-gray-200 text-gray-500 text-xs hover:bg-gray-200 transition-colors">
+                      Download Template →
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {lib.sections.map((section, si) => (
-              <div key={si} className="mb-2.5 border border-gray-200 rounded-xl overflow-hidden bg-white">
-                <button onClick={() => setExpandedSection(expandedSection === si ? -1 : si)}
-                  className={`w-full text-left px-4 py-3 flex justify-between items-center ${expandedSection === si ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
+            {uploadStep === 1 && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
                   <div>
-                    <span className="text-sm font-semibold text-gray-900">{section.name}</span>
-                    <span className="text-xs text-gray-400 ml-2.5">{section.description.slice(0, 80)}...</span>
+                    <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-0.5">STEP 2 OF 3</div>
+                    <h2 className="text-lg font-bold text-gray-900">Map Your Columns</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">We detected 14 columns in your file. Match them to JEDI fields below.</p>
                   </div>
-                  <span className={`text-gray-400 transition-transform ${expandedSection === si ? 'rotate-180' : ''}`}>\u25BE</span>
-                </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setUploadStep(0)} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-500 text-[13px] hover:bg-gray-50">← Back</button>
+                    <button onClick={() => setUploadStep(2)} className="px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700">Preview Data →</button>
+                  </div>
+                </div>
 
-                {expandedSection === si && (
-                  <div className="px-4 pb-4">
-                    <p className="text-xs text-gray-500 leading-relaxed mb-3">{section.description}</p>
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="grid grid-cols-[200px_40px_200px_1fr] px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[10px] font-mono text-gray-400 tracking-[1px]">
+                    <span>YOUR FILE COLUMN</span><span></span><span>JEDI FIELD</span><span>SAMPLE VALUES</span>
+                  </div>
+                  {MAPPING_ROWS.map((row, i) => (
+                    <div key={i} className={`grid grid-cols-[200px_40px_200px_1fr] px-4 py-2.5 items-center border-b border-gray-100 last:border-0 ${i % 2 === 1 ? 'bg-gray-50/50' : ''} hover:bg-gray-50 transition-colors`}>
+                      <span className="text-[13px] text-gray-900 font-medium">{row.fileCol}</span>
+                      <span className={`text-base ${row.matched ? 'text-emerald-500' : 'text-red-500'}`}>{row.matched ? "→" : "?"}</span>
+                      <select className={`bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 text-xs font-mono ${row.matched ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <option>{row.jediField}</option>
+                      </select>
+                      <span className="text-[11px] text-gray-400 font-mono">{row.sample}</span>
+                    </div>
+                  ))}
+                </div>
 
-                    <div className="mb-3">
-                      <div className="text-[9px] font-mono text-gray-400 tracking-[2px] mb-1.5">DATA FIELDS</div>
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        {section.fields.map((f, fi) => (
-                          <div key={fi} className={`grid grid-cols-[160px_140px_1fr] gap-0 px-3 py-2 border-b border-gray-100 last:border-0 ${fi % 2 === 1 ? 'bg-gray-50/50' : ''}`}>
-                            <span className="text-xs font-medium text-gray-900">{f.label}</span>
-                            <span className="text-xs font-mono text-amber-700">{f.example}</span>
-                            <span className="text-[11px] text-gray-400">{f.source}</span>
-                          </div>
+                <div className="mt-3 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+                  <span className="text-xs text-emerald-700 font-semibold">✓ 14 of 14 columns auto-matched</span>
+                  <span className="text-[11px] text-gray-500 ml-3">Review and adjust if any mappings look wrong, then click Preview Data</span>
+                </div>
+              </div>
+            )}
+
+            {uploadStep === 2 && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <div>
+                    <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-0.5">STEP 3 OF 3</div>
+                    <h2 className="text-lg font-bold text-gray-900">Review & Confirm</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">18 months of P&L data for Parkway at 290 — ready to import</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setUploadStep(1)} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-500 text-[13px] hover:bg-gray-50">← Back</button>
+                    <button onClick={() => setUploadStep(3)} className="px-5 py-2 rounded-lg bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600">✓ Import 18 Months</button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {[
+                    { icon: "⬡", title: "Creates 1 New Comp", desc: "Parkway 290 becomes searchable in Comp Library. Any garden 3-story deal within 10mi can use your actual expenses.", color: "amber" },
+                    { icon: "◆", title: "Trains Traffic Model", desc: "14 months of walk-in + lease data improves predictions for all garden-style in Frisco. Accuracy: LOW → MEDIUM.", color: "purple" },
+                    { icon: "◉", title: "Updates Benchmarks", desc: "Your OpEx joins the anonymized benchmark pool. 47 properties in submarket → 48. Your data is never shown raw.", color: "blue" },
+                  ].map((item, i) => (
+                    <div key={i} className={`bg-white border rounded-xl p-4 border-t-2 ${item.color === 'amber' ? 'border-t-amber-400 border-amber-200' : item.color === 'purple' ? 'border-t-purple-400 border-purple-200' : 'border-t-blue-400 border-blue-200'}`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`text-lg ${item.color === 'amber' ? 'text-amber-600' : item.color === 'purple' ? 'text-purple-600' : 'text-blue-600'}`}>{item.icon}</span>
+                        <span className="text-[13px] font-semibold text-gray-900">{item.title}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 leading-snug">{item.desc}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[10px] font-mono text-gray-400">
+                    SHOWING FIRST 6 OF 18 MONTHS
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          {PREVIEW_HEADERS.map(h => (
+                            <th key={h} className="px-2.5 py-2 text-right text-[10px] font-mono text-gray-400 border-b border-gray-200 whitespace-nowrap first:text-left">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {PREVIEW_ROWS.map((row, ri) => (
+                          <tr key={ri} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className={`px-2.5 py-2 whitespace-nowrap ${ci === 0 ? 'text-left text-gray-900' : 'text-right font-mono text-gray-500'} text-[11px]`}>{cell}</td>
+                            ))}
+                          </tr>
                         ))}
-                      </div>
-                    </div>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                    <div className="grid grid-cols-2 gap-2.5 mb-3">
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <div className="text-[9px] font-mono text-amber-600 tracking-[2px] mb-1">MATCH CRITERIA</div>
-                        <p className="text-[11px] text-gray-600 leading-snug">{section.matchCriteria}</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-lg p-3">
-                        <div className="text-[9px] font-mono text-emerald-600 tracking-[2px] mb-1">HOW IT WORKS</div>
-                        <p className="text-[11px] text-gray-600 leading-snug">{section.howItWorks}</p>
-                      </div>
+            {uploadStep === 3 && (
+              <div className="text-center py-16 px-5">
+                <div className="text-5xl mb-4 text-emerald-500">✓</div>
+                <h2 className="text-[22px] font-bold text-gray-900 mb-2">18 Months Imported Successfully</h2>
+                <p className="text-sm text-gray-500 max-w-[500px] mx-auto mb-6 leading-relaxed">
+                  Parkway at 290 now has 18 months of actuals. Comp Library updated. Traffic model retraining queued. Benchmarks will refresh overnight.
+                </p>
+                <div className="flex gap-3 justify-center mb-8">
+                  <button onClick={() => { setUploadStep(0); setActiveTab("comps"); }} className="px-5 py-2.5 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700">View Comps →</button>
+                  <button onClick={() => { setUploadStep(0); setActiveTab("upload"); }} className="px-5 py-2.5 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-50">Upload More</button>
+                </div>
+                <div className="grid grid-cols-4 gap-3 max-w-[700px] mx-auto">
+                  {[
+                    { label: "Comp Score", value: "92/100", note: "Highest in your portfolio" },
+                    { label: "OpEx/Unit", value: "$4,980", note: "23rd percentile (lean)" },
+                    { label: "Traffic Accuracy", value: "±5.1%", note: "Was ±18% before your data" },
+                    { label: "Templates Available", value: "1 new", note: "Save as proforma template?" },
+                  ].map((stat, i) => (
+                    <div key={i} className="bg-white border border-gray-200 rounded-lg p-3">
+                      <div className="text-[10px] text-gray-400 mb-1">{stat.label}</div>
+                      <div className="text-xl font-bold text-gray-900 font-mono">{stat.value}</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">{stat.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "assets" && (
+          <div>
+            <div className="mb-4">
+              <h2 className="text-lg font-bold text-gray-900 mb-1">Data Assets</h2>
+              <p className="text-xs text-gray-500">Every owned property with uploaded data. More data = better comps, more accurate predictions, higher confidence scores.</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {OWNED_ASSETS.map(a => (
+                <div key={a.id} className="bg-white border border-gray-200 rounded-xl px-5 py-4">
+                  <div className="flex justify-between items-center mb-2.5">
+                    <div>
+                      <span className="text-base font-semibold text-gray-900">{a.name}</span>
+                      <span className="text-xs text-gray-500 ml-2.5">{a.type} · {a.units} units · {a.city}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setActiveTab("upload"); setSelectedAsset(a.id); setUploadStep(0); }}
+                        className="px-3.5 py-1.5 rounded-md bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors">
+                        ↑ Upload Data
+                      </button>
+                      <button className="px-3.5 py-1.5 rounded-md border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition-colors">View Details</button>
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="grid grid-cols-5 gap-3">
+                    {[
+                      { label: "Monthly P&L", months: a.monthsData, target: 24 },
+                      { label: "Rent Rolls", months: Math.max(0, a.monthsData - 3), target: 24 },
+                      { label: "Traffic Data", months: Math.max(0, a.monthsData - 4), target: 12 },
+                      { label: "Comp Eligible", months: null, target: null, active: a.monthsData >= 3 },
+                      { label: "Model Training", months: null, target: null, active: a.monthsData >= 6, partial: a.monthsData >= 3 && a.monthsData < 6 },
+                    ].map((d, i) => {
+                      const statusColor = d.target
+                        ? (d.months! >= d.target * 0.5 ? 'text-emerald-600' : d.months! >= d.target * 0.25 ? 'text-amber-600' : 'text-red-500')
+                        : (d.active ? 'text-emerald-600' : d.partial ? 'text-amber-600' : 'text-red-500');
+                      const barColor = d.target
+                        ? (d.months! >= d.target * 0.5 ? 'bg-emerald-500' : d.months! >= d.target * 0.25 ? 'bg-amber-500' : 'bg-red-400')
+                        : '';
+                      return (
+                        <div key={i} className="bg-gray-50 rounded-md px-2.5 py-2">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] text-gray-400">{d.label}</span>
+                            <span className={`text-[10px] font-mono ${statusColor}`}>
+                              {d.target ? `${d.months}mo` : (d.active ? "✓ Active" : d.partial ? "Partial" : "✗ Need data")}
+                            </span>
+                          </div>
+                          {d.target && (
+                            <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, ((d.months ?? 0) / d.target) * 100)}%` }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-            <div className="mt-4 border border-amber-200 rounded-xl bg-white overflow-hidden">
-              <div className="px-4 py-3 bg-amber-50 border-b border-amber-200">
-                <div className="text-[10px] font-mono text-amber-700 tracking-[2px]">REAL-WORLD EXAMPLE</div>
+        {activeTab === "comps" && (
+          <div>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Comp Library</h2>
+                <p className="text-xs text-gray-500">Auto-generated from your portfolio data. These comps populate ProForma Layer 3 when you open a new deal.</p>
               </div>
-              <div className="p-4">
-                <div className="mb-3">
-                  <div className="text-[10px] font-mono text-gray-400 tracking-[1px] mb-1">SCENARIO</div>
-                  <p className="text-sm text-gray-900 leading-relaxed">{lib.exampleQuery.scenario}</p>
-                </div>
-                <div className="mb-3">
-                  <div className="text-[10px] font-mono text-emerald-600 tracking-[1px] mb-1">WHAT THE LIBRARY RETURNS</div>
-                  <p className="text-sm text-gray-600 leading-relaxed">{lib.exampleQuery.result}</p>
-                </div>
-                <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                  <div className="text-[10px] font-mono text-amber-700 tracking-[1px] mb-1">PROFORMA IMPACT</div>
-                  <p className="text-sm text-amber-800 leading-relaxed font-medium">{lib.exampleQuery.proformaImpact}</p>
-                </div>
+              <div className="bg-white border border-gray-200 rounded-lg px-3.5 py-2">
+                <div className="text-[10px] text-gray-400 mb-0.5">COMP POOL</div>
+                <span className="text-sm font-bold text-gray-900">3 owned</span>
+                <span className="text-xs text-gray-500"> + 359 anonymized</span>
               </div>
             </div>
 
-            <div className="mt-4 p-4 bg-white rounded-xl border border-dashed border-gray-300">
-              <div className="text-[10px] font-mono text-gray-400 tracking-[2px] mb-1.5">ARCHITECTURE NOTE</div>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                {lib.id === "comp" && "The Comp Library is the user-facing layer over the comp_eligible_properties materialized view and deal_monthly_actuals table. When users upload monthly actuals, the data flows: upload \u2192 deal_monthly_actuals \u2192 comp_eligible_properties (nightly refresh) \u2192 available for ProForma Layer 3 queries. The comp scoring algorithm (property type match 40pts + proximity 25pts + vintage 15pts + scale 10pts + recency 10pts) runs as a SQL query against the materialized view, returning ranked comps with confidence scores."}
-                {lib.id === "data" && "The Data Library maps directly to deal_monthly_actuals (the core table) plus deal_proforma_snapshots (saved state), training_datasets (model input), and traffic_predictions (M07 output). Every upload triggers a cascade: normalize \u2192 write \u2192 refresh materialized views \u2192 check if model retraining threshold is met \u2192 update confidence scores for that submarket."}
-                {lib.id === "template" && "Templates are stored in proforma_templates (full assumption snapshots) and assumption_presets (scenario parameter sets). When applied to a new deal, the system loads all saved values into M09 ProForma, then runs a freshness check against current market data to flag stale assumptions. This bridges Domain 2 (User Data) with Domain 1 (Market Data) validation."}
-                {lib.id === "benchmark" && "Market Benchmarks draw from anonymized_comps (aggregated user data with k-anonymity), market_snapshots (external market data), and demographic_snapshots (Census/BLS). Statistics are computed with minimum reporting thresholds (5+ properties per segment). This powers M09 ProForma Layer 2 (Platform Intelligence) defaults."}
-                {lib.id === "model" && "The Model Library provides transparency into training_datasets (what data feeds models), model_coefficients (learned parameters), and traffic_predictions (output). Users can see exactly how their data contributions improve prediction accuracy, building trust in the AI system's outputs."}
-              </p>
+            <div className="bg-gray-100 rounded-xl p-4 mb-4 border border-gray-200">
+              <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-2">FIND COMPS FOR A DEAL — try it</div>
+              <div className="flex gap-2">
+                <input placeholder="Property type (e.g. Garden 3-Story)" className="flex-1 px-3 py-2 rounded-md border border-gray-200 bg-white text-gray-900 text-[13px] focus:outline-none focus:border-amber-400" />
+                <input placeholder="City or submarket" className="flex-1 px-3 py-2 rounded-md border border-gray-200 bg-white text-gray-900 text-[13px] focus:outline-none focus:border-amber-400" />
+                <input placeholder="Units (e.g. 250)" className="w-[120px] px-3 py-2 rounded-md border border-gray-200 bg-white text-gray-900 text-[13px] focus:outline-none focus:border-amber-400" />
+                <button className="px-5 py-2 rounded-md bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700 whitespace-nowrap">Search Comps</button>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="grid grid-cols-[2fr_1.2fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_1fr] px-4 py-2.5 bg-gray-50 border-b border-gray-200 text-[10px] font-mono text-gray-400 tracking-[1px]">
+                <span>SOURCE</span><span>TYPE</span><span>DIST</span><span className="text-right">SCORE</span><span className="text-right">OPEX/U</span><span className="text-right">NOI/U</span><span className="text-right">OCC</span><span className="text-right">RENT/SF</span><span className="text-right">DATA</span>
+              </div>
+              {AUTO_COMPS.map((c) => (
+                <div key={c.id} className={`grid grid-cols-[2fr_1.2fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_0.8fr_1fr] px-4 py-3 border-b border-gray-100 items-center cursor-pointer hover:bg-gray-50 transition-colors ${c.status === "Your Asset" ? 'bg-amber-50/40' : ''}`}>
+                  <div>
+                    <span className="text-[13px] font-medium text-gray-900">{c.source}</span>
+                    {c.status === "Your Asset" && <span className="text-[9px] font-mono text-amber-700 ml-2 px-1.5 py-px bg-amber-100 rounded">YOUR DATA</span>}
+                  </div>
+                  <span className="text-xs text-gray-500">{c.type}</span>
+                  <span className="text-xs font-mono text-gray-500">{c.distance}</span>
+                  <div className="text-right">
+                    <span className={`text-[13px] font-mono font-semibold ${c.compScore >= 80 ? 'text-emerald-600' : c.compScore >= 60 ? 'text-amber-600' : 'text-gray-500'}`}>{c.compScore}</span>
+                  </div>
+                  <span className="text-xs font-mono text-gray-900 text-right">{c.opexPU}</span>
+                  <span className="text-xs font-mono text-gray-900 text-right">{c.noiPU}</span>
+                  <span className="text-xs font-mono text-gray-900 text-right">{c.occupancy}</span>
+                  <span className="text-xs font-mono text-gray-900 text-right">{c.rentPSF}</span>
+                  <span className="text-[11px] font-mono text-gray-400 text-right">{c.dataMonths ? `${c.dataMonths}mo` : c.status}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 px-4 py-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+              <span className="text-xs text-gray-500">When you open a ProForma for a new deal, this comp query runs automatically. Results populate </span>
+              <span className="text-xs text-gray-900 font-semibold">Layer 3 (Your Data)</span>
+              <span className="text-xs text-gray-500"> of the 3-layer assumption model. You don't need to search manually — it just appears.</span>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "templates" && (
+          <div>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Template Library</h2>
+                <p className="text-xs text-gray-500">Saved proforma configurations, scenario presets, and debt structures. Apply to new deals in one click.</p>
+              </div>
+              <button className="px-4 py-2 rounded-lg bg-amber-600 text-white text-[13px] font-semibold hover:bg-amber-700">
+                + Create Template
+              </button>
+            </div>
+
+            {SAVED_TEMPLATES.map(t => (
+              <div key={t.id} className="bg-white border border-gray-200 rounded-xl px-5 py-4 mb-2.5">
+                <div className="flex justify-between items-center mb-2.5">
+                  <div>
+                    <div className="text-base font-semibold text-gray-900">{t.name}</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">
+                      {t.strategy} · {t.productType} · Created from {t.createdFrom} · {t.assumptions} assumptions
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button className="px-4 py-1.5 rounded-md bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600">Apply to Deal →</button>
+                    <button className="px-3.5 py-1.5 rounded-md border border-gray-200 text-gray-500 text-xs hover:bg-gray-50">Edit</button>
+                    <button className="px-3.5 py-1.5 rounded-md border border-gray-200 text-gray-500 text-xs hover:bg-gray-50">Duplicate</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { label: "Rent Growth", value: "3.5%/yr" },
+                    { label: "Vacancy", value: "5.5%" },
+                    { label: "OpEx/Unit", value: "$5,100" },
+                    { label: "Exit Cap", value: "5.25%" },
+                  ].map((a, i) => (
+                    <div key={i} className="bg-gray-50 rounded-md px-2.5 py-1.5 flex justify-between">
+                      <span className="text-[11px] text-gray-400">{a.label}</span>
+                      <span className="text-xs font-mono text-gray-900">{a.value}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-[10px] text-gray-400">Used {t.timesUsed} times · Last used {t.lastUsed} · Created {t.createdDate}</div>
+              </div>
+            ))}
+
+            <div className="mt-3 px-4 py-3.5 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-center">
+              <span className="text-[13px] text-gray-500">Templates are created from within the ProForma (M09). When you finalize a proforma, click </span>
+              <span className="text-[13px] text-gray-900 font-semibold">"Save as Template"</span>
+              <span className="text-[13px] text-gray-500"> and it appears here.</span>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "models" && (
+          <div>
+            <div className="mb-4">
+              <h2 className="text-lg font-bold text-gray-900 mb-1">Model Training Dashboard</h2>
+              <p className="text-xs text-gray-500">See how your data trains JEDI RE's predictions. More data = higher accuracy = more confident deal analysis.</p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-5">
+              {MODEL_CARDS.map((m, i) => {
+                const c = MODEL_COLOR[m.color];
+                const pct = Math.min(100, Math.round((parseInt(m.yourContrib) / 72) * 100));
+                return (
+                  <div key={i} className={`bg-white border ${c.border} rounded-xl p-4 border-t-2`}>
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xl ${c.text}`}>{m.icon}</span>
+                        <span className="text-[15px] font-semibold text-gray-900">{m.model}</span>
+                      </div>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${c.bg} ${c.text}`}>{m.status}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-gray-50 rounded-md p-2.5">
+                        <div className="text-[10px] text-gray-400">Accuracy</div>
+                        <div className="text-lg font-mono font-bold text-gray-900">{m.accuracy}</div>
+                        <div className={`text-[10px] ${m.trend === "improving" ? 'text-emerald-600' : 'text-gray-500'}`}>↑ {m.trend}</div>
+                      </div>
+                      <div className="bg-gray-50 rounded-md p-2.5">
+                        <div className="text-[10px] text-gray-400">Your Data</div>
+                        <div className="text-lg font-mono font-bold text-gray-900">{m.yourContrib}</div>
+                        <div className="text-[10px] text-gray-500">{m.properties} properties</div>
+                      </div>
+                    </div>
+                    <div className="mt-2.5">
+                      <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                        <span>Data Coverage</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl px-5 py-4">
+              <div className="text-[10px] font-mono text-amber-600 tracking-[2px] mb-2.5">PREDICTION VALIDATION — Did JEDI get it right?</div>
+              <div className="flex flex-col gap-1.5">
+                {VALIDATION_ROWS.map((v, i) => (
+                  <div key={i} className="grid grid-cols-[160px_120px_100px_100px_80px_80px] px-3 py-2 rounded-md bg-gray-50 items-center">
+                    <span className="text-xs text-gray-900">{v.property}</span>
+                    <span className="text-[11px] text-gray-500">{v.metric}</span>
+                    <span className="text-xs font-mono text-gray-500">{v.predicted}</span>
+                    <span className="text-xs font-mono text-gray-900">{v.actual}</span>
+                    <span className={`text-[11px] font-mono ${v.verdict === "close" ? 'text-emerald-600' : v.verdict === "off" ? 'text-amber-600' : 'text-gray-400'}`}>{v.error}</span>
+                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${v.verdict === "close" ? 'bg-emerald-50 text-emerald-600' : v.verdict === "off" ? 'bg-amber-50 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>
+                      {v.verdict === "close" ? "✓ Close" : v.verdict === "off" ? "~ Adjusting" : "⏳ Pending"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2.5 px-3 py-2 bg-emerald-50 rounded-md border border-emerald-200">
+                <span className="text-[11px] text-emerald-700">Your data has improved Traffic prediction accuracy in Frisco from ±18% (market only) to ±5.1% (your validated data). This confidence level now shows on every deal analysis in this submarket.</span>
+              </div>
             </div>
           </div>
         )}
