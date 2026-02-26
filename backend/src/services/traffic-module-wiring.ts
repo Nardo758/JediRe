@@ -1,30 +1,27 @@
 /**
- * JEDI RE: Traffic Engine Module Wiring
+ * JEDI RE: Traffic Engine Module Wiring (v2)
  *
  * PURPOSE: Connects the Traffic Engine (M07) to the rest of the platform.
  *
- * This file addresses the WEAKEST LINK identified in the Module Wiring Blueprint:
- *   Market Intelligence (M05) -> Traffic Engine (M07) -> Development (M03) -> Strategy Arbitrage (M08)
+ * v2 ADDITIONS:
+ *   - TrafficIntelligenceV2 extends with full 7-metric funnel + 10-year projections
+ *   - Enhanced JEDI Score integration (net leases + occupancy velocity signals)
+ *   - Enhanced Strategy modifiers (lease-up timeline, occupancy trajectory)
+ *   - Direct ProForma assumption override (vacancy, rent growth, absorption)
+ *   - Risk module: seasonal risk windows
  *
- * EXISTING CODE (2,869 lines, all disconnected):
- *   - trafficPredictionEngine.ts     -> T-01 walk-in prediction (668 lines)
- *   - digitalTrafficService.ts       -> T-03 digital score (338 lines)
- *   - multifamilyTrafficService.ts   -> T-05 traffic-to-lease (555 lines)
- *   - leasingTrafficService.ts       -> leasing metrics (287 lines)
- *   - traffic-correlation.service.ts -> T-04, T-07, T-09 (NEW, fills gaps)
- *   - 4 route files                  -> API endpoints (1,021 lines, unmounted)
- *
- * THIS FILE WIRES:
- *   1. Traffic -> JEDI Score (M25): T-01 walk-ins feed Position signal
- *   2. Traffic -> Strategy Arbitrage (M08): T-04 correlation influences strategy weights
- *   3. Traffic -> ProForma (M09): T-05 lease predictions feed occupancy assumptions
- *   4. Traffic -> Risk (M14): Low traffic flags as risk factor
- *   5. Traffic -> Deal Capsule: T-04 classification as headline insight
+ * WIRES:
+ *   1. Traffic -> JEDI Score (M25): Walk-ins + leasing velocity feed Position signal
+ *   2. Traffic -> Strategy Arbitrage (M08): Correlation + lease-up + occupancy trajectory
+ *   3. Traffic -> ProForma (M09): Direct vacancy/rent/absorption assumption override
+ *   4. Traffic -> Risk (M14): Seasonal risk windows + low traffic flags
+ *   5. Traffic -> Deal Capsule: T-04 classification + leasing funnel headline
  */
 
 import trafficPredictionEngine from './trafficPredictionEngine';
 import { trafficCorrelation, trafficTrajectory, competitiveShare } from './traffic-correlation.service';
 import type { CorrelationSignal, TrafficTrajectory, CompetitiveShare } from './traffic-correlation.service';
+import type { ProjectionResult } from './tenYearProjectionService';
 
 // ============================================================================
 // Full Traffic Intelligence Package
@@ -293,6 +290,242 @@ export function calculateTrafficProFormaInputs(
     traffic_growth_adjustment_bps: growthAdj,
     confidence_tier: intelligence.confidence.tier,
     source_note: `Traffic Engine v1.0: ${intelligence.weekly_walk_ins} walk-ins/week, ${intelligence.correlation.correlation_signal} classification, ${intelligence.trajectory.trend_direction} trajectory`
+  };
+}
+
+// ============================================================================
+// v2: Extended Traffic Intelligence with Funnel + 10-Year Projections
+// ============================================================================
+
+export interface TrafficIntelligenceV2 extends TrafficIntelligence {
+  // v2 Funnel metrics (current week)
+  funnel: {
+    traffic: number;
+    tours: number;
+    apps: number;
+    net_leases: number;
+    occupancy_pct: number;
+    effective_rent: number;
+    closing_ratio: number;
+  };
+
+  // Learned conversion rates
+  learned_rates: {
+    tour_rate: number;
+    app_rate: number;
+    lease_rate: number;
+    data_weeks: number;
+    confidence_level: string;
+  };
+
+  // 10-year projection (from tenYearProjectionService)
+  projection: ProjectionResult | null;
+}
+
+// ============================================================================
+// v2: Enhanced JEDI Score Integration (M25)
+// Net leases + occupancy velocity as new signals
+// ============================================================================
+
+export function calculateTrafficContributionToJEDIv2(
+  intelligence: TrafficIntelligenceV2
+): TrafficScoreContribution {
+  // Start with v1 base
+  const base = calculateTrafficContributionToJEDI(intelligence);
+  let positionAdj = base.position_adjustment;
+  let riskAdj = base.risk_adjustment;
+  const narrativeParts = [base.narrative.replace(/\.$/, '')];
+
+  // v2: Net leases velocity signal
+  if (intelligence.funnel.net_leases > 3 && intelligence.trajectory.trend_direction === 'accelerating') {
+    positionAdj = Math.min(10, positionAdj + 5);
+    narrativeParts.push(`Strong leasing velocity (${intelligence.funnel.net_leases} leases/wk, accelerating)`);
+  } else if (intelligence.funnel.net_leases < 1 && intelligence.trajectory.trend_direction === 'decelerating') {
+    positionAdj = Math.max(-10, positionAdj - 5);
+    riskAdj = Math.max(-5, riskAdj - 3);
+    narrativeParts.push(`Weak leasing (${intelligence.funnel.net_leases} leases/wk, decelerating)`);
+  }
+
+  // v2: Occupancy signal
+  if (intelligence.funnel.occupancy_pct > 96) {
+    positionAdj = Math.min(10, positionAdj + 3);
+    narrativeParts.push(`High occupancy (${intelligence.funnel.occupancy_pct}%) confirms demand`);
+  } else if (intelligence.funnel.occupancy_pct < 90) {
+    positionAdj = Math.max(-10, positionAdj - 5);
+    riskAdj = Math.max(-5, riskAdj - 5);
+    narrativeParts.push(`Low occupancy (${intelligence.funnel.occupancy_pct}%) is a significant risk`);
+  }
+
+  return {
+    position_adjustment: Math.max(-10, Math.min(10, positionAdj)),
+    risk_adjustment: Math.max(-5, Math.min(5, riskAdj)),
+    narrative: narrativeParts.join('. ') + '.',
+  };
+}
+
+// ============================================================================
+// v2: Enhanced Strategy Arbitrage (M08)
+// Lease-up timeline and occupancy trajectory influence strategies
+// ============================================================================
+
+export function calculateTrafficStrategyModifiersV2(
+  intelligence: TrafficIntelligenceV2
+): TrafficStrategyModifier {
+  // Start with v1 base
+  const base = calculateTrafficStrategyModifiers(intelligence);
+  let { bts_modifier: bts, flip_modifier: flip, rental_modifier: rental, str_modifier: str } = base;
+  const insights = [base.traffic_insight.replace(/\.$/, '')];
+
+  // v2: High traffic + low occupancy = Value-Add signal
+  if (intelligence.funnel.traffic > 10 && intelligence.funnel.occupancy_pct < 92) {
+    rental += 6;
+    flip += 4;
+    insights.push('High traffic + below-target occupancy = Value-Add opportunity');
+  }
+
+  // v2: High traffic + high occupancy = Hold signal
+  if (intelligence.funnel.traffic > 10 && intelligence.funnel.occupancy_pct > 95) {
+    rental += 5;
+    str += 3;
+    insights.push('Strong traffic + high occupancy = Hold/STR signal');
+  }
+
+  // v2: Lease-up timeline from projections
+  if (intelligence.projection) {
+    const leaseUpTo95 = intelligence.projection.lease_up_weeks_to_95;
+    if (leaseUpTo95 !== null && leaseUpTo95 > 78) {
+      // Slow lease-up (>18 months) penalizes BTS and BTR
+      bts -= 4;
+      rental -= 3;
+      insights.push(`Slow lease-up (${leaseUpTo95} weeks to 95%) penalizes development strategies`);
+    } else if (leaseUpTo95 !== null && leaseUpTo95 < 35) {
+      // Fast lease-up (<8 months) boosts BTR
+      rental += 5;
+      insights.push(`Fast lease-up (${leaseUpTo95} weeks to 95%) boosts rental strategy`);
+    }
+  }
+
+  const strategies = [
+    { name: 'Build-to-Sell', mod: bts },
+    { name: 'Flip', mod: flip },
+    { name: 'Rental', mod: rental },
+    { name: 'STR', mod: str },
+  ];
+  const best = strategies.reduce((a, b) => a.mod > b.mod ? a : b);
+
+  return {
+    bts_modifier: bts,
+    flip_modifier: flip,
+    rental_modifier: rental,
+    str_modifier: str,
+    traffic_favored_strategy: best.name,
+    traffic_insight: insights.join('. ') + '.',
+  };
+}
+
+// ============================================================================
+// v2: Direct ProForma Assumption Override (M09)
+// Traffic Engine v2 directly populates ProForma assumptions
+// ============================================================================
+
+export interface TrafficProFormaInputsV2 extends TrafficProFormaInputs {
+  // Direct overrides from 10-year projection
+  vacancy_assumption: number;           // 1 - occupancy_trajectory(year1 avg)
+  rent_growth_rate: number;             // Learned from actuals
+  absorption_rate: number;              // Net leases × 52 / available units
+  lease_up_timeline_weeks: number | null;
+  concession_budget_pct: number;        // Concession factor × gross rent
+
+  // Trajectory data for "Platform Adjusted" layer
+  occupancy_trajectory_5yr: number[];   // 60 monthly values
+  rent_trajectory_5yr: number[];        // 60 monthly values
+  revenue_trajectory_5yr: number[];     // 60 monthly values
+}
+
+export function calculateTrafficProFormaInputsV2(
+  intelligence: TrafficIntelligenceV2,
+  totalUnits: number
+): TrafficProFormaInputsV2 {
+  // v1 base
+  const base = calculateTrafficProFormaInputs(intelligence, totalUnits);
+
+  // v2 direct overrides from projection
+  const proj = intelligence.projection;
+  const y1Occ = proj?.year1?.avg_occupancy || intelligence.funnel.occupancy_pct;
+  const vacancyAssumption = Math.round((100 - y1Occ) * 10) / 10;
+
+  const rentGrowthRate = intelligence.learned_rates.data_weeks >= 52
+    ? (proj?.rent_trajectory?.[12] && proj?.rent_trajectory?.[0]
+      ? (proj.rent_trajectory[12] / proj.rent_trajectory[0] - 1)
+      : 0.032)
+    : 0.032;
+
+  const absorptionRate = Math.round(intelligence.funnel.net_leases * 52);
+  const leaseUpWeeks = proj?.lease_up_weeks_to_95 || null;
+
+  // Concession factor based on occupancy
+  const occ = intelligence.funnel.occupancy_pct;
+  const concessionPct = occ > 95 ? 0 : occ > 90 ? 3 : 8;
+
+  // Trajectory slices (first 60 months)
+  const occTraj5yr = proj?.occupancy_trajectory?.slice(0, 60) || [];
+  const rentTraj5yr = proj?.rent_trajectory?.slice(0, 60) || [];
+  const revTraj5yr = proj?.revenue_trajectory?.slice(0, 60) || [];
+
+  return {
+    ...base,
+    vacancy_assumption: vacancyAssumption,
+    rent_growth_rate: Math.round(rentGrowthRate * 10000) / 10000,
+    absorption_rate: absorptionRate,
+    lease_up_timeline_weeks: leaseUpWeeks,
+    concession_budget_pct: concessionPct,
+    occupancy_trajectory_5yr: occTraj5yr,
+    rent_trajectory_5yr: rentTraj5yr,
+    revenue_trajectory_5yr: revTraj5yr,
+    source_note: `Traffic Engine v2.0: ${intelligence.funnel.traffic} walk-ins → ${intelligence.funnel.tours} tours → ${intelligence.funnel.apps} apps → ${intelligence.funnel.net_leases} leases/wk | Occ: ${intelligence.funnel.occupancy_pct}% | ${intelligence.learned_rates.data_weeks} weeks calibrated`,
+  };
+}
+
+// ============================================================================
+// v2: Risk Module Integration (M14)
+// Seasonal risk windows from 10-year projection
+// ============================================================================
+
+export interface TrafficRiskSignals {
+  seasonal_risk_windows: Array<{ week_start: number; week_end: number; expected_occ: number; risk: string }>;
+  occupancy_below_threshold: boolean;
+  lease_velocity_declining: boolean;
+  risk_narrative: string;
+}
+
+export function calculateTrafficRiskSignals(
+  intelligence: TrafficIntelligenceV2,
+  occupancyThreshold: number = 93
+): TrafficRiskSignals {
+  const proj = intelligence.projection;
+  const windows = proj?.seasonal_risk_windows || [];
+  const occBelow = intelligence.funnel.occupancy_pct < occupancyThreshold;
+  const declining = intelligence.trajectory.trend_direction === 'decelerating';
+
+  const narrativeParts: string[] = [];
+  if (windows.length > 0) {
+    narrativeParts.push(`${windows.length} seasonal risk window(s) identified in next 2 years`);
+  }
+  if (occBelow) {
+    narrativeParts.push(`Current occupancy (${intelligence.funnel.occupancy_pct}%) below ${occupancyThreshold}% threshold`);
+  }
+  if (declining) {
+    narrativeParts.push(`Traffic trajectory is decelerating — leasing may soften`);
+  }
+  if (narrativeParts.length === 0) {
+    narrativeParts.push('No elevated traffic-based risks detected');
+  }
+
+  return {
+    seasonal_risk_windows: windows,
+    occupancy_below_threshold: occBelow,
+    lease_velocity_declining: declining,
+    risk_narrative: narrativeParts.join('. ') + '.',
   };
 }
 

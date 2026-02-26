@@ -10,6 +10,45 @@
 
 import { pool } from '../database';
 import marketResearchEngine from './marketResearchEngine';
+import { trafficLearning } from './trafficLearningService';
+import type { LearnedRates } from './trafficLearningService';
+
+// ============================================================================
+// v2 Prediction: Full 7-Metric Funnel
+// ============================================================================
+
+export interface TrafficPredictionV2 extends TrafficPrediction {
+  // v2 funnel metrics
+  in_person_tours: number;
+  applications: number;
+  net_leases: number;
+  occupancy_pct: number;
+  effective_rent: number;
+  closing_ratio: number;
+
+  // Conversion rates used
+  rates: {
+    tour_rate: number;
+    app_rate: number;
+    lease_rate: number;
+  };
+
+  // v2 metadata
+  funnel_breakdown: {
+    traffic_to_tours: number;
+    tours_to_apps: number;
+    apps_to_leases: number;
+    occupancy_modifier: number;
+    seasonal_factor: number;
+  };
+
+  confidence_v2: {
+    score: number;
+    tier: 'Low' | 'Medium' | 'High';
+    data_weeks: number;
+    per_metric: Record<string, number>;
+  };
+}
 
 interface Property {
   id: string;
@@ -652,6 +691,166 @@ export class TrafficPredictionEngine {
   }
   
   /**
+   * v2: Predict full 7-metric leasing funnel for a property
+   *
+   * Uses learned conversion rates (EMA-calibrated from uploads) instead of
+   * v1's static multipliers. Adds occupancy feedback loop and seasonal index.
+   *
+   * Formula chain:
+   *   traffic(w) = baseline × seasonal(w) × occ_modifier
+   *   tours = traffic × tour_rate(season)
+   *   apps = tours × app_rate(season)
+   *   net_leases = apps × lease_rate(season) × occ_modifier
+   *   occupancy = prev + (move_ins - move_outs) / units
+   *   eff_rent = current × (1 + growth)^t × concession(occ)
+   *   closing_ratio = net_leases / traffic
+   */
+  async predictTrafficV2(
+    propertyId: string,
+    options?: {
+      targetWeek?: number;
+      totalUnits?: number;
+      currentOccupancy?: number;
+      currentEffRent?: number;
+    }
+  ): Promise<TrafficPredictionV2> {
+    console.log(`🚦 v2 prediction for property ${propertyId}`);
+    const startTime = Date.now();
+
+    // Step 1: Run v1 base prediction (traffic + physical score)
+    const v1 = await this.predictTraffic(propertyId, options?.targetWeek);
+
+    // Step 2: Load learned rates
+    const rates = await trafficLearning.getOrCreateLearnedRates(propertyId);
+
+    // Step 3: Determine season from current week
+    const { week } = options?.targetWeek
+      ? { week: options.targetWeek }
+      : this.getCurrentWeek();
+    const season = this.getSeasonFromWeek(week);
+
+    // Step 4: Get seasonal-adjusted conversion rates
+    const tourRate = rates.tour_rate_seasonal?.[season] || rates.tour_rate;
+    const appRate = rates.app_rate_seasonal?.[season] || rates.app_rate;
+    const leaseRate = rates.lease_rate_seasonal?.[season] || rates.lease_rate;
+
+    // Step 5: Apply seasonal index to traffic
+    let seasonalFactor = 1.0;
+    if (rates.seasonal_index?.length === 52 && week >= 1 && week <= 52) {
+      seasonalFactor = rates.seasonal_index[week - 1] || 1.0;
+    }
+    const adjustedTraffic = Math.max(1, Math.round(v1.weekly_walk_ins * seasonalFactor));
+
+    // Step 6: Occupancy feedback loop
+    const currentOcc = options?.currentOccupancy || rates.stabilized_occupancy || 95.0;
+    const occModifier = currentOcc < 90 ? 1.3 : currentOcc > 96 ? 0.7 : 1.0;
+
+    // Step 7: Full funnel prediction
+    const tours = Math.max(0, Math.round(adjustedTraffic * tourRate));
+    const apps = Math.max(0, Math.round(tours * appRate));
+    const netLeases = Math.max(0, Math.round(apps * leaseRate * occModifier));
+
+    // Step 8: Occupancy projection (next week)
+    const totalUnits = options?.totalUnits || 290;
+    const avgWeeklyMoveOuts = totalUnits * 0.50 / 52;
+    const nextOcc = Math.min(98, Math.max(85,
+      currentOcc + (netLeases - avgWeeklyMoveOuts) / totalUnits * 100
+    ));
+
+    // Step 9: Effective rent projection
+    const currentRent = options?.currentEffRent || 1808;
+    const rentGrowth = rates.effective_rent_growth_rate || 0.032;
+    const concessionFactor = nextOcc > 95 ? 1.0 : nextOcc > 90 ? 0.97 : 0.92;
+    const effRent = Math.round(currentRent * concessionFactor);
+
+    // Step 10: Closing ratio
+    const closingRatio = adjustedTraffic > 0
+      ? Math.round(netLeases / adjustedTraffic * 1000) / 10
+      : 0;
+
+    // Step 11: v2 confidence (based on data volume)
+    const { score: confScore, tier: confTier } = trafficLearning.getConfidenceScore(rates.data_weeks);
+
+    const v2: TrafficPredictionV2 = {
+      ...v1,
+      weekly_walk_ins: adjustedTraffic,
+      daily_average: Math.round(adjustedTraffic / 7),
+      model_version: '2.0.0',
+
+      // v2 funnel
+      in_person_tours: tours,
+      applications: apps,
+      net_leases: netLeases,
+      occupancy_pct: Math.round(nextOcc * 10) / 10,
+      effective_rent: effRent,
+      closing_ratio: closingRatio,
+
+      rates: { tour_rate: tourRate, app_rate: appRate, lease_rate: leaseRate },
+
+      funnel_breakdown: {
+        traffic_to_tours: tourRate,
+        tours_to_apps: appRate,
+        apps_to_leases: leaseRate,
+        occupancy_modifier: occModifier,
+        seasonal_factor: seasonalFactor,
+      },
+
+      confidence_v2: {
+        score: confScore,
+        tier: confTier,
+        data_weeks: rates.data_weeks,
+        per_metric: {
+          traffic: Math.min(confScore + 5, 100),
+          tours: rates.data_weeks >= 4 ? confScore : confScore - 15,
+          apps: rates.data_weeks >= 8 ? confScore : confScore - 20,
+          net_leases: confScore,
+          occupancy: Math.min(confScore + 10, 100),
+          effective_rent: Math.min(confScore + 10, 100),
+        },
+      },
+    };
+
+    // Step 12: Save v2 columns alongside v1
+    await this.savePredictionV2(v2);
+
+    const duration = Date.now() - startTime;
+    console.log(`✅ v2 prediction in ${duration}ms: ${adjustedTraffic} walk-ins → ${tours} tours → ${apps} apps → ${netLeases} leases | occ: ${nextOcc}%`);
+
+    return v2;
+  }
+
+  /**
+   * Save v2 funnel columns to prediction row
+   */
+  private async savePredictionV2(pred: TrafficPredictionV2): Promise<void> {
+    await pool.query(`
+      UPDATE traffic_predictions SET
+        in_person_tours = $1, applications = $2, net_leases = $3,
+        occupancy_pct = $4, effective_rent = $5, closing_ratio = $6,
+        tour_rate = $7, app_rate = $8, lease_rate = $9,
+        model_version_v2 = '2.0.0',
+        funnel_breakdown = $10,
+        updated_at = NOW()
+      WHERE property_id = $11
+        AND prediction_week = $12
+        AND prediction_year = $13
+    `, [
+      pred.in_person_tours, pred.applications, pred.net_leases,
+      pred.occupancy_pct, pred.effective_rent, pred.closing_ratio,
+      pred.rates.tour_rate, pred.rates.app_rate, pred.rates.lease_rate,
+      JSON.stringify(pred.funnel_breakdown),
+      pred.property_id, pred.prediction_week, pred.prediction_year,
+    ]);
+  }
+
+  private getSeasonFromWeek(week: number): string {
+    if (week < 9 || week >= 49) return 'winter';
+    if (week < 22) return 'spring';
+    if (week < 35) return 'summer';
+    return 'fall';
+  }
+
+  /**
    * Get current week number
    */
   private getCurrentWeek(): { week: number; year: number } {
@@ -660,7 +859,7 @@ export class TrafficPredictionEngine {
     const diff = now.getTime() - start.getTime();
     const oneWeek = 1000 * 60 * 60 * 24 * 7;
     const week = Math.ceil(diff / oneWeek);
-    
+
     return { week, year: now.getFullYear() };
   }
 }
