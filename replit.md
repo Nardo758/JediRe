@@ -61,6 +61,7 @@ JEDI RE utilizes a lightweight, map-agnostic architecture.
     -   **Comp Query Engine**: `comp-query.service.ts` queries `v_comp_search` view with 5-factor scoring (type 40pts, proximity 25pts, vintage 15pts, scale 10pts, recency 10pts). All queries fully parameterized.
     -   **Views**: `v_latest_actuals`, `v_actual_vs_budget`, `v_comp_search` (trailing-12 averages with geographic joins).
     -   **API endpoints**: `POST /properties/:id/actuals/upload`, `POST /properties/:id/actuals/detect-columns`, `GET /properties/:id/actuals`, `GET /upload-templates/:format`, `POST /comps/search`, `GET /comps/property/:id`, `POST /properties/:id/proforma/generate`, `GET /properties/:id/proforma/snapshots`, CRUD `/properties/templates`.
+    -   **Two-Step Upload Flow** (`upload.routes.ts`): `POST /uploads/preview` (file parse + format detection + column mapping preview with in-memory cache), `POST /uploads/process` (confirm mapping → Drizzle bulk upsert into `deal_monthly_actuals` with property access check and failure-safe upload record updates), `GET /uploads/templates` (Drizzle query), `GET /uploads/history/:propertyId` (Drizzle query with access check).
     -   **Seed data**: 2 DFW properties (Parkway 290 Frisco, Cedar Hills McKinney) with 18 months of monthly actuals each. 1 system proforma template (Garden Value-Add DFW 2024).
 
 ### Agent Dashboard (CRM Module)
