@@ -3,12 +3,14 @@ import { getPool } from '../../database/connection';
 import { ParcelIngestionService } from '../../services/parcel-ingestion.service';
 import { ZoningTriangulationService } from '../../services/zoning-triangulation.service';
 import { ConfirmationChainService } from '../../services/confirmation-chain.service';
+import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
 
 const router = Router();
 const pool = getPool();
 const parcelService = new ParcelIngestionService(pool);
 const triangulationService = new ZoningTriangulationService(pool);
 const chainService = new ConfirmationChainService(pool);
+const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
 
 router.post('/parcels/ingest/geojson', async (req: Request, res: Response) => {
   try {
@@ -258,6 +260,33 @@ router.get('/zoning/chain/:dealId', async (req: Request, res: Response) => {
 
     res.json({ success: true, data: result });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/zoning/recommendations/:dealId/analyze', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const result = await recommendationOrchestrator.analyzeAndRecommend(dealId);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Recommendation analysis error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/zoning/recommendations/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const fresh = req.query.fresh === 'true';
+
+    const result = fresh
+      ? await recommendationOrchestrator.analyzeAndRecommend(dealId)
+      : await recommendationOrchestrator.getOrAnalyze(dealId);
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Recommendation fetch error:', error);
     res.status(500).json({ error: error.message });
   }
 });
