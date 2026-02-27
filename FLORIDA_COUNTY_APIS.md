@@ -177,42 +177,25 @@ curl "https://services1.arcgis.com/oVDfP6HompYdM0OG/arcgis/rest/services/Parcels
 - Orlando, Winter Park, Apopka, Ocoee
 - **Population:** 1.4 million
 
+### ⚠️ Status: UNVERIFIED - URL NEEDS CORRECTION
+
+**Note:** The API endpoint below needs verification. Orange County likely has an ArcGIS REST service similar to other FL counties, but the exact URL needs to be confirmed.
+
 ### API Type
-Socrata Open Data Portal
+ArcGIS REST (presumed) or Socrata Open Data Portal
 
-### API Endpoint
+### Potential Endpoints (needs verification)
 ```
-https://data.ocfl.net/resource/
-```
-
-#### Property Data
-```
-GET https://data.ocfl.net/resource/8s5x-gqsi.json
+Option 1: https://ocpagis.ocpafl.org/arcgis/rest/services/
+Option 2: https://gis1.ocfl.net/arcgis/rest/services/
+Option 3: https://data.ocfl.net/resource/
 ```
 
-**Parameters:**
-- `$where` - SQL filter
-- `$select` - Fields to return
-- `$limit` - Max records (default 1000)
-- `$$app_token` - API token (optional, increases rate limit)
+**TODO:** Verify correct endpoint and update documentation
 
-**Key Fields:**
-- `parcel_id` - Parcel identifier
-- `site_address` - Property address
-- `zoning` - Zoning code
-- `owner_name` - Owner
-- `just_value` - Market value
-- `land_use` - Current use
-
-**Example:**
-```bash
-curl "https://data.ocfl.net/resource/8s5x-gqsi.json?\$where=site_address%20like%20'%25ORANGE%25'&\$limit=10"
-```
-
-**Rate Limits:**
-- Without token: 1,000 requests/day
-- With token: 10,000 requests/day
-- Register: https://data.ocfl.net/profile/app_tokens
+**Known working alternatives:**
+- Orange County Property Appraiser: https://www.ocpafl.org/ (website only, no public API documented)
+- May require direct contact with Orange County GIS department
 
 ---
 
