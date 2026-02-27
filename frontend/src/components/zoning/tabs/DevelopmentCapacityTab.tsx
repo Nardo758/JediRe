@@ -1046,81 +1046,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {entitlementStrategy?.patterns && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-3">
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <h4 className="text-sm font-bold text-indigo-900">Entitlement Strategy Intelligence</h4>
-              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium border border-indigo-200">
-                {entitlementStrategy.patterns.totalRecords} records analyzed
-              </span>
-            </div>
-            {entitlementStrategy.strategyInsight && (
-              <p className="text-xs text-indigo-800 mb-3">{entitlementStrategy.strategyInsight}</p>
-            )}
-            <div className="grid grid-cols-4 gap-2">
-              {[
-                { key: 'rezone', label: 'Rezone', color: 'violet' },
-                { key: 'cup', label: 'CUP', color: 'blue' },
-                { key: 'variance', label: 'Variance', color: 'amber' },
-                { key: 'by_right', label: 'By-Right', color: 'green' },
-              ].filter(t => entitlementStrategy.patterns.byType?.[t.key]?.count > 0).map(({ key, label, color }) => {
-                const stats = entitlementStrategy.patterns.byType[key];
-                const isRecommended = entitlementStrategy.recommendedPath === key;
-                const bgColors: Record<string, string> = { violet: 'bg-violet-50', blue: 'bg-blue-50', amber: 'bg-amber-50', green: 'bg-green-50' };
-                const borderColors: Record<string, string> = { violet: 'border-violet-200', blue: 'border-blue-200', amber: 'border-amber-200', green: 'border-green-200' };
-                return (
-                  <div key={key} className={`${bgColors[color] || 'bg-gray-50'} border ${borderColors[color] || 'border-gray-200'} rounded p-2 ${isRecommended ? 'ring-2 ring-emerald-400' : ''} relative`}>
-                    {isRecommended && (
-                      <span className="absolute -top-2 left-1 text-[8px] bg-emerald-500 text-white px-1 py-0.5 rounded-full font-bold">BEST</span>
-                    )}
-                    <p className="text-[10px] font-bold text-gray-700 mb-1">{label}</p>
-                    <p className="text-xs font-bold text-gray-900">{stats.count} projects</p>
-                    <p className={`text-[10px] ${stats.approvalRate >= 80 ? 'text-green-700' : stats.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
-                      {stats.approvalRate}% approved
-                    </p>
-                    {stats.avgDays != null && (
-                      <p className="text-[10px] text-gray-500">{Math.round(stats.avgDays / 30)} mo avg</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {entitlementStrategy.patterns.recentProjects?.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-indigo-200">
-                <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide mb-1">Recent Approved Projects</p>
-                <div className="space-y-1">
-                  {entitlementStrategy.patterns.recentProjects.slice(0, 3).map((p: any, i: number) => (
-                    <div key={i} className="flex items-center gap-2 text-[10px] text-indigo-700">
-                      <span className="font-medium truncate max-w-[200px]">{p.address || p.projectName}</span>
-                      <span className={`px-1 py-0.5 rounded ${
-                        p.entitlementType === 'rezone' ? 'bg-violet-100 text-violet-700' :
-                        p.entitlementType === 'cup' ? 'bg-blue-100 text-blue-700' :
-                        p.entitlementType === 'variance' ? 'bg-amber-100 text-amber-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {p.entitlementType === 'by_right' ? 'By-Right' : p.entitlementType === 'cup' ? 'CUP' : p.entitlementType.charAt(0).toUpperCase() + p.entitlementType.slice(1)}
-                      </span>
-                      {p.unitCount != null && <span>{p.unitCount} units</span>}
-                      {p.zoningFrom && p.zoningTo && <span>{p.zoningFrom} → {p.zoningTo}</span>}
-                      {p.outcome && (
-                        <span className={`px-1 py-0.5 rounded ${p.outcome === 'approved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{p.outcome}</span>
-                      )}
-                      {p.ordinanceUrl && (
-                        <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">PDF</a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {rezoneAnalysis?.bestTarget && (
         <div className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden">
           <div className="px-5 py-3 flex items-center gap-3">
@@ -1135,6 +1060,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium border border-violet-200">REZONE OPPORTUNITY</span>
               </div>
               <p className="text-xs text-violet-700 mt-0.5">{rezoneAnalysis.bestTarget.insight}</p>
+              {entitlementStrategy?.strategyInsight && entitlementStrategy.recommendedPath && entitlementStrategy.recommendedPath !== 'rezone' && (
+                <div className="mt-1.5 bg-blue-50 border border-blue-200 rounded p-2">
+                  <div className="flex items-center gap-1.5">
+                    <svg className="h-3 w-3 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-[10px] font-bold text-blue-800">
+                      Consider {entitlementStrategy.recommendedPath === 'cup' ? 'CUP' : entitlementStrategy.recommendedPath === 'variance' ? 'Variance' : entitlementStrategy.recommendedPath}
+                    </span>
+                    {(() => {
+                      const altStats = entitlementStrategy.patterns?.byType?.[entitlementStrategy.recommendedPath];
+                      if (!altStats) return null;
+                      return (
+                        <span className="text-[10px] text-blue-700">
+                          — {altStats.approvalRate}% approval, {altStats.avgDays != null ? `${Math.round(altStats.avgDays / 30)} mo avg` : ''}, {altStats.count} projects
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <p className="text-[10px] text-blue-700 mt-1">{entitlementStrategy.strategyInsight}</p>
+                </div>
+              )}
               {rezoneAnalysis.bestTarget.evidence && rezoneAnalysis.bestTarget.evidence.count > 0 && (
                 <div className="mt-1.5 flex items-center gap-3 flex-wrap">
                   <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200 font-medium">
@@ -1185,6 +1132,25 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-500" />
           <span className="ml-2 text-gray-500 text-xs">Analyzing rezone opportunities...</span>
+        </div>
+      )}
+
+      {!rezoneAnalysis?.bestTarget && entitlementStrategy?.strategyInsight && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+          <svg className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-xs font-semibold text-blue-900">Entitlement Strategy Insight</p>
+              {entitlementStrategy.patterns?.totalRecords && (
+                <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full border border-blue-200">
+                  {entitlementStrategy.patterns.totalRecords} records
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-blue-800">{entitlementStrategy.strategyInsight}</p>
+          </div>
         </div>
       )}
 
@@ -1270,50 +1236,53 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       </div>
 
                       <div className="px-4 py-3 bg-gray-50 space-y-1.5">
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Success Rate</span>
-                          <span className="font-medium text-gray-900">{rec.successRate}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Timeline</span>
-                          <span className="font-medium text-gray-900">{rec.timeline}</span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-gray-500">Est. Cost</span>
-                          <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
-                        </div>
-                        {rec.source === 'orchestrator' && (
-                          <div className="flex items-center gap-1 pt-1 flex-wrap">
-                            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200">
-                              Orchestrator: {rec.entitlementPatterns?.totalRecords || 0} records analyzed
-                            </span>
-                            {rec.recommendedPath && rec.recommendedPath !== 'rezone' && (
-                              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-200">
-                                Recommended: {rec.recommendedPath === 'cup' ? 'CUP' : rec.recommendedPath === 'variance' ? 'Variance' : rec.recommendedPath}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {rec.source === 'rezone-analysis' && (
-                          <div className="flex items-center gap-1 pt-1 flex-wrap">
-                            <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
-                              Data Source: Real District Data{rec.evidence?.count ? ` (${rec.evidence.count} projects)` : ''}
-                            </span>
-                            {rec.districtMunicodeUrl && (
-                              <MunicodeLink url={rec.districtMunicodeUrl} label={rec.targetDistrictCode} />
-                            )}
-                          </div>
-                        )}
-                        {rec.source === 'rezone-multiplier' && (
-                          <div className="flex items-center gap-1 pt-1">
-                            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">Estimated (no target district data)</span>
-                          </div>
-                        )}
-                        {rec.source === 'variance-multiplier' && (
-                          <div className="flex items-center gap-1 pt-1">
-                            <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">Estimated</span>
-                          </div>
-                        )}
+                        {(() => {
+                          const typeKey = rec.name === 'By-Right' ? 'by_right' : rec.name === 'Variance' ? 'variance' : rec.name === 'CUP' ? 'cup' : 'rezone';
+                          const orchStats = entitlementStrategy?.patterns?.byType?.[typeKey];
+                          const hasOrchData = orchStats && orchStats.count > 0;
+                          return (
+                            <>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-500">Success Rate</span>
+                                <span className="font-medium text-gray-900">
+                                  {hasOrchData ? `${orchStats.approvalRate}%` : rec.successRate}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-500">Timeline</span>
+                                <span className="font-medium text-gray-900">
+                                  {hasOrchData && orchStats.avgDays != null ? `${Math.round(orchStats.avgDays / 30)} months` : rec.timeline}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-gray-500">Est. Cost</span>
+                                <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
+                              </div>
+                              {hasOrchData && (
+                                <div className="flex items-center gap-1 pt-1">
+                                  <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200">
+                                    {orchStats.count} projects analyzed
+                                  </span>
+                                </div>
+                              )}
+                              {!hasOrchData && rec.source === 'rezone-analysis' && (
+                                <div className="flex items-center gap-1 pt-1 flex-wrap">
+                                  <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
+                                    Real District Data{rec.evidence?.count ? ` (${rec.evidence.count} projects)` : ''}
+                                  </span>
+                                  {rec.districtMunicodeUrl && (
+                                    <MunicodeLink url={rec.districtMunicodeUrl} label={rec.targetDistrictCode} />
+                                  )}
+                                </div>
+                              )}
+                              {!hasOrchData && (rec.source === 'rezone-multiplier' || rec.source === 'variance-multiplier') && (
+                                <div className="flex items-center gap-1 pt-1">
+                                  <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">Estimated</span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   );
