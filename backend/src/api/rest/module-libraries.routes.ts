@@ -18,6 +18,11 @@ const upload = multer({
       'application/vnd.ms-excel.sheet.macroEnabled.12',
       'application/pdf',
       'text/csv',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/svg+xml',
+      'image/tiff',
     ];
 
     if (allowedMimes.includes(file.mimetype)) {
@@ -42,7 +47,7 @@ router.post('/:module/upload', upload.single('file') as any, async (req: Request
       return res.status(400).json({ error: 'Category is required' });
     }
 
-    const validModules = ['financial', 'market', 'due_diligence'];
+    const validModules = ['financial', 'market', 'due_diligence', 'design'];
     if (!validModules.includes(module)) {
       return res.status(400).json({ error: 'Invalid module name' });
     }

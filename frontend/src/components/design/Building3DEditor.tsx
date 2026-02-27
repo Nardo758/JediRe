@@ -15,7 +15,7 @@
  * - AI integration hooks (Phase 2)
  */
 
-import React, { useRef, useState, useCallback, Suspense } from 'react';
+import React, { useRef, useState, useCallback, useEffect, Suspense } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   OrbitControls,
@@ -34,6 +34,12 @@ import {
   ZoningEnvelope,
   ContextBuilding,
 } from '@/types/design/design3d.types';
+import { geoJsonToParcelBoundary } from '@/utils/geoJsonToParcel';
+import { useDesign3DStore } from '@/stores/design/design3d.store';
+import { ScenarioEnvelopeMesh } from './ScenarioEnvelopeMesh';
+import { ScenarioSelectorPanel } from './ScenarioSelectorPanel';
+import { DesignReferencePanel } from './DesignReferencePanel';
+import { ViewportOverlay } from './ViewportOverlay';
 
 // ============================================================================
 // Main Component
@@ -41,12 +47,18 @@ import {
 
 interface Building3DEditorProps {
   dealId?: string;
+  parcelGeometry?: any;
+  fullScreen?: boolean;
+  showMetricsPanel?: boolean;
   onMetricsChange?: (metrics: any) => void;
   onSave?: () => void;
 }
 
 export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   dealId,
+  parcelGeometry,
+  fullScreen = false,
+  showMetricsPanel = true,
   onMetricsChange,
   onSave,
 }) => {
@@ -57,6 +69,25 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   
   // Enable keyboard shortcuts
   useDesign3DKeyboardShortcuts();
+  
+  useEffect(() => {
+    if (parcelGeometry) {
+      const expectedId = dealId ? `parcel-${dealId}` : undefined;
+      if (!state.parcelBoundary || state.parcelBoundary.id !== expectedId) {
+        const parcel = geoJsonToParcelBoundary(parcelGeometry, expectedId);
+        if (parcel) {
+          actions.setParcelBoundary(parcel);
+        }
+      }
+    }
+  }, [parcelGeometry, dealId]);
+  
+  const scenarios = useDesign3DStore((s) => s.scenarios);
+  const activeScenarioId = useDesign3DStore((s) => s.activeScenarioId);
+  const showScenarioOverlay = useDesign3DStore((s) => s.showScenarioOverlay);
+
+  const [showReferencePanel, setShowReferencePanel] = useState(false);
+  const [pinnedOverlay, setPinnedOverlay] = useState<{ url: string; name: string } | null>(null);
   
   // File input ref for image upload
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -216,6 +247,25 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
               <ContextBuildingMesh key={building.id} building={building} />
             ))}
           
+          {/* Scenario Envelopes */}
+          {showScenarioOverlay && state.parcelBoundary && scenarios.map((scenario) => (
+            <ScenarioEnvelopeMesh
+              key={scenario.id}
+              scenario={scenario}
+              parcel={state.parcelBoundary!}
+              isActive={scenario.id === activeScenarioId}
+            />
+          ))}
+          
+          {/* Viewport Overlay (pinned reference image) */}
+          {pinnedOverlay && (
+            <ViewportOverlay
+              imageUrl={pinnedOverlay.url}
+              fileName={pinnedOverlay.name}
+              onRemove={() => setPinnedOverlay(null)}
+            />
+          )}
+          
           {/* Camera Controls */}
           <OrbitControls
             makeDefault
@@ -237,7 +287,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       </Canvas>
       
       {/* Metrics Panel */}
-      <MetricsPanel metrics={state.metrics} />
+      {showMetricsPanel && <MetricsPanel metrics={state.metrics} />}
       
       {/* Toolbar */}
       <Toolbar
@@ -275,6 +325,24 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg">
         Mode: <span className="font-bold uppercase">{state.editMode}</span>
       </div>
+      
+      {/* Scenario Selector Panel */}
+      <ScenarioSelectorPanel />
+      
+      {/* Design Reference Panel */}
+      {dealId && (
+        <DesignReferencePanel
+          dealId={dealId}
+          isOpen={showReferencePanel}
+          onToggle={() => setShowReferencePanel(!showReferencePanel)}
+          onPinToViewport={(ref) => {
+            setPinnedOverlay({
+              url: `/api/v1/design-references/file/${ref.file_path}`,
+              name: ref.file_name,
+            });
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -307,7 +375,7 @@ const ParcelMesh: React.FC<{ parcel: ParcelBoundary }> = ({ parcel }) => {
   };
   
   return (
-    <mesh position={[0, -1, 0]} receiveShadow>
+    <mesh position={[0, -1, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <extrudeGeometry args={[shape, extrudeSettings]} />
       <meshStandardMaterial
         color={parcel.color || '#10b981'}
@@ -384,7 +452,8 @@ const BuildingSectionMesh: React.FC<BuildingSectionMeshProps> = ({
   return (
     <mesh
       ref={meshRef}
-      position={[section.position.x, section.geometry.height / 2, section.position.z]}
+      position={[section.position.x, 0, section.position.z]}
+      rotation={[-Math.PI / 2, 0, 0]}
       castShadow
       receiveShadow
       onClick={(e) => {

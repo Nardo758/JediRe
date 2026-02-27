@@ -4,7 +4,9 @@ import { Building3DEditor } from '../components/design';
 import { apiClient } from '../services/api.client';
 import type { Design3D } from '../types/financial.types';
 import { ThreeDErrorBoundary } from '../components/3DErrorBoundary';
-import { Design3DError } from '../components/fallbacks/Design3DError';
+import { useDesign3DStore } from '../stores/design/design3d.store';
+import { geoJsonToParcelBoundary } from '../utils/geoJsonToParcel';
+import { zoningProfileToEnvelope } from '../utils/zoningToEnvelope';
 
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -45,14 +47,55 @@ export const Design3DPage: React.FC = () => {
         console.log('[Design3DPage] Deal loaded:', dealData.id, dealData.name);
         setCurrentDeal(dealData);
         
+        const store = useDesign3DStore.getState();
+        store.reset();
+
         try {
-          const designResponse = await apiClient.get(`/api/v1/deals/${dealId}/design`);
-          if (designResponse.data?.success && designResponse.data?.data) {
-            setDesign3D(designResponse.data.data);
+          const saved = localStorage.getItem(`design3d-${dealId}`);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.buildingSections) {
+              store.loadDesign(parsed);
+            }
           }
-        } catch (designErr: any) {
-          if (designErr?.response?.status !== 404) {
-            console.warn('Could not load existing design:', designErr);
+        } catch (restoreErr) {
+          console.warn('Could not restore saved design:', restoreErr);
+        }
+
+        let parcelArea: number | undefined;
+        if (dealData.boundary) {
+          const parcel = geoJsonToParcelBoundary(dealData.boundary, `parcel-${dealId}`);
+          if (parcel) {
+            store.setParcelBoundary(parcel);
+            parcelArea = parcel.area;
+          }
+        }
+
+        try {
+          const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+          const profile = zoningRes.data?.data || zoningRes.data;
+          if (profile) {
+            const envelope = zoningProfileToEnvelope(profile, parcelArea);
+            if (envelope) {
+              store.setZoningEnvelope(envelope);
+            }
+          }
+        } catch (zoningErr: any) {
+          if (zoningErr?.response?.status !== 404) {
+            console.warn('Could not load zoning profile:', zoningErr);
+          }
+        }
+
+        try {
+          const scenariosRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`);
+          const scenarioData = scenariosRes.data?.data || scenariosRes.data?.scenarios;
+          if (Array.isArray(scenarioData) && scenarioData.length > 0) {
+            store.setScenarios(scenarioData);
+            store.setActiveScenario(scenarioData[0].id);
+          }
+        } catch (scenarioErr: any) {
+          if (scenarioErr?.response?.status !== 404) {
+            console.warn('Could not load scenarios:', scenarioErr);
           }
         }
       } catch (err: any) {
@@ -127,22 +170,25 @@ export const Design3DPage: React.FC = () => {
   };
 
   const handleSave = async (isAutoSave = false) => {
-    if (!design3D || !dealId) return;
+    if (!dealId) return;
     
     try {
       setIsSaving(true);
+      const store = useDesign3DStore.getState();
+      const exportedState = store.exportState();
       
-      const response = await apiClient.post(`/api/v1/deals/${dealId}/design`, {
-        design: design3D,
-      });
+      try {
+        localStorage.setItem(`design3d-${dealId}`, JSON.stringify({
+          ...exportedState,
+          savedAt: Date.now(),
+        }));
+      } catch (storageErr) {
+        console.warn('Failed to save to localStorage:', storageErr);
+      }
       
-      if (response.data.success) {
-        setHasUnsavedChanges(false);
-        
-        if (!isAutoSave) {
-          // Show success message for manual saves
-          setError(null);
-        }
+      setHasUnsavedChanges(false);
+      if (!isAutoSave) {
+        setError(null);
       }
     } catch (err: any) {
       console.error('Failed to save design:', err);
@@ -316,9 +362,7 @@ export const Design3DPage: React.FC = () => {
 
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* 3D Editor with dedicated error boundary */}
           <div className="flex-1 bg-white">
-            <ThreeDErrorBoundary dealId={dealId}>
               <Building3DEditor
                 dealId={dealId}
                 parcelGeometry={currentDeal.boundary}
@@ -327,7 +371,6 @@ export const Design3DPage: React.FC = () => {
                 fullScreen={true}
                 showMetricsPanel={showMetrics}
               />
-            </ThreeDErrorBoundary>
           </div>
 
         {/* Metrics Panel (Collapsible) */}

@@ -72,24 +72,15 @@ export const Design3DPageEnhanced: React.FC = () => {
           await loadDeal(dealId);
         }
         
-        // Load existing design if available
-        const response = await apiClient.get(`/api/v1/deals/${dealId}/design`);
-        if (response.data.success && response.data.data) {
-          setDesign3D(response.data.data);
-          
-          // Update dashboard metrics
-          const design = response.data.data;
-          updateDesignMetrics({
-            units: design.totalUnits,
-            totalSF: design.grossSF,
-            rentableSF: design.rentableSF,
-            efficiency: design.efficiency,
-            parkingSpaces: design.parkingSpaces,
-            parkingRatio: design.parkingSpaces / (design.totalUnits || 1),
-            far: design.farUtilized,
-            buildingHeight: design.stories * 12, // Assume 12ft per story
-            stories: design.stories,
-          });
+        try {
+          const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+          if (zoningRes.data?.data || zoningRes.data) {
+            console.log('[Design3DPageEnhanced] Zoning profile loaded');
+          }
+        } catch (zoningErr: any) {
+          if (zoningErr?.response?.status !== 404) {
+            console.warn('Could not load zoning profile:', zoningErr);
+          }
         }
       } catch (err) {
         console.error('Failed to load deal/design:', err);
@@ -139,19 +130,19 @@ export const Design3DPageEnhanced: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!design3D || !dealId) return;
+    if (!dealId) return;
     
     try {
       setIsSaving(true);
-      
-      const response = await apiClient.post(`/api/v1/deals/${dealId}/design`, {
-        design: design3D,
-      });
-      
-      if (response.data.success) {
-        setHasUnsavedChanges(false);
-        setError(null);
+      try {
+        localStorage.setItem(`design3d-${dealId}`, JSON.stringify({
+          savedAt: Date.now(),
+        }));
+      } catch (storageErr) {
+        console.warn('Failed to save to localStorage:', storageErr);
       }
+      setHasUnsavedChanges(false);
+      setError(null);
     } catch (err: any) {
       console.error('Failed to save design:', err);
       setError(err.message || 'Failed to save design');

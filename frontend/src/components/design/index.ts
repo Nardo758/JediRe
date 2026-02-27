@@ -1,6 +1,14 @@
 // Main 3D Editor
 export { Building3DEditor } from './Building3DEditor';
 
+// Scenario Components
+export { ScenarioEnvelopeMesh } from './ScenarioEnvelopeMesh';
+export { ScenarioSelectorPanel } from './ScenarioSelectorPanel';
+
+// Design Reference Components
+export { DesignReferencePanel } from './DesignReferencePanel';
+export { ViewportOverlay } from './ViewportOverlay';
+
 // Panel Components
 export { SubjectPropertyPanel } from './panels/SubjectPropertyPanel';
 export { CompetitionPanel } from './panels/CompetitionPanel';

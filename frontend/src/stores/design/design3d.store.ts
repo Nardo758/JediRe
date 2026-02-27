@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import {
   Design3DState,
   BuildingSection,
@@ -16,6 +16,7 @@ import {
   Point3D,
   Design3DSnapshot,
 } from '@/types/design/design3d.types';
+import type { DevelopmentScenario } from '@/types/design/scenarios.types';
 
 // ============================================================================
 // Store Interface
@@ -63,6 +64,16 @@ interface Design3DStore extends Design3DState {
   canUndo: () => boolean;
   canRedo: () => boolean;
   
+  // Scenario state
+  scenarios: DevelopmentScenario[];
+  activeScenarioId: string | null;
+  showScenarioOverlay: boolean;
+  
+  // Actions - Scenarios
+  setScenarios: (scenarios: DevelopmentScenario[]) => void;
+  setActiveScenario: (id: string | null) => void;
+  toggleScenarioOverlay: () => void;
+  
   // Actions - State Management
   reset: () => void;
   loadDesign: (state: Partial<Design3DState>) => void;
@@ -92,7 +103,7 @@ const initialMetrics: BuildingMetrics = {
   far: 0,
 };
 
-const initialState: Design3DState = {
+const initialState: Design3DState & { scenarios: DevelopmentScenario[]; activeScenarioId: string | null; showScenarioOverlay: boolean } = {
   parcelBoundary: null,
   zoningEnvelope: null,
   buildingSections: [],
@@ -112,6 +123,9 @@ const initialState: Design3DState = {
   historyIndex: -1,
   lastUpdated: Date.now(),
   lastSynced: Date.now(),
+  scenarios: [],
+  activeScenarioId: null,
+  showScenarioOverlay: true,
 };
 
 // ============================================================================
@@ -120,6 +134,7 @@ const initialState: Design3DState = {
 
 export const useDesign3DStore = create<Design3DStore>()(
   devtools(
+    subscribeWithSelector(
     persist(
       (set, get) => ({
         ...initialState,
@@ -369,6 +384,16 @@ export const useDesign3DStore = create<Design3DStore>()(
           return state.historyIndex < state.history.length - 1;
         },
 
+        // Scenarios
+        setScenarios: (scenarios) =>
+          set({ scenarios, lastUpdated: Date.now() }),
+
+        setActiveScenario: (id) =>
+          set({ activeScenarioId: id }),
+
+        toggleScenarioOverlay: () =>
+          set((state) => ({ showScenarioOverlay: !state.showScenarioOverlay })),
+
         // State Management
         reset: () => set({ ...initialState, lastUpdated: Date.now() }),
 
@@ -408,7 +433,6 @@ export const useDesign3DStore = create<Design3DStore>()(
       {
         name: 'design3d-storage',
         partialize: (state) => ({
-          // Only persist essential data
           parcelBoundary: state.parcelBoundary,
           zoningEnvelope: state.zoningEnvelope,
           buildingSections: state.buildingSections,
@@ -419,6 +443,7 @@ export const useDesign3DStore = create<Design3DStore>()(
           showGrid: state.showGrid,
         }),
       }
+    ),
     ),
     { name: 'Design3D' }
   )
