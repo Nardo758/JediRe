@@ -165,7 +165,11 @@ const connStatusColors: Record<string, string> = {
   new: "#2563eb",
 };
 
-export default function ConfirmationChainPlumbing() {
+interface ConfirmationChainPlumbingProps {
+  dealId?: string;
+}
+
+export default function ConfirmationChainPlumbing({ dealId }: ConfirmationChainPlumbingProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const [view, setView] = useState("chain");
 

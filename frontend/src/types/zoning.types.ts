@@ -5,7 +5,7 @@ export type AlertSeverity = 'critical' | 'warning' | 'watch' | 'info';
 export type RegulatoryCategory = 'zoning_changes' | 'rent_control' | 'str_restrictions' | 'impact_fees' | 'inclusionary_housing' | 'environmental' | 'moratorium' | 'other';
 export type TimelineScenario = 'by_right' | 'variance' | 'rezone';
 export type ComparisonMode = 'district' | 'parcel' | 'jurisdiction';
-export type ZoningTabId = 'boundary_zoning' | 'capacity' | 'hbu' | 'risk' | 'comparator' | 'timeline';
+export type ZoningTabId = 'boundary_zoning' | 'capacity' | 'hbu' | 'risk' | 'comparator' | 'timeline' | 'confirmation_chain';
 
 // ============================================================================
 // Development Path Selection (Phase 2 enhancement)

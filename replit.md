@@ -23,7 +23,7 @@ Key features include:
 -   **Data Library:** Global repository for historical property data, categorized for AI matching.
 -   **Site Intelligence Module:** Comprehensive site analysis across six scored categories.
 -   **Zoning Intelligence Agent:** AI-powered zoning data retrieval and analysis using Anthropic Claude, featuring a verification-first 6-step pipeline, dual-layer knowledge, professional correction, and confidence scoring. This includes deep-linking to Municode citations, dual source links (planning department and Municode), and per-rule source tracing.
--   **Property & Zoning Module:** Embedded within the Deal Detail page, offering a 6-tab progressive workflow for zoning analysis: Boundary & Zoning, Dev Capacity, Highest & Best Use, Regulatory Risk, Zoning Comparator, and Time-to-Shovel.
+-   **Property & Zoning Module:** Embedded within the Deal Detail page, offering a 7-tab progressive workflow for zoning analysis: Boundary & Zoning, Dev Capacity, Highest & Best Use, Regulatory Risk, Zoning Comparator, Time-to-Shovel, and Confirmation Chain.
 -   **Enriched Building Envelope Service:** Calculates property development potential, returning sources, calculations, and plain-English insights.
 -   **Consolidated Rezone Analysis Service:** Unifies rezone analysis, calculating actual uplift (units, GFA, revenue) from target district data.
 -   **Zoning Verification Pipeline:** A verification-first architecture providing per-value source citations, insights, and calculation breakdowns.
@@ -42,6 +42,7 @@ Key features include:
 -   **Time-to-Shovel Real Data Pipeline:** Uses real benchmark project data for Monte Carlo timeline simulations, providing detailed step durations and jurisdiction comparisons.
 -   **3D Building Design Editor:** Interactive Three.js/React Three Fiber viewport for building massing design, displaying zoning envelopes and scenario visualizations.
 -   **Design Reference Library:** Manages design reference images with upload, AI analysis, and integration into the 3D viewport.
+-   **Zoning Triangulation & Confirmation Chain:** Three-source zoning data reconciliation (County Parcel Records, County Zoning Categories, Municode Ordinance) with a 10-link confirmation chain that transforms raw zoning into investment decisions. Includes parcel ingestion service, jurisdiction calibration feedback loop, and a Confirmation Chain Plumbing UI for diagnostics.
 
 ### Agent Dashboard
 
