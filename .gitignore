@@ -35,3 +35,5 @@ jedi-re.backup/
 # Logs & memory
 memory/
 *.log
+.wrangler/
+municode-scraper-noclocks/
