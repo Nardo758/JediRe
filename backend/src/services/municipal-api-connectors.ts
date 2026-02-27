@@ -1,7 +1,7 @@
 /**
  * Municipal Open Data API Connectors
  * 
- * Connects to 10 verified ArcGIS REST API cities + 6 unverified.
+ * Connects to 18 verified ArcGIS REST API cities + 6 unverified.
  * All endpoints verified and tested as of Feb 2026.
  * Former Socrata portals have migrated to ArcGIS Hub.
  */
@@ -338,16 +338,100 @@ export const CITY_APIS: Record<string, any> = {
       owner: 'Owner',
     },
   },
+  'fort-lauderdale-fl': {
+    type: 'arcgis',
+    name: 'Fort Lauderdale',
+    state: 'FL',
+    serviceUrl: 'https://gis.fortlauderdale.gov/arcgis/rest/services/GeneralPurpose/gisdata/MapServer',
+    layerId: 108,
+    verified: true,
+    fields: {
+      code: 'ZONECLASS',
+      name: 'ZONEDESC',
+    },
+  },
+  'pinellas-fl': {
+    type: 'arcgis',
+    name: 'Pinellas County',
+    state: 'FL',
+    serviceUrl: 'https://egis.pinellas.gov/gis/rest/services/AGO/PPC_Data/MapServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'duval-fl': {
+    type: 'arcgis',
+    name: 'Duval County',
+    state: 'FL',
+    serviceUrl: 'https://maps.coj.net/coj/rest/services/CityBiz/Parcels/MapServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'ZON_LABEL',
+      name: 'ZON_LABEL',
+    },
+  },
+  'lee-fl': {
+    type: 'arcgis',
+    name: 'Lee County',
+    state: 'FL',
+    serviceUrl: 'https://gismapserver.leegov.com/gisserver910/rest/services/Layers/DCD_Zoning/MapServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'brevard-fl': {
+    type: 'arcgis',
+    name: 'Brevard County',
+    state: 'FL',
+    serviceUrl: 'https://gis.brevardfl.gov/gissrv/rest/services/Planning_Development/Zoning_WKID2881/MapServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
   'orange-county-fl': {
     type: 'arcgis',
     name: 'Orange County',
     state: 'FL',
-    serviceUrl: 'https://gis.occompt.com/arcgis/rest/services',
+    serviceUrl: 'https://ocgis4.ocfl.net/arcgis/rest/services/Public_Dynamic/MapServer',
+    layerId: 66,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'palm-beach-fl': {
+    type: 'arcgis',
+    name: 'Palm Beach County',
+    state: 'FL',
+    serviceUrl: 'https://gis.pbcgov.org/arcgis/rest/services/PropertyAppraiser/PA_Parcels/MapServer',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'CURRENT_ZONING',
+      name: 'CURRENT_ZONING',
+    },
+  },
+  'polk-fl': {
+    type: 'arcgis',
+    name: 'Polk County',
+    state: 'FL',
+    serviceUrl: 'https://gis.polk-county.net/portal/sharing/rest/services',
     layerId: 0,
     verified: false,
     fields: {
       code: 'ZONING',
-      name: 'ZONE_NAME',
+      name: 'ZONING',
     },
   },
 };
@@ -360,6 +444,14 @@ export async function fetchZoningData(municipalityId: string): Promise<ZoningDis
   
   if (!config) {
     throw new Error(`No API configuration for ${municipalityId}`);
+  }
+
+  if (config.apiType === 'assessment') {
+    throw new Error(`${municipalityId} is an assessment API, not a zoning API`);
+  }
+
+  if (!config.fields.code || !config.fields.name) {
+    throw new Error(`${municipalityId} config is missing required fields.code or fields.name`);
   }
 
   console.log(`Fetching zoning data for ${config.name}, ${config.state} via ArcGIS API...`);
@@ -411,6 +503,10 @@ export async function lookupZoningByLocation(
   const config = CITY_APIS[municipalityId];
   
   if (!config) {
+    return null;
+  }
+
+  if (config.apiType === 'assessment' || !config.fields.code || !config.fields.name) {
     return null;
   }
 
