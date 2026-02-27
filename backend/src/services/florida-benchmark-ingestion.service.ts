@@ -20,6 +20,10 @@ interface CountyConfig {
       status?: string;
     };
     where?: string;
+    yearField?: string;
+    yearRange?: [number, number];
+    supportsPagination?: boolean;
+    supportsComplexWhere?: boolean;
   };
   permits?: {
     url: string;
@@ -46,7 +50,7 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
     state: 'FL',
     municipalities: ['Miami', 'Miami-Dade', 'Hialeah', 'Miami Beach', 'Coral Gables', 'Hollywood'],
     hearings: {
-      url: 'https://gisweb.miamidade.gov/arcgis/rest/services/LandManagement/MD_ZoningLandManagementData/MapServer/0',
+      url: 'https://gisweb.miamidade.gov/arcgis/rest/services/LandManagement/MD_ZoningRecords/MapServer/0',
       fields: {
         caseNumber: 'PROC_NUM',
         caseType: 'CASE_TYPE',
@@ -56,7 +60,10 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
         year: 'APPL_YEAR',
         link: 'APPL_LINK',
       },
-      where: "APPL_YEAR >= '2020'",
+      yearField: 'APPL_YEAR',
+      yearRange: [2020, 2025],
+      supportsPagination: false,
+      supportsComplexWhere: false,
     },
     zoningUrl: 'https://gisweb.miamidade.gov/arcgis/rest/services/LandManagement/MD_Zoning/MapServer',
     zoningLayerId: 1,
@@ -65,7 +72,7 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
   'hillsborough': {
     county: 'Hillsborough',
     state: 'FL',
-    municipalities: ['Tampa'],
+    municipalities: ['Tampa', 'Hillsborough'],
     hearings: {
       url: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/DSD_Zoning_Hearings/Zoning_Hearings/FeatureServer/0',
       fields: {
@@ -74,7 +81,9 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
         folio: 'FolioNumb',
         status: 'Status',
       },
-      where: "Inactive <> 'Yes'",
+      where: '1=1',
+      supportsPagination: true,
+      supportsComplexWhere: true,
     },
     permits: {
       url: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/PermitsPlus/ResidentialCommericalIssuedPermitsCertOccMapService/FeatureServer/0',
@@ -88,7 +97,7 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
         unitCount: 'HOUSE_CNT',
         value: 'VAL_TOTAL',
       },
-      where: "HOUSE_CNT >= 50",
+      where: 'HOUSE_CNT >= 50',
     },
     zoningUrl: 'https://maps.hillsboroughcounty.org/arcgis/rest/services/DSD_Viewer_Services/DSD_Viewer_Zoning_Regulatory/FeatureServer',
     zoningLayerId: 1,
@@ -96,11 +105,44 @@ const COUNTY_CONFIGS: Record<string, CountyConfig> = {
   },
 };
 
+const RELEVANT_MDC_CASE_TYPES = [
+  'ZM Other Public Hearings',
+  'ZM Admin Adjustment',
+  'ZM Admin Site Plan Review',
+  'ZM Admin Modification',
+  'ZM DIC',
+  'ZM Government Facilities',
+  'ZM Substantial Compliance',
+  'CDMP Comprehensive Development Master Plan',
+];
+
+const SKIP_MDC_CASE_TYPES = [
+  'ZM Zoning Verification Letter',
+  'ZM Pre-App',
+  'ZM Standalone Covenants',
+  'ZM Group Homes',
+  'ZM Pre-Permit Submittal Review',
+  'ZM Entrance Feature',
+  'ZM Zoning Review of Plat Application',
+  'ZM Shoreline Review',
+  'ZM Interdepartmental Zoning Evaluation',
+  'PL Platting Intake',
+  'PL Paving and Drainage',
+  'PL Paving and Drainage Renewal/Revision',
+  'PL Subdivision Improvement Bonds',
+  'CDMP Interpretation Letter',
+  'CDMP Pre-Evaluation Meeting',
+  'CDMP Agenda Planning Advisory Board',
+  'Proportional Share Agreement',
+  'Lake Permit/Land Fill',
+];
+
 export interface FloridaIngestionStats {
   county: string;
   hearingsFetched: number;
   permitsFetched: number;
   recordsUpserted: number;
+  recordsSkipped: number;
   districtsLinked: number;
   errors: string[];
 }
@@ -114,7 +156,11 @@ async function arcgisQuery(url: string, params: Record<string, string>): Promise
 
   const resp = await fetch(queryUrl.toString());
   if (!resp.ok) throw new Error(`ArcGIS query failed: ${resp.status}`);
-  return resp.json();
+  const data = await resp.json();
+  if (data.error) {
+    throw new Error(`ArcGIS error: ${data.error.message || JSON.stringify(data.error)}`);
+  }
+  return data;
 }
 
 async function paginatedQuery(url: string, where: string, outFields: string, returnGeometry: boolean = false): Promise<any[]> {
@@ -141,6 +187,19 @@ async function paginatedQuery(url: string, where: string, outFields: string, ret
   return allFeatures;
 }
 
+async function simpleQuery(url: string, where: string, outFields: string): Promise<any[]> {
+  const data = await arcgisQuery(url, {
+    where,
+    outFields,
+    returnGeometry: 'false',
+  });
+  const features = data.features || [];
+  if (features.length >= 1000) {
+    logger.warn(`[FL-Ingestion] simpleQuery returned ${features.length} records (likely server max). Some records may be truncated. where=${where}`);
+  }
+  return features;
+}
+
 function mapStatus(status: string | null): string {
   if (!status) return 'unknown';
   const s = status.toUpperCase();
@@ -154,12 +213,34 @@ function mapStatus(status: string | null): string {
 function mapCaseTypeToEntitlement(caseType: string | null): string {
   if (!caseType) return 'rezone';
   const ct = caseType.toUpperCase();
-  if (ct.includes('REZONE') || ct.includes('REZONING') || ct.includes('MAP AMENDMENT') || ct.includes('ZM')) return 'rezone';
-  if (ct.includes('VARIANCE') || ct.includes('ADMIN ADJUST')) return 'variance';
-  if (ct.includes('SPECIAL USE') || ct.includes('CUP') || ct.includes('CONDITIONAL') || ct.includes('SUP')) return 'cup';
-  if (ct.includes('VERIFICATION') || ct.includes('LETTER')) return 'verification';
-  if (ct.includes('SITE PLAN')) return 'site_plan';
+  if (ct.includes('REZONE') || ct.includes('REZONING') || ct.includes('MAP AMENDMENT') || ct === 'RZ' || ct === 'RZ-PD' || ct === 'RZ-STD') return 'rezone';
+  if (ct.includes('VARIANCE') || ct.includes('ADMIN ADJUST') || ct === 'VAR' || ct === 'ZV') return 'variance';
+  if (ct.includes('SPECIAL USE') || ct.includes('CUP') || ct.includes('CONDITIONAL') || ct.includes('SUP') || ct.startsWith('SU')) return 'cup';
+  if (ct.includes('VERIFICATION') || ct.includes('LETTER') || ct.includes('PRE-APP')) return 'verification';
+  if (ct.includes('SITE PLAN') || ct === 'PRS') return 'site_plan';
+  if (ct.includes('DIC') || ct.includes('DEVELOPMENT IMPACT')) return 'variance';
+  if (ct.includes('CDMP') || ct.includes('MASTER PLAN')) return 'rezone';
+  if (ct.includes('MODIFICATION') || ct.includes('MM')) return 'variance';
+  if (ct.includes('DRI') || ct.includes('CDD')) return 'rezone';
   return 'rezone';
+}
+
+function isRelevantCaseType(caseType: string | null, county: string): boolean {
+  if (!caseType) return false;
+
+  if (county === 'Miami-Dade') {
+    const ct = caseType.trim();
+    const ctUpper = ct.toUpperCase();
+    if (SKIP_MDC_CASE_TYPES.some(s => s.toUpperCase() === ctUpper)) return false;
+    if (RELEVANT_MDC_CASE_TYPES.some(s => s.toUpperCase() === ctUpper)) return true;
+    if (ctUpper.includes('HEARING') || ctUpper.includes('REZONE') || ctUpper.includes('VARIANCE') ||
+        ctUpper.includes('ADJUSTMENT') || ctUpper.includes('SITE PLAN') || ctUpper.includes('MODIFICATION') ||
+        ctUpper.includes('SPECIAL') || ctUpper.includes('CONDITIONAL')) return true;
+    return false;
+  }
+
+  const entitlement = mapCaseTypeToEntitlement(caseType);
+  return entitlement !== 'verification';
 }
 
 function estimatePhases(totalDays: number) {
@@ -170,6 +251,16 @@ function estimatePhases(totalDays: number) {
     approval_days: Math.round(totalDays * 0.20),
     permit_issuance_days: Math.round(totalDays * 0.25),
   };
+}
+
+function estimateTotalDays(entitlementType: string): number {
+  switch (entitlementType) {
+    case 'rezone': return 420;
+    case 'cup': return 270;
+    case 'variance': return 210;
+    case 'site_plan': return 150;
+    default: return 365;
+  }
 }
 
 export class FloridaBenchmarkIngestionService {
@@ -194,6 +285,7 @@ export class FloridaBenchmarkIngestionService {
       hearingsFetched: 0,
       permitsFetched: 0,
       recordsUpserted: 0,
+      recordsSkipped: 0,
       districtsLinked: 0,
       errors: [],
     };
@@ -208,7 +300,11 @@ export class FloridaBenchmarkIngestionService {
       for (const hearing of hearings) {
         try {
           const upserted = await this.upsertHearing(config, hearing);
-          if (upserted) stats.recordsUpserted++;
+          if (upserted) {
+            stats.recordsUpserted++;
+          } else {
+            stats.recordsSkipped++;
+          }
         } catch (err) {
           const msg = `Error upserting hearing ${hearing.caseNumber}: ${(err as Error).message}`;
           stats.errors.push(msg);
@@ -232,7 +328,7 @@ export class FloridaBenchmarkIngestionService {
         }
       }
 
-      logger.info(`[FL-Ingestion:${config.county}] Complete. Upserted ${stats.recordsUpserted} records.`);
+      logger.info(`[FL-Ingestion:${config.county}] Complete. Upserted ${stats.recordsUpserted}, skipped ${stats.recordsSkipped} records.`);
     } catch (err) {
       const msg = `Ingestion failed: ${(err as Error).message}`;
       stats.errors.push(msg);
@@ -248,14 +344,40 @@ export class FloridaBenchmarkIngestionService {
       .filter(Boolean)
       .join(',');
 
-    const features = await paginatedQuery(
-      config.hearings.url,
-      config.hearings.where || '1=1',
-      outFields,
-      true,
-    );
+    let allFeatures: any[] = [];
 
-    return features.map(feat => {
+    if (config.hearings.yearField && config.hearings.yearRange && !config.hearings.supportsComplexWhere) {
+      const [startYear, endYear] = config.hearings.yearRange;
+      for (let year = startYear; year <= endYear; year++) {
+        try {
+          logger.info(`[FL-Ingestion:${config.county}] Fetching year ${year}...`);
+          const features = await simpleQuery(
+            config.hearings.url,
+            `${config.hearings.yearField}='${year}'`,
+            outFields,
+          );
+          logger.info(`[FL-Ingestion:${config.county}] Year ${year}: ${features.length} records`);
+          allFeatures.push(...features);
+        } catch (err) {
+          logger.warn(`[FL-Ingestion:${config.county}] Failed to fetch year ${year}: ${(err as Error).message}`);
+        }
+      }
+    } else if (config.hearings.supportsPagination) {
+      allFeatures = await paginatedQuery(
+        config.hearings.url,
+        config.hearings.where || '1=1',
+        outFields,
+        false,
+      );
+    } else {
+      allFeatures = await simpleQuery(
+        config.hearings.url,
+        config.hearings.where || '1=1',
+        outFields,
+      );
+    }
+
+    return allFeatures.map(feat => {
       const a = feat.attributes;
       return {
         caseNumber: a[f.caseNumber],
@@ -326,6 +448,8 @@ export class FloridaBenchmarkIngestionService {
   private async upsertHearing(config: CountyConfig, hearing: any): Promise<boolean> {
     if (!hearing.caseNumber) return false;
 
+    if (!isRelevantCaseType(hearing.caseType, config.county)) return false;
+
     const entitlementType = mapCaseTypeToEntitlement(hearing.caseType);
     if (entitlementType === 'verification') return false;
 
@@ -338,10 +462,11 @@ export class FloridaBenchmarkIngestionService {
       if (isNaN(applicationYear)) applicationYear = null;
     }
 
-    const totalDays = 365;
+    const totalDays = estimateTotalDays(entitlementType);
     const phases = estimatePhases(totalDays);
 
     const applicationDate = applicationYear ? `${applicationYear}-01-01` : null;
+    const source = `florida_gis_${config.county.toLowerCase().replace(/[- ]/g, '_')}`;
 
     await this.pool.query(
       `INSERT INTO benchmark_projects (
@@ -360,19 +485,22 @@ export class FloridaBenchmarkIngestionService {
       ON CONFLICT (permit_number, source) WHERE permit_number IS NOT NULL
       DO UPDATE SET
         outcome = EXCLUDED.outcome,
+        entitlement_type = EXCLUDED.entitlement_type,
+        total_entitlement_days = EXCLUDED.total_entitlement_days,
         updated_at = NOW()`,
       [
         config.county, 'FL', municipality,
-        `${hearing.address || hearing.folio || 'Unknown'} (${hearing.caseNumber})`,
+        `${(hearing.address || hearing.folio || 'Unknown').toString().trim().substring(0, 200)} (${hearing.caseNumber})`.substring(0, 255),
         'multifamily',
         entitlementType, totalDays, outcome,
         phases.pre_app_days, phases.site_plan_review_days, phases.zoning_hearing_days,
         phases.approval_days, phases.permit_issuance_days,
         applicationDate,
-        hearing.caseNumber, `florida_gis_${config.county.toLowerCase().replace(/[- ]/g, '_')}`,
+        hearing.caseNumber, source,
         hearing.link || config.hearings.url,
         0.70,
-        hearing.address, hearing.caseNumber,
+        hearing.address ? hearing.address.toString().trim() : null,
+        hearing.caseNumber,
       ]
     );
 
@@ -385,6 +513,7 @@ export class FloridaBenchmarkIngestionService {
     const totalDays = 180;
     const phases = estimatePhases(totalDays);
     const outcome = mapStatus(permit.status);
+    const source = `florida_gis_${config.county.toLowerCase().replace(/[- ]/g, '_')}`;
 
     let issuedDate: string | null = null;
     if (permit.issued) {
@@ -395,7 +524,6 @@ export class FloridaBenchmarkIngestionService {
     }
 
     const unitCount = permit.unitCount ? Math.round(Number(permit.unitCount)) : null;
-    const source = `florida_gis_${config.county.toLowerCase().replace(/[- ]/g, '_')}`;
 
     await this.pool.query(
       `INSERT INTO benchmark_projects (
@@ -418,7 +546,7 @@ export class FloridaBenchmarkIngestionService {
         updated_at = NOW()`,
       [
         config.county, 'FL', config.municipalities[0],
-        `${permit.address || permit.parcelNumber || 'Unknown'} (${permit.permitNumber})`,
+        `${(permit.address || permit.parcelNumber || 'Unknown').toString().substring(0, 200)} (${permit.permitNumber})`.substring(0, 255),
         'multifamily',
         unitCount,
         'by_right', totalDays, outcome,
