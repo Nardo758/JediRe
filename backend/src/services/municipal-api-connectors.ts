@@ -505,12 +505,12 @@ export const CITY_APIS: Record<string, any> = {
     apiType: 'zoning',
     name: 'Hialeah',
     state: 'FL',
-    serviceUrl: 'https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning_Layers/MapServer',
-    layerId: 5,
+    serviceUrl: 'https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning/MapServer',
+    layerId: 0,
     verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'ZONE',
+      name: 'ZONE',
     },
   },
   'coral-gables-fl': {
@@ -536,8 +536,8 @@ export const CITY_APIS: Record<string, any> = {
     layerId: 32,
     verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'LMLUZN',
+      name: 'Zoning_Desc',
     },
   },
 };
