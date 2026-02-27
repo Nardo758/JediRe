@@ -241,7 +241,7 @@ export class ZoningRecommendationOrchestrator {
     currentCode: string,
     currentDensity: { density: number; far: number; height: number },
   ): Promise<NearbyAnalysis> {
-    if (!lat || !lng) {
+    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
       return {
         totalParcels: 0,
         radiusMeters: DEFAULT_RADIUS_METERS,
