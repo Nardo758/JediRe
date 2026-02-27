@@ -457,8 +457,8 @@ export const CITY_APIS: Record<string, any> = {
     layerId: 28,
     verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'ZONECLASS',
+      name: 'ZONEDESC',
     },
   },
   'hollywood-fl': {
@@ -480,11 +480,11 @@ export const CITY_APIS: Record<string, any> = {
     name: 'St. Petersburg',
     state: 'FL',
     serviceUrl: 'https://services.arcgis.com/lQySeXwbBg53XWDi/ArcGIS/rest/services/zoning_districts/FeatureServer',
-    layerId: 0,
+    layerId: 1,
     verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'ZoningCode',
+      name: 'ZoningDescription',
     },
   },
   'west-palm-beach-fl': {
