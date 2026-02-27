@@ -242,8 +242,8 @@ export class ZoningRecommendationOrchestrator {
       `SELECT d.id, d.project_type,
               dzc.zoning_code, dzc.municipality, dzc.state,
               pb.parcel_area_sf,
-              COALESCE(pb.centroid->>'lat', pb.centroid->>'latitude') AS lat,
-              COALESCE(pb.centroid->>'lng', pb.centroid->>'longitude') AS lng,
+              pb.centroid[1] AS lat,
+              pb.centroid[0] AS lng,
               m.id as municipality_id
        FROM deals d
        LEFT JOIN deal_zoning_confirmations dzc ON dzc.deal_id = d.id
