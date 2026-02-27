@@ -90,7 +90,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
   const [zoningLoading, setZoningLoading] = useState(false);
   const [detectedLocation, setDetectedLocation] = useState<{ city: string; state: string; county: string; hasZoningData: boolean; municipalityId?: string; address?: string } | null>(null);
   const [zoningDetail, setZoningDetail] = useState<any>(null);
-  const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
   const [agentLoading, setAgentLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'database' | 'ai_retrieved' | null>(null);
   const [parcelSource, setParcelSource] = useState<{ url: string | null; planningUrl: string | null; name: string; confidence: number } | null>(null);
@@ -236,9 +235,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   else if (cityName) detailParams.municipality = cityName;
                   const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
                   if (detailData?.found) {
-                    const districtWithPrecedent = { ...detailData.district, _rezone_precedent: detailData.rezone_precedent || null };
-                    setZoningDetail(districtWithPrecedent);
-                    setRezoneTargets(detailData.rezoneTargets || []);
+                    setZoningDetail(detailData.district);
                     setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
                     const d = detailData.district;
                     const front = d.min_front_setback_ft ?? d.setback_front_ft;
@@ -587,9 +584,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           else if (cityName) detailParams.municipality = cityName;
           const detailData = await apiClient.get(`/zoning-districts/by-code`, { params: detailParams }) as any;
           if (detailData?.found) {
-            const districtWithPrecedent = { ...detailData.district, _rezone_precedent: detailData.rezone_precedent || null };
-            setZoningDetail(districtWithPrecedent);
-            setRezoneTargets(detailData.rezoneTargets || []);
+            setZoningDetail(detailData.district);
             setDataSource(detailData.district?.source === 'ai_retrieved' ? 'ai_retrieved' : 'database');
             const d = detailData.district;
             const front = d.min_front_setback_ft ?? d.setback_front_ft;
@@ -1006,85 +1001,6 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                             {use.replace(/_/g, ' ')}
                           </span>
                         ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rezone Targets */}
-                  {rezoneTargets.length > 0 && (
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Common Rezone Targets</p>
-                      <p className="text-xs text-gray-500 mb-2">Higher-density codes developers typically rezone to from {zoningDetail.zoning_code || zoningDetail.district_code}:</p>
-                      <div className="space-y-2">
-                        {rezoneTargets.map((target: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between bg-purple-50 rounded p-2 border border-purple-100">
-                            <div>
-                              <span className="text-sm font-semibold text-purple-900">{target.zoning_code}</span>
-                              <p className="text-xs text-purple-700">{target.description || target.district_name}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-purple-600">{target.max_density || '--'} units/acre</p>
-                              <p className="text-xs text-purple-500">FAR: {target.max_far || '--'}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Rezoning Precedent */}
-                  {zoningDetail._rezone_precedent && (
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Rezoning Precedent</p>
-                      <div className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                          <div>
-                            <p className="text-xs text-gray-500">Rezoned FROM this district</p>
-                            <p className="text-lg font-bold text-gray-900">{zoningDetail._rezone_precedent.rezoned_from_count}
-                              <span className="text-xs font-normal text-gray-500 ml-1">projects</span>
-                            </p>
-                            {zoningDetail._rezone_precedent.avg_rezone_days && (
-                              <p className="text-xs text-gray-500">avg {zoningDetail._rezone_precedent.avg_rezone_days} days, {zoningDetail._rezone_precedent.approval_rate}% approved</p>
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-500">Rezoned TO this district</p>
-                            <p className="text-lg font-bold text-gray-900">{zoningDetail._rezone_precedent.rezoned_to_count}
-                              <span className="text-xs font-normal text-gray-500 ml-1">projects</span>
-                            </p>
-                          </div>
-                        </div>
-                        {zoningDetail._rezone_precedent.recent_rezonings?.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1.5">Recent Rezonings</p>
-                            <div className="space-y-1.5">
-                              {zoningDetail._rezone_precedent.recent_rezonings.map((r: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between bg-white rounded p-2 border border-amber-100 text-xs">
-                                  <div className="flex items-center gap-2">
-                                    {r.ordinance_url ? (
-                                      <a href={r.ordinance_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                                        {r.docket_number || 'View'}
-                                      </a>
-                                    ) : (
-                                      <span className="font-medium text-gray-700">{r.docket_number || r.address || '--'}</span>
-                                    )}
-                                    <span className="text-gray-400">{r.from_code} → {r.to_code}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {r.total_entitlement_days && (
-                                      <span className="text-gray-500">{r.total_entitlement_days}d</span>
-                                    )}
-                                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                                      r.outcome === 'approved' ? 'bg-green-100 text-green-700' :
-                                      r.outcome === 'denied' ? 'bg-red-100 text-red-700' :
-                                      'bg-gray-100 text-gray-600'
-                                    }`}>{r.outcome || 'pending'}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
