@@ -3,12 +3,14 @@ import { getPool } from '../../database/connection';
 import { ZoningProfileService } from '../../services/zoning-profile.service';
 import { BuildingEnvelopeService, PropertyType } from '../../services/building-envelope.service';
 import { RezoneAnalysisService } from '../../services/rezone-analysis.service';
+import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
 
 const router = Router();
 const pool = getPool();
 const profileService = new ZoningProfileService(pool);
 const envelopeService = new BuildingEnvelopeService();
 const rezoneService = new RezoneAnalysisService(pool);
+const orchestrator = new ZoningRecommendationOrchestrator(pool);
 
 function mapProjectTypeToEnvelopeType(projectType: string): PropertyType {
   const map: Record<string, PropertyType> = {
@@ -290,6 +292,16 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
     };
 
     let rezoneResult: any = null;
+
+    // Try orchestrator first for best rezone target
+    let orchestratorTargetCode: string | null = null;
+    try {
+      const orchResult = await orchestrator.getResult(dealId);
+      if (orchResult?.topRecommendation) {
+        orchestratorTargetCode = orchResult.topRecommendation.targetCode;
+      }
+    } catch {}
+
     try {
       if (profile.base_district_code && profile.municipality) {
         const rezoneData = await rezoneService.analyze({
@@ -301,8 +313,19 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
           dealType,
         });
 
-        if (rezoneData.bestTarget) {
-          const best = rezoneData.bestTarget;
+        // If orchestrator has a recommendation, prefer that target over the standalone best
+        let selectedTarget = rezoneData.bestTarget;
+        if (orchestratorTargetCode && rezoneData.opportunities.length > 0) {
+          const orchMatch = rezoneData.opportunities.find(
+            o => o.targetDistrictCode.toUpperCase() === orchestratorTargetCode!.toUpperCase(),
+          );
+          if (orchMatch) {
+            selectedTarget = orchMatch;
+          }
+        }
+
+        if (selectedTarget) {
+          const best = selectedTarget;
           const ev = best.evidence;
           const hasEvidence = ev && ev.count > 0;
           rezoneResult = {

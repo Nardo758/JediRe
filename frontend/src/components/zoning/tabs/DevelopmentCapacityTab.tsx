@@ -245,12 +245,30 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           setEnrichment(null);
         }
 
+        // Try orchestrator first for rezone target, fall back to standalone rezone-analysis
+        let rezoneTarget: { targetDistrictCode: string; targetDistrictId: string | null } | null = null;
+        try {
+          const orchRes = await apiClient.get(`/api/v1/zoning/recommendations/${dealId}`);
+          if (orchRes.data?.topRecommendation) {
+            rezoneTarget = {
+              targetDistrictCode: orchRes.data.topRecommendation.targetCode,
+              targetDistrictId: orchRes.data.topRecommendation.targetDistrictId,
+            };
+          }
+        } catch {}
+
         try {
           const rezoneRes = await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
           setRezoneAnalysis(rezoneRes.data);
 
-          if (rezoneRes.data?.bestTarget && !rezoneScenarioCreatedRef.current) {
-            const best = rezoneRes.data.bestTarget;
+          // Use orchestrator target if available, else fall back to rezone-analysis bestTarget
+          const best = rezoneTarget
+            ? { targetDistrictCode: rezoneTarget.targetDistrictCode, targetDistrictId: rezoneTarget.targetDistrictId }
+            : rezoneRes.data?.bestTarget
+              ? { targetDistrictCode: rezoneRes.data.bestTarget.targetDistrictCode, targetDistrictId: rezoneRes.data.bestTarget.targetDistrictId }
+              : null;
+
+          if (best && !rezoneScenarioCreatedRef.current) {
             const existingRezoneScenario = scenariosList.find(
               (s: any) => s.name?.startsWith('Rezone to ')
             );

@@ -7,6 +7,7 @@
  *
  * Section 1: Parcel Detection & Confirmation (PropertyBoundarySection)
  * Section 2: Zoning Verification & Parameters (inline ZoningConfirmTab content)
+ * Section 3: Upzoning Recommendations (orchestrator analysis of nearby parcels & candidates)
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -22,6 +23,8 @@ import {
   Search,
   ExternalLink,
   BookOpen,
+  TrendingUp,
+  BarChart3,
 } from 'lucide-react';
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
@@ -66,6 +69,45 @@ interface SourceRule {
   sourceType: 'municode' | 'search' | 'chapter';
 }
 
+interface ZoningCodeDistribution {
+  code: string;
+  count: number;
+  pct: number;
+}
+
+interface NearbyAnalysisSummary {
+  parcelsScanned: number;
+  uniqueCodes: number;
+  areaPattern: string;
+  distribution: ZoningCodeDistribution[];
+}
+
+interface CandidateRecommendation {
+  targetCode: string;
+  targetDistrictName: string | null;
+  targetDistrictId: string | null;
+  score: number;
+  densityUpliftPct: number;
+  farUpliftPct: number;
+  nearbyEvidence: number;
+  approvalRate: number | null;
+  avgTimelineDays: number | null;
+  precedentCount: number;
+  insight: string;
+}
+
+interface ZoningRecommendationResult {
+  dealId: string;
+  currentCode: string;
+  municipality: string;
+  state: string;
+  nearbyAnalysis: NearbyAnalysisSummary;
+  topRecommendation: CandidateRecommendation | null;
+  additionalCandidates: CandidateRecommendation[];
+  generatedAt: string;
+  expiresAt: string;
+}
+
 interface DistrictDetails {
   max_density_per_acre?: number | null;
   max_far?: number | null;
@@ -99,6 +141,9 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
   const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
   const [rezonePrecedent, setRezonePrecedent] = useState<any>(null);
+  const [upzoningExpanded, setUpzoningExpanded] = useState(false);
+  const [upzoningLoading, setUpzoningLoading] = useState(false);
+  const [upzoningResult, setUpzoningResult] = useState<ZoningRecommendationResult | null>(null);
 
   const fetchDistrictDetails = useCallback(async (code: string, municipality?: string) => {
     try {
@@ -145,6 +190,10 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
               if (confirmedCode) {
                 fetchDistrictDetails(confirmedCode, confirmedMunicipality || undefined);
               }
+              // Load existing upzoning recommendations
+              apiClient.get(`/api/v1/zoning/recommendations/${dealId}`)
+                .then(res => { setUpzoningResult(res.data); setUpzoningExpanded(true); })
+                .catch(() => {});
             } else {
               // Boundary exists but zoning not confirmed — fetch zoning options
               setZoningExpanded(true);
@@ -369,6 +418,14 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
 
       setZoningConfirmed(true);
 
+      // Trigger upzoning recommendation orchestrator in background
+      setUpzoningLoading(true);
+      setUpzoningExpanded(true);
+      apiClient.post(`/api/v1/zoning/recommendations/${dealId}/analyze`)
+        .then(res => setUpzoningResult(res.data))
+        .catch(() => {})
+        .finally(() => setUpzoningLoading(false));
+
       if (onComplete) {
         onComplete({
           ...detectedZoning,
@@ -411,7 +468,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       </div>
 
       {/* ─── SECTION 2: Zoning Verification & Parameters ─── */}
-      <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+      <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`} data-section="zoning-verification">
         <button
           onClick={() => boundaryComplete && setZoningExpanded(!zoningExpanded)}
           className="w-full flex items-center gap-3 px-5 py-4 bg-white hover:bg-gray-50 transition-colors"
@@ -792,6 +849,205 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                 <p className="text-[10px] text-gray-600">
                   <strong className="text-gray-900">What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity. Every zoning parameter will include a source link.
                 </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── SECTION 3: Upzoning Recommendations ─── */}
+      <div className={`border rounded-lg overflow-hidden transition-opacity ${zoningConfirmed ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+        <button
+          onClick={() => zoningConfirmed && setUpzoningExpanded(!upzoningExpanded)}
+          className="w-full flex items-center gap-3 px-5 py-4 bg-white hover:bg-gray-50 transition-colors"
+        >
+          <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">3</div>
+          <div className="flex-1 text-left">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-gray-900">Upzoning Recommendations</h3>
+              {upzoningResult?.topRecommendation && (
+                <span className="flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                  <TrendingUp className="w-3 h-3" /> {upzoningResult.topRecommendation.targetCode} (+{upzoningResult.topRecommendation.densityUpliftPct}%)
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Nearby parcel analysis &amp; density uplift candidates
+            </p>
+          </div>
+          {upzoningExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        </button>
+
+        {upzoningExpanded && (
+          <div className="px-5 pb-5 bg-white border-t border-gray-100 space-y-4">
+            {/* Loading */}
+            {upzoningLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-emerald-600 animate-spin mr-3" />
+                <span className="text-sm text-gray-600">Analyzing nearby parcels and zoning opportunities...</span>
+              </div>
+            )}
+
+            {/* No result yet */}
+            {!upzoningLoading && !upzoningResult && (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-500 mb-3">No analysis available yet.</p>
+                <button
+                  onClick={async () => {
+                    setUpzoningLoading(true);
+                    try {
+                      const res = await apiClient.post(`/api/v1/zoning/recommendations/${dealId}/analyze`);
+                      setUpzoningResult(res.data);
+                    } catch {}
+                    setUpzoningLoading(false);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 inline mr-1.5" />
+                  Run Upzoning Analysis
+                </button>
+              </div>
+            )}
+
+            {/* Results */}
+            {!upzoningLoading && upzoningResult && (
+              <div className="space-y-4">
+                {/* Nearby analysis summary */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Nearby Property Analysis</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500">Parcels Scanned</p>
+                      <p className="text-lg font-bold text-gray-900">{upzoningResult.nearbyAnalysis.parcelsScanned}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Unique Codes</p>
+                      <p className="text-lg font-bold text-gray-900">{upzoningResult.nearbyAnalysis.uniqueCodes}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Area Pattern</p>
+                      <p className="text-sm font-semibold text-gray-900">{upzoningResult.nearbyAnalysis.areaPattern}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zoning code distribution chart */}
+                {upzoningResult.nearbyAnalysis.distribution.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      <BarChart3 className="w-3.5 h-3.5 inline mr-1" />
+                      Zoning Distribution (500m radius)
+                    </p>
+                    <div className="space-y-1.5">
+                      {upzoningResult.nearbyAnalysis.distribution.map(d => (
+                        <div key={d.code} className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-medium text-gray-700 w-16 truncate">{d.code}</span>
+                          <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${d.code.toUpperCase() === upzoningResult.currentCode.toUpperCase() ? 'bg-blue-500' : 'bg-emerald-500'}`}
+                              style={{ width: `${Math.max(d.pct, 4)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 w-14 text-right">{d.count} ({d.pct}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top recommendation */}
+                {upzoningResult.topRecommendation && (() => {
+                  const top = upzoningResult.topRecommendation!;
+                  return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wide">Top Recommendation</p>
+                          <p className="text-xl font-bold text-gray-900 mt-1">{top.targetCode}</p>
+                          {top.targetDistrictName && (
+                            <p className="text-xs text-gray-600">{top.targetDistrictName}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-full">
+                          <TrendingUp className="w-4 h-4" />
+                          <span className="text-sm font-bold">{top.score}</span>
+                          <span className="text-[10px]">/ 100</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase">Density Uplift</p>
+                          <p className="text-sm font-bold text-emerald-700">+{top.densityUpliftPct}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase">FAR Uplift</p>
+                          <p className="text-sm font-bold text-emerald-700">+{top.farUpliftPct}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase">Nearby Evidence</p>
+                          <p className="text-sm font-bold text-gray-900">{top.nearbyEvidence} parcel{top.nearbyEvidence !== 1 ? 's' : ''}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-gray-500 uppercase">Approval Rate</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {top.approvalRate != null ? `${top.approvalRate}%` : 'N/A'}
+                            {top.precedentCount > 0 && (
+                              <span className="text-[10px] font-normal text-gray-500 ml-1">({top.precedentCount} cases)</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-700 leading-relaxed">{top.insight}</p>
+                    </div>
+                  );
+                })()}
+
+                {/* Additional candidates */}
+                {upzoningResult.additionalCandidates.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Additional Candidates</p>
+                    <div className="space-y-2">
+                      {upzoningResult.additionalCandidates.map((c, i) => (
+                        <div key={c.targetCode} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
+                          <span className="text-xs font-bold text-gray-400 w-4">#{i + 2}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-gray-900">{c.targetCode}</span>
+                              {c.targetDistrictName && (
+                                <span className="text-xs text-gray-500 truncate">{c.targetDistrictName}</span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-gray-500 truncate">{c.insight}</p>
+                          </div>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-emerald-700">+{Math.max(c.densityUpliftPct, c.farUpliftPct)}%</p>
+                              <p className="text-[10px] text-gray-500">uplift</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-gray-900">{c.score}</p>
+                              <p className="text-[10px] text-gray-500">score</p>
+                            </div>
+                            {c.approvalRate != null && (
+                              <div className="text-right">
+                                <p className="text-xs font-bold text-gray-700">{c.approvalRate}%</p>
+                                <p className="text-[10px] text-gray-500">approved</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* No candidates found */}
+                {!upzoningResult.topRecommendation && upzoningResult.nearbyAnalysis.parcelsScanned > 0 && (
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-sm text-gray-600">No higher-density districts found in this municipality.</p>
+                    <p className="text-xs text-gray-500 mt-1">The current zoning may already be at the highest allowable density for this area.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
