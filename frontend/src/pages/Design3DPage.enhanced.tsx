@@ -36,7 +36,7 @@ import {
 export const Design3DPageEnhanced: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { currentDeal, loadDeal } = useDealStore();
+  const { selectedDeal: currentDeal, fetchDealById: loadDeal } = useDealStore();
   
   const {
     mapMode,
@@ -59,39 +59,31 @@ export const Design3DPageEnhanced: React.FC = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [bottomTab, setBottomTab] = useState<'competition' | 'traffic' | 'trends'>('competition');
 
-  // Load deal data on mount
   useEffect(() => {
+    if (!dealId) return;
+    
     const loadDealData = async () => {
-      if (!dealId) return;
+      setIsLoading(true);
+      setError(null);
+      
+      await loadDeal(dealId);
       
       try {
-        setIsLoading(true);
-        
-        // Load deal if not in store
-        if (!currentDeal || currentDeal.id !== dealId) {
-          await loadDeal(dealId);
+        const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+        if (zoningRes.data?.data || zoningRes.data) {
+          console.log('[Design3DPageEnhanced] Zoning profile loaded');
         }
-        
-        try {
-          const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
-          if (zoningRes.data?.data || zoningRes.data) {
-            console.log('[Design3DPageEnhanced] Zoning profile loaded');
-          }
-        } catch (zoningErr: any) {
-          if (zoningErr?.response?.status !== 404) {
-            console.warn('Could not load zoning profile:', zoningErr);
-          }
+      } catch (zoningErr: any) {
+        if (zoningErr?.response?.status !== 404) {
+          console.warn('Could not load zoning profile:', zoningErr);
         }
-      } catch (err) {
-        console.error('Failed to load deal/design:', err);
-        setError('Failed to load deal data');
-      } finally {
-        setIsLoading(false);
       }
+      
+      setIsLoading(false);
     };
     
     loadDealData();
-  }, [dealId, currentDeal, loadDeal]);
+  }, [dealId]);
 
   const handleMetricsChange = (metrics: any) => {
     // Update both local state and dashboard store
