@@ -143,20 +143,54 @@ function DealSelectorBar() {
   );
 }
 
-function MunicipalBenchmarkSection({ benchmarks }: { benchmarks: MunicipalBenchmark[] }) {
-  const totalSampleSize = benchmarks.reduce((sum, b) => sum + b.sampleSize, 0);
+interface DetailedStep {
+  step: string;
+  p25: string;
+  median: string;
+  p75: string;
+  p90: string;
+  n: string;
+  isSubRow: boolean;
+}
+
+function DataSourceBadge({ source, count }: { source: 'real' | 'synthetic'; count?: number }) {
+  if (source === 'real') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+        Real Data{count ? ` (${count} projects)` : ''}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+      Estimated
+    </span>
+  );
+}
+
+function MunicipalBenchmarkSection({ benchmarks, detailedSteps, dataSource, totalSampleCount }: {
+  benchmarks: MunicipalBenchmark[];
+  detailedSteps: DetailedStep[];
+  dataSource: 'real' | 'synthetic';
+  totalSampleCount: number;
+}) {
+  const totalSampleSize = totalSampleCount || benchmarks.reduce((sum, b) => sum + b.sampleSize, 0);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-900">Municipal Benchmarks</h3>
-        <p className="text-[10px] text-gray-500 mt-0.5">Scraped data <SourceCitation section="Municode §16-28" sourceType="record" lastVerified="2025-11-14" /></p>
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Municipal Benchmarks</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5">Historical processing times <SourceCitation section="Municode §16-28" sourceType="record" lastVerified="2025-11-14" /></p>
+        </div>
+        <DataSourceBadge source={dataSource} count={totalSampleSize} />
       </div>
       <div className="p-4">
         <div className="mb-3">
           <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">City of Atlanta — Historical Processing Times</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} applications scraped (2021–2025) for projects 200+ units</p>
-          <p className="text-[11px] text-gray-400">Last updated: Feb 22, 2026</p>
+          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} {dataSource === 'real' ? 'real entitlement records' : 'estimated applications'} (2021–2025) for projects 100+ units</p>
         </div>
 
         <div className="overflow-x-auto">
@@ -184,7 +218,7 @@ function MunicipalBenchmarkSection({ benchmarks }: { benchmarks: MunicipalBenchm
               </tr>
             </thead>
             <tbody>
-              {MOCK_DETAILED_STEPS.map((row, idx) => (
+              {detailedSteps.map((row, idx) => (
                 <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
                   <td className={`py-1.5 px-2 ${row.isSubRow ? 'pl-6 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
                     {row.isSubRow && <span className="text-gray-300 mr-1">├─</span>}
@@ -197,41 +231,31 @@ function MunicipalBenchmarkSection({ benchmarks }: { benchmarks: MunicipalBenchm
                   <td className="py-1.5 px-2 text-right text-gray-400">{row.n}</td>
                 </tr>
               ))}
-              <tr className="border-t-2 border-gray-300 bg-gray-50 font-semibold">
-                <td className="py-2 px-2 text-gray-900">TOTAL (sequential)</td>
-                <td className="py-2 px-2 text-right text-gray-700">17.5 mo</td>
-                <td className="py-2 px-2 text-right text-gray-900">24.2 mo</td>
-                <td className="py-2 px-2 text-right text-gray-700">31.8 mo</td>
-                <td className="py-2 px-2 text-right text-red-700">42.1 mo</td>
-                <td className="py-2 px-2"></td>
-              </tr>
             </tbody>
           </table>
         </div>
 
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="flex items-start gap-2">
-            <span className="text-base">💡</span>
-            <div>
-              <p className="text-xs font-semibold text-blue-800 mb-1">AI Insight</p>
-              <p className="text-xs text-blue-700 leading-relaxed">
-                "Atlanta's rezone approvals have slowed 18% since Q3 2025 due to new community engagement requirements.
-                Factor +1.2 months vs historical median. Site plan reviews trending faster (-0.5mo) due to new ePlans
-                digital submission system launched Nov 2025."
-              </p>
+        {benchmarks.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-2">By Entitlement Type</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {benchmarks.map((b) => (
+                <div key={b.id || b.entitlementType} className="bg-gray-50 rounded-lg border border-gray-200 p-2">
+                  <p className="text-[10px] font-semibold text-gray-800 uppercase">{b.entitlementType}</p>
+                  <p className="text-lg font-bold text-gray-900">{b.medianMonths}<span className="text-xs font-normal text-gray-500"> mo</span></p>
+                  <p className="text-[10px] text-gray-500">n={b.sampleSize}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <button className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors">
-            📊 See Raw Data
+            See Raw Data
           </button>
           <button className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors">
-            📈 Trend Analysis
-          </button>
-          <button className="inline-flex items-center gap-1.5 text-xs text-gray-600 border border-gray-300 rounded-md px-3 py-1.5 hover:bg-gray-50 transition-colors">
-            🔄 Refresh from Source
+            Trend Analysis
           </button>
         </div>
       </div>
@@ -537,12 +561,15 @@ function FinancialImpactSection({ timeline }: { timeline: DealTimeline }) {
   );
 }
 
-function JurisdictionComparisonSection({ jurisdictions }: { jurisdictions: JurisdictionComparison[] }) {
+function JurisdictionComparisonSection({ jurisdictions, dataSource }: { jurisdictions: JurisdictionComparison[]; dataSource: 'real' | 'synthetic' }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-900">Jurisdiction Comparison</h3>
-        <p className="text-[10px] text-gray-500 mt-0.5">Timeline Edition</p>
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Jurisdiction Comparison</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5">Timeline Edition</p>
+        </div>
+        <DataSourceBadge source={dataSource} count={jurisdictions.length} />
       </div>
       <div className="p-4">
         <p className="text-xs text-gray-600 mb-3">How fast can you break ground in different markets? (200+ unit multifamily, rezone required)</p>
@@ -1030,8 +1057,20 @@ function generateMockMonteCarloData(path: string): MonteCarloData {
 export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps = {}) {
   const { selectedDealForTimeline, timelineScenario } = useZoningModuleStore();
   const { timeline, loading: tlLoading, error: tlError, fetchTimeline } = useDealTimeline();
-  const { benchmarks, loading: bmLoading, error: bmError, fetchBenchmarks } = useMunicipalBenchmarks();
+  const { benchmarks: hookBenchmarks, loading: bmLoading, error: bmError, fetchBenchmarks } = useMunicipalBenchmarks();
   const { costs, loading: ccLoading, fetchCosts } = useCarryingCosts();
+
+  const [realBenchmarks, setRealBenchmarks] = useState<any[]>([]);
+  const [detailedSteps, setDetailedSteps] = useState<DetailedStep[]>(MOCK_DETAILED_STEPS);
+  const [stepsDataSource, setStepsDataSource] = useState<'real' | 'synthetic'>('synthetic');
+  const [benchmarkDataSource, setBenchmarkDataSource] = useState<'real' | 'synthetic'>('synthetic');
+  const [totalSampleCount, setTotalSampleCount] = useState(0);
+  const [jurisdictions, setJurisdictions] = useState<JurisdictionComparison[]>(MOCK_JURISDICTIONS);
+  const [jurisdictionDataSource, setJurisdictionDataSource] = useState<'real' | 'synthetic'>('synthetic');
+
+  const county = deal?.county || 'Fulton';
+  const state = deal?.state || 'GA';
+  const municipality = deal?.municipality || deal?.city || 'Atlanta';
 
   useEffect(() => {
     fetchBenchmarks();
@@ -1044,9 +1083,93 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
     }
   }, [selectedDealForTimeline, timelineScenario, fetchTimeline, fetchCosts]);
 
-  const activeBenchmarks = benchmarks.length > 0 ? benchmarks : MOCK_BENCHMARKS;
+  useEffect(() => {
+    const fetchRealBenchmarks = async () => {
+      try {
+        const res = await apiClient.get('/api/v1/benchmark-timeline/benchmarks', {
+          params: { county, state },
+        });
+        const data = res.data;
+        if (data.summaries && data.summaries.length > 0) {
+          const mapped = data.summaries.map((s: any, i: number) => ({
+            id: String(i),
+            municipality,
+            state,
+            projectType: 'Multifamily',
+            unitCountMin: 100,
+            unitCountMax: 999,
+            entitlementType: s.entitlementType,
+            medianMonths: s.medianMonths,
+            p25Months: s.p25Months,
+            p50Months: s.medianMonths,
+            p75Months: s.p75Months,
+            p90Months: s.p90Months,
+            sampleSize: s.sampleSize,
+            trend: s.trend || 'stable',
+            lastUpdated: new Date().toISOString().slice(0, 10),
+          }));
+          setRealBenchmarks(mapped);
+          const source = data.summaries[0]?.dataSource || 'synthetic';
+          setBenchmarkDataSource(source);
+          setTotalSampleCount(data.summaries.reduce((sum: number, s: any) => sum + (s.sampleSize || 0), 0));
+        }
+      } catch {
+        setBenchmarkDataSource('synthetic');
+      }
+    };
+
+    const fetchDetailedSteps = async () => {
+      try {
+        const res = await apiClient.get('/api/v1/benchmark-timeline/detailed-steps', {
+          params: { county, state },
+        });
+        const data = res.data;
+        if (data.steps && data.steps.length > 0) {
+          setDetailedSteps(data.steps);
+          setStepsDataSource(data.dataSource || 'synthetic');
+        }
+      } catch {
+        setDetailedSteps(MOCK_DETAILED_STEPS);
+        setStepsDataSource('synthetic');
+      }
+    };
+
+    const fetchJurisdictions = async () => {
+      try {
+        const res = await apiClient.get('/api/v1/benchmark-timeline/jurisdiction-comparison', {
+          params: { state, subjectMunicipality: municipality },
+        });
+        const data = res.data;
+        if (data.jurisdictions && data.jurisdictions.length > 0) {
+          const mapped: JurisdictionComparison[] = data.jurisdictions.map((j: any) => ({
+            municipality: j.municipality,
+            state,
+            medianTts: j.medianMonths,
+            rank: j.rank,
+            trend: 'stable' as const,
+            carryCostDelta: Math.round(j.carryCostDelta || 0),
+            carryCostDeltaLabel: j.isSubject
+              ? 'Subject'
+              : j.carryCostDelta < 0
+                ? `-$${Math.abs(Math.round(j.carryCostDelta / 1000))}K vs subject`
+                : `+$${Math.round(j.carryCostDelta / 1000)}K vs subject`,
+          }));
+          setJurisdictions(mapped);
+          setJurisdictionDataSource(data.dataSource || 'synthetic');
+        }
+      } catch {
+        setJurisdictions(MOCK_JURISDICTIONS);
+        setJurisdictionDataSource('synthetic');
+      }
+    };
+
+    fetchRealBenchmarks();
+    fetchDetailedSteps();
+    fetchJurisdictions();
+  }, [county, state, municipality]);
+
+  const activeBenchmarks = realBenchmarks.length > 0 ? realBenchmarks : (hookBenchmarks.length > 0 ? hookBenchmarks : MOCK_BENCHMARKS);
   const activeTimeline = timeline || MOCK_TIMELINE;
-  const activeJurisdictions = MOCK_JURISDICTIONS;
   const activeCapitalCalls = MOCK_CAPITAL_CALLS;
 
   return (
@@ -1066,10 +1189,10 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
 
       <DealSelectorBar />
       <MonteCarloSection dealId={dealId} deal={deal} />
-      <MunicipalBenchmarkSection benchmarks={activeBenchmarks} />
+      <MunicipalBenchmarkSection benchmarks={activeBenchmarks} detailedSteps={detailedSteps} dataSource={benchmarkDataSource} totalSampleCount={totalSampleCount} />
       <GanttTimeline phases={activeTimeline.phases} totalMonths={activeTimeline.totalMonths} />
       <FinancialImpactSection timeline={activeTimeline} />
-      <JurisdictionComparisonSection jurisdictions={activeJurisdictions} />
+      <JurisdictionComparisonSection jurisdictions={jurisdictions} dataSource={jurisdictionDataSource} />
       <DealLengthMapperSection phases={activeTimeline.phases} totalMonths={activeTimeline.totalMonths} capitalCalls={activeCapitalCalls} />
     </div>
   );

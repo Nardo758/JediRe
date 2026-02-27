@@ -10,6 +10,7 @@
  */
 
 import { logger } from '../utils/logger';
+import { query } from '../database/connection';
 
 // ============================================================================
 // Types
@@ -204,17 +205,26 @@ class MonteCarloTimelineService {
     entitlementType: string,
     projectType?: string,
   ): Promise<BenchmarkRow[]> {
-    // In production, this queries the benchmark_projects table.
-    // For now, return empty to trigger synthetic fallback.
-    // The DB query would be:
-    //   SELECT total_entitlement_days, pre_app_days, site_plan_review_days,
-    //          zoning_hearing_days, approval_days, permit_issuance_days,
-    //          impact_fee_per_unit, unit_count
-    //   FROM benchmark_projects
-    //   WHERE county = $1 AND state = $2 AND entitlement_type = $3
-    //     AND outcome IN ('approved', 'modified')
-    //   ORDER BY application_date DESC LIMIT 50
-    return [];
+    const result = await query<BenchmarkRow>(
+      `SELECT total_entitlement_days, pre_app_days, site_plan_review_days,
+              zoning_hearing_days, approval_days, permit_issuance_days,
+              impact_fee_per_unit, unit_count
+       FROM benchmark_projects
+       WHERE county ILIKE $1 AND state = $2 AND entitlement_type = $3
+         AND outcome IN ('approved', 'modified')
+       ORDER BY application_date DESC NULLS LAST
+       LIMIT 50`,
+      [county, state, entitlementType]
+    );
+
+    logger.info('Loaded benchmark projects from DB', {
+      county,
+      state,
+      entitlementType,
+      count: result.rows.length,
+    });
+
+    return result.rows;
   }
 
   private getSyntheticBenchmarks(entitlementType: string, unitCount: number): BenchmarkRow[] {
