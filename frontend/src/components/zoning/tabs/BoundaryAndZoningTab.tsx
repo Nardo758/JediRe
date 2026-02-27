@@ -107,8 +107,9 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [locationInfo, setLocationInfo] = useState<{ city: string; state: string } | null>(null);
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
   const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
-  const [rezonePrecedent, setRezonePrecedent] = useState<any>(null);
-  const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
+  const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyProjectsExpanded, setNearbyProjectsExpanded] = useState(false);
   const [recommendations, setRecommendations] = useState<any>(null);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsExpanded, setRecsExpanded] = useState(false);
@@ -128,6 +129,18 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
     setRecsLoading(false);
   }, [dealId]);
 
+  const fetchNearbyEntitlements = useCallback(async () => {
+    if (!dealId) return;
+    setNearbyLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+      if (res.data?.data) {
+        setNearbyEntitlements(res.data.data);
+      }
+    } catch {}
+    setNearbyLoading(false);
+  }, [dealId]);
+
   const fetchDistrictDetails = useCallback(async (code: string, municipality?: string) => {
     try {
       const params: Record<string, string> = { code };
@@ -135,8 +148,6 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       const res = await apiClient.get('/api/v1/zoning-districts/by-code', { params });
       if (res.data?.found !== false) {
         setDistrictDetails(res.data);
-        setRezonePrecedent(res.data?.rezone_precedent || null);
-        setRezoneTargets(res.data?.rezoneTargets || []);
       }
     } catch {}
   }, []);
@@ -174,6 +185,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
               if (confirmedCode) {
                 fetchDistrictDetails(confirmedCode, confirmedMunicipality || undefined);
                 fetchRecommendations();
+                fetchNearbyEntitlements();
               }
             } else {
               // Boundary exists but zoning not confirmed — fetch zoning options
@@ -404,6 +416,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       } catch {}
 
       fetchRecommendations(true);
+      fetchNearbyEntitlements();
 
       if (onComplete) {
         onComplete({
@@ -682,75 +695,219 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                   );
                 })()}
 
-                {rezoneTargets.length > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2">
-                    <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Common Rezone Targets</p>
-                    <p className="text-[10px] text-emerald-700">Higher-density districts in this municipality</p>
-                    <div className="space-y-1.5">
-                      {rezoneTargets.slice(0, 5).map((t: any) => (
-                        <button
-                          key={t.id}
-                          onClick={() => handleDistrictSelect(t)}
-                          className="w-full flex items-center justify-between text-xs bg-white rounded p-2 border border-emerald-100 hover:bg-emerald-50 transition-colors text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-emerald-800">{t.zoning_code}</span>
-                            {t.district_name && <span className="text-gray-600 truncate max-w-[160px]">{t.district_name}</span>}
-                          </div>
-                          <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                            {t.max_density != null && t.max_density > 0 && <span>{t.max_density}/ac</span>}
-                            {t.max_far != null && t.max_far > 0 && <span>FAR {t.max_far}</span>}
-                            {t.max_height != null && t.max_height > 0 && <span>{t.max_height}ft</span>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                {/* Nearby Entitlement Activity */}
+                {nearbyLoading && !nearbyEntitlements && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-4 h-4 text-blue-600 animate-spin mr-2" />
+                    <span className="text-xs text-gray-600">Loading entitlement activity...</span>
                   </div>
                 )}
 
-                {rezonePrecedent && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                    <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Rezoning Precedent</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs text-gray-500">Rezoned FROM this district</p>
-                        <p className="text-sm font-bold text-gray-900">{rezonePrecedent.rezoned_from_count} projects</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Rezoned TO this district</p>
-                        <p className="text-sm font-bold text-gray-900">{rezonePrecedent.rezoned_to_count} projects</p>
-                      </div>
-                    </div>
-                    {rezonePrecedent.avg_rezone_days && (
-                      <p className="text-xs text-gray-600">
-                        Avg {rezonePrecedent.avg_rezone_days} days | {rezonePrecedent.approval_rate}% approval rate
-                      </p>
-                    )}
-                    {rezonePrecedent.recent_rezonings?.length > 0 && (
-                      <div className="space-y-1">
-                        {rezonePrecedent.recent_rezonings.map((r: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-1.5 border border-amber-100">
-                            <div className="flex items-center gap-1.5">
-                              {r.ordinance_url ? (
-                                <a href={r.ordinance_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                                  {r.docket_number || 'View'}
-                                </a>
-                              ) : (
-                                <span className="font-medium text-gray-700">{r.docket_number || r.address || '--'}</span>
-                              )}
-                              <span className="text-gray-400">{r.from_code} → {r.to_code}</span>
-                            </div>
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
-                              r.outcome === 'approved' ? 'bg-green-100 text-green-700' :
-                              r.outcome === 'denied' ? 'bg-red-100 text-red-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>{r.outcome || 'pending'}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                {nearbyEntitlements && nearbyEntitlements.totalRecords === 0 && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                    <BarChart3 className="w-5 h-5 text-gray-400 mx-auto mb-2" />
+                    <p className="text-xs text-gray-500">No entitlement records found for {nearbyEntitlements.scopeName || 'this area'}.</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Data coverage is expanding — check back as more jurisdictions are added.</p>
                   </div>
                 )}
+
+                {nearbyEntitlements && nearbyEntitlements.totalRecords > 0 && (() => {
+                  const ne = nearbyEntitlements;
+                  const typeLabels: Record<string, string> = { rezone: 'Rezone', cup: 'CUP', variance: 'Variance', by_right: 'By-Right', site_plan: 'Site Plan' };
+                  const typeColors: Record<string, { bg: string; text: string; border: string }> = {
+                    rezone: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+                    cup: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+                    variance: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+                    by_right: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+                    site_plan: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200' },
+                  };
+                  const insightColors: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+                    opportunity: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800', icon: 'text-emerald-600' },
+                    trend: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', icon: 'text-blue-600' },
+                    caution: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', icon: 'text-amber-600' },
+                  };
+                  const types = Object.entries(ne.summary || {}).filter(([, s]: any) => s.count > 0);
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3 className="w-4 h-4 text-indigo-600" />
+                          <p className="text-xs font-semibold text-gray-700">Nearby Entitlement Activity</p>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-medium">
+                            {ne.totalRecords} records
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+                            {ne.scope === 'county' ? `${ne.scopeName} County` : ne.scopeName}
+                          </span>
+                        </div>
+                        <button
+                          onClick={fetchNearbyEntitlements}
+                          disabled={nearbyLoading}
+                          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${nearbyLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      {ne.insights?.length > 0 && (
+                        <div className="space-y-1.5">
+                          {ne.insights.map((insight: any, i: number) => {
+                            const ic = insightColors[insight.type] || insightColors.trend;
+                            return (
+                              <div key={i} className={`${ic.bg} border ${ic.border} rounded-lg p-2.5 flex items-start gap-2`}>
+                                {insight.type === 'opportunity' ? (
+                                  <TrendingUp className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${ic.icon}`} />
+                                ) : insight.type === 'caution' ? (
+                                  <AlertCircle className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${ic.icon}`} />
+                                ) : (
+                                  <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${ic.icon}`} />
+                                )}
+                                <p className={`text-xs ${ic.text} leading-relaxed`}>{insight.text}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {types.length > 0 && (
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                          {types.map(([type, stats]: any) => {
+                            const tc = typeColors[type] || typeColors.rezone;
+                            return (
+                              <div key={type} className={`${tc.bg} border ${tc.border} rounded-lg p-2.5`}>
+                                <p className={`text-xs font-bold ${tc.text} mb-1.5`}>{typeLabels[type] || type}</p>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[10px]">
+                                    <span className="text-gray-500">Projects</span>
+                                    <span className="font-bold text-gray-900">{stats.count}</span>
+                                  </div>
+                                  <div className="flex justify-between text-[10px]">
+                                    <span className="text-gray-500">Approval</span>
+                                    <span className={`font-bold ${stats.approvalRate >= 80 ? 'text-green-700' : stats.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                                      {stats.approvalRate}%
+                                    </span>
+                                  </div>
+                                  {stats.avgDays != null && (
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="text-gray-500">Avg Time</span>
+                                      <span className="font-bold text-gray-900">{Math.round(stats.avgDays / 30)} mo</span>
+                                    </div>
+                                  )}
+                                  {stats.avgUnits != null && (
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="text-gray-500">Avg Units</span>
+                                      <span className="font-bold text-gray-900">{stats.avgUnits}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {ne.commonTransitions?.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Common Rezone Transitions</p>
+                          <div className="space-y-1.5">
+                            {ne.commonTransitions.slice(0, 5).map((t: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-2 border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-medium text-gray-700">{t.fromCode}</span>
+                                  <span className="text-gray-400">&rarr;</span>
+                                  <span className="font-mono font-bold text-violet-700">{t.toCode}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-500">{t.count} project{t.count !== 1 ? 's' : ''}</span>
+                                  <span className={`font-medium ${t.approvalRate >= 80 ? 'text-green-600' : t.approvalRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                                    {t.approvalRate}%
+                                  </span>
+                                  {t.avgDays != null && (
+                                    <span className="text-gray-400 flex items-center gap-0.5">
+                                      <Clock className="w-2.5 h-2.5" />
+                                      {Math.round(t.avgDays / 30)} mo
+                                    </span>
+                                  )}
+                                  {t.exampleOrdinanceUrl && (
+                                    <a href={t.exampleOrdinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {ne.projects?.length > 0 && (
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <button
+                            onClick={() => setNearbyProjectsExpanded(!nearbyProjectsExpanded)}
+                            className="w-full flex items-center justify-between"
+                          >
+                            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                              Project Records ({ne.projects.length})
+                            </p>
+                            {nearbyProjectsExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                            )}
+                          </button>
+                          {nearbyProjectsExpanded && (
+                            <div className="space-y-1.5 mt-2">
+                              {ne.projects.map((p: any, i: number) => {
+                                const ptc = typeColors[p.entitlementType] || typeColors.rezone;
+                                return (
+                                  <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-2 border border-gray-100">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-gray-900 truncate">{p.address || p.projectName || 'Unknown'}</span>
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${ptc.bg} ${ptc.text}`}>
+                                          {typeLabels[p.entitlementType] || p.entitlementType}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
+                                        {p.zoningFrom && p.zoningTo && <span>{p.zoningFrom} &rarr; {p.zoningTo}</span>}
+                                        {p.unitCount != null && <span>{p.unitCount} units</span>}
+                                        {p.stories != null && <span>{p.stories} stories</span>}
+                                        {p.municipality && ne.scope === 'county' && (
+                                          <span className="text-gray-400">({p.municipality})</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                                      {p.totalDays != null && (
+                                        <span className="text-[10px] text-gray-400">{Math.round(p.totalDays / 30)} mo</span>
+                                      )}
+                                      {p.outcome && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                          p.outcome === 'approved' ? 'bg-green-100 text-green-700' :
+                                          p.outcome === 'modified' ? 'bg-amber-100 text-amber-700' :
+                                          p.outcome === 'denied' ? 'bg-red-100 text-red-700' :
+                                          'bg-gray-100 text-gray-600'
+                                        }`}>
+                                          {p.outcome}
+                                        </span>
+                                      )}
+                                      {p.ordinanceUrl && (
+                                        <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* District selection dropdown */}
                 {availableDistricts.length > 1 && !zoningConfirmed && (
