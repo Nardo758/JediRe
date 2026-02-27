@@ -511,8 +511,8 @@ const DealDetailPage: React.FC = () => {
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 overflow-y-auto p-6 pr-6">
-            <ActiveComponent deal={deal} dealId={dealId} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
+          <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
+            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
           </main>
 
           <ZoningAgentChat

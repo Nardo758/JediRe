@@ -33,10 +33,20 @@ import {
   Download
 } from 'lucide-react';
 
-export const Design3DPageEnhanced: React.FC = () => {
-  const { dealId } = useParams<{ dealId: string }>();
+interface Design3DPageEnhancedProps {
+  embedded?: boolean;
+  deal?: any;
+  dealId?: string;
+  onUpdate?: () => void;
+  onBack?: () => void;
+}
+
+export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ embedded = false, deal: parentDeal, dealId: propDealId }) => {
+  const { dealId: routeDealId } = useParams<{ dealId: string }>();
+  const resolvedDealId = propDealId || routeDealId || parentDeal?.id;
   const navigate = useNavigate();
-  const { selectedDeal: currentDeal, fetchDealById: loadDeal } = useDealStore();
+  const { selectedDeal: storeDeal, fetchDealById: loadDeal } = useDealStore();
+  const currentDeal = parentDeal || storeDeal;
   
   const {
     mapMode,
@@ -60,16 +70,21 @@ export const Design3DPageEnhanced: React.FC = () => {
   const [bottomTab, setBottomTab] = useState<'competition' | 'traffic' | 'trends'>('competition');
 
   useEffect(() => {
-    if (!dealId) return;
+    if (!resolvedDealId) return;
+    
+    if (parentDeal) {
+      setIsLoading(false);
+      return;
+    }
     
     const loadDealData = async () => {
       setIsLoading(true);
       setError(null);
       
-      await loadDeal(dealId);
+      await loadDeal(resolvedDealId);
       
       try {
-        const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-profile`);
+        const zoningRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-profile`);
         if (zoningRes.data?.data || zoningRes.data) {
           console.log('[Design3DPageEnhanced] Zoning profile loaded');
         }
@@ -83,13 +98,13 @@ export const Design3DPageEnhanced: React.FC = () => {
     };
     
     loadDealData();
-  }, [dealId]);
+  }, [resolvedDealId, parentDeal]);
 
   const handleMetricsChange = (metrics: any) => {
     // Update both local state and dashboard store
     const updatedDesign: Design3D = {
-      id: design3D?.id || `${dealId}-design`,
-      dealId: dealId!,
+      id: design3D?.id || `${resolvedDealId}-design`,
+      dealId: resolvedDealId!,
       totalUnits: metrics.totalUnits || 0,
       unitMix: metrics.unitMix || { studio: 0, oneBed: 0, twoBed: 0, threeBed: 0 },
       rentableSF: metrics.rentableSF || 0,
@@ -122,12 +137,12 @@ export const Design3DPageEnhanced: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!dealId) return;
+    if (!resolvedDealId) return;
     
     try {
       setIsSaving(true);
       try {
-        localStorage.setItem(`design3d-${dealId}`, JSON.stringify({
+        localStorage.setItem(`design3d-${resolvedDealId}`, JSON.stringify({
           savedAt: Date.now(),
         }));
       } catch (storageErr) {
@@ -145,9 +160,9 @@ export const Design3DPageEnhanced: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 bg-white flex items-center justify-center">
+      <div className={`${embedded ? 'w-full h-full' : 'fixed inset-0'} bg-white flex items-center justify-center`}>
         <div className="text-center">
-          <div className="text-6xl mb-4">⏳</div>
+          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-gray-600">Loading design workspace...</p>
         </div>
       </div>
@@ -156,13 +171,14 @@ export const Design3DPageEnhanced: React.FC = () => {
 
   if (!currentDeal) {
     return (
-      <div className="fixed inset-0 bg-white flex items-center justify-center">
+      <div className={`${embedded ? 'w-full h-full' : 'fixed inset-0'} bg-white flex items-center justify-center`}>
         <div className="text-center">
-          <div className="text-6xl mb-4">❌</div>
           <p className="text-gray-600 mb-4">Deal not found</p>
-          <Link to="/deals" className="text-blue-600 hover:text-blue-700">
-            Back to Deals
-          </Link>
+          {!embedded && (
+            <Link to="/deals" className="text-blue-600 hover:text-blue-700">
+              Back to Deals
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -181,7 +197,7 @@ export const Design3DPageEnhanced: React.FC = () => {
       case '3d':
         return (
           <Building3DEditor
-            dealId={dealId}
+            dealId={resolvedDealId}
             parcelGeometry={currentDeal.boundary}
             onMetricsChange={handleMetricsChange}
             onSave={handleSave}
@@ -197,7 +213,7 @@ export const Design3DPageEnhanced: React.FC = () => {
             </div>
             <div className="w-1/2 h-full">
               <Building3DEditor
-                dealId={dealId}
+                dealId={resolvedDealId}
                 parcelGeometry={currentDeal.boundary}
                 onMetricsChange={handleMetricsChange}
                 onSave={handleSave}
@@ -268,69 +284,70 @@ export const Design3DPageEnhanced: React.FC = () => {
 
   return (
     <ThreeDErrorBoundary 
-      dealId={dealId}
+      dealId={resolvedDealId}
       onReset={() => window.location.reload()}
     >
-      <div className="fixed inset-0 bg-gray-100 flex flex-col">
-        {/* Header */}
-        <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-30">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => {
-                if (hasUnsavedChanges) {
-                  if (confirm('You have unsaved changes. Do you want to save before leaving?')) {
-                    handleSave();
+      <div className={`${embedded ? 'w-full h-full' : 'fixed inset-0'} bg-gray-100 flex flex-col`}>
+        {!embedded && (
+          <div className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-30">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => {
+                  if (hasUnsavedChanges) {
+                    if (confirm('You have unsaved changes. Do you want to save before leaving?')) {
+                      handleSave();
+                    }
                   }
-                }
-                navigate(`/deals`);
-              }}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
-            >
-              <ChevronLeft className="w-5 h-5" />
-              <span className="font-medium">Back to Deals</span>
-            </button>
-            
-            <div className="border-l border-gray-300 pl-4">
-              <h1 className="text-xl font-bold text-gray-900">
-                Design Workspace: {currentDeal.name}
-              </h1>
-              <p className="text-sm text-gray-600">{currentDeal.address}</p>
+                  navigate(`/deals`);
+                }}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span className="font-medium">Back to Deals</span>
+              </button>
+              
+              <div className="border-l border-gray-300 pl-4">
+                <h1 className="text-xl font-bold text-gray-900">
+                  Design Workspace: {currentDeal.name}
+                </h1>
+                <p className="text-sm text-gray-600">{currentDeal.address}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {hasUnsavedChanges && (
+                <span className="text-sm text-orange-600 flex items-center gap-1">
+                  <div className="w-2 h-2 bg-orange-600 rounded-full animate-pulse" />
+                  Unsaved changes
+                </span>
+              )}
+              
+              <button
+                onClick={() => {/* TODO: Export functionality */}}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900"
+              >
+                <Download className="w-4 h-4" />
+                Export
+              </button>
+
+              <button
+                onClick={() => {/* TODO: Settings modal */}}
+                className="p-2 text-gray-600 hover:text-gray-900"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !hasUnsavedChanges}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
+              >
+                <Save className="w-4 h-4" />
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {hasUnsavedChanges && (
-              <span className="text-sm text-orange-600 flex items-center gap-1">
-                <div className="w-2 h-2 bg-orange-600 rounded-full animate-pulse" />
-                Unsaved changes
-              </span>
-            )}
-            
-            <button
-              onClick={() => {/* TODO: Export functionality */}}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-
-            <button
-              onClick={() => {/* TODO: Settings modal */}}
-              className="p-2 text-gray-600 hover:text-gray-900"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !hasUnsavedChanges}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition"
-            >
-              <Save className="w-4 h-4" />
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Main Content Area */}
         <div className="flex-1 flex overflow-hidden relative">
