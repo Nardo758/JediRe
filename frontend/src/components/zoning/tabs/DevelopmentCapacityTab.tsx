@@ -161,6 +161,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(true);
+  const [entitlementStrategy, setEntitlementStrategy] = useState<any>(null);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
   const [rezoneAnalysis, setRezoneAnalysis] = useState<any>(null);
   const [loadingRezone, setLoadingRezone] = useState(false);
@@ -231,7 +232,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setLoadingRezone(true);
         try {
           const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`);
-          setRecommendations(recsRes.data.recommendations || []);
+          const recsData = recsRes.data.recommendations || [];
+          setRecommendations(recsData);
+          const rezoneRec = recsData.find((r: any) => r.name === 'Rezone');
+          if (rezoneRec?.entitlementPatterns) {
+            setEntitlementStrategy({
+              patterns: rezoneRec.entitlementPatterns,
+              strategyInsight: rezoneRec.strategyInsight,
+              recommendedPath: rezoneRec.recommendedPath,
+            });
+          }
         } catch {
           setRecommendations([]);
         } finally {
@@ -1036,6 +1046,81 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
+      {entitlementStrategy?.patterns && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <h4 className="text-sm font-bold text-indigo-900">Entitlement Strategy Intelligence</h4>
+              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium border border-indigo-200">
+                {entitlementStrategy.patterns.totalRecords} records analyzed
+              </span>
+            </div>
+            {entitlementStrategy.strategyInsight && (
+              <p className="text-xs text-indigo-800 mb-3">{entitlementStrategy.strategyInsight}</p>
+            )}
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { key: 'rezone', label: 'Rezone', color: 'violet' },
+                { key: 'cup', label: 'CUP', color: 'blue' },
+                { key: 'variance', label: 'Variance', color: 'amber' },
+                { key: 'by_right', label: 'By-Right', color: 'green' },
+              ].filter(t => entitlementStrategy.patterns.byType?.[t.key]?.count > 0).map(({ key, label, color }) => {
+                const stats = entitlementStrategy.patterns.byType[key];
+                const isRecommended = entitlementStrategy.recommendedPath === key;
+                const bgColors: Record<string, string> = { violet: 'bg-violet-50', blue: 'bg-blue-50', amber: 'bg-amber-50', green: 'bg-green-50' };
+                const borderColors: Record<string, string> = { violet: 'border-violet-200', blue: 'border-blue-200', amber: 'border-amber-200', green: 'border-green-200' };
+                return (
+                  <div key={key} className={`${bgColors[color] || 'bg-gray-50'} border ${borderColors[color] || 'border-gray-200'} rounded p-2 ${isRecommended ? 'ring-2 ring-emerald-400' : ''} relative`}>
+                    {isRecommended && (
+                      <span className="absolute -top-2 left-1 text-[8px] bg-emerald-500 text-white px-1 py-0.5 rounded-full font-bold">BEST</span>
+                    )}
+                    <p className="text-[10px] font-bold text-gray-700 mb-1">{label}</p>
+                    <p className="text-xs font-bold text-gray-900">{stats.count} projects</p>
+                    <p className={`text-[10px] ${stats.approvalRate >= 80 ? 'text-green-700' : stats.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                      {stats.approvalRate}% approved
+                    </p>
+                    {stats.avgDays != null && (
+                      <p className="text-[10px] text-gray-500">{Math.round(stats.avgDays / 30)} mo avg</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {entitlementStrategy.patterns.recentProjects?.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-indigo-200">
+                <p className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide mb-1">Recent Approved Projects</p>
+                <div className="space-y-1">
+                  {entitlementStrategy.patterns.recentProjects.slice(0, 3).map((p: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 text-[10px] text-indigo-700">
+                      <span className="font-medium truncate max-w-[200px]">{p.address || p.projectName}</span>
+                      <span className={`px-1 py-0.5 rounded ${
+                        p.entitlementType === 'rezone' ? 'bg-violet-100 text-violet-700' :
+                        p.entitlementType === 'cup' ? 'bg-blue-100 text-blue-700' :
+                        p.entitlementType === 'variance' ? 'bg-amber-100 text-amber-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {p.entitlementType === 'by_right' ? 'By-Right' : p.entitlementType === 'cup' ? 'CUP' : p.entitlementType.charAt(0).toUpperCase() + p.entitlementType.slice(1)}
+                      </span>
+                      {p.unitCount != null && <span>{p.unitCount} units</span>}
+                      {p.zoningFrom && p.zoningTo && <span>{p.zoningFrom} → {p.zoningTo}</span>}
+                      {p.outcome && (
+                        <span className={`px-1 py-0.5 rounded ${p.outcome === 'approved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{p.outcome}</span>
+                      )}
+                      {p.ordinanceUrl && (
+                        <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">PDF</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {rezoneAnalysis?.bestTarget && (
         <div className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden">
           <div className="px-5 py-3 flex items-center gap-3">
@@ -1197,6 +1282,18 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                           <span className="text-gray-500">Est. Cost</span>
                           <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
                         </div>
+                        {rec.source === 'orchestrator' && (
+                          <div className="flex items-center gap-1 pt-1 flex-wrap">
+                            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200">
+                              Orchestrator: {rec.entitlementPatterns?.totalRecords || 0} records analyzed
+                            </span>
+                            {rec.recommendedPath && rec.recommendedPath !== 'rezone' && (
+                              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-200">
+                                Recommended: {rec.recommendedPath === 'cup' ? 'CUP' : rec.recommendedPath === 'variance' ? 'Variance' : rec.recommendedPath}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {rec.source === 'rezone-analysis' && (
                           <div className="flex items-center gap-1 pt-1 flex-wrap">
                             <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">

@@ -325,6 +325,9 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
           nearbyEvidence: top.nearbyCount,
           score: top.score,
           evidence: top.evidence || null,
+          recommendedPath: top.recommendedPath || 'rezone',
+          entitlementPatterns: orchestratorRec.entitlementPatterns || null,
+          strategyInsight: orchestratorRec.entitlementPatterns?.strategyInsight || null,
         };
       }
     } catch {}

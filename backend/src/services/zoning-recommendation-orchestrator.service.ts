@@ -26,6 +26,60 @@ export interface NearbyAnalysis {
   dominantCodeCount: number;
 }
 
+export interface EntitlementTypeStats {
+  count: number;
+  approvedCount: number;
+  approvalRate: number;
+  avgDays: number | null;
+  avgUnits: number | null;
+  avgStories: number | null;
+}
+
+export interface RezoneTransition {
+  fromCode: string;
+  toCode: string;
+  count: number;
+  approvedCount: number;
+  approvalRate: number;
+  avgDays: number | null;
+  avgUnits: number | null;
+  docketNumbers: string[];
+  ordinanceUrls: string[];
+}
+
+export interface RecentProject {
+  address: string | null;
+  projectName: string | null;
+  entitlementType: string;
+  zoningFrom: string | null;
+  zoningTo: string | null;
+  unitCount: number | null;
+  stories: number | null;
+  outcome: string | null;
+  totalDays: number | null;
+  docketNumber: string | null;
+  ordinanceUrl: string | null;
+  applicationDate: string | null;
+  approvalDate: string | null;
+}
+
+export interface EntitlementPatterns {
+  totalRecords: number;
+  municipality: string;
+  byType: {
+    rezone: EntitlementTypeStats;
+    cup: EntitlementTypeStats;
+    variance: EntitlementTypeStats;
+    by_right: EntitlementTypeStats;
+    site_plan: EntitlementTypeStats;
+  };
+  commonTransitions: RezoneTransition[];
+  recentProjects: RecentProject[];
+  corridorInsight: string;
+  recommendedPath: string;
+  strategyInsight: string;
+}
+
 export interface RecommendationCandidate {
   code: string;
   districtName: string | null;
@@ -40,6 +94,7 @@ export interface RecommendationCandidate {
   score: number;
   rank: number;
   reasoning: string;
+  recommendedPath: string;
   envelope: {
     maxUnits: number;
     maxGFA: number;
@@ -60,6 +115,7 @@ export interface ZoningRecommendation {
     maxStories: number | null;
   };
   nearbyAnalysis: NearbyAnalysis;
+  entitlementPatterns: EntitlementPatterns | null;
   candidates: RecommendationCandidate[];
   topRecommendation: RecommendationCandidate | null;
   generatedAt: string;
@@ -106,12 +162,13 @@ export class ZoningRecommendationOrchestrator {
 
     const currentDensityFromDb = await this.getCurrentDensityFromDb(currentCode, municipality);
 
-    const nearbyAnalysis = await this.scanNearbyProperties(
-      lat, lng, currentCode, currentDensityFromDb,
-    );
+    const [nearbyAnalysis, entitlementPatterns] = await Promise.all([
+      this.scanNearbyProperties(lat, lng, currentCode, currentDensityFromDb),
+      this.scanEntitlementActivity(municipality, state, currentCode),
+    ]);
 
     const candidates = await this.buildCandidates(
-      currentCode, municipality, state, nearbyAnalysis,
+      currentCode, municipality, state, nearbyAnalysis, entitlementPatterns,
       currentDensityFromDb, lotAreaSf, projectType, dealInfo.municipalityId,
     );
 
@@ -127,6 +184,7 @@ export class ZoningRecommendationOrchestrator {
       state,
       currentProfile,
       nearbyAnalysis,
+      entitlementPatterns,
       candidates: sortedCandidates,
       topRecommendation,
       generatedAt: new Date().toISOString(),
@@ -155,6 +213,7 @@ export class ZoningRecommendationOrchestrator {
       state: row.state,
       currentProfile: row.nearby_analysis?.currentProfile || { maxDensity: null, maxFar: null, maxHeight: null, maxStories: null },
       nearbyAnalysis: row.nearby_analysis || { totalParcels: 0, radiusMeters: DEFAULT_RADIUS_METERS, uniqueCodes: 0, codeSummaries: [], densityPattern: 'unknown', dominantCode: null, dominantCodeCount: 0 },
+      entitlementPatterns: row.nearby_analysis?.entitlementPatterns || null,
       candidates: row.candidates || [],
       topRecommendation: row.top_recommendation_code
         ? (row.candidates || []).find((c: any) => c.code === row.top_recommendation_code) || null
@@ -359,6 +418,208 @@ export class ZoningRecommendationOrchestrator {
     };
   }
 
+  async scanEntitlementActivity(
+    municipality: string,
+    state: string,
+    currentCode: string,
+  ): Promise<EntitlementPatterns | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+          bp.entitlement_type,
+          bp.outcome,
+          bp.unit_count,
+          bp.stories,
+          bp.total_entitlement_days,
+          bp.zoning_from,
+          bp.zoning_to,
+          bp.address,
+          bp.project_name,
+          bp.docket_number,
+          bp.ordinance_url,
+          bp.application_date,
+          bp.approval_date
+        FROM benchmark_projects bp
+        WHERE UPPER(bp.municipality) = UPPER($1)
+          AND ($2 = '' OR UPPER(COALESCE(bp.state, '')) = UPPER($2))
+        ORDER BY bp.application_date DESC NULLS LAST, bp.created_at DESC`,
+        [municipality, state || ''],
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const rows = result.rows;
+
+      const typeStats = (type: string): EntitlementTypeStats => {
+        const filtered = rows.filter(r => r.entitlement_type === type);
+        if (filtered.length === 0) {
+          return { count: 0, approvedCount: 0, approvalRate: 0, avgDays: null, avgUnits: null, avgStories: null };
+        }
+        const approved = filtered.filter(r => r.outcome === 'approved' || r.outcome === 'modified');
+        const daysArr = filtered.filter(r => r.total_entitlement_days != null).map(r => parseInt(r.total_entitlement_days));
+        const unitsArr = filtered.filter(r => r.unit_count != null).map(r => parseInt(r.unit_count));
+        const storiesArr = filtered.filter(r => r.stories != null).map(r => parseInt(r.stories));
+
+        return {
+          count: filtered.length,
+          approvedCount: approved.length,
+          approvalRate: filtered.length > 0 ? Math.round((approved.length / filtered.length) * 100) : 0,
+          avgDays: daysArr.length > 0 ? Math.round(daysArr.reduce((a, b) => a + b, 0) / daysArr.length) : null,
+          avgUnits: unitsArr.length > 0 ? Math.round(unitsArr.reduce((a, b) => a + b, 0) / unitsArr.length) : null,
+          avgStories: storiesArr.length > 0 ? Math.round(storiesArr.reduce((a, b) => a + b, 0) / storiesArr.length) : null,
+        };
+      };
+
+      const byType = {
+        rezone: typeStats('rezone'),
+        cup: typeStats('cup'),
+        variance: typeStats('variance'),
+        by_right: typeStats('by_right'),
+        site_plan: typeStats('site_plan'),
+      };
+
+      const rezoneRows = rows.filter(r => r.entitlement_type === 'rezone' && r.zoning_from && r.zoning_to);
+      const transitionMap = new Map<string, {
+        fromCode: string; toCode: string; count: number; approvedCount: number;
+        days: number[]; units: number[]; dockets: string[]; urls: string[];
+      }>();
+
+      for (const r of rezoneRows) {
+        const key = `${r.zoning_from}→${r.zoning_to}`;
+        if (!transitionMap.has(key)) {
+          transitionMap.set(key, {
+            fromCode: r.zoning_from, toCode: r.zoning_to,
+            count: 0, approvedCount: 0, days: [], units: [], dockets: [], urls: [],
+          });
+        }
+        const t = transitionMap.get(key)!;
+        t.count++;
+        if (r.outcome === 'approved' || r.outcome === 'modified') t.approvedCount++;
+        if (r.total_entitlement_days) t.days.push(parseInt(r.total_entitlement_days));
+        if (r.unit_count) t.units.push(parseInt(r.unit_count));
+        if (r.docket_number) t.dockets.push(r.docket_number);
+        if (r.ordinance_url) t.urls.push(r.ordinance_url);
+      }
+
+      const commonTransitions: RezoneTransition[] = Array.from(transitionMap.values())
+        .map(t => ({
+          fromCode: t.fromCode,
+          toCode: t.toCode,
+          count: t.count,
+          approvedCount: t.approvedCount,
+          approvalRate: t.count > 0 ? Math.round((t.approvedCount / t.count) * 100) : 0,
+          avgDays: t.days.length > 0 ? Math.round(t.days.reduce((a, b) => a + b, 0) / t.days.length) : null,
+          avgUnits: t.units.length > 0 ? Math.round(t.units.reduce((a, b) => a + b, 0) / t.units.length) : null,
+          docketNumbers: t.dockets,
+          ordinanceUrls: t.urls,
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      const recentProjects: RecentProject[] = rows
+        .filter(r => (r.outcome === 'approved' || r.outcome === 'modified') && (r.address || r.project_name))
+        .slice(0, 8)
+        .map(r => ({
+          address: r.address || null,
+          projectName: r.project_name || null,
+          entitlementType: r.entitlement_type,
+          zoningFrom: r.zoning_from || null,
+          zoningTo: r.zoning_to || null,
+          unitCount: r.unit_count ? parseInt(r.unit_count) : null,
+          stories: r.stories ? parseInt(r.stories) : null,
+          outcome: r.outcome,
+          totalDays: r.total_entitlement_days ? parseInt(r.total_entitlement_days) : null,
+          docketNumber: r.docket_number || null,
+          ordinanceUrl: r.ordinance_url || null,
+          applicationDate: r.application_date?.toISOString?.() || r.application_date || null,
+          approvalDate: r.approval_date?.toISOString?.() || r.approval_date || null,
+        }));
+
+      const { recommendedPath, strategyInsight, corridorInsight } = this.generateEntitlementStrategy(
+        byType, commonTransitions, currentCode, municipality,
+      );
+
+      return {
+        totalRecords: rows.length,
+        municipality,
+        byType,
+        commonTransitions,
+        recentProjects,
+        corridorInsight,
+        recommendedPath,
+        strategyInsight,
+      };
+    } catch (err: any) {
+      logger.error('Failed to scan entitlement activity', { error: err.message, municipality });
+      return null;
+    }
+  }
+
+  private generateEntitlementStrategy(
+    byType: EntitlementPatterns['byType'],
+    transitions: RezoneTransition[],
+    currentCode: string,
+    municipality: string,
+  ): { recommendedPath: string; strategyInsight: string; corridorInsight: string } {
+    const paths: Array<{ type: string; approvalRate: number; avgDays: number | null; count: number }> = [];
+
+    if (byType.cup.count > 0) {
+      paths.push({ type: 'cup', approvalRate: byType.cup.approvalRate, avgDays: byType.cup.avgDays, count: byType.cup.count });
+    }
+    if (byType.variance.count > 0) {
+      paths.push({ type: 'variance', approvalRate: byType.variance.approvalRate, avgDays: byType.variance.avgDays, count: byType.variance.count });
+    }
+    if (byType.rezone.count > 0) {
+      paths.push({ type: 'rezone', approvalRate: byType.rezone.approvalRate, avgDays: byType.rezone.avgDays, count: byType.rezone.count });
+    }
+    if (byType.by_right.count > 0) {
+      paths.push({ type: 'by_right', approvalRate: byType.by_right.approvalRate, avgDays: byType.by_right.avgDays, count: byType.by_right.count });
+    }
+
+    paths.sort((a, b) => {
+      const scoreA = (a.approvalRate / 100) * 0.5 + (a.avgDays ? (1 - Math.min(a.avgDays, 730) / 730) : 0.3) * 0.3 + Math.min(a.count, 20) / 20 * 0.2;
+      const scoreB = (b.approvalRate / 100) * 0.5 + (b.avgDays ? (1 - Math.min(b.avgDays, 730) / 730) : 0.3) * 0.3 + Math.min(b.count, 20) / 20 * 0.2;
+      return scoreB - scoreA;
+    });
+
+    const recommendedPath = paths.length > 0 ? paths[0].type : 'rezone';
+
+    const pathLabels: Record<string, string> = {
+      cup: 'Conditional Use Permit (CUP)',
+      variance: 'Variance',
+      rezone: 'Rezoning',
+      by_right: 'By-Right Development',
+      site_plan: 'Site Plan Approval',
+    };
+
+    let strategyInsight = '';
+    if (paths.length > 0) {
+      const best = paths[0];
+      const bestLabel = pathLabels[best.type] || best.type;
+      const daysStr = best.avgDays ? `${Math.round(best.avgDays / 30)}-month avg timeline` : 'timeline data pending';
+      strategyInsight = `${bestLabel} is the strongest entitlement path in ${municipality} — ${best.count} project${best.count !== 1 ? 's' : ''}, ${best.approvalRate}% approval rate, ${daysStr}.`;
+
+      if (paths.length > 1) {
+        const alt = paths[1];
+        const altLabel = pathLabels[alt.type] || alt.type;
+        const altDaysStr = alt.avgDays ? `${Math.round(alt.avgDays / 30)} months` : 'N/A';
+        strategyInsight += ` Alternative: ${altLabel} (${alt.count} projects, ${alt.approvalRate}% approved, ${altDaysStr}).`;
+      }
+    }
+
+    let corridorInsight = `${municipality} has ${byType.rezone.count + byType.cup.count + byType.variance.count + byType.by_right.count + byType.site_plan.count} entitlement records on file.`;
+    if (byType.rezone.count > 0 && transitions.length > 0) {
+      const topTrans = transitions[0];
+      corridorInsight += ` Most common rezone: ${topTrans.fromCode} → ${topTrans.toCode} (${topTrans.count} projects).`;
+    }
+    if (byType.cup.count > 0) {
+      corridorInsight += ` CUP activity: ${byType.cup.count} projects, ${byType.cup.approvalRate}% approved.`;
+    }
+
+    return { recommendedPath, strategyInsight, corridorInsight };
+  }
+
   private async lookupDistrictDensities(
     codes: string[],
   ): Promise<Map<string, { density: number; far: number; height: number }>> {
@@ -392,6 +653,7 @@ export class ZoningRecommendationOrchestrator {
     municipality: string,
     state: string,
     nearbyAnalysis: NearbyAnalysis,
+    entitlementPatterns: EntitlementPatterns | null,
     currentDensity: { density: number; far: number; height: number },
     lotAreaSf: number,
     projectType: string,
@@ -402,6 +664,14 @@ export class ZoningRecommendationOrchestrator {
     for (const summary of nearbyAnalysis.codeSummaries) {
       if (summary.isHigherDensity && summary.code.toUpperCase() !== currentCode.toUpperCase()) {
         candidateCodes.add(summary.code);
+      }
+    }
+
+    if (entitlementPatterns) {
+      for (const trans of entitlementPatterns.commonTransitions) {
+        if (trans.approvedCount > 0 && trans.toCode.toUpperCase() !== currentCode.toUpperCase()) {
+          candidateCodes.add(trans.toCode.toUpperCase());
+        }
       }
     }
 
@@ -448,6 +718,16 @@ export class ZoningRecommendationOrchestrator {
         }
       } catch {}
 
+      if (approvalRate === null && entitlementPatterns) {
+        const matchingTrans = entitlementPatterns.commonTransitions.find(
+          t => t.toCode.toUpperCase() === code.toUpperCase(),
+        );
+        if (matchingTrans) {
+          approvalRate = matchingTrans.approvalRate;
+          avgTimelineDays = matchingTrans.avgDays;
+        }
+      }
+
       let envelope: RecommendationCandidate['envelope'] = null;
       try {
         if (dd.density > 0 || dd.far > 0) {
@@ -473,8 +753,11 @@ export class ZoningRecommendationOrchestrator {
         }
       } catch {}
 
+      const proximityScore = nearbyAnalysis.totalParcels > 0
+        ? nearbyPct / 100
+        : (entitlementPatterns ? this.getEntitlementProximityScore(code, entitlementPatterns) : 0.3);
+
       const densityScore = Math.min(Math.max(densityUplift, farUplift), 200) / 200;
-      const proximityScore = nearbyPct / 100;
       const precedentScore = approvalRate !== null ? approvalRate / 100 : 0.3;
 
       const score = Math.round(
@@ -483,10 +766,13 @@ export class ZoningRecommendationOrchestrator {
          precedentScore * SCORE_WEIGHTS.approvalPrecedent) * 100,
       );
 
+      const recommendedPath = this.determineRecommendedPath(code, entitlementPatterns);
+
       const reasoning = this.generateReasoning(
         code, currentCode, densityUplift, farUplift,
         nearbyCount, nearbyAnalysis.totalParcels,
         approvalRate, avgTimelineDays,
+        entitlementPatterns, recommendedPath,
       );
 
       candidates.push({
@@ -507,11 +793,50 @@ export class ZoningRecommendationOrchestrator {
         score,
         rank: 0,
         reasoning,
+        recommendedPath,
         envelope,
       });
     }
 
     return candidates;
+  }
+
+  private getEntitlementProximityScore(code: string, patterns: EntitlementPatterns): number {
+    const matchingTrans = patterns.commonTransitions.find(
+      t => t.toCode.toUpperCase() === code.toUpperCase(),
+    );
+    if (matchingTrans && matchingTrans.approvedCount > 0) {
+      return Math.min(matchingTrans.approvedCount / 5, 1.0) * 0.8;
+    }
+    return 0.1;
+  }
+
+  private determineRecommendedPath(code: string, patterns: EntitlementPatterns | null): string {
+    if (!patterns) return 'rezone';
+
+    const matchingTrans = patterns.commonTransitions.find(
+      t => t.toCode.toUpperCase() === code.toUpperCase(),
+    );
+
+    const cupRate = patterns.byType.cup.approvalRate;
+    const cupDays = patterns.byType.cup.avgDays;
+    const rezoneRate = matchingTrans?.approvalRate ?? patterns.byType.rezone.approvalRate;
+    const rezoneDays = matchingTrans?.avgDays ?? patterns.byType.rezone.avgDays;
+
+    if (patterns.byType.cup.count >= 3 && cupRate >= 80) {
+      if (!rezoneDays || !cupDays || cupDays <= rezoneDays) {
+        return 'cup';
+      }
+    }
+
+    if (patterns.byType.variance.count >= 3 && patterns.byType.variance.approvalRate >= 70) {
+      const varDays = patterns.byType.variance.avgDays;
+      if (!rezoneDays || (varDays && varDays < rezoneDays)) {
+        return 'variance';
+      }
+    }
+
+    return 'rezone';
   }
 
   private async fetchAdditionalTargets(
@@ -561,6 +886,8 @@ export class ZoningRecommendationOrchestrator {
     totalNearby: number,
     approvalRate: number | null,
     avgTimelineDays: number | null,
+    entitlementPatterns: EntitlementPatterns | null,
+    recommendedPath: string,
   ): string {
     const parts: string[] = [];
 
@@ -571,7 +898,7 @@ export class ZoningRecommendationOrchestrator {
       parts.push(`FAR is ${farUplift}% higher.`);
     }
 
-    if (nearbyCount > 0) {
+    if (nearbyCount > 0 && totalNearby > 0) {
       parts.push(
         `${nearbyCount} of ${totalNearby} nearby parcels (${Math.round((nearbyCount / totalNearby) * 100)}%) already zoned ${targetCode}.`,
       );
@@ -585,6 +912,16 @@ export class ZoningRecommendationOrchestrator {
       }
     } else {
       parts.push('No precedent data available for this transition.');
+    }
+
+    if (entitlementPatterns && recommendedPath !== 'rezone') {
+      const pathLabels: Record<string, string> = { cup: 'CUP', variance: 'Variance', by_right: 'By-Right' };
+      const pathLabel = pathLabels[recommendedPath] || recommendedPath;
+      const pathStats = (entitlementPatterns.byType as any)[recommendedPath] as EntitlementTypeStats | undefined;
+      if (pathStats && pathStats.count > 0) {
+        const daysStr = pathStats.avgDays ? `~${Math.round(pathStats.avgDays / 30)} months` : '';
+        parts.push(`Consider ${pathLabel} path: ${pathStats.count} precedents, ${pathStats.approvalRate}% approved${daysStr ? ', ' + daysStr : ''}.`);
+      }
     }
 
     return parts.join(' ') || `${targetCode} offers higher development potential than ${currentCode}.`;
@@ -607,7 +944,11 @@ export class ZoningRecommendationOrchestrator {
           rec.currentCode,
           rec.municipality,
           rec.state,
-          JSON.stringify({ ...rec.nearbyAnalysis, currentProfile: rec.currentProfile }),
+          JSON.stringify({
+            ...rec.nearbyAnalysis,
+            currentProfile: rec.currentProfile,
+            entitlementPatterns: rec.entitlementPatterns,
+          }),
           JSON.stringify(rec.candidates),
           rec.topRecommendation?.code || null,
           rec.topRecommendation?.score || null,

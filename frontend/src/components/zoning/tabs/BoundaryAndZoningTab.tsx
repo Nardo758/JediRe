@@ -27,6 +27,10 @@ import {
   RefreshCw,
   Clock,
   Target,
+  FileText,
+  Scale,
+  Gavel,
+  Award,
 } from 'lucide-react';
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
@@ -828,7 +832,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         )}
       </div>
 
-      {/* ─── SECTION 3: Zoning Recommendations ─── */}
+      {/* ─── SECTION 3: Entitlement Intelligence & Recommendations ─── */}
       {zoningConfirmed && (
         <div className="border rounded-lg overflow-hidden">
           <button
@@ -838,15 +842,20 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">3</div>
             <div className="flex-1 text-left">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-gray-900">Upzoning Recommendations</h3>
-                {recommendations?.candidates?.length > 0 && (
+                <h3 className="text-sm font-bold text-gray-900">Entitlement Intelligence & Recommendations</h3>
+                {recommendations?.entitlementPatterns && (
                   <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">
+                    {recommendations.entitlementPatterns.totalRecords} records
+                  </span>
+                )}
+                {recommendations?.candidates?.length > 0 && (
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
                     {recommendations.candidates.length} candidate{recommendations.candidates.length !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                AI analysis of nearby properties and zoning codes for density optimization
+                Entitlement patterns, approval rates, and upzoning recommendations from real project data
               </p>
             </div>
             {recsLoading ? (
@@ -863,71 +872,233 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
               {recsLoading && !recommendations && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 text-blue-600 animate-spin mr-3" />
-                  <span className="text-sm text-gray-600">Analyzing nearby properties and zoning codes...</span>
+                  <span className="text-sm text-gray-600">Analyzing entitlement records and zoning patterns...</span>
                 </div>
               )}
 
               {recommendations && (
                 <>
-                  {/* Nearby Analysis Summary */}
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Nearby Property Analysis</p>
-                      <button
-                        onClick={() => fetchRecommendations(true)}
-                        disabled={recsLoading}
-                        className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${recsLoading ? 'animate-spin' : ''}`} />
-                        Refresh
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
+                  {/* Strategy Insight Banner */}
+                  {recommendations.entitlementPatterns?.strategyInsight && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-xs text-gray-500">Parcels Scanned</p>
-                        <p className="text-sm font-bold text-gray-900">{recommendations.nearbyAnalysis?.totalParcels || 0}</p>
-                        <p className="text-[10px] text-gray-400">within {recommendations.nearbyAnalysis?.radiusMeters || 500}m</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Unique Zoning Codes</p>
-                        <p className="text-sm font-bold text-gray-900">{recommendations.nearbyAnalysis?.uniqueCodes || 0}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Area Pattern</p>
-                        <p className="text-sm font-bold text-gray-900">
-                          {recommendations.nearbyAnalysis?.densityPattern === 'upzoning_trend' ? (
-                            <span className="text-emerald-600">Upzoning Trend</span>
-                          ) : recommendations.nearbyAnalysis?.densityPattern === 'mixed' ? (
-                            <span className="text-amber-600">Mixed Density</span>
-                          ) : recommendations.nearbyAnalysis?.densityPattern === 'stable' ? (
-                            <span className="text-blue-600">Stable</span>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
-                        </p>
+                        <p className="text-xs font-semibold text-blue-900">Strategy Insight</p>
+                        <p className="text-xs text-blue-800 mt-0.5">{recommendations.entitlementPatterns.strategyInsight}</p>
                       </div>
                     </div>
+                  )}
 
-                    {/* Nearby code distribution */}
-                    {recommendations.nearbyAnalysis?.codeSummaries?.length > 0 && (
-                      <div className="mt-3 pt-2 border-t border-gray-200">
-                        <p className="text-[10px] font-medium text-gray-500 mb-1.5">ZONING CODE DISTRIBUTION</p>
+                  {/* Entitlement Activity Summary */}
+                  {recommendations.entitlementPatterns && (() => {
+                    const ep = recommendations.entitlementPatterns;
+                    const types = [
+                      { key: 'rezone', label: 'Rezone', icon: Scale, color: 'violet', stats: ep.byType?.rezone },
+                      { key: 'cup', label: 'CUP', icon: FileText, color: 'blue', stats: ep.byType?.cup },
+                      { key: 'variance', label: 'Variance', icon: Gavel, color: 'amber', stats: ep.byType?.variance },
+                      { key: 'by_right', label: 'By-Right', icon: Award, color: 'green', stats: ep.byType?.by_right },
+                    ].filter(t => t.stats && t.stats.count > 0);
+
+                    return (
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                              Entitlement Activity — {ep.municipality}
+                            </p>
+                            <p className="text-[10px] text-gray-500 mt-0.5">
+                              {ep.totalRecords} entitlement records analyzed
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => fetchRecommendations(true)}
+                            disabled={recsLoading}
+                            className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${recsLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                          </button>
+                        </div>
+
+                        {/* Path Comparison Cards */}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                          {types.map(({ key, label, icon: Icon, color, stats }) => {
+                            const colorClasses: Record<string, { bg: string; text: string; border: string; badge: string }> = {
+                              violet: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', badge: 'bg-violet-100 text-violet-700' },
+                              blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+                              amber: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+                              green: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', badge: 'bg-green-100 text-green-700' },
+                            };
+                            const cc = colorClasses[color] || colorClasses.violet;
+                            const isRecommended = recommendations.entitlementPatterns?.recommendedPath === key;
+
+                            return (
+                              <div key={key} className={`${cc.bg} border ${cc.border} rounded-lg p-2.5 relative ${isRecommended ? 'ring-2 ring-emerald-400' : ''}`}>
+                                {isRecommended && (
+                                  <span className="absolute -top-2 left-2 text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">BEST PATH</span>
+                                )}
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <Icon className={`w-3.5 h-3.5 ${cc.text}`} />
+                                  <span className={`text-xs font-bold ${cc.text}`}>{label}</span>
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[10px]">
+                                    <span className="text-gray-500">Projects</span>
+                                    <span className="font-bold text-gray-900">{stats.count}</span>
+                                  </div>
+                                  <div className="flex justify-between text-[10px]">
+                                    <span className="text-gray-500">Approval</span>
+                                    <span className={`font-bold ${stats.approvalRate >= 80 ? 'text-green-700' : stats.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                                      {stats.approvalRate}%
+                                    </span>
+                                  </div>
+                                  {stats.avgDays != null && (
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="text-gray-500">Avg Time</span>
+                                      <span className="font-bold text-gray-900">{Math.round(stats.avgDays / 30)} mo</span>
+                                    </div>
+                                  )}
+                                  {stats.avgUnits != null && (
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="text-gray-500">Avg Units</span>
+                                      <span className="font-bold text-gray-900">{stats.avgUnits}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Common Rezone Transitions */}
+                  {recommendations.entitlementPatterns?.commonTransitions?.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Common Rezone Transitions</p>
+                      <div className="space-y-1.5">
+                        {recommendations.entitlementPatterns.commonTransitions.slice(0, 5).map((t: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-2 border border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-medium text-gray-700">{t.fromCode}</span>
+                              <span className="text-gray-400">→</span>
+                              <span className="font-mono font-bold text-violet-700">{t.toCode}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-500">{t.count} project{t.count !== 1 ? 's' : ''}</span>
+                              <span className={`font-medium ${t.approvalRate >= 80 ? 'text-green-600' : t.approvalRate >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {t.approvalRate}% approved
+                              </span>
+                              {t.avgDays != null && (
+                                <span className="text-gray-400 flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {Math.round(t.avgDays / 30)} mo
+                                </span>
+                              )}
+                              {t.ordinanceUrls?.[0] && (
+                                <a href={t.ordinanceUrls[0]} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent Precedent Projects */}
+                  {recommendations.entitlementPatterns?.recentProjects?.length > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Recent Approved Projects</p>
+                      <div className="space-y-1.5">
+                        {recommendations.entitlementPatterns.recentProjects.slice(0, 5).map((p: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-white rounded p-2 border border-gray-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-900 truncate">{p.address || p.projectName}</span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                                  p.entitlementType === 'rezone' ? 'bg-violet-100 text-violet-700' :
+                                  p.entitlementType === 'cup' ? 'bg-blue-100 text-blue-700' :
+                                  p.entitlementType === 'variance' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {p.entitlementType === 'by_right' ? 'By-Right' :
+                                   p.entitlementType === 'cup' ? 'CUP' :
+                                   p.entitlementType === 'site_plan' ? 'Site Plan' :
+                                   p.entitlementType.charAt(0).toUpperCase() + p.entitlementType.slice(1)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
+                                {p.zoningFrom && p.zoningTo && <span>{p.zoningFrom} → {p.zoningTo}</span>}
+                                {p.unitCount != null && <span>{p.unitCount} units</span>}
+                                {p.stories != null && <span>{p.stories} stories</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                              {p.totalDays != null && (
+                                <span className="text-[10px] text-gray-400">{Math.round(p.totalDays / 30)} mo</span>
+                              )}
+                              {p.outcome && (
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                  p.outcome === 'approved' ? 'bg-green-100 text-green-700' :
+                                  p.outcome === 'modified' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {p.outcome}
+                                </span>
+                              )}
+                              {p.ordinanceUrl && (
+                                <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Nearby Parcel Analysis (only if data exists) */}
+                  {recommendations.nearbyAnalysis?.totalParcels > 0 && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Nearby Parcel Analysis</p>
+                      <div className="grid grid-cols-3 gap-3 mb-2">
+                        <div>
+                          <p className="text-xs text-gray-500">Parcels Scanned</p>
+                          <p className="text-sm font-bold text-gray-900">{recommendations.nearbyAnalysis.totalParcels}</p>
+                          <p className="text-[10px] text-gray-400">within {recommendations.nearbyAnalysis.radiusMeters || 500}m</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Unique Codes</p>
+                          <p className="text-sm font-bold text-gray-900">{recommendations.nearbyAnalysis.uniqueCodes}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Pattern</p>
+                          <p className="text-sm font-bold">
+                            {recommendations.nearbyAnalysis.densityPattern === 'upzoning_trend' ? (
+                              <span className="text-emerald-600">Upzoning Trend</span>
+                            ) : recommendations.nearbyAnalysis.densityPattern === 'mixed' ? (
+                              <span className="text-amber-600">Mixed</span>
+                            ) : (
+                              <span className="text-blue-600">Stable</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      {recommendations.nearbyAnalysis.codeSummaries?.length > 0 && (
                         <div className="space-y-1">
                           {recommendations.nearbyAnalysis.codeSummaries.slice(0, 5).map((cs: any) => (
                             <div key={cs.code} className="flex items-center justify-between text-xs">
                               <div className="flex items-center gap-2">
-                                <span className={`font-medium ${cs.isHigherDensity ? 'text-emerald-700' : 'text-gray-700'}`}>
-                                  {cs.code}
-                                </span>
-                                {cs.isHigherDensity && (
-                                  <TrendingUp className="w-3 h-3 text-emerald-500" />
-                                )}
+                                <span className={`font-medium ${cs.isHigherDensity ? 'text-emerald-700' : 'text-gray-700'}`}>{cs.code}</span>
+                                {cs.isHigherDensity && <TrendingUp className="w-3 h-3 text-emerald-500" />}
                               </div>
                               <div className="flex items-center gap-3">
                                 <span className="text-gray-500">{cs.count} parcel{cs.count !== 1 ? 's' : ''}</span>
-                                {cs.maxDensity != null && cs.maxDensity > 0 && (
-                                  <span className="text-gray-400">{cs.maxDensity}/ac</span>
-                                )}
+                                {cs.maxDensity != null && cs.maxDensity > 0 && <span className="text-gray-400">{cs.maxDensity}/ac</span>}
                                 <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                                   <div
                                     className={`h-full rounded-full ${cs.isHigherDensity ? 'bg-emerald-500' : 'bg-gray-400'}`}
@@ -938,9 +1109,9 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Top Recommendation */}
                   {recommendations.topRecommendation && (
@@ -949,6 +1120,13 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                         <div className="flex items-center gap-2">
                           <Target className="w-4 h-4 text-emerald-600" />
                           <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Top Recommendation</p>
+                          {recommendations.topRecommendation.recommendedPath && recommendations.topRecommendation.recommendedPath !== 'rezone' && (
+                            <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">
+                              via {recommendations.topRecommendation.recommendedPath === 'cup' ? 'CUP' :
+                                   recommendations.topRecommendation.recommendedPath === 'variance' ? 'Variance' :
+                                   recommendations.topRecommendation.recommendedPath}
+                            </span>
+                          )}
                         </div>
                         <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
                           Score: {recommendations.topRecommendation.score}/100
@@ -971,9 +1149,11 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                           <p className="text-sm font-bold text-emerald-700">+{recommendations.topRecommendation.farUplift}%</p>
                         </div>
                         <div className="bg-white rounded p-2">
-                          <p className="text-[10px] text-gray-500">Nearby Parcels</p>
-                          <p className="text-sm font-bold text-gray-900">{recommendations.topRecommendation.nearbyCount}</p>
-                          <p className="text-[10px] text-gray-400">{recommendations.topRecommendation.nearbyPct}% of area</p>
+                          <p className="text-[10px] text-gray-500">Nearby Evidence</p>
+                          <p className="text-sm font-bold text-gray-900">{recommendations.topRecommendation.nearbyCount || '—'}</p>
+                          {recommendations.topRecommendation.nearbyPct > 0 && (
+                            <p className="text-[10px] text-gray-400">{recommendations.topRecommendation.nearbyPct}% of area</p>
+                          )}
                         </div>
                         <div className="bg-white rounded p-2">
                           <p className="text-[10px] text-gray-500">Approval Rate</p>
@@ -1015,9 +1195,12 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                               <div className="flex items-center gap-2 mb-0.5">
                                 <span className="text-sm font-bold text-gray-900">{c.code}</span>
                                 {c.districtName && <span className="text-xs text-gray-500">{c.districtName}</span>}
-                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">
-                                  #{c.rank}
-                                </span>
+                                <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-medium">#{c.rank}</span>
+                                {c.recommendedPath && c.recommendedPath !== 'rezone' && (
+                                  <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                                    {c.recommendedPath === 'cup' ? 'CUP' : c.recommendedPath === 'variance' ? 'Variance' : c.recommendedPath}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[10px] text-gray-600 line-clamp-1">{c.reasoning}</p>
                             </div>
@@ -1026,12 +1209,6 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                                 <div className="text-center">
                                   <p className="text-xs font-bold text-emerald-600">+{c.densityUplift}%</p>
                                   <p className="text-[9px] text-gray-400">density</p>
-                                </div>
-                              )}
-                              {c.nearbyCount > 0 && (
-                                <div className="text-center">
-                                  <p className="text-xs font-bold text-gray-700">{c.nearbyCount}</p>
-                                  <p className="text-[9px] text-gray-400">nearby</p>
                                 </div>
                               )}
                               <div className="text-center">
@@ -1045,19 +1222,12 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     </div>
                   )}
 
-                  {/* No candidates message */}
-                  {recommendations.candidates?.length === 0 && recommendations.nearbyAnalysis?.totalParcels > 0 && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs text-blue-800">
-                        No higher-density zoning codes found among nearby properties. Your current zoning ({recommendations.currentCode}) appears to be at or above the prevailing density for this area.
-                      </p>
-                    </div>
-                  )}
-
-                  {recommendations.nearbyAnalysis?.totalParcels === 0 && (
+                  {/* No data message */}
+                  {(!recommendations.entitlementPatterns || recommendations.entitlementPatterns.totalRecords === 0) &&
+                   recommendations.candidates?.length === 0 && (
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                       <p className="text-xs text-gray-600">
-                        No nearby parcel records available for analysis. Recommendations are based on district comparisons in the municipal database.
+                        No entitlement records or nearby parcel data available for this municipality. Recommendations are based on district comparisons.
                       </p>
                     </div>
                   )}
