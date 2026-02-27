@@ -49,11 +49,13 @@ export default function MapView() {
   const handlePropertyClick = (property: Property) => {
     setSelectedProperty(property);
     selectPropertyWs(property.id);
-    mapRef.current?.flyTo({
-      center: [property.coordinates.lng, property.coordinates.lat],
-      zoom: 16,
-      duration: 1000,
-    });
+    if (property.coordinates) {
+      mapRef.current?.flyTo({
+        center: [property.coordinates.lng, property.coordinates.lat],
+        zoom: 16,
+        duration: 1000,
+      });
+    }
   };
 
   const buildableEnvelopeData = selectedProperty?.zoning?.buildableEnvelope

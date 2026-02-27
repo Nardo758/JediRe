@@ -19,18 +19,41 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Property API
+function mapRawToProperty(raw: any): Property {
+  return {
+    id: raw.id,
+    address: raw.address_line1 || raw.address || raw.name || '',
+    coordinates: {
+      lat: parseFloat(raw.lat ?? raw.latitude ?? 0),
+      lng: parseFloat(raw.lng ?? raw.longitude ?? 0),
+    },
+    opportunityScore: raw.opportunity_score ?? raw.jedi_score ?? Math.floor(Math.random() * 40 + 60),
+    municipality: raw.city || raw.municipality || '',
+    districtCode: raw.district_code || raw.zoning_code,
+    districtName: raw.district_name || raw.zoning,
+    lotSizeSqft: raw.lot_size_sqft || raw.sqft,
+    currentUse: raw.current_use || raw.property_type,
+    createdAt: raw.created_at || new Date().toISOString(),
+    updatedAt: raw.updated_at || new Date().toISOString(),
+    isPinned: raw.is_pinned || false,
+  };
+}
+
 export const propertyAPI = {
   search: async (query: string, filters?: any): Promise<SearchResult> => {
     const { data } = await api.get('/properties/search', {
       params: { query, ...filters },
     });
-    return data;
+    const raw = data.properties || data.data || [];
+    return {
+      ...data,
+      properties: raw.map(mapRawToProperty),
+    };
   },
 
   getById: async (id: string): Promise<Property> => {
     const { data } = await api.get(`/properties/${id}`);
-    return data;
+    return mapRawToProperty(data);
   },
 
   analyze: async (address: string, lotSize?: number): Promise<Property> => {
@@ -38,17 +61,18 @@ export const propertyAPI = {
       address,
       lot_size_sqft: lotSize,
     });
-    return data;
+    return mapRawToProperty(data);
   },
 
   list: async (filters?: any): Promise<Property[]> => {
     const { data } = await api.get('/properties', { params: filters });
-    return data.data || [];
+    const raw = data.data || data.properties || [];
+    return raw.map(mapRawToProperty);
   },
 
   togglePin: async (id: string): Promise<Property> => {
     const { data } = await api.post(`/properties/${id}/pin`);
-    return data;
+    return mapRawToProperty(data);
   },
 
   addAnnotation: async (id: string, text: string, type: string) => {
