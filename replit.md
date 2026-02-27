@@ -43,6 +43,7 @@ Key features include:
 -   **3D Building Design Editor:** Interactive Three.js/React Three Fiber viewport for building massing design, displaying zoning envelopes and scenario visualizations.
 -   **Design Reference Library:** Manages design reference images with upload, AI analysis, and integration into the 3D viewport.
 -   **Zoning Triangulation & Confirmation Chain:** Three-source zoning data reconciliation (County Parcel Records, County Zoning Categories, Municode Ordinance) with a 10-link confirmation chain that transforms raw zoning into investment decisions. Includes parcel ingestion service, jurisdiction calibration feedback loop, and a Confirmation Chain Plumbing UI for diagnostics.
+-   **Zoning Recommendation Orchestrator:** Unified intelligence layer that analyzes nearby parcel records (within 500m), studies zoning code definitions, and recommends best codes for density or upzoning. Scores candidates using density uplift (40%), proximity evidence (30%), and approval precedent (30%). Surfaces consistent recommendations on both the Boundary & Zoning tab and the Development Capacity tab via cached `zoning_recommendations` table. The Capacity tab's rezone scenario now sources from the orchestrator first, falling back to the standalone `RezoneAnalysisService` if no orchestrator result is available.
 
 ### Agent Dashboard
 

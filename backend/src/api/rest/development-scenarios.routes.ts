@@ -3,12 +3,14 @@ import { getPool } from '../../database/connection';
 import { ZoningProfileService } from '../../services/zoning-profile.service';
 import { BuildingEnvelopeService, PropertyType } from '../../services/building-envelope.service';
 import { RezoneAnalysisService } from '../../services/rezone-analysis.service';
+import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
 
 const router = Router();
 const pool = getPool();
 const profileService = new ZoningProfileService(pool);
 const envelopeService = new BuildingEnvelopeService();
 const rezoneService = new RezoneAnalysisService(pool);
+const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
 
 function mapProjectTypeToEnvelopeType(projectType: string): PropertyType {
   const map: Record<string, PropertyType> = {
@@ -291,45 +293,84 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
 
     let rezoneResult: any = null;
     try {
-      if (profile.base_district_code && profile.municipality) {
-        const rezoneData = await rezoneService.analyze({
-          currentDistrictCode: profile.base_district_code,
-          municipality: profile.municipality,
-          municipalityId: undefined,
-          lotAreaSf,
-          propertyType: propType,
-          dealType,
-        });
-
-        if (rezoneData.bestTarget) {
-          const best = rezoneData.bestTarget;
-          const ev = best.evidence;
-          const hasEvidence = ev && ev.count > 0;
-          rezoneResult = {
-            name: 'Rezone',
-            description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
-            risk: best.risk || 'High',
-            successRate: hasEvidence ? `${ev.approvalRate}%` : '35-50%',
-            timeline: best.estimatedTimeline || '12-24 months',
-            estimatedCost: best.estimatedCost || '$75K-$200K',
-            maxUnits: best.targetEnvelope.maxCapacity,
-            maxGba: best.targetEnvelope.maxGFA,
-            maxStories: best.targetEnvelope.maxFloors,
-            appliedFar: null,
-            parkingRequired: 0,
-            maxHeight: null,
-            bindingConstraint: best.targetEnvelope.limitingFactor,
-            source: 'rezone-analysis' as const,
-            targetDistrictCode: best.targetDistrictCode,
-            targetDistrictName: best.targetDistrictName,
-            districtMunicodeUrl: best.districtMunicodeUrl,
-            delta: best.delta,
-            revenue: best.revenue,
-            evidence: ev || null,
-          };
-        }
+      const orchestratorRec = await recommendationOrchestrator.getOrAnalyze(dealId);
+      if (orchestratorRec?.topRecommendation) {
+        const top = orchestratorRec.topRecommendation;
+        const hasEvidence = top.evidence && top.evidence.count > 0;
+        const riskLevel = top.approvalRate !== null
+          ? (top.approvalRate >= 80 ? 'Low' : top.approvalRate >= 50 ? 'Medium' : 'High')
+          : 'High';
+        const timeline = top.avgTimelineDays
+          ? `${Math.round(top.avgTimelineDays / 30)}-${Math.round(top.avgTimelineDays / 30) + 6} months`
+          : '12-24 months';
+        rezoneResult = {
+          name: 'Rezone',
+          description: `Rezone to ${top.code} (${top.districtName || 'higher-density district'}). ${top.reasoning}`,
+          risk: riskLevel,
+          successRate: top.approvalRate !== null ? `${top.approvalRate}%` : '35-50%',
+          timeline,
+          estimatedCost: '$75K-$200K',
+          maxUnits: top.envelope?.maxUnits || 0,
+          maxGba: top.envelope?.maxGFA || 0,
+          maxStories: top.envelope?.maxFloors || 0,
+          appliedFar: null,
+          parkingRequired: 0,
+          maxHeight: null,
+          bindingConstraint: top.envelope?.limitingFactor || 'unknown',
+          source: 'orchestrator' as const,
+          targetDistrictCode: top.code,
+          targetDistrictName: top.districtName,
+          densityUplift: top.densityUplift,
+          farUplift: top.farUplift,
+          nearbyEvidence: top.nearbyCount,
+          score: top.score,
+          evidence: top.evidence || null,
+        };
       }
     } catch {}
+
+    if (!rezoneResult) {
+      try {
+        if (profile.base_district_code && profile.municipality) {
+          const rezoneData = await rezoneService.analyze({
+            currentDistrictCode: profile.base_district_code,
+            municipality: profile.municipality,
+            municipalityId: undefined,
+            lotAreaSf,
+            propertyType: propType,
+            dealType,
+          });
+
+          if (rezoneData.bestTarget) {
+            const best = rezoneData.bestTarget;
+            const ev = best.evidence;
+            const hasEvidence = ev && ev.count > 0;
+            rezoneResult = {
+              name: 'Rezone',
+              description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
+              risk: best.risk || 'High',
+              successRate: hasEvidence ? `${ev.approvalRate}%` : '35-50%',
+              timeline: best.estimatedTimeline || '12-24 months',
+              estimatedCost: best.estimatedCost || '$75K-$200K',
+              maxUnits: best.targetEnvelope.maxCapacity,
+              maxGba: best.targetEnvelope.maxGFA,
+              maxStories: best.targetEnvelope.maxFloors,
+              appliedFar: null,
+              parkingRequired: 0,
+              maxHeight: null,
+              bindingConstraint: best.targetEnvelope.limitingFactor,
+              source: 'rezone-analysis' as const,
+              targetDistrictCode: best.targetDistrictCode,
+              targetDistrictName: best.targetDistrictName,
+              districtMunicodeUrl: best.districtMunicodeUrl,
+              delta: best.delta,
+              revenue: best.revenue,
+              evidence: ev || null,
+            };
+          }
+        }
+      } catch {}
+    }
 
     if (!rezoneResult) {
       const rezoneMultipliers = { density: 1.6, far: 1.5, parking: 0.70 };
