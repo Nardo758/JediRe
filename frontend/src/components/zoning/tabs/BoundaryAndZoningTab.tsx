@@ -108,6 +108,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [zoningConfirmed, setZoningConfirmed] = useState(false);
   const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
   const [rezonePrecedent, setRezonePrecedent] = useState<any>(null);
+  const [rezoneTargets, setRezoneTargets] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any>(null);
   const [recsLoading, setRecsLoading] = useState(false);
   const [recsExpanded, setRecsExpanded] = useState(false);
@@ -135,6 +136,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       if (res.data?.found !== false) {
         setDistrictDetails(res.data);
         setRezonePrecedent(res.data?.rezone_precedent || null);
+        setRezoneTargets(res.data?.rezoneTargets || []);
       }
     } catch {}
   }, []);
@@ -679,6 +681,32 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     </div>
                   );
                 })()}
+
+                {rezoneTargets.length > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold text-emerald-900 uppercase tracking-wide">Common Rezone Targets</p>
+                    <p className="text-[10px] text-emerald-700">Higher-density districts in this municipality</p>
+                    <div className="space-y-1.5">
+                      {rezoneTargets.slice(0, 5).map((t: any) => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleDistrictSelect(t)}
+                          className="w-full flex items-center justify-between text-xs bg-white rounded p-2 border border-emerald-100 hover:bg-emerald-50 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-emerald-800">{t.zoning_code}</span>
+                            {t.district_name && <span className="text-gray-600 truncate max-w-[160px]">{t.district_name}</span>}
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                            {t.max_density != null && t.max_density > 0 && <span>{t.max_density}/ac</span>}
+                            {t.max_far != null && t.max_far > 0 && <span>FAR {t.max_far}</span>}
+                            {t.max_height != null && t.max_height > 0 && <span>{t.max_height}ft</span>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {rezonePrecedent && (
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">

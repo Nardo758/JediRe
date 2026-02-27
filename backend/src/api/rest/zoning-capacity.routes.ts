@@ -429,43 +429,90 @@ router.get('/zoning-districts/by-code', async (req: Request, res: Response) => {
 
     let rezone_precedent = null;
     try {
-      const fromCountResult = await pool.query(
+      const fkFromResult = await pool.query(
         `SELECT COUNT(*)::int as cnt FROM benchmark_projects WHERE zoning_from_district_id = $1`,
         [district.id]
       );
-      const toCountResult = await pool.query(
+      const fkToResult = await pool.query(
         `SELECT COUNT(*)::int as cnt FROM benchmark_projects WHERE zoning_to_district_id = $1`,
         [district.id]
       );
-      const rezoned_from_count = fromCountResult.rows[0]?.cnt || 0;
-      const rezoned_to_count = toCountResult.rows[0]?.cnt || 0;
+      const fkFromCount = fkFromResult.rows[0]?.cnt || 0;
+      const fkToCount = fkToResult.rows[0]?.cnt || 0;
+      const useFk = (fkFromCount + fkToCount) > 0;
+
+      const districtCode = district.zoning_code || district.district_code;
+      const districtMunicipality = district.municipality;
+
+      let rezoned_from_count = fkFromCount;
+      let rezoned_to_count = fkToCount;
+
+      if (!useFk && districtCode && districtMunicipality) {
+        const textFromResult = await pool.query(
+          `SELECT COUNT(*)::int as cnt FROM benchmark_projects
+           WHERE UPPER(zoning_from) = UPPER($1) AND UPPER(municipality) = UPPER($2)`,
+          [districtCode, districtMunicipality]
+        );
+        const textToResult = await pool.query(
+          `SELECT COUNT(*)::int as cnt FROM benchmark_projects
+           WHERE UPPER(zoning_to) = UPPER($1) AND UPPER(municipality) = UPPER($2)`,
+          [districtCode, districtMunicipality]
+        );
+        rezoned_from_count = textFromResult.rows[0]?.cnt || 0;
+        rezoned_to_count = textToResult.rows[0]?.cnt || 0;
+      }
 
       if (rezoned_from_count > 0 || rezoned_to_count > 0) {
-        const statsResult = await pool.query(
-          `SELECT 
-             COUNT(*)::int as total,
-             COUNT(*) FILTER (WHERE outcome = 'approved')::int as approved,
-             ROUND(AVG(total_entitlement_days) FILTER (WHERE total_entitlement_days > 0))::int as avg_days
-           FROM benchmark_projects
-           WHERE zoning_from_district_id = $1 OR zoning_to_district_id = $1`,
-          [district.id]
-        );
+        let statsResult, recentResult;
+
+        if (useFk) {
+          statsResult = await pool.query(
+            `SELECT
+               COUNT(*)::int as total,
+               COUNT(*) FILTER (WHERE outcome = 'approved')::int as approved,
+               ROUND(AVG(total_entitlement_days) FILTER (WHERE total_entitlement_days > 0))::int as avg_days
+             FROM benchmark_projects
+             WHERE zoning_from_district_id = $1 OR zoning_to_district_id = $1`,
+            [district.id]
+          );
+          recentResult = await pool.query(
+            `SELECT bp.docket_number, bp.ordinance_url, bp.outcome, bp.total_entitlement_days, bp.address,
+                    COALESCE(zf.zoning_code, zf.district_code) as from_code,
+                    COALESCE(zt.zoning_code, zt.district_code) as to_code
+             FROM benchmark_projects bp
+             LEFT JOIN zoning_districts zf ON zf.id = bp.zoning_from_district_id
+             LEFT JOIN zoning_districts zt ON zt.id = bp.zoning_to_district_id
+             WHERE bp.zoning_from_district_id = $1 OR bp.zoning_to_district_id = $1
+             ORDER BY bp.created_at DESC
+             LIMIT 5`,
+            [district.id]
+          );
+        } else {
+          statsResult = await pool.query(
+            `SELECT
+               COUNT(*)::int as total,
+               COUNT(*) FILTER (WHERE outcome = 'approved')::int as approved,
+               ROUND(AVG(total_entitlement_days) FILTER (WHERE total_entitlement_days > 0))::int as avg_days
+             FROM benchmark_projects
+             WHERE (UPPER(zoning_from) = UPPER($1) OR UPPER(zoning_to) = UPPER($1))
+               AND UPPER(municipality) = UPPER($2)`,
+            [districtCode, districtMunicipality]
+          );
+          recentResult = await pool.query(
+            `SELECT docket_number, ordinance_url, outcome, total_entitlement_days, address,
+                    zoning_from as from_code, zoning_to as to_code
+             FROM benchmark_projects
+             WHERE (UPPER(zoning_from) = UPPER($1) OR UPPER(zoning_to) = UPPER($1))
+               AND UPPER(municipality) = UPPER($2)
+             ORDER BY created_at DESC
+             LIMIT 5`,
+            [districtCode, districtMunicipality]
+          );
+        }
+
         const stats = statsResult.rows[0] || {};
         const total = stats.total || 0;
         const approved = stats.approved || 0;
-
-        const recentResult = await pool.query(
-          `SELECT bp.docket_number, bp.ordinance_url, bp.outcome, bp.total_entitlement_days, bp.address,
-                  COALESCE(zf.zoning_code, zf.district_code) as from_code,
-                  COALESCE(zt.zoning_code, zt.district_code) as to_code
-           FROM benchmark_projects bp
-           LEFT JOIN zoning_districts zf ON zf.id = bp.zoning_from_district_id
-           LEFT JOIN zoning_districts zt ON zt.id = bp.zoning_to_district_id
-           WHERE bp.zoning_from_district_id = $1 OR bp.zoning_to_district_id = $1
-           ORDER BY bp.created_at DESC
-           LIMIT 5`,
-          [district.id]
-        );
 
         rezone_precedent = {
           rezoned_from_count,
