@@ -1,8 +1,8 @@
 /**
  * Municipal Open Data API Connectors
  * 
- * Connects to 22 verified ArcGIS REST API endpoints + 12 unverified.
- * Covers 10 FL counties + 10 FL cities + SE/TX metros.
+ * Connects to 26 verified ArcGIS REST API endpoints + 6 unverified.
+ * Covers 10 FL counties + 8 FL cities (18 FL total) + SE/TX metros.
  * All endpoints verified and tested as of Feb 2026.
  * Former Socrata portals have migrated to ArcGIS Hub.
  */
@@ -492,12 +492,12 @@ export const CITY_APIS: Record<string, any> = {
     apiType: 'zoning',
     name: 'West Palm Beach',
     state: 'FL',
-    serviceUrl: 'https://wpbgisportal.wpb.org/server/rest/services/Parcel/Parcels_New/FeatureServer',
+    serviceUrl: 'https://wpbgisportal.wpb.org/server/rest/services/Planning/Zoning_/MapServer',
     layerId: 0,
-    verified: false,
+    verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'ZONECLASS',
+      name: 'ZONEDESC',
     },
   },
   'hialeah-fl': {
@@ -505,9 +505,9 @@ export const CITY_APIS: Record<string, any> = {
     apiType: 'zoning',
     name: 'Hialeah',
     state: 'FL',
-    serviceUrl: 'https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning/MapServer',
-    layerId: 0,
-    verified: false,
+    serviceUrl: 'https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning_Layers/MapServer',
+    layerId: 5,
+    verified: true,
     fields: {
       code: 'ZONING',
       name: 'ZONING',
@@ -518,12 +518,13 @@ export const CITY_APIS: Record<string, any> = {
     apiType: 'zoning',
     name: 'Coral Gables',
     state: 'FL',
-    serviceUrl: 'https://cggisw.coralgables.com/arcgis/rest/services',
-    layerId: 0,
-    verified: false,
+    countyFallback: 'miami-dade-fl',
+    serviceUrl: 'https://services3.arcgis.com/AME2ELqJ7UG0JjrU/arcgis/rest/services/Zoning_Changes_3_WFL1/FeatureServer',
+    layerId: 3,
+    verified: true,
     fields: {
-      code: 'ZONING',
-      name: 'ZONING',
+      code: 'Short_Name',
+      name: 'Short_Name',
     },
   },
   'cape-coral-fl': {
@@ -532,34 +533,8 @@ export const CITY_APIS: Record<string, any> = {
     name: 'Cape Coral',
     state: 'FL',
     serviceUrl: 'https://capeims.capecoral.gov/arcgis/rest/services/IMS/City_of_Cape_Coral_IMS_AGOL/MapServer',
-    layerId: 0,
-    verified: false,
-    fields: {
-      code: 'ZONING',
-      name: 'ZONING',
-    },
-  },
-  'miami-beach-fl': {
-    type: 'arcgis',
-    apiType: 'zoning',
-    name: 'Miami Beach',
-    state: 'FL',
-    serviceUrl: 'https://gis.miamibeachfl.gov/public/rest/services/gc/gc_ParcelsROW/MapServer',
-    layerId: 0,
-    verified: false,
-    fields: {
-      code: 'ZONING',
-      name: 'ZONING',
-    },
-  },
-  'boca-raton-fl': {
-    type: 'arcgis',
-    apiType: 'zoning',
-    name: 'Boca Raton',
-    state: 'FL',
-    serviceUrl: 'https://bocagis.ci.boca-raton.fl.us/arcgissql/rest/services/',
-    layerId: 0,
-    verified: false,
+    layerId: 32,
+    verified: true,
     fields: {
       code: 'ZONING',
       name: 'ZONING',
