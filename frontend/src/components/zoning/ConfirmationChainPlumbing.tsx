@@ -1,0 +1,360 @@
+import { useState } from "react";
+
+const LINKS = [
+  {
+    id: 1, name: "Definitions", icon: "\u{1F4D0}",
+    what: "Dimensional standards: FAR, height, density, setbacks, coverage, parking",
+    sources: ["County Parcel Records", "County Zoning Categories", "Municode Ordinance"],
+    outputs: ["zoning_code", "max_far", "max_height_ft", "max_density", "setbacks", "parking_per_unit", "max_lot_coverage"],
+    feedsInto: [2, 3, 6, 9],
+    consumedBy: ["M02 Zoning", "M03 Dev Capacity", "M14 Risk"],
+    service: "zoning-triangulation.service.ts",
+    status: "built" as const,
+    wiring: "complete" as const,
+    notes: "Three-source triangulation with per-field confidence. Parcel record wins for code, Municode wins for math."
+  },
+  {
+    id: 2, name: "Permitted Uses", icon: "\u2705",
+    what: "By-right, conditional, prohibited uses for confirmed zoning code",
+    sources: ["Municode use tables", "County category rules"],
+    outputs: ["by_right_uses[]", "conditional_uses[]", "prohibited_uses[]", "use_confidence"],
+    feedsInto: [3, 4, 5, 6],
+    consumedBy: ["M08 Strategy", "M03 Dev Capacity"],
+    service: "zoning-knowledge.service.ts \u2192 checkUsePermission()",
+    status: "built" as const,
+    wiring: "disconnected" as const,
+    notes: "Method exists but never called by triangulation or chain. Uses checked against profile.uses but not filtered into HBU."
+  },
+  {
+    id: 3, name: "Development Capacity", icon: "\u{1F3D7}\uFE0F",
+    what: "Max building envelope: units, GFA, floors, buildable area, limiting factor",
+    sources: ["Link 1 (confirmed standards)", "Link 9 (overlay modifiers)", "Parcel lot_area_sf"],
+    outputs: ["max_units", "max_gfa", "max_floors", "buildable_area", "limiting_factor", "parking_required"],
+    feedsInto: [4, 5, 8],
+    consumedBy: ["M08 Strategy", "M09 ProForma", "M03 Dev Capacity"],
+    service: "building-envelope.service.ts \u2192 calculateEnvelope()",
+    status: "built" as const,
+    wiring: "broken" as const,
+    notes: "Envelope calculator works but takes RAW inputs, not triangulated values. Overlay step3 is a passthrough. Now wired through chain."
+  },
+  {
+    id: 4, name: "Highest & Best Use", icon: "\u{1F451}",
+    what: "Rank all permitted property types by value: which use maximizes NOI on THIS parcel?",
+    sources: ["Link 2 (permitted uses)", "Link 3 (capacity per type)", "M05 Market (rent/cap rates)"],
+    outputs: ["hbu_rankings[]", "top_use", "top_value", "market_adjusted"],
+    feedsInto: [5, 8],
+    consumedBy: ["M08 Strategy", "M09 ProForma"],
+    service: "building-envelope.service.ts \u2192 calculateHighestBestUse()",
+    status: "built" as const,
+    wiring: "broken" as const,
+    notes: "Runs all 6 property types but uses HARDCODED revenue/cap rates. Never receives M05 market data. Never filters by permitted uses. Now wired."
+  },
+  {
+    id: 5, name: "Strategy Recommendation", icon: "\u25C8",
+    what: "Which of 4 strategies (BTS, Flip, Rental, STR) wins? Score \u00D7 signal weights from Strategy Matrix",
+    sources: ["Link 4 (HBU)", "Link 3 (capacity)", "M04 Supply", "M05 Market", "M06 Demand"],
+    outputs: ["strategy_scores{}", "recommended", "arbitrage_detected", "arbitrage_delta"],
+    feedsInto: [8],
+    consumedBy: ["M09 ProForma", "M10 Scenario", "M11 Capital Structure", "M01 Overview", "M25 JEDI Score"],
+    service: "confirmation-chain.service.ts \u2192 confirmStrategy()",
+    status: "new" as const,
+    wiring: "new" as const,
+    notes: "Strategy Arbitrage (M08) was declared P0 but 'Partial' build. Now computed from confirmed capacity + JEDI signals per Sheet 6 weights."
+  },
+  {
+    id: 6, name: "Entitlement Process", icon: "\u{1F4CB}",
+    what: "By-right? Variance? CUP? SAP? Rezone? Based on uses + precedent outcomes",
+    sources: ["Link 2 (uses)", "Link 10 (precedent)", "Municode process rules"],
+    outputs: ["entitlement_path", "process_confidence"],
+    feedsInto: [7, 8, 10],
+    consumedBy: ["M14 Risk", "M09 ProForma (timeline assumptions)"],
+    service: "zoning-triangulation.service.ts \u2192 determineProcess()",
+    status: "built" as const,
+    wiring: "partial" as const,
+    notes: "Checks precedent outcomes first, falls back to use table. Confidence calibrated from outcome history. Needs more precedent data."
+  },
+  {
+    id: 7, name: "Timeline", icon: "\u23F1\uFE0F",
+    what: "Months from application to permit, calibrated from actual outcomes",
+    sources: ["Link 6 (process type)", "Link 10 (precedent timelines)", "Calibration averages"],
+    outputs: ["predicted_months", "timeline_confidence"],
+    feedsInto: [8],
+    consumedBy: ["M09 ProForma (hold period)", "M10 Scenario (delay risk)"],
+    service: "zoning-triangulation.service.ts \u2192 predictTimeline()",
+    status: "built" as const,
+    wiring: "partial" as const,
+    notes: "Calibrated from triangulation_outcomes when available. Defaults by path type when sparse. Feeds back through recalibration loop."
+  },
+  {
+    id: 8, name: "Cost", icon: "\u{1F4B0}",
+    what: "Application fees, impact fees, legal, consultants, hard costs per SF",
+    sources: ["Municipality fee schedules", "Precedent actual costs", "Regional estimates"],
+    outputs: ["application_fees", "impact_fees", "total_soft_costs", "hard_cost_per_sf", "total_dev_cost"],
+    feedsInto: [],
+    consumedBy: ["M09 ProForma (development budget)", "M11 Capital Structure (total project cost)"],
+    service: "confirmation-chain.service.ts \u2192 confirmCost()",
+    status: "new" as const,
+    wiring: "gap" as const,
+    notes: "NEW table municipality_fee_schedules needs seeding. Falls back to precedent costs, then regional estimates. Critical for BTS proforma accuracy."
+  },
+  {
+    id: 9, name: "Overlays & Special Districts", icon: "\u{1F5FA}\uFE0F",
+    what: "Historic, TOD, floodplain, OZ, conservation \u2014 layers that modify base zoning",
+    sources: ["Municode profile overlays", "zoning_overlays table", "FEMA/environmental data"],
+    outputs: ["overlay_list[]", "net_capacity_modifier", "additional_requirements[]"],
+    feedsInto: [3, 4, 8],
+    consumedBy: ["M14 Risk (regulatory risk)", "M03 Dev Capacity"],
+    service: "confirmation-chain.service.ts \u2192 confirmOverlays()",
+    status: "new" as const,
+    wiring: "partial" as const,
+    notes: "Pipeline step3 was a passthrough. Now classifies overlays by type and applies capacity modifiers. TOD increases density; historic decreases."
+  },
+  {
+    id: 10, name: "Precedent & Risk", icon: "\u{1F4CA}",
+    what: "Approval rates, avg timelines, recent examples \u2014 probability of approval",
+    sources: ["triangulation_outcomes", "zoning_precedents", "Rezone evidence"],
+    outputs: ["approval_rate", "avg_timeline", "risk_level", "approval_probability", "recent_examples[]"],
+    feedsInto: [6, 7],
+    consumedBy: ["M14 Risk (regulatory risk score)", "Jurisdiction calibration"],
+    service: "confirmation-chain.service.ts \u2192 confirmPrecedent()",
+    status: "new" as const,
+    wiring: "new" as const,
+    notes: "Closes the feedback loop. Every recorded outcome improves predictions for next deal. Feeds back into Links 6+7 via calibration."
+  },
+];
+
+const MODULE_CONNECTIONS = [
+  { from: "Link 1", to: "M02", label: "zoning_code, standards", status: "wired" as const },
+  { from: "M02", to: "M03", label: "zoning_code, far, setbacks, max_density", status: "declared" as const },
+  { from: "Link 3", to: "M03", label: "confirmed envelope", status: "new" as const },
+  { from: "Link 3", to: "M08", label: "max_units, envelope_dimensions", status: "broken" as const },
+  { from: "Link 4", to: "M08", label: "hbu_rankings, top_use", status: "new" as const },
+  { from: "Link 5", to: "M08", label: "strategy_scores, recommended", status: "new" as const },
+  { from: "M08", to: "M09", label: "recommended_strategy, scores", status: "declared" as const },
+  { from: "Link 8", to: "M09", label: "total_dev_cost, hard_cost_per_sf", status: "new" as const },
+  { from: "M09", to: "M11", label: "NOI, cash_flows", status: "declared" as const },
+  { from: "M09", to: "M10", label: "baseline IRR", status: "declared" as const },
+  { from: "M04", to: "Link 5", label: "supply_pressure_score", status: "new" as const },
+  { from: "M05", to: "Link 4", label: "avg_rent, vacancy, cap_rate", status: "new" as const },
+  { from: "M06", to: "Link 5", label: "demand_score", status: "new" as const },
+  { from: "Link 10", to: "M14", label: "approval_probability, risk_level", status: "new" as const },
+  { from: "Link 9", to: "M14", label: "overlay restrictions", status: "new" as const },
+  { from: "M14", to: "M25", label: "composite_risk_score", status: "wired" as const },
+  { from: "Outcomes", to: "Link 10", label: "actual results", status: "new" as const },
+  { from: "Link 10", to: "Calibration", label: "recalibrate weights", status: "new" as const },
+  { from: "Calibration", to: "Link 1", label: "source weights + cap", status: "wired" as const },
+];
+
+const statusColors: Record<string, { bg: string; border: string; text: string; label: string }> = {
+  built: { bg: "#dcfce7", border: "#16a34a", text: "#15803d", label: "Built" },
+  new: { bg: "#dbeafe", border: "#2563eb", text: "#1d4ed8", label: "New" },
+};
+const wiringColors: Record<string, { bg: string; text: string; label: string }> = {
+  complete: { bg: "#dcfce7", text: "#15803d", label: "Wired \u2713" },
+  partial: { bg: "#fef9c3", text: "#a16207", label: "Partial" },
+  broken: { bg: "#fee2e2", text: "#dc2626", label: "Broken \u2717" },
+  disconnected: { bg: "#fce4ec", text: "#c62828", label: "Disconnected" },
+  new: { bg: "#dbeafe", text: "#1d4ed8", label: "New" },
+  gap: { bg: "#f3e8ff", text: "#7c3aed", label: "Data Gap" },
+};
+
+const connStatusColors: Record<string, string> = {
+  wired: "#16a34a",
+  declared: "#d97706",
+  broken: "#dc2626",
+  new: "#2563eb",
+};
+
+export default function ConfirmationChainPlumbing() {
+  const [selected, setSelected] = useState<number | null>(null);
+  const [view, setView] = useState("chain");
+
+  const link = selected !== null ? LINKS.find(l => l.id === selected) : null;
+
+  return (
+    <div style={{ fontFamily: "'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif", background: "#0f172a", color: "#e2e8f0", minHeight: "100vh", padding: "24px" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ marginBottom: 32 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#f8fafc", margin: 0, letterSpacing: "-0.5px" }}>
+            JEDI RE — Confirmation Chain Plumbing
+          </h1>
+          <p style={{ color: "#94a3b8", fontSize: 14, margin: "8px 0 0" }}>
+            10-link chain: each link's output feeds the next. Three data sources confirm code &rarr; process &rarr; timeline &rarr; math.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            {["chain", "connections", "gaps"].map(v => (
+              <button key={v} onClick={() => setView(v)} style={{
+                padding: "6px 16px", borderRadius: 6, border: "1px solid",
+                borderColor: view === v ? "#3b82f6" : "#334155",
+                background: view === v ? "#1e3a5f" : "transparent",
+                color: view === v ? "#93c5fd" : "#94a3b8",
+                fontSize: 13, fontWeight: 500, cursor: "pointer",
+              }}>{v === "chain" ? "Chain View" : v === "connections" ? "Module Wiring" : "Gap Analysis"}</button>
+            ))}
+          </div>
+        </div>
+
+        {view === "chain" && (
+          <div style={{ display: "flex", gap: 24 }}>
+            <div style={{ flex: "0 0 440px" }}>
+              {LINKS.map(l => {
+                const ws = wiringColors[l.wiring];
+                const isSelected = selected === l.id;
+                return (
+                  <div key={l.id} onClick={() => setSelected(isSelected ? null : l.id)} style={{
+                    padding: "14px 16px", marginBottom: 8, borderRadius: 8, cursor: "pointer",
+                    background: isSelected ? "#1e293b" : "#0f172a",
+                    border: `1px solid ${isSelected ? "#3b82f6" : "#1e293b"}`,
+                    transition: "all 0.15s",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 20 }}>{l.icon}</span>
+                        <div>
+                          <span style={{ color: "#475569", fontSize: 12, fontWeight: 600 }}>LINK {l.id}</span>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: "#f1f5f9" }}>{l.name}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: statusColors[l.status].bg, color: statusColors[l.status].text, fontWeight: 600 }}>
+                          {statusColors[l.status].label}
+                        </span>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: ws.bg, color: ws.text, fontWeight: 600 }}>
+                          {ws.label}
+                        </span>
+                      </div>
+                    </div>
+                    <p style={{ margin: "6px 0 0", fontSize: 12, color: "#94a3b8", lineHeight: 1.4 }}>{l.what}</p>
+                    {l.feedsInto.length > 0 && (
+                      <div style={{ marginTop: 6, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 10, color: "#64748b" }}>&rarr;</span>
+                        {l.feedsInto.map(t => (
+                          <span key={t} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3, background: "#1e293b", color: "#93c5fd" }}>
+                            Link {t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ flex: 1, position: "sticky", top: 24, alignSelf: "flex-start" }}>
+              {link ? (
+                <div style={{ background: "#1e293b", borderRadius: 12, padding: 24, border: "1px solid #334155" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                    <span style={{ fontSize: 32 }}>{link.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>LINK {link.id}</div>
+                      <h2 style={{ fontSize: 22, fontWeight: 700, color: "#f8fafc", margin: 0 }}>{link.name}</h2>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6, marginBottom: 20 }}>{link.notes}</div>
+
+                  <Section title="Data Sources">
+                    {link.sources.map((s, i) => <Tag key={i} color="#0d9488">{s}</Tag>)}
+                  </Section>
+
+                  <Section title="Outputs">
+                    {link.outputs.map((o, i) => <Tag key={i} color="#6366f1">{o}</Tag>)}
+                  </Section>
+
+                  <Section title="Consumed By Modules">
+                    {link.consumedBy.map((m, i) => <Tag key={i} color="#d97706">{m}</Tag>)}
+                  </Section>
+
+                  <Section title="Service File">
+                    <code style={{ fontSize: 12, color: "#93c5fd", background: "#0f172a", padding: "4px 8px", borderRadius: 4 }}>{link.service}</code>
+                  </Section>
+
+                  {link.wiring === "broken" || link.wiring === "disconnected" || link.wiring === "gap" ? (
+                    <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: "#1c1917", border: "1px solid #dc2626" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#fca5a5", marginBottom: 4 }}>PLUMBING ISSUE</div>
+                      <div style={{ fontSize: 12, color: "#fde68a", lineHeight: 1.5 }}>{link.notes}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ background: "#1e293b", borderRadius: 12, padding: 40, border: "1px solid #334155", textAlign: "center" }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>&#128279;</div>
+                  <p style={{ color: "#64748b", fontSize: 14 }}>Select a link to see data flow details</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === "connections" && (
+          <div>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16 }}>
+              Every data handoff between confirmation chain links and platform modules. Green = wired. Yellow = declared but not connected. Red = broken. Blue = new in this build.
+            </p>
+            <div style={{ display: "grid", gap: 6 }}>
+              {MODULE_CONNECTIONS.map((c, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", background: "#1e293b", borderRadius: 8, borderLeft: `3px solid ${connStatusColors[c.status]}` }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", minWidth: 100 }}>{c.from}</span>
+                  <span style={{ color: connStatusColors[c.status], fontSize: 16 }}>&rarr;</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", minWidth: 100 }}>{c.to}</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8", flex: 1 }}>{c.label}</span>
+                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: connStatusColors[c.status] + "22", color: connStatusColors[c.status], fontWeight: 600 }}>
+                    {c.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {view === "gaps" && (
+          <div>
+            <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16 }}>
+              What's missing to reach full confidence across the chain. Sorted by impact.
+            </p>
+            {[
+              { severity: "critical", title: "M05 \u2192 Link 4: Market data not feeding HBU", detail: "calculateHighestBestUse() uses PROPERTY_TYPE_CONFIGS defaults (cap rate 5%, rent $1800/unit). Wire avg_rent_psf, vacancy_rate, cap_rate from M05 market service into chain input.", module: "M05 \u2192 confirmation-chain.service.ts", effort: "2 days" },
+              { severity: "critical", title: "Link 3: Parcel lot_area_sf not loaded", detail: "Envelope calculator defaults to 43,560 SF (1 acre). county_parcels.lot_area_sf exists but isn't queried during chain execution. Need to pull from triangulation.sourceA.", module: "parcel-ingestion.service.ts \u2192 confirmation-chain.service.ts", effort: "1 day" },
+              { severity: "critical", title: "M08 Strategy: No real implementation", detail: "Module registry declares M08 as 'Partial' with receivesFrom M02/M03/M04/M05/M06. The confirmation chain now computes strategy scores, but M08 module service doesn't exist. Need to create strategy-arbitrage.service.ts that wraps the chain's strategy output.", module: "strategy-arbitrage.service.ts (new)", effort: "3 days" },
+              { severity: "high", title: "Link 8: Municipality fee schedules empty", detail: "municipality_fee_schedules table created but needs seeding. Atlanta/Fulton County fee schedules available at https://www.atlantaga.gov/. Impacts proforma accuracy for BTS strategy.", module: "municipality_fee_schedules seed data", effort: "2 days" },
+              { severity: "high", title: "Link 9: Overlay step3 was passthrough", detail: "ZoningApplicationPipeline.step3_applyOverlays() returns overlay metadata but never modifies capacity calculations. Chain now applies modifiers, but zoning_overlays table needs seeding for Atlanta overlays (Beltline, MARTA TOD, historic districts).", module: "zoning_overlays seed data", effort: "2 days" },
+              { severity: "high", title: "Link 2 \u2192 Link 4: Uses not filtering HBU", detail: "calculateHighestBestUse runs ALL 6 property types regardless of what's permitted. Chain now filters by by_right uses, but only when uses are confirmed. Fallback runs all types which may recommend prohibited uses.", module: "confirmation-chain.service.ts \u2192 confirmHBU()", effort: "Done" },
+              { severity: "medium", title: "M04/M06 \u2192 Link 5: Signal scores not flowing", detail: "Strategy scores need demand_score, supply_pressure_score, momentum from M04/M05/M06. These modules are 'Built' or 'Partial' but their outputs aren't passed to the chain. Need orchestrator to collect signals before running chain.", module: "Chief Orchestrator agent", effort: "3 days" },
+              { severity: "medium", title: "Link 10: Sparse precedent data", detail: "triangulation_outcomes and zoning_precedents tables exist but have no data. Approval probability defaults to 'unknown'. Need to backfill from Atlanta permit database or user-reported outcomes.", module: "Permit scraping pipeline", effort: "5 days" },
+              { severity: "low", title: "Calibration loop cold start", detail: "jurisdiction_calibration needs 5+ outcomes to compute source weights. Until then, default weights apply. First deals will have lower confidence until feedback loop warms up.", module: "System design (expected)", effort: "N/A" },
+            ].map((gap, i) => (
+              <div key={i} style={{ padding: "16px 20px", marginBottom: 8, background: "#1e293b", borderRadius: 8, borderLeft: `3px solid ${gap.severity === "critical" ? "#dc2626" : gap.severity === "high" ? "#ea580c" : gap.severity === "medium" ? "#d97706" : "#64748b"}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9" }}>{gap.title}</span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: gap.severity === "critical" ? "#fef2f2" : gap.severity === "high" ? "#fff7ed" : "#fffbeb", color: gap.severity === "critical" ? "#dc2626" : gap.severity === "high" ? "#ea580c" : "#d97706", fontWeight: 600 }}>{gap.severity.toUpperCase()}</span>
+                    <span style={{ fontSize: 11, color: "#64748b" }}>{gap.effort}</span>
+                  </div>
+                </div>
+                <p style={{ fontSize: 12, color: "#94a3b8", margin: "6px 0 4px", lineHeight: 1.5 }}>{gap.detail}</p>
+                <code style={{ fontSize: 11, color: "#93c5fd" }}>{gap.module}</code>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>{title}</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{children}</div>
+    </div>
+  );
+}
+
+function Tag({ children, color }: { children: React.ReactNode; color: string }) {
+  return (
+    <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: color + "18", color, fontWeight: 500, border: `1px solid ${color}33` }}>
+      {children}
+    </span>
+  );
+}

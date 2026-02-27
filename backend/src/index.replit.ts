@@ -15,6 +15,7 @@ import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import zoningTriangulationRouter from './api/rest/zoning-triangulation.routes';
 import preferencesRouter from './api/rest/preferences.routes';
 import propertyTypesRouter from './api/rest/property-types.routes';
 import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
@@ -226,6 +227,7 @@ app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
 app.use('/api/v1/municode', requireAuth, municodeRouter);
 app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
+app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
