@@ -11,7 +11,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  MapPin,
   Building2,
   CheckCircle2,
   AlertCircle,
@@ -21,7 +20,6 @@ import {
   Sparkles,
   Search,
   ExternalLink,
-  BookOpen,
   TrendingUp,
   BarChart3,
   RefreshCw,
@@ -30,7 +28,6 @@ import {
 import { PropertyBoundarySection } from '../../deal/sections/PropertyBoundarySection';
 import { apiClient } from '../../../services/api.client';
 import { MunicodeLink } from '../SourceCitation';
-import SourceCitedValue from '../SourceCitedValue';
 
 interface BoundaryAndZoningTabProps {
   deal?: any;
@@ -433,242 +430,13 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         />
       </div>
 
-      {/* ─── SECTION 2: Zoning Verification & Parameters ─── */}
-      <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-        <button
-          onClick={() => boundaryComplete && setZoningExpanded(!zoningExpanded)}
-          className="w-full flex items-center gap-3 px-5 py-4 bg-white hover:bg-gray-50 transition-colors"
-        >
+      {/* ─── SECTION 2: Nearby Entitlement Activity ─── */}
+      <div className={`transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+        <div className="flex items-center gap-2 mb-3">
           <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">2</div>
-          <div className="flex-1 text-left">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-gray-900">Zoning Verification & Parameters</h3>
-              {zoningConfirmed && (
-                <span className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                  <CheckCircle2 className="w-3 h-3" /> Confirmed
-                </span>
-              )}
-            </div>
-            {detectedZoning && (
-              <p className="text-xs text-gray-500 mt-0.5">
-                {detectedZoning.code} — {detectedZoning.name} ({detectedZoning.municipality}, {detectedZoning.state})
-              </p>
-            )}
-          </div>
-          {zoningExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-        </button>
-
-        {zoningExpanded && (
-          <div className="px-5 pb-5 bg-white border-t border-gray-100 space-y-4">
-            {/* Loading */}
-            {zoningLoading && (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-3" />
-                <span className="text-sm text-gray-600">Looking up zoning from property assessor records...</span>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && !zoningLoading && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-medium text-amber-900">Could not auto-detect zoning</p>
-                  <p className="text-xs text-amber-700 mt-0.5">{error}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Detected zoning card */}
-            {detectedZoning && !zoningLoading && !manualEntry && (
-              <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-xs text-gray-500">{detectedZoning.municipality}, {detectedZoning.state}</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-bold text-gray-900">{detectedZoning.code}</span>
-                      <span className="text-sm text-gray-600">{detectedZoning.name}</span>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                      {detectedZoning.planningUrl && (
-                        <a
-                          href={detectedZoning.planningUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-700 bg-white border border-emerald-200 rounded hover:bg-emerald-50 transition-colors"
-                        >
-                          <MapPin className="w-3 h-3" />
-                          Planning & Zoning
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                      {detectedZoning.municodeUrl && (
-                        <a
-                          href={detectedZoning.municodeUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-violet-700 bg-white border border-violet-200 rounded hover:bg-violet-50 transition-colors"
-                        >
-                          <BookOpen className="w-3 h-3" />
-                          View on Municode
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                      {!detectedZoning.municodeUrl && detectedZoning.webSearchUrl && (
-                        <a
-                          href={detectedZoning.webSearchUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-                        >
-                          <Search className="w-3 h-3" />
-                          Search Zoning Code
-                          <ExternalLink className="w-2.5 h-2.5" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                  {detectedZoning.confidence >= 0.9 ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <CheckCircle2 className="w-5 h-5 text-blue-500" />
-                      <span className="text-[9px] text-blue-500">AI-verified</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Selected district parameters preview with source citations */}
-                {((selectedDistrictId && availableDistricts.length > 0) || districtDetails) && (() => {
-                  const d = selectedDistrictId ? availableDistricts.find(x => x.id === selectedDistrictId) : null;
-                  const rules = districtDetails?.source_rules || [];
-                  const findRule = (field: string) => rules.find(r => r.field === field);
-                  const rDensity = findRule('maxDensity');
-                  const rFAR = findRule('maxFAR');
-                  const rHeight = findRule('maxHeight');
-                  const rStories = findRule('maxStories');
-                  const rParking = findRule('parking');
-                  const rFrontSetback = findRule('frontSetback');
-                  const rSideSetback = findRule('sideSetback');
-                  const rRearSetback = findRule('rearSetback');
-                  const rLotCoverage = findRule('lotCoverage');
-
-                  const density = districtDetails?.max_density_per_acre ?? d?.max_density;
-                  const far = districtDetails?.max_far ?? d?.max_far;
-                  const height = districtDetails?.max_height_feet ?? d?.max_height;
-                  const stories = districtDetails?.max_stories ?? d?.max_stories;
-                  const parking = districtDetails?.min_parking_per_unit;
-                  const parkingComm = districtDetails?.parking_per_1000_sqft;
-                  const setbacks = districtDetails?.setbacks;
-                  const lotCoverage = districtDetails?.max_lot_coverage;
-
-                  return (
-                    <div className="bg-gray-50 rounded-lg p-3 space-y-3">
-                      <div className="grid grid-cols-4 gap-3">
-                        <SourceCitedValue
-                          label="Max Density"
-                          value={density ?? null}
-                          unit={density ? '/acre' : undefined}
-                          sectionNumber={rDensity?.sectionNumber || undefined}
-                          sectionTitle={rDensity?.sectionTitle || undefined}
-                          sourceUrl={rDensity?.sourceUrl || undefined}
-                        />
-                        <SourceCitedValue
-                          label="Max FAR"
-                          value={far ?? null}
-                          sectionNumber={rFAR?.sectionNumber || undefined}
-                          sectionTitle={rFAR?.sectionTitle || undefined}
-                          sourceUrl={rFAR?.sourceUrl || undefined}
-                        />
-                        <SourceCitedValue
-                          label="Max Height"
-                          value={height ?? null}
-                          unit={height ? 'ft' : undefined}
-                          sectionNumber={rHeight?.sectionNumber || undefined}
-                          sectionTitle={rHeight?.sectionTitle || undefined}
-                          sourceUrl={rHeight?.sourceUrl || undefined}
-                        />
-                        <SourceCitedValue
-                          label="Max Stories"
-                          value={stories ?? null}
-                          sectionNumber={rStories?.sectionNumber || undefined}
-                          sectionTitle={rStories?.sectionTitle || undefined}
-                          sourceUrl={rStories?.sourceUrl || undefined}
-                        />
-                      </div>
-                      {(parking != null || parkingComm != null || setbacks?.front != null || setbacks?.side != null || setbacks?.rear != null || lotCoverage != null) && (
-                        <div className="border-t border-gray-200 pt-2">
-                          <div className="grid grid-cols-4 gap-3">
-                            {parking != null && (
-                              <SourceCitedValue
-                                label="Parking"
-                                value={parking}
-                                unit="/unit"
-                                sectionNumber={rParking?.sectionNumber || undefined}
-                                sectionTitle={rParking?.sectionTitle || undefined}
-                                sourceUrl={rParking?.sourceUrl || undefined}
-                              />
-                            )}
-                            {parkingComm != null && parking == null && (
-                              <SourceCitedValue
-                                label="Parking"
-                                value={parkingComm}
-                                unit="/1000 sf"
-                                sectionNumber={rParking?.sectionNumber || undefined}
-                                sectionTitle={rParking?.sectionTitle || undefined}
-                                sourceUrl={rParking?.sourceUrl || undefined}
-                              />
-                            )}
-                            {setbacks?.front != null && (
-                              <SourceCitedValue
-                                label="Front Setback"
-                                value={setbacks.front}
-                                unit="ft"
-                                sectionNumber={rFrontSetback?.sectionNumber || undefined}
-                                sectionTitle={rFrontSetback?.sectionTitle || undefined}
-                                sourceUrl={rFrontSetback?.sourceUrl || undefined}
-                              />
-                            )}
-                            {setbacks?.side != null && (
-                              <SourceCitedValue
-                                label="Side Setback"
-                                value={setbacks.side}
-                                unit="ft"
-                                sectionNumber={rSideSetback?.sectionNumber || undefined}
-                                sectionTitle={rSideSetback?.sectionTitle || undefined}
-                                sourceUrl={rSideSetback?.sourceUrl || undefined}
-                              />
-                            )}
-                            {setbacks?.rear != null && (
-                              <SourceCitedValue
-                                label="Rear Setback"
-                                value={setbacks.rear}
-                                unit="ft"
-                                sectionNumber={rRearSetback?.sectionNumber || undefined}
-                                sectionTitle={rRearSetback?.sectionTitle || undefined}
-                                sourceUrl={rRearSetback?.sourceUrl || undefined}
-                              />
-                            )}
-                            {lotCoverage != null && (
-                              <SourceCitedValue
-                                label="Lot Coverage"
-                                value={lotCoverage}
-                                unit="%"
-                                sectionNumber={rLotCoverage?.sectionNumber || undefined}
-                                sectionTitle={rLotCoverage?.sectionTitle || undefined}
-                                sourceUrl={rLotCoverage?.sourceUrl || undefined}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
+          <h3 className="text-sm font-bold text-gray-900">Nearby Entitlement Activity</h3>
+        </div>
+        <div className="border rounded-lg bg-white px-5 py-4 space-y-4">
                 {/* Nearby Entitlement Activity */}
                 {nearbyLoading && !nearbyEntitlements && (
                   <div className="flex items-center justify-center py-4">
@@ -882,7 +650,34 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     </div>
                   );
                 })()}
+        </div>
+      </div>
 
+      {/* ─── SECTION 3: Zoning Selection & Confirmation ─── */}
+      <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+        <div className="px-5 py-4 bg-white space-y-4">
+            {/* Loading */}
+            {zoningLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-3" />
+                <span className="text-sm text-gray-600">Looking up zoning from property assessor records...</span>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !zoningLoading && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-amber-900">Could not auto-detect zoning</p>
+                  <p className="text-xs text-amber-700 mt-0.5">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Detected zoning - district selection & confirm */}
+            {detectedZoning && !zoningLoading && !manualEntry && (
+              <div className="space-y-3">
                 {/* District selection dropdown */}
                 {availableDistricts.length > 1 && !zoningConfirmed && (
                   <div>
@@ -987,8 +782,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                 </p>
               </div>
             )}
-          </div>
-        )}
+        </div>
       </div>
 
     </div>
