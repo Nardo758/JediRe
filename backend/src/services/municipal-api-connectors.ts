@@ -1,7 +1,8 @@
 /**
  * Municipal Open Data API Connectors
  * 
- * Connects to 18 verified ArcGIS REST API cities + 6 unverified.
+ * Connects to 22 verified ArcGIS REST API endpoints + 12 unverified.
+ * Covers 10 FL counties + 10 FL cities + SE/TX metros.
  * All endpoints verified and tested as of Feb 2026.
  * Former Socrata portals have migrated to ArcGIS Hub.
  */
@@ -427,6 +428,136 @@ export const CITY_APIS: Record<string, any> = {
     name: 'Polk County',
     state: 'FL',
     serviceUrl: 'https://gis.polk-county.net/portal/sharing/rest/services',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'miami-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Miami',
+    state: 'FL',
+    serviceUrl: 'https://gis.miami.gov/gis/rest/services/Zoning/ZoningMiami21/MapServer',
+    layerId: 5,
+    verified: true,
+    fields: {
+      code: 'M21_ZONE',
+      name: 'Transect_Desc',
+    },
+  },
+  'tampa-city-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Tampa',
+    state: 'FL',
+    serviceUrl: 'https://arcgis.tampagov.net/arcgis/rest/services/OpenData/Planning/MapServer',
+    layerId: 28,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'hollywood-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Hollywood',
+    state: 'FL',
+    serviceUrl: 'https://maps.hollywoodfl.org/arcgis/rest/services/ZONING/FeatureServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'Zoning',
+      name: 'Zoning',
+    },
+  },
+  'st-petersburg-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'St. Petersburg',
+    state: 'FL',
+    serviceUrl: 'https://services.arcgis.com/lQySeXwbBg53XWDi/ArcGIS/rest/services/zoning_districts/FeatureServer',
+    layerId: 0,
+    verified: true,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'west-palm-beach-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'West Palm Beach',
+    state: 'FL',
+    serviceUrl: 'https://wpbgisportal.wpb.org/server/rest/services/Parcel/Parcels_New/FeatureServer',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'hialeah-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Hialeah',
+    state: 'FL',
+    serviceUrl: 'https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning/MapServer',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'coral-gables-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Coral Gables',
+    state: 'FL',
+    serviceUrl: 'https://cggisw.coralgables.com/arcgis/rest/services',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'cape-coral-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Cape Coral',
+    state: 'FL',
+    serviceUrl: 'https://capeims.capecoral.gov/arcgis/rest/services/IMS/City_of_Cape_Coral_IMS_AGOL/MapServer',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'miami-beach-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Miami Beach',
+    state: 'FL',
+    serviceUrl: 'https://gis.miamibeachfl.gov/public/rest/services/gc/gc_ParcelsROW/MapServer',
+    layerId: 0,
+    verified: false,
+    fields: {
+      code: 'ZONING',
+      name: 'ZONING',
+    },
+  },
+  'boca-raton-fl': {
+    type: 'arcgis',
+    apiType: 'zoning',
+    name: 'Boca Raton',
+    state: 'FL',
+    serviceUrl: 'https://bocagis.ci.boca-raton.fl.us/arcgissql/rest/services/',
     layerId: 0,
     verified: false,
     fields: {

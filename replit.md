@@ -36,7 +36,7 @@ JEDI RE employs a lightweight, map-agnostic architecture.
 -   **Parcel-Level Zoning Lookup:** Automatic zoning code detection via ArcGIS, with Anthropic Claude AI and web search as fallbacks.
 -   **Municipal API Connectors:** Configured via `CITY_APIS` for zoning and assessment APIs with city-specific field mappings.
 -   **Base-District Fallback:** The `/zoning-districts/by-code` endpoint automatically inherits development standards from base districts.
--   **Municipal Zoning Database:** Covers 43 municipalities across 13 SE + TX states with verified ArcGIS REST API connectors.
+-   **Municipal Zoning Database:** 34 ArcGIS REST API connectors (22 verified, 12 unverified) across 13 SE + TX states. FL coverage: 10 county-level + 10 city-level connectors (Miami, Tampa, Hollywood, St. Petersburg, Hialeah, West Palm Beach, Coral Gables, Cape Coral, Miami Beach, Boca Raton). 449 FL zoning districts ingested. 63 municipalities seeded (27 FL).
 -   **Building Envelope Service:** Universal calculation engine for 6 property types using a cascading GBA formula, including Highest & Best Use analysis and Claude-powered optimization.
 -   **Split FAR & Zoning Nuances:** Enhanced `zoning_districts` table with `residential_far`, `nonresidential_far`, `density_method`, and height buffers.
 -   **Zoning Intelligence Module (Constraint Set + Scenarios):** Stores resolved constraint sets in `deal_zoning_profiles` and user-defined development programs in `development_scenarios`. Rezone scenarios store `target_district_id` (migration 061) to calculate envelopes using the target district's actual zoning constraints instead of the current profile.
