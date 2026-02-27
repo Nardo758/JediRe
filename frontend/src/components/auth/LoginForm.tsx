@@ -8,8 +8,8 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('demo@jedire.com');
+  const [password, setPassword] = useState('demo123');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
@@ -26,7 +26,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate('/app');
+        navigate('/dashboard');
       } else {
         setError(result.error || 'Login failed');
       }
@@ -66,10 +66,13 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="login-email"
+              name="loginEmail"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@example.com"
+              aria-label="Email address"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               required
               autoComplete="email"
@@ -84,10 +87,13 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
+              id="login-password"
+              name="loginPassword"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••••••"
+              aria-label="Password"
               className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               required
               autoComplete="current-password"
@@ -105,9 +111,12 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
+              id="login-remember-me"
+              name="loginRememberMe"
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
+              aria-label="Remember me"
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-600">Remember me</span>
@@ -169,6 +178,33 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
             <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
           </svg>
           <span className="font-medium text-gray-700">Continue with LinkedIn</span>
+        </button>
+      </div>
+
+      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <p className="text-xs text-blue-700 mb-2 font-medium">Quick Demo Access</p>
+        <button
+          type="button"
+          onClick={async () => {
+            setError('');
+            setLoading(true);
+            try {
+              const result = await login('demo@jedire.com', 'demo123');
+              if (result.success) {
+                navigate('/dashboard');
+              } else {
+                setError(result.error || 'Demo login failed');
+              }
+            } catch (err: any) {
+              setError(err.message || 'An error occurred');
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 rounded-lg transition-colors text-sm disabled:opacity-50"
+        >
+          Sign In as Demo User
         </button>
       </div>
 

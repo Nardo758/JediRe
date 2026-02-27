@@ -268,6 +268,9 @@ export default function ContactPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                   <input
                     type="text"
+                    id="contact-name"
+                    name="contactName"
+                    aria-label="Your full name"
                     required
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -280,6 +283,9 @@ export default function ContactPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                   <input
                     type="email"
+                    id="contact-email"
+                    name="contactEmail"
+                    aria-label="Your email address"
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -292,6 +298,9 @@ export default function ContactPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Phone (optional)</label>
                   <input
                     type="tel"
+                    id="contact-phone"
+                    name="contactPhone"
+                    aria-label="Your phone number"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="(555) 123-4567"
@@ -302,6 +311,9 @@ export default function ContactPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Message *</label>
                   <textarea
+                    id="contact-message"
+                    name="contactMessage"
+                    aria-label="Your message"
                     required
                     rows={4}
                     value={formData.message}
@@ -315,6 +327,8 @@ export default function ContactPage() {
                   <input
                     type="checkbox"
                     id="agree"
+                    name="agreeToEmails"
+                    aria-label="Agree to receive product updates and marketing emails"
                     checked={formData.agreeToEmails}
                     onChange={(e) => setFormData({ ...formData, agreeToEmails: e.target.checked })}
                     className="mt-1 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"

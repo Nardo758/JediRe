@@ -7,9 +7,17 @@ import CashFlowPanel from './CashFlowPanel';
 import AnnotationSection from './AnnotationSection';
 import StrategyCard from './StrategyCard';
 import AgentInsights from './AgentInsights';
+import { useEventTracking } from '@/hooks/useEventTracking';
+import { DigitalTrafficCard } from '@/components/analytics/DigitalTrafficCard';
 
 export default function PropertyDetail() {
   const { selectedProperty, setSelectedProperty, updateProperty, activeModules } = useAppStore();
+  
+  // Auto-track property detail views
+  const { trackEvent } = useEventTracking({
+    propertyId: selectedProperty?.id,
+    autoTrackPageView: true,
+  });
 
   if (!selectedProperty) return null;
 
@@ -18,6 +26,13 @@ export default function PropertyDetail() {
   };
 
   const handleTogglePin = async () => {
+    // Track save event
+    if (!selectedProperty.isPinned) {
+      trackEvent(selectedProperty.id, 'saved', {
+        action: 'pin',
+      });
+    }
+    
     // API call would go here
     updateProperty(selectedProperty.id, {
       isPinned: !selectedProperty.isPinned,
@@ -125,6 +140,9 @@ export default function PropertyDetail() {
             </div>
           </div>
         </div>
+
+        {/* Digital Traffic Score */}
+        <DigitalTrafficCard propertyId={selectedProperty.id} />
 
         {/* Strategy Arbitrage Comparison */}
         <div>

@@ -1,6 +1,6 @@
 /**
- * JediRe Backend - Replit Entry Point (Simplified)
- * No Redis, No Kafka, No Bull - Direct DB writes
+ * JediRe Backend - Replit Entry Point
+ * Route handlers extracted to dedicated router modules
  */
 import express from 'express';
 import { createServer } from 'http';
@@ -8,515 +8,226 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
 import path from 'path';
+import { requireAuth } from './middleware/auth';
+import { getPool } from './database/connection';
+import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { createTrainingRoutes } from './api/rest/training.routes';
+import { createCalibrationRoutes } from './api/rest/calibration.routes';
+import { createCapsuleRoutes } from './api/rest/capsule.routes';
+import preferencesRouter from './api/rest/preferences.routes';
+import propertyTypesRouter from './api/rest/property-types.routes';
+import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
+import customStrategiesRouter from './api/rest/custom-strategies.routes';
+
+import healthRouter from './api/rest/inline-health.routes';
+import authRouter from './api/rest/inline-auth.routes';
+import dataRouter from './api/rest/inline-data.routes';
+import dealsRouter from './api/rest/inline-deals.routes';
+import tasksRouter from './api/rest/inline-tasks.routes';
+import inboxRouter from './api/rest/inline-inbox.routes';
+import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
+import { createApartmentSyncRoutes } from './api/rest/inline-apartment-sync.routes';
+import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
+
+import { initializeApartmentLocatorIntegration } from './services/apartmentLocatorIntegration';
+import { ApartmentDataSyncService } from './services/apartmentDataSync';
+
+import newsRouter from './api/rest/news.routes';
+import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import geographicContextRoutes from './api/rest/geographic-context.routes';
+import isochroneRoutes from './api/rest/isochrone.routes';
+import trafficAiRoutes from './api/rest/traffic-ai.routes';
+import mapConfigsRouter from './api/rest/map-configs.routes';
+import gridRouter from './api/rest/grid.routes';
+import modulesRouter from './api/rest/modules.routes';
+import financialModelsRouter from './api/rest/financial-models.routes';
+import strategyAnalysesRouter from './api/rest/strategy-analyses.routes';
+import ddChecklistsRouter from './api/rest/dd-checklists.routes';
+import dashboardRouter from './api/rest/dashboard.routes';
+import gmailRouter from './api/rest/gmail.routes';
+import marketResearchRoutes from './api/rest/marketResearch.routes';
+import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
+import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
+import propertyProxyRoutes from './api/rest/property-proxy.routes';
+import marketIntelRoutes from './api/rest/marketIntel.routes';
+import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
+import moduleLibrariesRouter from './api/rest/module-libraries.routes';
+import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
+import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes';
+import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
+import { createOpusRoutes } from './api/rest/opus.routes';
+import { createDataLibraryRoutes } from './api/rest/data-library.routes';
+import propertyBoundaryRouter from './api/rest/property-boundary.routes';
+import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
+import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
+import teamManagementRouter from './api/rest/team-management.routes';
+import contactsSyncRouter from './api/rest/contacts-sync.routes';
+import contextTrackerRouter from './api/rest/context-tracker.routes';
+import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
+import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
+import zoningVerificationRouter from './api/rest/zoning-verification.routes';
+import zoningProfileRouter from './api/rest/zoning-profile.routes';
+import developmentScenariosRouter from './api/rest/development-scenarios.routes';
+import moduleWiringRouter from './api/rest/module-wiring.routes';
+import capitalStructureRouter from './api/rest/capital-structure.routes';
+import dataUploadRouter from './api/rest/data-upload.routes';
+import uploadTemplatesRouter from './api/rest/upload-templates.routes';
+import uploadRouter from './api/rest/upload.routes';
+import compQueryRouter from './api/rest/comp-query.routes';
+import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
+import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
+import entitlementRouter from './api/rest/entitlement.routes';
+import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
+import municodeRouter from './api/rest/municode.routes';
 
 dotenv.config();
 
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
+const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  return allowedOriginPatterns.some(pattern => pattern.test(origin));
+}
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
   }
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+const pool = getPool();
 
-// Middleware
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logging
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// ============================================
-// Health Check Endpoint
-// ============================================
-app.get('/health', async (req, res) => {
-  try {
-    // Check database connection
-    const result = await pool.query('SELECT NOW()');
-    
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      database: 'connected',
-      dbTime: result.rows[0].now
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
+app.use('/health', healthRouter);
+app.use('/api/v1/auth', authRouter);
+app.use('/api/v1', dataRouter);
+app.use('/api/v1/deals', dealsRouter);
+app.use('/api/v1/tasks', tasksRouter);
+app.use('/api/v1/inbox', inboxRouter);
+app.use('/api/v1', zoningAnalyzeRouter);
+
+initializeApartmentLocatorIntegration({
+  baseUrl: process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app',
+  timeout: 30000,
+  apiKey: process.env.APARTMENT_LOCATOR_API_KEY || process.env.API_KEY_APARTMENT_LOCATOR,
 });
 
-// ============================================
-// API Routes
-// ============================================
+const apartmentSyncService = new ApartmentDataSyncService(pool);
+app.use('/api/v1/apartment-sync', createApartmentSyncRoutes(apartmentSyncService));
 
-// Get supply metrics for a market
-app.get('/api/v1/supply/:market', async (req, res) => {
-  try {
-    const { market } = req.params;
-    const limit = parseInt(req.query.limit as string) || 10;
-    
-    const result = await pool.query(
-      `SELECT * FROM supply_metrics 
-       WHERE market = $1 
-       ORDER BY timestamp DESC 
-       LIMIT $2`,
-      [market, limit]
-    );
-    
-    res.json({
-      success: true,
-      market,
-      data: result.rows
-    });
-  } catch (error) {
-    console.error('Error fetching supply metrics:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+const microsoftConfig = {
+  clientId: process.env.MICROSOFT_CLIENT_ID || '',
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+  tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
+  redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
+  scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
+};
+app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
-// Get all markets with latest metrics
-app.get('/api/v1/markets', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT DISTINCT ON (market) 
-        market,
-        timestamp,
-        total_inventory,
-        months_of_supply,
-        score,
-        interpretation
-      FROM supply_metrics
-      ORDER BY market, timestamp DESC
-    `);
-    
-    res.json({
-      success: true,
-      data: result.rows
-    });
-  } catch (error) {
-    console.error('Error fetching markets:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+// Data Tracker - public admin stats (no auth required)
+import dataTrackerRoutes from './api/rest/data-tracker.routes';
+app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 
-// Get properties
-app.get('/api/v1/properties', async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 50;
-    const city = req.query.city as string;
-    
-    let query = 'SELECT * FROM properties';
-    const params: any[] = [];
-    
-    if (city) {
-      query += ' WHERE city ILIKE $1';
-      params.push(`%${city}%`);
-    }
-    
-    query += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
-    params.push(limit);
-    
-    const result = await pool.query(query, params);
-    
-    res.json({
-      success: true,
-      count: result.rows.length,
-      data: result.rows
-    });
-  } catch (error) {
-    console.error('Error fetching properties:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+// Building Envelope - requires auth
+import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
+app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
 
-// Get user alerts
-app.get('/api/v1/alerts/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const limit = parseInt(req.query.limit as string) || 20;
-    
-    const result = await pool.query(
-      `SELECT * FROM alerts 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT $2`,
-      [userId, limit]
-    );
-    
-    res.json({
-      success: true,
-      data: result.rows
-    });
-  } catch (error) {
-    console.error('Error fetching alerts:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
+app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
+app.use('/api/v1/gmail', requireAuth, gmailRouter);
+app.use('/api/v1/news', requireAuth, newsRouter);
+app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
+app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
+app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
+app.use('/api/v1', requireAuth, geographicContextRoutes);
+app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
+app.use('/api/v1/grid', requireAuth, gridRouter);
+app.use('/api/v1/modules', requireAuth, modulesRouter);
+app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
+app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
+app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
+app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+app.use('/api/v1/apartment-market', requireAuth, apartmentMarketRoutes);
+app.use('/api/v1/market-intel', requireAuth, marketIntelRoutes);
+app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
+app.use('/api/v1', requireAuth, propertyProxyRoutes);
+app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
+app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
+app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
+app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
+app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
+app.use('/api/v1/markets', marketIntelligenceRouter);
+app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
+app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
+app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
+app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+app.use('/api/v1', requireAuth, propertyBoundaryRouter);
+app.use('/api/v1', requireAuth, siteIntelligenceRouter);
+app.use('/api/v1', requireAuth, zoningCapacityRouter);
+app.use('/api/v1/zoning-intelligence', requireAuth, createZoningIntelligenceRoutes(pool));
+app.use('/api/v1/zoning-learning', requireAuth, createZoningLearningRoutes(pool));
+app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
+app.use('/api/v1', requireAuth, zoningProfileRouter);
+app.use('/api/v1', requireAuth, developmentScenariosRouter);
+app.use('/api/v1', requireAuth, teamManagementRouter);
+app.use('/api/v1', requireAuth, contactsSyncRouter);
+app.use('/api/v1/context', requireAuth, contextTrackerRouter);
+app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
+app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
+app.use('/api/v1/properties', requireAuth, dataUploadRouter);
+app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
+app.use('/api/v1/uploads', requireAuth, uploadRouter);
+app.use('/api/v1/comps', requireAuth, compQueryRouter);
+app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
+app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
+app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
+app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
+app.use('/api/v1/municode', requireAuth, municodeRouter);
 
-// Simple auth endpoint (demo)
-app.post('/api/v1/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    
-    // For demo: check against demo user
-    if (email === 'demo@jedire.com' && password === 'demo123') {
-      const result = await pool.query(
-        'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE email = $1',
-        [email]
-      );
-      
-      if (result.rows.length > 0) {
-        const dbUser = result.rows[0];
-        const user = {
-          id: dbUser.id,
-          email: dbUser.email,
-          name: dbUser.full_name || 'Demo User',
-          role: dbUser.role || 'user',
-          subscription: {
-            plan: dbUser.subscription_tier || 'free',
-            modules: dbUser.enabled_modules || ['supply']
-          }
-        };
-        res.json({
-          success: true,
-          user,
-          token: 'demo-token-' + Date.now()
-        });
-        return;
-      }
-    }
-    
-    res.status(401).json({
-      success: false,
-      error: 'Invalid credentials'
-    });
-  } catch (error) {
-    console.error('Error during login:', error);
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
-// ============================================
-// Zoning & Property Analysis Endpoints
-// ============================================
-
-// Geocode an address
-app.post('/api/v1/geocode', async (req, res) => {
-  try {
-    const { address } = req.body;
-    
-    if (!address) {
-      return res.status(400).json({ success: false, error: 'Address is required' });
-    }
-    
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`,
-      { headers: { 'User-Agent': 'JediRE/1.0 (contact@jedire.com)' } }
-    );
-    
-    const data = await response.json() as any[];
-    
-    if (!data || data.length === 0) {
-      return res.status(404).json({ success: false, error: 'Address not found' });
-    }
-    
-    const result = data[0];
-    const addressParts = result.address || {};
-    
-    res.json({
-      success: true,
-      data: {
-        lat: parseFloat(result.lat),
-        lng: parseFloat(result.lon),
-        displayName: result.display_name,
-        municipality: addressParts.city || addressParts.town || addressParts.village || addressParts.county,
-        state: addressParts.state,
-        country: addressParts.country
-      }
-    });
-  } catch (error) {
-    console.error('Geocoding error:', error);
-    res.status(500).json({ success: false, error: 'Geocoding failed' });
-  }
-});
-
-// Lookup zoning district for coordinates
-app.post('/api/v1/zoning/lookup', async (req, res) => {
-  try {
-    const { lat, lng, municipality } = req.body;
-    
-    if (!lat || !lng) {
-      return res.status(400).json({ success: false, error: 'Coordinates are required' });
-    }
-    
-    let sql = `
-      SELECT zd.*, zdb.boundary_geojson
-      FROM zoning_districts zd
-      JOIN zoning_district_boundaries zdb ON zd.id = zdb.district_id
-      WHERE $1 >= zdb.min_lat AND $1 <= zdb.max_lat
-        AND $2 >= zdb.min_lng AND $2 <= zdb.max_lng
-    `;
-    const params: (number | string)[] = [lat, lng];
-    
-    if (municipality) {
-      sql += ` AND LOWER(zd.municipality) = LOWER($3)`;
-      params.push(municipality);
-    }
-    
-    const result = await pool.query(sql, params);
-    
-    // Point-in-polygon check
-    for (const row of result.rows) {
-      try {
-        const geojson = JSON.parse(row.boundary_geojson);
-        if (geojson.type === 'Polygon') {
-          const ring = geojson.coordinates[0];
-          let inside = false;
-          for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1];
-            const xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
-              inside = !inside;
-            }
-          }
-          if (inside) {
-            delete row.boundary_geojson;
-            return res.json({ success: true, data: row });
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing GeoJSON:', e);
-      }
-    }
-    
-    res.status(404).json({ success: false, error: 'No zoning district found for these coordinates' });
-  } catch (error) {
-    console.error('Zoning lookup error:', error);
-    res.status(500).json({ success: false, error: 'Zoning lookup failed' });
-  }
-});
-
-// Get all zoning districts for a municipality
-app.get('/api/v1/zoning/districts/:municipality', async (req, res) => {
-  try {
-    const { municipality } = req.params;
-    const state = req.query.state as string || 'TX';
-    
-    const result = await pool.query(
-      `SELECT id, district_code, district_name, description, permitted_uses, 
-              max_building_height_ft, max_units_per_acre, max_far
-       FROM zoning_districts 
-       WHERE LOWER(municipality) = LOWER($1) AND LOWER(state) = LOWER($2)
-       ORDER BY district_code`,
-      [municipality, state]
-    );
-    
-    res.json({ success: true, data: result.rows });
-  } catch (error) {
-    console.error('Error fetching districts:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch districts' });
-  }
-});
-
-// Analyze a property
-app.post('/api/v1/analyze', async (req, res) => {
-  try {
-    const { address, lat, lng, municipality, state, lot_size_sqft } = req.body;
-    
-    if (!address || !lat || !lng || !lot_size_sqft) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Address, coordinates, and lot size are required' 
-      });
-    }
-    
-    // Look up zoning district
-    let sql = `
-      SELECT zd.*, zdb.boundary_geojson
-      FROM zoning_districts zd
-      JOIN zoning_district_boundaries zdb ON zd.id = zdb.district_id
-      WHERE $1 >= zdb.min_lat AND $1 <= zdb.max_lat
-        AND $2 >= zdb.min_lng AND $2 <= zdb.max_lng
-    `;
-    const params: (number | string)[] = [lat, lng];
-    
-    if (municipality) {
-      sql += ` AND LOWER(zd.municipality) = LOWER($3)`;
-      params.push(municipality);
-    }
-    
-    const result = await pool.query(sql, params);
-    let district = null;
-    
-    // Point-in-polygon check
-    for (const row of result.rows) {
-      try {
-        const geojson = JSON.parse(row.boundary_geojson);
-        if (geojson.type === 'Polygon') {
-          const ring = geojson.coordinates[0];
-          let inside = false;
-          for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = ring[i][0], yi = ring[i][1];
-            const xj = ring[j][0], yj = ring[j][1];
-            if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
-              inside = !inside;
-            }
-          }
-          if (inside) {
-            district = row;
-            break;
-          }
-        }
-      } catch (e) {}
-    }
-    
-    if (!district) {
-      return res.status(404).json({ success: false, error: 'No zoning district found' });
-    }
-    
-    // Calculate development potential
-    const setbacks = {
-      front: district.min_front_setback_ft || 25,
-      side: district.min_side_setback_ft || 5,
-      rear: district.min_rear_setback_ft || 10
-    };
-    
-    const lotSideLength = Math.sqrt(lot_size_sqft);
-    const buildableWidth = Math.max(0, lotSideLength - (setbacks.side * 2));
-    const buildableDepth = Math.max(0, lotSideLength - setbacks.front - setbacks.rear);
-    let maxFootprintSqft = Math.round(buildableWidth * buildableDepth);
-    
-    let maxUnits = 1;
-    if (district.max_units_per_acre && district.max_units_per_acre > 0) {
-      maxUnits = Math.floor((lot_size_sqft / 43560) * district.max_units_per_acre);
-    } else if (district.min_lot_per_unit_sqft && district.min_lot_per_unit_sqft > 0) {
-      maxUnits = Math.floor(lot_size_sqft / district.min_lot_per_unit_sqft);
-    }
-    maxUnits = Math.max(1, maxUnits);
-    
-    const maxCoverage = district.max_lot_coverage || 0.45;
-    maxFootprintSqft = Math.min(maxFootprintSqft, Math.round(lot_size_sqft * maxCoverage));
-    
-    const maxStories = district.max_stories || 2;
-    const maxGfaSqft = maxFootprintSqft * maxStories;
-    
-    let parkingRequired = 0;
-    if (district.parking_per_unit) {
-      parkingRequired = Math.ceil(maxUnits * district.parking_per_unit);
-    } else if (district.parking_per_1000_sqft) {
-      parkingRequired = Math.ceil((maxGfaSqft / 1000) * district.parking_per_1000_sqft);
-    }
-    
-    // Calculate opportunity score
-    let score = 50;
-    if (maxUnits >= 4) score += 20;
-    else if (maxUnits >= 2) score += 10;
-    if (district.max_far && district.max_far >= 1.0) score += 15;
-    else if (district.max_far && district.max_far >= 0.5) score += 5;
-    if (district.max_building_height_ft && district.max_building_height_ft >= 40) score += 10;
-    if (lot_size_sqft >= 10000) score += 10;
-    else if (lot_size_sqft >= 7000) score += 5;
-    score = Math.min(100, Math.max(0, score));
-    
-    // Calculate buildable envelope
-    const ftToDeg = 0.00000274;
-    const halfSide = (lotSideLength / 2) * ftToDeg;
-    const setbackDeg = {
-      front: setbacks.front * ftToDeg,
-      rear: setbacks.rear * ftToDeg,
-      side: setbacks.side * ftToDeg
-    };
-    const buildableEnvelope = {
-      type: 'Polygon',
-      coordinates: [[
-        [lng - halfSide + setbackDeg.side, lat + halfSide - setbackDeg.front],
-        [lng + halfSide - setbackDeg.side, lat + halfSide - setbackDeg.front],
-        [lng + halfSide - setbackDeg.side, lat - halfSide + setbackDeg.rear],
-        [lng - halfSide + setbackDeg.side, lat - halfSide + setbackDeg.rear],
-        [lng - halfSide + setbackDeg.side, lat + halfSide - setbackDeg.front]
-      ]]
-    };
-    
-    // Generate summary
-    const districtName = district.district_name || district.district_code;
-    let summary = `This ${lot_size_sqft.toLocaleString()} sq ft property is zoned ${districtName}. `;
-    if (maxUnits > 1) {
-      summary += `You can build up to ${maxUnits} dwelling units with a maximum of ${maxGfaSqft.toLocaleString()} sq ft gross floor area. `;
-    } else {
-      summary += `Single-family development is permitted with up to ${maxGfaSqft.toLocaleString()} sq ft of buildable area. `;
-    }
-    if (parkingRequired > 0) {
-      summary += `${parkingRequired} parking spaces are required.`;
-    }
-    
-    const analysis = {
-      address,
-      coordinates: { lat, lng },
-      municipality: municipality || district.municipality,
-      state: state || district.state,
-      district_code: district.district_code,
-      district_name: districtName,
-      lot_size_sqft,
-      max_units: maxUnits,
-      max_height_ft: district.max_building_height_ft || 35,
-      max_footprint_sqft: maxFootprintSqft,
-      max_gfa_sqft: maxGfaSqft,
-      parking_required: parkingRequired,
-      setbacks,
-      opportunity_score: score,
-      buildable_envelope_geojson: buildableEnvelope,
-      ai_summary: summary,
-      permitted_uses: district.permitted_uses || [],
-      conditional_uses: district.conditional_uses || []
-    };
-    
-    res.json({ success: true, data: analysis });
-  } catch (error) {
-    console.error('Analysis error:', error);
-    res.status(500).json({ success: false, error: 'Property analysis failed' });
-  }
-});
-
-// ============================================
-// WebSocket Handlers
-// ============================================
+app.use('/api/training', requireAuth, createTrainingRoutes(pool));
+app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
+app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 
 const activeUsers = new Map<string, any>();
 
@@ -529,8 +240,6 @@ io.on('connection', (socket) => {
       socketId: socket.id,
       connectedAt: new Date()
     });
-    
-    // Broadcast updated user list
     io.emit('users:update', Array.from(activeUsers.values()));
   });
   
@@ -555,11 +264,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// ============================================
-// Serve Frontend in Production
-// ============================================
 if (isProduction) {
-  const frontendPath = path.join(__dirname, 'public');
+  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
   console.log(`Serving static files from: ${frontendPath}`);
   app.use(express.static(frontendPath));
   app.get('*', (req, res, next) => {
@@ -577,9 +283,6 @@ if (isProduction) {
   });
 }
 
-// ============================================
-// Error Handler
-// ============================================
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({
@@ -588,23 +291,35 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// ============================================
-// Start Server
-// ============================================
-httpServer.listen(PORT, () => {
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
   console.log(`Server running on port ${PORT}`);
+  console.log(`Server bound to 0.0.0.0:${PORT} (accessible externally)`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
+  
+  try {
+    emailSyncScheduler.start(15);
+    console.log('Email sync scheduler started (every 15 minutes)');
+  } catch (error) {
+    console.error('Failed to start email sync scheduler:', error);
+  }
 });
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  
+  try {
+    emailSyncScheduler.stop();
+    console.log('Email sync scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping email sync scheduler:', error);
+  }
+  
   await pool.end();
   httpServer.close(() => {
     console.log('Server closed');

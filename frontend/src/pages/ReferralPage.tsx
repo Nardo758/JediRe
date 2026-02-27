@@ -47,9 +47,12 @@ export default function ReferralPage() {
               <p className="text-sm text-white/60 mb-2">Your referral link</p>
               <div className="flex items-center gap-2">
                 <input
+                  id="referral-link"
+                  name="referralLink"
                   type="text"
                   readOnly
                   value={referralLink}
+                  aria-label="Referral link"
                   className="flex-1 bg-white/20 border-0 rounded px-3 py-2 text-white text-sm"
                 />
                 <button

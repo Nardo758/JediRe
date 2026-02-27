@@ -1,154 +1,158 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from './hooks/useAuth';
-import { useIsMobile } from './hooks/useIsMobile';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { MainLayout } from './components/layout/MainLayout';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorFallback } from './components/fallbacks/ErrorFallback';
+import { MapPage } from './pages/MapPage';
+import { Dashboard } from './pages/Dashboard';
+import { PropertiesPage } from './pages/PropertiesPage';
+import { DealsPage } from './pages/DealsPage';
+import { DealView } from './pages/DealView';
+import { DealPage } from './pages/DealPage';
+import { DealPageEnhanced } from './pages/DealPageEnhanced';
+import { CreateDealPage } from './pages/CreateDealPage';
+import { Design3DPage } from './pages/Design3DPage';
+import { EmailPage } from './pages/EmailPage';
+import { NewsPage } from './pages/NewsPage';
+import { NewsIntelligencePage } from './pages/NewsIntelligencePage';
+import { TasksPage } from './pages/TasksPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { TeamPage } from './pages/TeamPage';
+import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
+import { SettingsPage } from './pages/SettingsPage';
+import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
+import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+import { ModulesPage } from './pages/settings/ModulesPage';
+import { ModuleLibrariesPage } from './pages/settings/ModuleLibrariesPage';
+import { ModuleLibraryDetailPage } from './pages/settings/ModuleLibraryDetailPage';
+import { EmailSettings } from './pages/settings/EmailSettings';
+import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
-import MainPage from './pages/MainPage';
-import LandingPage from './pages/LandingPage';
-import PricingPage from './pages/PricingPage';
-import FeaturesPage from './pages/FeaturesPage';
-import AboutPage from './pages/AboutPage';
-import ContactPage from './pages/ContactPage';
-import BlogPage from './pages/BlogPage';
-import CaseStudiesPage from './pages/CaseStudiesPage';
-import HelpCenterPage from './pages/HelpCenterPage';
-import TermsPage from './pages/TermsPage';
-import PrivacyPage from './pages/PrivacyPage';
-import SecurityPage from './pages/SecurityPage';
-import CareersPage from './pages/CareersPage';
-import ApiDocsPage from './pages/ApiDocsPage';
-import StatusPage from './pages/StatusPage';
-import SettingsPage from './pages/SettingsPage';
-import NotFoundPage from './pages/NotFoundPage';
-import VerifyEmailPage from './pages/VerifyEmailPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import PaymentResultPage from './pages/PaymentResultPage';
-import PropertyComparisonPage from './pages/PropertyComparisonPage';
-import DealPipelinePage from './pages/DealPipelinePage';
-import CalculatorsPage from './pages/CalculatorsPage';
-import AnalyticsDashboardPage from './pages/AnalyticsDashboardPage';
-import AlertsPage from './pages/AlertsPage';
-import TeamManagementPage from './pages/TeamManagementPage';
-import BillingPage from './pages/BillingPage';
-import IntegrationsPage from './pages/IntegrationsPage';
-import ReferralPage from './pages/ReferralPage';
-import PartnerPortalPage from './pages/PartnerPortalPage';
-import MarketReportsPage from './pages/MarketReportsPage';
-import AcademyPage from './pages/AcademyPage';
-import CommunityPage from './pages/CommunityPage';
-import WebinarsPage from './pages/WebinarsPage';
-import SuccessStoriesPage from './pages/SuccessStoriesPage';
-import PressPage from './pages/PressPage';
-import PartnerDirectoryPage from './pages/PartnerDirectoryPage';
-import IntegrationsMarketplacePage from './pages/IntegrationsMarketplacePage';
-import InvestorProfilePage from './pages/InvestorProfilePage';
-import ReviewsPage from './pages/ReviewsPage';
-import ChangelogPage from './pages/ChangelogPage';
-import SitemapPage from './pages/SitemapPage';
-import CookiesPage from './pages/CookiesPage';
-import AccessibilityPage from './pages/AccessibilityPage';
-import DmcaPage from './pages/DmcaPage';
-import UnsubscribePage from './pages/UnsubscribePage';
-import { MobileLayout } from './components/mobile';
-import { Loader } from 'lucide-react';
+import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
+import { DealShowcasePage } from './pages/DealShowcasePage';
+import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
+import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
+import { ArchitectureOverlay } from './components/ArchitectureOverlay';
+import { MapLayersProvider } from './contexts/MapLayersContext';
+import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { DataTrackerPage } from './pages/admin/DataTrackerPage';
+import DealDetailPage from './pages/DealDetailPage';
+import DealCapsulesPage from './pages/DealCapsulesPage';
+import CapsuleDetailPage from './pages/CapsuleDetailPage';
+import { LeasingForecastPage } from './pages/LeasingForecastPage';
+import {
+  MarketIntelligencePage,
+  MyMarketsDashboard,
+  CompareMarketsPage,
+  ActiveOwnersPage,
+  FutureSupplyPage,
+} from './pages/MarketIntelligence';
 
-function SettingsPageWrapper() {
-  const navigate = useNavigate();
-  return <SettingsPage onClose={() => navigate('/app')} />;
-}
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
-  const isMobile = useIsMobile();
+function AppContent() {
+  const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-purple-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader className="w-12 h-12 text-primary-600 animate-spin" />
-          <p className="text-gray-600 font-medium">Loading JediRe...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  return isMobile ? <MobileLayout /> : <>{children}</>;
+  return (
+    <>
+      <Routes>
+        <Route path="/login" element={<AuthPage />} />
+        
+        {/* Showcase Routes (No Layout) */}
+        <Route path="/showcase" element={<ShowcaseLandingPage />} />
+        <Route path="/showcase/deal/:dealId" element={<DealShowcasePage />} />
+        <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
+        <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
+        
+        <Route element={<MainLayout />}>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
+          <Route path="/dashboard/email" element={<EmailPage />} />
+          <Route path="/dashboard/email/sent" element={<EmailPage />} />
+          <Route path="/dashboard/email/drafts" element={<EmailPage />} />
+          <Route path="/dashboard/email/flagged" element={<EmailPage />} />
+          <Route path="/news-intel" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/news" element={<NewsPage />} />
+          <Route path="/assets-owned" element={<AssetsOwnedPage />} />
+          <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/properties" element={<PropertiesPage />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
+          <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
+          
+          {/* Market Research Redirects */}
+          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
+          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
+          
+          {/* Market Intelligence */}
+          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
+          <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
+          <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
+          <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
+          <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
+          
+          <Route path="/deals" element={<DealsPage />} />
+          <Route path="/deals/create" element={<CreateDealPage />} />
+          <Route path="/deals/:dealId/design" element={<Design3DPage />} />
+          <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
+          <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
+          <Route path="/deals/:dealId/view" element={<DealPage />} />
+          <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
+          <Route path="/deals/:id" element={<DealView />} />
+          <Route path="/deals/:id/:module" element={<DealView />} />
+          <Route path="/capsules" element={<DealCapsulesPage />} />
+          <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+          <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/team" element={<TeamPage />} />
+          <Route path="/architecture" element={<SystemArchitecturePage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/modules" element={<ModulesPage />} />
+          <Route path="/settings/module-libraries" element={<ModuleLibrariesPage />} />
+          <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
+          <Route path="/settings/email" element={<EmailSettings />} />
+          <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
+          
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
+      </Routes>
+      
+      {currentInfo && (
+        <ArchitectureOverlay
+          isOpen={isOpen}
+          onClose={closeArchitecture}
+          info={currentInfo}
+        />
+      )}
+    </>
+  );
 }
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/features" element={<FeaturesPage />} />
-      <Route path="/pricing" element={<PricingPage />} />
-      <Route path="/about" element={<AboutPage />} />
-      <Route path="/contact" element={<ContactPage />} />
-      <Route path="/blog" element={<BlogPage />} />
-      <Route path="/case-studies" element={<CaseStudiesPage />} />
-      <Route path="/help" element={<HelpCenterPage />} />
-      <Route path="/terms" element={<TermsPage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
-      <Route path="/security" element={<SecurityPage />} />
-      <Route path="/careers" element={<CareersPage />} />
-      <Route path="/docs" element={<ApiDocsPage />} />
-      <Route path="/status" element={<StatusPage />} />
-      <Route path="/auth" element={<AuthPage />} />
-      
-      {/* Utility Pages */}
-      <Route path="/404" element={<NotFoundPage />} />
-      <Route path="/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/payment" element={<PaymentResultPage />} />
-      
-      {/* Public Pages */}
-      <Route path="/compare" element={<PropertyComparisonPage />} />
-      <Route path="/pipeline" element={<DealPipelinePage />} />
-      <Route path="/calculators" element={<CalculatorsPage />} />
-      <Route path="/analytics" element={<AnalyticsDashboardPage />} />
-      <Route path="/alerts" element={<AlertsPage />} />
-      <Route path="/team" element={<TeamManagementPage />} />
-      <Route path="/billing" element={<BillingPage />} />
-      <Route path="/integrations" element={<IntegrationsPage />} />
-      <Route path="/referral" element={<ReferralPage />} />
-      <Route path="/partner-portal" element={<PartnerPortalPage />} />
-      <Route path="/market-reports" element={<MarketReportsPage />} />
-      <Route path="/academy" element={<AcademyPage />} />
-      <Route path="/community" element={<CommunityPage />} />
-      <Route path="/webinars" element={<WebinarsPage />} />
-      <Route path="/success-stories" element={<SuccessStoriesPage />} />
-      <Route path="/press" element={<PressPage />} />
-      <Route path="/partner-directory" element={<PartnerDirectoryPage />} />
-      <Route path="/integrations-marketplace" element={<IntegrationsMarketplacePage />} />
-      <Route path="/investor-profile" element={<InvestorProfilePage />} />
-      <Route path="/reviews" element={<ReviewsPage />} />
-      <Route path="/changelog" element={<ChangelogPage />} />
-      <Route path="/sitemap" element={<SitemapPage />} />
-      <Route path="/cookies" element={<CookiesPage />} />
-      <Route path="/accessibility" element={<AccessibilityPage />} />
-      <Route path="/dmca" element={<DmcaPage />} />
-      <Route path="/unsubscribe" element={<UnsubscribePage />} />
-      
-      <Route
-        path="/app"
-        element={
-          <ProtectedRoute>
-            <MainPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPageWrapper />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <ErrorBoundary fallback={<ErrorFallback />}>
+      <ArchitectureProvider>
+        <MapLayersProvider>
+          <AppContent />
+        </MapLayersProvider>
+      </ArchitectureProvider>
+    </ErrorBoundary>
   );
 }
 

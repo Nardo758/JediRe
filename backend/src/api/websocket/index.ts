@@ -8,6 +8,7 @@ import { verifyAccessToken } from '../../auth/jwt';
 import { logger } from '../../utils/logger';
 import { collaborationHandler } from './handlers/collaboration.handler';
 import { notificationHandler } from './handlers/notification.handler';
+import { assetMapHandler, initializeAssetMapWebSocket } from './handlers/assetMap.handler';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -15,6 +16,9 @@ interface AuthenticatedSocket extends Socket {
 }
 
 export function setupWebSocket(io: SocketIOServer): void {
+  // Initialize Asset Map WebSocket service
+  initializeAssetMapWebSocket(io);
+
   // Authentication middleware
   io.use((socket: AuthenticatedSocket, next) => {
     const token = socket.handshake.auth.token || socket.handshake.query.token;
@@ -59,6 +63,7 @@ export function setupWebSocket(io: SocketIOServer): void {
     // Setup handlers
     collaborationHandler(io, socket as AuthenticatedSocket);
     notificationHandler(io, socket as AuthenticatedSocket);
+    assetMapHandler(io, socket as AuthenticatedSocket);
 
     // Heartbeat
     socket.on('ping', () => {

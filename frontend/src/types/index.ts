@@ -1,142 +1,258 @@
-// Core types for JediRe platform
+// Central type exports
+export * from './deal';
+export * from './analysis';
+export * from './opus.types';
+export * from './asset';
+export * from './financial.types';
 
-export interface Property {
-  id: string;
-  address: string;
-  coordinates: {
-    lat: number;
-    lng: number;
-  };
-  opportunityScore: number;
-  municipality: string;
-  districtCode?: string;
-  districtName?: string;
-  lotSizeSqft?: number;
-  currentUse?: string;
-  
-  // Agent insights
-  zoning?: ZoningInsight;
-  supply?: SupplyInsight;
-  cashFlow?: CashFlowInsight;
-  
-  // Metadata
-  createdAt: string;
-  updatedAt: string;
-  isPinned?: boolean;
-  annotations?: Annotation[];
-}
-
-export interface ZoningInsight {
-  districtCode: string;
-  districtName: string;
-  maxUnits: number;
-  maxGfaSqft: number;
-  maxHeightFt: number;
-  maxStories: number;
-  parkingRequired: number;
-  setbacks: {
-    frontFt: number;
-    rearFt: number;
-    sideFt: number;
-  };
-  buildableEnvelope?: GeoJSON.Polygon;
-  reasoning: string;
-  confidence: 'high' | 'medium' | 'low';
-}
-
-export interface SupplyInsight {
-  activeListings: number;
-  daysOnMarket: number;
-  absorptionRate: number;
-  inventoryTrend: 'increasing' | 'stable' | 'decreasing';
-  comparableProperties: number;
-  medianPrice: number;
-  reasoning: string;
-}
-
-export interface CashFlowInsight {
-  estimatedRent: number;
-  operatingExpenses: number;
-  netOperatingIncome: number;
-  capRate: number;
-  cashOnCashReturn: number;
-  breakEvenOccupancy: number;
-  reasoning: string;
-  scenarios: CashFlowScenario[];
-}
-
-export interface CashFlowScenario {
-  name: string;
-  purchasePrice: number;
-  downPayment: number;
-  loanAmount: number;
-  interestRate: number;
-  monthlyPayment: number;
-  monthlyCashFlow: number;
-  annualReturn: number;
-}
-
-export interface Annotation {
-  id: string;
-  propertyId: string;
-  userId: string;
-  userName: string;
-  text: string;
-  type: 'comment' | 'note' | 'flag';
-  createdAt: string;
-}
-
+// User type
 export interface User {
   id: string;
   email: string;
+  name?: string;
+  subscription?: any;
+  role?: string;
+}
+
+// Search result
+export interface SearchResult {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  properties?: any[];
+}
+
+// Zoning
+export interface ZoningInsight {
+  id: string;
+  zone: string;
+  description: string;
+  reasoning?: string;
+  confidence?: 'high' | 'medium' | 'low';
+  districtCode?: string;
+  districtName?: string;
+  maxUnits?: number;
+  maxGfaSqft?: number;
+  maxHeightFt?: number;
+  maxStories?: number;
+  setbacks?: {
+    front?: number;
+    side?: number;
+    rear?: number;
+    frontFt?: number;
+    sideFt?: number;
+    rearFt?: number;
+  };
+  parkingRequired?: number;
+  buildableEnvelope?: any;
+}
+
+// Lead
+export interface Lead {
+  id: string;
   name: string;
-  avatar?: string;
-  role: 'admin' | 'user' | 'viewer';
-  subscription: {
-    plan: 'free' | 'pro' | 'enterprise';
-    modules: ModuleType[];
+  email: string;
+  phone?: string;
+  source?: string;
+  status?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  message?: string;
+  propertyInterest?: string;
+  assignedAgent?: string;
+  createdAt?: string;
+  lastContact?: string;
+  notes?: string;
+}
+
+// Commission
+export interface Commission {
+  id: string;
+  dealId?: string;
+  amount?: number;
+  rate?: number;
+  status: string;
+  propertyAddress?: string;
+  dealType?: string;
+  dealValue?: number;
+  commissionRate?: number;
+  splitPercentage?: number;
+  grossCommission?: number;
+  netCommission?: number;
+  datePaid?: string;
+  createdAt?: string;
+}
+
+export interface CommissionSummary {
+  total: number;
+  pending: number;
+  paid: number;
+  count: number;
+  ytdTotal?: number;
+  mtdTotal?: number;
+  pendingTotal?: number;
+  commissionsByType?: {
+    sale: number;
+    lease: number;
+    rental: number;
   };
 }
 
-export type ModuleType = 'zoning' | 'supply' | 'demand' | 'cashflow' | 'news' | 'events';
-
+// Map filter
 export interface MapFilter {
+  bounds?: any;
+  propertyType?: string;
+  priceRange?: [number, number];
   minScore?: number;
   maxScore?: number;
-  modules?: ModuleType[];
-  municipalities?: string[];
-  zoningDistricts?: string[];
   minPrice?: number;
   maxPrice?: number;
+  municipalities?: string[];
 }
 
-export interface SearchResult {
-  properties: Property[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export type ModuleType = 'map' | 'properties' | 'strategy' | 'pipeline' | 'market' | 'reports' | 'team' | 'zoning' | 'supply' | 'cashflow' | 'news' | 'email' | 'tasks' | 'demand' | 'events';
 
-export interface WebSocketMessage {
-  type: 'property_update' | 'user_join' | 'user_leave' | 'annotation_added' | 'pin_toggle';
-  payload: any;
-  timestamp: string;
-}
-
-export interface CollaborationSession {
-  id: string;
-  users: CollaborationUser[];
-  properties: string[]; // Property IDs
-  createdAt: string;
-}
-
+// Collaboration
 export interface CollaborationUser {
   id: string;
   name: string;
+  email: string;
   avatar?: string;
+  role?: string;
+  color?: string;
   cursor?: {
     lat: number;
     lng: number;
   };
-  color: string;
+}
+
+export interface WebSocketMessage {
+  type: string;
+  payload: any;
+  timestamp: number;
+}
+
+// Annotation
+export interface Annotation {
+  id: string;
+  propertyId: string;
+  userId: string;
+  userName?: string;
+  content: string;
+  text?: string;
+  type?: string;
+  createdAt: string;
+}
+
+// Supply Insight
+export interface SupplyInsight {
+  activeListings?: number;
+  inventoryTrend?: 'increasing' | 'decreasing' | 'stable';
+  daysOnMarket?: number;
+  absorptionRate: number;
+  comparableProperties?: number;
+  medianPrice?: number;
+  reasoning?: string;
+}
+
+// Cash Flow Insight
+export interface CashFlowInsight {
+  netOperatingIncome?: number;
+  estimatedRent?: number;
+  operatingExpenses?: number;
+  capRate?: number;
+  cashOnCashReturn?: number;
+  breakEvenOccupancy?: number;
+  scenarios?: {
+    name: string;
+    noi: number;
+    capRate: number;
+    cashOnCash: number;
+    purchasePrice?: number;
+    downPayment?: number;
+    interestRate?: number;
+    monthlyPayment?: number;
+    monthlyCashFlow?: number;
+    annualReturn?: number;
+  }[];
+  reasoning?: string;
+}
+
+// Property
+export interface Property {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat: number;
+  lng: number;
+  rent: number;
+  beds: number;
+  baths: number;
+  sqft: number;
+  class?: string;
+  building_class?: string;
+  lease_expiration_date?: string;
+  current_lease_amount?: number;
+  lease_start_date?: string;
+  renewal_status?: string;
+  yearBuilt?: number;
+  comparableScore?: number;
+  amenities?: string[];
+  notes?: string;
+  coordinates?: { lat: number; lng: number };
+  isPinned?: boolean;
+  opportunityScore?: number;
+  currentUse?: string;
+  lotSizeSqft?: number;
+  municipality?: string;
+  districtCode?: string;
+  zoning?: ZoningInsight;
+  supply?: SupplyInsight;
+  cashFlow?: CashFlowInsight;
+  annotations?: Annotation[];
+}
+
+// Agent Deal types
+export type DealType = 'buyer' | 'seller' | 'dual' | 'both' | 'referral' | 'lease';
+export type DealPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type DealStage = 'lead' | 'qualified' | 'prospecting' | 'contacted' | 'proposal' | 'negotiation' | 'under_contract' | 'closed' | 'lost';
+
+export interface DealFormData {
+  clientId: string;
+  propertyAddress: string;
+  dealType: string;
+  dealValue: number;
+  commissionRate: number;
+  expectedCloseDate: string | null;
+  priority: string;
+  notes: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  type?: string;
+  status?: string;
+}
+
+export interface DealActivity {
+  id: string;
+  dealId: string;
+  type: string;
+  description: string;
+  userId?: string;
+  userName?: string;
+  createdAt: string;
+}
+
+// Deal Sidebar Props
+export interface DealSidebarProps {
+  deal: any;
+  modules: any[];
+  currentModule: string;
+  onModuleChange: (module: string) => void;
 }

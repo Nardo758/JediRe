@@ -137,8 +137,14 @@ class JediReServer {
       await connectDatabase();
       logger.info('Database connected successfully');
     } catch (error) {
-      logger.error('Database connection failed:', error);
-      throw error;
+      logger.warn('Database connection failed - running without database:', {
+        error: (error as Error).message,
+        note: 'Some features requiring database will not be available'
+      });
+      // Don't throw - allow server to start without database in development
+      if (NODE_ENV === 'production') {
+        throw error;
+      }
     }
   }
 

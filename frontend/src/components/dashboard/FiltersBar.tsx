@@ -54,6 +54,8 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           <Target className="w-4 h-4 text-gray-600" />
           <span className="text-sm text-gray-600">Score</span>
           <input
+            id="filters-min-score"
+            name="filtersMinScore"
             type="number"
             value={minScore}
             onChange={(e) => {
@@ -61,6 +63,7 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
               setMinScore(val);
               onScoreChange?.(val);
             }}
+            aria-label="Minimum opportunity score"
             className="w-12 text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none text-center"
             min={0}
             max={100}
@@ -72,12 +75,15 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           <Clock className="w-4 h-4 text-gray-600" />
           <span className="text-sm text-gray-600">Timeline</span>
           <select
+            id="filters-timeline"
+            name="filtersTimeline"
             value={timeline}
             onChange={(e) => {
               const val = parseInt(e.target.value);
               setTimeline(val);
               onTimelineChange?.(val);
             }}
+            aria-label="Timeline filter"
             className="text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none"
           >
             <option value={3}>3 months</option>

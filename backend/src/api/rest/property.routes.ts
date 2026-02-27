@@ -282,4 +282,98 @@ router.get('/nearby/:lat/:lng', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
+/**
+ * POST /api/v1/properties/scrape/fulton
+ * Scrape property data from Fulton County API
+ */
+router.post('/scrape/fulton', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const { address, parcelId } = req.body;
+
+    if (!address && !parcelId) {
+      throw new AppError(400, 'Either address or parcelId is required');
+    }
+
+    // Call the property API worker
+    const apiUrl = 'https://property-api.m-dixon5030.workers.dev/scrape';
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address, parcelId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new AppError(response.status, error.error || 'Failed to scrape property');
+    }
+
+    const data = await response.json();
+
+    if (!data.success || !data.property) {
+      throw new AppError(404, 'Property not found');
+    }
+
+    const prop = data.property;
+
+    // Insert or update property record
+    const result = await query(
+      `INSERT INTO property_records (
+        parcel_id, county, state_code, address, city, zip_code,
+        property_type, year_built, building_sqft, lot_size_sqft, lot_size_acres,
+        land_assessed_value, improvement_assessed_value, total_assessed_value,
+        owner_name, owner_type, owner_address, owner_city, owner_state, owner_zip,
+        subdivision, data_source_url, scraped_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+      )
+      ON CONFLICT (parcel_id) DO UPDATE SET
+        address = EXCLUDED.address,
+        property_type = EXCLUDED.property_type,
+        total_assessed_value = EXCLUDED.total_assessed_value,
+        owner_name = EXCLUDED.owner_name,
+        scraped_at = EXCLUDED.scraped_at
+      RETURNING *`,
+      [
+        prop.parcelId,
+        prop.county,
+        prop.state,
+        prop.address,
+        prop.city || null,
+        prop.zip || null,
+        prop.propertyType || null,
+        prop.yearBuilt || null,
+        prop.buildingSqft || null,
+        prop.lotSizeSqft || null,
+        prop.lotSizeAcres || null,
+        prop.landAssessedValue || null,
+        prop.improvementAssessedValue || null,
+        prop.totalAssessedValue || null,
+        prop.ownerName || null,
+        prop.ownerType || null,
+        prop.ownerAddress || null,
+        prop.ownerCity || null,
+        prop.ownerState || null,
+        prop.ownerZip || null,
+        prop.subdivision || null,
+        prop.dataSourceUrl || null,
+        prop.scrapedAt || new Date(),
+      ]
+    );
+
+    logger.info('Property scraped and saved', {
+      userId: req.user?.userId,
+      parcelId: prop.parcelId,
+      address: prop.address,
+    });
+
+    res.json({
+      success: true,
+      property: result.rows[0],
+      scrapeDurationMs: data.durationMs,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

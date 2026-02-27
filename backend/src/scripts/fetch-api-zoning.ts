@@ -1,5 +1,15 @@
+/**
+ * Fetch Zoning Data from Municipal APIs
+ * 
+ * Usage:
+ *   npm run fetch:zoning -- --city=atlanta-ga
+ *   npm run fetch:zoning -- --all
+ */
+
 import { fetchZoningData, saveAPIDistricts, CITY_APIS } from '../services/municipal-api-connectors';
-import { query as dbQuery } from '../database/connection';
+import { getPool } from '../database/connection';
+
+const db = getPool();
 
 interface CliArgs {
   city?: string;
@@ -8,6 +18,7 @@ interface CliArgs {
 }
 
 async function main() {
+  // Parse CLI arguments
   const args: CliArgs = {};
   process.argv.slice(2).forEach((arg) => {
     if (arg.startsWith('--city=')) {
@@ -41,6 +52,7 @@ async function main() {
     return;
   }
 
+  // Fetch single city
   if (args.city) {
     if (!CITY_APIS[args.city]) {
       console.error(`❌ City '${args.city}' not found. Run --list to see available cities.`);
@@ -54,7 +66,7 @@ async function main() {
       await saveAPIDistricts(districts);
       
       const config = CITY_APIS[args.city];
-      await dbQuery(
+      await db.query(
         `UPDATE municipalities SET 
           total_zoning_districts = $1,
           last_scraped_at = NOW(),
@@ -79,7 +91,7 @@ async function main() {
   }
 
   if (args.all) {
-    const verifiedCities = Object.entries(CITY_APIS).filter(([_, c]) => c.verified && c.apiType !== 'assessment');
+    const verifiedCities = Object.entries(CITY_APIS).filter(([_, c]) => c.verified);
     console.log(`Fetching zoning data for ${verifiedCities.length} verified cities...\n`);
     
     let successCount = 0;
@@ -92,7 +104,7 @@ async function main() {
         const districts = await fetchZoningData(cityId);
         await saveAPIDistricts(districts);
         
-        await dbQuery(
+        await db.query(
           `UPDATE municipalities SET 
             total_zoning_districts = $1,
             last_scraped_at = NOW(),
@@ -119,6 +131,7 @@ async function main() {
     return;
   }
 
+  // No arguments - show usage
   console.error('❌ Error: Must specify --city, --all, or --list');
   console.log('\nUsage:');
   console.log('  npm run fetch:zoning -- --list              # List available cities');
@@ -127,6 +140,7 @@ async function main() {
   process.exit(1);
 }
 
+// Run CLI
 if (require.main === module) {
   main()
     .then(() => {

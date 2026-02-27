@@ -31,11 +31,7 @@ function getStrategyColor(strategy: Strategy): { bg: string; border: string; tex
 }
 
 export default function PropertyBubble({ property, isSelected, onClick }: PropertyBubbleProps) {
-  if (!property.coordinates || property.coordinates.lat === 0 && property.coordinates.lng === 0) {
-    return null;
-  }
-
-  const score = property.opportunityScore || 0;
+  const score = property.opportunityScore;
   const strategy = getOptimalStrategy(score);
   const colors = getStrategyColor(strategy);
   

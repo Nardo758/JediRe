@@ -1,11 +1,12 @@
 /**
  * Authentication Middleware
  * Protect routes with JWT verification
+ * Simplified: Only verifies JWT and sets req.user. No DB client held per-request.
+ * Route handlers use getPool() directly for database access.
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { extractTokenFromHeader, verifyAccessToken } from '../auth/jwt';
-import { logger } from '../utils/logger';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -17,12 +18,13 @@ export interface AuthenticatedRequest extends Request {
 
 /**
  * Require authentication
+ * Verifies JWT token and sets req.user. No per-request DB client acquisition.
  */
-export function requireAuth(
+export async function requireAuth(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const token = extractTokenFromHeader(req.headers.authorization);
 
   if (!token) {
@@ -92,8 +94,50 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+/**
+ * Require API Key (for external integrations)
+ */
+export function requireApiKey(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  const apiKey = req.headers['x-api-key'] as string;
+
+  if (!apiKey) {
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: 'API key required',
+    });
+    return;
+  }
+
+  const validKeys = [
+    process.env.API_KEY_APARTMENT_LOCATOR,
+  ].filter(Boolean);
+
+  if (!validKeys.includes(apiKey)) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message: 'Invalid API key',
+    });
+    return;
+  }
+
+  req.user = {
+    userId: 'api-key-apartment-locator',
+    email: 'apartment-locator-ai@system',
+    role: 'api_client',
+  };
+
+  next();
+}
+
+export const authenticateToken = requireAuth;
+
 export const authMiddleware = {
   requireAuth,
   optionalAuth,
   requireRole,
+  requireApiKey,
 };

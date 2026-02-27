@@ -95,10 +95,13 @@ export default function PropertyAnalyzer() {
               Property Address
             </label>
             <input
+              id="property-analyzer-address"
+              name="propertyAnalyzerAddress"
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="123 Main St, Austin, TX"
+              aria-label="Property address"
               className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               onKeyPress={(e) => e.key === 'Enter' && analyzeProperty()}
             />
@@ -110,10 +113,13 @@ export default function PropertyAnalyzer() {
               Lot Size (sq ft)
             </label>
             <input
+              id="property-analyzer-lot-size"
+              name="propertyAnalyzerLotSize"
               type="number"
               value={lotSize}
               onChange={(e) => setLotSize(e.target.value ? Number(e.target.value) : '')}
               placeholder="8000"
+              aria-label="Lot size in square feet"
               className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               onKeyPress={(e) => e.key === 'Enter' && analyzeProperty()}
             />

@@ -5,6 +5,7 @@ import { Property } from '@/types';
 import PropertyBubble from './PropertyBubble';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import CollaboratorCursor from './CollaboratorCursor';
+import { trackPropertyEvent } from '@/hooks/useEventTracking';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -22,8 +23,8 @@ export default function MapView() {
   } = useAppStore();
 
   const wsHook = useWebSocket();
-  const updateCursor = wsHook?.updateCursor || (() => {});
-  const selectPropertyWs = wsHook?.selectProperty || (() => {});
+  const updateCursor = (wsHook as any)?.updateCursor || (() => {});
+  const selectPropertyWs = (wsHook as any)?.selectProperty || (() => {});
 
   const [viewState, setViewState] = useState({
     longitude: mapCenter[0],
@@ -47,23 +48,27 @@ export default function MapView() {
   };
 
   const handlePropertyClick = (property: Property) => {
+    // Track map click event
+    trackPropertyEvent(property.id, 'map_click', {
+      coordinates: property.coordinates,
+      currentZoom: viewState.zoom,
+    });
+    
     setSelectedProperty(property);
     selectPropertyWs(property.id);
-    if (property.coordinates) {
-      mapRef.current?.flyTo({
-        center: [property.coordinates.lng, property.coordinates.lat],
-        zoom: 16,
-        duration: 1000,
-      });
-    }
+    mapRef.current?.flyTo({
+      center: [property.coordinates.lng, property.coordinates.lat],
+      zoom: 16,
+      duration: 1000,
+    });
   };
 
   const buildableEnvelopeData = selectedProperty?.zoning?.buildableEnvelope
     ? {
-        type: 'FeatureCollection',
+        type: 'FeatureCollection' as const,
         features: [
           {
-            type: 'Feature',
+            type: 'Feature' as const,
             geometry: selectedProperty.zoning.buildableEnvelope,
             properties: {},
           },

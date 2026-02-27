@@ -1,8 +1,4 @@
 #!/bin/bash
-cd backend && node dist/index.replit.js &
-BACKEND_PID=$!
-sleep 2
-cd frontend && npm run dev &
-FRONTEND_PID=$!
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null" EXIT
+cd /home/runner/workspace/backend && npx ts-node --transpile-only src/index.replit.ts &
+cd /home/runner/workspace/frontend && npx vite --host 0.0.0.0 --port 5000 &
 wait
