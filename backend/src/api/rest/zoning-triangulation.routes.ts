@@ -4,6 +4,7 @@ import { ParcelIngestionService } from '../../services/parcel-ingestion.service'
 import { ZoningTriangulationService } from '../../services/zoning-triangulation.service';
 import { ConfirmationChainService } from '../../services/confirmation-chain.service';
 import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
+import { BenchmarkEnrichmentService } from '../../services/benchmark-enrichment.service';
 
 const router = Router();
 const pool = getPool();
@@ -11,6 +12,7 @@ const parcelService = new ParcelIngestionService(pool);
 const triangulationService = new ZoningTriangulationService(pool);
 const chainService = new ConfirmationChainService(pool);
 const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
+const enrichmentService = new BenchmarkEnrichmentService(pool);
 
 router.post('/parcels/ingest/geojson', async (req: Request, res: Response) => {
   try {
@@ -546,6 +548,251 @@ router.get('/deals/:dealId/nearby-entitlements', async (req: Request, res: Respo
     });
   } catch (error: any) {
     console.error('Nearby entitlements error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/admin/benchmark-enrichment/run', async (req: Request, res: Response) => {
+  try {
+    const { county } = req.query;
+    const result = await enrichmentService.enrichBenchmarkProjects(county as string | undefined);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Benchmark enrichment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/properties/:id/enrich', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await enrichmentService.enrichProperty(id);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Property enrichment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    const profileResult = await pool.query(
+      `SELECT base_district_code, municipality, state, max_density_per_acre, lot_area_sf
+       FROM deal_zoning_profiles WHERE deal_id = $1 LIMIT 1`,
+      [dealId]
+    );
+
+    const dealResult = await pool.query(
+      `SELECT name, address, state FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    if (profileResult.rows.length === 0 && dealResult.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          currentCode: null,
+          zonedMaxDensity: null,
+          dataAvailability: 'none',
+          benchmarks: [],
+          projects: [],
+          utilizationPct: null,
+          rezoneFromCurrent: null,
+          searchScope: null,
+        },
+      });
+    }
+
+    const profile = profileResult.rows[0] || {};
+    const deal = dealResult.rows[0] || {};
+    const currentCode = profile.base_district_code || null;
+    const zonedMaxDensity = (profile.max_density_per_acre !== null && profile.max_density_per_acre !== undefined)
+      ? parseFloat(profile.max_density_per_acre) : null;
+    const municipality = profile.municipality || null;
+    const state = profile.state || deal.state || null;
+
+    let county: string | null = null;
+    if (municipality) {
+      const countyLookup = await pool.query(
+        `SELECT DISTINCT county FROM benchmark_projects
+         WHERE UPPER(municipality) = UPPER($1) AND county IS NOT NULL LIMIT 1`,
+        [municipality]
+      );
+      county = countyLookup.rows[0]?.county || null;
+    }
+
+    const benchmarkFields = `address, land_acres, unit_count, building_sf, total_sf, density_achieved, far_achieved,
+                assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
+                total_entitlement_days, municipality, county`;
+
+    let projects: any[] = [];
+    let searchScope: string | null = null;
+
+    if (currentCode) {
+      if (municipality) {
+        const muniResult = await pool.query(
+          `SELECT ${benchmarkFields}
+           FROM benchmark_projects
+           WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND UPPER(municipality) = UPPER($2)
+           ORDER BY density_achieved DESC`,
+          [currentCode, municipality]
+        );
+        if (muniResult.rows.length >= 3) {
+          projects = muniResult.rows;
+          searchScope = 'municipality';
+        }
+      }
+
+      if (projects.length < 3 && county) {
+        const countyResult = await pool.query(
+          `SELECT ${benchmarkFields}
+           FROM benchmark_projects
+           WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND UPPER(county) = UPPER($2)
+           ORDER BY density_achieved DESC`,
+          [currentCode, county]
+        );
+        if (countyResult.rows.length > projects.length) {
+          projects = countyResult.rows;
+          searchScope = 'county';
+        }
+      }
+
+      if (projects.length < 3 && state) {
+        const stateResult = await pool.query(
+          `SELECT ${benchmarkFields}
+           FROM benchmark_projects
+           WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND UPPER(state) = UPPER($2)
+           ORDER BY density_achieved DESC`,
+          [currentCode, state]
+        );
+        if (stateResult.rows.length > projects.length) {
+          projects = stateResult.rows;
+          searchScope = 'state';
+        }
+      }
+
+      if (projects.length === 0) {
+        const codePrefix = currentCode.replace(/-\d+$/, '').replace(/-[A-Z]$/, '');
+        if (codePrefix !== currentCode) {
+          const prefixResult = await pool.query(
+            `SELECT ${benchmarkFields}
+             FROM benchmark_projects
+             WHERE zoning_to LIKE $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             ${state ? 'AND UPPER(state) = UPPER($2)' : ''}
+             ORDER BY density_achieved DESC
+             LIMIT 20`,
+            state ? [`${codePrefix}%`, state] : [`${codePrefix}%`]
+          );
+          projects = prefixResult.rows;
+          searchScope = projects.length > 0 ? 'state' : null;
+        }
+      }
+    }
+
+    const dataAvailability = projects.length >= 3 ? 'rich' : projects.length > 0 ? 'sparse' : 'none';
+
+    const benchmarkMap: Record<string, any[]> = {};
+    for (const p of projects) {
+      const code = p.zoning_to || 'unknown';
+      if (!benchmarkMap[code]) benchmarkMap[code] = [];
+      benchmarkMap[code].push(p);
+    }
+
+    const benchmarks = Object.entries(benchmarkMap).map(([code, ps]) => {
+      const densities = ps.map(p => p.density_achieved != null ? parseFloat(p.density_achieved) : NaN).filter(d => !isNaN(d) && d > 0);
+      const lotAcres = ps.map(p => p.land_acres != null ? parseFloat(p.land_acres) : NaN).filter(a => !isNaN(a) && a > 0);
+      const units = ps.map(p => p.unit_count != null ? parseInt(p.unit_count) : NaN).filter(u => !isNaN(u) && u > 0);
+      const buildingSfs = ps.map(p => p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : NaN)).filter(s => !isNaN(s) && s > 0);
+      const assessedVals = ps.map(p => p.assessed_value != null ? parseInt(p.assessed_value) : NaN).filter(v => !isNaN(v) && v > 0);
+
+      return {
+        code,
+        projectCount: ps.length,
+        avgDensityAchieved: densities.length > 0 ? Math.round((densities.reduce((a, b) => a + b, 0) / densities.length) * 100) / 100 : null,
+        minDensity: densities.length > 0 ? Math.min(...densities) : null,
+        maxDensity: densities.length > 0 ? Math.max(...densities) : null,
+        avgLotAcres: lotAcres.length > 0 ? Math.round((lotAcres.reduce((a, b) => a + b, 0) / lotAcres.length) * 1000) / 1000 : null,
+        avgUnits: units.length > 0 ? Math.round(units.reduce((a, b) => a + b, 0) / units.length) : null,
+        avgBuildingSf: buildingSfs.length > 0 ? Math.round(buildingSfs.reduce((a, b) => a + b, 0) / buildingSfs.length) : null,
+        avgAssessedValue: assessedVals.length > 0 ? Math.round(assessedVals.reduce((a, b) => a + b, 0) / assessedVals.length) : null,
+      };
+    });
+
+    const allDensities = projects.map(p => parseFloat(p.density_achieved)).filter(d => d > 0);
+    const avgAchieved = allDensities.length > 0 ? allDensities.reduce((a, b) => a + b, 0) / allDensities.length : null;
+    const utilizationPct = avgAchieved && zonedMaxDensity && zonedMaxDensity > 0
+      ? Math.round((avgAchieved / zonedMaxDensity) * 10000) / 100
+      : null;
+
+    const projectsClean = projects.map(p => ({
+      address: p.address,
+      landAcres: p.land_acres != null ? parseFloat(p.land_acres) : null,
+      unitCount: p.unit_count != null ? parseInt(p.unit_count) : null,
+      buildingSf: p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : null),
+      densityAchieved: p.density_achieved != null ? parseFloat(p.density_achieved) : null,
+      farAchieved: p.far_achieved != null ? parseFloat(p.far_achieved) : null,
+      assessedValue: p.assessed_value != null ? parseInt(p.assessed_value) : null,
+      appraisedValue: p.appraised_value != null ? parseInt(p.appraised_value) : null,
+      entitlementType: p.entitlement_type,
+      zoningFrom: p.zoning_from,
+      zoningTo: p.zoning_to,
+      totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
+    }));
+
+    let rezoneFromCurrent: any = null;
+    if (currentCode) {
+      const rezoneResult = await pool.query(
+        `SELECT address, land_acres, unit_count, building_sf, total_sf, density_achieved, far_achieved,
+                assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
+                total_entitlement_days
+         FROM benchmark_projects
+         WHERE zoning_from = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+         ORDER BY density_achieved DESC
+         LIMIT 20`,
+        [currentCode]
+      );
+
+      if (rezoneResult.rows.length > 0) {
+        const rezoneProjects = rezoneResult.rows.map(p => ({
+          address: p.address,
+          landAcres: p.land_acres ? parseFloat(p.land_acres) : null,
+          unitCount: p.unit_count ? parseInt(p.unit_count) : null,
+          buildingSf: p.building_sf ? parseInt(p.building_sf) : (p.total_sf ? parseInt(p.total_sf) : null),
+          densityAchieved: p.density_achieved ? parseFloat(p.density_achieved) : null,
+          entitlementType: p.entitlement_type,
+          zoningTo: p.zoning_to,
+          totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
+        }));
+
+        const targetCodes = [...new Set(rezoneResult.rows.map(r => r.zoning_to))];
+        rezoneFromCurrent = {
+          projectCount: rezoneResult.rows.length,
+          targetCodes,
+          projects: rezoneProjects,
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        currentCode,
+        zonedMaxDensity,
+        dataAvailability,
+        benchmarks,
+        projects: projectsClean,
+        utilizationPct,
+        rezoneFromCurrent,
+        searchScope,
+      },
+    });
+  } catch (error: any) {
+    console.error('Density benchmarks error:', error);
     res.status(500).json({ error: error.message });
   }
 });
