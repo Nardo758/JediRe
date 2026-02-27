@@ -7,7 +7,7 @@ import {
   formatPropertyDataForExport,
 } from '@/services/marketResearchExport.service';
 
-interface MarketDataTabProps {
+interface PropertyDataTabProps {
   marketId: string;
 }
 
@@ -39,9 +39,20 @@ interface PropertyRow {
   lossToLease: string;
   lossToLeasePct: string;
   concessions: string;
+  assessedLand: number | null;
+  assessedImprovements: number | null;
+  appraisedValue: number | null;
+  buildingSf: number | null;
+  lotAcres: number | null;
+  taxDistrict: string | null;
+  parcelId: string | null;
+  rawPropertyId: string | null;
+  enrichmentSource: string | null;
+  enrichedAt: string | null;
+  county: string | null;
 }
 
-const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
+const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
   const isAtlanta = marketId === 'atlanta';
   const [selectedProperty, setSelectedProperty] = useState<PropertyRow | null>(null);
   const [sortCol, setSortCol] = useState<string>('property');
@@ -55,6 +66,7 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
   const [filters, setFilters] = useState({ submarket: '', minYear: '', maxYear: '', search: '', minUnits: '', maxUnits: '', minPrice: '', maxPrice: '' });
   const [exportLoading, setExportLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -118,15 +130,26 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
       lossToLease: '—',
       lossToLeasePct: '—',
       concessions: '—',
+      assessedLand: p.assessed_land != null ? Number(p.assessed_land) : null,
+      assessedImprovements: p.assessed_improvements != null ? Number(p.assessed_improvements) : null,
+      appraisedValue: p.appraised_value != null ? Number(p.appraised_value) : null,
+      buildingSf: p.building_sqft != null ? Number(p.building_sqft) : null,
+      lotAcres: p.land_acres != null ? Number(p.land_acres) : (p.lot_size_sqft ? +(p.lot_size_sqft / 43560).toFixed(2) : null),
+      taxDistrict: p.tax_district ?? null,
+      parcelId: p.parcel_id ?? null,
+      rawPropertyId: p.id ?? null,
+      enrichmentSource: p.enrichment_source ?? null,
+      enrichedAt: p.enriched_at ?? null,
+      county: p.county ?? null,
     };
   };
 
   const atlantaRows: PropertyRow[] = [
-    { id: 1, property: 'Pines at Midtown', submarket: 'Midtown', units: 180, year: 1992, class: 'B', rent: '$1,480', occ: '94.2%', jedi: 92, address: '1240 Peachtree St NE, Atlanta, GA 30309', stories: 3, acres: 4.2, owner: 'Greystone Capital', purchaseDate: 'Mar 2019', purchasePrice: '$28.5M', pricePerUnit: '$158K/unit', holdPeriod: '6.9 years', sellerMotivation: 78, taxAssessed: '$22.1M', stepUpRisk: '$6.4M', zoning: 'C-2', zoningCapacity: '80 units/acre allowed', askingRent: '$1,480/unit', marketRent: '$1,700/unit', lossToLease: '$220/unit', lossToLeasePct: '14.8%', concessions: '$180/unit' },
-    { id: 2, property: 'Summit Ridge', submarket: 'Decatur', units: 200, year: 1987, class: 'B-', rent: '$1,280', occ: '95.8%', jedi: 89, address: '450 Clairemont Ave, Decatur, GA 30030', stories: 2, acres: 5.1, owner: 'Cortland Partners', purchaseDate: 'Jun 2020', purchasePrice: '$22.0M', pricePerUnit: '$110K/unit', holdPeriod: '5.7 years', sellerMotivation: 62, taxAssessed: '$18.5M', stepUpRisk: '$3.5M', zoning: 'R-5', zoningCapacity: '60 units/acre allowed', askingRent: '$1,280/unit', marketRent: '$1,450/unit', lossToLease: '$170/unit', lossToLeasePct: '11.7%', concessions: '$120/unit' },
-    { id: 3, property: 'Alexan Buckhead', submarket: 'Buckhead', units: 420, year: 2019, class: 'A', rent: '$2,680', occ: '92.1%', jedi: 83, address: '3300 Peachtree Rd NE, Atlanta, GA 30326', stories: 5, acres: 3.8, owner: 'Trammell Crow Residential', purchaseDate: 'Jan 2021', purchasePrice: '$105.0M', pricePerUnit: '$250K/unit', holdPeriod: '5.1 years', sellerMotivation: 45, taxAssessed: '$92.0M', stepUpRisk: '$13.0M', zoning: 'SPI-9', zoningCapacity: '120 units/acre allowed', askingRent: '$2,680/unit', marketRent: '$2,750/unit', lossToLease: '$70/unit', lossToLeasePct: '2.5%', concessions: '$250/unit' },
-    { id: 4, property: 'Oak Creek', submarket: 'Sandy Springs', units: 320, year: 1994, class: 'B', rent: '$1,550', occ: '93.5%', jedi: 87, address: '6200 Roswell Rd, Sandy Springs, GA 30328', stories: 3, acres: 6.0, owner: 'Camden Property', purchaseDate: 'Sep 2018', purchasePrice: '$42.0M', pricePerUnit: '$131K/unit', holdPeriod: '7.4 years', sellerMotivation: 71, taxAssessed: '$35.2M', stepUpRisk: '$6.8M', zoning: 'C-1', zoningCapacity: '70 units/acre allowed', askingRent: '$1,550/unit', marketRent: '$1,700/unit', lossToLease: '$150/unit', lossToLeasePct: '8.8%', concessions: '$140/unit' },
-    { id: 5, property: 'Vue at Midtown', submarket: 'Midtown', units: 240, year: 2022, class: 'A+', rent: '$2,920', occ: '88.4%', jedi: 78, address: '855 Juniper St NE, Atlanta, GA 30308', stories: 8, acres: 1.5, owner: 'Hines Interests', purchaseDate: 'Nov 2022', purchasePrice: '$72.0M', pricePerUnit: '$300K/unit', holdPeriod: '3.2 years', sellerMotivation: 32, taxAssessed: '$68.0M', stepUpRisk: '$4.0M', zoning: 'SPI-16', zoningCapacity: '150 units/acre allowed', askingRent: '$2,920/unit', marketRent: '$2,950/unit', lossToLease: '$30/unit', lossToLeasePct: '1.0%', concessions: '$350/unit' },
+    { id: 1, property: 'Pines at Midtown', submarket: 'Midtown', units: 180, year: 1992, class: 'B', rent: '$1,480', occ: '94.2%', jedi: 92, address: '1240 Peachtree St NE, Atlanta, GA 30309', stories: 3, acres: 4.2, owner: 'Greystone Capital', purchaseDate: 'Mar 2019', purchasePrice: '$28.5M', pricePerUnit: '$158K/unit', holdPeriod: '6.9 years', sellerMotivation: 78, taxAssessed: '$22.1M', stepUpRisk: '$6.4M', zoning: 'C-2', zoningCapacity: '80 units/acre allowed', askingRent: '$1,480/unit', marketRent: '$1,700/unit', lossToLease: '$220/unit', lossToLeasePct: '14.8%', concessions: '$180/unit', assessedLand: 8200000, assessedImprovements: 13900000, appraisedValue: 28500000, buildingSf: 162000, lotAcres: 4.2, taxDistrict: 'ATL-01', parcelId: '17-0042-0001', rawPropertyId: null, enrichmentSource: 'Fulton County ArcGIS', enrichedAt: '2026-02-25', county: 'Fulton' },
+    { id: 2, property: 'Summit Ridge', submarket: 'Decatur', units: 200, year: 1987, class: 'B-', rent: '$1,280', occ: '95.8%', jedi: 89, address: '450 Clairemont Ave, Decatur, GA 30030', stories: 2, acres: 5.1, owner: 'Cortland Partners', purchaseDate: 'Jun 2020', purchasePrice: '$22.0M', pricePerUnit: '$110K/unit', holdPeriod: '5.7 years', sellerMotivation: 62, taxAssessed: '$18.5M', stepUpRisk: '$3.5M', zoning: 'R-5', zoningCapacity: '60 units/acre allowed', askingRent: '$1,280/unit', marketRent: '$1,450/unit', lossToLease: '$170/unit', lossToLeasePct: '11.7%', concessions: '$120/unit', assessedLand: 6100000, assessedImprovements: 12400000, appraisedValue: 22000000, buildingSf: 180000, lotAcres: 5.1, taxDistrict: 'DEC-02', parcelId: '18-0123-0045', rawPropertyId: null, enrichmentSource: 'Fulton County ArcGIS', enrichedAt: '2026-02-25', county: 'Fulton' },
+    { id: 3, property: 'Alexan Buckhead', submarket: 'Buckhead', units: 420, year: 2019, class: 'A', rent: '$2,680', occ: '92.1%', jedi: 83, address: '3300 Peachtree Rd NE, Atlanta, GA 30326', stories: 5, acres: 3.8, owner: 'Trammell Crow Residential', purchaseDate: 'Jan 2021', purchasePrice: '$105.0M', pricePerUnit: '$250K/unit', holdPeriod: '5.1 years', sellerMotivation: 45, taxAssessed: '$92.0M', stepUpRisk: '$13.0M', zoning: 'SPI-9', zoningCapacity: '120 units/acre allowed', askingRent: '$2,680/unit', marketRent: '$2,750/unit', lossToLease: '$70/unit', lossToLeasePct: '2.5%', concessions: '$250/unit', assessedLand: 28000000, assessedImprovements: 64000000, appraisedValue: 105000000, buildingSf: 420000, lotAcres: 3.8, taxDistrict: 'ATL-03', parcelId: '17-0088-0012', rawPropertyId: null, enrichmentSource: 'Fulton County ArcGIS', enrichedAt: '2026-02-25', county: 'Fulton' },
+    { id: 4, property: 'Oak Creek', submarket: 'Sandy Springs', units: 320, year: 1994, class: 'B', rent: '$1,550', occ: '93.5%', jedi: 87, address: '6200 Roswell Rd, Sandy Springs, GA 30328', stories: 3, acres: 6.0, owner: 'Camden Property', purchaseDate: 'Sep 2018', purchasePrice: '$42.0M', pricePerUnit: '$131K/unit', holdPeriod: '7.4 years', sellerMotivation: 71, taxAssessed: '$35.2M', stepUpRisk: '$6.8M', zoning: 'C-1', zoningCapacity: '70 units/acre allowed', askingRent: '$1,550/unit', marketRent: '$1,700/unit', lossToLease: '$150/unit', lossToLeasePct: '8.8%', concessions: '$140/unit', assessedLand: 12000000, assessedImprovements: 23200000, appraisedValue: 42000000, buildingSf: 288000, lotAcres: 6.0, taxDistrict: 'SS-01', parcelId: '17-0201-0033', rawPropertyId: null, enrichmentSource: 'Fulton County ArcGIS', enrichedAt: '2026-02-25', county: 'Fulton' },
+    { id: 5, property: 'Vue at Midtown', submarket: 'Midtown', units: 240, year: 2022, class: 'A+', rent: '$2,920', occ: '88.4%', jedi: 78, address: '855 Juniper St NE, Atlanta, GA 30308', stories: 8, acres: 1.5, owner: 'Hines Interests', purchaseDate: 'Nov 2022', purchasePrice: '$72.0M', pricePerUnit: '$300K/unit', holdPeriod: '3.2 years', sellerMotivation: 32, taxAssessed: '$68.0M', stepUpRisk: '$4.0M', zoning: 'SPI-16', zoningCapacity: '150 units/acre allowed', askingRent: '$2,920/unit', marketRent: '$2,950/unit', lossToLease: '$30/unit', lossToLeasePct: '1.0%', concessions: '$350/unit', assessedLand: 22000000, assessedImprovements: 46000000, appraisedValue: 72000000, buildingSf: 264000, lotAcres: 1.5, taxDistrict: 'ATL-01', parcelId: '17-0055-0008', rawPropertyId: null, enrichmentSource: 'Fulton County ArcGIS', enrichedAt: '2026-02-25', county: 'Fulton' },
   ];
 
   const rows = isAtlanta
@@ -530,6 +553,75 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
               </div>
             </div>
 
+            {/* PROPERTY ASSESSMENT */}
+            <div className="p-5 border-b border-gray-100" style={{ borderLeftWidth: 4, borderLeftColor: '#8b5cf6' }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-bold uppercase tracking-wider" style={{ color: '#8b5cf6' }}>Property Assessment</h4>
+                {selectedProperty.enrichmentSource != null ? (
+                  <span className="text-[10px] font-semibold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                    {selectedProperty.enrichmentSource}
+                    {selectedProperty.enrichedAt && ` · ${new Date(selectedProperty.enrichedAt).toLocaleDateString()}`}
+                  </span>
+                ) : selectedProperty.county != null ? (
+                  <button
+                    className="text-[11px] font-semibold text-white bg-purple-500 hover:bg-purple-600 px-2.5 py-1 rounded transition-colors disabled:opacity-50"
+                    disabled={enriching}
+                    onClick={async () => {
+                      if (!selectedProperty.rawPropertyId) return;
+                      setEnriching(true);
+                      try {
+                        const res = await fetch(`/api/v1/markets/property-records/${selectedProperty.rawPropertyId}/enrich`, { method: 'POST' });
+                        if (res.ok) {
+                          const params = new URLSearchParams();
+                          params.set('marketId', marketId);
+                          params.set('page', String(page));
+                          params.set('limit', '50');
+                          const refreshRes = await fetch(`/api/v1/markets/properties?${params}`);
+                          const data = await refreshRes.json();
+                          setLiveProperties(data.properties || []);
+                        }
+                      } catch (err) {
+                        console.error('Enrichment failed:', err);
+                      } finally {
+                        setEnriching(false);
+                      }
+                    }}
+                  >
+                    {enriching ? 'Enriching...' : 'Enrich from County'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="space-y-2 text-sm">
+                {selectedProperty.parcelId != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Parcel ID</span><span className="font-mono font-semibold text-xs">{selectedProperty.parcelId}</span></div>
+                )}
+                {selectedProperty.lotAcres != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Lot Size</span><span className="font-semibold">{selectedProperty.lotAcres} acres ({(selectedProperty.lotAcres * 43560).toLocaleString()} SF)</span></div>
+                )}
+                {selectedProperty.buildingSf != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Building SF</span><span className="font-semibold">{selectedProperty.buildingSf.toLocaleString()} SF</span></div>
+                )}
+                {selectedProperty.assessedLand != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Assessed Land</span><span className="font-semibold">${(selectedProperty.assessedLand / 1000000).toFixed(2)}M</span></div>
+                )}
+                {selectedProperty.assessedImprovements != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Assessed Improvements</span><span className="font-semibold">${(selectedProperty.assessedImprovements / 1000000).toFixed(2)}M</span></div>
+                )}
+                {selectedProperty.appraisedValue != null && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Appraised / Market Value</span>
+                    <span className="font-semibold">${(selectedProperty.appraisedValue / 1000000).toFixed(2)}M</span>
+                  </div>
+                )}
+                {selectedProperty.taxDistrict != null && (
+                  <div className="flex justify-between"><span className="text-gray-600">Tax District</span><span className="font-semibold">{selectedProperty.taxDistrict}</span></div>
+                )}
+                {selectedProperty.parcelId == null && selectedProperty.assessedLand == null && selectedProperty.assessedImprovements == null && selectedProperty.appraisedValue == null && selectedProperty.buildingSf == null && selectedProperty.lotAcres == null && selectedProperty.taxDistrict == null && (
+                  <p className="text-xs text-gray-400 italic">No county assessor data available for this property</p>
+                )}
+              </div>
+            </div>
+
             {/* TRAFFIC INTELLIGENCE */}
             <div className="p-5 border-b lg:border-r border-gray-100" style={{ borderLeftWidth: 4, borderLeftColor: '#3b82f6' }}>
               <h4 className="text-sm font-bold uppercase tracking-wider mb-3 flex items-center gap-2" style={{ color: SIGNAL_GROUPS.TRAFFIC.color }}>
@@ -838,4 +930,4 @@ const MarketDataTab: React.FC<MarketDataTabProps> = ({ marketId }) => {
   );
 };
 
-export default MarketDataTab;
+export default PropertyDataTab;

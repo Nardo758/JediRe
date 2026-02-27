@@ -5,6 +5,7 @@ import { ZoningTriangulationService } from '../../services/zoning-triangulation.
 import { ConfirmationChainService } from '../../services/confirmation-chain.service';
 import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
 import { BenchmarkEnrichmentService } from '../../services/benchmark-enrichment.service';
+import { DealPropertyLinkerService } from '../../services/deal-property-linker.service';
 
 const router = Router();
 const pool = getPool();
@@ -13,6 +14,7 @@ const triangulationService = new ZoningTriangulationService(pool);
 const chainService = new ConfirmationChainService(pool);
 const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
 const enrichmentService = new BenchmarkEnrichmentService(pool);
+const dealPropertyLinker = new DealPropertyLinkerService();
 
 router.post('/parcels/ingest/geojson', async (req: Request, res: Response) => {
   try {
@@ -552,6 +554,50 @@ router.get('/deals/:dealId/nearby-entitlements', async (req: Request, res: Respo
   }
 });
 
+router.get('/deals/:dealId/properties', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const properties = await dealPropertyLinker.getDealProperties(dealId);
+    res.json({ success: true, data: properties });
+  } catch (error: any) {
+    console.error('Get deal properties error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/deals/:dealId/properties/:propertyId/link', async (req: Request, res: Response) => {
+  try {
+    const { dealId, propertyId } = req.params;
+    const { relationship = 'subject', notes } = req.body || {};
+    await dealPropertyLinker.linkProperty(dealId, propertyId, relationship, notes);
+    res.json({ success: true, message: 'Property linked to deal' });
+  } catch (error: any) {
+    console.error('Link property error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/deals/:dealId/properties/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const { dealId, propertyId } = req.params;
+    const deleted = await dealPropertyLinker.unlinkProperty(dealId, propertyId);
+    res.json({ success: true, deleted });
+  } catch (error: any) {
+    console.error('Unlink property error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/admin/deal-property-autolink', async (req: Request, res: Response) => {
+  try {
+    const summary = await dealPropertyLinker.autoLinkAll();
+    res.json({ success: true, data: summary });
+  } catch (error: any) {
+    console.error('Auto-link error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/admin/benchmark-enrichment/run', async (req: Request, res: Response) => {
   try {
     const { county } = req.query;
@@ -636,6 +682,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
           `SELECT ${benchmarkFields}
            FROM benchmark_projects
            WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND density_achieved < 500 AND land_acres > 0.01
              AND UPPER(municipality) = UPPER($2)
            ORDER BY density_achieved DESC`,
           [currentCode, municipality]
@@ -651,6 +698,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
           `SELECT ${benchmarkFields}
            FROM benchmark_projects
            WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND density_achieved < 500 AND land_acres > 0.01
              AND UPPER(county) = UPPER($2)
            ORDER BY density_achieved DESC`,
           [currentCode, county]
@@ -666,6 +714,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
           `SELECT ${benchmarkFields}
            FROM benchmark_projects
            WHERE zoning_to = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND density_achieved < 500 AND land_acres > 0.01
              AND UPPER(state) = UPPER($2)
            ORDER BY density_achieved DESC`,
           [currentCode, state]
@@ -683,6 +732,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
             `SELECT ${benchmarkFields}
              FROM benchmark_projects
              WHERE zoning_to LIKE $1 AND density_achieved IS NOT NULL AND density_achieved > 0
+             AND density_achieved < 500 AND land_acres > 0.01
              ${state ? 'AND UPPER(state) = UPPER($2)' : ''}
              ORDER BY density_achieved DESC
              LIMIT 20`,

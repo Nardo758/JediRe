@@ -564,6 +564,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
           pr.assessed_value, pr.assessed_land, pr.assessed_improvements, pr.appraised_value,
           pr.land_use_code, pr.class_code, pr.neighborhood_code, pr.subdivision, pr.tax_district,
           pr.property_type, pr.total_assessed_value,
+          pr.enrichment_source, pr.enriched_at,
           s.name as submarket_name,
           CASE WHEN pr.assessed_value > 0 AND pr.units > 0 THEN ROUND(pr.assessed_value::numeric / pr.units / 12 * 0.08) ELSE NULL END as estimated_rent,
           CASE WHEN pr.appraised_value > 0 AND pr.units > 0 THEN ROUND(pr.appraised_value::numeric / pr.units) ELSE NULL END as price_per_unit,
@@ -655,6 +656,109 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
     } catch (error) {
       console.error('Error fetching property detail:', error);
       res.status(500).json({ error: 'Failed to fetch property detail' });
+    }
+  });
+
+  // POST /api/v1/markets/property-records/:id/enrich - Refresh property data from county assessor
+  router.post('/property-records/:id/enrich', async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const propertyResult = await pool.query(
+        `SELECT id, parcel_id, address, county, state FROM property_records WHERE id = $1`,
+        [id]
+      );
+
+      if (propertyResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Property record not found' });
+      }
+
+      const property = propertyResult.rows[0];
+      const county = property.county;
+      const state = property.state;
+
+      if (!county) {
+        return res.json({ success: false, reason: 'no_county' });
+      }
+
+      const connectors: Record<string, { url: string; addressField: string; source: string }> = {
+        'Fulton_GA': {
+          url: 'https://services1.arcgis.com/2iUE8l8JKrP2tygQ/ArcGIS/rest/services/Tax_Parcels/FeatureServer/0/query',
+          addressField: 'StreetAddress',
+          source: 'Fulton County Tax Parcels',
+        },
+      };
+
+      const key = `${county}_${state}`;
+      const connector = connectors[key];
+
+      if (!connector) {
+        await pool.query(
+          `UPDATE property_records SET enrichment_source = 'No connector available', enriched_at = NOW() WHERE id = $1`,
+          [id]
+        );
+        return res.json({ success: false, reason: 'no_connector', county, state });
+      }
+
+      const address = property.address || '';
+      const searchAddress = address.split(',')[0].trim().replace(/'/g, "''").replace(/[;\-\-]/g, '');
+
+      const params = new URLSearchParams({
+        where: `${connector.addressField} LIKE '${searchAddress}%'`,
+        outFields: '*',
+        returnGeometry: 'false',
+        f: 'json',
+        resultRecordCount: '1',
+      });
+
+      const response = await fetch(`${connector.url}?${params}`);
+      const data = await response.json() as any;
+
+      if (!data.features || data.features.length === 0) {
+        await pool.query(
+          `UPDATE property_records SET enrichment_source = $2, enriched_at = NOW() WHERE id = $1`,
+          [id, `${connector.source} (no match)`]
+        );
+        return res.json({ success: false, reason: 'no_match', address: searchAddress });
+      }
+
+      const attrs = data.features[0].attributes;
+      let fieldsUpdated = 0;
+
+      const updates: { column: string; value: any }[] = [];
+      const addUpdate = (column: string, value: any) => {
+        if (value != null && value !== '' && value !== 0) {
+          updates.push({ column, value });
+          fieldsUpdated++;
+        }
+      };
+
+      addUpdate('assessed_value', attrs.TotalAssessedValue || attrs.AssessedValue);
+      addUpdate('assessed_land', attrs.AssessedLand || attrs.LandValue);
+      addUpdate('assessed_improvements', attrs.AssessedImprove || attrs.ImprovementValue);
+      addUpdate('appraised_value', attrs.AppraisedValue || attrs.MarketValue || attrs.FairMarketValue);
+      addUpdate('building_sqft', attrs.BuildingSF || attrs.TotalSF || attrs.SquareFeet);
+      addUpdate('land_acres', attrs.Acres || attrs.LandAcres);
+      addUpdate('tax_district', attrs.TaxDistrict || attrs.TaxDist);
+
+      if (updates.length > 0) {
+        const setClauses = updates.map((u, i) => `${u.column} = $${i + 2}`).join(', ');
+        const values = updates.map(u => u.value);
+        await pool.query(
+          `UPDATE property_records SET ${setClauses}, enrichment_source = $${updates.length + 2}, enriched_at = NOW() WHERE id = $1`,
+          [id, ...values, connector.source]
+        );
+      } else {
+        await pool.query(
+          `UPDATE property_records SET enrichment_source = $2, enriched_at = NOW() WHERE id = $1`,
+          [id, connector.source]
+        );
+      }
+
+      res.json({ success: true, fieldsUpdated, source: connector.source });
+    } catch (error) {
+      console.error('Property record enrichment error:', error);
+      res.status(500).json({ error: 'Enrichment failed' });
     }
   });
 

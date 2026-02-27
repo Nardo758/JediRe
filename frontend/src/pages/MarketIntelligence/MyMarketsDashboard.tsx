@@ -9,7 +9,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 
 // Placeholder tab components (will be enhanced in Phase 2)
 import OverviewTab from './tabs/OverviewTab';
-import MarketDataTab from './tabs/MarketDataTab';
+import PropertyDataTab from './tabs/PropertyDataTab';
 import SubmarketsTab from './tabs/SubmarketsTab';
 import TrendsTab from './tabs/TrendsTab';
 import DealsTab from './tabs/DealsTab';
@@ -26,7 +26,7 @@ interface TabConfig {
 
 const TABS: TabConfig[] = [
   { id: 'overview', label: 'Overview', icon: '✦', outputs: 25, realOutputs: 8 },
-  { id: 'marketData', label: 'Market Data', icon: '📋', outputs: 44, realOutputs: 12 },
+  { id: 'marketData', label: 'Property Data', icon: '📋', outputs: 44, realOutputs: 12 },
   { id: 'submarkets', label: 'Submarkets', icon: '🏘', outputs: 36, realOutputs: 6 },
   { id: 'trends', label: 'Trends', icon: '📈', outputs: 23, realOutputs: 4 },
   { id: 'deals', label: 'Deals', icon: '💼', outputs: 26, realOutputs: 8 },
@@ -133,7 +133,7 @@ const MyMarketsDashboard: React.FC = () => {
       {/* Tab Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         {activeTab === 'overview' && <OverviewTab marketId={marketId || 'atlanta'} />}
-        {activeTab === 'marketData' && <MarketDataTab marketId={marketId || 'atlanta'} />}
+        {activeTab === 'marketData' && <PropertyDataTab marketId={marketId || 'atlanta'} />}
         {activeTab === 'submarkets' && <SubmarketsTab marketId={marketId || 'atlanta'} />}
         {activeTab === 'trends' && <TrendsTab marketId={marketId || 'atlanta'} />}
         {activeTab === 'deals' && <DealsTab marketId={marketId || 'atlanta'} />}

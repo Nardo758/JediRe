@@ -9,7 +9,7 @@ import type { MarketSummaryResponse } from '../../types/marketIntelligence.types
 
 // Tab Components (will import existing or create new)
 import MarketOverviewTab from './tabs/MarketOverviewTab';
-import MarketDataTab from './tabs/MarketDataTab';
+import PropertyDataTab from './tabs/PropertyDataTab';
 import SubmarketsTab from './tabs/SubmarketsTab';
 import TrendsTab from './tabs/TrendsTab';
 import DealsTab from './tabs/DealsTab';
@@ -64,7 +64,7 @@ const MarketDeepDive: React.FC = () => {
       id: 'market-data',
       label: 'Market Data',
       icon: <Database size={18} />,
-      component: MarketDataTab
+      component: PropertyDataTab
     },
     {
       id: 'submarkets',
