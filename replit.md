@@ -39,7 +39,7 @@ JEDI RE employs a lightweight, map-agnostic architecture.
 -   **Municipal Zoning Database:** Covers 43 municipalities across 13 SE + TX states with verified ArcGIS REST API connectors.
 -   **Building Envelope Service:** Universal calculation engine for 6 property types using a cascading GBA formula, including Highest & Best Use analysis and Claude-powered optimization.
 -   **Split FAR & Zoning Nuances:** Enhanced `zoning_districts` table with `residential_far`, `nonresidential_far`, `density_method`, and height buffers.
--   **Zoning Intelligence Module (Constraint Set + Scenarios):** Stores resolved constraint sets in `deal_zoning_profiles` and user-defined development programs in `development_scenarios`.
+-   **Zoning Intelligence Module (Constraint Set + Scenarios):** Stores resolved constraint sets in `deal_zoning_profiles` and user-defined development programs in `development_scenarios`. Rezone scenarios store `target_district_id` (migration 061) to calculate envelopes using the target district's actual zoning constraints instead of the current profile.
 -   **Highest & Best Use (HBU) Analysis:** Standalone tab (Tab 3) auto-loads and ranks 6 property types by estimated value. Shows rezone opportunity when a different district would unlock higher value. Endpoint: `GET /api/v1/deals/:dealId/scenarios/hbu`.
 -   **Entitlement Strategy (By-Right/Variance/Rezone):** Consolidated into rezone analysis service. Rezone path uses real target district data; variance uses multiplier fallback. Recommendations endpoint enhanced to show data source indicators ("Real District Data" vs "Estimated").
 -   **Asset Type Mapping Fix:** Ensures correct mapping of property type categories to `project_type`.

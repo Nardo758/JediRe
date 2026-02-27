@@ -27,7 +27,7 @@ function mapProjectTypeToDealType(projectType: string): 'residential' | 'commerc
   return 'residential';
 }
 
-async function calculateScenarioEnvelope(profile: any, scenario: any, projectType: string) {
+async function calculateScenarioEnvelope(profile: any, scenario: any, projectType: string, targetDistrict?: any) {
   const useMix = scenario.use_mix || { residential_pct: 100 };
   const avgUnitSize = scenario.avg_unit_size_sf || 900;
   const efficiency = parseFloat(scenario.efficiency_factor) || 0.85;
@@ -37,33 +37,78 @@ async function calculateScenarioEnvelope(profile: any, scenario: any, projectTyp
   const officePct = useMix.office_pct || 0;
   const commercialPct = retailPct + officePct;
 
-  let appliedFar = profile.applied_far;
-  if (commercialPct > 0 && residentialPct > 0 && profile.residential_far && profile.nonresidential_far) {
-    const weightedFar = (residentialPct * parseFloat(profile.residential_far) + commercialPct * parseFloat(profile.nonresidential_far)) / 100;
-    appliedFar = profile.combined_far ? Math.min(weightedFar, parseFloat(profile.combined_far)) : weightedFar;
+  const src = targetDistrict || profile;
+
+  const srcDensity = parseFloat(targetDistrict
+    ? (src.max_density_per_acre || src.max_units_per_acre)
+    : profile.max_density_per_acre) || null;
+  const srcFar = parseFloat(targetDistrict
+    ? src.max_far
+    : profile.applied_far || profile.max_far) || null;
+  const srcResFar = parseFloat(targetDistrict
+    ? src.residential_far
+    : profile.residential_far) || null;
+  const srcNonresFar = parseFloat(targetDistrict
+    ? src.nonresidential_far
+    : profile.nonresidential_far) || null;
+  const srcHeight = parseInt(targetDistrict
+    ? (src.max_height_feet || src.max_building_height_ft)
+    : profile.max_height_ft) || null;
+  const srcStories = parseInt(src.max_stories) || null;
+  const srcParking = parseFloat(targetDistrict
+    ? (src.min_parking_per_unit || src.parking_per_unit)
+    : profile.min_parking_per_unit) || null;
+  const srcLotCoverage = parseFloat(targetDistrict
+    ? (src.max_lot_coverage || src.max_lot_coverage_percent)
+    : profile.max_lot_coverage_pct) || null;
+  const srcDensityMethod = src.density_method || profile.density_method || 'units_per_acre';
+
+  const srcSetbackFront = parseInt(targetDistrict
+    ? (src.setback_front_ft || src.min_front_setback_ft)
+    : profile.setback_front_ft) || 0;
+  const srcSetbackSide = parseInt(targetDistrict
+    ? (src.setback_side_ft || src.min_side_setback_ft)
+    : profile.setback_side_ft) || 0;
+  const srcSetbackRear = parseInt(targetDistrict
+    ? (src.setback_rear_ft || src.min_rear_setback_ft)
+    : profile.setback_rear_ft) || 0;
+
+  let appliedFar = srcFar;
+  if (commercialPct > 0 && residentialPct > 0 && srcResFar && srcNonresFar) {
+    const weightedFar = (residentialPct * srcResFar + commercialPct * srcNonresFar) / 100;
+    const combinedFarCap = targetDistrict
+      ? parseFloat(targetDistrict.combined_far || targetDistrict.max_far) || null
+      : parseFloat(profile.combined_far) || null;
+    appliedFar = combinedFarCap ? Math.min(weightedFar, combinedFarCap) : weightedFar;
+  } else {
+    const dealType = mapProjectTypeToDealType(projectType);
+    if (dealType === 'residential' && srcResFar != null) {
+      appliedFar = srcResFar;
+    } else if (dealType === 'commercial' && srcNonresFar != null) {
+      appliedFar = srcNonresFar;
+    }
   }
 
   const lotAreaSf = parseFloat(profile.lot_area_sf) || 0;
-  const buildableAreaSf = parseFloat(profile.buildable_area_sf) || lotAreaSf;
 
   const inputs = {
     landArea: lotAreaSf,
     setbacks: {
-      front: parseInt(profile.setback_front_ft) || 0,
-      side: parseInt(profile.setback_side_ft) || 0,
-      rear: parseInt(profile.setback_rear_ft) || 0,
+      front: srcSetbackFront,
+      side: srcSetbackSide,
+      rear: srcSetbackRear,
     },
     zoningConstraints: {
-      maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(profile.max_density_per_acre) || null),
-      maxFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
-      residentialFAR: parseFloat(profile.residential_far) || null,
-      nonresidentialFAR: parseFloat(profile.nonresidential_far) || null,
-      appliedFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
-      maxHeight: parseInt(profile.max_height_ft) || null,
-      maxStories: parseInt(profile.max_stories) || null,
-      minParkingPerUnit: parseFloat(profile.min_parking_per_unit) || null,
-      maxLotCoverage: parseFloat(profile.max_lot_coverage_pct) || null,
-      densityMethod: profile.density_method || 'units_per_acre',
+      maxDensity: srcDensityMethod === 'far_derived' ? null : srcDensity,
+      maxFAR: appliedFar,
+      residentialFAR: srcResFar,
+      nonresidentialFAR: srcNonresFar,
+      appliedFAR: appliedFar,
+      maxHeight: srcHeight,
+      maxStories: srcStories,
+      minParkingPerUnit: srcParking,
+      maxLotCoverage: srcLotCoverage,
+      densityMethod: srcDensityMethod,
     },
     propertyType: mapProjectTypeToEnvelopeType(projectType),
     dealType: mapProjectTypeToDealType(projectType),
@@ -72,17 +117,21 @@ async function calculateScenarioEnvelope(profile: any, scenario: any, projectTyp
   const envelope = envelopeService.calculateEnvelope(inputs);
 
   const netLeasable = Math.round(envelope.maxGFA * efficiency);
-  const maxUnits = profile.density_method === 'far_derived'
+  const maxUnits = srcDensityMethod === 'far_derived'
     ? Math.floor(netLeasable / avgUnitSize)
     : envelope.maxCapacity;
 
   const flags: string[] = [];
-  if (profile.height_buffer_ft && profile.height_beyond_buffer_ft) {
-    flags.push(`Height buffer applies: ${profile.max_height_ft} ft within ${profile.height_buffer_ft} ft of residential; ${profile.height_beyond_buffer_ft} ft beyond`);
-  }
-  const codeUpper = (profile.base_district_code || '').toUpperCase();
-  if (codeUpper.match(/^(.+)-[A-Z]{1,2}$/)) {
-    flags.push(`Conditional variant (${codeUpper}) — standards inherited from base district`);
+  if (!targetDistrict) {
+    if (profile.height_buffer_ft && profile.height_beyond_buffer_ft) {
+      flags.push(`Height buffer applies: ${profile.max_height_ft} ft within ${profile.height_buffer_ft} ft of residential; ${profile.height_beyond_buffer_ft} ft beyond`);
+    }
+    const codeUpper = (profile.base_district_code || '').toUpperCase();
+    if (codeUpper.match(/^(.+)-[A-Z]{1,2}$/)) {
+      flags.push(`Conditional variant (${codeUpper}) — standards inherited from base district`);
+    }
+  } else {
+    flags.push(`Calculated using ${targetDistrict.zoning_code || targetDistrict.district_code} district standards`);
   }
 
   return {
@@ -357,6 +406,7 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
       avg_unit_size_sf = 900,
       efficiency_factor = 0.85,
       is_active = false,
+      target_district_id = null,
     } = req.body;
 
     const profile = await profileService.getProfile(dealId);
@@ -367,8 +417,14 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
     const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
     const projectType = dealResult.rows[0]?.project_type || 'multifamily';
 
+    let targetDistrict = null;
+    if (target_district_id) {
+      const distResult = await pool.query('SELECT * FROM zoning_districts WHERE id = $1', [target_district_id]);
+      targetDistrict = distResult.rows[0] || null;
+    }
+
     const scenarioData = { use_mix, avg_unit_size_sf, efficiency_factor };
-    const calculated = await calculateScenarioEnvelope(profile, scenarioData, projectType);
+    const calculated = await calculateScenarioEnvelope(profile, scenarioData, projectType, targetDistrict);
 
     if (is_active) {
       await pool.query(
@@ -381,8 +437,8 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
       `INSERT INTO development_scenarios (
         deal_id, name, is_active, use_mix, avg_unit_size_sf, efficiency_factor,
         max_gba, max_footprint, net_leasable_sf, parking_required, open_space_sf,
-        max_stories, max_units, applied_far, binding_constraint, flags, calculated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+        max_stories, max_units, applied_far, binding_constraint, flags, target_district_id, calculated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
       RETURNING *`,
       [
         dealId, name, is_active, JSON.stringify(use_mix), avg_unit_size_sf, efficiency_factor,
@@ -390,6 +446,7 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
         calculated.parking_required, calculated.open_space_sf,
         calculated.max_stories, calculated.max_units, calculated.applied_far,
         calculated.binding_constraint, JSON.stringify(calculated.flags),
+        target_district_id,
       ]
     );
 
@@ -427,8 +484,14 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
     const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
     const projectType = dealResult.rows[0]?.project_type || 'multifamily';
 
+    let targetDistrict = null;
+    if (scenario.target_district_id) {
+      const distResult = await pool.query('SELECT * FROM zoning_districts WHERE id = $1', [scenario.target_district_id]);
+      targetDistrict = distResult.rows[0] || null;
+    }
+
     const scenarioData = { use_mix: updatedMix, avg_unit_size_sf: updatedUnitSize, efficiency_factor: updatedEfficiency };
-    const calculated = await calculateScenarioEnvelope(profile, scenarioData, projectType);
+    const calculated = await calculateScenarioEnvelope(profile, scenarioData, projectType, targetDistrict);
 
     const result = await pool.query(
       `UPDATE development_scenarios SET

@@ -262,6 +262,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   avg_unit_size_sf: 900,
                   efficiency_factor: 0.85,
                   is_active: false,
+                  target_district_id: best.targetDistrictId || null,
                 });
                 const refreshRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
                 scenariosList = refreshRes.data.scenarios || [];
