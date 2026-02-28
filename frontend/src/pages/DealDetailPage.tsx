@@ -34,6 +34,10 @@ import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
 import ExitSection from '../components/deal/sections/ExitSection';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
+import { TrafficModule } from '../components/deal/sections/TrafficModule';
+import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
+import { DebtTab } from '../components/deal/sections/DebtTab';
+import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
@@ -192,6 +196,12 @@ const DealDetailPage: React.FC = () => {
       icon: <Zap size={16} />,
       component: OpportunityEngineSection
     },
+    {
+      id: 'traffic-module',
+      label: 'Traffic Module',
+      icon: <Activity size={16} />,
+      component: TrafficModule
+    },
     { 
       id: 'trends', 
       label: 'Trends Analysis', 
@@ -201,6 +211,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
+  // Pipeline: Strategy → Traffic Module (Market Research) → Pro Forma → Debt → Financial Dashboard → Exit
   const dealDesignTabs: Tab[] = [
     { 
       id: '3d-design', 
@@ -215,22 +226,22 @@ const DealDetailPage: React.FC = () => {
       component: StrategySection 
     },
     {
-      id: 'financial-model',
-      label: 'Financial Model',
-      icon: <Calculator size={16} />,
-      component: FinancialModelingSection
-    },
-    {
-      id: 'proforma-intelligence',
-      label: 'Pro Forma + Traffic',
+      id: 'proforma',
+      label: 'Pro Forma',
       icon: <Layers size={16} />,
-      component: ProFormaWithTrafficSection
+      component: ProFormaTab
     },
     {
-      id: 'capital-structure',
-      label: 'Capital Structure',
+      id: 'debt',
+      label: 'Debt',
       icon: <DollarSign size={16} />,
-      component: CapitalStructureSection
+      component: DebtTab
+    },
+    {
+      id: 'financial-dashboard',
+      label: 'Financial Dashboard',
+      icon: <BarChart3 size={16} />,
+      component: FinancialDashboard
     },
     { 
       id: 'exit', 

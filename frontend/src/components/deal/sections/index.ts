@@ -39,3 +39,7 @@ export { LegalComplianceSection } from './LegalComplianceSection';
 export { ConstructionManagementSection } from './ConstructionManagementSection';
 
 export { PropertiesSectionEnhanced } from './PropertiesSectionEnhanced';
+export { TrafficModule } from './TrafficModule';
+export { ProFormaTab } from './ProFormaTab';
+export { DebtTab } from './DebtTab';
+export { default as FinancialDashboard } from './FinancialDashboard';

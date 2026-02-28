@@ -38,6 +38,11 @@ Key features include:
 -   **Module Wiring System:** Cross-module orchestration infrastructure for data flow, event management, and strategy arbitrage.
 -   **Capital Structure Engine:** Full capital stack design with a 7-tab frontend component, backend service, and 13 REST endpoints.
 -   **Traffic Engine:** Upgraded with a 7-metric leasing funnel, EMA learning loop, 10-year projections, and a 6-tab frontend, integrated with the ProForma.
+-   **Financial Module Pipeline (2026-02-28):** Restructured Deal Capsule financial tabs from combined "Pro Forma + Traffic" and "Financial Model" into a clear 5-stage pipeline: Strategy → Traffic Module → Pro Forma → Debt → Financial Dashboard. New components:
+    - `TrafficModule.tsx`: Drive-by ADT with property position context (corner lot, frontage, road class), competitive traffic share (T-09 correlation), leasing funnel (traffic→tours→apps→leases), seasonal patterns heatmap, EMA learning loop, 10yr trajectory output table
+    - `ProFormaTab.tsx`: Dual-column assumptions (Data Recommendation vs Your Override), fetches from Strategy + Traffic + Pro Forma APIs, 10-year income statement (GPR→Vacancy→EGI→OpEx→NOI→Debt Service→BTCF), NOI trend chart
+    - `DebtTab.tsx`: Capital stack designer (sources=uses), debt product selector (strategy-aware), rate environment (Fed/Treasury/SOFR/Prime), key metrics (LTV/LTC/DSCR/debt yield/WACC), equity waterfall (LP/GP promote tiers)
+    - `FinancialDashboard.tsx`: Consumes all upstream modules via API, auto-builds Base/Best/Worst + strategy-specific scenarios, side-by-side comparison table (IRR/equity multiple/CoC/NOI/DSCR/exit value), tornado sensitivity analysis, plain-English decision summary with pass/fail factors
 -   **Data Pipeline Foundation:** Core data infrastructure including granular P&L tracking, data uploads, proforma templates, and a Comp Query Engine.
 -   **Benchmark Ingestion Pipelines:** Automated ingestion of rezoning and permit data from public ArcGIS REST APIs for Atlanta and various Florida counties.
 -   **Rezoning Precedent & Evidence:** Integrates rezoning history and evidence into zoning details, development capacity, and comparator tools.
