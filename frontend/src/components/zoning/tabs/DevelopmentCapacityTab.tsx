@@ -143,7 +143,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [resolving, setResolving] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [comparison, setComparison] = useState<any>(null);
-  const [loadingRecs, setLoadingRecs] = useState(false);
+  const [loadingRecs, setLoadingRecs] = useState(true);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
   const [enrichment, setEnrichment] = useState<EnvelopeEnrichment | null>(null);
   const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
@@ -803,7 +803,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const dynRows = comparison?.rows || [];
         const cells = comparison?.cells || {};
         const hasData = cols.length > 0 || recommendations.length > 0;
-        if (!hasData && !loadingRecs && !loading) return null;
+        if (!hasData && !loadingRecs && !loading && profileExists) return null;
+        if (!profileExists && !loading) return null;
 
         const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
 
