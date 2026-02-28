@@ -66,6 +66,7 @@ import dealTimelineRoutes from './deal-timeline.routes';
 import zoningComparatorRoutes from './zoning-comparator.routes';
 import zoningVerificationRoutes from './zoning-verification.routes';
 import zoningProfileRoutes from './zoning-profile.routes';
+import zoningTriangulationRoutes from './zoning-triangulation.routes';
 import developmentScenariosRoutes from './development-scenarios.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
@@ -256,6 +257,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Zoning Verification routes (Verification-First Pipeline)
   app.use(`${API_PREFIX}/zoning-verification`, zoningVerificationRoutes);
+
+  // Zoning Triangulation routes (Nearby Entitlements, Parcel Ingestion, Property Linking)
+  app.use(`${API_PREFIX}`, zoningTriangulationRoutes);
 
   // Zoning Profile routes (Constraint Set per deal)
   app.use(`${API_PREFIX}`, zoningProfileRoutes);
