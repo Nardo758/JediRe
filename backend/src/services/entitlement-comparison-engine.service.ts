@@ -654,7 +654,7 @@ export class EntitlementComparisonEngine {
     };
   }
 
-  private async resolveConstraints(
+  async resolveConstraints(
     code: string,
     municipality: string | null,
     state: string | null,

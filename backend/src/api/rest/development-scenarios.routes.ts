@@ -156,6 +156,56 @@ async function calculateScenarioEnvelope(profile: any, scenario: any, projectTyp
   };
 }
 
+const HBU_USE_MAP: Record<string, string[]> = {
+  multifamily: ['multifamily_residential', 'multifamily', 'residential', 'apartment', 'townhouse'],
+  office: ['office', 'professional_office', 'business_office', 'medical_office'],
+  retail: ['retail', 'commercial', 'grocery_store', 'pharmacy', 'personal_services', 'restaurant'],
+  industrial: ['industrial', 'light_industrial', 'manufacturing', 'warehousing', 'warehouse'],
+  'mixed-use': ['mixed_use_development', 'mixed_use', 'live_work_units', 'mixed-use'],
+  hospitality: ['hotel', 'motel', 'hospitality', 'lodging', 'bed_and_breakfast'],
+};
+
+function normalizeUse(s: string): string {
+  return s.toLowerCase().replace(/[_\-\/]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function useMatches(alias: string, useEntry: string): boolean {
+  const a = normalizeUse(alias);
+  const u = normalizeUse(useEntry);
+  if (a === u) return true;
+  if (u.includes(a) || a.includes(u)) return true;
+  return false;
+}
+
+function classifyUsePermission(
+  propertyType: string,
+  permitted: string[],
+  conditional: string[],
+  prohibited: string[],
+): { status: 'by-right' | 'conditional' | 'not-permitted' | 'not-classified'; note: string } {
+  const aliases = HBU_USE_MAP[propertyType] || [propertyType];
+
+  for (const alias of aliases) {
+    for (const p of permitted) {
+      if (useMatches(alias, p)) return { status: 'by-right', note: `${p} is a permitted use` };
+    }
+  }
+  for (const alias of aliases) {
+    for (const c of conditional) {
+      if (useMatches(alias, c)) return { status: 'conditional', note: `${c} requires conditional use permit` };
+    }
+  }
+  for (const alias of aliases) {
+    for (const x of prohibited) {
+      if (useMatches(alias, x)) return { status: 'not-permitted', note: `${x} is a prohibited use` };
+    }
+  }
+  if (permitted.length === 0 && conditional.length === 0) {
+    return { status: 'by-right', note: 'No use restrictions on record' };
+  }
+  return { status: 'not-classified', note: 'Not explicitly listed in use tables — verify with municipality' };
+}
+
 router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -169,8 +219,39 @@ router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) =
     const projectType = dealResult.rows[0]?.project_type || 'multifamily';
 
     const lotAreaSf = parseFloat(String(profile.lot_area_sf)) || 0;
-    let appliedFar = profile.applied_far;
     const dealType = mapProjectTypeToDealType(projectType);
+
+    let maxDensity = profile.density_method === 'far_derived' ? null : (parseFloat(String(profile.max_density_per_acre)) || null);
+    let appliedFar = profile.applied_far ? parseFloat(String(profile.applied_far)) : null;
+    let residentialFAR = parseFloat(String(profile.residential_far)) || null;
+    let nonresidentialFAR = parseFloat(String(profile.nonresidential_far)) || null;
+    let maxHeight = parseInt(String(profile.max_height_ft)) || null;
+    let maxStories = parseInt(String(profile.max_stories)) || null;
+    let minParkingPerUnit = parseFloat(String(profile.min_parking_per_unit)) || null;
+    let maxLotCoverage = parseFloat(String(profile.max_lot_coverage_pct)) || null;
+    let densityMethod = (profile.density_method as string) || 'units_per_acre';
+    let constraintSource: 'profile' | 'database' | 'ai_retrieved' = 'profile';
+
+    const hasBaseData = maxDensity != null || appliedFar != null || maxHeight != null;
+    if (!hasBaseData && profile.base_district_code) {
+      console.log(`[HBU] Profile has no constraint data, resolving for ${profile.base_district_code}...`);
+      const resolved = await comparisonEngine.resolveConstraints(
+        profile.base_district_code, profile.municipality, profile.state
+      );
+      if (resolved) {
+        maxDensity = resolved.maxDensity;
+        appliedFar = resolved.appliedFAR;
+        residentialFAR = resolved.residentialFAR;
+        nonresidentialFAR = resolved.nonresidentialFAR;
+        maxHeight = resolved.maxHeight;
+        maxStories = resolved.maxStories;
+        minParkingPerUnit = resolved.minParkingPerUnit;
+        maxLotCoverage = resolved.maxLotCoverage;
+        densityMethod = resolved.densityMethod || 'units_per_acre';
+        constraintSource = 'ai_retrieved';
+        console.log(`[HBU] Resolved constraints from fallback: FAR=${appliedFar}, density=${maxDensity}, height=${maxHeight}`);
+      }
+    }
 
     const inputs = {
       landArea: lotAreaSf,
@@ -180,28 +261,210 @@ router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) =
         rear: parseInt(String(profile.setback_rear_ft)) || 0,
       },
       zoningConstraints: {
-        maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(String(profile.max_density_per_acre)) || null),
-        maxFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
-        residentialFAR: parseFloat(String(profile.residential_far)) || null,
-        nonresidentialFAR: parseFloat(String(profile.nonresidential_far)) || null,
-        appliedFAR: appliedFar ? parseFloat(String(appliedFar)) : null,
-        maxHeight: parseInt(String(profile.max_height_ft)) || null,
-        maxStories: parseInt(String(profile.max_stories)) || null,
-        minParkingPerUnit: parseFloat(String(profile.min_parking_per_unit)) || null,
-        maxLotCoverage: parseFloat(String(profile.max_lot_coverage_pct)) || null,
-        densityMethod: (profile.density_method as any) || 'units_per_acre',
+        maxDensity,
+        maxFAR: appliedFar,
+        residentialFAR,
+        nonresidentialFAR,
+        appliedFAR: appliedFar,
+        maxHeight,
+        maxStories,
+        minParkingPerUnit,
+        maxLotCoverage,
+        densityMethod,
       },
       dealType: dealType as 'residential' | 'commercial' | 'mixed-use',
     };
 
     const results = envelopeService.calculateHighestBestUse(inputs);
 
-    res.json({ hbu: results, dealType, projectType });
+    let permitted: string[] = [];
+    let conditional: string[] = [];
+    let prohibited: string[] = [];
+    try {
+      if (profile.base_district_code) {
+        const districtResult = await pool.query(
+          `SELECT permitted_uses, conditional_uses, prohibited_uses FROM zoning_districts 
+           WHERE UPPER(COALESCE(zoning_code, district_code)) = UPPER($1) LIMIT 1`,
+          [profile.base_district_code]
+        );
+        if (districtResult.rows.length > 0) {
+          const d = districtResult.rows[0];
+          permitted = d.permitted_uses || [];
+          conditional = d.conditional_uses || [];
+          prohibited = d.prohibited_uses || [];
+        }
+      }
+    } catch (err: any) {
+      console.error('[HBU] Failed to load use permissions:', err.message);
+    }
+
+    const enrichedResults = results.map((r: any) => {
+      const perm = classifyUsePermission(r.propertyType, permitted, conditional, prohibited);
+      return {
+        ...r,
+        permissionStatus: perm.status,
+        permissionNote: perm.note,
+      };
+    });
+
+    let benchmarkContext: any = null;
+    try {
+      if (profile.base_district_code) {
+        const benchResult = await pool.query(
+          `SELECT project_type, unit_count, total_sf, stories, land_acres, density_achieved, far_achieved, 
+                  lot_coverage_achieved, entitlement_type, outcome, project_name
+           FROM benchmark_projects 
+           WHERE (UPPER(zoning_from) = UPPER($1) OR UPPER(zoning_to) = UPPER($1))
+           AND outcome = 'approved'
+           ORDER BY created_at DESC LIMIT 10`,
+          [profile.base_district_code]
+        );
+        if (benchResult.rows.length > 0) {
+          const projects = benchResult.rows;
+          const avgDensity = projects.filter((p: any) => p.density_achieved).reduce((sum: number, p: any) => sum + parseFloat(p.density_achieved), 0) / (projects.filter((p: any) => p.density_achieved).length || 1);
+          const avgFar = projects.filter((p: any) => p.far_achieved).reduce((sum: number, p: any) => sum + parseFloat(p.far_achieved), 0) / (projects.filter((p: any) => p.far_achieved).length || 1);
+          benchmarkContext = {
+            projectCount: projects.length,
+            avgDensityAchieved: Math.round(avgDensity * 10) / 10 || null,
+            avgFarAchieved: Math.round(avgFar * 100) / 100 || null,
+            projects: projects.slice(0, 5).map((p: any) => ({
+              name: p.project_name,
+              type: p.project_type,
+              units: p.unit_count,
+              stories: p.stories,
+              entitlementType: p.entitlement_type,
+            })),
+          };
+        }
+      }
+    } catch (err: any) {
+      console.error('[HBU] Failed to load benchmarks:', err.message);
+    }
+
+    let aiAnalysis: any = null;
+    try {
+      const hbuCacheKey = `hbu:${profile.base_district_code}`;
+      const mun = profile.municipality || '';
+      const st = profile.state || 'GA';
+      const cached = await interpretationCache.getConstraints(hbuCacheKey, mun, st);
+      if (cached && cached.constraints && (cached.constraints as any).hbuAnalysis) {
+        aiAnalysis = (cached.constraints as any).hbuAnalysis;
+        console.log(`[HBU] Cache HIT for AI analysis`);
+      }
+
+      if (!aiAnalysis && profile.base_district_code) {
+        console.log(`[HBU] Generating AI analysis for ${profile.base_district_code}...`);
+        const Anthropic = (await import('@anthropic-ai/sdk')).default;
+        const anthropic = new Anthropic({
+          apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+          baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+        });
+        const prompt = buildHBUPrompt(
+          profile, enrichedResults, permitted, conditional, prohibited,
+          benchmarkContext, lotAreaSf, constraintSource
+        );
+
+        const msg = await anthropic.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          messages: [{ role: 'user', content: prompt }],
+        });
+
+        const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try { parsed = JSON.parse(jsonMatch[0]); } catch { parsed = null; }
+          }
+        }
+        if (parsed && parsed.recommendation) {
+          aiAnalysis = parsed;
+          await interpretationCache.setConstraints(hbuCacheKey, mun, st, { hbuAnalysis: aiAnalysis } as any, {
+            source: 'ai_hbu_analysis',
+            confidence: aiAnalysis.confidence || 'medium',
+          });
+          console.log(`[HBU] AI analysis complete and cached`);
+        }
+      }
+    } catch (err: any) {
+      console.error('[HBU] AI analysis failed:', err.message);
+    }
+
+    res.json({
+      hbu: enrichedResults,
+      dealType,
+      projectType,
+      districtCode: profile.base_district_code,
+      constraintSource,
+      permissions: { permitted, conditional, prohibited },
+      benchmarkContext,
+      aiAnalysis,
+    });
   } catch (error: any) {
     console.error('Error calculating HBU:', error);
     res.status(500).json({ error: error.message || 'Failed to calculate highest & best use' });
   }
 });
+
+function buildHBUPrompt(
+  profile: any,
+  results: any[],
+  permitted: string[],
+  conditional: string[],
+  prohibited: string[],
+  benchmarks: any,
+  lotAreaSf: number,
+  constraintSource: string,
+): string {
+  const acres = (lotAreaSf / 43560).toFixed(2);
+  const topResults = results.slice(0, 6).map(r =>
+    `${r.propertyType}: ${r.maxCapacity} units/${Math.round(r.maxGFA)} SF, value $${Math.round(r.estimatedValue).toLocaleString()}, limiting=${r.limitingFactor}, permission=${r.permissionStatus}`
+  ).join('\n');
+
+  const benchSection = benchmarks
+    ? `\nMarket Benchmarks (${benchmarks.projectCount} approved projects in this zone):\n- Avg density achieved: ${benchmarks.avgDensityAchieved || 'N/A'} units/acre\n- Avg FAR achieved: ${benchmarks.avgFarAchieved || 'N/A'}\n- Recent projects: ${benchmarks.projects?.map((p: any) => `${p.name} (${p.type}, ${p.units} units, ${p.entitlementType})`).join('; ') || 'none'}`
+    : '\nNo market benchmarks available for this zone.';
+
+  return `You are a real estate highest-and-best-use analyst. Analyze this property and recommend the optimal development strategy.
+
+Property: ${acres} acres (${lotAreaSf.toLocaleString()} SF) in ${profile.municipality || 'unknown'}, ${profile.state || 'GA'}
+Zoning: ${profile.base_district_code} (constraints from ${constraintSource})
+Permitted uses: ${permitted.length > 0 ? permitted.join(', ') : 'not specified'}
+Conditional uses: ${conditional.length > 0 ? conditional.join(', ') : 'none'}
+
+Envelope Results:
+${topResults}
+${benchSection}
+
+Respond with ONLY valid JSON (no markdown, no code fences):
+{
+  "recommendation": "1-2 sentence summary of the best development strategy",
+  "recommendedUse": "the single best property type from the results",
+  "confidence": "high|medium|low",
+  "useScores": [
+    {
+      "propertyType": "type name",
+      "profitabilityScore": 1-10,
+      "approvalScore": 1-10,
+      "timelineScore": 1-10,
+      "compositeScore": 1-10,
+      "rationale": "1 sentence why"
+    }
+  ],
+  "mixedUseCombinations": [
+    {
+      "combination": "e.g. 75% multifamily / 25% retail",
+      "rationale": "why this mix works",
+      "estimatedUplift": "percentage or dollar estimate vs single-use"
+    }
+  ],
+  "caveats": ["important risk or caveat 1", "caveat 2"],
+  "marketInsight": "1-2 sentences about how benchmarks/market data should influence the decision"
+}`;
+}
 
 router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res: Response) => {
   try {

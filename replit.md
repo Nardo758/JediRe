@@ -33,7 +33,7 @@ Key features include:
 -   **Municipal Zoning Database:** Integration with 32 ArcGIS REST API connectors across 13 states for zoning data.
 -   **Building Envelope Service:** Universal calculation engine for 6 property types, including Highest & Best Use analysis and Claude-powered optimization.
 -   **Zoning Intelligence Module (Constraint Set + Scenarios):** Manages resolved constraint sets and user-defined development programs, including rezone scenarios.
--   **Highest & Best Use (HBU) Analysis:** Auto-loads and ranks 6 property types by estimated value, showing rezone opportunities.
+-   **Highest & Best Use (HBU) Analysis:** Three-pillar architecture (Project Data + Municode + Claude AI). Ranks 6 property types by estimated value with permission classification (by-right/conditional/not-permitted from `zoning_districts` use arrays), Claude AI strategist analysis (use scores, mixed-use combinations, caveats, market insight), benchmark project context from `benchmark_projects`, constraint fallback via `resolveConstraints`, and rezone opportunity detection. AI results cached in `zoning_code_interpretations` with `hbu:` prefix key (30-day TTL).
 -   **Entitlement Strategy:** Consolidates by-right, variance, and rezone analysis, providing data-driven recommendations. The `compare` method now falls back to `resolveConstraints` (DB → agent service) when the zoning profile has no constraint data, ensuring math fields populate even when the profile row has all-null values.
 -   **Module Wiring System:** Cross-module orchestration infrastructure for data flow, event management, and strategy arbitrage.
 -   **Capital Structure Engine:** Full capital stack design with a 7-tab frontend component, backend service, and 13 REST endpoints.
