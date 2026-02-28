@@ -746,6 +746,210 @@ Respond with ONLY valid JSON (no markdown, no code fences):
 }`;
 }
 
+router.get('/deals/:dealId/timeline-intelligence', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const developmentPath = (req.query.path as string) || 'by_right';
+
+    const profileResult = await pool.query(
+      'SELECT * FROM deal_zoning_profiles WHERE deal_id = $1', [dealId]
+    );
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No zoning profile. Confirm zoning first.' });
+    }
+    const profile = profileResult.rows[0];
+    const mun = profile.municipality || '';
+    const st = profile.state || 'GA';
+    const districtCode = profile.base_district_code || '';
+
+    const cacheKey = `tts:${dealId}:${districtCode}:${developmentPath}`;
+    const cached = await interpretationCache.getConstraints(cacheKey, mun, st);
+    if (cached && (cached.constraints as any)?.timelineIntelligence) {
+      console.log(`[TTS-AI] Cache HIT for ${dealId}:${districtCode}:${developmentPath}`);
+      return res.json((cached.constraints as any).timelineIntelligence);
+    }
+    console.log(`[TTS-AI] Cache MISS for ${dealId}:${districtCode}:${developmentPath}, generating...`);
+
+    const dealResult = await pool.query('SELECT * FROM deals WHERE id = $1', [dealId]);
+    const deal = dealResult.rows[0] || {};
+
+    const [dlCtx, benchmarkResult, constraintsResult] = await Promise.all([
+      dataLibraryContext.getContextForDeal({
+        dealId, municipality: mun, state: st,
+        propertyType: deal.project_type, zoningCode: districtCode,
+        lotAreaSf: parseFloat(profile.lot_area_sf) || 0,
+      }),
+      pool.query(
+        `SELECT project_name, project_type, unit_count, entitlement_type,
+                total_entitlement_days, pre_app_days, site_plan_review_days,
+                zoning_hearing_days, approval_days, permit_issuance_days,
+                outcome, application_date, approval_date, address
+         FROM benchmark_projects
+         WHERE (municipality ILIKE $1 OR county ILIKE $2) AND state = $3
+           AND outcome IN ('approved', 'modified')
+         ORDER BY approval_date DESC NULLS LAST
+         LIMIT 20`,
+        [mun, `%${mun}%`, st]
+      ).catch(() => ({ rows: [] })),
+      comparisonEngine.resolveConstraints(districtCode, mun, st),
+    ]);
+
+    const benchmarks = benchmarkResult.rows;
+    const lotAcres = ((parseFloat(profile.lot_area_sf) || 0) / 43560).toFixed(2);
+    const unitCount = deal.unit_count || Math.round(parseFloat(profile.lot_area_sf || '0') * (constraintsResult?.appliedFAR || 1) / 900);
+    const overlays = Array.isArray(profile.overlays) ? profile.overlays : [];
+
+    const pathBenchmarks = benchmarks.filter((b: any) => {
+      if (developmentPath === 'rezone') return b.entitlement_type === 'rezone';
+      if (developmentPath === 'variance') return b.entitlement_type === 'variance';
+      return b.entitlement_type === 'by_right' || b.entitlement_type === 'site_plan';
+    });
+
+    const benchmarkSummary = benchmarks.length > 0
+      ? `Benchmark Projects (${benchmarks.length} total, ${pathBenchmarks.length} matching ${developmentPath} path):\n` +
+        benchmarks.slice(0, 12).map((b: any) => {
+          const days = b.total_entitlement_days || 'unknown';
+          return `  - ${b.project_name || b.address || 'Project'}: ${b.entitlement_type}, ${b.unit_count || '?'} units, ${days} days total, outcome=${b.outcome}`;
+        }).join('\n')
+      : 'No benchmark projects available for this jurisdiction.';
+
+    const prompt = `You are a real estate development timeline strategist analyzing entitlement timelines for a specific deal. Provide actionable intelligence about the expected timeline.
+
+PROPERTY CONTEXT:
+- Location: ${mun}, ${st}
+- Zoning: ${districtCode}
+- Lot Size: ${lotAcres} acres
+- Proposed Use: ${deal.project_type || 'multifamily'}
+- Estimated Units: ${unitCount}
+- Selected Path: ${developmentPath}
+- Overlays: ${overlays.map((o: any) => o.name || o.code).join(', ') || 'None'}
+- Constraints: FAR=${constraintsResult?.appliedFAR || 'N/A'}, Height=${constraintsResult?.maxHeight || 'N/A'}ft, Parking=${constraintsResult?.minParkingPerUnit ?? 'N/A'}/unit
+
+${benchmarkSummary}
+
+COST & MARKET DATA:
+${dlCtx.costSummary}
+
+INSTRUCTIONS:
+Based on the benchmark project data, zoning constraints, and the selected ${developmentPath} entitlement path, provide a timeline intelligence assessment. Use REAL numbers from the benchmarks when available. Be specific to ${mun}, ${st}.
+
+Respond with ONLY valid JSON (no markdown, no code fences):
+{
+  "estimatedMonths": {
+    "optimistic": <number>,
+    "expected": <number>,
+    "worstCase": <number>
+  },
+  "shovelDateRange": {
+    "earliest": "<month year>",
+    "likely": "<month year>",
+    "latest": "<month year>"
+  },
+  "riskFactors": [
+    {
+      "factor": "<specific risk factor>",
+      "severity": "low|moderate|high",
+      "impact": "<1-2 sentences, specific to this deal>",
+      "mitigation": "<specific action to mitigate>"
+    }
+  ],
+  "pathInsights": {
+    "summary": "<2-3 sentences about why ${developmentPath} was chosen and how it compares>",
+    "advantages": ["<specific advantage 1>", "<advantage 2>"],
+    "challenges": ["<specific challenge 1>", "<challenge 2>"],
+    "alternativePath": "<which path might be faster and by how much, if any>"
+  },
+  "benchmarkComparison": {
+    "summary": "<1-2 sentences comparing this deal to benchmark projects>",
+    "fastestComparable": "<name of fastest comparable project and its timeline>",
+    "slowestComparable": "<name of slowest comparable project and its timeline>",
+    "avgDays": <average days from benchmarks or null>
+  },
+  "recommendations": [
+    "<specific actionable recommendation 1>",
+    "<recommendation 2>",
+    "<recommendation 3>"
+  ],
+  "criticalMilestones": [
+    {
+      "milestone": "<milestone name>",
+      "estimatedMonth": <month number from start>,
+      "criticalPath": true|false,
+      "note": "<brief note>"
+    }
+  ]
+}`;
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    });
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    console.log(`[TTS-AI] Claude response length: ${text.length}, stop_reason: ${msg.stop_reason}`);
+
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { parsed = JSON.parse(jsonMatch[0]); } catch {
+            console.log(`[TTS-AI] Failed to parse. First 500 chars:`, text.substring(0, 500));
+          }
+        }
+      }
+    }
+
+    if (parsed && parsed.riskFactors) {
+      const result = {
+        dealId,
+        municipality: mun,
+        state: st,
+        districtCode,
+        developmentPath,
+        estimatedMonths: parsed.estimatedMonths || { optimistic: 6, expected: 12, worstCase: 24 },
+        shovelDateRange: parsed.shovelDateRange || {},
+        riskFactors: parsed.riskFactors || [],
+        pathInsights: parsed.pathInsights || {},
+        benchmarkComparison: parsed.benchmarkComparison || {},
+        recommendations: parsed.recommendations || [],
+        criticalMilestones: parsed.criticalMilestones || [],
+        dataLibraryContext: {
+          benchmarkCount: benchmarks.length,
+          pathBenchmarkCount: pathBenchmarks.length,
+          hasPermitTimelines: dlCtx.permitTimelines.length > 0,
+          hasCostData: dlCtx.impactFees.length > 0 || dlCtx.constructionCosts.length > 0,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+
+      await interpretationCache.setConstraints(cacheKey, mun, st, { timelineIntelligence: result } as any, {
+        source: 'ai_timeline_intelligence',
+        confidence: 'medium',
+      });
+      console.log(`[TTS-AI] Analysis complete and cached`);
+      return res.json(result);
+    }
+
+    res.status(500).json({ error: 'AI timeline analysis failed to produce valid results' });
+  } catch (error: any) {
+    console.error('Error generating timeline intelligence:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate timeline intelligence' });
+  }
+});
+
 router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
