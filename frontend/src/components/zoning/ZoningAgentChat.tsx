@@ -41,11 +41,6 @@ const SUGGESTED_QUERIES: Record<string, string[]> = {
     'How does rent control affect my rental strategy?',
     'What regulatory changes are pending?',
   ],
-  comparator: [
-    'Compare zoning between Atlanta and Charlotte',
-    'Which district allows higher density?',
-    'What are the impact fee differences?',
-  ],
   timeline: [
     'What is my total time to shovel?',
     'Show me which markets have the fastest entitlement timelines',

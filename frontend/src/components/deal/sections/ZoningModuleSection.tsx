@@ -5,7 +5,6 @@ import {
   BarChart3,
   TrendingUp,
   ShieldAlert,
-  GitCompareArrows,
   Clock,
   Lock,
   RefreshCw,
@@ -14,7 +13,6 @@ import { apiClient } from '../../../services/api.client';
 import BoundaryAndZoningTab from '../../zoning/tabs/BoundaryAndZoningTab';
 import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
-import ZoningComparatorTab from '../../zoning/tabs/ZoningComparatorTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import ConfirmationChainPlumbing from '../../zoning/ConfirmationChainPlumbing';
@@ -32,9 +30,8 @@ const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: numbe
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
   { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
-  { id: 'comparator', label: 'Zoning Comparator', icon: <GitCompareArrows className="w-4 h-4" />, step: 5 },
-  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 6 },
-  { id: 'confirmation_chain', label: 'Confirmation Chain', icon: <CheckCircle2 className="w-4 h-4" />, step: 7 },
+  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
+  { id: 'confirmation_chain', label: 'Confirmation Chain', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
@@ -120,8 +117,6 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         return <HighestBestUseTab dealId={resolvedDealId} deal={deal} />;
       case 'risk':
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
-      case 'comparator':
-        return <ZoningComparatorTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
       case 'confirmation_chain':
