@@ -6,6 +6,7 @@ import { ZoningRecommendationOrchestrator } from './zoning-recommendation-orches
 import { ZoningAgentService } from './zoning-agent.service';
 import { ZoningProfile } from './zoning-profile.service';
 import { municodeUrlService } from './municode-url.service';
+import { ZoningInterpretationCache } from './zoning-interpretation-cache.service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -91,6 +92,7 @@ export class EntitlementComparisonEngine {
     private rezoneService: RezoneAnalysisService,
     private orchestrator: ZoningRecommendationOrchestrator,
     private agentService: ZoningAgentService,
+    private cache: ZoningInterpretationCache,
   ) {}
 
   async compare(dealId: string, options?: {
@@ -394,32 +396,61 @@ export class EntitlementComparisonEngine {
       }
     }
 
-    try {
-      const agentData = await this.agentService.retrieveZoningData({
-        districtCode: overlayCode,
-        municipality: subject.municipality || '',
-        state: subject.state || 'GA',
-      });
-      if (agentData.success && agentData.district) {
-        const d = agentData.district;
-        if (d.max_density_per_acre != null && !activeOverlay.modifications?.max_density_per_acre) {
-          overlayConstraints.maxDensity = d.max_density_per_acre;
-        }
-        if (d.max_far != null && !activeOverlay.modifications?.max_far) {
-          overlayConstraints.maxFAR = d.max_far;
-          overlayConstraints.appliedFAR = d.max_far;
-        }
-        if (d.max_building_height_ft != null && !activeOverlay.modifications?.max_height_ft) {
-          overlayConstraints.maxHeight = d.max_building_height_ft;
-        }
-        if (d.max_stories != null && !activeOverlay.modifications?.max_stories) {
-          overlayConstraints.maxStories = d.max_stories;
-        }
-        if (d.parking_per_unit != null && !activeOverlay.modifications?.min_parking_per_unit) {
-          overlayConstraints.minParkingPerUnit = d.parking_per_unit;
-        }
+    const overlayMun = subject.municipality || '';
+    const overlaySt = subject.state || 'GA';
+    const cachedOverlay = await this.cache.getConstraints(overlayCode, overlayMun, overlaySt);
+    if (cachedOverlay) {
+      console.log(`[Cache] HIT overlay constraint: ${overlayCode}`);
+      const c = cachedOverlay.constraints;
+      if ((c as any).maxDensity != null && !activeOverlay.modifications?.max_density_per_acre) {
+        overlayConstraints.maxDensity = (c as any).maxDensity;
       }
-    } catch {}
+      if ((c as any).maxFAR != null && !activeOverlay.modifications?.max_far) {
+        overlayConstraints.maxFAR = (c as any).maxFAR;
+        overlayConstraints.appliedFAR = (c as any).appliedFAR || (c as any).maxFAR;
+      }
+      if ((c as any).maxHeight != null && !activeOverlay.modifications?.max_height_ft) {
+        overlayConstraints.maxHeight = (c as any).maxHeight;
+      }
+      if ((c as any).maxStories != null && !activeOverlay.modifications?.max_stories) {
+        overlayConstraints.maxStories = (c as any).maxStories;
+      }
+      if ((c as any).minParkingPerUnit != null && !activeOverlay.modifications?.min_parking_per_unit) {
+        overlayConstraints.minParkingPerUnit = (c as any).minParkingPerUnit;
+      }
+    } else {
+      console.log(`[Cache] MISS overlay constraint: ${overlayCode}`);
+      try {
+        const agentData = await this.agentService.retrieveZoningData({
+          districtCode: overlayCode,
+          municipality: overlayMun,
+          state: overlaySt,
+        });
+        if (agentData.success && agentData.district) {
+          const d = agentData.district;
+          if (d.max_density_per_acre != null && !activeOverlay.modifications?.max_density_per_acre) {
+            overlayConstraints.maxDensity = d.max_density_per_acre;
+          }
+          if (d.max_far != null && !activeOverlay.modifications?.max_far) {
+            overlayConstraints.maxFAR = d.max_far;
+            overlayConstraints.appliedFAR = d.max_far;
+          }
+          if (d.max_building_height_ft != null && !activeOverlay.modifications?.max_height_ft) {
+            overlayConstraints.maxHeight = d.max_building_height_ft;
+          }
+          if (d.max_stories != null && !activeOverlay.modifications?.max_stories) {
+            overlayConstraints.maxStories = d.max_stories;
+          }
+          if (d.parking_per_unit != null && !activeOverlay.modifications?.min_parking_per_unit) {
+            overlayConstraints.minParkingPerUnit = d.parking_per_unit;
+          }
+          await this.cache.setConstraints(overlayCode, overlayMun, overlaySt, overlayConstraints, {
+            source: 'ai_retrieved',
+            confidence: agentData.confidence || 'medium',
+          });
+        }
+      } catch {}
+    }
 
     const envelope = this.computeEnvelope(subject, overlayConstraints);
 
@@ -618,6 +649,16 @@ export class EntitlementComparisonEngine {
     municipality: string | null,
     state: string | null,
   ): Promise<ResolvedConstraints | null> {
+    const mun = municipality || '';
+    const st = state || 'GA';
+
+    const cached = await this.cache.getConstraints(code, mun, st);
+    if (cached) {
+      console.log(`[Cache] HIT constraint: ${code} (${mun}, ${st})`);
+      return cached.constraints as ResolvedConstraints;
+    }
+    console.log(`[Cache] MISS constraint: ${code} (${mun}, ${st})`);
+
     try {
       let districtRow: any = null;
 
@@ -651,7 +692,7 @@ export class EntitlementComparisonEngine {
         const hasSomeData = d.max_density_per_acre != null || d.max_far != null ||
           d.max_building_height_ft != null || d.max_height_feet != null;
         if (hasSomeData) {
-          return {
+          const resolved: ResolvedConstraints = {
             maxDensity: parseFloat(d.max_density_per_acre || d.max_units_per_acre) || null,
             maxFAR: parseFloat(d.max_far) || null,
             appliedFAR: parseFloat(d.max_far) || null,
@@ -663,6 +704,8 @@ export class EntitlementComparisonEngine {
             maxLotCoverage: parseFloat(d.max_lot_coverage || d.max_lot_coverage_percent) || null,
             densityMethod: d.density_method || 'units_per_acre',
           };
+          await this.cache.setConstraints(code, mun, st, resolved, { source: 'database', confidence: 'high' });
+          return resolved;
         }
       }
 
@@ -673,7 +716,7 @@ export class EntitlementComparisonEngine {
       });
       if (agentData.success && agentData.district) {
         const d = agentData.district;
-        return {
+        const resolved: ResolvedConstraints = {
           maxDensity: d.max_density_per_acre,
           maxFAR: d.max_far,
           appliedFAR: d.max_far,
@@ -685,6 +728,11 @@ export class EntitlementComparisonEngine {
           maxLotCoverage: d.max_lot_coverage,
           densityMethod: 'units_per_acre',
         };
+        await this.cache.setConstraints(code, mun, st, resolved, {
+          source: 'ai_retrieved',
+          confidence: agentData.confidence || 'medium',
+        });
+        return resolved;
       }
     } catch (err: any) {
       console.error(`Failed to resolve constraints for ${code}:`, err.message);
@@ -697,7 +745,18 @@ export class EntitlementComparisonEngine {
     subject: SubjectProperty,
     paths: ComputedPath[],
     municodeUrls: Record<string, string>,
-  ): Promise<{ insights: Record<string, string>; summary: string; extraRows: ComparisonRow[] }> {
+  ): Promise<{ insights: Record<string, string>; summary: string; extraRows: Array<ComparisonRow & { values?: Record<string, string> }> }> {
+    const codes = paths.map(p => p.zoningCode).filter(Boolean) as string[];
+    const mun = subject.municipality || '';
+    const st = subject.state || 'GA';
+
+    const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st);
+    if (cachedAnalysis) {
+      console.log(`[Cache] HIT AI analysis: ${codes.join(',')}`);
+      return cachedAnalysis;
+    }
+    console.log(`[Cache] MISS AI analysis: ${codes.join(',')}`);
+
     const pathSummaries = paths.map(p => ({
       key: p.key,
       label: p.label,
@@ -758,13 +817,19 @@ For extraRows, only add rows where you have specific information about the codes
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    return {
+    const result = {
       insights: parsed.insights || {},
       summary: parsed.summary || '',
       extraRows: (parsed.extraRows || [])
         .filter((r: any) => r.key && r.label)
         .map((r: any) => ({ key: r.key, label: r.label, values: r.values || {} })),
     };
+
+    if (codes.length > 0) {
+      await this.cache.setAIAnalysis(codes, mun, st, result);
+    }
+
+    return result;
   }
 
   private assembleResult(

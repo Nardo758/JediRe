@@ -6,6 +6,7 @@ import { RezoneAnalysisService } from '../../services/rezone-analysis.service';
 import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
 import { ZoningAgentService } from '../../services/zoning-agent.service';
 import { EntitlementComparisonEngine } from '../../services/entitlement-comparison-engine.service';
+import { ZoningInterpretationCache } from '../../services/zoning-interpretation-cache.service';
 
 const router = Router();
 const pool = getPool();
@@ -14,7 +15,8 @@ const envelopeService = new BuildingEnvelopeService();
 const rezoneService = new RezoneAnalysisService(pool);
 const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
 const agentService = new ZoningAgentService(pool);
-const comparisonEngine = new EntitlementComparisonEngine(pool, envelopeService, rezoneService, recommendationOrchestrator, agentService);
+const interpretationCache = new ZoningInterpretationCache(pool);
+const comparisonEngine = new EntitlementComparisonEngine(pool, envelopeService, rezoneService, recommendationOrchestrator, agentService, interpretationCache);
 
 function mapProjectTypeToEnvelopeType(projectType: string): PropertyType {
   const map: Record<string, PropertyType> = {
