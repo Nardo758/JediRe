@@ -1,46 +1,35 @@
-/**
- * Competition Analysis Service
- * 
- * Handles data fetching and analysis for competitive properties
- */
-
 import api from './api';
 
-// ============================================================================
-// Types
-// ============================================================================
+export type DataSource = 'api' | 'apartment' | 'mock';
+
+export interface DataWithSource<T> {
+  data: T;
+  source: DataSource;
+}
 
 export interface CompetitorProperty {
   id: string;
   name: string;
   address: string;
-  distance: number; // miles
+  distance: number;
   units: number;
   yearBuilt: string;
   category: 'direct' | 'construction' | 'planned';
   avgRent?: number;
   occupancy?: number;
   class?: 'A' | 'B' | 'C';
-  
-  // Unit sizes
   unitSizes?: {
     studio?: number;
     oneBed?: number;
     twoBed?: number;
     threeBed?: number;
   };
-  
-  // Efficiency
   efficiencyScore?: number;
-  
-  // Aging properties
   needsRenovation?: boolean;
   datedAmenities?: boolean;
   lowOccupancy?: boolean;
   potentialPremium?: number;
   opportunityNote?: string;
-  
-  // Location
   latitude?: number;
   longitude?: number;
 }
@@ -54,7 +43,7 @@ export interface AdvantageMatrix {
   features: Array<{
     name: string;
     you: boolean;
-    competitors: Record<string, boolean>; // competitorId -> hasFeature
+    competitors: Record<string, boolean>;
     advantagePoints: number;
   }>;
   keyDifferentiators: string[];
@@ -79,95 +68,240 @@ export interface CompetitionFilters {
   distanceRadius?: number;
 }
 
-// ============================================================================
-// Service
-// ============================================================================
+interface SubmarketData {
+  submarket_name?: string;
+  name?: string;
+  properties_count?: number;
+  total_units?: number;
+  vacancy_rate?: number;
+  avg_rent?: number;
+  rent_growth_30d?: number;
+  market_pressure?: string;
+}
 
 class CompetitionService {
-  /**
-   * Get competitors for a development deal
-   */
+  private async fetchSubmarkets(): Promise<SubmarketData[]> {
+    const response = await api.get('/apartment-sync/submarkets', {
+      params: { city: 'Atlanta' },
+    });
+    return response.data.submarkets || response.data || [];
+  }
+
+  private mapSubmarketsToCompetitors(submarkets: SubmarketData[], filters: CompetitionFilters): CompetitorProperty[] {
+    return submarkets.map((sm, idx) => {
+      const vacancyRate = sm.vacancy_rate ?? 5;
+      const occupancy = Math.round((1 - vacancyRate / 100) * 100);
+      return {
+        id: `apt-${idx + 1}`,
+        name: sm.submarket_name || sm.name || `Submarket ${idx + 1}`,
+        address: `${sm.submarket_name || sm.name || 'Atlanta'} Area`,
+        distance: parseFloat((0.5 + idx * 0.3).toFixed(1)),
+        units: sm.total_units || sm.properties_count || 0,
+        yearBuilt: '2020',
+        category: 'direct' as const,
+        avgRent: sm.avg_rent ? Math.round(sm.avg_rent) : undefined,
+        occupancy,
+        class: (occupancy >= 95 ? 'A' : occupancy >= 90 ? 'B' : 'C') as 'A' | 'B' | 'C',
+        efficiencyScore: Math.min(100, Math.round(occupancy * 0.9)),
+      };
+    }).filter(comp => {
+      if (filters.distanceRadius && comp.distance > filters.distanceRadius) return false;
+      if (filters.sameClass && comp.class !== 'A') return false;
+      return true;
+    });
+  }
+
+  private mapSubmarketsToAdvantageMatrix(submarkets: SubmarketData[]): AdvantageMatrix {
+    const top3 = submarkets.slice(0, 3);
+    const competitors = top3.map((sm, idx) => ({
+      id: `apt-${idx + 1}`,
+      name: sm.submarket_name || sm.name || `Submarket ${idx + 1}`,
+    }));
+
+    const avgRent = submarkets.reduce((s, sm) => s + (sm.avg_rent || 0), 0) / (submarkets.length || 1);
+    const avgVacancy = submarkets.reduce((s, sm) => s + (sm.vacancy_rate || 0), 0) / (submarkets.length || 1);
+
+    const features = [
+      {
+        name: 'Below-Market Vacancy',
+        you: true,
+        competitors: Object.fromEntries(top3.map((sm, i) => [`apt-${i + 1}`, (sm.vacancy_rate || 10) < avgVacancy])),
+        advantagePoints: 2,
+      },
+      {
+        name: 'Above-Market Rent',
+        you: true,
+        competitors: Object.fromEntries(top3.map((sm, i) => [`apt-${i + 1}`, (sm.avg_rent || 0) > avgRent])),
+        advantagePoints: 2,
+      },
+      {
+        name: 'Positive Rent Growth',
+        you: true,
+        competitors: Object.fromEntries(top3.map((sm, i) => [`apt-${i + 1}`, (sm.rent_growth_30d || 0) > 0])),
+        advantagePoints: 1,
+      },
+      {
+        name: 'Strong Market Pressure',
+        you: true,
+        competitors: Object.fromEntries(top3.map((sm, i) => [`apt-${i + 1}`, sm.market_pressure === 'high' || sm.market_pressure === 'strong'])),
+        advantagePoints: 2,
+      },
+    ];
+
+    const totalPoints = features.reduce((s, f) => s + f.advantagePoints, 0);
+    const differentiators = features.filter(f => f.advantagePoints > 1).map(f => f.name);
+
+    return {
+      overallScore: totalPoints,
+      competitors,
+      features,
+      keyDifferentiators: differentiators.length > 0 ? differentiators : ['Market Positioning'],
+    };
+  }
+
+  private mapSubmarketsToWaitlist(submarkets: SubmarketData[]): WaitlistProperty[] {
+    return submarkets
+      .filter(sm => (sm.vacancy_rate ?? 10) < 5)
+      .slice(0, 3)
+      .map((sm, idx) => {
+        const vacancyRate = sm.vacancy_rate ?? 3;
+        const occupancy = Math.round((1 - vacancyRate / 100) * 100);
+        return {
+          id: `apt-wait-${idx + 1}`,
+          name: sm.submarket_name || sm.name || `Submarket ${idx + 1}`,
+          units: sm.total_units || 0,
+          distance: parseFloat((0.5 + idx * 0.4).toFixed(1)),
+          occupancy,
+          waitlistCount: Math.round((100 - vacancyRate) * 0.5),
+          avgRent: sm.avg_rent ? Math.round(sm.avg_rent) : 0,
+          avgWaitTime: vacancyRate < 2 ? '3-4 months' : '1-2 months',
+          demandNote: `${sm.market_pressure || 'Moderate'} market pressure with ${sm.rent_growth_30d?.toFixed(1) || '0'}% rent growth.`,
+        };
+      });
+  }
+
+  private mapSubmarketsToAging(submarkets: SubmarketData[]): CompetitorProperty[] {
+    return submarkets
+      .filter(sm => (sm.vacancy_rate ?? 0) > 8)
+      .slice(0, 3)
+      .map((sm, idx) => {
+        const vacancyRate = sm.vacancy_rate ?? 10;
+        const occupancy = Math.round((1 - vacancyRate / 100) * 100);
+        return {
+          id: `apt-aging-${idx + 1}`,
+          name: sm.submarket_name || sm.name || `Submarket ${idx + 1}`,
+          address: `${sm.submarket_name || sm.name || 'Atlanta'} Area`,
+          distance: parseFloat((0.7 + idx * 0.5).toFixed(1)),
+          units: sm.total_units || 0,
+          yearBuilt: '2005',
+          category: 'direct' as const,
+          avgRent: sm.avg_rent ? Math.round(sm.avg_rent) : 0,
+          occupancy,
+          class: 'C' as const,
+          needsRenovation: vacancyRate > 12,
+          datedAmenities: true,
+          lowOccupancy: occupancy < 85,
+          potentialPremium: Math.round((sm.avg_rent || 1500) * 0.25),
+          opportunityNote: `High vacancy (${vacancyRate.toFixed(1)}%) indicates opportunity. Rent growth: ${sm.rent_growth_30d?.toFixed(1) || '0'}%.`,
+        };
+      });
+  }
+
   async getCompetitors(
     dealId: string,
     filters: CompetitionFilters
-  ): Promise<CompetitorProperty[]> {
+  ): Promise<DataWithSource<CompetitorProperty[]>> {
     try {
       const response = await api.get(`/deals/${dealId}/competitors`, {
         params: filters,
       });
-      return response.data.competitors || [];
-    } catch (error) {
-      console.error('Error fetching competitors:', error);
-      // Return mock data for development
-      return this.getMockCompetitors(filters);
+      return { data: response.data.competitors || [], source: 'api' };
+    } catch {
+      try {
+        const submarkets = await this.fetchSubmarkets();
+        if (submarkets.length > 0) {
+          return { data: this.mapSubmarketsToCompetitors(submarkets, filters), source: 'apartment' };
+        }
+      } catch {}
+      return { data: this.getMockCompetitors(filters), source: 'mock' };
     }
   }
 
-  /**
-   * Get competitive advantage matrix
-   */
-  async getAdvantageMatrix(dealId: string): Promise<AdvantageMatrix> {
+  async getAdvantageMatrix(dealId: string): Promise<DataWithSource<AdvantageMatrix>> {
     try {
       const response = await api.get(`/deals/${dealId}/advantage-matrix`);
-      return response.data.matrix;
-    } catch (error) {
-      console.error('Error fetching advantage matrix:', error);
-      return this.getMockAdvantageMatrix();
+      return { data: response.data.matrix, source: 'api' };
+    } catch {
+      try {
+        const submarkets = await this.fetchSubmarkets();
+        if (submarkets.length > 0) {
+          return { data: this.mapSubmarketsToAdvantageMatrix(submarkets), source: 'apartment' };
+        }
+      } catch {}
+      return { data: this.getMockAdvantageMatrix(), source: 'mock' };
     }
   }
 
-  /**
-   * Get properties with waitlists
-   */
   async getWaitlistProperties(
     dealId: string,
     radius: number
-  ): Promise<WaitlistProperty[]> {
+  ): Promise<DataWithSource<WaitlistProperty[]>> {
     try {
       const response = await api.get(`/deals/${dealId}/waitlist-properties`, {
         params: { radius },
       });
-      return response.data.properties || [];
-    } catch (error) {
-      console.error('Error fetching waitlist properties:', error);
-      return this.getMockWaitlistProperties();
+      return { data: response.data.properties || [], source: 'api' };
+    } catch {
+      try {
+        const submarkets = await this.fetchSubmarkets();
+        const mapped = this.mapSubmarketsToWaitlist(submarkets);
+        if (mapped.length > 0) {
+          return { data: mapped, source: 'apartment' };
+        }
+      } catch {}
+      return { data: this.getMockWaitlistProperties(), source: 'mock' };
     }
   }
 
-  /**
-   * Get aging competitors
-   */
   async getAgingCompetitors(
     dealId: string,
     radius: number
-  ): Promise<CompetitorProperty[]> {
+  ): Promise<DataWithSource<CompetitorProperty[]>> {
     try {
       const response = await api.get(`/deals/${dealId}/aging-competitors`, {
         params: { radius },
       });
-      return response.data.competitors || [];
-    } catch (error) {
-      console.error('Error fetching aging competitors:', error);
-      return this.getMockAgingCompetitors();
+      return { data: response.data.competitors || [], source: 'api' };
+    } catch {
+      try {
+        const submarkets = await this.fetchSubmarkets();
+        const mapped = this.mapSubmarketsToAging(submarkets);
+        if (mapped.length > 0) {
+          return { data: mapped, source: 'apartment' };
+        }
+      } catch {}
+      return { data: this.getMockAgingCompetitors(), source: 'mock' };
     }
   }
 
-  /**
-   * Get AI-generated competitive insights
-   */
-  async getAIInsights(dealId: string): Promise<string> {
+  async getAIInsights(dealId: string): Promise<DataWithSource<string>> {
     try {
       const response = await api.get(`/deals/${dealId}/competition-insights`);
-      return response.data.insights;
-    } catch (error) {
-      console.error('Error fetching AI insights:', error);
-      return this.getMockAIInsights();
+      return { data: response.data.insights, source: 'api' };
+    } catch {
+      try {
+        const submarkets = await this.fetchSubmarkets();
+        if (submarkets.length > 0) {
+          const avgRent = submarkets.reduce((s, sm) => s + (sm.avg_rent || 0), 0) / submarkets.length;
+          const avgVacancy = submarkets.reduce((s, sm) => s + (sm.vacancy_rate || 0), 0) / submarkets.length;
+          const topSubmarket = submarkets.reduce((best, sm) => (sm.avg_rent || 0) > (best.avg_rent || 0) ? sm : best, submarkets[0]);
+          const insights = `📊 Based on ${submarkets.length} Atlanta submarkets:\n\n• Average market rent: $${Math.round(avgRent).toLocaleString()}/mo across all submarkets\n• Average vacancy rate: ${avgVacancy.toFixed(1)}% — ${avgVacancy < 5 ? 'tight market conditions' : 'moderate availability'}\n• Top submarket: ${topSubmarket.submarket_name || topSubmarket.name || 'N/A'} at $${Math.round(topSubmarket.avg_rent || 0).toLocaleString()}/mo\n• Rent growth trend: ${(submarkets.reduce((s, sm) => s + (sm.rent_growth_30d || 0), 0) / submarkets.length).toFixed(1)}% (30-day)\n\nPosition your development to capture demand in high-pressure submarkets with below-average vacancy rates.`;
+          return { data: insights, source: 'apartment' };
+        }
+      } catch {}
+      return { data: this.getMockAIInsights(), source: 'mock' };
     }
   }
-
-  // ============================================================================
-  // Mock Data (for development/testing)
-  // ============================================================================
 
   private getMockCompetitors(filters: CompetitionFilters): CompetitorProperty[] {
     const baseCompetitors: CompetitorProperty[] = [
@@ -268,7 +402,6 @@ class CompetitionService {
       },
     ];
 
-    // Apply filters
     return baseCompetitors.filter(comp => {
       if (filters.distanceRadius && comp.distance > filters.distanceRadius) {
         return false;
@@ -276,7 +409,6 @@ class CompetitionService {
       if (filters.sameClass && comp.class !== 'A') {
         return false;
       }
-      // Additional filtering logic can be added here
       return true;
     });
   }
@@ -444,7 +576,7 @@ class CompetitionService {
   }
 
   private getMockAIInsights(): string {
-    return `💡 Based on competition analysis, consider:
+    return `Based on competition analysis, consider:
 
 • Increase 1BR allocation to 45% (+10%) to match high-demand Metro Towers
 • Add coworking space (2,000 SF) for +$125/unit premium - only 2 of 6 competitors have this
@@ -456,9 +588,6 @@ class CompetitionService {
 Your development's 9-point advantage score indicates strong differentiation potential. Focus marketing on tech-forward amenities and flexible workspaces to capture underserved demand.`;
   }
 
-  /**
-   * Export competition analysis to CSV
-   */
   async exportAnalysis(dealId: string): Promise<Blob> {
     try {
       const response = await api.get(`/deals/${dealId}/competition-export`, {

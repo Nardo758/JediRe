@@ -7,7 +7,7 @@ import {
   LogOut, Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
   Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
-  Shield, Layers, BarChart2, Radar
+  Shield, Layers, BarChart2, Radar, Zap
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
@@ -34,6 +34,7 @@ import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
 import ExitSection from '../components/deal/sections/ExitSection';
+import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
@@ -185,6 +186,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Market Vitals',
       icon: <BarChart2 size={16} />,
       component: MarketIntelligence
+    },
+    {
+      id: 'opportunity-engine',
+      label: 'Opportunity Engine',
+      icon: <Zap size={16} />,
+      component: OpportunityEngineSection
     },
     { 
       id: 'trends', 

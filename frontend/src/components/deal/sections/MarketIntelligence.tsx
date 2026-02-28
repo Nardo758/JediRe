@@ -149,6 +149,13 @@ function buildVitalsFromData(
   ];
 }
 
+interface DemandData {
+  userStats: any;
+  demandSignals: any;
+  searchTrends: any;
+  userPreferences: any;
+}
+
 export const MarketIntelligence: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -156,10 +163,43 @@ export const MarketIntelligence: React.FC = () => {
   const [submarkets, setSubmarkets] = useState<SubmarketData[]>([]);
   const [rentComps, setRentComps] = useState<RentComp[]>([]);
   const [snapshot, setSnapshot] = useState<any>(null);
+  const [demandData, setDemandData] = useState<DemandData | null>(null);
+  const [demandLoading, setDemandLoading] = useState(true);
 
   useEffect(() => {
     loadMarketData();
   }, []);
+
+  useEffect(() => {
+    loadDemandData();
+  }, []);
+
+  const loadDemandData = async () => {
+    setDemandLoading(true);
+    try {
+      const res = await apiClient.get('/api/v1/apartment-sync/user-analytics');
+      const entries = res.data?.data || res.data || [];
+      const parsed: DemandData = {
+        userStats: null,
+        demandSignals: null,
+        searchTrends: null,
+        userPreferences: null,
+      };
+      for (const entry of entries) {
+        const type = entry.analytics_type || entry.data_type;
+        const data = typeof entry.data === 'string' ? JSON.parse(entry.data) : entry.data;
+        if (type === 'user-stats') parsed.userStats = data;
+        else if (type === 'demand-signals') parsed.demandSignals = data;
+        else if (type === 'search-trends') parsed.searchTrends = data;
+        else if (type === 'user-preferences') parsed.userPreferences = data;
+      }
+      setDemandData(parsed);
+    } catch (err) {
+      console.error('Failed to load demand data:', err);
+    } finally {
+      setDemandLoading(false);
+    }
+  };
 
   const loadMarketData = async () => {
     setLoading(true);
@@ -465,6 +505,163 @@ export const MarketIntelligence: React.FC = () => {
           </div>
         </div>
       )}
+
+      {demandLoading ? (
+        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+          <div className="animate-pulse">
+            <div className="h-4 bg-stone-200 rounded w-48 mx-auto mb-3"></div>
+            <div className="text-xs text-stone-400">Loading demand intelligence...</div>
+          </div>
+        </div>
+      ) : demandData && (demandData.userStats || demandData.demandSignals || demandData.searchTrends) ? (
+        <div className="bg-white rounded-xl border border-stone-200 p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-lg font-bold text-stone-900">Demand Intelligence</h3>
+            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono tracking-widest">DEMAND DATA</span>
+          </div>
+
+          {demandData.userStats && (
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="border border-stone-200 rounded-lg p-3">
+                <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Active Renters (30d)</div>
+                <div className="text-2xl font-bold text-stone-900">{(demandData.userStats.activeUsers30d || 0).toLocaleString()}</div>
+              </div>
+              <div className="border border-stone-200 rounded-lg p-3">
+                <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Total Users</div>
+                <div className="text-2xl font-bold text-stone-900">{(demandData.userStats.totalUsers || 0).toLocaleString()}</div>
+              </div>
+              <div className="border border-stone-200 rounded-lg p-3">
+                <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Renters vs Landlords</div>
+                <div className="text-sm font-bold text-stone-900 mt-1">
+                  {demandData.userStats.byType ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-600">{(demandData.userStats.byType.renter || 0).toLocaleString()} renters</span>
+                      <span className="text-stone-300">|</span>
+                      <span className="text-stone-600">{(demandData.userStats.byType.landlord || 0).toLocaleString()} landlords</span>
+                    </div>
+                  ) : '--'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {demandData.demandSignals?.budgetDistribution && (
+            <div className="mb-6">
+              <div className="text-xs font-semibold text-stone-700 mb-3">Budget Distribution</div>
+              <div className="space-y-2">
+                {Object.entries(demandData.demandSignals.budgetDistribution).map(([range, count]: [string, any]) => {
+                  const allCounts = Object.values(demandData.demandSignals.budgetDistribution) as number[];
+                  const maxCount = Math.max(...allCounts, 1);
+                  const pct = (Number(count) / maxCount) * 100;
+                  return (
+                    <div key={range} className="flex items-center gap-3">
+                      <div className="w-28 text-[11px] font-mono text-stone-500 text-right shrink-0">{range}</div>
+                      <div className="flex-1 bg-stone-100 rounded-full h-5 overflow-hidden">
+                        <div
+                          className="h-full bg-amber-500 rounded-full flex items-center justify-end pr-2"
+                          style={{ width: `${Math.max(pct, 8)}%` }}
+                        >
+                          <span className="text-[10px] font-bold text-white">{Number(count).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            {demandData.demandSignals?.bedroomPreferences && (
+              <div>
+                <div className="text-xs font-semibold text-stone-700 mb-3">Top Unit Types</div>
+                <div className="space-y-2">
+                  {Object.entries(demandData.demandSignals.bedroomPreferences).map(([type, count]: [string, any]) => {
+                    const allCounts = Object.values(demandData.demandSignals.bedroomPreferences) as number[];
+                    const maxCount = Math.max(...allCounts, 1);
+                    const pct = (Number(count) / maxCount) * 100;
+                    return (
+                      <div key={type} className="flex items-center gap-2">
+                        <div className="w-16 text-[11px] font-mono text-stone-500 text-right shrink-0">{type}</div>
+                        <div className="flex-1 bg-stone-100 rounded h-4 overflow-hidden">
+                          <div
+                            className="h-full bg-stone-700 rounded"
+                            style={{ width: `${Math.max(pct, 5)}%` }}
+                          />
+                        </div>
+                        <div className="w-10 text-[10px] font-mono text-stone-500 text-right">{Number(count).toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {demandData.demandSignals?.moveInTimelines && (
+              <div>
+                <div className="text-xs font-semibold text-stone-700 mb-3">Move-in Timeline</div>
+                <div className="space-y-2">
+                  {Object.entries(demandData.demandSignals.moveInTimelines).map(([timeline, count]: [string, any]) => {
+                    const allCounts = Object.values(demandData.demandSignals.moveInTimelines) as number[];
+                    const maxCount = Math.max(...allCounts, 1);
+                    const pct = (Number(count) / maxCount) * 100;
+                    return (
+                      <div key={timeline} className="flex items-center gap-2">
+                        <div className="w-24 text-[11px] font-mono text-stone-500 text-right shrink-0">{timeline}</div>
+                        <div className="flex-1 bg-stone-100 rounded h-4 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded"
+                            style={{ width: `${Math.max(pct, 5)}%` }}
+                          />
+                        </div>
+                        <div className="w-10 text-[10px] font-mono text-stone-500 text-right">{Number(count).toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {demandData.demandSignals?.topAmenities && demandData.demandSignals.topAmenities.length > 0 && (
+            <div className="mb-6">
+              <div className="text-xs font-semibold text-stone-700 mb-3">Top Amenity Searches</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                {demandData.demandSignals.topAmenities.slice(0, 8).map((amenity: any, idx: number) => {
+                  const name = amenity.name || amenity.amenity || amenity.label || '';
+                  const count = amenity.count || amenity.searches || amenity.value || 0;
+                  return (
+                    <div key={idx} className="flex items-center justify-between py-1 border-b border-stone-100">
+                      <span className="text-xs text-stone-700">{name}</span>
+                      <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{Number(count).toLocaleString()}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {demandData.searchTrends?.unmetDemand && demandData.searchTrends.unmetDemand.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-stone-700 mb-3">Unmet Demand — Locations with Searches but No Matches</div>
+              <div className="grid grid-cols-3 gap-2">
+                {demandData.searchTrends.unmetDemand.map((item: any, idx: number) => {
+                  const location = item.location || item.area || item.name || item;
+                  const searches = item.searches || item.count || item.volume || 0;
+                  return (
+                    <div key={idx} className="bg-red-50 border border-red-200 rounded-lg p-2.5">
+                      <div className="text-xs font-medium text-red-800">{typeof location === 'string' ? location : JSON.stringify(location)}</div>
+                      {searches > 0 && (
+                        <div className="text-[10px] text-red-600 mt-0.5">{Number(searches).toLocaleString()} searches, 0 matches</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -1,10 +1,3 @@
-/**
- * Competition Analysis Page for Development Deals
- * 
- * Analyzes competing properties to identify design advantages and positioning opportunities.
- * Focuses on "build better, not cheaper" strategy.
- */
-
 import { useState, useEffect } from 'react';
 import {
   Building2,
@@ -27,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty } from '@/services/competition.service';
+import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty, DataSource } from '@/services/competition.service';
 
 interface CompetitionFilters {
   sameVintage: boolean;
@@ -36,10 +29,48 @@ interface CompetitionFilters {
   distanceRadius: number;
 }
 
+function DataSourceBadge({ source }: { source: DataSource }) {
+  if (source === 'api') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        LIVE DATA
+      </span>
+    );
+  }
+  if (source === 'apartment') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+        MARKET DATA
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+      <AlertCircle className="h-3 w-3" />
+      SAMPLE DATA
+    </span>
+  );
+}
+
+function SampleDataBanner() {
+  return (
+    <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
+      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+      <div>
+        <span className="font-semibold text-amber-800">[SAMPLE DATA]</span>
+        <span className="text-amber-700 ml-2 text-sm">
+          Live data is unavailable. Showing sample data for demonstration purposes. Connect a data source for real market intelligence.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function CompetitionPage() {
   const { dealId } = useParams<{ dealId: string }>();
-  
-  // State
+
   const [loading, setLoading] = useState(true);
   const [competitors, setCompetitors] = useState<CompetitorProperty[]>([]);
   const [advantageMatrix, setAdvantageMatrix] = useState<AdvantageMatrix | null>(null);
@@ -47,15 +78,28 @@ export default function CompetitionPage() {
   const [agingCompetitors, setAgingCompetitors] = useState<CompetitorProperty[]>([]);
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
   const [aiInsights, setAiInsights] = useState<string>('');
-  
-  // Filters
+
+  const [dataSources, setDataSources] = useState<{
+    competitors: DataSource;
+    advantageMatrix: DataSource;
+    waitlist: DataSource;
+    aging: DataSource;
+    insights: DataSource;
+  }>({
+    competitors: 'mock',
+    advantageMatrix: 'mock',
+    waitlist: 'mock',
+    aging: 'mock',
+    insights: 'mock',
+  });
+
   const [filters, setFilters] = useState<CompetitionFilters>({
     sameVintage: false,
     similarSize: true,
     sameClass: true,
-    distanceRadius: 1.0, // miles
+    distanceRadius: 1.0,
   });
-  
+
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist'>('map');
 
@@ -68,8 +112,7 @@ export default function CompetitionPage() {
   const fetchCompetitionData = async () => {
     setLoading(true);
     try {
-      // Fetch all competition data
-      const [competitorsData, advantageData, waitlistData, agingData, insights] = await Promise.all([
+      const [competitorsResult, advantageResult, waitlistResult, agingResult, insightsResult] = await Promise.all([
         competitionService.getCompetitors(dealId!, filters),
         competitionService.getAdvantageMatrix(dealId!),
         competitionService.getWaitlistProperties(dealId!, filters.distanceRadius),
@@ -77,11 +120,19 @@ export default function CompetitionPage() {
         competitionService.getAIInsights(dealId!),
       ]);
 
-      setCompetitors(competitorsData);
-      setAdvantageMatrix(advantageData);
-      setWaitlistProperties(waitlistData);
-      setAgingCompetitors(agingData);
-      setAiInsights(insights);
+      setCompetitors(competitorsResult.data);
+      setAdvantageMatrix(advantageResult.data);
+      setWaitlistProperties(waitlistResult.data);
+      setAgingCompetitors(agingResult.data);
+      setAiInsights(insightsResult.data);
+
+      setDataSources({
+        competitors: competitorsResult.source,
+        advantageMatrix: advantageResult.source,
+        waitlist: waitlistResult.source,
+        aging: agingResult.source,
+        insights: insightsResult.source,
+      });
     } catch (error) {
       console.error('Error fetching competition data:', error);
     } finally {
@@ -92,6 +143,14 @@ export default function CompetitionPage() {
   const handleFilterChange = (key: keyof CompetitionFilters, value: any) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
+
+  const primarySource: DataSource = Object.values(dataSources).every(s => s === 'mock')
+    ? 'mock'
+    : Object.values(dataSources).some(s => s === 'api')
+    ? 'api'
+    : 'apartment';
+
+  const hasMockData = Object.values(dataSources).some(s => s === 'mock');
 
   if (loading) {
     return (
@@ -110,16 +169,19 @@ export default function CompetitionPage() {
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <Building2 className="h-6 w-6 text-blue-600" />
-                Competition Analysis
-              </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Design Differentiation & Competitive Positioning
-              </p>
+            <div className="flex items-center gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <Building2 className="h-6 w-6 text-blue-600" />
+                  Competition Analysis
+                </h1>
+                <p className="text-sm text-gray-600 mt-1">
+                  Design Differentiation & Competitive Positioning
+                </p>
+              </div>
+              <DataSourceBadge source={primarySource} />
             </div>
-            
+
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowFilters(!showFilters)}
@@ -133,14 +195,14 @@ export default function CompetitionPage() {
                   </span>
                 )}
               </button>
-              
+
               <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
                 <Download className="h-4 w-4" />
                 Export Report
               </button>
             </div>
           </div>
-          
+
           {/* Filters Panel */}
           {showFilters && (
             <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -154,7 +216,7 @@ export default function CompetitionPage() {
                   />
                   <span className="text-sm text-gray-700">Same Vintage (±5 years)</span>
                 </label>
-                
+
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -164,7 +226,7 @@ export default function CompetitionPage() {
                   />
                   <span className="text-sm text-gray-700">Similar Size (±20%)</span>
                 </label>
-                
+
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -174,7 +236,7 @@ export default function CompetitionPage() {
                   />
                   <span className="text-sm text-gray-700">Same Class (A/B/C)</span>
                 </label>
-                
+
                 <div>
                   <label className="text-sm text-gray-700 mb-1 block">
                     Distance Radius: {filters.distanceRadius} mi
@@ -192,7 +254,7 @@ export default function CompetitionPage() {
               </div>
             </div>
           )}
-          
+
           {/* Tab Navigation */}
           <div className="flex gap-2 mt-4 border-b border-gray-200">
             {[
@@ -221,60 +283,74 @@ export default function CompetitionPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {hasMockData && <SampleDataBanner />}
+
         {/* Summary Stats */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold text-gray-900">{competitors.length}</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-2xl font-bold text-gray-900">{competitors.length}</div>
+              <DataSourceBadge source={dataSources.competitors} />
+            </div>
             <div className="text-sm text-gray-600">Direct Competitors</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold text-green-600">
-              {advantageMatrix?.overallScore || 0}
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-2xl font-bold text-green-600">
+                {advantageMatrix?.overallScore || 0}
+              </div>
+              <DataSourceBadge source={dataSources.advantageMatrix} />
             </div>
             <div className="text-sm text-gray-600">Advantage Score</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold text-blue-600">{waitlistProperties.length}</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-2xl font-bold text-blue-600">{waitlistProperties.length}</div>
+              <DataSourceBadge source={dataSources.waitlist} />
+            </div>
             <div className="text-sm text-gray-600">Waitlist Properties</div>
           </div>
-          
+
           <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold text-orange-600">{agingCompetitors.length}</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-2xl font-bold text-orange-600">{agingCompetitors.length}</div>
+              <DataSourceBadge source={dataSources.aging} />
+            </div>
             <div className="text-sm text-gray-600">Aging Competitors</div>
           </div>
         </div>
 
         {/* Tab Content */}
         {activeTab === 'map' && (
-          <CompetitiveSetMap 
+          <CompetitiveSetMap
             competitors={competitors}
             filters={filters}
             onSelectCompetitor={setSelectedCompetitor}
           />
         )}
-        
+
         {activeTab === 'comparison' && (
-          <UnitComparison 
+          <UnitComparison
             competitors={competitors}
           />
         )}
-        
+
         {activeTab === 'advantage' && advantageMatrix && (
-          <AdvantageMatrixView 
+          <AdvantageMatrixView
             matrix={advantageMatrix}
           />
         )}
-        
+
         {activeTab === 'aging' && (
-          <AgingCompetitorTracker 
+          <AgingCompetitorTracker
             agingCompetitors={agingCompetitors}
           />
         )}
-        
+
         {activeTab === 'waitlist' && (
-          <WaitlistIntelligence 
+          <WaitlistIntelligence
             waitlistProperties={waitlistProperties}
           />
         )}
@@ -287,7 +363,10 @@ export default function CompetitionPage() {
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-2">AI Development Insights</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-semibold text-gray-900">AI Development Insights</h3>
+                  <DataSourceBadge source={dataSources.insights} />
+                </div>
                 <p className="text-gray-700 whitespace-pre-line">{aiInsights}</p>
                 <div className="flex gap-3 mt-4">
                   <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">
@@ -306,18 +385,11 @@ export default function CompetitionPage() {
   );
 }
 
-// ============================================================================
-// Sub-Components
-// ============================================================================
-
-/**
- * Competitive Set Map Component
- */
-function CompetitiveSetMap({ 
-  competitors, 
+function CompetitiveSetMap({
+  competitors,
   filters,
-  onSelectCompetitor 
-}: { 
+  onSelectCompetitor
+}: {
   competitors: CompetitorProperty[];
   filters: CompetitionFilters;
   onSelectCompetitor: (id: string) => void;
@@ -352,7 +424,7 @@ function CompetitiveSetMap({
             </div>
           </div>
         </div>
-        
+
         {/* Competitor List */}
         <div className="space-y-3 max-h-[500px] overflow-y-auto">
           <h3 className="font-semibold text-gray-900 mb-3">
@@ -396,9 +468,6 @@ function CompetitiveSetMap({
   );
 }
 
-/**
- * Unit Comparison Component
- */
 function UnitComparison({ competitors }: { competitors: CompetitorProperty[] }) {
   const [sortBy, setSortBy] = useState<'name' | 'oneBed' | 'twoBed' | 'efficiency'>('efficiency');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -521,9 +590,6 @@ function UnitComparison({ competitors }: { competitors: CompetitorProperty[] }) 
   );
 }
 
-/**
- * Advantage Matrix Component
- */
 function AdvantageMatrixView({ matrix }: { matrix: AdvantageMatrix }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -595,7 +661,7 @@ function AdvantageMatrixView({ matrix }: { matrix: AdvantageMatrix }) {
           <div>
             <div className="font-medium text-green-900">Strong Differentiation</div>
             <div className="text-sm text-green-700 mt-1">
-              Your development has {matrix.overallScore} advantage points over competitors. 
+              Your development has {matrix.overallScore} advantage points over competitors.
               Key differentiators: {matrix.keyDifferentiators.join(', ')}.
             </div>
           </div>
@@ -605,9 +671,6 @@ function AdvantageMatrixView({ matrix }: { matrix: AdvantageMatrix }) {
   );
 }
 
-/**
- * Aging Competitor Tracker Component
- */
 function AgingCompetitorTracker({ agingCompetitors }: { agingCompetitors: CompetitorProperty[] }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -687,9 +750,6 @@ function AgingCompetitorTracker({ agingCompetitors }: { agingCompetitors: Compet
   );
 }
 
-/**
- * Waitlist Intelligence Component
- */
 function WaitlistIntelligence({ waitlistProperties }: { waitlistProperties: WaitlistProperty[] }) {
   const avgRent = waitlistProperties.reduce((sum, p) => sum + p.avgRent, 0) / waitlistProperties.length;
 

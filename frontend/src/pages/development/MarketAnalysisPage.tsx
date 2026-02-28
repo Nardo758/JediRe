@@ -23,13 +23,13 @@ export const MarketAnalysisPage: React.FC = () => {
   });
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   
-  // Fetch market data
   const {
     demandData,
     amenityData,
     demographicData,
     aiInsights,
     isLoading,
+    dataSource,
     refetch
   } = useMarketAnalysisData(dealId || '', selectedRadius);
   
@@ -91,9 +91,20 @@ export const MarketAnalysisPage: React.FC = () => {
                 <ArrowLeft className="w-5 h-5 text-gray-600" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Market Analysis
-                </h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Market Analysis
+                  </h1>
+                  {dataSource === 'live' ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
+                      LIVE
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                      SAMPLE
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500 mt-1">
                   Development Intelligence • Atlanta Market
                 </p>
