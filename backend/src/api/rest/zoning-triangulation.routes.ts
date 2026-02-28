@@ -632,7 +632,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
     );
 
     const dealResult = await pool.query(
-      `SELECT name, address, state FROM deals WHERE id = $1`,
+      `SELECT name, address, state, project_type FROM deals WHERE id = $1`,
       [dealId]
     );
 
@@ -684,7 +684,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
 
     const benchmarkFields = `address, land_acres, unit_count, building_sf, total_sf, density_achieved, far_achieved,
                 lot_coverage_achieved, assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
-                total_entitlement_days, municipality, county`;
+                total_entitlement_days, municipality, county, project_name, stories, source_url, docket_number,
+                ordinance_url, project_type`;
 
     let projects: any[] = [];
     let searchScope: string | null = null;
@@ -873,11 +874,39 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
 
     const nearbyStats = nearbyProjects.length > 0 ? computeGroupStats(nearbyProjects) : null;
 
+    const subjectAcres = profile.lot_area_sf ? parseFloat(profile.lot_area_sf) / 43560 : null;
+    const subjectProjectType = deal.project_type || null;
+
+    const computeSimilarity = (p: any) => {
+      let score = 0;
+      const pAcres = p.land_acres != null ? parseFloat(p.land_acres) : null;
+      if (subjectAcres && subjectAcres > 0 && pAcres && pAcres > 0) {
+        score += (1 - Math.min(Math.abs(pAcres - subjectAcres) / subjectAcres, 1)) * 40;
+      }
+      const pUnits = p.unit_count != null ? parseInt(p.unit_count) : null;
+      const subjectMaxUnits = zonedMaxDensity && subjectAcres ? Math.round(zonedMaxDensity * subjectAcres) : null;
+      if (subjectMaxUnits && subjectMaxUnits > 0 && pUnits && pUnits > 0) {
+        score += (1 - Math.min(Math.abs(pUnits - subjectMaxUnits) / subjectMaxUnits, 1)) * 20;
+      }
+      if (municipality && p.municipality && p.municipality.toUpperCase() === municipality.toUpperCase()) {
+        score += 15;
+      }
+      if (subjectProjectType && p.project_type && p.project_type.toLowerCase() === subjectProjectType.toLowerCase()) {
+        score += 15;
+      }
+      if (currentCode && p.zoning_to && p.zoning_to.toUpperCase() === currentCode.toUpperCase()) {
+        score += 10;
+      }
+      return Math.round(score * 10) / 10;
+    };
+
     const cleanProjectMapper = (p: any, matchType: string) => ({
       address: p.address,
+      projectName: p.project_name || null,
       landAcres: p.land_acres != null ? parseFloat(p.land_acres) : null,
       unitCount: p.unit_count != null ? parseInt(p.unit_count) : null,
       buildingSf: p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : null),
+      stories: p.stories != null ? parseInt(p.stories) : null,
       densityAchieved: p.density_achieved != null ? parseFloat(p.density_achieved) : null,
       farAchieved: p.far_achieved != null ? parseFloat(p.far_achieved) : null,
       lotCoverageAchieved: p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : null,
@@ -889,11 +918,21 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
       docketNumber: p.docket_number || null,
       ordinanceUrl: p.ordinance_url || null,
+      sourceUrl: p.source_url || null,
       matchType,
+      similarityScore: computeSimilarity(p),
     });
 
-    const projectsClean = projects.map(p => cleanProjectMapper(p, 'code'));
-    const nearbyProjectsClean = nearbyProjects.map(p => cleanProjectMapper(p, 'nearby'));
+    const projectsClean = projects.map(p => cleanProjectMapper(p, 'code'))
+      .sort((a, b) => b.similarityScore - a.similarityScore)
+      .slice(0, 10);
+    const nearbyProjectsClean = nearbyProjects.map(p => cleanProjectMapper(p, 'nearby'))
+      .sort((a, b) => b.similarityScore - a.similarityScore)
+      .slice(0, 10);
+
+    const allRankedProjects = [...projectsClean, ...nearbyProjectsClean]
+      .sort((a, b) => b.similarityScore - a.similarityScore);
+    const bestComparable = allRankedProjects.length > 0 ? allRankedProjects[0] : null;
 
     let rezoneFromCurrent: any = null;
     if (currentCode) {
@@ -956,6 +995,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         codeMatchCount: projects.length,
         nearbyMatchCount: nearbyProjects.length,
         statsSource: projects.length > 0 ? 'code' : 'nearby',
+        bestComparable,
       },
     });
   } catch (error: any) {
