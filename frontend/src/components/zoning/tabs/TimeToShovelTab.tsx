@@ -72,33 +72,44 @@ interface TimeToShovelTabProps {
   deal?: any;
 }
 
-function DealContextBar({ deal, developmentPath, unitCount, municipality }: { deal?: any; developmentPath: string | null; unitCount: number; municipality: string }) {
-  const pathLabels: Record<string, string> = { by_right: 'By-Right', overlay_bonus: 'Overlay Bonus', variance: 'Variance', rezone: 'Full Rezone' };
+function DealContextBar({ deal, developmentPath, unitCount, municipality, onSelectPath }: { deal?: any; developmentPath: string | null; unitCount: number; municipality: string; onSelectPath: (path: string) => void }) {
+  const paths = [
+    { id: 'by_right', label: 'By-Right' },
+    { id: 'overlay_bonus', label: 'Overlay Bonus' },
+    { id: 'variance', label: 'Variance' },
+    { id: 'rezone', label: 'Rezone' },
+  ];
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</label>
           <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50 truncate">
             {deal?.name || deal?.address || 'No deal selected'}
           </div>
         </div>
-        <div>
+        <div className="md:col-span-2">
           <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Development Path</label>
-          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
-            {developmentPath ? `${pathLabels[developmentPath] || developmentPath} (${unitCount}u)` : 'Select path in Dev Capacity'}
+          <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-md p-1">
+            {paths.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onSelectPath(p.id)}
+                className={`flex-1 text-xs font-semibold px-2 py-1.5 rounded transition-all ${
+                  developmentPath === p.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
         <div>
           <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Jurisdiction</label>
           <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
             {municipality || 'Unknown'}
-          </div>
-        </div>
-        <div>
-          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Project Scale</label>
-          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
-            {unitCount > 0 ? `${unitCount} units` : 'TBD'}
           </div>
         </div>
       </div>
@@ -568,7 +579,7 @@ function JurisdictionComparisonSection({ jurisdictions, dataSource }: { jurisdic
 }
 
 export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps = {}) {
-  const { development_path, selected_envelope } = useZoningModuleStore();
+  const { development_path, selected_envelope, selectDevelopmentPath } = useZoningModuleStore();
 
   const [mcData, setMcData] = useState<MonteCarloData | null>(null);
   const [mcLoading, setMcLoading] = useState(false);
@@ -689,13 +700,13 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
 
   return (
     <div className="space-y-4">
-      <DealContextBar deal={deal} developmentPath={development_path} unitCount={unitCount} municipality={municipality} />
-
-      {!development_path && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-          <p className="text-sm text-blue-700">Select a development path in the Dev Capacity tab to run Monte Carlo simulations and AI timeline analysis.</p>
-        </div>
-      )}
+      <DealContextBar
+        deal={deal}
+        developmentPath={development_path}
+        unitCount={unitCount}
+        municipality={municipality}
+        onSelectPath={(pathId) => selectDevelopmentPath(pathId as any, selected_envelope)}
+      />
 
       <MonteCarloSection mcData={mcData} loading={mcLoading} error={mcError} onRerun={runSimulation} pathLabel={pathLabel} />
 
