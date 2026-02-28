@@ -920,7 +920,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               </span>
             </div>
 
-            <div className="px-5 py-4 space-y-4">
+            <div className="px-5 py-4 space-y-3">
               {avail === 'sparse' && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
                   <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -937,6 +937,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   No exact {currentCode} matches — showing nearby development data{municipality ? ` from ${municipality}` : ''}
                 </div>
               )}
+              <div className="grid grid-cols-2 gap-3">
               {sortedCodes.map((code) => {
                 const groupProjects = codeGroups[code];
                 const isDealCode = code === currentCode;
@@ -964,9 +965,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
                 return (
                   <div key={code} className={`rounded-lg border overflow-hidden ${isDealCode ? 'border-teal-200 bg-teal-50/20' : 'border-gray-200'}`}>
-                    <div className={`px-4 py-2.5 flex items-center justify-between ${isDealCode ? 'bg-teal-50 border-b border-teal-100' : 'bg-gray-50 border-b border-gray-100'}`}>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-bold ${isDealCode ? 'text-teal-800' : 'text-gray-700'}`}>{code}</span>
+                    <div className={`px-3 py-2 flex items-center justify-between ${isDealCode ? 'bg-teal-50 border-b border-teal-100' : 'bg-gray-50 border-b border-gray-100'}`}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[11px] font-bold ${isDealCode ? 'text-teal-800' : 'text-gray-700'}`}>{code}</span>
                         {isDealCode && (
                           <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200 font-medium">YOUR CODE</span>
                         )}
@@ -976,7 +977,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       </span>
                     </div>
 
-                    <div className="px-4 py-3 space-y-3">
+                    <div className="px-3 py-2 space-y-2">
                       {avgDensity != null && (
                         <div className="space-y-1.5">
                           <div className="text-[11px] font-medium text-gray-600">
@@ -984,19 +985,19 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                           </div>
                           <div className="space-y-1">
                             {cardZonedMax && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
-                                <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Code allows</span>
+                                <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                   <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedMax * barScale, 100)}%` }} />
-                                  <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedMax.toFixed(1)} units/ac</span>
+                                  <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-blue-800">{cardZonedMax.toFixed(1)} u/ac</span>
                                 </div>
                               </div>
                             )}
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
-                              <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Avg achieved</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                 <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgDensity * barScale, 100)}%` }} />
-                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{avgDensity.toFixed(1)} units/ac</span>
+                                <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-teal-800">{avgDensity.toFixed(1)} u/ac</span>
                               </div>
                             </div>
                           </div>
@@ -1021,19 +1022,19 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                             return (
                               <div className="space-y-1">
                                 {cardZonedFar != null && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Code allows</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                       <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedFar * fScale, 100)}%` }} />
-                                      <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedFar.toFixed(2)} FAR</span>
+                                      <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-blue-800">{cardZonedFar.toFixed(2)} FAR</span>
                                     </div>
                                   </div>
                                 )}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Avg achieved</span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                     <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgFar * fScale, 100)}%` }} />
-                                    <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{avgFar.toFixed(2)} FAR</span>
+                                    <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-teal-800">{avgFar.toFixed(2)} FAR</span>
                                   </div>
                                 </div>
                               </div>
@@ -1060,19 +1061,19 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                             return (
                               <div className="space-y-1">
                                 {cardZonedLotCov != null && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
-                                    <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Code allows</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                       <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedLotCov * lScale, 100)}%` }} />
-                                      <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedLotCov.toFixed(1)}%</span>
+                                      <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-blue-800">{cardZonedLotCov.toFixed(1)}%</span>
                                     </div>
                                   </div>
                                 )}
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
-                                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[9px] text-gray-500 w-16 text-right shrink-0">Avg achieved</span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden relative">
                                     <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgLotCov * lScale, 100)}%` }} />
-                                    <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{(avgLotCov * 100).toFixed(1)}%</span>
+                                    <span className="absolute inset-0 flex items-center justify-end pr-1.5 text-[8px] font-semibold text-teal-800">{(avgLotCov * 100).toFixed(1)}%</span>
                                   </div>
                                 </div>
                               </div>
@@ -1089,33 +1090,27 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       )}
 
                       {(avgBldgSf != null || avgLot != null) && (
-                        <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                          {avgBldgSf != null && <span>Avg Building SF: <span className="font-semibold text-gray-700">{formatNumber(Math.round(avgBldgSf))}</span></span>}
+                        <div className="flex items-center gap-2 text-[9px] text-gray-500">
+                          {avgBldgSf != null && <span>Avg Bldg: <span className="font-semibold text-gray-700">{formatNumber(Math.round(avgBldgSf))} SF</span></span>}
                           {avgBldgSf != null && avgLot != null && <span className="text-gray-300">|</span>}
                           {avgLot != null && <span>Avg Lot: <span className="font-semibold text-gray-700">{avgLot.toFixed(2)} ac</span></span>}
                         </div>
                       )}
 
-                      <div className="border-t border-gray-100 pt-2 space-y-1">
-                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Comparable Projects</div>
+                      <div className="border-t border-gray-100 pt-1.5 space-y-0.5">
+                        <div className="text-[9px] font-medium text-gray-400 uppercase tracking-wide">Projects</div>
                         {groupProjects.map((p: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                          <div key={i} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
-                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                              <div className="text-[11px] font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
+                              <div className="flex flex-wrap gap-x-2 gap-y-0 text-[9px] text-gray-500">
                                 {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
                                 {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
                                 {p.buildingSf != null && <span>{formatNumber(p.buildingSf)} SF</span>}
                                 {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
                               </div>
-                              {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                                <div className="flex flex-wrap gap-x-3 text-[10px] text-gray-500">
-                                  {p.farAchieved != null && <span>FAR: {p.farAchieved.toFixed(2)}</span>}
-                                  {p.lotCoverageAchieved != null && <span>Lot Cov: {(p.lotCoverageAchieved * 100).toFixed(1)}%</span>}
-                                </div>
-                              )}
                               {(p.zoningFrom || p.zoningTo) && (
-                                <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                                <div className="flex items-center gap-1 text-[9px] text-gray-400">
                                   {p.zoningFrom && <span>{p.zoningFrom}</span>}
                                   {p.zoningFrom && p.zoningTo && <span>→</span>}
                                   {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
@@ -1123,11 +1118,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 </div>
                               )}
                             </div>
-                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-3">
+                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-2">
                               {p.densityAchieved != null && (
-                                <span className="text-xs font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
+                                <span className="text-[11px] font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
                               )}
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                              <span className={`text-[8px] px-1 py-0.5 rounded border ${
                                 p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
                                 p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
                                 p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
@@ -1141,6 +1136,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </div>
                 );
               })}
+              </div>
 
               {rezoneFrom && rezoneFrom.projectCount > 0 && (
                 <div className="space-y-2 pt-2 border-t border-gray-100">
