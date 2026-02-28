@@ -34,7 +34,7 @@ Key features include:
 -   **Building Envelope Service:** Universal calculation engine for 6 property types, including Highest & Best Use analysis and Claude-powered optimization.
 -   **Zoning Intelligence Module (Constraint Set + Scenarios):** Manages resolved constraint sets and user-defined development programs, including rezone scenarios.
 -   **Highest & Best Use (HBU) Analysis:** Auto-loads and ranks 6 property types by estimated value, showing rezone opportunities.
--   **Entitlement Strategy:** Consolidates by-right, variance, and rezone analysis, providing data-driven recommendations.
+-   **Entitlement Strategy:** Consolidates by-right, variance, and rezone analysis, providing data-driven recommendations. The `compare` method now falls back to `resolveConstraints` (DB → agent service) when the zoning profile has no constraint data, ensuring math fields populate even when the profile row has all-null values.
 -   **Module Wiring System:** Cross-module orchestration infrastructure for data flow, event management, and strategy arbitrage.
 -   **Capital Structure Engine:** Full capital stack design with a 7-tab frontend component, backend service, and 13 REST endpoints.
 -   **Traffic Engine:** Upgraded with a 7-metric leasing funnel, EMA learning loop, 10-year projections, and a 6-tab frontend, integrated with the ProForma.
