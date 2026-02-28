@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { MunicodeLink } from '../SourceCitation';
@@ -141,6 +142,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const variancePctRef = useRef(variancePct);
   const rezoneTargetCodeRef = useRef(rezoneTargetCode);
   const initialLoadDone = useRef(false);
+  const recsAbortRef = useRef<AbortController | null>(null);
+  const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -181,15 +184,20 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       if (profileData.exists) {
         setLoadingRecs(true);
         try {
+          recsAbortRef.current?.abort();
+          const controller = new AbortController();
+          recsAbortRef.current = controller;
           const params: any = {};
           if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
           if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
-          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000 });
+          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
           setRecommendations(recsRes.data.recommendations || []);
           setComparison(recsRes.data.comparison || null);
-        } catch {
-          setRecommendations([]);
-          setComparison(null);
+        } catch (err) {
+          if (!isCancelled(err)) {
+            setRecommendations([]);
+            setComparison(null);
+          }
         } finally {
           setLoadingRecs(false);
         }
@@ -226,6 +234,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   useEffect(() => { loadData(); }, [loadData]);
 
   useEffect(() => {
+    return () => { recsAbortRef.current?.abort(); };
+  }, []);
+
+  useEffect(() => {
     variancePctRef.current = variancePct;
     rezoneTargetCodeRef.current = rezoneTargetCode;
     if (!dealId || !profile) return;
@@ -234,23 +246,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       return;
     }
     const timer = setTimeout(async () => {
+      recsAbortRef.current?.abort();
+      const controller = new AbortController();
+      recsAbortRef.current = controller;
       setLoadingRecs(true);
       try {
         const params: any = {};
         if (variancePct !== 20) params.variance_density_pct = variancePct;
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
-        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000 });
+        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
         setRecommendations(recsRes.data.recommendations || []);
         setComparison(recsRes.data.comparison || null);
-      } catch {
-        setRecommendations([]);
-        setComparison(null);
+      } catch (err) {
+        if (!isCancelled(err)) {
+          setRecommendations([]);
+          setComparison(null);
+        }
       } finally {
         setLoadingRecs(false);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [variancePct, rezoneTargetCode, dealId, profile]);
+  }, [variancePct, rezoneTargetCode, dealId]);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
