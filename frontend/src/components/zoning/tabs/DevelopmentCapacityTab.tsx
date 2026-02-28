@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '../../../services/api.client';
 import PathSelection from './PathSelection';
-import PathComparisonTable from './PathComparisonTable';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { MunicodeLink } from '../SourceCitation';
 
@@ -88,6 +87,8 @@ interface Scenario {
   applied_far: number | null;
   binding_constraint: string | null;
   flags: string[];
+  target_district_id: string | null;
+  target_district_code: string | null;
 }
 
 interface DevelopmentCapacityTabProps {
@@ -152,6 +153,15 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [newOfficePct, setNewOfficePct] = useState(0);
   const [newUnitSize, setNewUnitSize] = useState(900);
   const [newEfficiency, setNewEfficiency] = useState(0.85);
+  const [newZoningCode, setNewZoningCode] = useState('');
+  const [newZoningLookupResult, setNewZoningLookupResult] = useState<any>(null);
+  const [newZoningLookupLoading, setNewZoningLookupLoading] = useState(false);
+  const [newZoningLookupMessage, setNewZoningLookupMessage] = useState('');
+  const [editingScenarioCode, setEditingScenarioCode] = useState<string | null>(null);
+  const [scenarioCodeInput, setScenarioCodeInput] = useState('');
+  const [scenarioCodeLookupResult, setScenarioCodeLookupResult] = useState<any>(null);
+  const [scenarioCodeLookupLoading, setScenarioCodeLookupLoading] = useState(false);
+  const [scenarioCodeLookupMessage, setScenarioCodeLookupMessage] = useState('');
   const [editingConstraint, setEditingConstraint] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [changingAssetType, setChangingAssetType] = useState(false);
@@ -160,13 +170,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [resolving, setResolving] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
-  const [showRecommendations, setShowRecommendations] = useState(true);
   const [entitlementStrategy, setEntitlementStrategy] = useState<any>(null);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
   const [rezoneAnalysis, setRezoneAnalysis] = useState<any>(null);
   const [loadingRezone, setLoadingRezone] = useState(false);
   const [enrichment, setEnrichment] = useState<EnvelopeEnrichment | null>(null);
-  const [showCalculations, setShowCalculations] = useState(false);
   const rezoneScenarioCreatedRef = useRef(false);
   const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
   const [loadingBenchmarks, setLoadingBenchmarks] = useState(false);
@@ -285,6 +293,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   efficiency_factor: 0.85,
                   is_active: false,
                   target_district_id: best.targetDistrictId || null,
+                  target_district_code: best.targetDistrictCode || null,
                 });
                 const refreshRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
                 scenariosList = refreshRes.data.scenarios || [];
@@ -322,6 +331,59 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   };
 
+  const lookupZoningCode = async (code: string, target: 'new' | 'edit') => {
+    if (!dealId || !code.trim()) {
+      if (target === 'new') {
+        setNewZoningLookupResult(null);
+        setNewZoningLookupMessage('');
+      } else {
+        setScenarioCodeLookupResult(null);
+        setScenarioCodeLookupMessage('');
+      }
+      return;
+    }
+    if (target === 'new') {
+      setNewZoningLookupLoading(true);
+      setNewZoningLookupMessage('');
+    } else {
+      setScenarioCodeLookupLoading(true);
+      setScenarioCodeLookupMessage('');
+    }
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/lookup-district`, {
+        params: { code: code.trim() },
+      });
+      if (target === 'new') {
+        if (res.data.found) {
+          setNewZoningLookupResult(res.data.district);
+          setNewZoningLookupMessage('');
+        } else {
+          setNewZoningLookupResult(null);
+          setNewZoningLookupMessage(res.data.message || 'Code not in database — enter constraints manually');
+        }
+      } else {
+        if (res.data.found) {
+          setScenarioCodeLookupResult(res.data.district);
+          setScenarioCodeLookupMessage('');
+        } else {
+          setScenarioCodeLookupResult(null);
+          setScenarioCodeLookupMessage(res.data.message || 'Code not in database — enter constraints manually');
+        }
+      }
+    } catch {
+      if (target === 'new') {
+        setNewZoningLookupResult(null);
+        setNewZoningLookupMessage('Failed to look up code');
+      } else {
+        setScenarioCodeLookupResult(null);
+        setScenarioCodeLookupMessage('Failed to look up code');
+      }
+    } finally {
+      if (target === 'new') setNewZoningLookupLoading(false);
+      else setScenarioCodeLookupLoading(false);
+    }
+  };
+
   const handleCreateScenario = async () => {
     if (!dealId) return;
     try {
@@ -331,6 +393,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         avg_unit_size_sf: newUnitSize,
         efficiency_factor: newEfficiency,
         is_active: scenarios.length === 0,
+        target_district_code: newZoningCode.trim() || null,
       });
       setShowAddScenario(false);
       setNewScenarioName('');
@@ -339,9 +402,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       setNewOfficePct(0);
       setNewUnitSize(900);
       setNewEfficiency(0.85);
+      setNewZoningCode('');
+      setNewZoningLookupResult(null);
+      setNewZoningLookupMessage('');
       await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to create scenario');
+    }
+  };
+
+  const handleUpdateScenarioCode = async (scenarioId: string, code: string) => {
+    if (!dealId) return;
+    try {
+      await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}`, {
+        target_district_code: code.trim() || null,
+      });
+      setEditingScenarioCode(null);
+      setScenarioCodeInput('');
+      setScenarioCodeLookupResult(null);
+      setScenarioCodeLookupMessage('');
+      await loadData(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to update scenario zoning code');
     }
   };
 
@@ -539,96 +621,222 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {isConditionalVariant && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
-          <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-          </svg>
-          <div>
-            <p className="text-sm font-medium text-amber-800">Conditional Variant Detected ({profile.base_district_code})</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              The "-C" suffix indicates a conditional ordinance from City Council that may impose additional restrictions. Standards inherited from base district. Review the conditional ordinance before finalizing.
-            </p>
-          </div>
-        </div>
-      )}
-
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Constraint Set</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Resolved zoning constraints. Click the pencil icon to override.
-              {profile.density_method === 'far_derived' && (
-                <span className="ml-2 text-blue-600 font-medium">Density: FAR-derived (no cap)</span>
-              )}
-            </p>
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Zoning Constraint Matrix</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                All constraints in one view. Click the pencil icon to override values.
+                {profile.density_method === 'far_derived' && (
+                  <span className="ml-2 text-blue-600 font-medium">Density: FAR-derived (no cap)</span>
+                )}
+              </p>
+            </div>
+            {enrichment?.limitingFactor && (
+              <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 font-medium flex-shrink-0">
+                Controlling: {getLimitingLabel(enrichment.limitingFactor)}
+              </span>
+            )}
           </div>
+          {isConditionalVariant && (
+            <div className="mt-2 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
+              <svg className="h-4 w-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <p className="text-[11px] text-amber-800">
+                <span className="font-medium">Conditional Variant ({profile.base_district_code}):</span>{' '}
+                The "-C" suffix indicates a conditional ordinance. Standards inherited from base district. Review before finalizing.
+              </p>
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-3 gap-px bg-gray-100">
-          {constraintRows.map(row => {
-            const isOverridden = profile.user_overrides?.[row.field] != null;
-            const displayValue = row.value != null ? `${row.value}${row.suffix}` : '--';
-            const sourceKey = fieldToSourceKey[row.field];
-            const source = enrichment?.sources?.[sourceKey];
-            return (
-              <div key={row.field} className={`bg-white p-3 relative group ${isOverridden ? 'ring-1 ring-inset ring-purple-200' : ''}`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-xs text-gray-500">{row.label}</p>
-                    {source?.sectionNumber && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50/50">
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Constraint</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Zoned Value</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Citation</th>
+                <th className="text-right px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Capacity</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[35%]">Formula</th>
+                <th className="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Controlling</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const capacityKeyMap: Record<string, string> = {
+                  applied_far: 'byFAR',
+                  residential_far: 'byFAR',
+                  max_density_per_acre: 'byDensity',
+                  max_height_ft: 'byHeight',
+                  min_parking_per_unit: 'byParking',
+                };
+                const limitingFieldMap: Record<string, string[]> = {
+                  FAR: ['applied_far', 'residential_far', 'nonresidential_far', 'combined_far'],
+                  density: ['max_density_per_acre'],
+                  height: ['max_height_ft', 'max_stories'],
+                  parking: ['min_parking_per_unit'],
+                };
+                const calcNameFieldMap: Record<string, string[]> = {
+                  applied_far: ['far', 'floor area', 'gba by far'],
+                  residential_far: ['far', 'floor area', 'residential far'],
+                  nonresidential_far: ['nonresidential far'],
+                  combined_far: ['combined far'],
+                  max_density_per_acre: ['density', 'units by density'],
+                  max_height_ft: ['height', 'stories by height'],
+                  max_stories: ['stories', 'height'],
+                  max_lot_coverage_pct: ['lot coverage', 'footprint', 'max footprint'],
+                  min_parking_per_unit: ['parking'],
+                  open_space_pct: ['open space'],
+                };
+
+                return constraintRows.map(row => {
+                  const isOverridden = profile.user_overrides?.[row.field] != null;
+                  const displayValue = row.value != null ? `${row.value}${row.suffix}` : '--';
+                  const sourceKey = fieldToSourceKey[row.field];
+                  const source = enrichment?.sources?.[sourceKey];
+                  const capacityKey = capacityKeyMap[row.field];
+                  const capacity = capacityKey ? enrichment?.capacityByConstraint?.[capacityKey as keyof typeof enrichment.capacityByConstraint] : null;
+                  const isControlling = enrichment?.limitingFactor ? (limitingFieldMap[enrichment.limitingFactor] || []).includes(row.field) : false;
+                  const matchingCalc = enrichment?.calculations?.find(calc => {
+                    const keywords = calcNameFieldMap[row.field] || [];
+                    const calcNameLower = calc.name.toLowerCase();
+                    return keywords.some(kw => calcNameLower.includes(kw));
+                  });
+
+                  return (
+                    <tr
+                      key={row.field}
+                      className={`border-b border-gray-50 group hover:bg-gray-50/50 ${isControlling ? 'bg-red-50/40' : ''}`}
+                    >
+                      <td className={`px-4 py-2.5 ${isControlling ? 'border-l-3 border-l-red-400' : ''}`}>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-xs font-medium ${isControlling ? 'text-red-800' : 'text-gray-700'}`}>{row.label}</span>
+                          {isOverridden && <span className="text-[9px] text-purple-500 bg-purple-50 px-1 rounded">override</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          {editingConstraint === row.field ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="w-20 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                autoFocus
+                              />
+                              <button onClick={() => handleSaveOverride(row.field)} className="text-green-600 hover:text-green-800">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              </button>
+                              <button onClick={() => setEditingConstraint(null)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <span className={`text-sm font-semibold ${isOverridden ? 'text-purple-700' : isControlling ? 'text-red-800' : row.field === 'applied_far' ? 'text-blue-700' : 'text-gray-900'}`}>
+                                {displayValue}
+                              </span>
+                              <button
+                                onClick={() => { setEditingConstraint(row.field); setEditValue(String(row.value ?? '')); }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
+                                title="Override this constraint"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {source?.sectionNumber ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (source.sourceUrl) window.open(source.sourceUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer transition-colors"
+                            title={source.sectionTitle ? `${source.sectionNumber} — ${source.sectionTitle}` : source.sectionNumber || ''}
+                          >
+                            §{source.sectionNumber}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {capacity != null ? (
+                          <span className={`text-xs font-semibold ${isControlling ? 'text-red-700' : 'text-gray-900'}`}>
+                            {formatNumber(capacity)} units
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {matchingCalc ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-500 font-mono truncate">{matchingCalc.formula}</span>
+                            {matchingCalc.sectionNumber && (
+                              <button
+                                onClick={() => {
+                                  if (matchingCalc.sourceUrl) window.open(matchingCalc.sourceUrl, '_blank', 'noopener,noreferrer');
+                                }}
+                                className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer flex-shrink-0"
+                              >
+                                §{matchingCalc.sectionNumber}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {isControlling && (
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                            <svg className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                            </svg>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
+              <tr className="bg-gray-50/50">
+                <td className="px-4 py-2.5">
+                  <span className="text-xs font-medium text-gray-700">Setbacks</span>
+                </td>
+                <td className="px-4 py-2.5" colSpan={4}>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="text-xs text-gray-600">Front: <span className="font-semibold text-gray-900">{profile.setback_front_ft ?? '--'} ft</span></span>
+                    <span className="text-xs text-gray-600">Side: <span className="font-semibold text-gray-900">{profile.setback_side_ft ?? '--'} ft</span></span>
+                    <span className="text-xs text-gray-600">Rear: <span className="font-semibold text-gray-900">{profile.setback_rear_ft ?? '--'} ft</span></span>
+                    {enrichment?.sources?.frontSetback?.sectionNumber && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (source.sourceUrl) window.open(source.sourceUrl, '_blank', 'noopener,noreferrer');
+                        onClick={() => {
+                          if (enrichment.sources.frontSetback.sourceUrl) window.open(enrichment.sources.frontSetback.sourceUrl, '_blank', 'noopener,noreferrer');
                         }}
-                        className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer transition-colors"
-                        title={source.sectionTitle ? `${source.sectionNumber} — ${source.sectionTitle}` : source.sectionNumber || ''}
+                        className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
                       >
-                        <span>§{source.sectionNumber}</span>
+                        §{enrichment.sources.frontSetback.sectionNumber}
                       </button>
                     )}
                   </div>
-                  <button
-                    onClick={() => { setEditingConstraint(row.field); setEditValue(String(row.value ?? '')); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
-                    title="Override this constraint"
-                  >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                </div>
-                {editingConstraint === row.field ? (
-                  <div className="flex items-center gap-1 mt-1">
-                    <input
-                      type="number"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      className="w-20 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      autoFocus
-                    />
-                    <button onClick={() => handleSaveOverride(row.field)} className="text-green-600 hover:text-green-800">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                    </button>
-                    <button onClick={() => setEditingConstraint(null)} className="text-gray-400 hover:text-gray-600">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
-                  </div>
-                ) : (
-                  <p className={`text-sm font-semibold ${isOverridden ? 'text-purple-700' : row.field === 'applied_far' ? 'text-blue-700' : 'text-gray-900'}`}>
-                    {displayValue}
-                  </p>
-                )}
-                {isOverridden && (
-                  <span className="text-[9px] text-purple-500">User override</span>
-                )}
-              </div>
-            );
-          })}
+                </td>
+                <td className="px-4 py-2.5" />
+              </tr>
+            </tbody>
+          </table>
         </div>
         {hasHeightBuffer && (
-          <div className="border-t border-gray-100 px-5 py-3 bg-blue-50">
+          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50">
             <p className="text-xs text-blue-800">
               <span className="font-medium">Height Buffer Rule:</span>{' '}
               {profile.max_height_ft} ft within {profile.height_buffer_ft} ft of residential districts;{' '}
@@ -636,86 +844,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </p>
           </div>
         )}
-        <div className="border-t border-gray-100 px-5 py-3 bg-gray-50">
-          <div className="flex items-center gap-4 flex-wrap">
-            <p className="text-xs text-gray-500">
-              Setbacks: Front {profile.setback_front_ft ?? '--'}ft, Side {profile.setback_side_ft ?? '--'}ft, Rear {profile.setback_rear_ft ?? '--'}ft
-            </p>
-            {enrichment?.sources?.frontSetback?.sectionNumber && (
-              <button
-                onClick={() => {
-                  if (enrichment.sources.frontSetback.sourceUrl) window.open(enrichment.sources.frontSetback.sourceUrl, '_blank', 'noopener,noreferrer');
-                }}
-                className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
-              >
-                §{enrichment.sources.frontSetback.sectionNumber}
-              </button>
-            )}
+        {enrichment?.insights?.controllingFactor && (
+          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50/50">
+            <p className="text-xs text-blue-800">{enrichment.insights.controllingFactor}</p>
           </div>
-        </div>
+        )}
       </div>
-
-      {enrichment?.insights?.controllingFactor && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-3 flex items-start gap-3">
-          <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center mt-0.5">
-            <svg className="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-bold text-blue-900">Controlling Factor</h4>
-            <p className="text-xs text-blue-700 mt-0.5">{enrichment.insights.controllingFactor}</p>
-          </div>
-          <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 font-medium flex-shrink-0">
-            {getLimitingLabel(enrichment.limitingFactor)}
-          </span>
-        </div>
-      )}
-
-      {enrichment?.calculations && enrichment.calculations.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => setShowCalculations(!showCalculations)}
-            className="w-full px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between"
-          >
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Calculation Breakdowns</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Step-by-step formulas showing how capacity was derived</p>
-            </div>
-            <svg className={`h-4 w-4 text-gray-400 transition-transform ${showCalculations ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {showCalculations && (
-            <div className="divide-y divide-gray-100">
-              {enrichment.calculations.map((calc, i) => (
-                <div key={i} className="px-5 py-3 flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-900">{calc.name}</span>
-                      {calc.sectionNumber && (
-                        <button
-                          onClick={() => {
-                            if (calc.sourceUrl) window.open(calc.sourceUrl, '_blank', 'noopener,noreferrer');
-                          }}
-                          className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
-                        >
-                          §{calc.sectionNumber}
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-0.5 font-mono">{calc.formula}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <span className="text-sm font-bold text-gray-900">{calc.result.toLocaleString()}</span>
-                    <span className="text-[10px] text-gray-400 ml-1">{calc.unit}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
@@ -726,7 +860,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </p>
           </div>
           <button
-            onClick={() => setShowAddScenario(true)}
+            onClick={() => { setShowAddScenario(true); setNewZoningCode(profile.base_district_code || ''); }}
             className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 flex items-center gap-1"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -738,7 +872,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
         {showAddScenario && (
           <div className="border-b border-gray-200 px-5 py-4 bg-blue-50/30">
-            <div className="grid grid-cols-2 gap-4 mb-3">
+            <div className="grid grid-cols-3 gap-4 mb-3">
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Scenario Name</label>
                 <input
@@ -750,6 +884,34 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 />
               </div>
               <div>
+                <label className="text-xs font-medium text-gray-600 block mb-1">Zoning Code</label>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newZoningCode}
+                    onChange={(e) => setNewZoningCode(e.target.value)}
+                    onBlur={() => { if (newZoningCode.trim()) lookupZoningCode(newZoningCode, 'new'); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && newZoningCode.trim()) lookupZoningCode(newZoningCode, 'new'); }}
+                    placeholder={profile.base_district_code || 'e.g., MRC-3'}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  {newZoningLookupLoading && (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 flex-shrink-0" />
+                  )}
+                </div>
+                {newZoningLookupResult && (
+                  <span className="text-[10px] text-green-600 mt-0.5 block">
+                    ✓ Found: {newZoningLookupResult.zoning_code || newZoningLookupResult.district_code} — constraints will auto-fill
+                  </span>
+                )}
+                {newZoningLookupMessage && (
+                  <span className="text-[10px] text-amber-600 mt-0.5 block">{newZoningLookupMessage}</span>
+                )}
+                {!newZoningCode.trim() && profile.base_district_code && (
+                  <span className="text-[10px] text-gray-400 mt-0.5 block">Leave blank to use current code ({profile.base_district_code})</span>
+                )}
+              </div>
+              <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Avg Unit Size (SF)</label>
                 <input
                   type="number"
@@ -759,6 +921,31 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 />
               </div>
             </div>
+            {newZoningLookupResult && (
+              <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                <p className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Auto-filled from {newZoningLookupResult.zoning_code || newZoningLookupResult.district_code}</p>
+                <div className="grid grid-cols-4 gap-3 text-[11px]">
+                  {newZoningLookupResult.max_far != null && (
+                    <div><span className="text-gray-500">FAR:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_far}</span></div>
+                  )}
+                  {(newZoningLookupResult.max_density_per_acre || newZoningLookupResult.max_units_per_acre) != null && (
+                    <div><span className="text-gray-500">Density:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_density_per_acre || newZoningLookupResult.max_units_per_acre} u/ac</span></div>
+                  )}
+                  {(newZoningLookupResult.max_height_feet || newZoningLookupResult.max_building_height_ft) != null && (
+                    <div><span className="text-gray-500">Height:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_height_feet || newZoningLookupResult.max_building_height_ft} ft</span></div>
+                  )}
+                  {newZoningLookupResult.max_stories != null && (
+                    <div><span className="text-gray-500">Stories:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_stories}</span></div>
+                  )}
+                  {(newZoningLookupResult.max_lot_coverage || newZoningLookupResult.max_lot_coverage_percent) != null && (
+                    <div><span className="text-gray-500">Lot Coverage:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_lot_coverage || newZoningLookupResult.max_lot_coverage_percent}%</span></div>
+                  )}
+                  {(newZoningLookupResult.min_parking_per_unit || newZoningLookupResult.parking_per_unit) != null && (
+                    <div><span className="text-gray-500">Parking:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.min_parking_per_unit || newZoningLookupResult.parking_per_unit}/unit</span></div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-4 gap-4 mb-3">
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Residential %</label>
@@ -799,7 +986,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </div>
             <div className="flex items-center gap-2">
               <button onClick={handleCreateScenario} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">Create</button>
-              <button onClick={() => setShowAddScenario(false)} className="px-4 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">Cancel</button>
+              <button onClick={() => { setShowAddScenario(false); setNewZoningCode(''); setNewZoningLookupResult(null); setNewZoningLookupMessage(''); }} className="px-4 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">Cancel</button>
               {newResidentialPct + newRetailPct + newOfficePct !== 100 && (
                 <span className="text-xs text-amber-600">Use mix must total 100% (currently {newResidentialPct + newRetailPct + newOfficePct}%)</span>
               )}
@@ -901,6 +1088,65 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   {isExpanded && (
                     <div className="px-5 pb-4">
                       <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
+                        <div className="flex justify-between items-center py-1 border-b border-gray-200">
+                          <span className="text-gray-600">Zoning Code</span>
+                          {editingScenarioCode === scenario.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={scenarioCodeInput}
+                                onChange={(e) => setScenarioCodeInput(e.target.value)}
+                                onBlur={() => { if (scenarioCodeInput.trim()) lookupZoningCode(scenarioCodeInput, 'edit'); }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleUpdateScenarioCode(scenario.id, scenarioCodeInput);
+                                  if (e.key === 'Escape') { setEditingScenarioCode(null); setScenarioCodeLookupResult(null); setScenarioCodeLookupMessage(''); }
+                                }}
+                                placeholder={profile.base_district_code || 'Enter code'}
+                                className="w-32 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                autoFocus
+                              />
+                              {scenarioCodeLookupLoading && (
+                                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500 flex-shrink-0" />
+                              )}
+                              <button onClick={() => handleUpdateScenarioCode(scenario.id, scenarioCodeInput)} className="text-green-600 hover:text-green-800">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              </button>
+                              <button onClick={() => { setEditingScenarioCode(null); setScenarioCodeLookupResult(null); setScenarioCodeLookupMessage(''); }} className="text-gray-400 hover:text-gray-600">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-gray-900">{scenario.target_district_code || profile.base_district_code || '--'}</span>
+                              {scenario.target_district_code && scenario.target_district_code !== profile.base_district_code && (
+                                <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">Target</span>
+                              )}
+                              <button
+                                onClick={() => { setEditingScenarioCode(scenario.id); setScenarioCodeInput(scenario.target_district_code || profile.base_district_code || ''); }}
+                                className="text-gray-400 hover:text-blue-600"
+                                title="Change zoning code"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {editingScenarioCode === scenario.id && scenarioCodeLookupResult && (
+                          <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5 text-[11px]">
+                            <span className="text-green-600 font-medium">✓ Found: {scenarioCodeLookupResult.zoning_code || scenarioCodeLookupResult.district_code}</span>
+                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-gray-600">
+                              {scenarioCodeLookupResult.max_far != null && <span>FAR: {scenarioCodeLookupResult.max_far}</span>}
+                              {(scenarioCodeLookupResult.max_density_per_acre || scenarioCodeLookupResult.max_units_per_acre) != null && <span>Density: {scenarioCodeLookupResult.max_density_per_acre || scenarioCodeLookupResult.max_units_per_acre} u/ac</span>}
+                              {(scenarioCodeLookupResult.max_height_feet || scenarioCodeLookupResult.max_building_height_ft) != null && <span>Height: {scenarioCodeLookupResult.max_height_feet || scenarioCodeLookupResult.max_building_height_ft} ft</span>}
+                              {scenarioCodeLookupResult.max_stories != null && <span>Stories: {scenarioCodeLookupResult.max_stories}</span>}
+                            </div>
+                          </div>
+                        )}
+                        {editingScenarioCode === scenario.id && scenarioCodeLookupMessage && (
+                          <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1">{scenarioCodeLookupMessage}</div>
+                        )}
                         <div className="flex justify-between py-1 border-b border-gray-200">
                           <span className="text-gray-600">Use Mix</span>
                           <span className="font-medium text-gray-900">{mixLabel}</span>
@@ -976,6 +1222,128 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                             )}
                           </div>
                         )}
+
+                        {(() => {
+                          const scenarioCode = scenario.target_district_code || profile.base_district_code;
+                          const isRezone = scenario.target_district_code && scenario.target_district_code !== profile.base_district_code;
+
+                          let refProjects: any[] = [];
+
+                          if (isRezone && rezoneAnalysis?.bestTarget?.evidence?.examples) {
+                            const rezoneExamples = rezoneAnalysis.bestTarget.evidence.examples
+                              .filter((ex: any) => ex.toZone === scenario.target_district_code)
+                              .map((ex: any) => ({
+                                address: ex.address || ex.docketNumber || 'Rezone project',
+                                landAcres: ex.landAcres ?? ex.lotAcres ?? null,
+                                unitCount: ex.unitCount ?? ex.units ?? null,
+                                buildingSf: ex.buildingSf ?? ex.building_sf ?? null,
+                                farAchieved: ex.farAchieved ?? ex.far_achieved ?? null,
+                                lotCoverageAchieved: ex.lotCoverageAchieved ?? ex.lot_coverage_achieved ?? null,
+                                assessedValue: ex.assessedValue ?? ex.assessed_value ?? null,
+                                densityAchieved: ex.densityAchieved ?? (ex.unitCount && ex.landAcres ? ex.unitCount / ex.landAcres : null),
+                                source: 'rezone',
+                              }));
+                            refProjects = [...refProjects, ...rezoneExamples];
+                          }
+
+                          if (densityBenchmarks?.projects) {
+                            const benchProjects = densityBenchmarks.projects
+                              .filter((p: any) => {
+                                const pCode = p.zoningTo || p.zoningCode || p.zoning_code || p.district_code;
+                                return pCode === scenarioCode;
+                              })
+                              .map((p: any) => ({
+                                address: p.address || 'Address not available',
+                                landAcres: p.landAcres ?? p.land_acres ?? null,
+                                unitCount: p.unitCount ?? p.unit_count ?? null,
+                                buildingSf: p.buildingSf ?? p.building_sf ?? null,
+                                farAchieved: p.farAchieved ?? p.far_achieved ?? null,
+                                lotCoverageAchieved: p.lotCoverageAchieved ?? p.lot_coverage_achieved ?? null,
+                                assessedValue: p.assessedValue ?? p.assessed_value ?? null,
+                                densityAchieved: p.densityAchieved ?? p.density_achieved ?? null,
+                                source: 'benchmark',
+                              }));
+                            refProjects = [...refProjects, ...benchProjects];
+                          }
+
+                          if (refProjects.length === 0 && densityBenchmarks?.projects?.length > 0) {
+                            refProjects = densityBenchmarks.projects.map((p: any) => ({
+                              address: p.address || 'Address not available',
+                              landAcres: p.landAcres ?? p.land_acres ?? null,
+                              unitCount: p.unitCount ?? p.unit_count ?? null,
+                              buildingSf: p.buildingSf ?? p.building_sf ?? null,
+                              farAchieved: p.farAchieved ?? p.far_achieved ?? null,
+                              lotCoverageAchieved: p.lotCoverageAchieved ?? p.lot_coverage_achieved ?? null,
+                              assessedValue: p.assessedValue ?? p.assessed_value ?? null,
+                              densityAchieved: p.densityAchieved ?? p.density_achieved ?? null,
+                              source: 'benchmark',
+                            }));
+                          }
+
+                          const seen = new Set<string>();
+                          refProjects = refProjects.filter(p => {
+                            const key = p.address;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                          });
+
+                          refProjects.sort((a, b) => {
+                            const aDensity = a.densityAchieved || 0;
+                            const bDensity = b.densityAchieved || 0;
+                            if (bDensity !== aDensity) return bDensity - aDensity;
+                            return (b.buildingSf || 0) - (a.buildingSf || 0);
+                          });
+
+                          const top3 = refProjects.slice(0, 3);
+
+                          if (top3.length === 0) return null;
+
+                          return (
+                            <div className="mt-3 space-y-2 border-t border-gray-200 pt-3">
+                              <div className="flex items-center gap-2">
+                                <svg className="h-3.5 w-3.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Reference Projects</p>
+                                <span className="text-[10px] text-gray-400">
+                                  {isRezone ? `Rezoned to ${scenario.target_district_code}` : `Built under ${scenarioCode}`}
+                                </span>
+                              </div>
+                              <div className="grid gap-1.5">
+                                {top3.map((p: any, idx: number) => (
+                                  <div key={idx} className="bg-teal-50/50 rounded-md border border-teal-100 px-3 py-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="text-[11px] font-medium text-gray-800 truncate">{p.address}</div>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-gray-500">
+                                          {p.landAcres != null && <span>{parseFloat(p.landAcres).toFixed(2)} ac</span>}
+                                          {p.unitCount != null && <span>{Number(p.unitCount).toLocaleString()} units</span>}
+                                          {p.buildingSf != null && <span>{Number(p.buildingSf).toLocaleString()} SF</span>}
+                                        </div>
+                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-gray-500">
+                                          {p.farAchieved != null && <span>FAR: {parseFloat(p.farAchieved).toFixed(2)}</span>}
+                                          {p.lotCoverageAchieved != null && <span>Lot Cov: {(parseFloat(p.lotCoverageAchieved) * 100).toFixed(0)}%</span>}
+                                          {p.assessedValue != null && <span>${(Number(p.assessedValue) / 1000000).toFixed(1)}M assessed</span>}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                                        {p.densityAchieved != null && (
+                                          <span className="text-xs font-bold text-teal-700 whitespace-nowrap">
+                                            {parseFloat(p.densityAchieved).toFixed(1)} u/ac
+                                          </span>
+                                        )}
+                                        {p.source === 'rezone' && (
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-200">rezone</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   )}
@@ -1045,16 +1413,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             avgUnitSizeSf={activeScenario.avg_unit_size_sf || 900}
             rezoneAnalysis={rezoneAnalysis}
           />
-          <div className="mt-4">
-            <PathComparisonTable
-              byRightUnits={activeScenario.max_units || 0}
-              overlayBonusPct={profile.overlays?.length > 0 ? (profile.overlays[0]?.density_bonus_pct ?? null) : null}
-              lotAcres={(profile.lot_area_sf || 0) / 43560}
-              maxDensityPerAcre={profile.max_density_per_acre || 0}
-              avgUnitSizeSf={activeScenario.avg_unit_size_sf || 900}
-              rezoneAnalysis={rezoneAnalysis}
-            />
-          </div>
         </div>
       )}
 
@@ -1166,144 +1524,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {recommendations.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => setShowRecommendations(!showRecommendations)}
-            className="w-full px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between"
-          >
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Strategy</h3>
-              <p className="text-xs text-gray-500 mt-0.5">By-Right, Variance, and Rezone scenario comparison</p>
-            </div>
-            <svg className={`h-4 w-4 text-gray-400 transition-transform ${showRecommendations ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {showRecommendations && (
-            <div className="p-5">
-              <div className="grid grid-cols-3 gap-4">
-                {recommendations.map((rec: any) => {
-                  const riskColors: Record<string, string> = {
-                    Low: 'bg-green-50 text-green-700 border-green-200',
-                    Medium: 'bg-amber-50 text-amber-700 border-amber-200',
-                    High: 'bg-red-50 text-red-700 border-red-200',
-                  };
-                  const riskBorderColors: Record<string, string> = {
-                    Low: 'border-green-300',
-                    Medium: 'border-amber-300',
-                    High: 'border-red-300',
-                  };
-                  const riskColor = riskColors[rec.risk] || riskColors.Low;
-                  const borderColor = riskBorderColors[rec.risk] || '';
-
-                  return (
-                    <div key={rec.name} className={`border rounded-lg overflow-hidden ${rec.name === 'By-Right' ? 'border-green-300 ring-1 ring-green-100' : borderColor}`}>
-                      <div className={`px-4 py-3 ${rec.name === 'By-Right' ? 'bg-green-50' : rec.name === 'Variance' ? 'bg-amber-50' : 'bg-red-50'}`}>
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-bold text-gray-900">{rec.name}</h4>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${riskColor}`}>
-                            {rec.risk} Risk
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-600 mt-1">{rec.description}</p>
-                      </div>
-
-                      <div className="px-4 py-3 space-y-2">
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">Units</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.maxUnits)}</span>
-                            {rec.deltaUnits > 0 && (
-                              <span className="text-[10px] text-green-600 font-medium">+{rec.deltaUnits}%</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">GBA</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.maxGba)} SF</span>
-                            {rec.deltaGba > 0 && (
-                              <span className="text-[10px] text-green-600 font-medium">+{rec.deltaGba}%</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">Stories</span>
-                          <span className="text-sm font-semibold text-gray-900">{rec.maxStories ?? '--'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">Height</span>
-                          <span className="text-sm font-semibold text-gray-900">{rec.maxHeight ? `${rec.maxHeight} ft` : '--'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">Applied FAR</span>
-                          <span className="text-sm font-semibold text-gray-900">{rec.appliedFar != null ? rec.appliedFar.toFixed(2) : '--'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-xs text-gray-500">Parking</span>
-                          <span className="text-sm font-semibold text-gray-900">{formatNumber(rec.parkingRequired)} spaces</span>
-                        </div>
-                      </div>
-
-                      <div className="px-4 py-3 bg-gray-50 space-y-1.5">
-                        {(() => {
-                          const typeKey = rec.name === 'By-Right' ? 'by_right' : rec.name === 'Variance' ? 'variance' : rec.name === 'CUP' ? 'cup' : 'rezone';
-                          const orchStats = entitlementStrategy?.patterns?.byType?.[typeKey];
-                          const hasOrchData = orchStats && orchStats.count > 0;
-                          return (
-                            <>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">Success Rate</span>
-                                <span className="font-medium text-gray-900">
-                                  {hasOrchData ? `${orchStats.approvalRate}%` : rec.successRate}
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">Timeline</span>
-                                <span className="font-medium text-gray-900">
-                                  {hasOrchData && orchStats.avgDays != null ? `${Math.round(orchStats.avgDays / 30)} months` : rec.timeline}
-                                </span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-gray-500">Est. Cost</span>
-                                <span className="font-medium text-gray-900">{rec.estimatedCost}</span>
-                              </div>
-                              {hasOrchData && (
-                                <div className="flex items-center gap-1 pt-1">
-                                  <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-200">
-                                    {orchStats.count} projects analyzed
-                                  </span>
-                                </div>
-                              )}
-                              {!hasOrchData && rec.source === 'rezone-analysis' && (
-                                <div className="flex items-center gap-1 pt-1 flex-wrap">
-                                  <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
-                                    Real District Data{rec.evidence?.count ? ` (${rec.evidence.count} projects)` : ''}
-                                  </span>
-                                  {rec.districtMunicodeUrl && (
-                                    <MunicodeLink url={rec.districtMunicodeUrl} label={rec.targetDistrictCode} />
-                                  )}
-                                </div>
-                              )}
-                              {!hasOrchData && (rec.source === 'rezone-multiplier' || rec.source === 'variance-multiplier') && (
-                                <div className="flex items-center gap-1 pt-1">
-                                  <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">Estimated</span>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {loadingRecs && recommendations.length === 0 && (
         <div className="flex items-center justify-center py-6">
@@ -1328,6 +1548,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const utilPct = densityBenchmarks.utilizationPct;
         const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
         const scope = densityBenchmarks.searchScope;
+        const avgFarAchieved = densityBenchmarks.avgFarAchieved;
+        const avgLotCoverageAchieved = densityBenchmarks.avgLotCoverageAchieved;
+        const avgBuildingSf = densityBenchmarks.avgBuildingSf;
+        const avgLotAcres = densityBenchmarks.avgLotAcres;
+        const farUtilPct = densityBenchmarks.farUtilizationPct;
+        const lotCovUtilPct = densityBenchmarks.lotCoverageUtilizationPct;
+        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
+        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
 
         if (avail === 'none') {
           return (
@@ -1382,47 +1610,169 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </div>
               )}
 
-              {zonedMax && avgDensity && avail === 'rich' && (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-gray-600 mb-2">Zoned Max vs Achieved Density</div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                        <div
-                          className="bg-blue-200 h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(zonedMax * barScale, 100)}%` }}
-                        />
-                        <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
-                          {zonedMax.toFixed(1)} units/ac
-                        </span>
+              {avail === 'rich' && (
+                <div className="space-y-4">
+                  {zonedMax && avgDensity && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-gray-600 mb-2">Density: Zoned Max vs Achieved</div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                            <div
+                              className="bg-blue-200 h-full rounded-full transition-all"
+                              style={{ width: `${Math.min(zonedMax * barScale, 100)}%` }}
+                            />
+                            <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
+                              {zonedMax.toFixed(1)} units/ac
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
+                          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                            <div
+                              className="bg-teal-400 h-full rounded-full transition-all"
+                              style={{ width: `${Math.min(avgDensity * barScale, 100)}%` }}
+                            />
+                            <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
+                              {avgDensity.toFixed(1)} units/ac
+                            </span>
+                          </div>
+                        </div>
                       </div>
+                      {utilPct != null && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                            utilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                            utilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {utilPct.toFixed(0)}% utilization
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            Developers typically use {utilPct.toFixed(0)}% of allowed density
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                        <div
-                          className="bg-teal-400 h-full rounded-full transition-all"
-                          style={{ width: `${Math.min(avgDensity * barScale, 100)}%` }}
-                        />
-                        <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                          {avgDensity.toFixed(1)} units/ac
-                        </span>
-                      </div>
+                  )}
+
+                  {zonedMaxFar != null && avgFarAchieved != null && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-gray-600 mb-2">FAR: Zoned Max vs Achieved</div>
+                      {(() => {
+                        const farBarMax = Math.max(zonedMaxFar || 0, avgFarAchieved || 0);
+                        const farBarScale = farBarMax > 0 ? 100 / farBarMax : 1;
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                                <div
+                                  className="bg-blue-200 h-full rounded-full transition-all"
+                                  style={{ width: `${Math.min(zonedMaxFar * farBarScale, 100)}%` }}
+                                />
+                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
+                                  {zonedMaxFar.toFixed(2)} FAR
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                                <div
+                                  className="bg-teal-400 h-full rounded-full transition-all"
+                                  style={{ width: `${Math.min(avgFarAchieved * farBarScale, 100)}%` }}
+                                />
+                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
+                                  {avgFarAchieved.toFixed(2)} FAR
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {farUtilPct != null && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                            farUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                            farUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {farUtilPct.toFixed(0)}% utilization
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            Developers typically use {farUtilPct.toFixed(0)}% of allowed FAR
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  {utilPct != null && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
-                        utilPct > 80 ? 'bg-green-50 text-green-700 border-green-200' :
-                        utilPct > 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                        'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                        {utilPct.toFixed(0)}% utilization
-                      </span>
-                      <span className="text-[10px] text-gray-400">
-                        Developers typically use {utilPct.toFixed(0)}% of allowed density
-                      </span>
+                  )}
+
+                  {zonedMaxLotCov != null && avgLotCoverageAchieved != null && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-gray-600 mb-2">Lot Coverage: Zoned Max vs Achieved</div>
+                      {(() => {
+                        const lcBarMax = Math.max(zonedMaxLotCov || 0, avgLotCoverageAchieved || 0);
+                        const lcBarScale = lcBarMax > 0 ? 100 / lcBarMax : 1;
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                                <div
+                                  className="bg-blue-200 h-full rounded-full transition-all"
+                                  style={{ width: `${Math.min(zonedMaxLotCov * lcBarScale, 100)}%` }}
+                                />
+                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
+                                  {zonedMaxLotCov.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                                <div
+                                  className="bg-teal-400 h-full rounded-full transition-all"
+                                  style={{ width: `${Math.min(avgLotCoverageAchieved * lcBarScale, 100)}%` }}
+                                />
+                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
+                                  {avgLotCoverageAchieved.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {lotCovUtilPct != null && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
+                            lotCovUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                            lotCovUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-red-50 text-red-700 border-red-200'
+                          }`}>
+                            {lotCovUtilPct.toFixed(0)}% utilization
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            Developers typically use {lotCovUtilPct.toFixed(0)}% of allowed lot coverage
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(avgBuildingSf != null || avgLotAcres != null) && (
+                    <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 rounded-md px-3 py-2 border border-gray-100">
+                      {avgBuildingSf != null && (
+                        <span>Avg Building SF: <span className="font-semibold text-gray-800">{formatNumber(Math.round(avgBuildingSf))}</span></span>
+                      )}
+                      {avgBuildingSf != null && avgLotAcres != null && (
+                        <span className="text-gray-300">|</span>
+                      )}
+                      {avgLotAcres != null && (
+                        <span>Avg Lot: <span className="font-semibold text-gray-800">{avgLotAcres.toFixed(2)} ac</span></span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1451,6 +1801,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>
                               )}
                             </div>
+                            {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
+                                {p.farAchieved != null && (
+                                  <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>
+                                )}
+                                {p.lotCoverageAchieved != null && (
+                                  <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             {p.densityAchieved != null && (
@@ -1498,17 +1858,35 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </div>
                   <div className="grid gap-1.5">
                     {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between text-[11px] text-gray-600 bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
-                        <span className="truncate mr-2">{p.address || '--'}</span>
-                        <div className="flex items-center gap-3 flex-shrink-0">
-                          <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
-                          {p.densityAchieved != null && (
-                            <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
-                          )}
-                          {p.unitCount != null && (
-                            <span className="text-gray-400">{p.unitCount} units</span>
-                          )}
+                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
+                        <div className="flex items-center justify-between text-[11px] text-gray-600">
+                          <span className="truncate mr-2">{p.address || '--'}</span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
+                            {p.densityAchieved != null && (
+                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
+                            )}
+                            {p.unitCount != null && (
+                              <span className="text-gray-400">{p.unitCount} units</span>
+                            )}
+                          </div>
                         </div>
+                        {(p.landAcres != null || p.buildingSf != null || p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-gray-500">
+                            {p.landAcres != null && (
+                              <span>{p.landAcres.toFixed(2)} ac</span>
+                            )}
+                            {p.buildingSf != null && (
+                              <span>{p.buildingSf.toLocaleString()} SF</span>
+                            )}
+                            {p.farAchieved != null && (
+                              <span>FAR: {p.farAchieved.toFixed(2)}</span>
+                            )}
+                            {p.lotCoverageAchieved != null && (
+                              <span>Lot Cov: {(p.lotCoverageAchieved * 100).toFixed(1)}%</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

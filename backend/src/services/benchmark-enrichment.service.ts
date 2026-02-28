@@ -325,6 +325,13 @@ export class BenchmarkEnrichmentService {
           updates['far_achieved'] = Math.round((buildingSf / (landAcres * 43560)) * 1000) / 1000;
         }
 
+        const storiesVal = updates['stories'] !== undefined ? updates['stories'] : row.stories;
+        if (landAcres !== null && landAcres !== undefined && landAcres > 0 &&
+            buildingSf !== null && buildingSf !== undefined && buildingSf > 0 &&
+            storiesVal !== null && storiesVal !== undefined && storiesVal > 0) {
+          updates['lot_coverage_achieved'] = Math.round((buildingSf / storiesVal) / (landAcres * 43560) * 10000) / 10000;
+        }
+
         updates['enrichment_source'] = `arcgis_${connector.countyName.toLowerCase().replace(/[^a-z]/g, '_')}`;
         updates['enriched_at'] = new Date().toISOString();
 

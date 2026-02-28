@@ -625,7 +625,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
     const { dealId } = req.params;
 
     const profileResult = await pool.query(
-      `SELECT base_district_code, municipality, state, max_density_per_acre, lot_area_sf
+      `SELECT base_district_code, municipality, state, max_density_per_acre, lot_area_sf,
+              applied_far, max_lot_coverage_pct
        FROM deal_zoning_profiles WHERE deal_id = $1 LIMIT 1`,
       [dealId]
     );
@@ -641,10 +642,18 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         data: {
           currentCode: null,
           zonedMaxDensity: null,
+          zonedMaxFar: null,
+          zonedMaxLotCoverage: null,
           dataAvailability: 'none',
           benchmarks: [],
           projects: [],
           utilizationPct: null,
+          avgFarAchieved: null,
+          avgLotCoverageAchieved: null,
+          avgBuildingSf: null,
+          avgLotAcres: null,
+          farUtilizationPct: null,
+          lotCoverageUtilizationPct: null,
           rezoneFromCurrent: null,
           searchScope: null,
         },
@@ -656,6 +665,10 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
     const currentCode = profile.base_district_code || null;
     const zonedMaxDensity = (profile.max_density_per_acre !== null && profile.max_density_per_acre !== undefined)
       ? parseFloat(profile.max_density_per_acre) : null;
+    const zonedMaxFar = (profile.applied_far !== null && profile.applied_far !== undefined)
+      ? parseFloat(profile.applied_far) : null;
+    const zonedMaxLotCoverage = (profile.max_lot_coverage_pct !== null && profile.max_lot_coverage_pct !== undefined)
+      ? parseFloat(profile.max_lot_coverage_pct) : null;
     const municipality = profile.municipality || null;
     const state = profile.state || deal.state || null;
 
@@ -670,7 +683,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
     }
 
     const benchmarkFields = `address, land_acres, unit_count, building_sf, total_sf, density_achieved, far_achieved,
-                assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
+                lot_coverage_achieved, assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
                 total_entitlement_days, municipality, county`;
 
     let projects: any[] = [];
@@ -759,6 +772,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       const units = ps.map(p => p.unit_count != null ? parseInt(p.unit_count) : NaN).filter(u => !isNaN(u) && u > 0);
       const buildingSfs = ps.map(p => p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : NaN)).filter(s => !isNaN(s) && s > 0);
       const assessedVals = ps.map(p => p.assessed_value != null ? parseInt(p.assessed_value) : NaN).filter(v => !isNaN(v) && v > 0);
+      const fars = ps.map(p => p.far_achieved != null ? parseFloat(p.far_achieved) : NaN).filter(f => !isNaN(f) && f > 0);
+      const lotCoverages = ps.map(p => p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : NaN).filter(c => !isNaN(c) && c > 0);
 
       return {
         code,
@@ -770,6 +785,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         avgUnits: units.length > 0 ? Math.round(units.reduce((a, b) => a + b, 0) / units.length) : null,
         avgBuildingSf: buildingSfs.length > 0 ? Math.round(buildingSfs.reduce((a, b) => a + b, 0) / buildingSfs.length) : null,
         avgAssessedValue: assessedVals.length > 0 ? Math.round(assessedVals.reduce((a, b) => a + b, 0) / assessedVals.length) : null,
+        avgFarAchieved: fars.length > 0 ? Math.round((fars.reduce((a, b) => a + b, 0) / fars.length) * 100) / 100 : null,
+        avgLotCoverageAchieved: lotCoverages.length > 0 ? Math.round((lotCoverages.reduce((a, b) => a + b, 0) / lotCoverages.length) * 10000) / 10000 : null,
       };
     });
 
@@ -779,6 +796,31 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       ? Math.round((avgAchieved / zonedMaxDensity) * 10000) / 100
       : null;
 
+    const allFars = projects.map(p => p.far_achieved != null ? parseFloat(p.far_achieved) : NaN).filter(f => !isNaN(f) && f > 0);
+    const allLotCoverages = projects.map(p => p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : NaN).filter(c => !isNaN(c) && c > 0);
+    const allBuildingSfs = projects.map(p => p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : NaN)).filter(s => !isNaN(s) && s > 0);
+    const allLotAcres = projects.map(p => p.land_acres != null ? parseFloat(p.land_acres) : NaN).filter(a => !isNaN(a) && a > 0);
+
+    const avgFarAchieved = allFars.length > 0
+      ? Math.round((allFars.reduce((a, b) => a + b, 0) / allFars.length) * 100) / 100
+      : null;
+    const avgLotCoverageAchieved = allLotCoverages.length > 0
+      ? Math.round((allLotCoverages.reduce((a, b) => a + b, 0) / allLotCoverages.length) * 10000) / 10000
+      : null;
+    const avgBuildingSf = allBuildingSfs.length > 0
+      ? Math.round(allBuildingSfs.reduce((a, b) => a + b, 0) / allBuildingSfs.length)
+      : null;
+    const avgLotAcres = allLotAcres.length > 0
+      ? Math.round((allLotAcres.reduce((a, b) => a + b, 0) / allLotAcres.length) * 1000) / 1000
+      : null;
+
+    const farUtilizationPct = avgFarAchieved && zonedMaxFar && zonedMaxFar > 0
+      ? Math.round((avgFarAchieved / zonedMaxFar) * 10000) / 100
+      : null;
+    const lotCoverageUtilizationPct = avgLotCoverageAchieved && zonedMaxLotCoverage && zonedMaxLotCoverage > 0
+      ? Math.round((avgLotCoverageAchieved / (zonedMaxLotCoverage / 100)) * 10000) / 100
+      : null;
+
     const projectsClean = projects.map(p => ({
       address: p.address,
       landAcres: p.land_acres != null ? parseFloat(p.land_acres) : null,
@@ -786,6 +828,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       buildingSf: p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : null),
       densityAchieved: p.density_achieved != null ? parseFloat(p.density_achieved) : null,
       farAchieved: p.far_achieved != null ? parseFloat(p.far_achieved) : null,
+      lotCoverageAchieved: p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : null,
       assessedValue: p.assessed_value != null ? parseInt(p.assessed_value) : null,
       appraisedValue: p.appraised_value != null ? parseInt(p.appraised_value) : null,
       entitlementType: p.entitlement_type,
@@ -798,7 +841,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
     if (currentCode) {
       const rezoneResult = await pool.query(
         `SELECT address, land_acres, unit_count, building_sf, total_sf, density_achieved, far_achieved,
-                assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
+                lot_coverage_achieved, assessed_value, appraised_value, entitlement_type, zoning_from, zoning_to,
                 total_entitlement_days
          FROM benchmark_projects
          WHERE zoning_from = $1 AND density_achieved IS NOT NULL AND density_achieved > 0
@@ -814,6 +857,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
           unitCount: p.unit_count ? parseInt(p.unit_count) : null,
           buildingSf: p.building_sf ? parseInt(p.building_sf) : (p.total_sf ? parseInt(p.total_sf) : null),
           densityAchieved: p.density_achieved ? parseFloat(p.density_achieved) : null,
+          farAchieved: p.far_achieved ? parseFloat(p.far_achieved) : null,
+          lotCoverageAchieved: p.lot_coverage_achieved ? parseFloat(p.lot_coverage_achieved) : null,
           entitlementType: p.entitlement_type,
           zoningTo: p.zoning_to,
           totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
@@ -833,10 +878,18 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       data: {
         currentCode,
         zonedMaxDensity,
+        zonedMaxFar,
+        zonedMaxLotCoverage,
         dataAvailability,
         benchmarks,
         projects: projectsClean,
         utilizationPct,
+        avgFarAchieved,
+        avgLotCoverageAchieved,
+        avgBuildingSf,
+        avgLotAcres,
+        farUtilizationPct,
+        lotCoverageUtilizationPct,
         rezoneFromCurrent,
         searchScope,
       },

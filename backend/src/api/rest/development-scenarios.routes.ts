@@ -441,6 +441,49 @@ router.get('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/deals/:dealId/scenarios/lookup-district', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { code } = req.query;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({ error: 'code query parameter is required' });
+    }
+
+    const profile = await profileService.getProfile(dealId);
+    if (!profile) {
+      return res.status(400).json({ error: 'No zoning profile exists.' });
+    }
+
+    const municipality = profile.municipality;
+    if (!municipality) {
+      return res.json({ found: false, message: 'No municipality on profile' });
+    }
+
+    const municipalityId = `${municipality.toLowerCase().replace(/\s+/g, '-')}-${(profile.state || 'ga').toLowerCase()}`;
+    const distResult = await pool.query(
+      `SELECT * FROM zoning_districts WHERE municipality_id = $1 AND UPPER(zoning_code) = UPPER($2) LIMIT 1`,
+      [municipalityId, code]
+    );
+
+    if (distResult.rows.length === 0) {
+      const fallback = await pool.query(
+        `SELECT * FROM zoning_districts WHERE UPPER(municipality) = UPPER($1) AND UPPER(COALESCE(zoning_code, district_code)) = UPPER($2) LIMIT 1`,
+        [municipality, code]
+      );
+      if (fallback.rows.length === 0) {
+        return res.json({ found: false, message: 'Code not in database — enter constraints manually' });
+      }
+      return res.json({ found: true, district: fallback.rows[0] });
+    }
+
+    res.json({ found: true, district: distResult.rows[0] });
+  } catch (error: any) {
+    console.error('Error looking up district:', error);
+    res.status(500).json({ error: error.message || 'Failed to look up district' });
+  }
+});
+
 router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -451,6 +494,7 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
       efficiency_factor = 0.85,
       is_active = false,
       target_district_id = null,
+      target_district_code = null,
     } = req.body;
 
     const profile = await profileService.getProfile(dealId);
@@ -461,10 +505,40 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
     const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
     const projectType = dealResult.rows[0]?.project_type || 'multifamily';
 
+    let resolvedDistrictId = target_district_id;
+    let resolvedDistrictCode = target_district_code;
     let targetDistrict = null;
-    if (target_district_id) {
+
+    if (target_district_code && !target_district_id) {
+      const municipality = profile.municipality;
+      if (municipality) {
+        const municipalityId = `${municipality.toLowerCase().replace(/\s+/g, '-')}-${(profile.state || 'ga').toLowerCase()}`;
+        const distResult = await pool.query(
+          `SELECT * FROM zoning_districts WHERE municipality_id = $1 AND UPPER(zoning_code) = UPPER($2) LIMIT 1`,
+          [municipalityId, target_district_code]
+        );
+        if (distResult.rows.length > 0) {
+          targetDistrict = distResult.rows[0];
+          resolvedDistrictId = targetDistrict.id;
+          resolvedDistrictCode = targetDistrict.zoning_code || targetDistrict.district_code;
+        } else {
+          const fallback = await pool.query(
+            `SELECT * FROM zoning_districts WHERE UPPER(municipality) = UPPER($1) AND UPPER(COALESCE(zoning_code, district_code)) = UPPER($2) LIMIT 1`,
+            [municipality, target_district_code]
+          );
+          if (fallback.rows.length > 0) {
+            targetDistrict = fallback.rows[0];
+            resolvedDistrictId = targetDistrict.id;
+            resolvedDistrictCode = targetDistrict.zoning_code || targetDistrict.district_code;
+          }
+        }
+      }
+    } else if (target_district_id) {
       const distResult = await pool.query('SELECT * FROM zoning_districts WHERE id = $1', [target_district_id]);
       targetDistrict = distResult.rows[0] || null;
+      if (targetDistrict) {
+        resolvedDistrictCode = targetDistrict.zoning_code || targetDistrict.district_code;
+      }
     }
 
     const scenarioData = { use_mix, avg_unit_size_sf, efficiency_factor };
@@ -481,8 +555,8 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
       `INSERT INTO development_scenarios (
         deal_id, name, is_active, use_mix, avg_unit_size_sf, efficiency_factor,
         max_gba, max_footprint, net_leasable_sf, parking_required, open_space_sf,
-        max_stories, max_units, applied_far, binding_constraint, flags, target_district_id, calculated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+        max_stories, max_units, applied_far, binding_constraint, flags, target_district_id, target_district_code, calculated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
       RETURNING *`,
       [
         dealId, name, is_active, JSON.stringify(use_mix), avg_unit_size_sf, efficiency_factor,
@@ -490,7 +564,7 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
         calculated.parking_required, calculated.open_space_sf,
         calculated.max_stories, calculated.max_units, calculated.applied_far,
         calculated.binding_constraint, JSON.stringify(calculated.flags),
-        target_district_id,
+        resolvedDistrictId, resolvedDistrictCode,
       ]
     );
 
@@ -504,7 +578,7 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
 router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) => {
   try {
     const { dealId, id } = req.params;
-    const { name, use_mix, avg_unit_size_sf, efficiency_factor } = req.body;
+    const { name, use_mix, avg_unit_size_sf, efficiency_factor, target_district_code } = req.body;
 
     const existing = await pool.query(
       'SELECT * FROM development_scenarios WHERE id = $1 AND deal_id = $2',
@@ -528,9 +602,40 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
     const dealResult = await pool.query('SELECT project_type FROM deals WHERE id = $1', [dealId]);
     const projectType = dealResult.rows[0]?.project_type || 'multifamily';
 
+    let resolvedDistrictId = scenario.target_district_id;
+    let resolvedDistrictCode = scenario.target_district_code;
     let targetDistrict = null;
-    if (scenario.target_district_id) {
-      const distResult = await pool.query('SELECT * FROM zoning_districts WHERE id = $1', [scenario.target_district_id]);
+
+    if (target_district_code !== undefined) {
+      resolvedDistrictCode = target_district_code;
+      resolvedDistrictId = null;
+      if (target_district_code) {
+        const municipality = profile.municipality;
+        if (municipality) {
+          const municipalityId = `${municipality.toLowerCase().replace(/\s+/g, '-')}-${(profile.state || 'ga').toLowerCase()}`;
+          const distResult = await pool.query(
+            `SELECT * FROM zoning_districts WHERE municipality_id = $1 AND UPPER(zoning_code) = UPPER($2) LIMIT 1`,
+            [municipalityId, target_district_code]
+          );
+          if (distResult.rows.length > 0) {
+            targetDistrict = distResult.rows[0];
+            resolvedDistrictId = targetDistrict.id;
+            resolvedDistrictCode = targetDistrict.zoning_code || targetDistrict.district_code;
+          } else {
+            const fallback = await pool.query(
+              `SELECT * FROM zoning_districts WHERE UPPER(municipality) = UPPER($1) AND UPPER(COALESCE(zoning_code, district_code)) = UPPER($2) LIMIT 1`,
+              [municipality, target_district_code]
+            );
+            if (fallback.rows.length > 0) {
+              targetDistrict = fallback.rows[0];
+              resolvedDistrictId = targetDistrict.id;
+              resolvedDistrictCode = targetDistrict.zoning_code || targetDistrict.district_code;
+            }
+          }
+        }
+      }
+    } else if (resolvedDistrictId) {
+      const distResult = await pool.query('SELECT * FROM zoning_districts WHERE id = $1', [resolvedDistrictId]);
       targetDistrict = distResult.rows[0] || null;
     }
 
@@ -542,8 +647,9 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
         name = $1, use_mix = $2, avg_unit_size_sf = $3, efficiency_factor = $4,
         max_gba = $5, max_footprint = $6, net_leasable_sf = $7, parking_required = $8,
         open_space_sf = $9, max_stories = $10, max_units = $11, applied_far = $12,
-        binding_constraint = $13, flags = $14, calculated_at = NOW(), updated_at = NOW()
-      WHERE id = $15 AND deal_id = $16
+        binding_constraint = $13, flags = $14, target_district_id = $15, target_district_code = $16,
+        calculated_at = NOW(), updated_at = NOW()
+      WHERE id = $17 AND deal_id = $18
       RETURNING *`,
       [
         updatedName, JSON.stringify(updatedMix), updatedUnitSize, updatedEfficiency,
@@ -551,6 +657,7 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
         calculated.parking_required, calculated.open_space_sf,
         calculated.max_stories, calculated.max_units, calculated.applied_far,
         calculated.binding_constraint, JSON.stringify(calculated.flags),
+        resolvedDistrictId, resolvedDistrictCode,
         id, dealId,
       ]
     );
