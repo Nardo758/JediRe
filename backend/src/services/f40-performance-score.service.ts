@@ -296,6 +296,105 @@ export class F40PerformanceScoreService {
       ],
     };
   }
+
+  async getCompSetForSubmarket(city: string = 'Atlanta', targetSubmarket: string, state: string = 'GA'): Promise<CompSetResult> {
+    const marketData = await this.calculateMarketF40(city, state);
+    if (marketData.submarketScores.length === 0) {
+      return { target: null, tradeAreaComps: [], likeKindComps: [], calculatedAt: new Date().toISOString() };
+    }
+
+    const target = marketData.submarketScores.find(
+      sm => sm.submarketName.toLowerCase() === targetSubmarket.toLowerCase()
+    ) || marketData.submarketScores[0];
+
+    const others = marketData.submarketScores.filter(
+      sm => sm.submarketName !== target.submarketName
+    );
+
+    const tradeAreaComps: CompSetEntry[] = marketData.submarketScores.map((sm, idx) => ({
+      submarketName: sm.submarketName,
+      f40Score: sm.overallScore,
+      quartile: sm.quartile,
+      rank: idx + 1,
+      totalRanked: marketData.submarketScores.length,
+      propertiesCount: sm.propertiesCount,
+      totalUnits: sm.totalUnits,
+      dimensions: sm.dimensions,
+      isTarget: sm.submarketName === target.submarketName,
+      similarityScore: sm.submarketName === target.submarketName ? 100 : 0,
+      compType: 'trade-area' as const,
+    }));
+
+    const likeKindComps: CompSetEntry[] = others
+      .map(sm => {
+        const unitSim = Math.max(0, 1 - Math.abs(sm.totalUnits - target.totalUnits) / Math.max(target.totalUnits, 1));
+        const propSim = Math.max(0, 1 - Math.abs(sm.propertiesCount - target.propertiesCount) / Math.max(target.propertiesCount, 1));
+        const scoreSim = Math.max(0, 1 - Math.abs(sm.overallScore - target.overallScore) / 100);
+        const similarity = Math.round(clamp(unitSim * 40 + propSim * 30 + scoreSim * 30));
+        return {
+          submarketName: sm.submarketName,
+          f40Score: sm.overallScore,
+          quartile: sm.quartile,
+          rank: 0,
+          totalRanked: others.length,
+          propertiesCount: sm.propertiesCount,
+          totalUnits: sm.totalUnits,
+          dimensions: sm.dimensions,
+          isTarget: false,
+          similarityScore: similarity,
+          compType: 'like-kind' as const,
+        };
+      })
+      .sort((a, b) => b.similarityScore - a.similarityScore || b.f40Score - a.f40Score);
+
+    likeKindComps.forEach((c, i) => { c.rank = i + 1; });
+
+    return {
+      target: {
+        submarketName: target.submarketName,
+        f40Score: target.overallScore,
+        quartile: target.quartile,
+        propertiesCount: target.propertiesCount,
+        totalUnits: target.totalUnits,
+        dimensions: target.dimensions,
+      },
+      tradeAreaComps,
+      likeKindComps,
+      marketGrade: marketData.marketGrade,
+      trendDirection: marketData.trendDirection,
+      calculatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+export interface CompSetEntry {
+  submarketName: string;
+  f40Score: number;
+  quartile: number;
+  rank: number;
+  totalRanked: number;
+  propertiesCount: number;
+  totalUnits: number;
+  dimensions: any;
+  isTarget: boolean;
+  similarityScore: number;
+  compType: 'trade-area' | 'like-kind';
+}
+
+export interface CompSetResult {
+  target: {
+    submarketName: string;
+    f40Score: number;
+    quartile: number;
+    propertiesCount: number;
+    totalUnits: number;
+    dimensions: any;
+  } | null;
+  tradeAreaComps: CompSetEntry[];
+  likeKindComps: CompSetEntry[];
+  marketGrade?: string;
+  trendDirection?: string;
+  calculatedAt: string;
 }
 
 export const f40PerformanceScoreService = new F40PerformanceScoreService();

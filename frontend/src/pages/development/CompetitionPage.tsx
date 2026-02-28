@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useParams } from 'react-router-dom';
-import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty, DataSource } from '@/services/competition.service';
+import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty, DataSource, F40RankingsData } from '@/services/competition.service';
 
 interface CompetitionFilters {
   sameVintage: boolean;
@@ -78,6 +78,7 @@ export default function CompetitionPage() {
   const [agingCompetitors, setAgingCompetitors] = useState<CompetitorProperty[]>([]);
   const [selectedCompetitor, setSelectedCompetitor] = useState<string | null>(null);
   const [aiInsights, setAiInsights] = useState<string>('');
+  const [f40Rankings, setF40Rankings] = useState<F40RankingsData>({ rankings: [], marketGrade: 'N/A', trendDirection: 'stable' });
 
   const [dataSources, setDataSources] = useState<{
     competitors: DataSource;
@@ -85,12 +86,14 @@ export default function CompetitionPage() {
     waitlist: DataSource;
     aging: DataSource;
     insights: DataSource;
+    f40: DataSource;
   }>({
     competitors: 'mock',
     advantageMatrix: 'mock',
     waitlist: 'mock',
     aging: 'mock',
     insights: 'mock',
+    f40: 'mock',
   });
 
   const [filters, setFilters] = useState<CompetitionFilters>({
@@ -101,7 +104,7 @@ export default function CompetitionPage() {
   });
 
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>('map');
 
   useEffect(() => {
     if (dealId) {
@@ -112,19 +115,22 @@ export default function CompetitionPage() {
   const fetchCompetitionData = async () => {
     setLoading(true);
     try {
-      const [competitorsResult, advantageResult, waitlistResult, agingResult, insightsResult] = await Promise.all([
+      const [competitorsResult, advantageResult, waitlistResult, agingResult, insightsResult, f40Result] = await Promise.all([
         competitionService.getCompetitors(dealId!, filters),
         competitionService.getAdvantageMatrix(dealId!),
         competitionService.getWaitlistProperties(dealId!, filters.distanceRadius),
         competitionService.getAgingCompetitors(dealId!, filters.distanceRadius),
         competitionService.getAIInsights(dealId!),
+        competitionService.getF40Rankings(),
       ]);
 
-      setCompetitors(competitorsResult.data);
+      const mergedCompetitors = competitionService.mergeF40IntoCompetitors(competitorsResult.data, f40Result.data.rankings);
+      setCompetitors(mergedCompetitors);
       setAdvantageMatrix(advantageResult.data);
       setWaitlistProperties(waitlistResult.data);
       setAgingCompetitors(agingResult.data);
       setAiInsights(insightsResult.data);
+      setF40Rankings(f40Result.data);
 
       setDataSources({
         competitors: competitorsResult.source,
@@ -132,6 +138,7 @@ export default function CompetitionPage() {
         waitlist: waitlistResult.source,
         aging: agingResult.source,
         insights: insightsResult.source,
+        f40: f40Result.source,
       });
     } catch (error) {
       console.error('Error fetching competition data:', error);
@@ -260,6 +267,7 @@ export default function CompetitionPage() {
             {[
               { id: 'map', label: 'Competitive Set Map', icon: MapPin },
               { id: 'comparison', label: 'Unit Comparison', icon: Home },
+              { id: 'f40', label: 'F40 Performance', icon: TrendingUp },
               { id: 'advantage', label: 'Advantage Matrix', icon: CheckCircle2 },
               { id: 'aging', label: 'Aging Competition', icon: Calendar },
               { id: 'waitlist', label: 'Waitlist Intelligence', icon: TrendingUp },
@@ -334,6 +342,14 @@ export default function CompetitionPage() {
         {activeTab === 'comparison' && (
           <UnitComparison
             competitors={competitors}
+          />
+        )}
+
+        {activeTab === 'f40' && (
+          <F40PerformanceView
+            rankings={f40Rankings}
+            competitors={competitors}
+            dataSource={dataSources.f40}
           />
         )}
 
@@ -459,6 +475,11 @@ function CompetitiveSetMap({
                   <DollarSign className="h-3 w-3" />
                   <span>${competitor.avgRent?.toLocaleString()}/mo</span>
                 </div>
+                {competitor.f40Score !== undefined && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <F40QuartileBadge score={competitor.f40Score} quartile={competitor.f40Quartile} />
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -746,6 +767,182 @@ function AgingCompetitorTracker({ agingCompetitors }: { agingCompetitors: Compet
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function F40QuartileBadge({ score, quartile }: { score: number; quartile?: number }) {
+  const q = quartile || (score >= 80 ? 1 : score >= 60 ? 2 : score >= 40 ? 3 : 4);
+  const colors = {
+    1: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    2: 'bg-blue-100 text-blue-800 border-blue-200',
+    3: 'bg-amber-100 text-amber-800 border-amber-200',
+    4: 'bg-red-100 text-red-800 border-red-200',
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${colors[q as keyof typeof colors] || colors[4]}`}>
+      F40: {score}
+      <span className="opacity-70">Q{q}</span>
+    </span>
+  );
+}
+
+function F40PerformanceView({
+  rankings,
+  competitors,
+  dataSource,
+}: {
+  rankings: F40RankingsData;
+  competitors: CompetitorProperty[];
+  dataSource: DataSource;
+}) {
+  if (rankings.rankings.length === 0) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900">F40 Performance Scores</h2>
+          <DataSourceBadge source={dataSource} />
+        </div>
+        <div className="text-center py-12 text-gray-500">
+          <TrendingUp className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <p className="font-medium">No F40 data available</p>
+          <p className="text-sm mt-1">F40 scores will appear when market data is synced.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">F40 Performance Scores</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Submarket performance ranking across 4 dimensions
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-sm text-gray-600">Market Grade</div>
+            <div className={`text-2xl font-bold ${
+              rankings.marketGrade === 'A' ? 'text-emerald-600' :
+              rankings.marketGrade === 'B+' ? 'text-blue-600' :
+              rankings.marketGrade === 'B' ? 'text-blue-500' :
+              'text-amber-600'
+            }`}>{rankings.marketGrade}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-gray-600">Trend</div>
+            <div className={`text-sm font-semibold flex items-center gap-1 ${
+              rankings.trendDirection === 'improving' ? 'text-green-600' :
+              rankings.trendDirection === 'declining' ? 'text-red-600' :
+              'text-gray-600'
+            }`}>
+              {rankings.trendDirection === 'improving' && <ArrowUp className="h-4 w-4" />}
+              {rankings.trendDirection === 'declining' && <ArrowDown className="h-4 w-4" />}
+              {rankings.trendDirection.charAt(0).toUpperCase() + rankings.trendDirection.slice(1)}
+            </div>
+          </div>
+          <DataSourceBadge source={dataSource} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Q1 - Top Performers', q: 1, color: 'emerald' },
+          { label: 'Q2 - Above Average', q: 2, color: 'blue' },
+          { label: 'Q3 - Below Average', q: 3, color: 'amber' },
+          { label: 'Q4 - Underperformers', q: 4, color: 'red' },
+        ].map(bucket => {
+          const count = rankings.rankings.filter(r => r.quartile === bucket.q).length;
+          return (
+            <div key={bucket.q} className={`p-3 rounded-lg border bg-${bucket.color}-50 border-${bucket.color}-200`}>
+              <div className="text-xs text-gray-600">{bucket.label}</div>
+              <div className="text-xl font-bold text-gray-900">{count}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b-2 border-gray-200">
+              <th className="text-left py-3 px-4 font-medium text-gray-700">Rank</th>
+              <th className="text-left py-3 px-4 font-medium text-gray-700">Submarket</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">F40 Score</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Quartile</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Rent Position</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Occupancy</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Pricing Power</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Vintage</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Properties</th>
+              <th className="text-center py-3 px-4 font-medium text-gray-700">Units</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankings.rankings.map((entry, idx) => {
+              const isCompetitor = competitors.some(c =>
+                c.name.toLowerCase().includes(entry.name.toLowerCase()) ||
+                entry.name.toLowerCase().includes(c.name.toLowerCase())
+              );
+              return (
+                <tr
+                  key={entry.name}
+                  className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} ${isCompetitor ? 'ring-1 ring-blue-300 ring-inset' : ''}`}
+                >
+                  <td className="py-3 px-4 font-medium text-gray-900">#{entry.rank}</td>
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-gray-900">{entry.name}</div>
+                    {isCompetitor && (
+                      <span className="text-xs text-blue-600 font-medium">In Comp Set</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold ${
+                      entry.score >= 80 ? 'bg-emerald-100 text-emerald-800' :
+                      entry.score >= 60 ? 'bg-blue-100 text-blue-800' :
+                      entry.score >= 40 ? 'bg-amber-100 text-amber-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {entry.score}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <F40QuartileBadge score={entry.score} quartile={entry.quartile} />
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <DimensionBar score={entry.dimensions?.rentPosition?.score || 0} />
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <DimensionBar score={entry.dimensions?.occupancyStrength?.score || 0} />
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <DimensionBar score={entry.dimensions?.pricingPower?.score || 0} />
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <DimensionBar score={entry.dimensions?.vintagePhysical?.score || 0} />
+                  </td>
+                  <td className="py-3 px-4 text-center text-gray-700">{entry.propertiesCount}</td>
+                  <td className="py-3 px-4 text-center text-gray-700">{entry.totalUnits?.toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DimensionBar({ score }: { score: number }) {
+  const color = score >= 70 ? 'bg-emerald-500' : score >= 50 ? 'bg-blue-500' : score >= 30 ? 'bg-amber-500' : 'bg-red-500';
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(score, 100)}%` }} />
+      </div>
+      <span className="text-xs text-gray-600 w-6">{score}</span>
     </div>
   );
 }

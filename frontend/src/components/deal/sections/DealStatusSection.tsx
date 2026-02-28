@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Clock, AlertTriangle, ArrowRight, Building2, DollarSign, FileText, Users, TrendingUp } from 'lucide-react';
+import { CheckCircle, Clock, AlertTriangle, ArrowRight, Building2, DollarSign, FileText, Users, TrendingUp, Database, FlaskConical } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
 interface DealStatusSectionProps {
@@ -29,16 +29,73 @@ const defaultLifecyclePhases: LifecyclePhase[] = [
   { id: 'exit', label: 'Stabilization / Exit', status: 'upcoming', progress: 0 },
 ];
 
-function deriveLifecycleFromDeal(deal: any, dealState: any): LifecyclePhase[] {
-  const phases = [...defaultLifecyclePhases];
+const healthIndicators = [
+  { label: 'Schedule', status: 'green', detail: 'On Track' },
+  { label: 'Budget', status: 'green', detail: 'Within 2%' },
+  { label: 'Permits', status: 'yellow', detail: 'Pending Review' },
+  { label: 'Financing', status: 'green', detail: 'Secured' },
+];
+
+const constructionPhases = [
+  { name: 'Site Preparation', progress: 100, status: 'complete' },
+  { name: 'Foundation', progress: 100, status: 'complete' },
+  { name: 'Structural Framing', progress: 65, status: 'active' },
+  { name: 'MEP Rough-In', progress: 20, status: 'active' },
+  { name: 'Exterior Envelope', progress: 0, status: 'upcoming' },
+  { name: 'Interior Finishes', progress: 0, status: 'upcoming' },
+];
+
+const recentMilestones = [
+  { date: '2024-01-15', event: 'Site acquisition closed', type: 'financial' },
+  { date: '2024-02-01', event: 'Zoning approval received', type: 'regulatory' },
+  { date: '2024-03-10', event: 'Construction loan funded', type: 'financial' },
+  { date: '2024-04-01', event: 'Ground breaking ceremony', type: 'construction' },
+  { date: '2024-06-15', event: 'Foundation complete', type: 'construction' },
+];
+
+function deriveLifecycleFromDeal(deal: any, dealState: any): { phases: LifecyclePhase[]; isLive: boolean } {
+  const phases = defaultLifecyclePhases.map(p => ({ ...p }));
+  let isLive = false;
+
+  if (dealState) {
+    isLive = true;
+  }
+
+  if (deal?.status) {
+    isLive = true;
+    const statusMap: Record<string, number> = {
+      'prospecting': 0, 'prospect': 0, 'sourcing': 0,
+      'design': 1, 'entitlements': 1, 'entitlement': 1, 'planning': 1,
+      'financing': 2, 'finance': 2, 'underwriting': 2,
+      'construction': 3, 'building': 3,
+      'lease-up': 4, 'leasing': 4, 'marketing': 4,
+      'stabilized': 5, 'exit': 5, 'disposition': 5, 'closed': 5,
+    };
+    const dealStatus = (deal.status || '').toLowerCase();
+    const activeIdx = statusMap[dealStatus] ?? -1;
+    if (activeIdx >= 0) {
+      phases.forEach((p, i) => {
+        if (i < activeIdx) {
+          p.status = 'complete';
+          p.progress = 100;
+        } else if (i === activeIdx) {
+          p.status = 'active';
+          p.progress = Math.max(p.progress, 25);
+        } else {
+          p.status = 'upcoming';
+          p.progress = 0;
+        }
+      });
+    }
+  }
 
   if (deal?.zoningCode || deal?.propertyTypeKey) {
-    phases[0] = { ...phases[0], status: 'active', progress: deal.address ? 50 : 25 };
+    phases[0] = { ...phases[0], status: phases[0].status === 'complete' ? 'complete' : 'active', progress: Math.max(phases[0].progress, deal.address ? 50 : 25) };
   }
 
   if (dealState?.design_3d) {
     phases[0] = { ...phases[0], status: 'complete', progress: 100 };
-    phases[1] = { ...phases[1], status: 'active', progress: 40 };
+    phases[1] = { ...phases[1], status: phases[1].status === 'complete' ? 'complete' : 'active', progress: Math.max(phases[1].progress, 40) };
   }
 
   if (dealState?.timeline_data) {
@@ -59,7 +116,13 @@ function deriveLifecycleFromDeal(deal: any, dealState: any): LifecyclePhase[] {
     }
   }
 
-  return phases;
+  if (dealState?.financial_assumptions || dealState?.proforma_data) {
+    if (phases[2].status === 'upcoming') {
+      phases[2] = { ...phases[2], status: 'active', progress: 20 };
+    }
+  }
+
+  return { phases, isLive };
 }
 
 export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) => {
@@ -67,9 +130,11 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
   const [lifecyclePhases, setLifecyclePhases] = useState<LifecyclePhase[]>(defaultLifecyclePhases);
   const [dealState, setDealState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<'loading' | 'live' | 'defaults'>('loading');
 
   useEffect(() => {
     if (!deal?.id) {
+      setDataSource('defaults');
       setLoading(false);
       return;
     }
@@ -81,14 +146,16 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
       const response = await apiClient.get(`/api/v1/deals/${deal.id}/state`);
       const state = response.data;
       setDealState(state);
-      const phases = deriveLifecycleFromDeal(deal, state);
+      const { phases, isLive } = deriveLifecycleFromDeal(deal, state);
       setLifecyclePhases(phases);
+      setDataSource(isLive ? 'live' : 'defaults');
       const activePhase = phases.find(p => p.status === 'active');
       if (activePhase) setExpandedPhase(activePhase.id);
     } catch (err) {
       console.warn('Could not load deal state, using defaults');
-      const phases = deriveLifecycleFromDeal(deal, null);
+      const { phases, isLive } = deriveLifecycleFromDeal(deal, null);
       setLifecyclePhases(phases);
+      setDataSource(isLive ? 'live' : 'defaults');
       const activePhase = phases.find(p => p.status === 'active');
       if (activePhase) setExpandedPhase(activePhase.id);
     } finally {
@@ -114,6 +181,19 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
           <p className="text-sm text-slate-500">Project progress tracking and health monitoring</p>
         </div>
         <div className="flex items-center gap-2">
+          {dataSource !== 'loading' && (
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide ${
+              dataSource === 'live'
+                ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300'
+                : 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+            }`}>
+              {dataSource === 'live' ? (
+                <><Database size={10} /> LIVE DATA</>
+              ) : (
+                <><FlaskConical size={10} /> DEFAULT DATA</>
+              )}
+            </span>
+          )}
           <button className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
             Export Report
           </button>

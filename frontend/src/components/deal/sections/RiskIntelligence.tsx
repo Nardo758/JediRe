@@ -306,9 +306,13 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg font-bold text-stone-900">Risk Heatmap</h3>
-              {isLiveData && (
+              {isLiveData ? (
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
                   LIVE DATA
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 tracking-wider">
+                  SAMPLE DATA
                 </span>
               )}
             </div>
@@ -349,7 +353,18 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
 
       {/* Risk Trend Strip */}
       <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-lg font-bold text-stone-900 mb-1">30-Day Risk Trends</h3>
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-lg font-bold text-stone-900">30-Day Risk Trends</h3>
+          {isLiveData ? (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
+              LIVE DATA
+            </span>
+          ) : (
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 tracking-wider">
+              SAMPLE DATA
+            </span>
+          )}
+        </div>
         <p className="text-xs text-stone-500 mb-4">Track how each risk category is evolving</p>
 
         <div className="space-y-3">

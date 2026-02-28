@@ -7,6 +7,67 @@ export interface DataWithSource<T> {
   source: DataSource;
 }
 
+export interface F40RankingEntry {
+  rank: number;
+  name: string;
+  score: number;
+  quartile: number;
+  propertiesCount: number;
+  totalUnits: number;
+  dimensions: {
+    rentPosition: { score: number; weighted: number };
+    occupancyStrength: { score: number; weighted: number };
+    pricingPower: { score: number; weighted: number };
+    vintagePhysical: { score: number; weighted: number };
+  };
+}
+
+export interface F40RankingsData {
+  rankings: F40RankingEntry[];
+  marketGrade: string;
+  trendDirection: string;
+}
+
+export interface F40CompSetData {
+  target: {
+    submarketName: string;
+    f40Score: number;
+    quartile: number;
+    propertiesCount: number;
+    totalUnits: number;
+    dimensions: any;
+  } | null;
+  tradeAreaComps: Array<{
+    submarketName: string;
+    f40Score: number;
+    quartile: number;
+    rank: number;
+    totalRanked: number;
+    propertiesCount: number;
+    totalUnits: number;
+    dimensions: any;
+    isTarget: boolean;
+    similarityScore: number;
+    compType: 'trade-area' | 'like-kind';
+  }>;
+  likeKindComps: Array<{
+    submarketName: string;
+    f40Score: number;
+    quartile: number;
+    rank: number;
+    totalRanked: number;
+    propertiesCount: number;
+    totalUnits: number;
+    dimensions: any;
+    isTarget: boolean;
+    similarityScore: number;
+    compType: 'trade-area' | 'like-kind';
+  }>;
+  marketGrade?: string;
+  trendDirection?: string;
+  calculatedAt: string;
+}
+
 export interface CompetitorProperty {
   id: string;
   name: string;
@@ -32,6 +93,15 @@ export interface CompetitorProperty {
   opportunityNote?: string;
   latitude?: number;
   longitude?: number;
+  f40Score?: number;
+  f40Quartile?: number;
+  f40Rank?: number;
+  f40Dimensions?: {
+    rentPosition: { score: number; weighted: number };
+    occupancyStrength: { score: number; weighted: number };
+    pricingPower: { score: number; weighted: number };
+    vintagePhysical: { score: number; weighted: number };
+  };
 }
 
 export interface AdvantageMatrix {
@@ -586,6 +656,51 @@ class CompetitionService {
 • Design for car-optional lifestyle - 45% of target demographic remote workers
 
 Your development's 9-point advantage score indicates strong differentiation potential. Focus marketing on tech-forward amenities and flexible workspaces to capture underserved demand.`;
+  }
+
+  async getF40Rankings(city: string = 'Atlanta'): Promise<DataWithSource<F40RankingsData>> {
+    try {
+      const response = await api.get('/f40/rankings', { params: { city } });
+      if (response.data?.success && response.data?.data) {
+        return { data: response.data.data, source: 'api' };
+      }
+      return { data: { rankings: [], marketGrade: 'N/A', trendDirection: 'stable' }, source: 'mock' };
+    } catch {
+      return { data: { rankings: [], marketGrade: 'N/A', trendDirection: 'stable' }, source: 'mock' };
+    }
+  }
+
+  async getF40CompSet(city: string = 'Atlanta', submarket: string): Promise<DataWithSource<F40CompSetData>> {
+    try {
+      const response = await api.get('/f40/comp-set', { params: { city, submarket } });
+      if (response.data?.success && response.data?.data) {
+        return { data: response.data.data, source: 'api' };
+      }
+      return { data: { target: null, tradeAreaComps: [], likeKindComps: [], calculatedAt: new Date().toISOString() }, source: 'mock' };
+    } catch {
+      return { data: { target: null, tradeAreaComps: [], likeKindComps: [], calculatedAt: new Date().toISOString() }, source: 'mock' };
+    }
+  }
+
+  mergeF40IntoCompetitors(competitors: CompetitorProperty[], rankings: F40RankingEntry[]): CompetitorProperty[] {
+    if (rankings.length === 0) return competitors;
+    return competitors.map(comp => {
+      const match = rankings.find(r =>
+        r.name.toLowerCase() === comp.name.toLowerCase() ||
+        comp.name.toLowerCase().includes(r.name.toLowerCase()) ||
+        r.name.toLowerCase().includes(comp.name.toLowerCase())
+      );
+      if (match) {
+        return {
+          ...comp,
+          f40Score: match.score,
+          f40Quartile: match.quartile,
+          f40Rank: match.rank,
+          f40Dimensions: match.dimensions,
+        };
+      }
+      return comp;
+    });
   }
 
   async exportAnalysis(dealId: string): Promise<Blob> {

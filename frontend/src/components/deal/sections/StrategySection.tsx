@@ -223,9 +223,13 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           }`}>
             {isPipeline ? '🎯 Strategy Planning' : '📊 Strategy Execution'}
           </div>
-          {isLiveData && (
+          {isLiveData ? (
             <div className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
               LIVE DATA
+            </div>
+          ) : (
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300 tracking-wider">
+              SAMPLE DATA
             </div>
           )}
           {isOwned && (

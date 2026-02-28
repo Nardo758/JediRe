@@ -39,6 +39,22 @@ router.get('/rankings', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/comp-set', async (req: Request, res: Response) => {
+  try {
+    const city = (req.query.city as string) || 'Atlanta';
+    const state = (req.query.state as string) || 'GA';
+    const submarket = req.query.submarket as string;
+    if (!submarket) {
+      return res.status(400).json({ success: false, error: 'submarket query parameter is required' });
+    }
+    const result = await f40PerformanceScoreService.getCompSetForSubmarket(city, submarket, state);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('F40 comp-set error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.post('/calculate', async (req: Request, res: Response) => {
   try {
     const city = (req.body.city as string) || (req.query.city as string) || 'Atlanta';

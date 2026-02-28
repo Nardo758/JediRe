@@ -89,6 +89,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const [riskAlert] = useState<RiskAlertData>(mockRiskAlert);
   const [quickStats] = useState<EnhancedQuickStat[]>(mockQuickStats);
   const [scoreLoading, setScoreLoading] = useState(false);
+  const [dataSource, setDataSource] = useState<'loading' | 'live' | 'sample'>('loading');
 
   useEffect(() => {
     if (!deal?.id) return;
@@ -131,9 +132,13 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         if (scoreData.breakdown) {
           setSignals(buildSignalsFromBreakdown(scoreData.breakdown));
         }
+        setDataSource('live');
+      } else {
+        setDataSource('sample');
       }
     } catch (err) {
-      console.warn('Could not load JEDI score, using defaults:', err);
+      console.warn('Could not load JEDI score, using sample data:', err);
+      setDataSource('sample');
     } finally {
       setScoreLoading(false);
     }
@@ -185,6 +190,23 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* Data Source Badge */}
+      {dataSource !== 'loading' && (
+        <div className="flex justify-end">
+          {dataSource === 'live' ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              LIVE DATA
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-amber-100 text-amber-700 border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              SAMPLE DATA
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Analysis Status (only during loading) */}
       {!analysisComplete && (
         <ActionStatusPanel
