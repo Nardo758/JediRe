@@ -89,6 +89,23 @@ export interface StrategyState {
   lastUpdated: number;
 }
 
+export interface DebtTermsState {
+  loanAmount: number;
+  loanType: string;
+  interestRate: number;
+  spread: number;
+  term: number;
+  amortization: number;
+  ioPeriod: number;
+  originationFee: number;
+  rateCapCost: number;
+  rateType: string;
+  indexRate: string;
+  waterfall: any;
+  source: string;
+  lastUpdated: number;
+}
+
 export type DealModuleEventType =
   | 'design-updated'
   | 'financial-updated'
@@ -96,16 +113,14 @@ export type DealModuleEventType =
   | 'capacity-updated'
   | 'navigate-to'
   | 'data-request'
-  // Capital Structure events (M11+)
   | 'capital-updated'
   | 'capital-stack-updated'
   | 'capital-returns-updated'
   | 'capital-rate-analyzed'
   | 'capital-scenarios-compared'
-  // Strategy events (M08)
   | 'strategy-selected'
-  // Risk events (M14)
-  | 'risk-updated';
+  | 'risk-updated'
+  | 'debt-terms-selected';
 
 export interface DealModuleEvent {
   source: string;
@@ -139,6 +154,9 @@ interface DealModuleContextValue {
   strategy: StrategyState | null;
   updateStrategy: (updates: Partial<StrategyState>) => void;
 
+  debtTerms: DebtTermsState | null;
+  updateDebtTerms: (updates: Partial<DebtTermsState>) => void;
+
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
 
@@ -170,6 +188,7 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [activeScenario, setActiveScenario] = useState<ActiveScenarioState | null>(null);
   const [capitalStructure, setCapitalStructure] = useState<CapitalStructureState | null>(null);
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
+  const [debtTerms, setDebtTerms] = useState<DebtTermsState | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
 
   const updateDesign3D = useCallback((updates: Partial<Design3DState>) => {
@@ -255,6 +274,18 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     }));
   }, []);
 
+  const updateDebtTerms = useCallback((updates: Partial<DebtTermsState>) => {
+    setDebtTerms(prev => ({
+      ...(prev || {
+        loanAmount: 0, loanType: '', interestRate: 0, spread: 0, term: 0,
+        amortization: 0, ioPeriod: 0, originationFee: 0, rateCapCost: 0,
+        rateType: 'fixed', indexRate: '', waterfall: null, source: '', lastUpdated: 0,
+      }),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
   const emitEvent = useCallback((event: Omit<DealModuleEvent, 'timestamp'>) => {
     const fullEvent: DealModuleEvent = { ...event, timestamp: Date.now() };
     setLastEvent(fullEvent);
@@ -284,11 +315,13 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateCapitalStructure,
     strategy,
     updateStrategy,
+    debtTerms,
+    updateDebtTerms,
     emitEvent,
     lastEvent,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, emitEvent, lastEvent, navigateToTab, activeTab]);
+  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, emitEvent, lastEvent, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -317,6 +350,8 @@ export const useDealModule = (): DealModuleContextValue => {
       updateCapitalStructure: () => {},
       strategy: null,
       updateStrategy: () => {},
+      debtTerms: null,
+      updateDebtTerms: () => {},
       emitEvent: () => {},
       lastEvent: null,
       navigateToTab: () => {},

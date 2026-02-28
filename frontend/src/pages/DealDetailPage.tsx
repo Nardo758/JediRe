@@ -233,7 +233,7 @@ const DealDetailPage: React.FC = () => {
     },
     {
       id: 'debt',
-      label: 'Debt',
+      label: 'Debt & Equity',
       icon: <DollarSign size={16} />,
       component: DebtTab
     },

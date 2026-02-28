@@ -6,6 +6,8 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
 import {
   capitalStructureService,
   type CapitalLayer,
@@ -15,7 +17,18 @@ import {
   type EquityWaterfallConfig,
   type ScenarioInput,
 } from '../../services/capital-structure.service';
+import { fetchLiveRates, fetchRateHistory } from '../../services/rate-index.service';
 import { logger } from '../../utils/logger';
+
+const upload = multer({
+  dest: path.join(process.cwd(), 'uploads', 'rate-sheets'),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.xlsx', '.xls', '.csv'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, allowed.includes(ext));
+  },
+});
 
 const router = Router();
 
@@ -291,6 +304,89 @@ router.post('/lifecycle/draw-progress', (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('[CapStructure Routes] Draw progress failed', { error: error.message });
     res.status(500).json({ error: 'Failed to calculate draw progress', detail: error.message });
+  }
+});
+
+// ============================================================================
+// Live Index Rate Endpoints
+// ============================================================================
+
+router.get('/rates/live', async (_req: Request, res: Response) => {
+  try {
+    const rates = await fetchLiveRates();
+    res.json(rates);
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] Live rates failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch live rates', detail: error.message });
+  }
+});
+
+router.get('/rates/history', async (req: Request, res: Response) => {
+  try {
+    const period = (req.query.period as string) || '2y';
+    if (!['6m', '1y', '2y'].includes(period)) {
+      return res.status(400).json({ error: 'Invalid period. Use 6m, 1y, or 2y' });
+    }
+    const history = await fetchRateHistory(period);
+    res.json(history);
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] Rate history failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch rate history', detail: error.message });
+  }
+});
+
+// ============================================================================
+// Rate Sheet Upload Endpoints
+// ============================================================================
+
+router.post('/rate-sheet/upload', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    const dealId = req.body.dealId;
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (!dealId) {
+      return res.status(400).json({ error: 'Missing dealId' });
+    }
+
+    const { parseRateSheet } = await import('../../services/rate-sheet-parser.service');
+    const result = await parseRateSheet(file.path, file.originalname, dealId);
+    res.json(result);
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] Rate sheet upload failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to parse rate sheet', detail: error.message });
+  }
+});
+
+router.get('/rate-sheet/:dealId/latest', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { getRateSheetLatest } = await import('../../services/rate-sheet-parser.service');
+    const result = await getRateSheetLatest(dealId);
+    if (!result) {
+      return res.status(404).json({ error: 'No rate sheet found for this deal' });
+    }
+    res.json(result);
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] Rate sheet fetch failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch rate sheet', detail: error.message });
+  }
+});
+
+// ============================================================================
+// AI Optimal Strategy Endpoint
+// ============================================================================
+
+router.post('/optimal-strategy', async (req: Request, res: Response) => {
+  try {
+    const { getOptimalStrategy } = await import('../../services/rate-index.service');
+    const liveRates = await fetchLiveRates();
+    const result = await getOptimalStrategy(req.body, liveRates);
+    res.json(result);
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] Optimal strategy failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to generate optimal strategy', detail: error.message });
   }
 });
 

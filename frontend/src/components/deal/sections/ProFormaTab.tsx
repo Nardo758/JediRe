@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DollarSign, TrendingUp, BarChart3, Edit3, RotateCcw,
   ChevronDown, ChevronRight, Loader2, CheckCircle2,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Deal } from '@/types';
 import { apiClient } from '@/services/api.client';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -121,6 +122,8 @@ function fmtPctRaw(n: number): string {
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
+  const { debtTerms } = useDealModule();
+  const lastAppliedTimestamp = useRef(0);
   const [modelType, setModelType] = useState<'existing' | 'development'>('existing');
   const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -178,6 +181,23 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [originationFee, setOriginationFee] = useState(0.01);
   const [rateCapCost, setRateCapCost] = useState(0);
   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
+  const [debtSource, setDebtSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (debtTerms && debtTerms.source && debtTerms.lastUpdated > lastAppliedTimestamp.current) {
+      lastAppliedTimestamp.current = debtTerms.lastUpdated;
+      if (debtTerms.loanAmount > 0) setLoanAmount(debtTerms.loanAmount);
+      setLoanType(debtTerms.rateType === 'floating' ? 'Floating' : 'Fixed');
+      if (debtTerms.interestRate > 0) setInterestRate(debtTerms.interestRate / 100);
+      if (debtTerms.spread > 0) setSpread(debtTerms.spread / 100);
+      if (debtTerms.term > 0) setLoanTerm(Math.round(debtTerms.term / 12));
+      if (debtTerms.amortization > 0) setAmortization(Math.round(debtTerms.amortization / 12));
+      if (debtTerms.ioPeriod > 0) setIoPeriod(debtTerms.ioPeriod);
+      if (debtTerms.originationFee > 0) setOriginationFee(debtTerms.originationFee / 100);
+      if (debtTerms.rateCapCost > 0) setRateCapCost(debtTerms.rateCapCost);
+      setDebtSource('Debt & Equity');
+    }
+  }, [debtTerms]);
 
   const [capexItems, setCapexItems] = useState<CapexLineItem[]>([
     { description: 'Interior Renovations', amount: 1500000 },
@@ -558,18 +578,28 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     />
                   )}
                   {section.id === 'financing' && (
-                    <FinancingSection
-                      loanAmount={loanAmount} setLoanAmount={setLoanAmount}
-                      loanType={loanType} setLoanType={setLoanType}
-                      interestRate={interestRate} setInterestRate={setInterestRate}
-                      spread={spread} setSpread={setSpread}
-                      loanTerm={loanTerm} setLoanTerm={setLoanTerm}
-                      amortization={amortization} setAmortization={setAmortization}
-                      ioPeriod={ioPeriod} setIoPeriod={setIoPeriod}
-                      originationFee={originationFee} setOriginationFee={setOriginationFee}
-                      rateCapCost={rateCapCost} setRateCapCost={setRateCapCost}
-                      prepayPenalty={prepayPenalty} setPrepayPenalty={setPrepayPenalty}
-                    />
+                    <>
+                      {debtSource && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+                            Source: {debtSource}
+                          </span>
+                          <span className="text-[10px] text-stone-400">Values pre-filled from Debt & Equity module — edit to override</span>
+                        </div>
+                      )}
+                      <FinancingSection
+                        loanAmount={loanAmount} setLoanAmount={setLoanAmount}
+                        loanType={loanType} setLoanType={setLoanType}
+                        interestRate={interestRate} setInterestRate={setInterestRate}
+                        spread={spread} setSpread={setSpread}
+                        loanTerm={loanTerm} setLoanTerm={setLoanTerm}
+                        amortization={amortization} setAmortization={setAmortization}
+                        ioPeriod={ioPeriod} setIoPeriod={setIoPeriod}
+                        originationFee={originationFee} setOriginationFee={setOriginationFee}
+                        rateCapCost={rateCapCost} setRateCapCost={setRateCapCost}
+                        prepayPenalty={prepayPenalty} setPrepayPenalty={setPrepayPenalty}
+                      />
+                    </>
                   )}
                   {section.id === 'capex' && (
                     <CapexSection
