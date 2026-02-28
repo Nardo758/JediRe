@@ -256,11 +256,11 @@ export class BuildingEnvelopeService {
     const constraintEntries: [string, number | null][] = [];
     if (zoningConstraints.densityMethod !== 'far_derived') {
       constraintEntries.push(['density', capacityByConstraint.byDensity]);
+      constraintEntries.push(['parking', capacityByConstraint.byParking]);
     }
     constraintEntries.push(
       ['FAR', capacityByConstraint.byFAR],
       ['height', capacityByConstraint.byHeight],
-      ['parking', capacityByConstraint.byParking],
     );
 
     const validConstraints = constraintEntries.filter(([, v]) => v != null) as [string, number][];

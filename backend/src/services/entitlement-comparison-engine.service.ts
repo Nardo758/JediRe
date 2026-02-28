@@ -215,16 +215,31 @@ export class EntitlementComparisonEngine {
   }
 
   private extractBaseConstraints(profile: ZoningProfile): ResolvedConstraints {
+    const parsePositiveOrNull = (v: any): number | null => {
+      if (v == null || v === '' || v === 'null' || v === 'undefined') return null;
+      const n = parseFloat(String(v));
+      return isNaN(n) || n <= 0 ? null : n;
+    };
+    const intPositiveOrNull = (v: any): number | null => {
+      if (v == null || v === '' || v === 'null' || v === 'undefined') return null;
+      const n = parseInt(String(v));
+      return isNaN(n) || n <= 0 ? null : n;
+    };
+    const parseZeroableOrNull = (v: any): number | null => {
+      if (v == null || v === '' || v === 'null' || v === 'undefined') return null;
+      const n = parseFloat(String(v));
+      return isNaN(n) ? null : n;
+    };
     return {
-      maxDensity: profile.density_method === 'far_derived' ? null : (parseFloat(String(profile.max_density_per_acre)) || null),
-      maxFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
-      appliedFAR: profile.applied_far ? parseFloat(String(profile.applied_far)) : null,
-      residentialFAR: parseFloat(String(profile.residential_far)) || null,
-      nonresidentialFAR: parseFloat(String(profile.nonresidential_far)) || null,
-      maxHeight: parseInt(String(profile.max_height_ft)) || null,
-      maxStories: parseInt(String(profile.max_stories)) || null,
-      minParkingPerUnit: parseFloat(String(profile.min_parking_per_unit)) || null,
-      maxLotCoverage: parseFloat(String(profile.max_lot_coverage_pct)) || null,
+      maxDensity: profile.density_method === 'far_derived' ? null : parsePositiveOrNull(profile.max_density_per_acre),
+      maxFAR: parsePositiveOrNull(profile.applied_far),
+      appliedFAR: parsePositiveOrNull(profile.applied_far),
+      residentialFAR: parsePositiveOrNull(profile.residential_far),
+      nonresidentialFAR: parsePositiveOrNull(profile.nonresidential_far),
+      maxHeight: intPositiveOrNull(profile.max_height_ft),
+      maxStories: intPositiveOrNull(profile.max_stories),
+      minParkingPerUnit: parseZeroableOrNull(profile.min_parking_per_unit),
+      maxLotCoverage: parsePositiveOrNull(profile.max_lot_coverage_pct),
       densityMethod: profile.density_method || 'units_per_acre',
     };
   }
@@ -280,7 +295,7 @@ export class EntitlementComparisonEngine {
     const envelope = this.computeEnvelope(subject, varianceConstraints, avgUnitSizeOverride);
     return {
       key: 'variance',
-      label: `Variance (+${pct}%)`,
+      label: `Variance (+${pct}% Density / +${Math.round(pct * 0.75)}% FAR)`,
       zoningCode: subject.baseDistrictCode,
       risk: pct <= 15 ? 'Low' : pct <= 30 ? 'Medium' : 'High',
       successRate: pct <= 15 ? '75-85%' : pct <= 30 ? '60-75%' : '40-55%',
@@ -505,6 +520,9 @@ export class EntitlementComparisonEngine {
       return await this.computeRezoneFromCode(subject, baseConstraints, targetCode, avgUnitSizeOverride);
     }
 
+    let bestCode: string | null = null;
+    let bestMeta: { risk: string; successRate: string; timeline: string; source: string; description: string } | null = null;
+
     try {
       const orchestratorRec = await this.orchestrator.getOrAnalyze(dealId);
       if (orchestratorRec?.topRecommendation) {
@@ -515,65 +533,73 @@ export class EntitlementComparisonEngine {
         const timeline = top.avgTimelineDays
           ? `${Math.round(top.avgTimelineDays / 30)}-${Math.round(top.avgTimelineDays / 30) + 6} months`
           : '12-24 months';
-        return {
-          key: 'rezone',
-          label: `Rezone to ${top.code}`,
-          zoningCode: top.code,
+        bestCode = top.code;
+        bestMeta = {
           risk: riskLevel,
           successRate: top.approvalRate !== null ? `${top.approvalRate}%` : '35-50%',
           timeline,
           source: 'orchestrator',
           description: `Rezone to ${top.code} (${top.districtName || 'higher-density district'}). ${top.reasoning}`,
-          metrics: {
-            maxUnits: top.envelope?.maxUnits || 0,
-            maxGba: top.envelope?.maxGFA || 0,
-            maxStories: top.envelope?.maxFloors || 0,
-            appliedFar: null,
-            maxDensity: null,
-            maxHeight: null,
-            parkingRequired: 0,
-            bindingConstraint: top.envelope?.limitingFactor || 'unknown',
-          },
         };
       }
     } catch {}
 
-    try {
-      if (subject.baseDistrictCode && subject.municipality) {
-        const rezoneData = await this.rezoneService.analyze({
-          currentDistrictCode: subject.baseDistrictCode,
-          municipality: subject.municipality,
-          lotAreaSf: subject.lotAreaSf,
-          propertyType: subject.propertyType,
-          dealType: subject.dealType,
-        });
-        if (rezoneData.bestTarget) {
-          const best = rezoneData.bestTarget;
-          const ev = best.evidence;
-          const hasEvidence = ev && ev.count > 0;
-          return {
-            key: 'rezone',
-            label: `Rezone to ${best.targetDistrictCode}`,
-            zoningCode: best.targetDistrictCode,
-            risk: best.risk || 'High',
-            successRate: hasEvidence ? `${ev.approvalRate}%` : '35-50%',
-            timeline: best.estimatedTimeline || '12-24 months',
-            source: 'rezone-analysis',
-            description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
-            metrics: {
-              maxUnits: best.targetEnvelope.maxCapacity,
-              maxGba: best.targetEnvelope.maxGFA,
-              maxStories: best.targetEnvelope.maxFloors,
-              appliedFar: null,
-              maxDensity: null,
-              maxHeight: null,
-              parkingRequired: 0,
-              bindingConstraint: best.targetEnvelope.limitingFactor,
-            },
-          };
+    if (!bestCode) {
+      try {
+        if (subject.baseDistrictCode && subject.municipality) {
+          const rezoneData = await this.rezoneService.analyze({
+            currentDistrictCode: subject.baseDistrictCode,
+            municipality: subject.municipality,
+            lotAreaSf: subject.lotAreaSf,
+            propertyType: subject.propertyType,
+            dealType: subject.dealType,
+          });
+          if (rezoneData.bestTarget) {
+            const best = rezoneData.bestTarget;
+            const ev = best.evidence;
+            const hasEvidence = ev && ev.count > 0;
+            bestCode = best.targetDistrictCode;
+            bestMeta = {
+              risk: best.risk || 'High',
+              successRate: hasEvidence ? `${ev.approvalRate}%` : '35-50%',
+              timeline: best.estimatedTimeline || '12-24 months',
+              source: 'rezone-analysis',
+              description: `Rezone to ${best.targetDistrictCode} (${best.targetDistrictName || 'higher-density district'}). ${best.insight}`,
+            };
+          }
         }
+      } catch {}
+    }
+
+    if (bestCode) {
+      const constraints = await this.resolveConstraints(bestCode, subject.municipality, subject.state);
+      if (constraints) {
+        if (baseConstraints.minParkingPerUnit != null && baseConstraints.minParkingPerUnit < (constraints.minParkingPerUnit ?? Infinity)) {
+          constraints.minParkingPerUnit = baseConstraints.minParkingPerUnit;
+        }
+        const envelope = this.computeEnvelope(subject, constraints, avgUnitSizeOverride);
+        return {
+          key: 'rezone',
+          label: `Rezone to ${bestCode}`,
+          zoningCode: bestCode,
+          risk: bestMeta!.risk,
+          successRate: bestMeta!.successRate,
+          timeline: bestMeta!.timeline,
+          source: bestMeta!.source,
+          description: bestMeta!.description,
+          metrics: {
+            maxUnits: envelope.maxCapacity,
+            maxGba: Math.round(envelope.maxGFA),
+            maxStories: envelope.maxFloors,
+            appliedFar: constraints.appliedFAR,
+            maxDensity: constraints.maxDensity,
+            maxHeight: constraints.maxHeight,
+            parkingRequired: envelope.parkingRequired,
+            bindingConstraint: envelope.limitingFactor,
+          },
+        };
       }
-    } catch {}
+    }
 
     return this.computeRezoneMultiplier(subject, baseConstraints, avgUnitSizeOverride);
   }
@@ -586,6 +612,9 @@ export class EntitlementComparisonEngine {
   ): Promise<ComputedPath> {
     const constraints = await this.resolveConstraints(targetCode, subject.municipality, subject.state);
     if (constraints) {
+      if (baseConstraints.minParkingPerUnit != null && baseConstraints.minParkingPerUnit < (constraints.minParkingPerUnit ?? Infinity)) {
+        constraints.minParkingPerUnit = baseConstraints.minParkingPerUnit;
+      }
       const envelope = this.computeEnvelope(subject, constraints, avgUnitSizeOverride);
       return {
         key: 'rezone',
@@ -718,7 +747,11 @@ export class EntitlementComparisonEngine {
             maxHeight: parseInt(d.max_height_feet || d.max_building_height_ft) || null,
             maxStories: parseInt(d.max_stories) || null,
             minParkingPerUnit: parseFloat(d.min_parking_per_unit || d.parking_per_unit) || null,
-            maxLotCoverage: parseFloat(d.max_lot_coverage || d.max_lot_coverage_percent) || null,
+            maxLotCoverage: (() => {
+              const raw = parseFloat(d.max_lot_coverage || d.max_lot_coverage_percent);
+              if (isNaN(raw) || raw === 0) return null;
+              return raw <= 1 ? raw * 100 : raw;
+            })(),
             densityMethod: d.density_method || 'units_per_acre',
           };
           await this.cache.setConstraints(code, mun, st, resolved, { source: 'database', confidence: 'high' });
@@ -899,11 +932,21 @@ For extraRows, only add rows where you have specific information about the codes
           : (m.maxUnits > 0 && lotAreaSf && lotAreaSf > 0
             ? (m.maxUnits / (lotAreaSf / 43560)).toFixed(1)
             : '--'),
-        far: m.appliedFar != null ? Number(m.appliedFar).toFixed(2) : '--',
+        far: (() => {
+          if (m.appliedFar == null) return '--';
+          const allowedFar = Number(m.appliedFar);
+          if (lotAreaSf && lotAreaSf > 0 && m.maxGba > 0) {
+            const achievedFar = m.maxGba / lotAreaSf;
+            if (achievedFar < allowedFar * 0.95) {
+              return `${achievedFar.toFixed(2)} (of ${allowedFar.toFixed(2)})`;
+            }
+          }
+          return allowedFar.toFixed(2);
+        })(),
         maxUnits: m.maxUnits > 0 ? m.maxUnits.toLocaleString() : '--',
         gba: m.maxGba > 0 ? m.maxGba.toLocaleString() : '--',
         stories: m.maxStories > 0 ? String(m.maxStories) : '--',
-        parking: m.parkingRequired > 0 ? m.parkingRequired.toLocaleString() : '--',
+        parking: m.parkingRequired != null ? (m.parkingRequired === 0 ? '0 (exempt)' : m.parkingRequired.toLocaleString()) : '--',
         bindingConstraint: m.bindingConstraint || '--',
         maxHeight: m.maxHeight != null ? `${m.maxHeight} ft` : '--',
         deltaUnits: String(deltaUnits),
