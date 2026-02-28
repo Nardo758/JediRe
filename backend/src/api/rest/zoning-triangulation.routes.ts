@@ -757,7 +757,52 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       }
     }
 
-    const dataAvailability = projects.length >= 3 ? 'rich' : projects.length > 0 ? 'sparse' : 'none';
+    let nearbyProjects: any[] = [];
+    let nearbyScope: string | null = null;
+    const codeMatchedAddresses = new Set(projects.map(p => (p.address || '').toUpperCase()));
+
+    if (municipality) {
+      const nearbyMuniResult = await pool.query(
+        `SELECT ${benchmarkFields}
+         FROM benchmark_projects
+         WHERE density_achieved IS NOT NULL AND density_achieved > 0
+           AND density_achieved < 500 AND land_acres > 0.01
+           AND UPPER(municipality) = UPPER($1)
+         ORDER BY density_achieved DESC
+         LIMIT 50`,
+        [municipality]
+      );
+      nearbyProjects = nearbyMuniResult.rows.filter(
+        p => !codeMatchedAddresses.has((p.address || '').toUpperCase())
+      );
+      if (nearbyProjects.length > 0) nearbyScope = 'municipality';
+    }
+
+    if (nearbyProjects.length < 5 && county) {
+      const nearbyCountyResult = await pool.query(
+        `SELECT ${benchmarkFields}
+         FROM benchmark_projects
+         WHERE density_achieved IS NOT NULL AND density_achieved > 0
+           AND density_achieved < 500 AND land_acres > 0.01
+           AND UPPER(county) = UPPER($1)
+         ORDER BY density_achieved DESC
+         LIMIT 50`,
+        [county]
+      );
+      const countyFiltered = nearbyCountyResult.rows.filter(
+        p => !codeMatchedAddresses.has((p.address || '').toUpperCase())
+      );
+      if (countyFiltered.length > nearbyProjects.length) {
+        nearbyProjects = countyFiltered;
+        nearbyScope = 'county';
+      }
+    }
+
+    if (!searchScope && nearbyScope) searchScope = nearbyScope;
+
+    const allProjects = [...projects, ...nearbyProjects];
+    const codeDataAvailability = projects.length >= 3 ? 'rich' : projects.length > 0 ? 'sparse' : 'none';
+    const dataAvailability = allProjects.length >= 3 ? 'rich' : allProjects.length > 0 ? 'sparse' : 'none';
 
     const benchmarkMap: Record<string, any[]> = {};
     for (const p of projects) {
@@ -766,7 +811,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       benchmarkMap[code].push(p);
     }
 
-    const benchmarks = Object.entries(benchmarkMap).map(([code, ps]) => {
+    const computeGroupStats = (ps: any[]) => {
       const densities = ps.map(p => p.density_achieved != null ? parseFloat(p.density_achieved) : NaN).filter(d => !isNaN(d) && d > 0);
       const lotAcres = ps.map(p => p.land_acres != null ? parseFloat(p.land_acres) : NaN).filter(a => !isNaN(a) && a > 0);
       const units = ps.map(p => p.unit_count != null ? parseInt(p.unit_count) : NaN).filter(u => !isNaN(u) && u > 0);
@@ -774,10 +819,7 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       const assessedVals = ps.map(p => p.assessed_value != null ? parseInt(p.assessed_value) : NaN).filter(v => !isNaN(v) && v > 0);
       const fars = ps.map(p => p.far_achieved != null ? parseFloat(p.far_achieved) : NaN).filter(f => !isNaN(f) && f > 0);
       const lotCoverages = ps.map(p => p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : NaN).filter(c => !isNaN(c) && c > 0);
-
       return {
-        code,
-        projectCount: ps.length,
         avgDensityAchieved: densities.length > 0 ? Math.round((densities.reduce((a, b) => a + b, 0) / densities.length) * 100) / 100 : null,
         minDensity: densities.length > 0 ? Math.min(...densities) : null,
         maxDensity: densities.length > 0 ? Math.max(...densities) : null,
@@ -788,30 +830,38 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         avgFarAchieved: fars.length > 0 ? Math.round((fars.reduce((a, b) => a + b, 0) / fars.length) * 100) / 100 : null,
         avgLotCoverageAchieved: lotCoverages.length > 0 ? Math.round((lotCoverages.reduce((a, b) => a + b, 0) / lotCoverages.length) * 10000) / 10000 : null,
       };
-    });
+    };
 
-    const allDensities = projects.map(p => parseFloat(p.density_achieved)).filter(d => d > 0);
-    const avgAchieved = allDensities.length > 0 ? allDensities.reduce((a, b) => a + b, 0) / allDensities.length : null;
+    const benchmarks = Object.entries(benchmarkMap).map(([code, ps]) => ({
+      code,
+      projectCount: ps.length,
+      ...computeGroupStats(ps),
+    }));
+
+    const statsSource = projects.length > 0 ? projects : nearbyProjects;
+
+    const codeDensities = statsSource.map(p => parseFloat(p.density_achieved)).filter(d => d > 0);
+    const avgAchieved = codeDensities.length > 0 ? codeDensities.reduce((a, b) => a + b, 0) / codeDensities.length : null;
     const utilizationPct = avgAchieved && zonedMaxDensity && zonedMaxDensity > 0
       ? Math.round((avgAchieved / zonedMaxDensity) * 10000) / 100
       : null;
 
-    const allFars = projects.map(p => p.far_achieved != null ? parseFloat(p.far_achieved) : NaN).filter(f => !isNaN(f) && f > 0);
-    const allLotCoverages = projects.map(p => p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : NaN).filter(c => !isNaN(c) && c > 0);
-    const allBuildingSfs = projects.map(p => p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : NaN)).filter(s => !isNaN(s) && s > 0);
-    const allLotAcres = projects.map(p => p.land_acres != null ? parseFloat(p.land_acres) : NaN).filter(a => !isNaN(a) && a > 0);
+    const codeFars = statsSource.map(p => p.far_achieved != null ? parseFloat(p.far_achieved) : NaN).filter(f => !isNaN(f) && f > 0);
+    const codeLotCoverages = statsSource.map(p => p.lot_coverage_achieved != null ? parseFloat(p.lot_coverage_achieved) : NaN).filter(c => !isNaN(c) && c > 0);
+    const codeBuildingSfs = statsSource.map(p => p.building_sf != null ? parseInt(p.building_sf) : (p.total_sf != null ? parseInt(p.total_sf) : NaN)).filter(s => !isNaN(s) && s > 0);
+    const codeLotAcres = statsSource.map(p => p.land_acres != null ? parseFloat(p.land_acres) : NaN).filter(a => !isNaN(a) && a > 0);
 
-    const avgFarAchieved = allFars.length > 0
-      ? Math.round((allFars.reduce((a, b) => a + b, 0) / allFars.length) * 100) / 100
+    const avgFarAchieved = codeFars.length > 0
+      ? Math.round((codeFars.reduce((a, b) => a + b, 0) / codeFars.length) * 100) / 100
       : null;
-    const avgLotCoverageAchieved = allLotCoverages.length > 0
-      ? Math.round((allLotCoverages.reduce((a, b) => a + b, 0) / allLotCoverages.length) * 10000) / 10000
+    const avgLotCoverageAchieved = codeLotCoverages.length > 0
+      ? Math.round((codeLotCoverages.reduce((a, b) => a + b, 0) / codeLotCoverages.length) * 10000) / 10000
       : null;
-    const avgBuildingSf = allBuildingSfs.length > 0
-      ? Math.round(allBuildingSfs.reduce((a, b) => a + b, 0) / allBuildingSfs.length)
+    const avgBuildingSf = codeBuildingSfs.length > 0
+      ? Math.round(codeBuildingSfs.reduce((a, b) => a + b, 0) / codeBuildingSfs.length)
       : null;
-    const avgLotAcres = allLotAcres.length > 0
-      ? Math.round((allLotAcres.reduce((a, b) => a + b, 0) / allLotAcres.length) * 1000) / 1000
+    const avgLotAcres = codeLotAcres.length > 0
+      ? Math.round((codeLotAcres.reduce((a, b) => a + b, 0) / codeLotAcres.length) * 1000) / 1000
       : null;
 
     const farUtilizationPct = avgFarAchieved && zonedMaxFar && zonedMaxFar > 0
@@ -821,7 +871,9 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       ? Math.round((avgLotCoverageAchieved / (zonedMaxLotCoverage / 100)) * 10000) / 100
       : null;
 
-    const projectsClean = projects.map(p => ({
+    const nearbyStats = nearbyProjects.length > 0 ? computeGroupStats(nearbyProjects) : null;
+
+    const cleanProjectMapper = (p: any, matchType: string) => ({
       address: p.address,
       landAcres: p.land_acres != null ? parseFloat(p.land_acres) : null,
       unitCount: p.unit_count != null ? parseInt(p.unit_count) : null,
@@ -835,7 +887,11 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       zoningFrom: p.zoning_from,
       zoningTo: p.zoning_to,
       totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
-    }));
+      matchType,
+    });
+
+    const projectsClean = projects.map(p => cleanProjectMapper(p, 'code'));
+    const nearbyProjectsClean = nearbyProjects.map(p => cleanProjectMapper(p, 'nearby'));
 
     let rezoneFromCurrent: any = null;
     if (currentCode) {
@@ -881,8 +937,11 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         zonedMaxFar,
         zonedMaxLotCoverage,
         dataAvailability,
+        codeDataAvailability,
         benchmarks,
         projects: projectsClean,
+        nearbyProjects: nearbyProjectsClean,
+        nearbyStats,
         utilizationPct,
         avgFarAchieved,
         avgLotCoverageAchieved,
@@ -892,6 +951,9 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         lotCoverageUtilizationPct,
         rezoneFromCurrent,
         searchScope,
+        codeMatchCount: projects.length,
+        nearbyMatchCount: nearbyProjects.length,
+        statsSource: projects.length > 0 ? 'code' : 'nearby',
       },
     });
   } catch (error: any) {

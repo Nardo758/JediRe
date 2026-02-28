@@ -1246,8 +1246,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                             refProjects = [...refProjects, ...rezoneExamples];
                           }
 
-                          if (densityBenchmarks?.projects) {
-                            const benchProjects = densityBenchmarks.projects
+                          const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
+                          if (allBenchProjects.length > 0) {
+                            const benchProjects = allBenchProjects
                               .filter((p: any) => {
                                 const pCode = p.zoningTo || p.zoningCode || p.zoning_code || p.district_code;
                                 return pCode === scenarioCode;
@@ -1266,8 +1267,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                             refProjects = [...refProjects, ...benchProjects];
                           }
 
-                          if (refProjects.length === 0 && densityBenchmarks?.projects?.length > 0) {
-                            refProjects = densityBenchmarks.projects.map((p: any) => ({
+                          if (refProjects.length === 0 && allBenchProjects.length > 0) {
+                            refProjects = allBenchProjects.map((p: any) => ({
                               address: p.address || 'Address not available',
                               landAcres: p.landAcres ?? p.land_acres ?? null,
                               unitCount: p.unitCount ?? p.unit_count ?? null,
@@ -1542,6 +1543,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       {!loadingBenchmarks && densityBenchmarks && (() => {
         const avail = densityBenchmarks.dataAvailability || 'none';
         const projects = densityBenchmarks.projects || [];
+        const nearbyProjectsList = densityBenchmarks.nearbyProjects || [];
+        const allDisplayProjects = [...projects, ...nearbyProjectsList];
         const benchmarks = densityBenchmarks.benchmarks || [];
         const currentCode = densityBenchmarks.currentCode;
         const zonedMax = densityBenchmarks.zonedMaxDensity;
@@ -1554,8 +1557,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const avgLotAcres = densityBenchmarks.avgLotAcres;
         const farUtilPct = densityBenchmarks.farUtilizationPct;
         const lotCovUtilPct = densityBenchmarks.lotCoverageUtilizationPct;
+        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
+        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
         const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
         const zonedMaxLotCov = profile?.max_lot_coverage_pct;
+        const municipality = profile?.municipality || '';
 
         if (avail === 'none') {
           return (
@@ -1578,8 +1584,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           ? benchmarks.reduce((sum: number, b: any) => sum + (b.avgDensityAchieved || 0), 0) / benchmarks.length
           : null;
 
-        const barMaxVal = Math.max(zonedMax || 0, avgDensity || 0, ...(projects.map((p: any) => p.densityAchieved || 0)));
+        const barMaxVal = Math.max(zonedMax || 0, avgDensity || 0, ...(allDisplayProjects.map((p: any) => p.densityAchieved || 0)));
         const barScale = barMaxVal > 0 ? 100 / barMaxVal : 1;
+
+        const totalProjectCount = codeMatchCount + nearbyMatchCount;
+        const scopeLabel = codeMatchCount > 0 
+          ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
+          : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`;
 
         return (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -1590,14 +1601,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </svg>
                 <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                  {projects.length} project{projects.length !== 1 ? 's' : ''}
+                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
                 </span>
               </div>
-              {scope && (
-                <span className="text-[10px] text-gray-400">
-                  {scope === 'municipality' ? 'Same city' : scope === 'county' ? 'County-wide' : 'State-wide'}
-                </span>
-              )}
+              <span className="text-[10px] text-gray-400">
+                {scopeLabel}
+              </span>
             </div>
 
             <div className="px-5 py-4 space-y-4">
@@ -1606,7 +1615,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Limited benchmark data — {projects.length} comparable project{projects.length !== 1 ? 's' : ''} found
+                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
+                </div>
+              )}
+
+              {codeMatchCount === 0 && nearbyMatchCount > 0 && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded-md border border-blue-100">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  No exact {currentCode} matches — showing nearby development data{municipality ? ` from ${municipality}` : ''}
                 </div>
               )}
 
@@ -1778,69 +1796,118 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </div>
               )}
 
-              {projects.length > 0 && (
+              {allDisplayProjects.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-gray-600">Comparable Projects</div>
-                  <div className="grid gap-2">
-                    {projects.map((p: any, i: number) => (
-                      <div key={i} className="bg-gray-50 rounded-md border border-gray-100 px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
-                              {p.landAcres != null && (
-                                <span>{p.landAcres.toFixed(2)} ac</span>
-                              )}
-                              {p.unitCount != null && (
-                                <span>{p.unitCount.toLocaleString()} units</span>
-                              )}
-                              {p.buildingSf != null && (
-                                <span>{p.buildingSf.toLocaleString()} SF</span>
-                              )}
-                              {p.assessedValue != null && (
-                                <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>
-                              )}
+                  {projects.length > 0 && (
+                    <>
+                      <div className="text-xs font-medium text-gray-600">
+                        Code-Matched Projects
+                        <span className="ml-1 text-gray-400 font-normal">({currentCode})</span>
+                      </div>
+                      <div className="grid gap-2">
+                        {projects.map((p: any, i: number) => (
+                          <div key={`code-${i}`} className="bg-gray-50 rounded-md border border-gray-100 px-3 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
+                                  {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
+                                  {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
+                                  {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
+                                  {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
+                                </div>
+                                {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
+                                    {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
+                                    {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                {p.densityAchieved != null && (
+                                  <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
+                                )}
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                                  p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+                                  p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                  p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  'bg-gray-50 text-gray-500 border-gray-200'
+                                }`}>{p.entitlementType || '--'}</span>
+                              </div>
                             </div>
-                            {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
-                                {p.farAchieved != null && (
-                                  <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>
-                                )}
-                                {p.lotCoverageAchieved != null && (
-                                  <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>
-                                )}
+                            {(p.zoningFrom || p.zoningTo) && (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
+                                {p.zoningFrom && <span>{p.zoningFrom}</span>}
+                                {p.zoningFrom && p.zoningTo && <span>→</span>}
+                                {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
+                                {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
                               </div>
                             )}
                           </div>
-                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            {p.densityAchieved != null && (
-                              <span className="text-xs font-bold text-teal-700 whitespace-nowrap">
-                                {p.densityAchieved.toFixed(1)} u/ac
-                              </span>
-                            )}
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                              p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-                              p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                              p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                              'bg-gray-50 text-gray-500 border-gray-200'
-                            }`}>
-                              {p.entitlementType || '--'}
-                            </span>
-                          </div>
-                        </div>
-                        {(p.zoningFrom || p.zoningTo) && (
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
-                            {p.zoningFrom && <span>{p.zoningFrom}</span>}
-                            {p.zoningFrom && p.zoningTo && <span>→</span>}
-                            {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
-                            {p.totalEntitlementDays != null && (
-                              <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>
-                            )}
-                          </div>
-                        )}
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
+
+                  {nearbyProjectsList.length > 0 && (
+                    <>
+                      <div className={`text-xs font-medium text-gray-600 ${projects.length > 0 ? 'mt-3 pt-3 border-t border-gray-100' : ''}`}>
+                        Nearby Development Activity
+                        <span className="ml-1 text-gray-400 font-normal">
+                          ({nearbyProjectsList.length} project{nearbyProjectsList.length !== 1 ? 's' : ''}{municipality ? ` in ${municipality}` : ''})
+                        </span>
+                      </div>
+                      <div className="grid gap-2">
+                        {nearbyProjectsList.slice(0, 10).map((p: any, i: number) => (
+                          <div key={`nearby-${i}`} className="bg-amber-50/30 rounded-md border border-amber-100 px-3 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</span>
+                                  {p.zoningTo && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 flex-shrink-0">
+                                      {p.zoningTo}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
+                                  {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
+                                  {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
+                                  {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
+                                  {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
+                                </div>
+                                {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
+                                    {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
+                                    {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                {p.densityAchieved != null && (
+                                  <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
+                                )}
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                                  p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+                                  p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                  p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                  'bg-gray-50 text-gray-500 border-gray-200'
+                                }`}>{p.entitlementType || '--'}</span>
+                              </div>
+                            </div>
+                            {(p.zoningFrom || p.zoningTo) && (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
+                                {p.zoningFrom && <span>{p.zoningFrom}</span>}
+                                {p.zoningFrom && p.zoningTo && <span>→</span>}
+                                {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
+                                {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
