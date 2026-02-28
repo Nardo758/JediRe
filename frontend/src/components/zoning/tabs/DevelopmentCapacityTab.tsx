@@ -621,236 +621,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Zoning Constraint Matrix</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                All constraints in one view. Click the pencil icon to override values.
-                {profile.density_method === 'far_derived' && (
-                  <span className="ml-2 text-blue-600 font-medium">Density: FAR-derived (no cap)</span>
-                )}
-              </p>
-            </div>
-            {enrichment?.limitingFactor && (
-              <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 font-medium flex-shrink-0">
-                Controlling: {getLimitingLabel(enrichment.limitingFactor)}
-              </span>
-            )}
-          </div>
-          {isConditionalVariant && (
-            <div className="mt-2 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
-              <svg className="h-4 w-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-              </svg>
-              <p className="text-[11px] text-amber-800">
-                <span className="font-medium">Conditional Variant ({profile.base_district_code}):</span>{' '}
-                The "-C" suffix indicates a conditional ordinance. Standards inherited from base district. Review before finalizing.
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/50">
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Constraint</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Zoned Value</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Citation</th>
-                <th className="text-right px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Capacity</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[35%]">Formula</th>
-                <th className="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Controlling</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(() => {
-                const capacityKeyMap: Record<string, string> = {
-                  applied_far: 'byFAR',
-                  residential_far: 'byFAR',
-                  max_density_per_acre: 'byDensity',
-                  max_height_ft: 'byHeight',
-                  min_parking_per_unit: 'byParking',
-                };
-                const limitingFieldMap: Record<string, string[]> = {
-                  FAR: ['applied_far', 'residential_far', 'nonresidential_far', 'combined_far'],
-                  density: ['max_density_per_acre'],
-                  height: ['max_height_ft', 'max_stories'],
-                  parking: ['min_parking_per_unit'],
-                };
-                const calcNameFieldMap: Record<string, string[]> = {
-                  applied_far: ['far', 'floor area', 'gba by far'],
-                  residential_far: ['far', 'floor area', 'residential far'],
-                  nonresidential_far: ['nonresidential far'],
-                  combined_far: ['combined far'],
-                  max_density_per_acre: ['density', 'units by density'],
-                  max_height_ft: ['height', 'stories by height'],
-                  max_stories: ['stories', 'height'],
-                  max_lot_coverage_pct: ['lot coverage', 'footprint', 'max footprint'],
-                  min_parking_per_unit: ['parking'],
-                  open_space_pct: ['open space'],
-                };
-
-                return constraintRows.map(row => {
-                  const isOverridden = profile.user_overrides?.[row.field] != null;
-                  const displayValue = row.value != null ? `${row.value}${row.suffix}` : '--';
-                  const sourceKey = fieldToSourceKey[row.field];
-                  const source = enrichment?.sources?.[sourceKey];
-                  const capacityKey = capacityKeyMap[row.field];
-                  const capacity = capacityKey ? enrichment?.capacityByConstraint?.[capacityKey as keyof typeof enrichment.capacityByConstraint] : null;
-                  const isControlling = enrichment?.limitingFactor ? (limitingFieldMap[enrichment.limitingFactor] || []).includes(row.field) : false;
-                  const matchingCalc = enrichment?.calculations?.find(calc => {
-                    const keywords = calcNameFieldMap[row.field] || [];
-                    const calcNameLower = calc.name.toLowerCase();
-                    return keywords.some(kw => calcNameLower.includes(kw));
-                  });
-
-                  return (
-                    <tr
-                      key={row.field}
-                      className={`border-b border-gray-50 group hover:bg-gray-50/50 ${isControlling ? 'bg-red-50/40' : ''}`}
-                    >
-                      <td className={`px-4 py-2.5 ${isControlling ? 'border-l-3 border-l-red-400' : ''}`}>
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-medium ${isControlling ? 'text-red-800' : 'text-gray-700'}`}>{row.label}</span>
-                          {isOverridden && <span className="text-[9px] text-purple-500 bg-purple-50 px-1 rounded">override</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-1.5">
-                          {editingConstraint === row.field ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                className="w-20 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                autoFocus
-                              />
-                              <button onClick={() => handleSaveOverride(row.field)} className="text-green-600 hover:text-green-800">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                              </button>
-                              <button onClick={() => setEditingConstraint(null)} className="text-gray-400 hover:text-gray-600">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <span className={`text-sm font-semibold ${isOverridden ? 'text-purple-700' : isControlling ? 'text-red-800' : row.field === 'applied_far' ? 'text-blue-700' : 'text-gray-900'}`}>
-                                {displayValue}
-                              </span>
-                              <button
-                                onClick={() => { setEditingConstraint(row.field); setEditValue(String(row.value ?? '')); }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
-                                title="Override this constraint"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {source?.sectionNumber ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (source.sourceUrl) window.open(source.sourceUrl, '_blank', 'noopener,noreferrer');
-                            }}
-                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer transition-colors"
-                            title={source.sectionTitle ? `${source.sectionNumber} — ${source.sectionTitle}` : source.sectionNumber || ''}
-                          >
-                            §{source.sectionNumber}
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        {capacity != null ? (
-                          <span className={`text-xs font-semibold ${isControlling ? 'text-red-700' : 'text-gray-900'}`}>
-                            {formatNumber(capacity)} units
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {matchingCalc ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-500 font-mono truncate">{matchingCalc.formula}</span>
-                            {matchingCalc.sectionNumber && (
-                              <button
-                                onClick={() => {
-                                  if (matchingCalc.sourceUrl) window.open(matchingCalc.sourceUrl, '_blank', 'noopener,noreferrer');
-                                }}
-                                className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer flex-shrink-0"
-                              >
-                                §{matchingCalc.sectionNumber}
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-center">
-                        {isControlling && (
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                            <svg className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                            </svg>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                });
-              })()}
-              <tr className="bg-gray-50/50">
-                <td className="px-4 py-2.5">
-                  <span className="text-xs font-medium text-gray-700">Setbacks</span>
-                </td>
-                <td className="px-4 py-2.5" colSpan={4}>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <span className="text-xs text-gray-600">Front: <span className="font-semibold text-gray-900">{profile.setback_front_ft ?? '--'} ft</span></span>
-                    <span className="text-xs text-gray-600">Side: <span className="font-semibold text-gray-900">{profile.setback_side_ft ?? '--'} ft</span></span>
-                    <span className="text-xs text-gray-600">Rear: <span className="font-semibold text-gray-900">{profile.setback_rear_ft ?? '--'} ft</span></span>
-                    {enrichment?.sources?.frontSetback?.sectionNumber && (
-                      <button
-                        onClick={() => {
-                          if (enrichment.sources.frontSetback.sourceUrl) window.open(enrichment.sources.frontSetback.sourceUrl, '_blank', 'noopener,noreferrer');
-                        }}
-                        className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
-                      >
-                        §{enrichment.sources.frontSetback.sectionNumber}
-                      </button>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5" />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {hasHeightBuffer && (
-          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50">
-            <p className="text-xs text-blue-800">
-              <span className="font-medium">Height Buffer Rule:</span>{' '}
-              {profile.max_height_ft} ft within {profile.height_buffer_ft} ft of residential districts;{' '}
-              {profile.height_beyond_buffer_ft} ft beyond
-            </p>
-          </div>
-        )}
-        {enrichment?.insights?.controllingFactor && (
-          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50/50">
-            <p className="text-xs text-blue-800">{enrichment.insights.controllingFactor}</p>
-          </div>
-        )}
-      </div>
-
       {loadingBenchmarks && (
         <div className="flex items-center justify-center py-4">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
@@ -1747,6 +1517,236 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Zoning Constraint Matrix</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                All constraints in one view. Click the pencil icon to override values.
+                {profile.density_method === 'far_derived' && (
+                  <span className="ml-2 text-blue-600 font-medium">Density: FAR-derived (no cap)</span>
+                )}
+              </p>
+            </div>
+            {enrichment?.limitingFactor && (
+              <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 font-medium flex-shrink-0">
+                Controlling: {getLimitingLabel(enrichment.limitingFactor)}
+              </span>
+            )}
+          </div>
+          {isConditionalVariant && (
+            <div className="mt-2 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
+              <svg className="h-4 w-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <p className="text-[11px] text-amber-800">
+                <span className="font-medium">Conditional Variant ({profile.base_district_code}):</span>{' '}
+                The "-C" suffix indicates a conditional ordinance. Standards inherited from base district. Review before finalizing.
+              </p>
+            </div>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50/50">
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Constraint</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Zoned Value</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Citation</th>
+                <th className="text-right px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Capacity</th>
+                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[35%]">Formula</th>
+                <th className="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Controlling</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const capacityKeyMap: Record<string, string> = {
+                  applied_far: 'byFAR',
+                  residential_far: 'byFAR',
+                  max_density_per_acre: 'byDensity',
+                  max_height_ft: 'byHeight',
+                  min_parking_per_unit: 'byParking',
+                };
+                const limitingFieldMap: Record<string, string[]> = {
+                  FAR: ['applied_far', 'residential_far', 'nonresidential_far', 'combined_far'],
+                  density: ['max_density_per_acre'],
+                  height: ['max_height_ft', 'max_stories'],
+                  parking: ['min_parking_per_unit'],
+                };
+                const calcNameFieldMap: Record<string, string[]> = {
+                  applied_far: ['far', 'floor area', 'gba by far'],
+                  residential_far: ['far', 'floor area', 'residential far'],
+                  nonresidential_far: ['nonresidential far'],
+                  combined_far: ['combined far'],
+                  max_density_per_acre: ['density', 'units by density'],
+                  max_height_ft: ['height', 'stories by height'],
+                  max_stories: ['stories', 'height'],
+                  max_lot_coverage_pct: ['lot coverage', 'footprint', 'max footprint'],
+                  min_parking_per_unit: ['parking'],
+                  open_space_pct: ['open space'],
+                };
+
+                return constraintRows.map(row => {
+                  const isOverridden = profile.user_overrides?.[row.field] != null;
+                  const displayValue = row.value != null ? `${row.value}${row.suffix}` : '--';
+                  const sourceKey = fieldToSourceKey[row.field];
+                  const source = enrichment?.sources?.[sourceKey];
+                  const capacityKey = capacityKeyMap[row.field];
+                  const capacity = capacityKey ? enrichment?.capacityByConstraint?.[capacityKey as keyof typeof enrichment.capacityByConstraint] : null;
+                  const isControlling = enrichment?.limitingFactor ? (limitingFieldMap[enrichment.limitingFactor] || []).includes(row.field) : false;
+                  const matchingCalc = enrichment?.calculations?.find(calc => {
+                    const keywords = calcNameFieldMap[row.field] || [];
+                    const calcNameLower = calc.name.toLowerCase();
+                    return keywords.some(kw => calcNameLower.includes(kw));
+                  });
+
+                  return (
+                    <tr
+                      key={row.field}
+                      className={`border-b border-gray-50 group hover:bg-gray-50/50 ${isControlling ? 'bg-red-50/40' : ''}`}
+                    >
+                      <td className={`px-4 py-2.5 ${isControlling ? 'border-l-3 border-l-red-400' : ''}`}>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-xs font-medium ${isControlling ? 'text-red-800' : 'text-gray-700'}`}>{row.label}</span>
+                          {isOverridden && <span className="text-[9px] text-purple-500 bg-purple-50 px-1 rounded">override</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          {editingConstraint === row.field ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                className="w-20 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                autoFocus
+                              />
+                              <button onClick={() => handleSaveOverride(row.field)} className="text-green-600 hover:text-green-800">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              </button>
+                              <button onClick={() => setEditingConstraint(null)} className="text-gray-400 hover:text-gray-600">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <span className={`text-sm font-semibold ${isOverridden ? 'text-purple-700' : isControlling ? 'text-red-800' : row.field === 'applied_far' ? 'text-blue-700' : 'text-gray-900'}`}>
+                                {displayValue}
+                              </span>
+                              <button
+                                onClick={() => { setEditingConstraint(row.field); setEditValue(String(row.value ?? '')); }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
+                                title="Override this constraint"
+                              >
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {source?.sectionNumber ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (source.sourceUrl) window.open(source.sourceUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer transition-colors"
+                            title={source.sectionTitle ? `${source.sectionNumber} — ${source.sectionTitle}` : source.sectionNumber || ''}
+                          >
+                            §{source.sectionNumber}
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        {capacity != null ? (
+                          <span className={`text-xs font-semibold ${isControlling ? 'text-red-700' : 'text-gray-900'}`}>
+                            {formatNumber(capacity)} units
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {matchingCalc ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-gray-500 font-mono truncate">{matchingCalc.formula}</span>
+                            {matchingCalc.sectionNumber && (
+                              <button
+                                onClick={() => {
+                                  if (matchingCalc.sourceUrl) window.open(matchingCalc.sourceUrl, '_blank', 'noopener,noreferrer');
+                                }}
+                                className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer flex-shrink-0"
+                              >
+                                §{matchingCalc.sectionNumber}
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {isControlling && (
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
+                            <svg className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                            </svg>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
+              <tr className="bg-gray-50/50">
+                <td className="px-4 py-2.5">
+                  <span className="text-xs font-medium text-gray-700">Setbacks</span>
+                </td>
+                <td className="px-4 py-2.5" colSpan={4}>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="text-xs text-gray-600">Front: <span className="font-semibold text-gray-900">{profile.setback_front_ft ?? '--'} ft</span></span>
+                    <span className="text-xs text-gray-600">Side: <span className="font-semibold text-gray-900">{profile.setback_side_ft ?? '--'} ft</span></span>
+                    <span className="text-xs text-gray-600">Rear: <span className="font-semibold text-gray-900">{profile.setback_rear_ft ?? '--'} ft</span></span>
+                    {enrichment?.sources?.frontSetback?.sectionNumber && (
+                      <button
+                        onClick={() => {
+                          if (enrichment.sources.frontSetback.sourceUrl) window.open(enrichment.sources.frontSetback.sourceUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
+                      >
+                        §{enrichment.sources.frontSetback.sectionNumber}
+                      </button>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5" />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {hasHeightBuffer && (
+          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50">
+            <p className="text-xs text-blue-800">
+              <span className="font-medium">Height Buffer Rule:</span>{' '}
+              {profile.max_height_ft} ft within {profile.height_buffer_ft} ft of residential districts;{' '}
+              {profile.height_beyond_buffer_ft} ft beyond
+            </p>
+          </div>
+        )}
+        {enrichment?.insights?.controllingFactor && (
+          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50/50">
+            <p className="text-xs text-blue-800">{enrichment.insights.controllingFactor}</p>
+          </div>
+        )}
+      </div>
 
       {loadingRecs && recommendations.length === 0 && (
         <div className="flex items-center justify-center py-6">
