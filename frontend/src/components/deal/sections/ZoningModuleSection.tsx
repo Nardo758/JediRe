@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   MapPin,
-  CheckCircle2,
   BarChart3,
   TrendingUp,
   ShieldAlert,
@@ -15,7 +14,6 @@ import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
-import ConfirmationChainPlumbing from '../../zoning/ConfirmationChainPlumbing';
 import type { ZoningTabId } from '../../../types/zoning.types';
 
 interface ZoningModuleSectionProps {
@@ -31,7 +29,6 @@ const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: numbe
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
   { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
   { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
-  { id: 'confirmation_chain', label: 'Confirmation Chain', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
@@ -119,8 +116,6 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
-      case 'confirmation_chain':
-        return <ConfirmationChainPlumbing dealId={resolvedDealId} />;
       default:
         return (
           <BoundaryAndZoningTab
