@@ -179,7 +179,7 @@ export class EntitlementComparisonEngine {
       console.error('[EntitlementEngine] AI analysis failed, continuing without insights:', err.message);
     }
 
-    return this.assembleResult(computedPaths, byRight, aiAnalysis, variancePct, profile.base_district_code);
+    return this.assembleResult(computedPaths, byRight, aiAnalysis, variancePct, profile.base_district_code, subject.lotAreaSf);
   }
 
   private buildSubject(profile: ZoningProfile, projectType: string): SubjectProperty {
@@ -855,6 +855,7 @@ For extraRows, only add rows where you have specific information about the codes
     aiAnalysis: { insights: Record<string, string>; summary: string; extraRows: Array<ComparisonRow & { values?: Record<string, string> }> },
     variancePct: number,
     baseDistrictCode: string | null,
+    lotAreaSf?: number,
   ): ComparisonResult {
     const columns: ComparisonColumn[] = paths.map(p => ({
       key: p.key,
@@ -893,7 +894,11 @@ For extraRows, only add rows where you have specific information about the codes
 
       cells[p.key] = {
         zoningCode: p.zoningCode || '--',
-        density: m.maxDensity != null ? Number(m.maxDensity).toFixed(1) : '--',
+        density: m.maxDensity != null
+          ? Number(m.maxDensity).toFixed(1)
+          : (m.maxUnits > 0 && lotAreaSf && lotAreaSf > 0
+            ? (m.maxUnits / (lotAreaSf / 43560)).toFixed(1)
+            : '--'),
         far: m.appliedFar != null ? Number(m.appliedFar).toFixed(2) : '--',
         maxUnits: m.maxUnits > 0 ? m.maxUnits.toLocaleString() : '--',
         gba: m.maxGba > 0 ? m.maxGba.toLocaleString() : '--',
