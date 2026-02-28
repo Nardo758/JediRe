@@ -117,7 +117,17 @@ export class EntitlementComparisonEngine {
 
     const subject = this.buildSubject(profile, projectType);
 
-    const baseConstraints = this.extractBaseConstraints(profile);
+    let baseConstraints = this.extractBaseConstraints(profile);
+
+    const hasBaseData = baseConstraints.maxDensity != null || baseConstraints.maxFAR != null || baseConstraints.maxHeight != null;
+    if (!hasBaseData && profile.base_district_code) {
+      console.log(`[EntitlementEngine] Profile has no constraint data, resolving for ${profile.base_district_code}...`);
+      const resolved = await this.resolveConstraints(profile.base_district_code, profile.municipality, profile.state);
+      if (resolved) {
+        baseConstraints = resolved;
+        console.log(`[EntitlementEngine] Resolved constraints from fallback for ${profile.base_district_code}`);
+      }
+    }
 
     const computedPaths: ComputedPath[] = [];
 
