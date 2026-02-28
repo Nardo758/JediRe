@@ -7,6 +7,7 @@ import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommen
 import { ZoningAgentService } from '../../services/zoning-agent.service';
 import { EntitlementComparisonEngine } from '../../services/entitlement-comparison-engine.service';
 import { ZoningInterpretationCache } from '../../services/zoning-interpretation-cache.service';
+import { DataLibraryContextService } from '../../services/data-library-context.service';
 
 const router = Router();
 const pool = getPool();
@@ -16,6 +17,7 @@ const rezoneService = new RezoneAnalysisService(pool);
 const recommendationOrchestrator = new ZoningRecommendationOrchestrator(pool);
 const agentService = new ZoningAgentService(pool);
 const interpretationCache = new ZoningInterpretationCache(pool);
+const dataLibraryContext = new DataLibraryContextService(pool);
 const comparisonEngine = new EntitlementComparisonEngine(pool, envelopeService, rezoneService, recommendationOrchestrator, agentService, interpretationCache);
 
 function mapProjectTypeToEnvelopeType(projectType: string): PropertyType {
@@ -463,6 +465,284 @@ Respond with ONLY valid JSON (no markdown, no code fences):
   ],
   "caveats": ["important risk or caveat 1", "caveat 2"],
   "marketInsight": "1-2 sentences about how benchmarks/market data should influence the decision"
+}`;
+}
+
+router.get('/deals/:dealId/regulatory-risk-analysis', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const profileResult = await pool.query(
+      'SELECT * FROM deal_zoning_profiles WHERE deal_id = $1', [dealId]
+    );
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No zoning profile. Confirm zoning first.' });
+    }
+    const profile = profileResult.rows[0];
+    const mun = profile.municipality || '';
+    const st = profile.state || 'GA';
+    const districtCode = profile.base_district_code || '';
+
+    const cacheKey = `regrisk:${districtCode}`;
+    const cached = await interpretationCache.getConstraints(cacheKey, mun, st);
+    if (cached && (cached.constraints as any)?.riskAnalysis) {
+      console.log(`[RegRisk] Cache HIT for ${districtCode}`);
+      return res.json((cached.constraints as any).riskAnalysis);
+    }
+    console.log(`[RegRisk] Cache MISS for ${districtCode}, generating...`);
+
+    const dealResult = await pool.query('SELECT * FROM deals WHERE id = $1', [dealId]);
+    const deal = dealResult.rows[0] || {};
+
+    const [dlCtx, alertsResult, constraintsResult] = await Promise.all([
+      dataLibraryContext.getContextForDeal({
+        dealId, municipality: mun, state: st,
+        propertyType: deal.project_type, zoningCode: districtCode,
+        lotAreaSf: parseFloat(profile.lot_area_sf) || 0,
+      }),
+      pool.query(
+        `SELECT title, category, severity, description, source_name, published_date
+         FROM regulatory_alerts
+         WHERE (municipality ILIKE $1 OR municipality IS NULL)
+           AND (state = $2 OR state IS NULL)
+           AND is_active = true
+         ORDER BY severity DESC, published_date DESC NULLS LAST
+         LIMIT 10`,
+        [mun, st]
+      ).catch(() => ({ rows: [] })),
+      comparisonEngine.resolveConstraints(districtCode, mun, st),
+    ]);
+
+    const existingAlerts = alertsResult.rows;
+    const lotAcres = ((parseFloat(profile.lot_area_sf) || 0) / 43560).toFixed(2);
+    const overlays = Array.isArray(profile.overlays) ? profile.overlays : [];
+
+    const prompt = buildRegulatoryRiskPrompt({
+      municipality: mun, state: st, districtCode,
+      lotAcres, propertyType: deal.project_type || 'multifamily',
+      constraints: constraintsResult,
+      overlays, existingAlerts,
+      dataLibraryCosts: dlCtx.costSummary,
+      recentProjects: dlCtx.recentProjects,
+    });
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    });
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    console.log(`[RegRisk] Claude response length: ${text.length}, stop_reason: ${msg.stop_reason}`);
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { parsed = JSON.parse(jsonMatch[0]); } catch {
+            console.log(`[RegRisk] Failed to parse response. First 500 chars:`, text.substring(0, 500));
+            parsed = null;
+          }
+        }
+      }
+    }
+
+    if (parsed && parsed.categories) {
+      const result = {
+        dealId,
+        municipality: mun,
+        state: st,
+        districtCode,
+        compositeScore: parsed.compositeScore || 0,
+        compositeLevel: parsed.compositeLevel || 'moderate',
+        categories: parsed.categories,
+        strategyMatrix: parsed.strategyMatrix || [],
+        alerts: parsed.alerts || [],
+        mitigationStrategies: parsed.mitigationStrategies || [],
+        dataLibraryContext: {
+          hasImpactFees: dlCtx.impactFees.length > 0,
+          hasConstructionCosts: dlCtx.constructionCosts.length > 0,
+          hasRentComps: dlCtx.rentComps.length > 0,
+          recentProjectCount: dlCtx.recentProjects.length,
+          permitTimelineCount: dlCtx.permitTimelines.length,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+
+      await interpretationCache.setConstraints(cacheKey, mun, st, { riskAnalysis: result } as any, {
+        source: 'ai_regulatory_risk',
+        confidence: 'medium',
+      });
+      console.log(`[RegRisk] Analysis complete and cached`);
+      return res.json(result);
+    }
+
+    res.status(500).json({ error: 'AI analysis failed to produce valid results' });
+  } catch (error: any) {
+    console.error('Error generating regulatory risk analysis:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate regulatory risk analysis' });
+  }
+});
+
+function buildRegulatoryRiskPrompt(params: {
+  municipality: string;
+  state: string;
+  districtCode: string;
+  lotAcres: string;
+  propertyType: string;
+  constraints: any;
+  overlays: any[];
+  existingAlerts: any[];
+  dataLibraryCosts: string;
+  recentProjects: any[];
+}): string {
+  const { municipality, state, districtCode, lotAcres, propertyType, constraints, overlays, existingAlerts, dataLibraryCosts, recentProjects } = params;
+
+  const constraintSection = constraints
+    ? `Zoning Constraints: FAR=${constraints.appliedFAR || 'N/A'}, Height=${constraints.maxHeight || 'N/A'}ft, Stories=${constraints.maxStories || 'N/A'}, Parking=${constraints.minParkingPerUnit ?? 'N/A'}/unit, Density Method=${constraints.densityMethod || 'N/A'}`
+    : 'No resolved constraints available.';
+
+  const overlaySection = overlays.length > 0
+    ? `Active Overlays: ${overlays.map((o: any) => `${o.name || o.code} (parking: ${o.modifications?.min_parking_per_unit ?? 'standard'})`).join(', ')}`
+    : 'No overlay districts.';
+
+  const alertSection = existingAlerts.length > 0
+    ? `Known Regulatory Alerts in DB:\n${existingAlerts.map(a => `  - [${a.severity}] ${a.title}: ${a.description || ''} (${a.source_name || 'unknown source'})`).join('\n')}`
+    : 'No existing regulatory alerts in database.';
+
+  const projectSection = recentProjects.length > 0
+    ? `Recent Approved Projects (${recentProjects.length}):\n${recentProjects.slice(0, 8).map(p =>
+        `  - ${p.name}: ${p.type}, ${p.units || '?'} units, ${p.entitlementType || '?'} path${p.timelineDays ? `, ${p.timelineDays}d` : ''}`
+      ).join('\n')}`
+    : 'No recent project data available.';
+
+  return `You are a regulatory risk analyst specializing in real estate development entitlements. Analyze the regulatory environment for this specific development site and provide a quantitative risk assessment.
+
+PROPERTY CONTEXT:
+- Location: ${municipality}, ${state}
+- Zoning: ${districtCode}
+- Lot Size: ${lotAcres} acres
+- Proposed Use: ${propertyType}
+- ${constraintSection}
+- ${overlaySection}
+
+EXISTING DATA:
+${alertSection}
+
+${projectSection}
+
+COST & MARKET DATA FROM DATA LIBRARY:
+${dataLibraryCosts}
+
+INSTRUCTIONS:
+Assess regulatory risk across 8 categories. Use real cost figures from the Data Library when available. For ${municipality}, ${state} specifically:
+- Research current impact fee schedules, permit timeline trends, inclusionary requirements
+- Consider recent legislative activity, pending ordinances, political climate
+- Factor in the specific zoning district (${districtCode}) and any overlay impacts
+- Use the benchmark project data to inform realistic timeline and approval estimates
+
+Respond with ONLY valid JSON (no markdown, no code fences):
+{
+  "compositeScore": 0-100,
+  "compositeLevel": "low|moderate|elevated|high",
+  "categories": [
+    {
+      "category": "zoning_stability",
+      "label": "Zoning Stability",
+      "level": "low|moderate|elevated|high",
+      "score": 0-100,
+      "trend": "improving|stable|worsening",
+      "impact": "1-2 sentence specific impact description with real numbers when available",
+      "costImpact": "$X per unit or total dollar estimate if applicable, null if not",
+      "source": "what data informed this assessment"
+    },
+    {
+      "category": "permit_timeline",
+      "label": "Permit Timeline",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "impact_fees",
+      "label": "Impact Fees",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "Include actual $/unit from Data Library if available",
+      "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "inclusionary_housing",
+      "label": "Inclusionary Housing",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "rent_control",
+      "label": "Rent Control Risk",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "str_regulation",
+      "label": "STR Regulation",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "environmental",
+      "label": "Environmental",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    },
+    {
+      "category": "historic_preservation",
+      "label": "Historic Preservation",
+      "level": "...", "score": 0-100, "trend": "...",
+      "impact": "...", "costImpact": "...", "source": "..."
+    }
+  ],
+  "strategyMatrix": [
+    {
+      "strategy": "Build-to-Sell",
+      "level": "favorable|moderate|elevated|unfavorable",
+      "description": "1 sentence with specific cost/timeline impacts"
+    },
+    {
+      "strategy": "Flip/Value-Add",
+      "level": "...", "description": "..."
+    },
+    {
+      "strategy": "Long-Term Rental",
+      "level": "...", "description": "..."
+    },
+    {
+      "strategy": "Short-Term Rental",
+      "level": "...", "description": "..."
+    }
+  ],
+  "alerts": [
+    {
+      "severity": "urgent|watch|opportunity",
+      "title": "Specific alert title",
+      "impact": "What it means for this deal",
+      "probability": "X%",
+      "source": "Where this info comes from",
+      "timeframe": "When this takes effect"
+    }
+  ],
+  "mitigationStrategies": [
+    "Specific actionable mitigation strategy 1",
+    "Strategy 2"
+  ]
 }`;
 }
 
