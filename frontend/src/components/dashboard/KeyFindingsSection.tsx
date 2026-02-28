@@ -207,7 +207,7 @@ export const KeyFindingsSection: React.FC = () => {
   const fetchFindings = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       const response = await fetch('/api/v1/dashboard/findings', {
         headers: {
           'Authorization': `Bearer ${token}`,

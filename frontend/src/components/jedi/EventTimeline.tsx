@@ -46,7 +46,7 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       
       const response = await fetch(`/api/v1/jedi/impact/${dealId}?limit=${limit}`, {
         headers: {

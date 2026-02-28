@@ -54,7 +54,7 @@ export const JEDIScoreBreakdown: React.FC<JEDIScoreBreakdownProps> = ({
   const fetchScore = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       
       const response = await fetch(`/api/v1/jedi/score/${dealId}`, {
         headers: {
@@ -78,7 +78,7 @@ export const JEDIScoreBreakdown: React.FC<JEDIScoreBreakdownProps> = ({
   const handleRecalculate = async () => {
     try {
       setRecalculating(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       
       const response = await fetch(`/api/v1/jedi/score/${dealId}/recalculate`, {
         method: 'POST',

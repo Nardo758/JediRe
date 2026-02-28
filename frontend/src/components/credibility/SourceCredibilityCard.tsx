@@ -83,7 +83,7 @@ export default function SourceCredibilityCard({
         `/api/v1/credibility/source/${encodeURIComponent(contactEmail)}`,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
           }
         }
       );
@@ -107,7 +107,7 @@ export default function SourceCredibilityCard({
         `/api/v1/credibility/predictions/${eventId}`,
         {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
           }
         }
       );

@@ -44,7 +44,7 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ onAlertClick }) => {
   const fetchAlerts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       const unreadParam = showUnreadOnly ? '?unread_only=true' : '';
       
       const response = await fetch(`/api/v1/jedi/alerts${unreadParam}`, {
@@ -69,7 +69,7 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ onAlertClick }) => {
     e.stopPropagation();
     
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       await fetch(`/api/v1/jedi/alerts/${alertId}/read`, {
         method: 'POST',
         headers: {
@@ -90,7 +90,7 @@ export const AlertsPanel: React.FC<AlertsPanelProps> = ({ onAlertClick }) => {
     e.stopPropagation();
     
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
       await fetch(`/api/v1/jedi/alerts/${alertId}/dismiss`, {
         method: 'POST',
         headers: {

@@ -135,7 +135,7 @@ export const Dashboard: React.FC = () => {
     try {
       const response = await fetch(`/api/v1/layers/${layerId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}` || '',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`,
         },
       });
 

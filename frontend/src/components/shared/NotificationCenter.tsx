@@ -115,7 +115,7 @@ export const NotificationCenter: React.FC = () => {
 
       const response = await fetch(`/api/notifications?${params.toString()}`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 
@@ -134,7 +134,7 @@ export const NotificationCenter: React.FC = () => {
     try {
       const response = await fetch('/api/notifications/counts', {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 
@@ -152,7 +152,7 @@ export const NotificationCenter: React.FC = () => {
       const response = await fetch(`/api/notifications/${notificationId}/read`, {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 
@@ -174,7 +174,7 @@ export const NotificationCenter: React.FC = () => {
       const response = await fetch('/api/notifications/read-all', {
         method: 'PUT',
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
         },
       });
 

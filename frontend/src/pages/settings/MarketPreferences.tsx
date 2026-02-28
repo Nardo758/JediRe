@@ -20,10 +20,10 @@ const MarketPreferences: React.FC = () => {
       setLoading(true);
       const [prefsRes, marketsRes] = await Promise.all([
         fetch('/api/v1/markets/preferences', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         }),
         fetch('/api/v1/markets/available', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
         })
       ]);
       
@@ -46,7 +46,7 @@ const MarketPreferences: React.FC = () => {
       await fetch(`/api/v1/markets/preferences/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ is_active: !isActive })
@@ -62,7 +62,7 @@ const MarketPreferences: React.FC = () => {
       await fetch(`/api/v1/markets/preferences/${id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ priority })
@@ -79,7 +79,7 @@ const MarketPreferences: React.FC = () => {
     try {
       await fetch(`/api/v1/markets/preferences/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` }
       });
       loadData();
     } catch (error) {

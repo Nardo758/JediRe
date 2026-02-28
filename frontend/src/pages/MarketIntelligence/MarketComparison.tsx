@@ -29,7 +29,7 @@ const MarketComparison: React.FC = () => {
       setLoading(true);
       const response = await fetch(`/api/v1/markets/compare?markets=${marketIds}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
         }
       });
       const data = await response.json();

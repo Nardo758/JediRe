@@ -73,3 +73,10 @@ AI-driven travel booking platform for itinerary generation and booking orchestra
 -   **Google People API:** Contact import (Google accounts).
 -   **Booking.com, Viator, GetYourGuide, OpenTable, Resy, Skyscanner:** Affiliate partners (for Traveloure).
 -   **Python Libraries:** GeoPandas, NumPy, SciPy, pandas, openpyxl.
+
+## Known Bug Fixes (2026-02-28)
+
+-   **Token Key Inconsistency (FIXED):** Many frontend components used `localStorage.getItem('token')` while the auth system stores tokens under `auth_token`. This caused widespread 401 Unauthorized errors across dashboard findings, market intelligence, JEDI score, alerts, credibility, notifications, and other components. All 14 affected files corrected to use `auth_token`.
+-   **Operator Precedence Bug (FIXED):** `Dashboard.tsx` line 138 had `\`Bearer ${localStorage.getItem('token')}\` || ''` where `||` applied to the full template literal (always truthy) rather than the getItem call. Fixed to `\`Bearer ${localStorage.getItem('auth_token') || ''}\``.
+-   **Double-Prefixed API Paths (FIXED):** `leadAPI` and `commissionAPI` in `frontend/src/services/api.ts` used paths like `/api/agent/leads` which combined with the `baseURL: '/api/v1'` produced `/api/v1/api/agent/leads`. Fixed to use relative paths like `/agent/leads`.
+-   **Unauthenticated Onboarding Check (FIXED):** `MainLayout.tsx` made an API call to check onboarding status even when no auth token existed, causing unnecessary 401 errors on the login page. Added a token check before making the API call.

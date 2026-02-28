@@ -83,7 +83,7 @@ export function AssetMapRealtimeExample({ assetId }: AssetMapRealtimeExampleProp
       try {
         const response = await fetch(`/api/v1/assets/${assetId}/notes`, {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            Authorization: `Bearer ${localStorage.getItem('auth_token')}`,
           },
         });
         const data = await response.json();

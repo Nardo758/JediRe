@@ -96,12 +96,17 @@ export const MainLayout: React.FC = () => {
 
   // Check onboarding status on mount
   useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      setOnboardingChecked(true);
+      return;
+    }
+
     const checkOnboarding = async () => {
       try {
         const response = await api.get('/preferences/user');
         const prefs = response.data.data;
         
-        // Show onboarding if not completed
         if (!prefs || !prefs.onboarding_completed) {
           setShowOnboarding(true);
         }

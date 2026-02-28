@@ -117,31 +117,31 @@ export const authAPI = {
 // Lead Management API
 export const leadAPI = {
   create: async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lead> => {
-    const { data } = await api.post('/api/agent/leads', leadData);
+    const { data } = await api.post('/agent/leads', leadData);
     return data;
   },
 
   list: async (filters?: { status?: string; priority?: string; source?: string }): Promise<Lead[]> => {
-    const { data } = await api.get('/api/agent/leads', { params: filters });
+    const { data } = await api.get('/agent/leads', { params: filters });
     return data.data || [];
   },
 
   getById: async (id: string): Promise<Lead> => {
-    const { data } = await api.get(`/api/agent/leads/${id}`);
+    const { data } = await api.get(`/agent/leads/${id}`);
     return data;
   },
 
   update: async (id: string, updates: Partial<Lead>): Promise<Lead> => {
-    const { data } = await api.patch(`/api/agent/leads/${id}`, updates);
+    const { data } = await api.patch(`/agent/leads/${id}`, updates);
     return data;
   },
 
   delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/agent/leads/${id}`);
+    await api.delete(`/agent/leads/${id}`);
   },
 
   convertToClient: async (id: string): Promise<any> => {
-    const { data } = await api.post(`/api/agent/leads/${id}/convert`);
+    const { data } = await api.post(`/agent/leads/${id}/convert`);
     return data;
   },
 };
@@ -155,22 +155,22 @@ export const commissionAPI = {
   },
 
   getSummary: async (): Promise<CommissionSummary> => {
-    const { data } = await api.get('/api/agent/commission/summary');
+    const { data } = await api.get('/agent/commission/summary');
     return data;
   },
 
   getHistory: async (filters?: { status?: string; year?: number }): Promise<Commission[]> => {
-    const { data } = await api.get('/api/agent/commission/history', { params: filters });
+    const { data } = await api.get('/agent/commission/history', { params: filters });
     return data.data || [];
   },
 
   create: async (commissionData: Omit<Commission, 'id' | 'createdAt'>): Promise<Commission> => {
-    const { data } = await api.post('/api/agent/commission', commissionData);
+    const { data } = await api.post('/agent/commission', commissionData);
     return data;
   },
 
   exportCSV: async (filters?: any): Promise<Blob> => {
-    const { data } = await api.get('/api/agent/commission/export', {
+    const { data } = await api.get('/agent/commission/export', {
       params: filters,
       responseType: 'blob',
     });
