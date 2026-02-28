@@ -17,6 +17,7 @@ import {
   AnalysisStatus,
   StrategyResults,
 } from '@/services/dealAnalysis.service';
+import { apiClient } from '@/services/api.client';
 import {
   jediScore as mockJediScore,
   signalScores as mockSignalScores,
@@ -29,6 +30,38 @@ import {
   type RiskAlertData,
   type EnhancedQuickStat,
 } from '@/data/enhancedOverviewMockData';
+
+function scoreToVerdict(score: number): { verdict: string; verdictColor: string } {
+  if (score >= 85) return { verdict: 'STRONG BUY', verdictColor: 'text-emerald-400' };
+  if (score >= 70) return { verdict: 'OPPORTUNITY', verdictColor: 'text-amber-400' };
+  if (score >= 55) return { verdict: 'HOLD / MONITOR', verdictColor: 'text-stone-400' };
+  return { verdict: 'CAUTION', verdictColor: 'text-red-400' };
+}
+
+function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
+  const signalDefs = [
+    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-50', moduleLink: 'demand' },
+    { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-50', moduleLink: 'supply' },
+    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-50', moduleLink: 'market' },
+    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-50', moduleLink: 'market' },
+    { id: 'risk', name: 'Risk', color: 'bg-stone-500', bgColor: 'bg-stone-50', moduleLink: 'risk' },
+  ];
+
+  return signalDefs.map(def => {
+    const data = breakdown?.[def.id];
+    const score = data?.score ?? 50;
+    const weight = Math.round((data?.weight ?? 0.2) * 100);
+    return {
+      ...def,
+      weight,
+      score: Math.round(score),
+      weighted: Math.round(score * (weight / 100) * 10) / 10,
+      trend: 'flat' as const,
+      trendDelta: 0,
+      description: `${def.name} signal score: ${Math.round(score)}/100`,
+    };
+  });
+}
 
 interface OverviewSectionProps {
   deal: any;
@@ -50,11 +83,12 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   });
   const [strategyResults, setStrategyResults] = useState<StrategyResults | null>(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
-  const [jediScoreData] = useState<JEDIScoreData>(mockJediScore);
-  const [signals] = useState<SignalScore[]>(mockSignalScores);
+  const [jediScoreData, setJediScoreData] = useState<JEDIScoreData>(mockJediScore);
+  const [signals, setSignals] = useState<SignalScore[]>(mockSignalScores);
   const [strategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
   const [riskAlert] = useState<RiskAlertData>(mockRiskAlert);
   const [quickStats] = useState<EnhancedQuickStat[]>(mockQuickStats);
+  const [scoreLoading, setScoreLoading] = useState(false);
 
   useEffect(() => {
     if (!deal?.id) return;
@@ -65,11 +99,45 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
       stopPolling = await startAnalysis();
     };
     runAnalysis();
+    loadJediScore();
 
     return () => {
       stopPolling?.();
     };
   }, [deal?.id]);
+
+  const loadJediScore = async () => {
+    if (!deal?.id) return;
+    setScoreLoading(true);
+    try {
+      const response = await apiClient.get(`/api/v1/jedi/score/${deal.id}`);
+      const scoreData = response.data?.data;
+      if (scoreData?.score) {
+        const s = scoreData.score;
+        const total = s.totalScore ?? s.total_score ?? 0;
+        const delta = s.scoreDelta ?? s.score_delta ?? 0;
+        const { verdict, verdictColor } = scoreToVerdict(total);
+        setJediScoreData({
+          score: Math.round(total),
+          delta30d: Math.round(delta),
+          verdict,
+          verdictColor,
+          confidence: 85,
+          confidenceLabel: total >= 70 ? 'High' : 'Medium',
+          dataCompleteness: 85,
+          lastUpdated: 'Just now',
+        });
+
+        if (scoreData.breakdown) {
+          setSignals(buildSignalsFromBreakdown(scoreData.breakdown));
+        }
+      }
+    } catch (err) {
+      console.warn('Could not load JEDI score, using defaults:', err);
+    } finally {
+      setScoreLoading(false);
+    }
+  };
 
   const startAnalysis = async (): Promise<(() => void) | undefined> => {
     try {

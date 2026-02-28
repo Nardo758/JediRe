@@ -11,17 +11,18 @@ import { useDealMode } from '../../../hooks/useDealMode';
 import { opusService } from '../../../services/opus.service';
 import { OpusDealContext, OpusRecommendationResult, OpusRecommendation } from '../../../types/opus.types';
 
-// Import all mock data for comprehensive analysis
+import { apiClient } from '@/services/api.client';
+
 import {
-  competitionData,
-  supplyData,
-  marketData,
-  debtData,
-  financialData,
-  strategyData,
-  dueDiligenceData,
-  teamData,
-  documentsData
+  competitionData as mockCompetitionData,
+  supplyData as mockSupplyData,
+  marketData as mockMarketData,
+  debtData as mockDebtData,
+  financialData as mockFinancialData,
+  strategyData as mockStrategyData,
+  dueDiligenceData as mockDueDiligenceData,
+  teamData as mockTeamData,
+  documentsData as mockDocumentsData
 } from '../../../data/opusContextData';
 
 // ============================================================================
@@ -139,28 +140,64 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['insights', 'recommendation']));
+  const [liveContext, setLiveContext] = useState<any>(null);
+  const [isLiveData, setIsLiveData] = useState(false);
 
   const currentPersona = ROLE_PERSONAS[selectedRole];
 
-  // Auto-analyze on role change or deal change
+  useEffect(() => {
+    loadLiveContext();
+  }, [deal.id]);
+
   useEffect(() => {
     analyzeWithRole(selectedRole);
-  }, [selectedRole, deal.id]);
+  }, [selectedRole, deal.id, liveContext]);
+
+  const loadLiveContext = async () => {
+    try {
+      const [marketRes, strategyRes, riskRes] = await Promise.allSettled([
+        apiClient.get('/api/v1/apartment-sync/submarkets', { params: { city: 'Atlanta' } }),
+        apiClient.get(`/api/v1/strategy-analyses/${deal.id}`),
+        apiClient.get(`/api/v1/risk/comprehensive/${deal.id}`),
+      ]);
+
+      const ctx: any = {};
+      if (marketRes.status === 'fulfilled' && marketRes.value.data?.data?.[0]?.data) {
+        const parsed = typeof marketRes.value.data.data[0].data === 'string'
+          ? JSON.parse(marketRes.value.data.data[0].data)
+          : marketRes.value.data.data[0].data;
+        ctx.market = {
+          submarkets: parsed.submarkets || [],
+          summary: parsed.summary || {},
+        };
+      }
+      if (strategyRes.status === 'fulfilled' && strategyRes.value.data?.data?.length > 0) {
+        ctx.strategy = strategyRes.value.data.data;
+      }
+      if (riskRes.status === 'fulfilled' && riskRes.value.data?.data) {
+        ctx.risk = riskRes.value.data.data;
+      }
+
+      if (Object.keys(ctx).length > 0) {
+        setLiveContext(ctx);
+        setIsLiveData(true);
+      }
+    } catch {
+      console.warn('Could not load live context for Opus AI');
+    }
+  };
 
   const analyzeWithRole = async (role: AIRole) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Build comprehensive deal context from all 13 tabs
-      const context = buildDealContext(deal, role);
+      const context = buildDealContext(deal, role, liveContext);
 
-      // Get AI analysis (uses mock data by default)
       const result = isPipeline
         ? await opusService.analyzeAcquisition(context)
         : await opusService.analyzePerformance(context);
 
-      // Customize analysis based on role
       const roleCustomizedResult = customizeForRole(result, role, context);
 
       setAnalysis(roleCustomizedResult);
@@ -929,13 +966,33 @@ const AnalysisMetadata: React.FC<AnalysisMetadataProps> = ({ analysis }) => {
 /**
  * Build comprehensive deal context from all 13 tabs
  */
-function buildDealContext(deal: Deal, role: AIRole): OpusDealContext {
+function buildDealContext(deal: Deal, role: AIRole, liveCtx?: any): OpusDealContext {
+  const hasLiveMarket = liveCtx?.market?.submarkets?.length > 0;
+  const hasLiveStrategy = liveCtx?.strategy?.length > 0;
+
+  let liveSources = 0;
+  const totalSources = 9;
+
+  const marketCtx = hasLiveMarket ? (() => { liveSources++; return {
+    ...mockMarketData,
+    submarkets: liveCtx.market.submarkets,
+    summary: liveCtx.market.summary,
+    dataSource: 'live' as const,
+  }; })() : mockMarketData;
+
+  const strategyCtx = hasLiveStrategy ? (() => { liveSources++; return {
+    ...mockStrategyData,
+    analyses: liveCtx.strategy,
+    dataSource: 'live' as const,
+  }; })() : mockStrategyData;
+
+  const completeness = Math.round(((liveSources / totalSources) * 40) + 60);
+
   return {
     dealId: deal.id,
     dealName: deal.name,
     status: (deal.dealCategory === 'portfolio' || (deal as any).state === 'POST_CLOSE') ? 'owned' : 'pipeline',
-    
-    // Overview data
+
     overview: {
       propertySpecs: {
         address: deal.address || 'Unknown',
@@ -954,36 +1011,18 @@ function buildDealContext(deal: Deal, role: AIRole): OpusDealContext {
       }
     },
 
-    // Competition data
-    competition: competitionData,
+    competition: mockCompetitionData,
+    supply: mockSupplyData,
+    market: marketCtx,
+    debt: mockDebtData,
+    financial: mockFinancialData,
+    strategy: strategyCtx,
+    dueDiligence: mockDueDiligenceData,
+    team: mockTeamData,
+    documents: mockDocumentsData,
 
-    // Supply pipeline data
-    supply: supplyData,
-
-    // Market data
-    market: marketData,
-
-    // Debt market data
-    debt: debtData,
-
-    // Financial analysis
-    financial: financialData,
-
-    // Strategy data
-    strategy: strategyData,
-
-    // Due diligence (for acquisition mode)
-    dueDiligence: dueDiligenceData,
-
-    // Team data
-    team: teamData,
-
-    // Documents data
-    documents: documentsData,
-
-    // Metadata
     lastUpdated: new Date().toISOString(),
-    dataCompleteness: 85, // Could calculate based on available data
+    dataCompleteness: completeness,
     analysisVersion: '1.0'
   };
 }

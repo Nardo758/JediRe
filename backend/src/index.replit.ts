@@ -20,6 +20,7 @@ import preferencesRouter from './api/rest/preferences.routes';
 import propertyTypesRouter from './api/rest/property-types.routes';
 import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
+import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -156,6 +157,8 @@ initializeApartmentLocatorIntegration({
 
 const apartmentSyncService = new ApartmentDataSyncService(pool);
 app.use('/api/v1/apartment-sync', createApartmentSyncRoutes(apartmentSyncService));
+
+app.use('/api/v1/f40', f40PerformanceRoutes);
 
 const microsoftConfig = {
   clientId: process.env.MICROSOFT_CLIENT_ID || '',

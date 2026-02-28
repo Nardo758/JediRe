@@ -9,9 +9,10 @@
  * - Critical path tracking and blocker identification
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { apiClient } from '@/services/api.client';
 import {
   ProjectTask,
   ProjectOverview,
@@ -21,6 +22,49 @@ import {
   performanceOverview
 } from '../../../data/projectManagementMockData';
 
+function buildOverviewFromTasks(taskList: ProjectTask[], isPipelineMode: boolean): ProjectOverview {
+  const completed = taskList.filter(t => t.status === 'complete' || t.status === 'completed');
+  const inProgress = taskList.filter(t => t.status === 'in-progress');
+  const blocked = taskList.filter(t => t.status === 'blocked');
+  const overdue = taskList.filter(t => t.status === 'overdue');
+  const total = taskList.length;
+  const completionPct = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+
+  const categoryList = ['legal', 'financial', 'physical', 'environmental'];
+  const colorMap: Record<string, string> = {
+    legal: 'bg-blue-600',
+    financial: 'bg-green-600',
+    physical: 'bg-purple-600',
+    environmental: 'bg-orange-600'
+  };
+
+  return {
+    totalTasks: total,
+    completedTasks: completed.length,
+    inProgressTasks: inProgress.length,
+    overdueTasks: overdue.length,
+    blockedTasks: blocked.length,
+    completionPercentage: completionPct,
+    ...(isPipelineMode ? { daysToClosing: 42, targetDate: '2024-03-25' } : { daysSinceAcquisition: 487 }),
+    criticalPathTasks: taskList.filter(t => t.isCriticalPath && t.status !== 'complete' && t.status !== 'completed').slice(0, 5),
+    blockers: taskList.filter(t => t.status === 'blocked' || t.redFlag?.status === 'open'),
+    recentCompletions: completed.slice(-5),
+    upcomingDeadlines: taskList.filter(t => t.status !== 'complete' && t.status !== 'completed').slice(0, 5),
+    categoryProgress: categoryList.map(cat => {
+      const catTasks = taskList.filter(t => t.category === cat);
+      const catCompleted = catTasks.filter(t => t.status === 'complete' || t.status === 'completed');
+      return {
+        category: cat,
+        label: cat.charAt(0).toUpperCase() + cat.slice(1),
+        total: catTasks.length,
+        completed: catCompleted.length,
+        percentage: catTasks.length > 0 ? Math.round((catCompleted.length / catTasks.length) * 100) : 100,
+        color: colorMap[cat] || 'bg-gray-600'
+      };
+    })
+  };
+}
+
 interface ProjectManagementSectionProps {
   deal: Deal;
 }
@@ -28,15 +72,74 @@ interface ProjectManagementSectionProps {
 export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   
-  // View state
   const [selectedView, setSelectedView] = useState<'checklist' | 'timeline' | 'dependencies'>('checklist');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
   const [showBlockersOnly, setShowBlockersOnly] = useState(false);
 
-  // Select data based on mode
-  const tasks = isPipeline ? acquisitionProjectTasks : performanceProjectTasks;
-  const overview = isPipeline ? acquisitionOverview : performanceOverview;
+  const [liveTasks, setLiveTasks] = useState<ProjectTask[] | null>(null);
+  const [liveOverview, setLiveOverview] = useState<ProjectOverview | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLiveData, setIsLiveData] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchState = async () => {
+      setIsLoading(true);
+      try {
+        const dealId = (deal as any).id || (deal as any).deal_id;
+        if (!dealId) throw new Error('No deal ID');
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/state`);
+        if (cancelled) return;
+        const state = res.data?.state || res.data;
+        if (state?.project_management) {
+          const pm = state.project_management;
+          const fetchedTasks: ProjectTask[] = pm.tasks || (isPipeline ? pm.acquisitionTasks : pm.performanceTasks) || [];
+          if (fetchedTasks.length > 0) {
+            setLiveTasks(fetchedTasks);
+            const fetchedOverview: ProjectOverview = pm.overview || buildOverviewFromTasks(fetchedTasks, isPipeline);
+            setLiveOverview(fetchedOverview);
+            setIsLiveData(true);
+          }
+        }
+      } catch {
+        // fallback to mock data
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    fetchState();
+    return () => { cancelled = true; };
+  }, [deal, isPipeline]);
+
+  const saveTaskUpdate = useCallback(async (updatedTask: ProjectTask) => {
+    const dealId = (deal as any).id || (deal as any).deal_id;
+    if (!dealId) return;
+    setIsSaving(true);
+    try {
+      const currentTasks = liveTasks || (isPipeline ? acquisitionProjectTasks : performanceProjectTasks);
+      const updatedTasks = currentTasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+      setLiveTasks(updatedTasks);
+      const updatedOverview = buildOverviewFromTasks(updatedTasks, isPipeline);
+      setLiveOverview(updatedOverview);
+      setIsLiveData(true);
+      await apiClient.post(`/api/v1/deals/${dealId}/state`, {
+        project_management: {
+          tasks: updatedTasks,
+          overview: updatedOverview,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    } catch {
+      // silent fail, local state already updated
+    } finally {
+      setIsSaving(false);
+    }
+  }, [deal, isPipeline, liveTasks]);
+
+  const tasks = liveTasks || (isPipeline ? acquisitionProjectTasks : performanceProjectTasks);
+  const overview = liveOverview || (isPipeline ? acquisitionOverview : performanceOverview);
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -57,6 +160,27 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
     return filtered;
   }, [tasks, selectedCategory, showCriticalOnly, showBlockersOnly]);
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-64 bg-gray-200 rounded-full animate-pulse" />
+          <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse" />
+        </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="h-4 w-40 bg-gray-200 rounded animate-pulse mb-4" />
+          <div className="h-4 bg-gray-100 rounded-full mb-6 animate-pulse" />
+          <div className="grid grid-cols-5 gap-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        </div>
+        <div className="h-32 bg-gray-100 rounded-lg animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       
@@ -70,6 +194,16 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
           }`}>
             {isPipeline ? '📋 Acquisition Project Plan' : '🏢 Operations Management'}
           </div>
+          {isLiveData && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">
+              LIVE DATA
+            </span>
+          )}
+          {isSaving && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 border border-yellow-300 animate-pulse">
+              Saving...
+            </span>
+          )}
           {isPipeline && overview.daysToClosing && (
             <div className="text-xs text-gray-500">
               {overview.daysToClosing} days to closing • Target: {overview.targetDate}

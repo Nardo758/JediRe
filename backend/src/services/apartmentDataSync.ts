@@ -169,6 +169,27 @@ export class ApartmentDataSyncService {
       const vacancy = ms.vacancy_rate ?? null;
       const avgOccupancy = vacancy !== null ? (1 - vacancy) : null;
 
+      let totalProperties = ms.total_properties || marketData.total_properties || null;
+      let totalUnits = ms.total_units || marketData.total_units || null;
+
+      try {
+        const subEndpoint = `/api/jedi/submarkets?city=${encodeURIComponent(city)}`;
+        const subData = await this.tryEndpoint(subEndpoint);
+        const submarkets = subData?.submarkets || subData?.data?.submarkets || (Array.isArray(subData) ? subData : []);
+        if (submarkets.length > 0) {
+          const aggProps = submarkets.reduce((s: number, sm: any) => s + (sm.properties_count || 0), 0);
+          const aggUnits = submarkets.reduce((s: number, sm: any) => s + (sm.total_units || 0), 0);
+          if (aggProps > 0) totalProperties = aggProps;
+          if (aggUnits > 0) totalUnits = aggUnits;
+        }
+      } catch (e: any) {
+        console.log(`[syncMarketData] Could not enrich from submarkets: ${e.message}`);
+      }
+
+      const rentGrowth30d = ms.rent_growth_rate_30d ?? null;
+      const rentGrowth90d = ms.rent_growth_rate_90d ?? null;
+      const avgRentOverall = ms.avg_rent_overall || null;
+
       await this.pool.query(`
         INSERT INTO apartment_market_snapshots (
           city, state, total_properties, total_units, avg_occupancy,
@@ -177,6 +198,7 @@ export class ApartmentDataSyncService {
           rent_growth_90d, rent_growth_180d, concession_rate, avg_concession_value,
           total_renters, avg_renter_budget, lease_expirations_90d,
           units_delivering_30d, units_delivering_60d, units_delivering_90d,
+          avg_days_to_lease, supply_pressure, market_grade,
           snapshot_date, synced_at
         ) VALUES (
           $1, $2, $3, $4, $5,
@@ -185,6 +207,7 @@ export class ApartmentDataSyncService {
           $13, $14, $15, $16,
           $17, $18, $19,
           $20, $21, $22,
+          $23, $24, $25,
           CURRENT_DATE, NOW()
         )
         ON CONFLICT (city, state, snapshot_date) DO UPDATE SET
@@ -208,21 +231,24 @@ export class ApartmentDataSyncService {
           units_delivering_30d = EXCLUDED.units_delivering_30d,
           units_delivering_60d = EXCLUDED.units_delivering_60d,
           units_delivering_90d = EXCLUDED.units_delivering_90d,
+          avg_days_to_lease = EXCLUDED.avg_days_to_lease,
+          supply_pressure = EXCLUDED.supply_pressure,
+          market_grade = EXCLUDED.market_grade,
           synced_at = NOW()
       `, [
         city, state,
-        ms.total_properties || marketData.total_properties || null,
-        ms.total_units || marketData.total_units || null,
+        totalProperties,
+        totalUnits,
         avgOccupancy,
         null,
         null,
         null,
         ms.avg_rent_studio || null,
-        ms.avg_rent_1bed || null,
+        ms.avg_rent_1bed || avgRentOverall || null,
         ms.avg_rent_2bed || null,
         ms.avg_rent_3bed || null,
-        ms.rent_growth_rate_90d || null,
-        null,
+        rentGrowth90d,
+        rentGrowth30d,
         ms.concessions_prevalence || ms.avg_concessions_pct || null,
         ms.avg_savings_potential || null,
         null,
@@ -230,6 +256,9 @@ export class ApartmentDataSyncService {
         null,
         null,
         null,
+        null,
+        ms.avg_days_on_market || null,
+        ms.market_saturation || null,
         null,
       ]);
       

@@ -6,9 +6,10 @@
  * Performance Mode: Operational milestones, lease expirations, capex schedule
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { apiClient } from '@/services/api.client';
 import {
   acquisitionTimelineStats,
   acquisitionMilestones,
@@ -21,6 +22,12 @@ import {
   DeadlineItem
 } from '../../../data/timelineMockData';
 
+interface TimelineData {
+  stats?: TimelineStat[];
+  milestones?: Milestone[];
+  deadlines?: DeadlineItem[];
+}
+
 interface TimelineSectionProps {
   deal: Deal;
 }
@@ -29,11 +36,66 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedView, setSelectedView] = useState<'timeline' | 'list'>('timeline');
   const [filterStatus, setFilterStatus] = useState<'all' | 'critical' | 'upcoming'>('all');
+  const [liveData, setLiveData] = useState<TimelineData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLive, setIsLive] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Select data based on mode
-  const stats = isPipeline ? acquisitionTimelineStats : performanceTimelineStats;
-  const milestones = isPipeline ? acquisitionMilestones : performanceMilestones;
-  const deadlines = isPipeline ? acquisitionDeadlines : performanceDeadlines;
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTimelineData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await apiClient.get(`/api/v1/deals/${deal.id}/state`);
+        if (cancelled) return;
+        const data = response.data;
+        if (data?.success && data?.timeline_data) {
+          const td = data.timeline_data;
+          setLiveData({
+            stats: td.stats || undefined,
+            milestones: td.milestones || undefined,
+            deadlines: td.deadlines || undefined,
+          });
+          setIsLive(true);
+        }
+      } catch {
+        if (!cancelled) {
+          setIsLive(false);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    fetchTimelineData();
+    return () => { cancelled = true; };
+  }, [deal.id]);
+
+  const saveTimelineData = useCallback(async (updatedMilestones: Milestone[]) => {
+    setIsSaving(true);
+    try {
+      const timelinePayload: TimelineData = {
+        stats: liveData?.stats || (isPipeline ? acquisitionTimelineStats : performanceTimelineStats),
+        milestones: updatedMilestones,
+        deadlines: liveData?.deadlines || (isPipeline ? acquisitionDeadlines : performanceDeadlines),
+      };
+      await apiClient.patch(`/api/v1/deals/${deal.id}/state`, {
+        timeline_data: timelinePayload,
+      });
+      setLiveData(timelinePayload);
+      setIsLive(true);
+    } catch {
+    } finally {
+      setIsSaving(false);
+    }
+  }, [deal.id, isPipeline, liveData]);
+
+  const mockStats = isPipeline ? acquisitionTimelineStats : performanceTimelineStats;
+  const mockMilestones = isPipeline ? acquisitionMilestones : performanceMilestones;
+  const mockDeadlines = isPipeline ? acquisitionDeadlines : performanceDeadlines;
+
+  const stats = (isLive && liveData?.stats) ? liveData.stats : mockStats;
+  const milestones = (isLive && liveData?.milestones) ? liveData.milestones : mockMilestones;
+  const deadlines = (isLive && liveData?.deadlines) ? liveData.deadlines : mockDeadlines;
 
   // Filter milestones
   const filteredMilestones = useMemo(() => {
@@ -54,6 +116,28 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
     return { completed, inProgress, upcoming, overdue, atRisk };
   }, [milestones]);
 
+  const handleMilestoneStatusUpdate = useCallback((milestoneId: string, newStatus: Milestone['status']) => {
+    const updated = milestones.map(m =>
+      m.id === milestoneId
+        ? { ...m, status: newStatus, ...(newStatus === 'completed' ? { completedDate: new Date().toISOString().split('T')[0] } : {}) }
+        : m
+    );
+    saveTimelineData(updated);
+  }, [milestones, saveTimelineData]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-16">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-gray-600">Loading timeline data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       
@@ -67,6 +151,18 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
           }`}>
             {isPipeline ? '🎯 Acquisition Timeline' : '🏢 Performance Timeline'}
           </div>
+          {isLive && (
+            <div className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              LIVE DATA
+            </div>
+          )}
+          {isSaving && (
+            <div className="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 border border-yellow-300 flex items-center gap-1">
+              <div className="w-3 h-3 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />
+              Saving...
+            </div>
+          )}
           {isOwned && (
             <div className="text-xs text-gray-500">
               Acquired: {new Date(deal.actualCloseDate || deal.createdAt).toLocaleDateString()}

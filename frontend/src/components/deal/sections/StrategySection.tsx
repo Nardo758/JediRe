@@ -3,36 +3,37 @@
  * Investment strategy planning and execution tracking
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { StrategyType } from '../../../contexts/DealModuleContext';
+import { apiClient } from '../../../services/api.client';
 import {
-  strategyScores,
-  heatmapData,
-  signalNames,
-  strategyNames,
-  roiHeadToHead,
-  arbitrageAlert,
+  strategyScores as mockStrategyScores,
+  heatmapData as mockHeatmapData,
+  signalNames as mockSignalNames,
+  strategyNames as mockStrategyNames,
+  roiHeadToHead as mockRoiHeadToHead,
+  arbitrageAlert as mockArbitrageAlert,
   type StrategyScore as EnhancedStrategyScore,
   type HeatmapCell,
   type ROIMetric,
   type ArbitrageAlert,
 } from '../../../data/enhancedStrategyMockData';
 import {
-  acquisitionStats,
-  performanceStats,
-  strategyCards,
-  acquisitionImplementationTasks,
-  performanceImplementationTasks,
-  acquisitionTimeline,
-  performanceStrategyProgress,
-  roiProjections,
-  riskFactors,
-  performanceRiskFactors,
-  performanceOptimizations,
-  exitScenarios,
+  acquisitionStats as mockAcquisitionStats,
+  performanceStats as mockPerformanceStats,
+  strategyCards as mockStrategyCards,
+  acquisitionImplementationTasks as mockAcquisitionImplementationTasks,
+  performanceImplementationTasks as mockPerformanceImplementationTasks,
+  acquisitionTimeline as mockAcquisitionTimeline,
+  performanceStrategyProgress as mockPerformanceStrategyProgress,
+  roiProjections as mockRoiProjections,
+  riskFactors as mockRiskFactors,
+  performanceRiskFactors as mockPerformanceRiskFactors,
+  performanceOptimizations as mockPerformanceOptimizations,
+  exitScenarios as mockExitScenarios,
   QuickStat,
   StrategyCard,
   ImplementationTask,
@@ -57,6 +58,128 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
   const { emitEvent, updateStrategy } = useDealModule();
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLiveData, setIsLiveData] = useState(false);
+  const [strategyScores, setStrategyScores] = useState(mockStrategyScores);
+  const [heatmapData, setHeatmapData] = useState(mockHeatmapData);
+  const [signalNames, setSignalNames] = useState(mockSignalNames);
+  const [strategyNames, setStrategyNames] = useState(mockStrategyNames);
+  const [roiHeadToHead, setRoiHeadToHead] = useState(mockRoiHeadToHead);
+  const [arbitrageAlert, setArbitrageAlert] = useState(mockArbitrageAlert);
+  const [acquisitionStats, setAcquisitionStats] = useState(mockAcquisitionStats);
+  const [performanceStats, setPerformanceStats] = useState(mockPerformanceStats);
+  const [strategyCards, setStrategyCards] = useState(mockStrategyCards);
+  const [acquisitionImplementationTasks, setAcquisitionImplementationTasks] = useState(mockAcquisitionImplementationTasks);
+  const [performanceImplementationTasks, setPerformanceImplementationTasks] = useState(mockPerformanceImplementationTasks);
+  const [acquisitionTimeline, setAcquisitionTimeline] = useState(mockAcquisitionTimeline);
+  const [performanceStrategyProgress, setPerformanceStrategyProgress] = useState(mockPerformanceStrategyProgress);
+  const [roiProjections, setRoiProjections] = useState(mockRoiProjections);
+  const [riskFactors, setRiskFactors] = useState(mockRiskFactors);
+  const [performanceRiskFactors, setPerformanceRiskFactors] = useState(mockPerformanceRiskFactors);
+  const [performanceOptimizations, setPerformanceOptimizations] = useState(mockPerformanceOptimizations);
+  const [exitScenarios, setExitScenarios] = useState(mockExitScenarios);
+
+  useEffect(() => {
+    const dealId = deal.id;
+    if (!dealId) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+
+    apiClient.get(`/api/v1/strategy-analyses/${dealId}`)
+      .then((response) => {
+        if (cancelled) return;
+        const result = response.data;
+        if (result.success && result.data && result.data.length > 0) {
+          const analyses = result.data;
+          setIsLiveData(true);
+
+          const liveStrategyScores = analyses
+            .filter((a: any) => a.roi_metrics?.strategyScore)
+            .map((a: any) => a.roi_metrics.strategyScore);
+          if (liveStrategyScores.length > 0) setStrategyScores(liveStrategyScores);
+
+          const liveHeatmap = analyses
+            .filter((a: any) => a.roi_metrics?.heatmapData)
+            .flatMap((a: any) => a.roi_metrics.heatmapData);
+          if (liveHeatmap.length > 0) setHeatmapData(liveHeatmap);
+
+          const liveSignalNames = analyses
+            .find((a: any) => a.roi_metrics?.signalNames);
+          if (liveSignalNames) setSignalNames(liveSignalNames.roi_metrics.signalNames);
+
+          const liveStrategyNames = analyses
+            .find((a: any) => a.roi_metrics?.strategyNames);
+          if (liveStrategyNames) setStrategyNames(liveStrategyNames.roi_metrics.strategyNames);
+
+          const liveRoiHeadToHead = analyses
+            .find((a: any) => a.roi_metrics?.roiHeadToHead);
+          if (liveRoiHeadToHead) setRoiHeadToHead(liveRoiHeadToHead.roi_metrics.roiHeadToHead);
+
+          const liveArbitrageAlert = analyses
+            .find((a: any) => a.roi_metrics?.arbitrageAlert);
+          if (liveArbitrageAlert) setArbitrageAlert(liveArbitrageAlert.roi_metrics.arbitrageAlert);
+
+          const liveAcquisitionStats = analyses
+            .find((a: any) => a.assumptions?.acquisitionStats);
+          if (liveAcquisitionStats) setAcquisitionStats(liveAcquisitionStats.assumptions.acquisitionStats);
+
+          const livePerformanceStats = analyses
+            .find((a: any) => a.assumptions?.performanceStats);
+          if (livePerformanceStats) setPerformanceStats(livePerformanceStats.assumptions.performanceStats);
+
+          const liveStrategyCards = analyses
+            .filter((a: any) => a.assumptions?.strategyCard)
+            .map((a: any) => a.assumptions.strategyCard);
+          if (liveStrategyCards.length > 0) setStrategyCards(liveStrategyCards);
+
+          const liveAcqTasks = analyses
+            .find((a: any) => a.assumptions?.acquisitionImplementationTasks);
+          if (liveAcqTasks) setAcquisitionImplementationTasks(liveAcqTasks.assumptions.acquisitionImplementationTasks);
+
+          const livePerfTasks = analyses
+            .find((a: any) => a.assumptions?.performanceImplementationTasks);
+          if (livePerfTasks) setPerformanceImplementationTasks(livePerfTasks.assumptions.performanceImplementationTasks);
+
+          const liveTimeline = analyses
+            .find((a: any) => a.assumptions?.acquisitionTimeline);
+          if (liveTimeline) setAcquisitionTimeline(liveTimeline.assumptions.acquisitionTimeline);
+
+          const liveProgress = analyses
+            .find((a: any) => a.assumptions?.performanceStrategyProgress);
+          if (liveProgress) setPerformanceStrategyProgress(liveProgress.assumptions.performanceStrategyProgress);
+
+          const liveRoi = analyses
+            .find((a: any) => a.roi_metrics?.roiProjections);
+          if (liveRoi) setRoiProjections(liveRoi.roi_metrics.roiProjections);
+
+          const liveRisks = analyses
+            .find((a: any) => a.assumptions?.riskFactors);
+          if (liveRisks) setRiskFactors(liveRisks.assumptions.riskFactors);
+
+          const livePerfRisks = analyses
+            .find((a: any) => a.assumptions?.performanceRiskFactors);
+          if (livePerfRisks) setPerformanceRiskFactors(livePerfRisks.assumptions.performanceRiskFactors);
+
+          const liveOptimizations = analyses
+            .find((a: any) => a.assumptions?.performanceOptimizations);
+          if (liveOptimizations) setPerformanceOptimizations(liveOptimizations.assumptions.performanceOptimizations);
+
+          const liveExitScenarios = analyses
+            .find((a: any) => a.assumptions?.exitScenarios);
+          if (liveExitScenarios) setExitScenarios(liveExitScenarios.assumptions.exitScenarios);
+        }
+      })
+      .catch(() => {
+        setIsLiveData(false);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [deal.id]);
+
   // M08 → M11+ strategy event: emit when user selects a strategy
   const handleStrategySelect = useCallback((strategyId: string) => {
     setSelectedStrategy(strategyId);
@@ -74,6 +197,19 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const tasks = isPipeline ? acquisitionImplementationTasks : performanceImplementationTasks;
   const risks = isPipeline ? riskFactors : performanceRiskFactors;
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-gray-500">Loading strategy data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       
@@ -87,6 +223,11 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           }`}>
             {isPipeline ? '🎯 Strategy Planning' : '📊 Strategy Execution'}
           </div>
+          {isLiveData && (
+            <div className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
+              LIVE DATA
+            </div>
+          )}
           {isOwned && (
             <div className="text-xs text-gray-500">
               Acquired: {new Date(deal.actualCloseDate || deal.createdAt).toLocaleDateString()}

@@ -8,7 +8,7 @@
  * Strategy-aware: when strategy changes, the entire capital structure template reloads.
  */
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type {
   StrategyType,
   CapitalLayer,
@@ -16,6 +16,7 @@ import type {
   MetricInsight,
 } from '../../../types/capital-structure.types';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { apiClient } from '@/services/api.client';
 import {
   strategyTemplates,
   defaultCapitalStack,
@@ -33,6 +34,8 @@ import {
   calcSourcesEqualsUses,
   calcRateSensitivity,
 } from '../../../data/capitalStructureMockData';
+
+const API_BASE = '/api/v1/capital-structure';
 
 // ============================================================================
 // Props
@@ -84,6 +87,21 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
   const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
 
+  const [liveStack, setLiveStack] = useState<any>(null);
+  const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
+  const [liveRateData, setLiveRateData] = useState<any>(null);
+  const [liveWaterfall, setLiveWaterfall] = useState<any>(null);
+  const [liveScenarios, setLiveScenarios] = useState<any>(null);
+  const [liveTimeline, setLiveTimeline] = useState<any>(null);
+  const [liveInsights, setLiveInsights] = useState<any>(null);
+
+  const [tabLoading, setTabLoading] = useState<Record<TabId, boolean>>({
+    stack: false, debt: false, rates: false, waterfall: false,
+    scenarios: false, timeline: false, integration: false,
+  });
+  const [liveDataSources, setLiveDataSources] = useState<Set<TabId>>(new Set());
+  const fetchedTabs = useRef<Set<TabId>>(new Set());
+
   const {
     financial,
     capitalStructure,
@@ -94,7 +112,221 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   } = useDealModule();
 
   const template = strategyTemplates[selectedStrategy];
-  const stack = defaultCapitalStack;
+  const stack = liveStack || defaultCapitalStack;
+
+  const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
+    setTabLoading(prev => ({ ...prev, [tab]: loading }));
+  }, []);
+
+  const markTabLive = useCallback((tab: TabId) => {
+    setLiveDataSources(prev => new Set(prev).add(tab));
+  }, []);
+
+  useEffect(() => {
+    const fetchStack = async () => {
+      markTabLoading('stack', true);
+      try {
+        const res = await apiClient.post(`${API_BASE}/stack`, {
+          dealId: deal.id,
+          strategy: selectedStrategy,
+          layers: defaultCapitalStack.layers,
+          uses: defaultCapitalStack.uses,
+          noi: financial?.noi || 3000000,
+          propertyValue: defaultCapitalStack.uses.acquisitionPrice,
+        });
+        if (res.data?.stack) {
+          setLiveStack(res.data.stack);
+          if (res.data.stack.layers) setLayers(res.data.stack.layers);
+          markTabLive('stack');
+        }
+      } catch {
+      } finally {
+        markTabLoading('stack', false);
+      }
+
+      try {
+        const insRes = await apiClient.post(`${API_BASE}/insights`, {
+          metrics: defaultCapitalStack.metrics,
+        });
+        if (insRes.data?.insights) {
+          setLiveInsights(insRes.data.insights);
+        }
+      } catch {
+      }
+    };
+    fetchStack();
+    fetchedTabs.current.add('stack');
+  }, [deal.id]);
+
+  useEffect(() => {
+    if (activeTab === 'debt' && !fetchedTabs.current.has('debt')) {
+      fetchedTabs.current.add('debt');
+      const fetchDebt = async () => {
+        markTabLoading('debt', true);
+        try {
+          const res = await apiClient.post(`${API_BASE}/debt-products/recommend`, {
+            strategy: selectedStrategy,
+            products: debtProducts,
+          });
+          if (res.data) {
+            setLiveDebtProducts(res.data);
+            markTabLive('debt');
+          }
+        } catch {
+        } finally {
+          markTabLoading('debt', false);
+        }
+      };
+      fetchDebt();
+    }
+  }, [activeTab, selectedStrategy]);
+
+  useEffect(() => {
+    if (activeTab === 'rates' && !fetchedTabs.current.has('rates')) {
+      fetchedTabs.current.add('rates');
+      const fetchRates = async () => {
+        markTabLoading('rates', true);
+        try {
+          const [cycleRes, lockFloatRes, sensitivityRes] = await Promise.allSettled([
+            apiClient.post(`${API_BASE}/rate/cycle-phase`, {
+              fedDirection: currentRates.fedDirection,
+              durationMonths: 6,
+              yieldCurveSlope: currentRates.treasury10Y - currentRates.treasury2Y,
+            }),
+            apiClient.post(`${API_BASE}/rate/lock-vs-float`, {
+              loanAmount: 33750000,
+              lockRate: lockVsFloatAnalysis.lockNow.rate,
+              expectedFloatRates: [],
+              termMonths: 36,
+            }),
+            apiClient.post(`${API_BASE}/rate/sensitivity`, {
+              loanAmount: 33750000,
+              holdYears: 5,
+            }),
+          ]);
+          const rateData: any = {};
+          if (cycleRes.status === 'fulfilled' && cycleRes.value.data) {
+            rateData.cyclePhase = cycleRes.value.data.cyclePhase;
+          }
+          if (lockFloatRes.status === 'fulfilled' && lockFloatRes.value.data?.analysis) {
+            rateData.lockVsFloat = lockFloatRes.value.data.analysis;
+          }
+          if (sensitivityRes.status === 'fulfilled' && sensitivityRes.value.data?.sensitivityMatrix) {
+            rateData.sensitivityMatrix = sensitivityRes.value.data.sensitivityMatrix;
+          }
+          if (Object.keys(rateData).length > 0) {
+            setLiveRateData(rateData);
+            markTabLive('rates');
+          }
+        } catch {
+        } finally {
+          markTabLoading('rates', false);
+        }
+      };
+      fetchRates();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'waterfall' && !fetchedTabs.current.has('waterfall')) {
+      fetchedTabs.current.add('waterfall');
+      const fetchWaterfall = async () => {
+        markTabLoading('waterfall', true);
+        try {
+          const res = await apiClient.post(`${API_BASE}/waterfall`, {
+            config: defaultWaterfall,
+            exitProceeds: waterfallResult.exitProceeds,
+            holdYears: 5,
+            annualCashFlows: [],
+          });
+          if (res.data?.waterfall) {
+            setLiveWaterfall(res.data.waterfall);
+            markTabLive('waterfall');
+          }
+        } catch {
+        } finally {
+          markTabLoading('waterfall', false);
+        }
+      };
+      fetchWaterfall();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'scenarios' && !fetchedTabs.current.has('scenarios')) {
+      fetchedTabs.current.add('scenarios');
+      const fetchScenarios = async () => {
+        markTabLoading('scenarios', true);
+        try {
+          const res = await apiClient.post(`${API_BASE}/scenarios/compare`, {
+            scenarios: scenarioComparison.scenarios.map(s => ({
+              name: s.name,
+              layers: s.stack.layers,
+              uses: s.stack.uses,
+            })),
+            noi: financial?.noi || 3000000,
+            propertyValue: defaultCapitalStack.uses.acquisitionPrice,
+          });
+          if (res.data?.comparison) {
+            setLiveScenarios(res.data.comparison);
+            markTabLive('scenarios');
+          }
+        } catch {
+        } finally {
+          markTabLoading('scenarios', false);
+        }
+      };
+      fetchScenarios();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'timeline' && !fetchedTabs.current.has('timeline')) {
+      fetchedTabs.current.add('timeline');
+      const fetchTimeline = async () => {
+        markTabLoading('timeline', true);
+        try {
+          const [refiRes, drawRes] = await Promise.allSettled([
+            apiClient.post(`${API_BASE}/lifecycle/refi`, {
+              stabilizedValue: defaultCapitalStack.uses.acquisitionPrice * 1.2,
+              refiLTV: 0.75,
+              existingDebt: defaultCapitalStack.metrics.totalDebt,
+            }),
+            apiClient.post(`${API_BASE}/lifecycle/draw-progress`, {
+              draws: [],
+              totalCommitment: defaultCapitalStack.uses.renovationBudget,
+            }),
+          ]);
+          const timelineData: any = {};
+          if (refiRes.status === 'fulfilled' && refiRes.value.data) {
+            timelineData.refi = refiRes.value.data;
+          }
+          if (drawRes.status === 'fulfilled' && drawRes.value.data) {
+            timelineData.drawProgress = drawRes.value.data;
+          }
+          if (Object.keys(timelineData).length > 0) {
+            setLiveTimeline(timelineData);
+            markTabLive('timeline');
+          }
+        } catch {
+        } finally {
+          markTabLoading('timeline', false);
+        }
+      };
+      fetchTimeline();
+    }
+  }, [activeTab]);
+
+  const isAnyLive = liveDataSources.size > 0;
+
+  const renderTabLoading = () => (
+    <div className="flex items-center justify-center py-12">
+      <div className="flex items-center gap-3">
+        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm text-gray-500">Loading live data...</span>
+      </div>
+    </div>
+  );
 
   // ========================================================================
   // Cross-Module Wiring: M08 → M11+ (Strategy → Capital Structure)
@@ -345,7 +577,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </div>
 
         {/* Insights */}
-        {renderInsights(stackInsights)}
+        {renderInsights(liveInsights || stackInsights)}
       </div>
     );
   };
@@ -962,7 +1194,14 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     <div className="space-y-6">
       {/* Strategy Selector */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        {renderStrategySelector()}
+        <div className="flex items-center gap-3">
+          {renderStrategySelector()}
+          {isAnyLive && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-300 animate-pulse">
+              LIVE DATA
+            </span>
+          )}
+        </div>
         <div className="text-xs text-gray-500">
           Template: <span className="font-semibold text-gray-700">{template.label}</span> — {template.holdPeriod}
         </div>
@@ -987,12 +1226,12 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'stack' && renderCapitalStack()}
-      {activeTab === 'debt' && renderDebtSelector()}
-      {activeTab === 'rates' && renderRateEnvironment()}
-      {activeTab === 'waterfall' && renderEquityWaterfall()}
-      {activeTab === 'scenarios' && renderScenarios()}
-      {activeTab === 'timeline' && renderTimeline()}
+      {activeTab === 'stack' && (tabLoading.stack ? renderTabLoading() : renderCapitalStack())}
+      {activeTab === 'debt' && (tabLoading.debt ? renderTabLoading() : renderDebtSelector())}
+      {activeTab === 'rates' && (tabLoading.rates ? renderTabLoading() : renderRateEnvironment())}
+      {activeTab === 'waterfall' && (tabLoading.waterfall ? renderTabLoading() : renderEquityWaterfall())}
+      {activeTab === 'scenarios' && (tabLoading.scenarios ? renderTabLoading() : renderScenarios())}
+      {activeTab === 'timeline' && (tabLoading.timeline ? renderTabLoading() : renderTimeline())}
       {activeTab === 'integration' && renderIntegration()}
     </div>
   );

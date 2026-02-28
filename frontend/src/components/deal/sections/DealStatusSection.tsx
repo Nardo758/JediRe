@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, Clock, AlertTriangle, ArrowRight, Building2, DollarSign, FileText, Users, TrendingUp } from 'lucide-react';
+import { apiClient } from '@/services/api.client';
 
 interface DealStatusSectionProps {
   deal?: any;
@@ -19,42 +20,81 @@ interface LifecyclePhase {
   endDate?: string;
 }
 
-const lifecyclePhases: LifecyclePhase[] = [
-  { id: 'land', label: 'Land Acquisition', status: 'complete', progress: 100, startDate: 'Jan 2024', endDate: 'Mar 2024' },
-  { id: 'design', label: 'Design & Entitlements', status: 'complete', progress: 100, startDate: 'Mar 2024', endDate: 'Aug 2024' },
-  { id: 'finance', label: 'Financing', status: 'complete', progress: 100, startDate: 'Jul 2024', endDate: 'Oct 2024' },
-  { id: 'construction', label: 'Construction', status: 'active', progress: 45, startDate: 'Oct 2024', endDate: 'May 2026' },
+const defaultLifecyclePhases: LifecyclePhase[] = [
+  { id: 'land', label: 'Land Acquisition', status: 'active', progress: 25 },
+  { id: 'design', label: 'Design & Entitlements', status: 'upcoming', progress: 0 },
+  { id: 'finance', label: 'Financing', status: 'upcoming', progress: 0 },
+  { id: 'construction', label: 'Construction', status: 'upcoming', progress: 0 },
   { id: 'lease-up', label: 'Lease-Up', status: 'upcoming', progress: 0 },
   { id: 'exit', label: 'Stabilization / Exit', status: 'upcoming', progress: 0 },
 ];
 
-const constructionPhases = [
-  { name: 'Foundation', progress: 100, status: 'complete' },
-  { name: 'Parking Structure', progress: 100, status: 'complete' },
-  { name: 'Vertical 1-6', progress: 85, status: 'active' },
-  { name: 'Vertical 7-12', progress: 25, status: 'active' },
-  { name: 'MEP Rough-In', progress: 35, status: 'active' },
-  { name: 'Building Envelope', progress: 0, status: 'upcoming' },
-  { name: 'Interior Finishes', progress: 0, status: 'upcoming' },
-];
+function deriveLifecycleFromDeal(deal: any, dealState: any): LifecyclePhase[] {
+  const phases = [...defaultLifecyclePhases];
 
-const healthIndicators = [
-  { label: 'Schedule', status: 'green' as const, detail: 'On Track' },
-  { label: 'Budget', status: 'green' as const, detail: 'Under by 2%' },
-  { label: 'Risk Level', status: 'yellow' as const, detail: 'Medium' },
-  { label: 'Permits', status: 'green' as const, detail: 'All Active' },
-];
+  if (deal?.zoningCode || deal?.propertyTypeKey) {
+    phases[0] = { ...phases[0], status: 'active', progress: deal.address ? 50 : 25 };
+  }
 
-const recentMilestones = [
-  { date: 'Feb 18, 2026', event: 'Floor 6 structural complete', type: 'construction' },
-  { date: 'Feb 10, 2026', event: 'Draw #8 approved - $3.2M', type: 'financial' },
-  { date: 'Feb 3, 2026', event: 'MEP inspection passed (floors 1-4)', type: 'construction' },
-  { date: 'Jan 28, 2026', event: 'Leasing website launched', type: 'marketing' },
-  { date: 'Jan 15, 2026', event: 'Pre-leasing inquiries: 45 leads', type: 'marketing' },
-];
+  if (dealState?.design_3d) {
+    phases[0] = { ...phases[0], status: 'complete', progress: 100 };
+    phases[1] = { ...phases[1], status: 'active', progress: 40 };
+  }
+
+  if (dealState?.timeline_data) {
+    const timeline = typeof dealState.timeline_data === 'string' ? JSON.parse(dealState.timeline_data) : dealState.timeline_data;
+    if (timeline?.phases) {
+      timeline.phases.forEach((tp: any) => {
+        const idx = phases.findIndex(p => p.id === tp.id || p.label.toLowerCase().includes(tp.name?.toLowerCase()));
+        if (idx >= 0 && tp.progress !== undefined) {
+          phases[idx] = {
+            ...phases[idx],
+            progress: tp.progress,
+            status: tp.progress >= 100 ? 'complete' : tp.progress > 0 ? 'active' : 'upcoming',
+            startDate: tp.startDate,
+            endDate: tp.endDate,
+          };
+        }
+      });
+    }
+  }
+
+  return phases;
+}
 
 export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) => {
-  const [expandedPhase, setExpandedPhase] = useState<Phase | null>('construction');
+  const [expandedPhase, setExpandedPhase] = useState<Phase | null>(null);
+  const [lifecyclePhases, setLifecyclePhases] = useState<LifecyclePhase[]>(defaultLifecyclePhases);
+  const [dealState, setDealState] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!deal?.id) {
+      setLoading(false);
+      return;
+    }
+    loadDealState();
+  }, [deal?.id]);
+
+  const loadDealState = async () => {
+    try {
+      const response = await apiClient.get(`/api/v1/deals/${deal.id}/state`);
+      const state = response.data;
+      setDealState(state);
+      const phases = deriveLifecycleFromDeal(deal, state);
+      setLifecyclePhases(phases);
+      const activePhase = phases.find(p => p.status === 'active');
+      if (activePhase) setExpandedPhase(activePhase.id);
+    } catch (err) {
+      console.warn('Could not load deal state, using defaults');
+      const phases = deriveLifecycleFromDeal(deal, null);
+      setLifecyclePhases(phases);
+      const activePhase = phases.find(p => p.status === 'active');
+      if (activePhase) setExpandedPhase(activePhase.id);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const overallProgress = Math.round(
     lifecyclePhases.reduce((sum, p) => sum + p.progress, 0) / lifecyclePhases.length

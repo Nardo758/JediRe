@@ -18,6 +18,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ArrowRight, Layers, TrendingUp, DollarSign, BarChart3,
   AlertTriangle, CheckCircle2, ChevronDown, ChevronRight,
+  RefreshCw, Beaker, Loader2, Rocket,
 } from 'lucide-react';
 import { Deal } from '@/types';
 import api from '@/lib/api';
@@ -781,44 +782,153 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
   const [tab, setTab] = useState<TabId>('handoff');
   const [data, setData] = useState<TrafficProFormaData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<'api' | 'demo' | 'none'>('none');
+  const [initializing, setInitializing] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>('rental');
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const propertyId = (deal as any)?.property_id || (deal as any)?.propertyId;
-        const dealId = deal?.id;
-
-        if (propertyId && dealId) {
-          const response = await api.get(`/proforma/${dealId}/traffic-integration`, {
-            params: { propertyId },
-          });
-          if (!cancelled && response.data?.success) {
-            setData(response.data.data);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to mock
-      }
-
-      if (!cancelled) {
-        setData(generateMockData(deal));
-        setLoading(false);
-      }
+  const fetchData = useCallback(async () => {
+    if (!deal?.id) {
+      setLoading(false);
+      setDataSource('none');
+      return;
     }
 
-    fetchData();
-    return () => { cancelled = true; };
+    setLoading(true);
+    try {
+      const propertyId = (deal as any)?.property_id || (deal as any)?.propertyId;
+      const dealId = deal.id;
+
+      if (propertyId && dealId) {
+        const response = await api.get(`/proforma/${dealId}/traffic-integration`, {
+          params: { propertyId },
+        });
+        if (response.data?.success && response.data.data) {
+          setData(response.data.data);
+          setDataSource('api');
+          setLoading(false);
+          return;
+        }
+      }
+
+      const assumptionsRes = await api.get(`/proforma/${deal.id}`);
+      if (assumptionsRes.data?.success && assumptionsRes.data.data) {
+        setData(assumptionsRes.data.data);
+        setDataSource('api');
+        setLoading(false);
+        return;
+      }
+    } catch {
+    }
+
+    setData(null);
+    setDataSource('none');
+    setLoading(false);
   }, [deal?.id]);
 
-  if (loading || !data) {
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleInitialize = async () => {
+    if (!deal?.id) return;
+    setInitializing(true);
+    try {
+      await api.post(`/proforma/${deal.id}/initialize`, {
+        strategy: selectedStrategy,
+      });
+      await fetchData();
+    } catch {
+    }
+    setInitializing(false);
+  };
+
+  const handleLoadDemo = () => {
+    setData(generateMockData(deal));
+    setDataSource('demo');
+  };
+
+  const handleRefreshTraffic = async () => {
+    if (!deal?.id) return;
+    const propertyId = (deal as any)?.property_id || (deal as any)?.propertyId;
+    if (!propertyId) return;
+    setRefreshing(true);
+    try {
+      const response = await api.post(`/proforma/${deal.id}/traffic-refresh`, {
+        propertyId,
+      });
+      if (response.data?.success) {
+        await fetchData();
+      }
+    } catch {
+    }
+    setRefreshing(false);
+  };
+
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-stone-400 text-sm">
-        Loading ProForma integration...
+      <div className="flex flex-col items-center justify-center h-64 text-stone-400 text-sm gap-3">
+        <Loader2 size={24} className="animate-spin text-cyan-500" />
+        <span>Loading ProForma integration...</span>
+      </div>
+    );
+  }
+
+  if (!data || dataSource === 'none') {
+    return (
+      <div className="space-y-4">
+        <div className="bg-stone-900 text-white rounded-xl p-4">
+          <div className="text-[9px] uppercase tracking-[2px] text-stone-500">Deal Capsule → ProForma Engine · M09</div>
+          <div className="text-base font-bold mt-1">{deal?.name || 'Property'}</div>
+        </div>
+
+        <div className="bg-white border-2 border-dashed border-stone-300 rounded-xl p-8 text-center space-y-4">
+          <div className="mx-auto w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center">
+            <BarChart3 size={24} className="text-stone-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-stone-800">No Pro Forma Data</h3>
+            <p className="text-xs text-stone-500 mt-1">
+              Initialize a pro forma with a strategy to start generating financial projections, or view demo data.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center gap-3 max-w-xs mx-auto">
+            <div className="w-full">
+              <label className="text-[10px] text-stone-500 uppercase tracking-wider block mb-1">Strategy</label>
+              <select
+                value={selectedStrategy}
+                onChange={(e) => setSelectedStrategy(e.target.value)}
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm text-stone-800 bg-white"
+              >
+                <option value="rental">Rental (Stabilized)</option>
+                <option value="build_to_sell">Build to Sell</option>
+                <option value="flip">Flip</option>
+                <option value="airbnb">Airbnb / Short-Term</option>
+              </select>
+            </div>
+            <button
+              onClick={handleInitialize}
+              disabled={initializing}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              {initializing ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+              {initializing ? 'Initializing...' : 'Initialize Pro Forma'}
+            </button>
+            <div className="flex items-center gap-2 w-full">
+              <div className="flex-1 h-px bg-stone-200" />
+              <span className="text-[10px] text-stone-400">or</span>
+              <div className="flex-1 h-px bg-stone-200" />
+            </div>
+            <button
+              onClick={handleLoadDemo}
+              className="w-full flex items-center justify-center gap-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+            >
+              <Beaker size={14} />
+              View Demo Data
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -832,28 +942,66 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {dataSource === 'demo' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Beaker size={14} className="text-amber-600" />
+            <span className="text-xs font-semibold text-amber-800">[DEMO DATA]</span>
+            <span className="text-xs text-amber-700">Showing sample projections. Initialize a pro forma for real data.</span>
+          </div>
+          <button
+            onClick={() => { setData(null); setDataSource('none'); }}
+            className="text-xs text-amber-700 underline hover:text-amber-900 font-medium"
+          >
+            Initialize Real Data
+          </button>
+        </div>
+      )}
+
       <div className="bg-stone-900 text-white rounded-xl p-4">
         <div className="flex justify-between items-center">
           <div>
-            <div className="text-[9px] uppercase tracking-[2px] text-emerald-400">Deal Capsule \u2192 ProForma Engine · M09</div>
+            <div className="flex items-center gap-2">
+              <div className="text-[9px] uppercase tracking-[2px] text-emerald-400">Deal Capsule → ProForma Engine · M09</div>
+              {dataSource === 'demo' && (
+                <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold">DEMO</span>
+              )}
+            </div>
             <div className="text-base font-bold mt-1">{data.property.name}</div>
             <div className="text-xs text-stone-400">{data.property.units} units · {data.property.type} · {fmt$(data.property.acquisitionPrice)}</div>
           </div>
           <div className="text-right">
             <div className="flex items-center gap-2 justify-end">
               <span className="text-[9px] text-stone-400">Traffic Feed</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-              <span className="text-[10px] text-emerald-400 font-semibold">LIVE</span>
+              {dataSource === 'api' ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                  <span className="text-[10px] text-emerald-400 font-semibold">LIVE</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                  <span className="text-[10px] text-amber-400 font-semibold">DEMO</span>
+                </>
+              )}
             </div>
             <div className="text-[9px] text-stone-500 mt-1">
               {data.handoff.dataWeeks} weeks calibration · {data.handoff.modelConfidence}% confidence
             </div>
+            {dataSource === 'api' && (
+              <button
+                onClick={handleRefreshTraffic}
+                disabled={refreshing}
+                className="mt-1 flex items-center gap-1 text-[9px] text-cyan-400 hover:text-cyan-300 transition-colors ml-auto disabled:opacity-50"
+              >
+                <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Refreshing...' : 'Refresh Traffic'}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Tab bar */}
       <div className="flex gap-1 border-b border-stone-200 pb-0.5 overflow-x-auto">
         {TABS.map(t => {
           const Icon = t.icon;
@@ -870,7 +1018,6 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
         })}
       </div>
 
-      {/* Tab content */}
       <div>{content[tab]}</div>
     </div>
   );

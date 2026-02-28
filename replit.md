@@ -69,6 +69,26 @@ Key features include:
 -   **Property Data Tab:** Renamed Market Intelligence "Market Data" tab to "Property Data" (`PropertyDataTab.tsx`). Added "Property Assessment" section to property flyout showing parcel ID, lot size, building SF, assessed land/improvements, appraised value, and tax district — all fields shown only when non-null with graceful empty state. Includes enrichment source badge and "Enrich from County" button that calls `POST /api/v1/markets/property-records/:id/enrich` for supported counties (Fulton GA). Property records table extended with `enrichment_source` and `enriched_at` columns.
 -   **Zoning Interpretation Cache:** Two-table caching layer (`zoning_code_interpretations` + `zoning_ai_analysis_cache`) that stores fully-resolved zoning constraints and Claude AI analysis results in the database. Migration: `069_zoning_interpretation_cache.sql`. Service: `ZoningInterpretationCache` (`backend/src/services/zoning-interpretation-cache.service.ts`). Integrated into `EntitlementComparisonEngine` as a 6th constructor arg. Cache-first lookup in `resolveConstraints` (30-day TTL, keyed by UPPER code+municipality+state), `computeSingleOverlay` (same), and `generateAIAnalysis` (7-day TTL, keyed by sorted code set joined by `|`). Write-through: after resolving from DB or agent, result is persisted to cache. Second load of same deal skips all constraint resolution and Claude calls, making repeat loads near-instant. Logs `[Cache] HIT/MISS` for observability.
 
+-   **Apartment Locator AI Integration:** Live data pipeline from `https://apartment-locator-ai-real.replit.app`. 177 properties, 44,629 units across 5 Atlanta submarkets (Downtown, Midtown, Buckhead, East Atlanta, West End), 12 weekly trend observations synced to PostgreSQL. API routes at `/api/v1/apartment-sync` with endpoints for trends, submarkets, and market data.
+-   **F40 Performance Score Engine:** 4-dimension scoring system in `backend/src/services/f40-performance-score.service.ts`: Rent Position (30%), Occupancy Strength (30%), Pricing Power (20%), Vintage Physical (20%). API routes at `/api/v1/f40` with market, rankings, and calculate endpoints.
+-   **Deal Capsule Module Wiring (22 modules wired to real APIs):** All Deal Capsule sections now fetch from real backend APIs with mock data fallback. Each module shows a "LIVE DATA" badge when using real API data. Wired modules include:
+    - **OverviewSection**: JEDI Score from `/api/v1/jedi/score/:dealId`
+    - **MarketIntelligence**: Apartment sync submarkets + trends data
+    - **SupplyIntelligence**: Real supply pressure computed from apartment trends + submarkets
+    - **DealStatusSection**: Deal lifecycle from `/api/v1/deals/:dealId/state`
+    - **RiskIntelligence**: Comprehensive risk from `/api/v1/risk/comprehensive/:dealId`
+    - **StrategySection**: Strategy analyses from `/api/v1/strategy-analyses/:dealId`
+    - **CapitalStructureSection**: Capital stack, debt products, rate analysis from `/api/v1/capital-structure/*`
+    - **ExitSection**: Exit strategy data loaded/saved via deal state API
+    - **FinancialModelingSection**: Built from placeholder to functional component with scenario builder, sensitivity analysis, auto-save to `/api/v1/financial-models`
+    - **TrafficEngineV2Section**: Leasing traffic from `/api/v1/leasing-traffic/*` with clear DEMO/LIVE indicators
+    - **ProFormaWithTrafficSection**: Pro forma from `/api/v1/proforma/:dealId/*` with initialize flow
+    - **FilesSection**: Real file upload/download/delete via `/api/v1/deals/:dealId/files`
+    - **TimelineSection**: Timeline data from deal state API with save functionality
+    - **ProjectManagementSection**: Project tasks from deal state API with save functionality
+    - **AIRecommendationsSection**: Recommendations from deal state or JEDI score API
+    - **OpusAISection**: Enriched with live market/strategy/risk context for AI analysis
+
 ### Agent Dashboard
 
 Provides CRM functionalities for client, deal, lead, and activity management using a Drizzle ORM schema.

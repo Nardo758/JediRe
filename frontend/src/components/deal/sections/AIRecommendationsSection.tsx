@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Lightbulb, TrendingUp, Building2, DollarSign, Clock, CheckCircle, X, ChevronRight, Zap, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lightbulb, TrendingUp, Building2, DollarSign, Clock, CheckCircle, X, ChevronRight, Zap, AlertTriangle, Loader2, Radio } from 'lucide-react';
+import apiClient from '@/services/api.client';
 
 interface AIRecommendationsSectionProps {
   deal?: any;
@@ -109,7 +110,53 @@ const categoryConfig: Record<Category, { icon: React.ReactNode; label: string; c
 
 export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> = ({ deal }) => {
   const [filter, setFilter] = useState<'all' | Priority>('all');
-  const [recommendations, setRecommendations] = useState(mockRecommendations);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>(mockRecommendations);
+  const [loading, setLoading] = useState(false);
+  const [isLive, setIsLive] = useState(false);
+
+  useEffect(() => {
+    const dealId = deal?.id;
+    if (!dealId) return;
+
+    let cancelled = false;
+    const fetchRecommendations = async () => {
+      setLoading(true);
+      try {
+        const stateRes = await apiClient.get(`/api/v1/deals/${dealId}/state`);
+        const stateData = stateRes.data?.state || stateRes.data;
+        if (stateData?.recommendations && Array.isArray(stateData.recommendations) && stateData.recommendations.length > 0) {
+          if (!cancelled) {
+            setRecommendations(stateData.recommendations);
+            setIsLive(true);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+
+      try {
+        const jediRes = await apiClient.get(`/api/v1/jedi/score/${dealId}`);
+        const jediData = jediRes.data;
+        if (jediData?.recommendations && Array.isArray(jediData.recommendations) && jediData.recommendations.length > 0) {
+          if (!cancelled) {
+            setRecommendations(jediData.recommendations);
+            setIsLive(true);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+
+      if (!cancelled) {
+        setRecommendations(mockRecommendations);
+        setIsLive(false);
+        setLoading(false);
+      }
+    };
+
+    fetchRecommendations();
+    return () => { cancelled = true; };
+  }, [deal?.id]);
 
   const filtered = filter === 'all'
     ? recommendations
@@ -134,7 +181,15 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">AI Recommendations</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-slate-900">AI Recommendations</h2>
+            {loading && <Loader2 size={16} className="animate-spin text-blue-500" />}
+            {isLive && !loading && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                <Radio size={10} className="text-emerald-500" /> LIVE
+              </span>
+            )}
+          </div>
           <p className="text-sm text-slate-500">Intelligent suggestions based on your deal data and market conditions</p>
         </div>
         <div className="flex items-center gap-2">

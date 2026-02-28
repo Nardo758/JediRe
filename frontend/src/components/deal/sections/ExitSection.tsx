@@ -3,10 +3,11 @@
  * Exit strategy planning and readiness tracking
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import apiClient from '@/services/api.client';
 import {
   acquisitionExitStats,
   performanceExitStats,
@@ -30,6 +31,16 @@ import {
   ExitReadinessChecklistItem
 } from '../../../data/exitMockData';
 
+interface ExitStrategyData {
+  stats?: ExitQuickStat[];
+  scenarios?: ExitScenario[];
+  timeline?: ExitTimelineEvent[];
+  valueProjections?: ValueProjection[];
+  marketReadiness?: MarketReadinessIndicator[];
+  brokerRecommendations?: BrokerRecommendation[];
+  readinessChecklist?: ExitReadinessChecklistItem[];
+}
+
 interface ExitSectionProps {
   deal: Deal;
 }
@@ -39,12 +50,72 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
   const [selectedScenario, setSelectedScenario] = useState<string>(isPipeline ? 'base-sale' : 'perf-base-sale');
   const { capitalStructure } = useDealModule();
 
+  const [liveData, setLiveData] = useState<ExitStrategyData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLiveData, setIsLiveData] = useState(false);
+
+  const loadExitData = useCallback(async () => {
+    if (!deal?.id) {
+      setIsLoading(false);
+      return;
+    }
+    try {
+      setIsLoading(true);
+      const response = await apiClient.get(`/api/v1/deals/${deal.id}/state`);
+      const stateData = response.data;
+
+      if (stateData?.success) {
+        const exitData = stateData.timeline_data?.exit_strategy || stateData.exit_strategy;
+        if (exitData && Object.keys(exitData).length > 0) {
+          setLiveData(exitData);
+          setIsLiveData(true);
+        }
+      }
+    } catch (err) {
+    } finally {
+      setIsLoading(false);
+    }
+  }, [deal?.id]);
+
+  useEffect(() => {
+    loadExitData();
+  }, [loadExitData]);
+
+  const saveExitData = useCallback(async (dataToSave: ExitStrategyData) => {
+    if (!deal?.id) return;
+    try {
+      setIsSaving(true);
+      let existingTimelineData: Record<string, unknown> = {};
+      try {
+        const stateRes = await apiClient.get(`/api/v1/deals/${deal.id}/state`);
+        if (stateRes.data?.success && stateRes.data.timeline_data) {
+          existingTimelineData = typeof stateRes.data.timeline_data === 'string'
+            ? JSON.parse(stateRes.data.timeline_data)
+            : stateRes.data.timeline_data;
+        }
+      } catch (_) {}
+
+      await apiClient.post(`/api/v1/deals/${deal.id}/state`, {
+        timeline_data: {
+          ...existingTimelineData,
+          exit_strategy: dataToSave,
+        },
+      });
+
+      setLiveData(dataToSave);
+      setIsLiveData(true);
+    } catch (err) {
+    } finally {
+      setIsSaving(false);
+    }
+  }, [deal?.id]);
+
   // M11+ → M12: Calculate net sale proceeds after debt payoff using Capital Structure data
   const debtPayoffAtExit = useMemo(() => {
     if (!capitalStructure) return null;
-    // Use loan balance at maturity year, or estimate from annual debt service
     const totalDebt = capitalStructure.ltv > 0
-      ? (capitalStructure.annualDebtService / ((capitalStructure.dscr || 1) > 0 ? 1 : 1)) * 15 // rough estimate
+      ? (capitalStructure.annualDebtService / ((capitalStructure.dscr || 1) > 0 ? 1 : 1)) * 15
       : 0;
     return {
       outstandingBalance: totalDebt,
@@ -53,13 +124,45 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
     };
   }, [capitalStructure]);
 
-  // Select data based on mode
-  const stats = isPipeline ? acquisitionExitStats : performanceExitStats;
-  const scenarios = isPipeline ? acquisitionExitScenarios : performanceExitScenarios;
-  const timeline = isPipeline ? acquisitionExitTimeline : performanceExitTimeline;
-  const valueProjections = isPipeline ? acquisitionValueProjections : performanceValueProjections;
-  const readinessIndicators = isPipeline ? acquisitionMarketReadiness : performanceMarketReadiness;
-  const readinessChecklist = isPipeline ? acquisitionExitReadiness : performanceExitReadiness;
+  const mockStats = isPipeline ? acquisitionExitStats : performanceExitStats;
+  const mockScenarios = isPipeline ? acquisitionExitScenarios : performanceExitScenarios;
+  const mockTimeline = isPipeline ? acquisitionExitTimeline : performanceExitTimeline;
+  const mockValueProjections = isPipeline ? acquisitionValueProjections : performanceValueProjections;
+  const mockReadinessIndicators = isPipeline ? acquisitionMarketReadiness : performanceMarketReadiness;
+  const mockReadinessChecklist = isPipeline ? acquisitionExitReadiness : performanceExitReadiness;
+
+  const stats = (isLiveData && liveData?.stats) ? liveData.stats : mockStats;
+  const scenarios = (isLiveData && liveData?.scenarios) ? liveData.scenarios : mockScenarios;
+  const timeline = (isLiveData && liveData?.timeline) ? liveData.timeline : mockTimeline;
+  const valueProjections = (isLiveData && liveData?.valueProjections) ? liveData.valueProjections : mockValueProjections;
+  const readinessIndicators = (isLiveData && liveData?.marketReadiness) ? liveData.marketReadiness : mockReadinessIndicators;
+  const readinessChecklist = (isLiveData && liveData?.readinessChecklist) ? liveData.readinessChecklist : mockReadinessChecklist;
+
+  const handleSaveCurrentData = useCallback(() => {
+    const currentData: ExitStrategyData = {
+      stats,
+      scenarios,
+      timeline,
+      valueProjections,
+      marketReadiness: readinessIndicators,
+      brokerRecommendations: isOwned ? performanceBrokerRecommendations : undefined,
+      readinessChecklist: readinessChecklist,
+    };
+    saveExitData(currentData);
+  }, [stats, scenarios, timeline, valueProjections, readinessIndicators, readinessChecklist, isOwned, saveExitData]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-sm text-gray-500">Loading exit strategy data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -74,12 +177,29 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
           }`}>
             {isPipeline ? '🎯 Exit Planning' : '📊 Exit Execution'}
           </div>
+          {isLiveData && (
+            <div className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">
+              LIVE DATA
+            </div>
+          )}
+          {!isLiveData && (
+            <div className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300">
+              SAMPLE DATA
+            </div>
+          )}
           {isOwned && (
             <div className="text-xs text-gray-500">
               Holding Period: {new Date(deal.actualCloseDate || deal.createdAt).toLocaleDateString()} - Present
             </div>
           )}
         </div>
+        <button
+          onClick={handleSaveCurrentData}
+          disabled={isSaving}
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          {isSaving ? 'Saving...' : 'Save Exit Strategy'}
+        </button>
       </div>
 
       {/* Quick Stats */}
