@@ -84,6 +84,7 @@ import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import municodeRouter from './api/rest/municode.routes';
 import designReferencesRouter from './api/rest/design-references.routes';
+import financialModelRouter from './api/rest/financial-model.routes';
 
 dotenv.config();
 
@@ -232,6 +233,7 @@ app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
 app.use('/api/v1/municode', requireAuth, municodeRouter);
 app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
+app.use('/api/v1/financial-model', requireAuth, financialModelRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));

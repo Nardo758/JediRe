@@ -1,40 +1,62 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, TrendingUp, BarChart3, Edit3, RotateCcw,
-  ChevronDown, ChevronRight, Loader2, CheckCircle2, AlertTriangle,
-  ArrowRight, Info,
+  ChevronDown, ChevronRight, Loader2, CheckCircle2,
+  ArrowRight, Info, Download, Zap, Plus, Trash2, Building2, Hammer,
 } from 'lucide-react';
 import { Deal } from '@/types';
 import { apiClient } from '@/services/api.client';
 
-interface AssumptionRow {
-  id: string;
-  label: string;
-  category: 'revenue' | 'expense' | 'capital' | 'exit';
-  unit: '%' | '$' | 'yrs' | 'units';
-  perYear: boolean;
-  dataRecommendation: {
-    values: number[];
-    source: string;
-    confidence: number;
-    module: string | null;
-  };
-  userOverride: {
-    values: (number | null)[];
-    active: boolean;
-  };
+interface UnitMixRow {
+  floorPlan: string;
+  unitSize: number;
+  beds: number;
+  units: number;
+  occupied: number;
+  vacant: number;
+  marketRent: number;
+  inPlaceRent: number;
 }
 
-interface ProFormaYear {
-  year: number;
-  gpr: number;
-  vacancyLoss: number;
-  egi: number;
-  opex: number;
-  noi: number;
-  debtService: number;
-  btcf: number;
-  capRate: string;
+interface OtherIncomeItem {
+  perUnitMonth: number;
+  penetration: number;
+}
+
+interface ExpenseItem {
+  amount: number;
+  type: string;
+  growthRate: number;
+}
+
+interface CapexLineItem {
+  description: string;
+  amount: number;
+}
+
+interface WaterfallHurdle {
+  hurdleRate: number;
+  promoteToGP: number;
+  lpSplit: number;
+}
+
+interface FieldDef {
+  key: string;
+  label: string;
+  unit: '$' | '%' | 'yrs' | 'mo' | 'units' | 'sf' | 'text' | '$/sf' | 'x';
+  platformDefault: any;
+  section: string;
+  tooltip?: string;
+  showFor?: 'existing' | 'development' | 'both';
+}
+
+interface ModelResults {
+  summary: any;
+  annualCashFlow: any[];
+  sourcesAndUses: any;
+  debtMetrics: any;
+  sensitivityAnalysis: any;
+  waterfallDistributions: any[];
 }
 
 interface ProFormaTabProps {
@@ -42,157 +64,147 @@ interface ProFormaTabProps {
   dealId?: string;
 }
 
-const DEFAULT_UNITS = 200;
-const DEFAULT_ACQ_PRICE = 30_000_000;
-const DEFAULT_BASE_RENT = 1650;
-const DEFAULT_DEBT_SERVICE = 1_800_000;
+const DEFAULT_OTHER_INCOME: Record<string, OtherIncomeItem> = {
+  'Parking': { perUnitMonth: 75, penetration: 0.40 },
+  'Storage': { perUnitMonth: 50, penetration: 0.15 },
+  'RUBS (Water/Sewer)': { perUnitMonth: 45, penetration: 1.0 },
+  'Valet Trash': { perUnitMonth: 35, penetration: 1.0 },
+  'Pest Control': { perUnitMonth: 5, penetration: 1.0 },
+  'Cable/Internet': { perUnitMonth: 50, penetration: 0.60 },
+  'Pet Rent': { perUnitMonth: 50, penetration: 0.35 },
+  'Package Lockers': { perUnitMonth: 10, penetration: 1.0 },
+  'Tech Fee': { perUnitMonth: 30, penetration: 1.0 },
+  'Washer/Dryer': { perUnitMonth: 40, penetration: 0.25 },
+  'Renters Insurance': { perUnitMonth: 15, penetration: 0.90 },
+};
+
+const DEFAULT_EXPENSES: Record<string, ExpenseItem> = {
+  'Repairs & Maintenance': { amount: 0, type: 'perUnit', growthRate: 0.03 },
+  'Contract Services': { amount: 0, type: 'perUnit', growthRate: 0.03 },
+  'Security': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Landscaping': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Personnel / Payroll': { amount: 0, type: 'total', growthRate: 0.035 },
+  'Marketing': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Leasing Commissions': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Administrative / G&A': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Turnover': { amount: 0, type: 'perUnit', growthRate: 0.03 },
+  'Water / Sewer': { amount: 0, type: 'total', growthRate: 0.04 },
+  'Electric': { amount: 0, type: 'total', growthRate: 0.04 },
+  'Gas': { amount: 0, type: 'total', growthRate: 0.04 },
+  'Other Utilities': { amount: 0, type: 'total', growthRate: 0.04 },
+  'Insurance': { amount: 0, type: 'total', growthRate: 0.05 },
+  'Trash Removal': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Pest Control': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Valet Trash': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Cable / Internet': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Amenity Fees': { amount: 0, type: 'total', growthRate: 0.03 },
+  'Franchise Tax': { amount: 0, type: 'total', growthRate: 0.02 },
+  'Vacant Electric': { amount: 0, type: 'total', growthRate: 0.04 },
+  'Management Fee': { amount: 0.035, type: 'pctEGR', growthRate: 0 },
+  'RE Taxes': { amount: 0, type: 'total', growthRate: 0.025 },
+};
 
 function fmt$(n: number): string {
+  if (n === 0) return '$0';
   if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
   if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
 }
 
-function fmtNum(n: number, unit: string): string {
-  if (unit === '$') return fmt$(n);
-  if (unit === '%') return `${n.toFixed(1)}%`;
-  if (unit === 'yrs') return `${n}`;
-  return `${n}`;
+function fmtPct(n: number): string {
+  return `${(n * 100).toFixed(2)}%`;
 }
 
-function buildDefaultAssumptions(): AssumptionRow[] {
-  return [
-    {
-      id: 'purchasePrice', label: 'Purchase Price', category: 'capital', unit: '$', perYear: false,
-      dataRecommendation: { values: [DEFAULT_ACQ_PRICE], source: 'Deal input / Comp analysis', confidence: 85, module: null },
-      userOverride: { values: [null], active: false },
-    },
-    {
-      id: 'occupancyRate', label: 'Occupancy Rate', category: 'revenue', unit: '%', perYear: true,
-      dataRecommendation: {
-        values: [93.5, 94.0, 94.5, 94.8, 95.0, 95.0, 94.8, 94.5, 94.2, 94.0],
-        source: 'Traffic Module occupancy trajectory', confidence: 88, module: 'Traffic',
-      },
-      userOverride: { values: Array(10).fill(null), active: false },
-    },
-    {
-      id: 'rentGrowth', label: 'Rent Growth', category: 'revenue', unit: '%', perYear: true,
-      dataRecommendation: {
-        values: [3.5, 3.2, 3.0, 2.8, 2.7, 2.6, 2.5, 2.4, 2.3, 2.2],
-        source: 'Traffic Module rent trajectory', confidence: 85, module: 'Traffic',
-      },
-      userOverride: { values: Array(10).fill(null), active: false },
-    },
-    {
-      id: 'expenseRatio', label: 'Expense Ratio', category: 'expense', unit: '%', perYear: true,
-      dataRecommendation: {
-        values: [42.0, 42.5, 43.0, 43.0, 43.5, 43.5, 44.0, 44.0, 44.5, 44.5],
-        source: 'Market comps (submarket avg)', confidence: 70, module: null,
-      },
-      userOverride: { values: Array(10).fill(null), active: false },
-    },
-    {
-      id: 'exitCapRate', label: 'Exit Cap Rate', category: 'exit', unit: '%', perYear: false,
-      dataRecommendation: { values: [5.25], source: 'Strategy Module target exit', confidence: 65, module: 'Strategy' },
-      userOverride: { values: [null], active: false },
-    },
-    {
-      id: 'holdPeriod', label: 'Hold Period', category: 'exit', unit: 'yrs', perYear: false,
-      dataRecommendation: { values: [5], source: 'Strategy Module hold period', confidence: 90, module: 'Strategy' },
-      userOverride: { values: [null], active: false },
-    },
-    {
-      id: 'capexBudget', label: 'CapEx Budget', category: 'capital', unit: '$', perYear: false,
-      dataRecommendation: { values: [2_500_000], source: 'Strategy Module capex estimate', confidence: 72, module: 'Strategy' },
-      userOverride: { values: [null], active: false },
-    },
-    {
-      id: 'absorptionRate', label: 'Absorption Rate', category: 'revenue', unit: 'units', perYear: true,
-      dataRecommendation: {
-        values: [145, 150, 148, 146, 144, 142, 140, 138, 136, 134],
-        source: 'Traffic Module leasing velocity', confidence: 82, module: 'Traffic',
-      },
-      userOverride: { values: Array(10).fill(null), active: false },
-    },
-    {
-      id: 'vacancyLoss', label: 'Vacancy Loss', category: 'revenue', unit: '%', perYear: true,
-      dataRecommendation: {
-        values: [6.5, 6.0, 5.5, 5.2, 5.0, 5.0, 5.2, 5.5, 5.8, 6.0],
-        source: 'Derived from occupancy trajectory', confidence: 88, module: 'Traffic',
-      },
-      userOverride: { values: Array(10).fill(null), active: false },
-    },
-    {
-      id: 'managementFee', label: 'Management Fee', category: 'expense', unit: '%', perYear: false,
-      dataRecommendation: { values: [3.5], source: 'Market standard (3-4% EGI)', confidence: 80, module: null },
-      userOverride: { values: [null], active: false },
-    },
-  ];
+function fmtPctRaw(n: number): string {
+  return `${n.toFixed(2)}%`;
 }
-
-function getActiveValue(row: AssumptionRow, yearIndex: number): number {
-  if (row.userOverride.active) {
-    const idx = row.perYear ? yearIndex : 0;
-    const ov = row.userOverride.values[idx];
-    if (ov !== null && ov !== undefined) return ov;
-  }
-  const idx = row.perYear ? yearIndex : 0;
-  return row.dataRecommendation.values[idx] ?? row.dataRecommendation.values[0] ?? 0;
-}
-
-function buildIncomeStatement(assumptions: AssumptionRow[], units: number): ProFormaYear[] {
-  const getRow = (id: string) => assumptions.find(r => r.id === id);
-  const years: ProFormaYear[] = [];
-  let rent = DEFAULT_BASE_RENT;
-  const acqPrice = getActiveValue(getRow('purchasePrice')!, 0);
-  const debtService = DEFAULT_DEBT_SERVICE;
-
-  for (let y = 0; y < 10; y++) {
-    const vacPct = getActiveValue(getRow('vacancyLoss')!, y) / 100;
-    const rentGrowth = getActiveValue(getRow('rentGrowth')!, y) / 100;
-    const expRatio = getActiveValue(getRow('expenseRatio')!, y) / 100;
-
-    if (y > 0) rent = rent * (1 + rentGrowth);
-
-    const gpr = units * rent * 12;
-    const vacLoss = gpr * vacPct;
-    const egi = gpr - vacLoss;
-    const opex = egi * expRatio;
-    const noi = egi - opex;
-    const btcf = noi - debtService;
-    const capRate = acqPrice > 0 ? ((noi / acqPrice) * 100).toFixed(2) : '0.00';
-
-    years.push({
-      year: y + 1,
-      gpr: Math.round(gpr),
-      vacancyLoss: Math.round(vacLoss),
-      egi: Math.round(egi),
-      opex: Math.round(opex),
-      noi: Math.round(noi),
-      debtService,
-      btcf: Math.round(btcf),
-      capRate,
-    });
-  }
-  return years;
-}
-
-const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
-  revenue: { label: 'Revenue', color: 'emerald' },
-  expense: { label: 'Expenses', color: 'amber' },
-  capital: { label: 'Capital', color: 'blue' },
-  exit: { label: 'Exit', color: 'violet' },
-};
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
-  const units = (deal as any)?.units || DEFAULT_UNITS;
-  const [assumptions, setAssumptions] = useState<AssumptionRow[]>(buildDefaultAssumptions());
-  const [activeTab, setActiveTab] = useState<'assumptions' | 'income'>('assumptions');
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [modelType, setModelType] = useState<'existing' | 'development'>('existing');
+  const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
-  const [isLiveData, setIsLiveData] = useState(false);
-  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [modelResults, setModelResults] = useState<ModelResults | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['dealInfo', 'unitMix', 'acquisition']));
+  const [platformData, setPlatformData] = useState<Record<string, any>>({});
+
+  const [dealName, setDealName] = useState(deal?.name || 'Untitled Deal');
+  const [totalUnitsManual, setTotalUnitsManual] = useState<number | null>(null);
+  const [netRentableSF, setNetRentableSF] = useState(180000);
+  const [vintage, setVintage] = useState(2020);
+  const [address, setAddress] = useState(deal?.address || '');
+  const [city, setCity] = useState(deal?.city || '');
+  const [state, setState] = useState(deal?.state || '');
+
+  const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
+    { floorPlan: 'Studio', unitSize: 550, beds: 0, units: 30, occupied: 28, vacant: 2, marketRent: 1350, inPlaceRent: 1300 },
+    { floorPlan: '1BR/1BA', unitSize: 750, beds: 1, units: 80, occupied: 75, vacant: 5, marketRent: 1550, inPlaceRent: 1480 },
+    { floorPlan: '2BR/2BA', unitSize: 1050, beds: 2, units: 70, occupied: 65, vacant: 5, marketRent: 1900, inPlaceRent: 1820 },
+    { floorPlan: '3BR/2BA', unitSize: 1350, beds: 3, units: 20, occupied: 18, vacant: 2, marketRent: 2400, inPlaceRent: 2300 },
+  ]);
+
+  const totalUnits = totalUnitsManual ?? unitMix.reduce((s, u) => s + u.units, 0);
+  const setTotalUnits = (v: number) => setTotalUnitsManual(v);
+
+  const [purchasePrice, setPurchasePrice] = useState(30000000);
+  const [capRate, setCapRate] = useState(0.05);
+  const [closingCosts, setClosingCosts] = useState<Record<string, number>>({
+    'Misc/Broker': 50000,
+    'Transfer Tax': 75000,
+    'Escrows': 100000,
+    'Rate Cap': 150000,
+    'Legal/Title': 125000,
+  });
+  const [exitCapRate, setExitCapRate] = useState(0.055);
+  const [sellingCosts, setSellingCosts] = useState(0.02);
+  const [saleNOIMethod, setSaleNOIMethod] = useState('Forward 12mo');
+
+  const [rentGrowth, setRentGrowth] = useState([0.035, 0.032, 0.030, 0.028, 0.027, 0.026, 0.025, 0.024, 0.023, 0.022]);
+  const [lossToLease, setLossToLease] = useState(0.03);
+  const [stabilizedOccupancy, setStabilizedOccupancy] = useState(0.94);
+  const [collectionLoss, setCollectionLoss] = useState(0.015);
+  const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
+
+  const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
+
+  const [loanAmount, setLoanAmount] = useState(21000000);
+  const [loanType, setLoanType] = useState('Fixed');
+  const [interestRate, setInterestRate] = useState(0.055);
+  const [spread, setSpread] = useState(0);
+  const [loanTerm, setLoanTerm] = useState(10);
+  const [amortization, setAmortization] = useState(30);
+  const [ioPeriod, setIoPeriod] = useState(24);
+  const [originationFee, setOriginationFee] = useState(0.01);
+  const [rateCapCost, setRateCapCost] = useState(0);
+  const [prepayPenalty, setPrepayPenalty] = useState(0.01);
+
+  const [capexItems, setCapexItems] = useState<CapexLineItem[]>([
+    { description: 'Interior Renovations', amount: 1500000 },
+    { description: 'Exterior / Amenity Upgrades', amount: 500000 },
+    { description: 'Deferred Maintenance', amount: 300000 },
+  ]);
+  const [contingencyPct, setContingencyPct] = useState(0.05);
+  const [reservesPerUnit, setReservesPerUnit] = useState(250);
+
+  const [lpShare, setLpShare] = useState(0.90);
+  const [gpShare, setGpShare] = useState(0.10);
+  const [equityContribution, setEquityContribution] = useState(12000000);
+  const [hurdles, setHurdles] = useState<WaterfallHurdle[]>([
+    { hurdleRate: 0.08, promoteToGP: 0.20, lpSplit: 0.80 },
+    { hurdleRate: 0.12, promoteToGP: 0.30, lpSplit: 0.70 },
+    { hurdleRate: 0.15, promoteToGP: 0.40, lpSplit: 0.60 },
+  ]);
+
+  const [landCost, setLandCost] = useState(5000000);
+  const [hardCostPerSF, setHardCostPerSF] = useState(175);
+  const [hardCostContingency, setHardCostContingency] = useState(0.05);
+  const [softCostPct, setSoftCostPct] = useState(0.20);
+  const [developerFee, setDeveloperFee] = useState(0.04);
+  const [constructionPeriod, setConstructionPeriod] = useState(24);
+  const [leaseUpVelocity, setLeaseUpVelocity] = useState(15);
+  const [constructionLoanLTC, setConstructionLoanLTC] = useState(0.65);
+  const [constructionLoanRate, setConstructionLoanRate] = useState(0.065);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -200,106 +212,55 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 
     const fetchData = async () => {
       try {
-        const [proformaRes, trafficRes, strategyRes] = await Promise.allSettled([
+        const [proformaRes, trafficRes, strategyRes, latestModelRes] = await Promise.allSettled([
           apiClient.get(`/api/v1/proforma/${id}`),
           apiClient.get(`/api/v1/leasing-traffic/v2/intelligence/${id}`),
           apiClient.get(`/api/v1/strategy-analyses/${id}`),
+          apiClient.get(`/api/v1/financial-model/${id}/latest`),
         ]);
 
         if (cancelled) return;
 
-        let updated = buildDefaultAssumptions();
-        let hasLive = false;
+        const pd: Record<string, any> = {};
 
         if (proformaRes.status === 'fulfilled' && proformaRes.value?.data) {
-          const raw = proformaRes.value.data;
-          const pf = raw.data || raw;
+          const pf = proformaRes.value.data?.data || proformaRes.value.data;
           if (pf?.assumptions) {
-            hasLive = true;
-            for (const key of Object.keys(pf.assumptions)) {
-              const row = updated.find(r => r.id === key);
-              if (row && pf.assumptions[key]?.values) {
-                row.dataRecommendation.values = pf.assumptions[key].values;
-                row.dataRecommendation.source = pf.assumptions[key].source || row.dataRecommendation.source;
-                row.dataRecommendation.confidence = pf.assumptions[key].confidence || row.dataRecommendation.confidence;
-              }
-            }
+            pd.proforma = pf.assumptions;
           }
         }
 
         if (trafficRes.status === 'fulfilled' && trafficRes.value?.data) {
-          const rawTraffic = trafficRes.value.data;
-          const traffic = rawTraffic.data || rawTraffic;
-          hasLive = true;
+          const traffic = trafficRes.value.data?.data || trafficRes.value.data;
           if (traffic?.occupancyTrajectory) {
-            const occRow = updated.find(r => r.id === 'occupancyRate');
-            const vacRow = updated.find(r => r.id === 'vacancyLoss');
-            if (occRow) {
-              occRow.dataRecommendation.values = traffic.occupancyTrajectory.map((p: any) => p.occ);
-              occRow.dataRecommendation.source = 'Traffic Module occupancy trajectory (live)';
-              occRow.dataRecommendation.confidence = traffic.modelConfidence || 88;
-              occRow.dataRecommendation.module = 'Traffic';
-            }
-            if (vacRow) {
-              vacRow.dataRecommendation.values = traffic.occupancyTrajectory.map((p: any) => 100 - p.occ);
-              vacRow.dataRecommendation.source = 'Traffic Module vacancy (live)';
-              vacRow.dataRecommendation.confidence = traffic.modelConfidence || 88;
-              vacRow.dataRecommendation.module = 'Traffic';
-            }
+            pd.occupancy = traffic.occupancyTrajectory.map((p: any) => p.occ / 100);
           }
           if (traffic?.rentTrajectory) {
-            const rentRow = updated.find(r => r.id === 'rentGrowth');
-            if (rentRow) {
-              rentRow.dataRecommendation.values = traffic.rentTrajectory.map((p: any) => p.growth);
-              rentRow.dataRecommendation.source = 'Traffic Module rent trajectory (live)';
-              rentRow.dataRecommendation.confidence = traffic.modelConfidence || 85;
-              rentRow.dataRecommendation.module = 'Traffic';
-            }
-          }
-          if (traffic?.leasingVelocity) {
-            const absRow = updated.find(r => r.id === 'absorptionRate');
-            if (absRow) {
-              absRow.dataRecommendation.values[0] = traffic.leasingVelocity.annualized;
-              absRow.dataRecommendation.source = 'Traffic Module leasing velocity (live)';
-              absRow.dataRecommendation.module = 'Traffic';
-            }
+            pd.rentGrowth = traffic.rentTrajectory.map((p: any) => p.growth / 100);
           }
         }
 
         if (strategyRes.status === 'fulfilled' && strategyRes.value?.data) {
-          const rawStrat = strategyRes.value.data;
-          const stratData = rawStrat.data || rawStrat.analyses || rawStrat;
-          if (stratData && Array.isArray(stratData) && stratData.length > 0) {
-            hasLive = true;
-            const strat = stratData[0];
-            if (strat.assumptions?.exitCap) {
-              const exitRow = updated.find(r => r.id === 'exitCapRate');
-              if (exitRow) {
-                exitRow.dataRecommendation.values = [strat.assumptions.exitCap];
-                exitRow.dataRecommendation.module = 'Strategy';
-              }
-            }
-            if (strat.assumptions?.holdPeriod) {
-              const holdRow = updated.find(r => r.id === 'holdPeriod');
-              if (holdRow) {
-                holdRow.dataRecommendation.values = [strat.assumptions.holdPeriod];
-                holdRow.dataRecommendation.module = 'Strategy';
-              }
-            }
-            if (strat.assumptions?.capex) {
-              const capexRow = updated.find(r => r.id === 'capexBudget');
-              if (capexRow) {
-                capexRow.dataRecommendation.values = [strat.assumptions.capex];
-                capexRow.dataRecommendation.module = 'Strategy';
-              }
-            }
+          const raw = strategyRes.value.data;
+          const strats = raw?.data || raw?.analyses || raw;
+          if (strats && Array.isArray(strats) && strats.length > 0) {
+            const s = strats[0];
+            if (s?.assumptions?.exitCap) pd.exitCap = s.assumptions.exitCap / 100;
+            if (s?.assumptions?.holdPeriod) pd.holdPeriod = s.assumptions.holdPeriod;
+            if (s?.assumptions?.capex) pd.capexBudget = s.assumptions.capex;
           }
         }
 
-        setAssumptions(updated);
-        setIsLiveData(hasLive);
+        if (latestModelRes.status === 'fulfilled' && (latestModelRes.value as any)?.data?.data) {
+          const model = (latestModelRes.value as any).data.data;
+          if (model?.results) {
+            setModelResults(model.results);
+          }
+        }
+
+        setPlatformData(pd);
       } catch {
-        console.warn('ProFormaTab: using default assumptions');
+        console.warn('ProFormaTab: using defaults');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -309,37 +270,94 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     return () => { cancelled = true; };
   }, [id]);
 
-  const incomeStatement = useMemo(
-    () => buildIncomeStatement(assumptions, units),
-    [assumptions, units]
-  );
+  const buildAssumptionsPayload = useCallback(() => {
+    return {
+      dealInfo: { dealName, totalUnits, netRentableSF, vintage, address, city, state },
+      modelType,
+      holdPeriod,
+      unitMix,
+      acquisition: { purchasePrice, capRate, closingCosts },
+      disposition: { exitCapRate, sellingCosts, saleNOIMethod },
+      revenue: {
+        rentGrowth: rentGrowth.slice(0, holdPeriod),
+        lossToLease,
+        stabilizedOccupancy,
+        collectionLoss,
+        otherIncome,
+      },
+      expenses,
+      financing: {
+        loanAmount, loanType, interestRate, spread, term: loanTerm,
+        amortization, ioPeriod, originationFee, rateCapCost, prepayPenalty,
+      },
+      capex: { lineItems: capexItems, contingencyPct, reservesPerUnit },
+      waterfall: { lpShare, gpShare, hurdles, equityContribution },
+      ...(modelType === 'development' ? {
+        development: {
+          landCost, hardCostPerSF, hardCostContingency, softCostPct, developerFee,
+          constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
+        },
+      } : {}),
+    };
+  }, [
+    dealName, totalUnits, netRentableSF, vintage, address, city, state, modelType, holdPeriod,
+    unitMix, purchasePrice, capRate, closingCosts, exitCapRate, sellingCosts, saleNOIMethod,
+    rentGrowth, lossToLease, stabilizedOccupancy, collectionLoss, otherIncome, expenses,
+    loanAmount, loanType, interestRate, spread, loanTerm, amortization, ioPeriod,
+    originationFee, rateCapCost, prepayPenalty, capexItems, contingencyPct, reservesPerUnit,
+    lpShare, gpShare, hurdles, equityContribution, landCost, hardCostPerSF, hardCostContingency,
+    softCostPct, developerFee, constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
+  ]);
 
-  const handleOverride = useCallback((rowId: string, yearIndex: number, value: number | null) => {
-    setAssumptions(prev => prev.map(row => {
-      if (row.id !== rowId) return row;
-      const newValues = [...row.userOverride.values];
-      newValues[yearIndex] = value;
-      const hasAnyOverride = newValues.some(v => v !== null);
-      return { ...row, userOverride: { values: newValues, active: hasAnyOverride } };
-    }));
-  }, []);
+  const handleBuildModel = async () => {
+    if (!id) return;
+    setBuilding(true);
+    setModelResults(null);
+    try {
+      const assumptions = buildAssumptionsPayload();
+      const res = await apiClient.post('/api/v1/financial-model/build', { dealId: id, assumptions });
+      const data = (res as any)?.data;
+      if (data?.data) {
+        setModelResults(data.data);
+      } else if (data) {
+        setModelResults(data);
+      }
+    } catch (err: any) {
+      console.error('Model build failed:', err);
+      alert('Model build failed: ' + (err?.response?.data?.error || err.message));
+    } finally {
+      setBuilding(false);
+    }
+  };
 
-  const clearOverride = useCallback((rowId: string) => {
-    setAssumptions(prev => prev.map(row => {
-      if (row.id !== rowId) return row;
-      return { ...row, userOverride: { values: row.perYear ? Array(10).fill(null) : [null], active: false } };
-    }));
-  }, []);
+  const handleExportExcel = async () => {
+    if (!id) return;
+    try {
+      const response = await apiClient.get(`/api/v1/financial-model/${id}/export/excel`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([(response as any).data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dealName.replace(/[^a-zA-Z0-9]/g, '_')}_Model.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('Excel export failed:', err);
+      alert('Excel export failed: ' + (err?.response?.data?.error || err.message));
+    }
+  };
 
-  const toggleExpand = useCallback((id: string) => {
-    setExpandedRows(prev => {
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(section)) next.delete(section); else next.add(section);
       return next;
     });
-  }, []);
-
-  const overrideCount = assumptions.filter(r => r.userOverride.active).length;
+  };
 
   if (loading) {
     return (
@@ -352,416 +370,901 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     );
   }
 
-  const categories = ['revenue', 'expense', 'capital', 'exit'];
+  const sections = [
+    { id: 'dealInfo', label: 'Deal Info', icon: Building2 },
+    { id: 'unitMix', label: 'Unit Mix & Rents', icon: BarChart3 },
+    { id: 'acquisition', label: modelType === 'development' ? 'Development Costs' : 'Acquisition', icon: DollarSign },
+    { id: 'disposition', label: 'Disposition', icon: TrendingUp },
+    { id: 'revenue', label: 'Revenue Assumptions', icon: TrendingUp },
+    { id: 'otherIncome', label: 'Other Income', icon: DollarSign },
+    { id: 'expenses', label: 'Operating Expenses', icon: BarChart3 },
+    { id: 'financing', label: 'Financing', icon: DollarSign },
+    { id: 'capex', label: 'Capital Expenditures', icon: Hammer },
+    { id: 'waterfall', label: 'Waterfall / Partnership', icon: TrendingUp },
+  ];
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-stone-900">Pro Forma</h2>
+          <h2 className="text-lg font-semibold text-stone-900">Pro Forma Control Grid</h2>
           <p className="text-sm text-stone-500">
-            Dual-column assumptions with data recommendations and 10-year income statement
+            Input assumptions below, then click Build Model to generate a full financial forecast
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isLiveData && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono border border-emerald-300">
-              LIVE DATA
-            </span>
-          )}
-          {overrideCount > 0 && (
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono border border-blue-300">
-              {overrideCount} OVERRIDE{overrideCount > 1 ? 'S' : ''}
-            </span>
+          <div className="flex bg-stone-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setModelType('existing')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                modelType === 'existing' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              }`}
+            >
+              <Building2 size={12} className="inline mr-1" />
+              Existing Asset
+            </button>
+            <button
+              onClick={() => setModelType('development')}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                modelType === 'development' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+              }`}
+            >
+              <Hammer size={12} className="inline mr-1" />
+              Development
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap size={16} className="text-blue-600" />
+            <span className="text-sm font-semibold text-blue-900">Financial Model Engine</span>
+          </div>
+          <p className="text-xs text-blue-700">
+            Claude AI will build a complete {holdPeriod}-year financial model from your assumptions below
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={holdPeriod}
+            onChange={(e) => setHoldPeriod(Number(e.target.value))}
+            className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 bg-white text-blue-900"
+          >
+            <option value={3}>3-Year</option>
+            <option value={5}>5-Year</option>
+            <option value={7}>7-Year</option>
+            <option value={10}>10-Year</option>
+          </select>
+          <button
+            onClick={handleBuildModel}
+            disabled={building}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all"
+          >
+            {building ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Building Model...
+              </>
+            ) : (
+              <>
+                <Zap size={14} />
+                {modelResults ? 'Rebuild Model' : 'Build Model'}
+              </>
+            )}
+          </button>
+          {modelResults && (
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-all"
+            >
+              <Download size={14} />
+              Export Excel
+            </button>
           )}
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => setActiveTab('assumptions')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-            activeTab === 'assumptions'
-              ? 'bg-stone-900 text-white'
-              : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-          }`}
-        >
-          <Edit3 size={14} />
-          Assumptions
-        </button>
-        <button
-          onClick={() => setActiveTab('income')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-            activeTab === 'income'
-              ? 'bg-stone-900 text-white'
-              : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-          }`}
-        >
-          <BarChart3 size={14} />
-          10-Year Income Statement
-        </button>
-      </div>
+      {modelResults && <ModelResultsSummary results={modelResults} />}
 
-      {activeTab === 'assumptions' && (
-        <div className="space-y-4">
-          <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 flex items-start gap-2">
-            <Info size={14} className="text-stone-400 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-stone-600 leading-relaxed">
-              Each assumption shows two columns: <strong>Data Recommendation</strong> (pre-filled from Strategy, Traffic, and Market modules) and <strong>Your Override</strong> (editable). The active value used in calculations is your override if set, otherwise the data recommendation.
-            </p>
-          </div>
+      <div className="space-y-3">
+        {sections.map(section => {
+          const isExpanded = expandedSections.has(section.id);
+          const Icon = section.icon;
 
-          {categories.map(cat => {
-            const catInfo = CATEGORY_LABELS[cat];
-            const catRows = assumptions.filter(r => r.category === cat);
-            if (catRows.length === 0) return null;
-
-            return (
-              <div key={cat} className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-                <div className={`px-4 py-2 bg-${catInfo.color}-50 border-b border-${catInfo.color}-100`}>
-                  <span className={`text-xs font-bold text-${catInfo.color}-700 uppercase tracking-wider`}>
-                    {catInfo.label}
-                  </span>
+          return (
+            <div key={section.id} className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+              <button
+                onClick={() => toggleSection(section.id)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon size={14} className="text-stone-500" />
+                  <span className="text-sm font-semibold text-stone-800">{section.label}</span>
                 </div>
+                {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
+              </button>
 
-                {catRows.map(row => {
-                  const isExpanded = expandedRows.has(row.id);
-                  const activeVal = getActiveValue(row, 0);
-                  const hasOverride = row.userOverride.active;
-                  const recVal = row.dataRecommendation.values[0];
-
-                  return (
-                    <div key={row.id} className="border-b border-stone-100 last:border-b-0">
-                      <div
-                        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors"
-                        onClick={() => toggleExpand(row.id)}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-stone-800">{row.label}</span>
-                            {row.dataRecommendation.module && (
-                              <span className="text-[9px] bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded font-bold">
-                                {row.dataRecommendation.module}
-                              </span>
-                            )}
-                            {hasOverride && (
-                              <span className="text-[9px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold">
-                                OVERRIDE
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-stone-400 mt-0.5">{row.dataRecommendation.source}</div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-[9px] text-stone-400 uppercase tracking-wider">Data Rec</div>
-                            <div className="text-xs font-mono text-stone-500">{fmtNum(recVal, row.unit)}</div>
-                          </div>
-
-                          <ArrowRight size={12} className="text-stone-300" />
-
-                          <div className="text-right">
-                            <div className="text-[9px] text-stone-400 uppercase tracking-wider">Active</div>
-                            <div className={`text-sm font-mono font-bold ${hasOverride ? 'text-blue-700' : 'text-stone-900'}`}>
-                              {fmtNum(activeVal, row.unit)}
-                            </div>
-                          </div>
-
-                          <div className="text-right min-w-[36px]">
-                            <div className={`text-[10px] font-bold ${
-                              row.dataRecommendation.confidence > 80 ? 'text-emerald-600' :
-                              row.dataRecommendation.confidence > 60 ? 'text-amber-600' : 'text-stone-400'
-                            }`}>
-                              {row.dataRecommendation.confidence}%
-                            </div>
-                            <div className="text-[8px] text-stone-400">conf</div>
-                          </div>
-
-                          {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="px-4 pb-4 border-t border-stone-100 bg-stone-50">
-                          {row.perYear ? (
-                            <div className="overflow-x-auto mt-3">
-                              <table className="w-full text-[10px] font-mono">
-                                <thead>
-                                  <tr className="text-stone-400">
-                                    <th className="text-left py-1 pr-3 font-medium w-28">Year</th>
-                                    {[1,2,3,4,5,6,7,8,9,10].map(y => (
-                                      <th key={y} className="text-right py-1 px-1 font-medium">Y{y}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  <tr className="text-stone-600">
-                                    <td className="py-1.5 pr-3 text-stone-500 font-semibold">Data Rec</td>
-                                    {row.dataRecommendation.values.map((v, i) => (
-                                      <td key={i} className="text-right py-1.5 px-1">{v !== null ? v : '—'}</td>
-                                    ))}
-                                  </tr>
-                                  <tr className="text-blue-700">
-                                    <td className="py-1.5 pr-3 font-semibold flex items-center gap-1">
-                                      Your Override
-                                      {hasOverride && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); clearOverride(row.id); }}
-                                          className="text-stone-400 hover:text-red-500"
-                                          title="Clear all overrides"
-                                        >
-                                          <RotateCcw size={10} />
-                                        </button>
-                                      )}
-                                    </td>
-                                    {row.userOverride.values.map((v, i) => (
-                                      <td key={i} className="text-right py-1.5 px-1">
-                                        {editingCell === `${row.id}-${i}` ? (
-                                          <input
-                                            type="number"
-                                            step={row.unit === '$' ? 10000 : 0.1}
-                                            defaultValue={v ?? ''}
-                                            placeholder={String(row.dataRecommendation.values[i] ?? '')}
-                                            autoFocus
-                                            className="w-14 text-right text-[10px] font-mono border border-blue-300 rounded px-1 py-0.5 bg-white"
-                                            onBlur={(e) => {
-                                              const val = e.target.value ? parseFloat(e.target.value) : null;
-                                              handleOverride(row.id, i, val);
-                                              setEditingCell(null);
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                              if (e.key === 'Escape') setEditingCell(null);
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                          />
-                                        ) : (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setEditingCell(`${row.id}-${i}`); }}
-                                            className={`cursor-pointer hover:bg-blue-100 rounded px-1 py-0.5 ${
-                                              v !== null ? 'text-blue-700 font-bold' : 'text-stone-300'
-                                            }`}
-                                          >
-                                            {v !== null ? v : '—'}
-                                          </button>
-                                        )}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                  <tr className="text-stone-900 font-bold border-t border-stone-200">
-                                    <td className="py-1.5 pr-3">
-                                      <CheckCircle2 size={10} className="inline mr-1 text-emerald-500" />
-                                      Active
-                                    </td>
-                                    {Array.from({ length: 10 }, (_, i) => {
-                                      const av = getActiveValue(row, i);
-                                      const isOverridden = row.userOverride.active && row.userOverride.values[i] !== null;
-                                      return (
-                                        <td key={i} className={`text-right py-1.5 px-1 ${isOverridden ? 'text-blue-700' : 'text-stone-900'}`}>
-                                          {av}
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <div className="mt-3 flex items-center gap-6">
-                              <div>
-                                <div className="text-[9px] text-stone-400 uppercase tracking-wider mb-1">Data Recommendation</div>
-                                <div className="text-sm font-mono text-stone-600">{fmtNum(recVal, row.unit)}</div>
-                              </div>
-                              <ArrowRight size={14} className="text-stone-300" />
-                              <div>
-                                <div className="text-[9px] text-stone-400 uppercase tracking-wider mb-1">Your Override</div>
-                                {editingCell === `${row.id}-0` ? (
-                                  <input
-                                    type="number"
-                                    step={row.unit === '$' ? 100000 : 0.1}
-                                    defaultValue={row.userOverride.values[0] ?? ''}
-                                    placeholder={String(recVal)}
-                                    autoFocus
-                                    className="w-32 text-sm font-mono border border-blue-300 rounded px-2 py-1 bg-white"
-                                    onBlur={(e) => {
-                                      const val = e.target.value ? parseFloat(e.target.value) : null;
-                                      handleOverride(row.id, 0, val);
-                                      setEditingCell(null);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                      if (e.key === 'Escape') setEditingCell(null);
-                                    }}
-                                  />
-                                ) : (
-                                  <button
-                                    onClick={() => setEditingCell(`${row.id}-0`)}
-                                    className={`text-sm font-mono cursor-pointer hover:text-blue-600 ${
-                                      row.userOverride.values[0] !== null ? 'text-blue-700 font-bold' : 'text-stone-300'
-                                    }`}
-                                  >
-                                    {row.userOverride.values[0] !== null ? fmtNum(row.userOverride.values[0]!, row.unit) : 'Click to set'}
-                                  </button>
-                                )}
-                                {hasOverride && (
-                                  <button
-                                    onClick={() => clearOverride(row.id)}
-                                    className="ml-2 text-stone-400 hover:text-red-500"
-                                    title="Clear override"
-                                  >
-                                    <RotateCcw size={12} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {activeTab === 'income' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-            <div className="px-4 py-3 bg-stone-50 border-b border-stone-200 flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-stone-900">10-Year Income Statement</h3>
-                <p className="text-[10px] text-stone-500 mt-0.5">
-                  GPR → Vacancy Loss → EGI → OpEx → NOI → Debt Service → BTCF → Cap Rate
-                </p>
-              </div>
-              <div className="text-[10px] text-stone-400 font-mono">
-                {units} units · {fmt$(getActiveValue(assumptions.find(r => r.id === 'purchasePrice')!, 0))} acquisition
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200">
-                    <th className="text-left py-2 px-3 font-semibold text-stone-600 sticky left-0 bg-stone-50 min-w-[140px]">Line Item</th>
-                    {incomeStatement.map(yr => (
-                      <th key={yr.year} className="text-right py-2 px-3 font-semibold text-stone-600 min-w-[90px]">
-                        Year {yr.year}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <IncomeRow label="Gross Potential Rent" values={incomeStatement.map(y => y.gpr)} format="$" bold />
-                  <IncomeRow label="Vacancy Loss" values={incomeStatement.map(y => -y.vacancyLoss)} format="$" negative />
-                  <IncomeRow label="Effective Gross Income" values={incomeStatement.map(y => y.egi)} format="$" bold highlight="emerald" />
-                  <IncomeRow label="Operating Expenses" values={incomeStatement.map(y => -y.opex)} format="$" negative />
-                  <IncomeRow label="Net Operating Income" values={incomeStatement.map(y => y.noi)} format="$" bold highlight="blue" />
-                  <IncomeRow label="Debt Service" values={incomeStatement.map(y => -y.debtService)} format="$" negative />
-                  <IncomeRow label="Before-Tax Cash Flow" values={incomeStatement.map(y => y.btcf)} format="$" bold highlight={incomeStatement[0].btcf >= 0 ? 'emerald' : 'red'} />
-                  <tr className="border-t border-stone-200">
-                    <td className="py-2 px-3 text-stone-600 font-medium sticky left-0 bg-white">Cap Rate</td>
-                    {incomeStatement.map(yr => (
-                      <td key={yr.year} className="text-right py-2 px-3 font-mono text-stone-700">
-                        {yr.capRate}%
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4">
-            <SummaryCard
-              label="Year 1 NOI"
-              value={fmt$(incomeStatement[0].noi)}
-              sub={`Cap Rate: ${incomeStatement[0].capRate}%`}
-              color="blue"
-            />
-            <SummaryCard
-              label="Year 5 NOI"
-              value={fmt$(incomeStatement[4].noi)}
-              sub={`Cap Rate: ${incomeStatement[4].capRate}%`}
-              color="emerald"
-            />
-            <SummaryCard
-              label="Year 10 NOI"
-              value={fmt$(incomeStatement[9].noi)}
-              sub={`Cap Rate: ${incomeStatement[9].capRate}%`}
-              color="violet"
-            />
-            <SummaryCard
-              label="10-Yr NOI Growth"
-              value={`${((incomeStatement[9].noi / incomeStatement[0].noi - 1) * 100).toFixed(1)}%`}
-              sub={`${fmt$(incomeStatement[0].noi)} → ${fmt$(incomeStatement[9].noi)}`}
-              color="amber"
-            />
-          </div>
-
-          <div className="bg-stone-50 border border-stone-200 rounded-lg p-4">
-            <h4 className="text-xs font-bold text-stone-700 mb-2">NOI Trend (10-Year)</h4>
-            <div className="flex items-end gap-1 h-24">
-              {incomeStatement.map(yr => {
-                const maxNoi = Math.max(...incomeStatement.map(y => y.noi));
-                const pct = maxNoi > 0 ? (yr.noi / maxNoi) * 100 : 0;
-                return (
-                  <div key={yr.year} className="flex-1 flex flex-col items-center gap-1">
-                    <div className="text-[8px] font-mono text-stone-500">{fmt$(yr.noi)}</div>
-                    <div
-                      className="w-full bg-blue-400 rounded-t transition-all hover:bg-blue-500"
-                      style={{ height: `${Math.max(pct * 0.8, 4)}px` }}
-                      title={`Year ${yr.year}: ${fmt$(yr.noi)}`}
+              {isExpanded && (
+                <div className="px-4 pb-4 border-t border-stone-100">
+                  {section.id === 'dealInfo' && (
+                    <DealInfoSection
+                      dealName={dealName} setDealName={setDealName}
+                      totalUnits={totalUnits} setTotalUnits={setTotalUnits}
+                      netRentableSF={netRentableSF} setNetRentableSF={setNetRentableSF}
+                      vintage={vintage} setVintage={setVintage}
+                      address={address} setAddress={setAddress}
+                      city={city} setCity={setCity}
+                      state={state} setState={setState}
+                      platformData={platformData}
                     />
-                    <div className="text-[8px] text-stone-400">Y{yr.year}</div>
-                  </div>
-                );
-              })}
+                  )}
+                  {section.id === 'unitMix' && (
+                    <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
+                  )}
+                  {section.id === 'acquisition' && modelType === 'existing' && (
+                    <AcquisitionSection
+                      purchasePrice={purchasePrice} setPurchasePrice={setPurchasePrice}
+                      capRate={capRate} setCapRate={setCapRate}
+                      closingCosts={closingCosts} setClosingCosts={setClosingCosts}
+                      platformData={platformData}
+                      totalUnits={totalUnits}
+                    />
+                  )}
+                  {section.id === 'acquisition' && modelType === 'development' && (
+                    <DevelopmentCostsSection
+                      landCost={landCost} setLandCost={setLandCost}
+                      hardCostPerSF={hardCostPerSF} setHardCostPerSF={setHardCostPerSF}
+                      hardCostContingency={hardCostContingency} setHardCostContingency={setHardCostContingency}
+                      softCostPct={softCostPct} setSoftCostPct={setSoftCostPct}
+                      developerFee={developerFee} setDeveloperFee={setDeveloperFee}
+                      constructionPeriod={constructionPeriod} setConstructionPeriod={setConstructionPeriod}
+                      leaseUpVelocity={leaseUpVelocity} setLeaseUpVelocity={setLeaseUpVelocity}
+                      constructionLoanLTC={constructionLoanLTC} setConstructionLoanLTC={setConstructionLoanLTC}
+                      constructionLoanRate={constructionLoanRate} setConstructionLoanRate={setConstructionLoanRate}
+                      netRentableSF={netRentableSF}
+                    />
+                  )}
+                  {section.id === 'disposition' && (
+                    <DispositionSection
+                      exitCapRate={exitCapRate} setExitCapRate={setExitCapRate}
+                      sellingCosts={sellingCosts} setSellingCosts={setSellingCosts}
+                      saleNOIMethod={saleNOIMethod} setSaleNOIMethod={setSaleNOIMethod}
+                      holdPeriod={holdPeriod}
+                      platformData={platformData}
+                    />
+                  )}
+                  {section.id === 'revenue' && (
+                    <RevenueSection
+                      rentGrowth={rentGrowth} setRentGrowth={setRentGrowth}
+                      lossToLease={lossToLease} setLossToLease={setLossToLease}
+                      stabilizedOccupancy={stabilizedOccupancy} setStabilizedOccupancy={setStabilizedOccupancy}
+                      collectionLoss={collectionLoss} setCollectionLoss={setCollectionLoss}
+                      holdPeriod={holdPeriod}
+                      platformData={platformData}
+                    />
+                  )}
+                  {section.id === 'otherIncome' && (
+                    <OtherIncomeSection
+                      otherIncome={otherIncome} setOtherIncome={setOtherIncome}
+                      totalUnits={totalUnits}
+                    />
+                  )}
+                  {section.id === 'expenses' && (
+                    <ExpensesSection
+                      expenses={expenses} setExpenses={setExpenses}
+                      totalUnits={totalUnits}
+                    />
+                  )}
+                  {section.id === 'financing' && (
+                    <FinancingSection
+                      loanAmount={loanAmount} setLoanAmount={setLoanAmount}
+                      loanType={loanType} setLoanType={setLoanType}
+                      interestRate={interestRate} setInterestRate={setInterestRate}
+                      spread={spread} setSpread={setSpread}
+                      loanTerm={loanTerm} setLoanTerm={setLoanTerm}
+                      amortization={amortization} setAmortization={setAmortization}
+                      ioPeriod={ioPeriod} setIoPeriod={setIoPeriod}
+                      originationFee={originationFee} setOriginationFee={setOriginationFee}
+                      rateCapCost={rateCapCost} setRateCapCost={setRateCapCost}
+                      prepayPenalty={prepayPenalty} setPrepayPenalty={setPrepayPenalty}
+                    />
+                  )}
+                  {section.id === 'capex' && (
+                    <CapexSection
+                      capexItems={capexItems} setCapexItems={setCapexItems}
+                      contingencyPct={contingencyPct} setContingencyPct={setContingencyPct}
+                      reservesPerUnit={reservesPerUnit} setReservesPerUnit={setReservesPerUnit}
+                    />
+                  )}
+                  {section.id === 'waterfall' && (
+                    <WaterfallSection
+                      lpShare={lpShare} setLpShare={setLpShare}
+                      gpShare={gpShare} setGpShare={setGpShare}
+                      equityContribution={equityContribution} setEquityContribution={setEquityContribution}
+                      hurdles={hurdles} setHurdles={setHurdles}
+                    />
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 };
 
-const IncomeRow: React.FC<{
+const InputField: React.FC<{
   label: string;
-  values: number[];
-  format: '$' | '%';
-  bold?: boolean;
-  negative?: boolean;
-  highlight?: 'emerald' | 'blue' | 'red' | 'amber' | 'violet';
-}> = ({ label, values, format, bold, negative, highlight }) => {
-  const bgClass = highlight ? `bg-${highlight}-50` : '';
+  value: number | string;
+  onChange: (val: any) => void;
+  type?: 'number' | 'text' | 'percent' | 'currency';
+  platformValue?: any;
+  platformSource?: string;
+  step?: number;
+  suffix?: string;
+  className?: string;
+}> = ({ label, value, onChange, type = 'number', platformValue, platformSource, step, suffix, className = '' }) => (
+  <div className={`${className}`}>
+    <div className="flex items-center justify-between mb-1">
+      <label className="text-[11px] font-medium text-stone-600">{label}</label>
+      {platformValue !== undefined && (
+        <span className="text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
+          Platform: {typeof platformValue === 'number' ? (type === 'percent' ? fmtPct(platformValue) : type === 'currency' ? fmt$(platformValue) : platformValue) : platformValue}
+        </span>
+      )}
+    </div>
+    <div className="flex items-center">
+      {type === 'currency' && <span className="text-xs text-stone-400 mr-1">$</span>}
+      <input
+        type={type === 'text' ? 'text' : 'number'}
+        value={value}
+        onChange={(e) => onChange(type === 'text' ? e.target.value : parseFloat(e.target.value) || 0)}
+        step={step || (type === 'percent' ? 0.001 : type === 'currency' ? 1000 : 1)}
+        className="w-full text-xs font-mono border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+      />
+      {suffix && <span className="text-xs text-stone-400 ml-1">{suffix}</span>}
+      {type === 'percent' && <span className="text-xs text-stone-400 ml-1">×100=%</span>}
+    </div>
+  </div>
+);
+
+const DealInfoSection: React.FC<any> = ({ dealName, setDealName, totalUnits, setTotalUnits, netRentableSF, setNetRentableSF, vintage, setVintage, address, setAddress, city, setCity, state, setState }) => (
+  <div className="grid grid-cols-3 gap-4 mt-3">
+    <InputField label="Deal Name" value={dealName} onChange={setDealName} type="text" className="col-span-2" />
+    <InputField label="Vintage / Year Built" value={vintage} onChange={setVintage} />
+    <InputField label="Total Units" value={totalUnits} onChange={setTotalUnits} />
+    <InputField label="Net Rentable SF" value={netRentableSF} onChange={setNetRentableSF} step={1000} />
+    <InputField label="Avg Unit SF" value={netRentableSF > 0 && totalUnits > 0 ? Math.round(netRentableSF / totalUnits) : 0} onChange={() => {}} />
+    <InputField label="Address" value={address} onChange={setAddress} type="text" />
+    <InputField label="City" value={city} onChange={setCity} type="text" />
+    <InputField label="State" value={state} onChange={setState} type="text" />
+  </div>
+);
+
+const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any }> = ({ unitMix, setUnitMix, platformData }) => {
+  const updateRow = (index: number, field: keyof UnitMixRow, value: any) => {
+    const updated = [...unitMix];
+    (updated[index] as any)[field] = value;
+    if (field === 'units' || field === 'occupied') {
+      updated[index].vacant = updated[index].units - updated[index].occupied;
+    }
+    setUnitMix(updated);
+  };
+
+  const addRow = () => {
+    setUnitMix([...unitMix, { floorPlan: 'New Plan', unitSize: 800, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 1500, inPlaceRent: 1400 }]);
+  };
+
+  const removeRow = (index: number) => {
+    setUnitMix(unitMix.filter((_, i) => i !== index));
+  };
+
+  const totals = unitMix.reduce((acc, u) => ({
+    units: acc.units + u.units,
+    occupied: acc.occupied + u.occupied,
+    vacant: acc.vacant + u.vacant,
+    weightedRent: acc.weightedRent + u.marketRent * u.units,
+    totalSF: acc.totalSF + u.unitSize * u.units,
+  }), { units: 0, occupied: 0, vacant: 0, weightedRent: 0, totalSF: 0 });
+
   return (
-    <tr className={`border-b border-stone-100 ${bgClass}`}>
-      <td className={`py-2 px-3 sticky left-0 ${bgClass || 'bg-white'} ${bold ? 'font-semibold text-stone-900' : negative ? 'text-red-600' : 'text-stone-600'}`}>
-        {label}
-      </td>
-      {values.map((v, i) => (
-        <td key={i} className={`text-right py-2 px-3 font-mono ${bold ? 'font-semibold text-stone-900' : negative ? 'text-red-500' : 'text-stone-700'}`}>
-          {format === '$' ? (v < 0 ? `(${fmt$(Math.abs(v))})` : fmt$(v)) : `${v.toFixed(1)}%`}
-        </td>
-      ))}
-    </tr>
+    <div className="mt-3">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-stone-500 border-b border-stone-200">
+              <th className="text-left py-2 px-2 font-medium">Floor Plan</th>
+              <th className="text-right py-2 px-2 font-medium">SF</th>
+              <th className="text-right py-2 px-2 font-medium">Beds</th>
+              <th className="text-right py-2 px-2 font-medium">Units</th>
+              <th className="text-right py-2 px-2 font-medium">Occ</th>
+              <th className="text-right py-2 px-2 font-medium">Vac</th>
+              <th className="text-right py-2 px-2 font-medium">Market Rent</th>
+              <th className="text-right py-2 px-2 font-medium">Rent/SF</th>
+              <th className="text-right py-2 px-2 font-medium">In-Place</th>
+              <th className="py-2 px-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {unitMix.map((row, i) => (
+              <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
+                <td className="py-1.5 px-2">
+                  <input type="text" value={row.floorPlan} onChange={(e) => updateRow(i, 'floorPlan', e.target.value)}
+                    className="w-24 text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.unitSize} onChange={(e) => updateRow(i, 'unitSize', parseInt(e.target.value) || 0)}
+                    className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.beds} onChange={(e) => updateRow(i, 'beds', parseInt(e.target.value) || 0)}
+                    className="w-12 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.units} onChange={(e) => updateRow(i, 'units', parseInt(e.target.value) || 0)}
+                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.occupied} onChange={(e) => updateRow(i, 'occupied', parseInt(e.target.value) || 0)}
+                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                </td>
+                <td className="py-1.5 px-2 text-right font-mono text-stone-500">{row.vacant}</td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.marketRent} onChange={(e) => updateRow(i, 'marketRent', parseInt(e.target.value) || 0)}
+                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                </td>
+                <td className="py-1.5 px-2 text-right font-mono text-stone-500">
+                  ${row.unitSize > 0 ? (row.marketRent / row.unitSize).toFixed(2) : '0.00'}
+                </td>
+                <td className="py-1.5 px-2">
+                  <input type="number" value={row.inPlaceRent} onChange={(e) => updateRow(i, 'inPlaceRent', parseInt(e.target.value) || 0)}
+                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                </td>
+                <td className="py-1.5 px-1">
+                  <button onClick={() => removeRow(i)} className="text-stone-300 hover:text-red-500 p-0.5">
+                    <Trash2 size={12} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-stone-50 font-semibold text-stone-700">
+              <td className="py-2 px-2">TOTAL</td>
+              <td className="py-2 px-2 text-right font-mono">{totals.units > 0 ? Math.round(totals.totalSF / totals.units) : 0}</td>
+              <td className="py-2 px-2"></td>
+              <td className="py-2 px-2 text-right font-mono">{totals.units}</td>
+              <td className="py-2 px-2 text-right font-mono">{totals.occupied}</td>
+              <td className="py-2 px-2 text-right font-mono">{totals.vacant}</td>
+              <td className="py-2 px-2 text-right font-mono">${totals.units > 0 ? Math.round(totals.weightedRent / totals.units) : 0}</td>
+              <td className="py-2 px-2 text-right font-mono">
+                ${totals.totalSF > 0 ? (totals.weightedRent / totals.totalSF).toFixed(2) : '0.00'}
+              </td>
+              <td className="py-2 px-2"></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <button onClick={addRow} className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        <Plus size={12} /> Add Floor Plan
+      </button>
+      <div className="mt-2 text-[10px] text-stone-400 font-mono">
+        GPR: ${(totals.weightedRent * 12).toLocaleString()}/yr | Avg Rent: ${totals.units > 0 ? Math.round(totals.weightedRent / totals.units) : 0}/unit/mo | Occupancy: {totals.units > 0 ? ((totals.occupied / totals.units) * 100).toFixed(1) : 0}%
+      </div>
+    </div>
   );
 };
 
-const SummaryCard: React.FC<{
-  label: string;
-  value: string;
-  sub: string;
-  color: string;
-}> = ({ label, value, sub, color }) => (
-  <div className={`bg-white rounded-xl border border-stone-200 p-4`}>
-    <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">{label}</div>
-    <div className={`text-xl font-bold font-mono text-${color}-700`}>{value}</div>
-    <div className="text-[10px] text-stone-400 mt-1">{sub}</div>
+const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, capRate, setCapRate, closingCosts, setClosingCosts, platformData, totalUnits }) => (
+  <div className="mt-3 space-y-4">
+    <div className="grid grid-cols-3 gap-4">
+      <InputField label="Purchase Price" value={purchasePrice} onChange={setPurchasePrice} type="currency" step={100000} />
+      <InputField label="Going-In Cap Rate" value={capRate} onChange={setCapRate} type="percent" step={0.0025}
+        platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
+      <div>
+        <label className="text-[11px] font-medium text-stone-600">Price/Unit</label>
+        <div className="text-sm font-mono text-stone-700 mt-1">{totalUnits > 0 ? fmt$(Math.round(purchasePrice / totalUnits)) : '—'}</div>
+      </div>
+    </div>
+    <div>
+      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Closing Costs</label>
+      <div className="grid grid-cols-3 gap-3">
+        {Object.entries(closingCosts).map(([key, val]) => (
+          <div key={key} className="flex items-center gap-2">
+            <span className="text-[10px] text-stone-500 w-24 truncate">{key}</span>
+            <input type="number" value={val} onChange={(e) => setClosingCosts({ ...closingCosts, [key]: parseInt(e.target.value) || 0 })}
+              className="flex-1 text-xs text-right font-mono border border-stone-200 rounded px-2 py-1 focus:border-blue-400 outline-none" step={5000} />
+          </div>
+        ))}
+      </div>
+      <div className="text-[10px] text-stone-400 font-mono mt-2">
+        Total Closing Costs: {fmt$(Object.values(closingCosts).reduce((s, v) => s + v, 0))}
+      </div>
+    </div>
   </div>
 );
+
+const DevelopmentCostsSection: React.FC<any> = ({
+  landCost, setLandCost, hardCostPerSF, setHardCostPerSF,
+  hardCostContingency, setHardCostContingency, softCostPct, setSoftCostPct,
+  developerFee, setDeveloperFee, constructionPeriod, setConstructionPeriod,
+  leaseUpVelocity, setLeaseUpVelocity, constructionLoanLTC, setConstructionLoanLTC,
+  constructionLoanRate, setConstructionLoanRate, netRentableSF,
+}) => {
+  const hardCost = hardCostPerSF * netRentableSF;
+  const totalDev = landCost + hardCost * (1 + hardCostContingency) + hardCost * softCostPct + (hardCost + hardCost * softCostPct) * developerFee;
+
+  return (
+    <div className="mt-3 space-y-4">
+      <div className="grid grid-cols-3 gap-4">
+        <InputField label="Land Cost" value={landCost} onChange={setLandCost} type="currency" step={100000} />
+        <InputField label="Hard Cost / SF" value={hardCostPerSF} onChange={setHardCostPerSF} step={5} suffix="$/SF" />
+        <InputField label="Hard Cost Contingency" value={hardCostContingency} onChange={setHardCostContingency} type="percent" suffix="(decimal)" />
+        <InputField label="Soft Cost % of Hard" value={softCostPct} onChange={setSoftCostPct} type="percent" suffix="(decimal)" />
+        <InputField label="Developer Fee %" value={developerFee} onChange={setDeveloperFee} type="percent" suffix="(decimal)" />
+        <InputField label="Construction Period" value={constructionPeriod} onChange={setConstructionPeriod} suffix="months" />
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <InputField label="Lease-Up Velocity" value={leaseUpVelocity} onChange={setLeaseUpVelocity} suffix="units/mo" />
+        <InputField label="Construction Loan LTC" value={constructionLoanLTC} onChange={setConstructionLoanLTC} type="percent" suffix="(decimal)" />
+        <InputField label="Construction Loan Rate" value={constructionLoanRate} onChange={setConstructionLoanRate} type="percent" suffix="(decimal)" />
+      </div>
+      <div className="bg-stone-50 rounded-lg p-3 text-[10px] font-mono text-stone-500">
+        Hard Cost: {fmt$(hardCost)} | Total Dev Cost (est): {fmt$(totalDev)} | Loan: {fmt$(totalDev * constructionLoanLTC)} | Equity: {fmt$(totalDev * (1 - constructionLoanLTC))}
+      </div>
+    </div>
+  );
+};
+
+const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellingCosts, setSellingCosts, saleNOIMethod, setSaleNOIMethod, holdPeriod, platformData }) => (
+  <div className="mt-3 grid grid-cols-3 gap-4">
+    <InputField label="Exit Cap Rate" value={exitCapRate} onChange={setExitCapRate} type="percent"
+      platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
+    <InputField label="Selling Costs" value={sellingCosts} onChange={setSellingCosts} type="percent" suffix="(decimal)" />
+    <div>
+      <label className="text-[11px] font-medium text-stone-600 mb-1 block">Sale NOI Method</label>
+      <select value={saleNOIMethod} onChange={(e) => setSaleNOIMethod(e.target.value)}
+        className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+        <option>Forward 12mo</option>
+        <option>T-12</option>
+      </select>
+    </div>
+  </div>
+);
+
+const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease, setLossToLease, stabilizedOccupancy, setStabilizedOccupancy, collectionLoss, setCollectionLoss, holdPeriod, platformData }) => (
+  <div className="mt-3 space-y-4">
+    <div className="grid grid-cols-3 gap-4">
+      <InputField label="Loss-to-Lease" value={lossToLease} onChange={setLossToLease} type="percent" suffix="(decimal)" />
+      <InputField label="Stabilized Occupancy" value={stabilizedOccupancy} onChange={setStabilizedOccupancy} type="percent"
+        platformValue={platformData?.occupancy?.[0]} platformSource="Traffic Module" suffix="(decimal)" />
+      <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
+    </div>
+    <div>
+      <label className="text-[11px] font-medium text-stone-600 mb-2 block">
+        Annual Rent Growth
+        {platformData?.rentGrowth && (
+          <span className="ml-2 text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono">
+            Platform data available
+          </span>
+        )}
+      </label>
+      <div className="flex gap-2 flex-wrap">
+        {rentGrowth.slice(0, Math.max(holdPeriod, 5)).map((val, i) => (
+          <div key={i} className="text-center">
+            <div className="text-[9px] text-stone-400 mb-1">Y{i + 1}</div>
+            <input type="number" value={val} onChange={(e) => {
+              const updated = [...rentGrowth];
+              updated[i] = parseFloat(e.target.value) || 0;
+              setRentGrowth(updated);
+            }}
+              className="w-16 text-xs text-center font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none"
+              step={0.001} />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem>; setOtherIncome: (v: Record<string, OtherIncomeItem>) => void; totalUnits: number }> = ({ otherIncome, setOtherIncome, totalUnits }) => {
+  const totalAnnual = Object.values(otherIncome).reduce((sum, oi) => sum + oi.perUnitMonth * totalUnits * 12 * oi.penetration, 0);
+
+  return (
+    <div className="mt-3">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-stone-500 border-b border-stone-200">
+            <th className="text-left py-2 px-2 font-medium">Income Item</th>
+            <th className="text-right py-2 px-2 font-medium">$/Unit/Mo</th>
+            <th className="text-right py-2 px-2 font-medium">Penetration</th>
+            <th className="text-right py-2 px-2 font-medium">Annual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(otherIncome).map(([name, oi]) => (
+            <tr key={name} className="border-b border-stone-100">
+              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={oi.perUnitMonth} step={5}
+                  onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, perUnitMonth: parseFloat(e.target.value) || 0 } })}
+                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={oi.penetration} step={0.05}
+                  onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, penetration: parseFloat(e.target.value) || 0 } })}
+                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+                {fmt$(Math.round(oi.perUnitMonth * totalUnits * 12 * oi.penetration))}
+              </td>
+            </tr>
+          ))}
+          <tr className="bg-stone-50 font-semibold">
+            <td className="py-2 px-2">TOTAL OTHER INCOME</td>
+            <td></td><td></td>
+            <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalAnnual))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpenses: (v: Record<string, ExpenseItem>) => void; totalUnits: number }> = ({ expenses, setExpenses, totalUnits }) => {
+  const totalExpenses = Object.values(expenses).reduce((sum, e) => {
+    if (e.type === 'pctEGR') return sum;
+    return sum + (e.type === 'perUnit' ? e.amount * totalUnits : e.amount);
+  }, 0);
+
+  return (
+    <div className="mt-3">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-stone-500 border-b border-stone-200">
+            <th className="text-left py-2 px-2 font-medium">Expense Category</th>
+            <th className="text-right py-2 px-2 font-medium">Amount</th>
+            <th className="text-right py-2 px-2 font-medium">Type</th>
+            <th className="text-right py-2 px-2 font-medium">Growth</th>
+            <th className="text-right py-2 px-2 font-medium">Annual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.entries(expenses).map(([name, exp]) => (
+            <tr key={name} className="border-b border-stone-100">
+              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={exp.amount}
+                  step={exp.type === 'pctEGR' ? 0.005 : 1000}
+                  onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, amount: parseFloat(e.target.value) || 0 } })}
+                  className="w-20 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2">
+                <select value={exp.type}
+                  onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, type: e.target.value } })}
+                  className="text-[10px] border border-stone-200 rounded px-1 py-0.5 outline-none">
+                  <option value="total">Total</option>
+                  <option value="perUnit">Per Unit</option>
+                  <option value="pctEGR">% of EGR</option>
+                </select>
+              </td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={exp.growthRate} step={0.005}
+                  onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, growthRate: parseFloat(e.target.value) || 0 } })}
+                  className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+                {exp.type === 'pctEGR' ? fmtPct(exp.amount) : fmt$(exp.type === 'perUnit' ? exp.amount * totalUnits : exp.amount)}
+              </td>
+            </tr>
+          ))}
+          <tr className="bg-stone-50 font-semibold">
+            <td className="py-2 px-2">TOTAL EXPENSES (excl. Mgmt %)</td>
+            <td></td><td></td><td></td>
+            <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalExpenses))}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const FinancingSection: React.FC<any> = ({
+  loanAmount, setLoanAmount, loanType, setLoanType, interestRate, setInterestRate,
+  spread, setSpread, loanTerm, setLoanTerm, amortization, setAmortization,
+  ioPeriod, setIoPeriod, originationFee, setOriginationFee, rateCapCost, setRateCapCost,
+  prepayPenalty, setPrepayPenalty,
+}) => (
+  <div className="mt-3 space-y-4">
+    <div className="grid grid-cols-3 gap-4">
+      <InputField label="Loan Amount" value={loanAmount} onChange={setLoanAmount} type="currency" step={100000} />
+      <div>
+        <label className="text-[11px] font-medium text-stone-600 mb-1 block">Loan Type</label>
+        <select value={loanType} onChange={(e) => setLoanType(e.target.value)}
+          className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+          <option>Fixed</option>
+          <option>Floating</option>
+        </select>
+      </div>
+      <InputField label="Interest Rate" value={interestRate} onChange={setInterestRate} type="percent" suffix="(decimal)" />
+    </div>
+    <div className="grid grid-cols-3 gap-4">
+      {loanType === 'Floating' && <InputField label="Spread" value={spread} onChange={setSpread} type="percent" suffix="(decimal)" />}
+      <InputField label="Term (Years)" value={loanTerm} onChange={setLoanTerm} />
+      <InputField label="Amortization (Years)" value={amortization} onChange={setAmortization} />
+      <InputField label="IO Period (Months)" value={ioPeriod} onChange={setIoPeriod} />
+    </div>
+    <div className="grid grid-cols-3 gap-4">
+      <InputField label="Origination Fee" value={originationFee} onChange={setOriginationFee} type="percent" suffix="(decimal)" />
+      <InputField label="Rate Cap Cost" value={rateCapCost} onChange={setRateCapCost} type="currency" />
+      <InputField label="Prepayment Penalty" value={prepayPenalty} onChange={setPrepayPenalty} type="percent" suffix="(decimal)" />
+    </div>
+  </div>
+);
+
+const CapexSection: React.FC<{
+  capexItems: CapexLineItem[]; setCapexItems: (v: CapexLineItem[]) => void;
+  contingencyPct: number; setContingencyPct: (v: number) => void;
+  reservesPerUnit: number; setReservesPerUnit: (v: number) => void;
+}> = ({ capexItems, setCapexItems, contingencyPct, setContingencyPct, reservesPerUnit, setReservesPerUnit }) => {
+  const subtotal = capexItems.reduce((s, i) => s + i.amount, 0);
+
+  return (
+    <div className="mt-3 space-y-3">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-stone-500 border-b border-stone-200">
+            <th className="text-left py-2 px-2 font-medium">Description</th>
+            <th className="text-right py-2 px-2 font-medium">Amount</th>
+            <th className="py-2 px-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {capexItems.map((item, i) => (
+            <tr key={i} className="border-b border-stone-100">
+              <td className="py-1.5 px-2">
+                <input type="text" value={item.description} onChange={(e) => {
+                  const updated = [...capexItems];
+                  updated[i] = { ...item, description: e.target.value };
+                  setCapexItems(updated);
+                }}
+                  className="w-full text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={item.amount} step={10000} onChange={(e) => {
+                  const updated = [...capexItems];
+                  updated[i] = { ...item, amount: parseInt(e.target.value) || 0 };
+                  setCapexItems(updated);
+                }}
+                  className="w-28 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-1">
+                <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                  <Trash2 size={12} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={() => setCapexItems([...capexItems, { description: 'New Item', amount: 0 }])}
+        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        <Plus size={12} /> Add Line Item
+      </button>
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="text-[11px] font-medium text-stone-600">Subtotal</label>
+          <div className="text-sm font-mono text-stone-700">{fmt$(subtotal)}</div>
+        </div>
+        <InputField label="GC Contingency" value={contingencyPct} onChange={setContingencyPct} type="percent" suffix="(decimal)" />
+        <InputField label="Reserves/Unit/Year" value={reservesPerUnit} onChange={setReservesPerUnit} step={25} suffix="$/unit" />
+      </div>
+      <div className="text-[10px] font-mono text-stone-400">
+        Total CapEx (with contingency): {fmt$(Math.round(subtotal * (1 + contingencyPct)))}
+      </div>
+    </div>
+  );
+};
+
+const WaterfallSection: React.FC<{
+  lpShare: number; setLpShare: (v: number) => void;
+  gpShare: number; setGpShare: (v: number) => void;
+  equityContribution: number; setEquityContribution: (v: number) => void;
+  hurdles: WaterfallHurdle[]; setHurdles: (v: WaterfallHurdle[]) => void;
+}> = ({ lpShare, setLpShare, gpShare, setGpShare, equityContribution, setEquityContribution, hurdles, setHurdles }) => (
+  <div className="mt-3 space-y-4">
+    <div className="grid grid-cols-3 gap-4">
+      <InputField label="Total Equity" value={equityContribution} onChange={setEquityContribution} type="currency" step={100000} />
+      <InputField label="LP Share" value={lpShare} onChange={(v: number) => { setLpShare(v); setGpShare(+(1 - v).toFixed(4)); }} type="percent" suffix="(decimal)" />
+      <InputField label="GP Share" value={gpShare} onChange={(v: number) => { setGpShare(v); setLpShare(+(1 - v).toFixed(4)); }} type="percent" suffix="(decimal)" />
+    </div>
+    <div>
+      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Promote Hurdles</label>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-stone-500 border-b border-stone-200">
+            <th className="text-left py-2 px-2 font-medium">Tier</th>
+            <th className="text-right py-2 px-2 font-medium">Hurdle IRR</th>
+            <th className="text-right py-2 px-2 font-medium">GP Promote</th>
+            <th className="text-right py-2 px-2 font-medium">LP Split</th>
+            <th className="py-2 px-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {hurdles.map((h, i) => (
+            <tr key={i} className="border-b border-stone-100">
+              <td className="py-1.5 px-2 text-stone-600">Tier {i + 1}</td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={h.hurdleRate} step={0.01}
+                  onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, hurdleRate: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
+                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={h.promoteToGP} step={0.05}
+                  onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, promoteToGP: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
+                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-2">
+                <input type="number" value={h.lpSplit} step={0.05}
+                  onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, lpSplit: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
+                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+              </td>
+              <td className="py-1.5 px-1">
+                <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                  <Trash2 size={12} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button onClick={() => setHurdles([...hurdles, { hurdleRate: 0.20, promoteToGP: 0.50, lpSplit: 0.50 }])}
+        className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        <Plus size={12} /> Add Hurdle Tier
+      </button>
+    </div>
+  </div>
+);
+
+const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) => {
+  const s = results.summary;
+  if (!s) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden">
+      <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-emerald-600" />
+          <span className="text-sm font-semibold text-emerald-900">Model Results</span>
+        </div>
+      </div>
+      <div className="p-4">
+        <div className="grid grid-cols-5 gap-4 mb-4">
+          <MetricCard label="Levered IRR" value={s.irr != null ? `${(s.irr * 100).toFixed(1)}%` : '—'} color="blue" />
+          <MetricCard label="Equity Multiple" value={s.equityMultiple != null ? `${s.equityMultiple.toFixed(2)}x` : '—'} color="emerald" />
+          <MetricCard label="Year 1 NOI" value={s.noiYear1 ? fmt$(s.noiYear1) : '—'} color="violet" />
+          <MetricCard label="Exit Value" value={s.exitValue ? fmt$(s.exitValue) : '—'} color="amber" />
+          <MetricCard label="DSCR (Y1)" value={Array.isArray(s.dscr) && s.dscr[0] ? `${s.dscr[0].toFixed(2)}x` : (s.dscr ? `${Number(s.dscr).toFixed(2)}x` : '—')} color="stone" />
+        </div>
+
+        {results.annualCashFlow && results.annualCashFlow.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-xs font-semibold text-stone-600 mb-2">Annual Cash Flow Summary</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] font-mono">
+                <thead>
+                  <tr className="text-stone-500 border-b border-stone-200">
+                    <th className="text-left py-1.5 px-2">Year</th>
+                    {results.annualCashFlow.map((cf, i) => (
+                      <th key={i} className="text-right py-1.5 px-2">Y{cf.year || i + 1}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <CashFlowRow label="EGR" values={results.annualCashFlow.map(y => y.effectiveGrossRevenue)} />
+                  <CashFlowRow label="NOI" values={results.annualCashFlow.map(y => y.noi)} bold />
+                  <CashFlowRow label="Debt Service" values={results.annualCashFlow.map(y => y.debtService)} negative />
+                  <CashFlowRow label="Levered CF" values={results.annualCashFlow.map(y => y.leveredCashFlow)} bold highlight />
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {results.sensitivityAnalysis?.exitCapVsHoldPeriod?.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-xs font-semibold text-stone-600 mb-2">Sensitivity: Exit Cap vs Hold Period (IRR)</h4>
+            <SensitivityGrid data={results.sensitivityAnalysis.exitCapVsHoldPeriod} rowKey="holdPeriod" colKey="capRate" rowLabel="Hold" colLabel="Cap Rate" formatCol={(v: number) => `${(v * 100).toFixed(1)}%`} formatRow={(v: number) => `${v}yr`} />
+          </div>
+        )}
+
+        {results.waterfallDistributions?.length > 0 && (
+          <div>
+            <h4 className="text-xs font-semibold text-stone-600 mb-2">Waterfall Distributions</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[10px] font-mono">
+                <thead>
+                  <tr className="text-stone-500 border-b border-stone-200">
+                    <th className="text-left py-1.5 px-2">Year</th>
+                    <th className="text-right py-1.5 px-2">LP</th>
+                    <th className="text-right py-1.5 px-2">GP</th>
+                    <th className="text-right py-1.5 px-2">Promote</th>
+                    <th className="text-right py-1.5 px-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.waterfallDistributions.map((w, i) => (
+                    <tr key={i} className="border-b border-stone-100">
+                      <td className="py-1 px-2 text-stone-600">Y{w.year}</td>
+                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.lpDistribution))}</td>
+                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.gpDistribution))}</td>
+                      <td className="py-1 px-2 text-right text-emerald-600">{fmt$(Math.round(w.gpPromote))}</td>
+                      <td className="py-1 px-2 text-right font-semibold">{fmt$(Math.round(w.totalDistribution))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const MetricCard: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
+  <div className="text-center">
+    <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">{label}</div>
+    <div className={`text-lg font-bold font-mono text-${color}-700`}>{value}</div>
+  </div>
+);
+
+const CashFlowRow: React.FC<{ label: string; values: number[]; bold?: boolean; negative?: boolean; highlight?: boolean }> = ({ label, values, bold, negative, highlight }) => (
+  <tr className={`border-b border-stone-100 ${highlight ? 'bg-blue-50' : ''}`}>
+    <td className={`py-1 px-2 ${bold ? 'font-semibold text-stone-800' : negative ? 'text-red-600' : 'text-stone-600'}`}>{label}</td>
+    {(values || []).map((v, i) => (
+      <td key={i} className={`text-right py-1 px-2 ${bold ? 'font-semibold' : negative ? 'text-red-500' : ''}`}>
+        {v != null ? fmt$(Math.round(v)) : '—'}
+      </td>
+    ))}
+  </tr>
+);
+
+const SensitivityGrid: React.FC<{ data: any[]; rowKey: string; colKey: string; rowLabel: string; colLabel: string; formatCol: (v: number) => string; formatRow: (v: number) => string }> = ({ data, rowKey, colKey, rowLabel, colLabel, formatCol, formatRow }) => {
+  const rows = [...new Set(data.map((d: any) => d[rowKey]))].sort((a: number, b: number) => a - b);
+  const cols = [...new Set(data.map((d: any) => d[colKey]))].sort((a: number, b: number) => a - b);
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[10px] font-mono">
+        <thead>
+          <tr className="text-stone-500 border-b border-stone-200">
+            <th className="text-left py-1.5 px-2">{rowLabel}\{colLabel}</th>
+            {cols.map((c, i) => (
+              <th key={i} className="text-right py-1.5 px-2">{formatCol(c)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, ri) => (
+            <tr key={ri} className="border-b border-stone-100">
+              <td className="py-1 px-2 text-stone-600 font-semibold">{formatRow(r)}</td>
+              {cols.map((c, ci) => {
+                const cell = data.find((d: any) => d[rowKey] === r && d[colKey] === c);
+                return (
+                  <td key={ci} className="text-right py-1 px-2">
+                    {cell ? `${(cell.irr * 100).toFixed(1)}%` : '—'}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 export default ProFormaTab;
