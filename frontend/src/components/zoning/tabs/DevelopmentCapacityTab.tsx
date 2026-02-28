@@ -803,7 +803,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const dynRows = comparison?.rows || [];
         const cells = comparison?.cells || {};
         const hasData = cols.length > 0 || recommendations.length > 0;
-        if (!hasData && !loadingRecs) return null;
+        if (!hasData && !loadingRecs && !loading) return null;
 
         const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
 
@@ -829,19 +829,58 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Comparison</h3>
                   <p className="text-xs text-gray-500 mt-0.5">AI-analyzed development capacity across entitlement paths</p>
                 </div>
-                {loadingRecs && (
+                {(loadingRecs || loading) && !comparison && (
                   <div className="flex items-center gap-1.5">
                     <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
-                    <span className="text-[10px] text-gray-400">Analyzing...</span>
+                    <span className="text-[10px] text-gray-400">{loadingRecs ? 'Analyzing paths...' : 'Loading profile...'}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {loadingRecs && cols.length === 0 ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
-                <span className="ml-2 text-gray-500 text-xs">Computing entitlement paths...</span>
+            {(loadingRecs || loading) && cols.length === 0 ? (
+              <div className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50/50">
+                        <th className="text-left px-4 py-2.5 w-[18%]" />
+                        {[1, 2, 3, 4].map(i => (
+                          <th key={i} className="text-center px-3 py-2.5" style={{ width: '20%' }}>
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                              <div className="h-3 w-28 bg-gray-100 rounded animate-pulse" />
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {['Zoning Code', 'Density', 'FAR', 'Max Units', 'GBA', 'Stories', 'Parking', 'Binding Constraint'].map((label, idx) => (
+                        <tr key={label} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                          <td className="px-4 py-2.5 text-xs font-medium text-gray-400">{label}</td>
+                          {[1, 2, 3, 4].map(i => (
+                            <td key={i} className="px-3 py-2.5 text-center">
+                              <div className="h-4 w-16 bg-gray-100 rounded animate-pulse mx-auto" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
+                        <td className="px-4 py-3 text-xs font-bold text-gray-400">Select Path</td>
+                        {[1, 2, 3, 4].map(i => (
+                          <td key={i} className="px-3 py-3 text-center">
+                            <div className="h-7 w-16 bg-gray-200 rounded-lg animate-pulse mx-auto" />
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                  <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
+                </div>
               </div>
             ) : (
               <>
