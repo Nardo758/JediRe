@@ -221,7 +221,11 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
     };
 
     const recommendations = result.columns.map(col => ({
-      name: col.key === 'byRight' ? 'By-Right' : col.key === 'variance' ? 'Variance' : col.key === 'overlay' ? 'Overlay' : 'Rezone',
+      name: col.key === 'byRight' ? 'By-Right'
+        : col.key === 'variance' ? 'Variance'
+        : col.key === 'rezone' ? 'Rezone'
+        : col.key.startsWith('overlay') ? (col.label || 'Overlay')
+        : col.label || col.key,
       description: col.aiInsight || '',
       risk: col.risk,
       successRate: col.successRate,

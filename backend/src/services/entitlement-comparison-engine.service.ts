@@ -125,8 +125,8 @@ export class EntitlementComparisonEngine {
     const variance = this.computeVariance(subject, baseConstraints, variancePct);
     computedPaths.push(variance);
 
-    const overlayPath = await this.computeOverlay(subject, baseConstraints, profile);
-    if (overlayPath) computedPaths.push(overlayPath);
+    const overlayPaths = await this.computeOverlays(subject, baseConstraints, profile);
+    computedPaths.push(...overlayPaths);
 
     const rezone = await this.computeRezone(subject, baseConstraints, rezoneTargetCode, dealId, profile);
     computedPaths.push(rezone);
@@ -276,12 +276,12 @@ export class EntitlementComparisonEngine {
     };
   }
 
-  private async computeOverlay(
+  private async computeOverlays(
     subject: SubjectProperty,
     baseConstraints: ResolvedConstraints,
     profile: ZoningProfile,
-  ): Promise<ComputedPath | null> {
-    const overlays = Array.isArray(profile.overlays) ? profile.overlays : [];
+  ): Promise<ComputedPath[]> {
+    const profileOverlays = Array.isArray(profile.overlays) ? profile.overlays : [];
 
     let overlayDistricts: string[] = [];
     try {
@@ -297,21 +297,72 @@ export class EntitlementComparisonEngine {
       }
     } catch {}
 
-    let overlayResult = await this.pool.query(
+    const overlayDbResult = await this.pool.query(
       `SELECT * FROM zoning_overlays
        WHERE municipality = $1 OR municipality IS NULL
-       ORDER BY created_at DESC LIMIT 5`,
+       ORDER BY created_at DESC LIMIT 10`,
       [subject.municipality]
     );
 
-    const activeOverlay = overlays[0] || (overlayDistricts.length > 0 ? { name: overlayDistricts[0], code: overlayDistricts[0] } : null) ||
-      (overlayResult.rows.length > 0 ? overlayResult.rows[0] : null);
+    const candidateOverlays: Array<{ code: string; name: string; source: any }> = [];
+    const seenCodes = new Set<string>();
 
-    if (!activeOverlay) return null;
+    for (const ov of profileOverlays) {
+      const code = (ov.code || ov.name || '').toUpperCase();
+      if (code && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        const dbMatch = overlayDbResult.rows.find((r: any) =>
+          (r.overlay_code || '').toUpperCase() === code || (r.overlay_name || '').toUpperCase() === code
+        );
+        const displayName = (dbMatch as any)?.overlay_name || ov.name || code;
+        candidateOverlays.push({ code, name: displayName, source: dbMatch || ov });
+      }
+    }
 
-    const overlayCode = activeOverlay.overlay_code || activeOverlay.code || activeOverlay.name;
-    const overlayName = activeOverlay.overlay_name || activeOverlay.name || overlayCode;
+    for (const distCode of overlayDistricts) {
+      const code = distCode.toUpperCase();
+      if (code && !seenCodes.has(code)) {
+        seenCodes.add(code);
+        const dbMatch = overlayDbResult.rows.find((r: any) =>
+          (r.overlay_code || '').toUpperCase() === code || (r.overlay_name || '').toUpperCase() === code
+        );
+        const displayName = (dbMatch as any)?.overlay_name || distCode;
+        candidateOverlays.push({ code, name: displayName, source: dbMatch || { name: distCode, code: distCode } });
+      }
+    }
 
+    if (candidateOverlays.length === 0) {
+      for (const dbRow of overlayDbResult.rows) {
+        const code = ((dbRow as any).overlay_code || (dbRow as any).overlay_name || '').toUpperCase();
+        if (code && !seenCodes.has(code)) {
+          seenCodes.add(code);
+          candidateOverlays.push({ code, name: (dbRow as any).overlay_name || (dbRow as any).overlay_code || code, source: dbRow });
+          if (candidateOverlays.length >= 3) break;
+        }
+      }
+    }
+
+    if (candidateOverlays.length === 0) return [];
+
+    const paths: ComputedPath[] = [];
+
+    for (let i = 0; i < candidateOverlays.length && i < 3; i++) {
+      const candidate = candidateOverlays[i];
+      const path = await this.computeSingleOverlay(subject, baseConstraints, candidate.source, candidate.code, candidate.name, i);
+      if (path) paths.push(path);
+    }
+
+    return paths;
+  }
+
+  private async computeSingleOverlay(
+    subject: SubjectProperty,
+    baseConstraints: ResolvedConstraints,
+    activeOverlay: any,
+    overlayCode: string,
+    overlayName: string,
+    index: number,
+  ): Promise<ComputedPath | null> {
     let overlayConstraints: ResolvedConstraints = { ...baseConstraints };
 
     if (activeOverlay.modifications) {
@@ -363,8 +414,10 @@ export class EntitlementComparisonEngine {
 
     const envelope = this.computeEnvelope(subject, overlayConstraints);
 
+    const key = index === 0 ? 'overlay' : `overlay_${index}`;
+
     return {
-      key: 'overlay',
+      key,
       label: `Overlay: ${overlayName}`,
       zoningCode: overlayCode,
       risk: 'Low',
