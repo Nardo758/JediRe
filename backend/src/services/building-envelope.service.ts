@@ -14,7 +14,7 @@ export interface PropertyTypeConfig {
 
 export const PROPERTY_TYPE_CONFIGS: Record<PropertyType, PropertyTypeConfig> = {
   multifamily: {
-    avgUnitSize: 850,
+    avgUnitSize: 900,
     floorHeight: 10,
     densityMetric: 'units/acre',
     parkingRatio: 1,
@@ -58,7 +58,7 @@ export const PROPERTY_TYPE_CONFIGS: Record<PropertyType, PropertyTypeConfig> = {
     expenseRatio: 0.25,
   },
   'mixed-use': {
-    avgUnitSize: 850,
+    avgUnitSize: 900,
     floorHeight: 12,
     densityMetric: 'FAR',
     parkingRatio: 1,
@@ -128,6 +128,7 @@ export interface BuildingEnvelopeInputs {
   dealType?: 'residential' | 'commercial' | 'mixed-use';
   densityBonuses?: DensityBonuses | null;
   sourceRules?: SourceRule[] | null;
+  avgUnitSizeOverride?: number | null;
 }
 
 export interface CapacityByConstraint {
@@ -206,7 +207,10 @@ export interface HighestBestUseResult {
 
 export class BuildingEnvelopeService {
   calculateEnvelope(inputs: BuildingEnvelopeInputs): BuildingEnvelopeResult {
-    const config = PROPERTY_TYPE_CONFIGS[inputs.propertyType];
+    const baseConfig = PROPERTY_TYPE_CONFIGS[inputs.propertyType];
+    const config = inputs.avgUnitSizeOverride && inputs.avgUnitSizeOverride > 0
+      ? { ...baseConfig, avgUnitSize: inputs.avgUnitSizeOverride }
+      : baseConfig;
     const { landArea, setbacks, lotDimensions, zoningConstraints, densityBonuses, sourceRules } = inputs;
     const dealType = inputs.dealType || 'residential';
 

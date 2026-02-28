@@ -139,8 +139,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [variancePct, setVariancePct] = useState(20);
   const [rezoneTargetCode, setRezoneTargetCode] = useState('');
   const [customRezoneCode, setCustomRezoneCode] = useState('');
+  const [avgUnitSize, setAvgUnitSize] = useState(900);
   const variancePctRef = useRef(variancePct);
   const rezoneTargetCodeRef = useRef(rezoneTargetCode);
+  const avgUnitSizeRef = useRef(avgUnitSize);
   const initialLoadDone = useRef(false);
   const recsAbortRef = useRef<AbortController | null>(null);
   const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
@@ -240,6 +242,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   useEffect(() => {
     variancePctRef.current = variancePct;
     rezoneTargetCodeRef.current = rezoneTargetCode;
+    avgUnitSizeRef.current = avgUnitSize;
     if (!dealId || !profile) return;
     if (!initialLoadDone.current) {
       initialLoadDone.current = true;
@@ -254,6 +257,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const params: any = {};
         if (variancePct !== 20) params.variance_density_pct = variancePct;
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
+        if (avgUnitSize !== 900) params.avg_unit_size_sf = avgUnitSize;
         const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
         setRecommendations(recsRes.data.recommendations || []);
         setComparison(recsRes.data.comparison || null);
@@ -267,7 +271,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [variancePct, rezoneTargetCode, dealId]);
+  }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
@@ -822,6 +826,26 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       </tr>
                     </thead>
                     <tbody>
+                      <tr className="border-b border-gray-100 bg-blue-50/30">
+                        <td className="px-4 py-2 text-xs font-medium text-gray-600">Avg Unit Size</td>
+                        <td colSpan={cols.length} className="px-3 py-2">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="400"
+                              max="2000"
+                              step="50"
+                              value={avgUnitSize}
+                              onChange={(e) => setAvgUnitSize(Math.max(400, Math.min(2000, parseInt(e.target.value) || 900)))}
+                              className="w-16 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                            />
+                            <span className="text-xs text-gray-500">SF</span>
+                            {avgUnitSize !== 900 && (
+                              <button onClick={() => setAvgUnitSize(900)} className="text-[10px] text-blue-500 hover:text-blue-700 ml-1">reset</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                       <tr className="border-b border-gray-100 bg-blue-50/30">
                         <td className="px-4 py-2 text-xs font-medium text-gray-600">Controls</td>
                         {cols.map((col: any) => (

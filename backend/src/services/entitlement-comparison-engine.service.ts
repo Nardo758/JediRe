@@ -98,9 +98,11 @@ export class EntitlementComparisonEngine {
   async compare(dealId: string, options?: {
     varianceDensityPct?: number;
     rezoneTargetCode?: string | null;
+    avgUnitSizeSf?: number | null;
   }): Promise<ComparisonResult> {
     const variancePct = options?.varianceDensityPct ?? 20;
     const rezoneTargetCode = options?.rezoneTargetCode || null;
+    const avgUnitSizeOverride = options?.avgUnitSizeSf || null;
 
     const profileResult = await this.pool.query(
       'SELECT * FROM deal_zoning_profiles WHERE deal_id = $1', [dealId]
@@ -133,19 +135,19 @@ export class EntitlementComparisonEngine {
 
     console.log('[EntitlementEngine] Starting comparison for deal:', dealId);
 
-    const byRight = this.computeByRight(subject, baseConstraints);
+    const byRight = this.computeByRight(subject, baseConstraints, avgUnitSizeOverride);
     computedPaths.push(byRight);
     console.log('[EntitlementEngine] By-right computed');
 
-    const variance = this.computeVariance(subject, baseConstraints, variancePct);
+    const variance = this.computeVariance(subject, baseConstraints, variancePct, avgUnitSizeOverride);
     computedPaths.push(variance);
     console.log('[EntitlementEngine] Variance computed');
 
-    const overlayPaths = await this.computeOverlays(subject, baseConstraints, profile);
+    const overlayPaths = await this.computeOverlays(subject, baseConstraints, profile, avgUnitSizeOverride);
     computedPaths.push(...overlayPaths);
     console.log(`[EntitlementEngine] Overlays computed: ${overlayPaths.length} found`);
 
-    const rezone = await this.computeRezone(subject, baseConstraints, rezoneTargetCode, dealId, profile);
+    const rezone = await this.computeRezone(subject, baseConstraints, rezoneTargetCode, dealId, profile, avgUnitSizeOverride);
     computedPaths.push(rezone);
     console.log('[EntitlementEngine] Rezone computed');
 
@@ -227,18 +229,19 @@ export class EntitlementComparisonEngine {
     };
   }
 
-  private computeEnvelope(subject: SubjectProperty, constraints: ResolvedConstraints) {
+  private computeEnvelope(subject: SubjectProperty, constraints: ResolvedConstraints, avgUnitSizeOverride?: number | null) {
     return this.envelopeService.calculateEnvelope({
       landArea: subject.lotAreaSf,
       setbacks: subject.setbacks,
       zoningConstraints: constraints as any,
       propertyType: subject.propertyType,
       dealType: subject.dealType,
+      avgUnitSizeOverride: avgUnitSizeOverride || null,
     });
   }
 
-  private computeByRight(subject: SubjectProperty, constraints: ResolvedConstraints): ComputedPath {
-    const envelope = this.computeEnvelope(subject, constraints);
+  private computeByRight(subject: SubjectProperty, constraints: ResolvedConstraints, avgUnitSizeOverride?: number | null): ComputedPath {
+    const envelope = this.computeEnvelope(subject, constraints, avgUnitSizeOverride);
     return {
       key: 'byRight',
       label: 'By-Right',
@@ -261,7 +264,7 @@ export class EntitlementComparisonEngine {
     };
   }
 
-  private computeVariance(subject: SubjectProperty, baseConstraints: ResolvedConstraints, pct: number): ComputedPath {
+  private computeVariance(subject: SubjectProperty, baseConstraints: ResolvedConstraints, pct: number, avgUnitSizeOverride?: number | null): ComputedPath {
     const densityMultiplier = 1 + (pct / 100);
     const farMultiplier = 1 + (pct * 0.75 / 100);
     const varianceConstraints: ResolvedConstraints = {
@@ -274,7 +277,7 @@ export class EntitlementComparisonEngine {
       maxHeight: baseConstraints.maxHeight != null ? baseConstraints.maxHeight + Math.round(pct * 0.5) : null,
       minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * 0.85 : null,
     };
-    const envelope = this.computeEnvelope(subject, varianceConstraints);
+    const envelope = this.computeEnvelope(subject, varianceConstraints, avgUnitSizeOverride);
     return {
       key: 'variance',
       label: `Variance (+${pct}%)`,
@@ -301,6 +304,7 @@ export class EntitlementComparisonEngine {
     subject: SubjectProperty,
     baseConstraints: ResolvedConstraints,
     profile: ZoningProfile,
+    avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath[]> {
     const profileOverlays = Array.isArray(profile.overlays) ? profile.overlays : [];
 
@@ -369,7 +373,7 @@ export class EntitlementComparisonEngine {
 
     for (let i = 0; i < candidateOverlays.length && i < 3; i++) {
       const candidate = candidateOverlays[i];
-      const path = await this.computeSingleOverlay(subject, baseConstraints, candidate.source, candidate.code, candidate.name, i);
+      const path = await this.computeSingleOverlay(subject, baseConstraints, candidate.source, candidate.code, candidate.name, i, avgUnitSizeOverride);
       if (path) paths.push(path);
     }
 
@@ -383,6 +387,7 @@ export class EntitlementComparisonEngine {
     overlayCode: string,
     overlayName: string,
     index: number,
+    avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath | null> {
     let overlayConstraints: ResolvedConstraints = { ...baseConstraints };
 
@@ -462,7 +467,7 @@ export class EntitlementComparisonEngine {
       } catch {}
     }
 
-    const envelope = this.computeEnvelope(subject, overlayConstraints);
+    const envelope = this.computeEnvelope(subject, overlayConstraints, avgUnitSizeOverride);
 
     const key = index === 0 ? 'overlay' : `overlay_${index}`;
 
@@ -494,9 +499,10 @@ export class EntitlementComparisonEngine {
     targetCode: string | null,
     dealId: string,
     profile: ZoningProfile,
+    avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath> {
     if (targetCode) {
-      return await this.computeRezoneFromCode(subject, baseConstraints, targetCode);
+      return await this.computeRezoneFromCode(subject, baseConstraints, targetCode, avgUnitSizeOverride);
     }
 
     try {
@@ -569,17 +575,18 @@ export class EntitlementComparisonEngine {
       }
     } catch {}
 
-    return this.computeRezoneMultiplier(subject, baseConstraints);
+    return this.computeRezoneMultiplier(subject, baseConstraints, avgUnitSizeOverride);
   }
 
   private async computeRezoneFromCode(
     subject: SubjectProperty,
     baseConstraints: ResolvedConstraints,
     targetCode: string,
+    avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath> {
     const constraints = await this.resolveConstraints(targetCode, subject.municipality, subject.state);
     if (constraints) {
-      const envelope = this.computeEnvelope(subject, constraints);
+      const envelope = this.computeEnvelope(subject, constraints, avgUnitSizeOverride);
       return {
         key: 'rezone',
         label: `Rezone to ${targetCode}`,
@@ -619,7 +626,7 @@ export class EntitlementComparisonEngine {
     };
   }
 
-  private computeRezoneMultiplier(subject: SubjectProperty, baseConstraints: ResolvedConstraints): ComputedPath {
+  private computeRezoneMultiplier(subject: SubjectProperty, baseConstraints: ResolvedConstraints, avgUnitSizeOverride?: number | null): ComputedPath {
     const multipliers = { density: 1.6, far: 1.5, parking: 0.70 };
     const rezConstraints: ResolvedConstraints = {
       ...baseConstraints,
@@ -631,7 +638,7 @@ export class EntitlementComparisonEngine {
       maxHeight: baseConstraints.maxHeight != null ? Math.round(baseConstraints.maxHeight * 1.5) : null,
       minParkingPerUnit: baseConstraints.minParkingPerUnit != null ? baseConstraints.minParkingPerUnit * multipliers.parking : null,
     };
-    const envelope = this.computeEnvelope(subject, rezConstraints);
+    const envelope = this.computeEnvelope(subject, rezConstraints, avgUnitSizeOverride);
     return {
       key: 'rezone',
       label: 'Rezone',

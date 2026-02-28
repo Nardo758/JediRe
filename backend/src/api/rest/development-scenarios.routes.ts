@@ -471,8 +471,9 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
     const { dealId } = req.params;
     const varianceDensityPct = parseFloat(req.query.variance_density_pct as string) || 20;
     const rezoneTargetCode = (req.query.rezone_target_code as string) || null;
+    const avgUnitSizeSf = req.query.avg_unit_size_sf ? parseFloat(req.query.avg_unit_size_sf as string) : null;
 
-    const result = await comparisonEngine.compare(dealId, { varianceDensityPct, rezoneTargetCode });
+    const result = await comparisonEngine.compare(dealId, { varianceDensityPct, rezoneTargetCode, avgUnitSizeSf });
 
     const cellNum = (key: string, field: string) => {
       const v = result.cells[key]?.[field];
