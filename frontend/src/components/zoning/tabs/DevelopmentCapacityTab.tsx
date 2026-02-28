@@ -906,8 +906,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         };
 
         const sortedCodes = Object.keys(codeGroups).sort((a, b) => {
-          if (a === 'Other') return 1;
-          if (b === 'Other') return -1;
           return getGroupAvgDensity(codeGroups[b]) - getGroupAvgDensity(codeGroups[a]);
         });
 
