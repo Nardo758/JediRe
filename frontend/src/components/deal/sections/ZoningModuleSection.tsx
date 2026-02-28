@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   MapPin,
+  CheckCircle2,
   BarChart3,
   TrendingUp,
   ShieldAlert,
