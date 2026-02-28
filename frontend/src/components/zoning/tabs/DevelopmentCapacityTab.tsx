@@ -140,6 +140,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [customRezoneCode, setCustomRezoneCode] = useState('');
   const variancePctRef = useRef(variancePct);
   const rezoneTargetCodeRef = useRef(rezoneTargetCode);
+  const initialLoadDone = useRef(false);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -183,7 +184,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           const params: any = {};
           if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
           if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
-          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params });
+          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000 });
           setRecommendations(recsRes.data.recommendations || []);
           setComparison(recsRes.data.comparison || null);
         } catch {
@@ -228,13 +229,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     variancePctRef.current = variancePct;
     rezoneTargetCodeRef.current = rezoneTargetCode;
     if (!dealId || !profile) return;
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      return;
+    }
     const timer = setTimeout(async () => {
       setLoadingRecs(true);
       try {
         const params: any = {};
         if (variancePct !== 20) params.variance_density_pct = variancePct;
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
-        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params });
+        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000 });
         setRecommendations(recsRes.data.recommendations || []);
         setComparison(recsRes.data.comparison || null);
       } catch {

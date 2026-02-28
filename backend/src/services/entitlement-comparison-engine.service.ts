@@ -119,17 +119,23 @@ export class EntitlementComparisonEngine {
 
     const computedPaths: ComputedPath[] = [];
 
+    console.log('[EntitlementEngine] Starting comparison for deal:', dealId);
+
     const byRight = this.computeByRight(subject, baseConstraints);
     computedPaths.push(byRight);
+    console.log('[EntitlementEngine] By-right computed');
 
     const variance = this.computeVariance(subject, baseConstraints, variancePct);
     computedPaths.push(variance);
+    console.log('[EntitlementEngine] Variance computed');
 
     const overlayPaths = await this.computeOverlays(subject, baseConstraints, profile);
     computedPaths.push(...overlayPaths);
+    console.log(`[EntitlementEngine] Overlays computed: ${overlayPaths.length} found`);
 
     const rezone = await this.computeRezone(subject, baseConstraints, rezoneTargetCode, dealId, profile);
     computedPaths.push(rezone);
+    console.log('[EntitlementEngine] Rezone computed');
 
     let municodeUrls: Record<string, string> = {};
     try {
@@ -144,6 +150,7 @@ export class EntitlementComparisonEngine {
         }
       }
     } catch {}
+    console.log('[EntitlementEngine] Municode URLs resolved');
 
     let aiAnalysis: { insights: Record<string, string>; summary: string; extraRows: ComparisonRow[] } = {
       insights: {},
@@ -151,9 +158,11 @@ export class EntitlementComparisonEngine {
       extraRows: [],
     };
     try {
+      console.log('[EntitlementEngine] Starting AI analysis...');
       aiAnalysis = await this.generateAIAnalysis(subject, computedPaths, municodeUrls);
+      console.log('[EntitlementEngine] AI analysis complete');
     } catch (err: any) {
-      console.error('AI analysis failed, continuing without insights:', err.message);
+      console.error('[EntitlementEngine] AI analysis failed, continuing without insights:', err.message);
     }
 
     return this.assembleResult(computedPaths, byRight, aiAnalysis, variancePct, profile.base_district_code);
@@ -729,11 +738,18 @@ Respond in valid JSON:
 
 For extraRows, only add rows where you have specific information about the codes involved (e.g., "Step-back above 4 stories: 10ft required" or "Conditional uses: drive-through prohibited"). Include values for each path key. Keep insights concise and actionable. Focus on what a developer needs to know, not general zoning theory.`;
 
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), 30000);
+    let message;
+    try {
+      message = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: prompt }],
+      }, { signal: abortController.signal as any });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
