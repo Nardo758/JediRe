@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
 
 interface EnvelopeEnrichment {
@@ -118,7 +119,19 @@ function getSourceBadge(source: string) {
   );
 }
 
+const PATH_KEY_MAP: Record<string, DevelopmentPath> = {
+  byRight: 'by_right',
+  variance: 'variance',
+  rezone: 'rezone',
+};
+
+function colKeyToPathId(colKey: string): DevelopmentPath {
+  if (colKey.startsWith('overlay')) return 'overlay_bonus';
+  return PATH_KEY_MAP[colKey] || 'by_right';
+}
+
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
+  const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -146,6 +159,37 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const initialLoadDone = useRef(false);
   const recsAbortRef = useRef<AbortController | null>(null);
   const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
+  const [selectedColKey, setSelectedColKey] = useState<string | null>(null);
+
+  const handleSelectPath = useCallback((colKey: string, rec: any) => {
+    setSelectedColKey(colKey);
+    const pathId = colKeyToPathId(colKey);
+    const units = rec.maxUnits || 0;
+    const gba = rec.maxGba || 0;
+    const stories = rec.maxStories || 1;
+    const parking = rec.parkingRequired || 0;
+    const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+    const constructionType: BuildingEnvelope['construction_type'] =
+      stories <= 4 ? 'wood_frame' : stories <= 7 ? 'podium_wood' : 'steel_concrete';
+    const parkingType: BuildingEnvelope['parking_structure_type'] =
+      units > 200 ? 'podium' : units > 100 ? 'garage' : 'surface';
+
+    const envelope: BuildingEnvelope = {
+      max_units: units,
+      max_gfa_sf: gba,
+      max_stories: stories,
+      max_footprint_sf: footprint,
+      buildable_polygon: null,
+      required_parking_spaces: parking,
+      parking_structure_type: parkingType,
+      parking_levels: parkingType === 'surface' ? 0 : Math.ceil(parking * 350 / Math.max(footprint, 1)),
+      residential_floors: stories - (parkingType !== 'surface' ? 1 : 0),
+      ground_floor_retail_sf: units > 150 ? 5000 : 0,
+      construction_type: constructionType,
+    };
+
+    selectDevelopmentPath(pathId, envelope);
+  }, [selectDevelopmentPath]);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -935,6 +979,34 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                           ))}
                         </tr>
                       )}
+                      <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
+                        <td className="px-4 py-3 text-xs font-bold text-gray-700">Select Path</td>
+                        {cols.map((col: any, colIdx: number) => {
+                          const isSelected = selectedColKey === col.key;
+                          const rec = recommendations[colIdx];
+                          return (
+                            <td key={col.key} className="px-3 py-3 text-center">
+                              <button
+                                onClick={() => rec && handleSelectPath(col.key, rec)}
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                                    : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
+                                }`}
+                              >
+                                {isSelected ? (
+                                  <>
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                    Selected
+                                  </>
+                                ) : (
+                                  <>Select</>
+                                )}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -947,6 +1019,29 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         </svg>
                       </span>
                       <p className="text-[11px] text-gray-700 leading-relaxed">{comparison.aiSummary}</p>
+                    </div>
+                  </div>
+                )}
+                {development_path && (
+                  <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-blue-900">
+                          Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </span>
+                        <span className="text-[10px] text-blue-600 ml-3">
+                          Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
+                        className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                      >
+                        Clear
+                      </button>
                     </div>
                   </div>
                 )}

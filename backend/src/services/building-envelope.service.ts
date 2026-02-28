@@ -239,7 +239,7 @@ export class BuildingEnvelopeService {
     const lotCoverageCap = landArea * lotCoverageFraction;
     const maxFootprint = Math.min(buildableArea, lotCoverageCap);
 
-    const maxFloors = this.calculateMaxFloors(zoningConstraints, config.floorHeight);
+    const maxFloors = this.calculateMaxFloors(zoningConstraints, config.floorHeight, appliedFAR, lotCoverageFraction);
 
     let maxGFA = maxFootprint * maxFloors;
     if (appliedFAR != null) {
@@ -379,7 +379,12 @@ export class BuildingEnvelopeService {
     return effectiveWidth * effectiveDepth;
   }
 
-  private calculateMaxFloors(constraints: ZoningConstraints, floorHeight: number): number {
+  private calculateMaxFloors(
+    constraints: ZoningConstraints,
+    floorHeight: number,
+    appliedFAR?: number | null,
+    lotCoverageFraction?: number,
+  ): number {
     const byHeight = constraints.maxHeight != null
       ? Math.floor(constraints.maxHeight / floorHeight)
       : Infinity;
@@ -388,7 +393,14 @@ export class BuildingEnvelopeService {
       : Infinity;
 
     const result = Math.min(byHeight, byStories);
-    return result === Infinity ? 1 : result;
+    if (result !== Infinity) return result;
+
+    if (appliedFAR != null && appliedFAR > 0) {
+      const coverage = lotCoverageFraction != null && lotCoverageFraction > 0 ? lotCoverageFraction : 1.0;
+      return Math.ceil(appliedFAR / coverage);
+    }
+
+    return 1;
   }
 
   private getBonusMultiplier(bonuses?: DensityBonuses | null): number {
