@@ -1,0 +1,547 @@
+import { useState } from "react";
+
+/*
+  F40 Performance Score — REVISED for Apartment Locator AI API
+  
+  Maps all 6 tables × 11 endpoints to the 6 scoring dimensions.
+  Shows exactly what lights up immediately vs what needs enrichment.
+*/
+
+const DIMENSIONS = [
+  {
+    id: "rent_position",
+    name: "Rent Position",
+    weight: 0.25,
+    color: "#3b82f6",
+    coverage: 95,
+    verdict: "FULLY POWERED",
+    verdictColor: "#22c55e",
+    subComponents: [
+      {
+        name: "Effective Rent vs Peer Avg",
+        weight: 0.50,
+        status: "ready",
+        apiField: "apartment_rent_comps.rent + apartment_rent_comps.rent_per_sqft",
+        how: "For each property, pull its rent from rent_comps → compare to avg rent of all comps in same city/state with same property_class. The peer avg is right there in the data.",
+        note: "rent_comps gives you rent + rent_per_sqft + property_class + year_built — you can compute peer avg by class, by vintage, or by both.",
+      },
+      {
+        name: "Rent Growth Trajectory (12mo)",
+        weight: 0.30,
+        status: "ready",
+        apiField: "apartment_market_snapshots.rent_growth_90d + rent_growth_180d",
+        how: "Market-level rent growth is directly available at 90d and 180d windows. For property-level, track rent changes across snapshots over time (apartment_trends JSON has the time series).",
+        note: "You get market-level growth immediately. Property-level growth builds as you accumulate snapshots — after 2-3 months of syncing you'll have per-property trajectories.",
+      },
+      {
+        name: "Concession Load",
+        weight: 0.20,
+        status: "ready",
+        apiField: "apartment_rent_comps.concessions_active + apartment_market_snapshots.concession_rate + avg_concession_value",
+        how: "Market-level: concession_rate tells you what % of properties are offering concessions, avg_concession_value tells you how much. Property-level: concessions_active boolean per comp. Cross-reference: if a property has concessions_active=true while market concession_rate is low, that's a distress signal.",
+        note: "The boolean per property is less granular than 'months free' but the market-level avg_concession_value fills the gap. You can derive: is this property's concession behavior normal for the market or an outlier?",
+      },
+    ],
+  },
+  {
+    id: "occupancy",
+    name: "Occupancy Strength",
+    weight: 0.25,
+    color: "#22c55e",
+    coverage: 70,
+    verdict: "MOSTLY POWERED — one gap",
+    verdictColor: "#f59e0b",
+    subComponents: [
+      {
+        name: "Occupancy Rate",
+        weight: 0.50,
+        status: "ready",
+        apiField: "apartment_rent_comps.occupancy (property-level) + apartment_market_snapshots.avg_occupancy (market-level)",
+        how: "Direct field. Property occupancy from rent_comps, market avg from snapshots. Normalize: compare property occupancy to market avg occupancy.",
+        note: "This is BETTER than the scraper approach — you get actual occupancy percentage, not an estimate from listing counts.",
+      },
+      {
+        name: "Availability Velocity",
+        weight: 0.30,
+        status: "partial",
+        apiField: "NO DIRECT FIELD — derive from occupancy snapshots over time",
+        how: "Track occupancy changes across snapshots. If property occupancy was 92% last month and is 95% now, it's absorbing. If it went from 96% to 91%, it's bleeding. Requires 2+ snapshots.",
+        note: "Not available on day 1 but builds automatically. After 30 days of syncing you have the delta. The market-level monthly_absorption_rate gives you context immediately.",
+      },
+      {
+        name: "Listing Freshness / Days to Lease",
+        weight: 0.20,
+        status: "ready",
+        apiField: "apartment_market_snapshots.avg_days_to_lease",
+        how: "Direct field at market level. Lower = units move fast = strong demand. Normalize: < 14 days = score 90+, 14-30 = 60-80, 30-60 = 30-50, 60+ = red flag.",
+        note: "Market-level only — not per property. But it provides strong context. A property with low occupancy in a market where avg_days_to_lease is 12 has a property-specific problem, not a market problem.",
+      },
+    ],
+  },
+  {
+    id: "review_sentiment",
+    name: "Review Sentiment",
+    weight: 0.15,
+    color: "#f59e0b",
+    coverage: 0,
+    verdict: "NOT COVERED — needs Google Places API",
+    verdictColor: "#ef4444",
+    subComponents: [
+      {
+        name: "Overall Rating",
+        weight: 0.40,
+        status: "missing",
+        apiField: "NOT IN API — needs Google Places API",
+        how: "Separate integration: Google Places API → property ratings + review count. Free tier covers this.",
+        note: "This is the one external data source you still need. Without it, drop Review Sentiment to 0% weight and redistribute (Rent Position 30%, Occupancy 30%, Pricing Power 20%, Amenity 10%, Vintage 10%).",
+      },
+      {
+        name: "Rating Trend",
+        weight: 0.25,
+        status: "missing",
+        apiField: "NOT IN API",
+        how: "Requires Google Places API time-series tracking.",
+        note: null,
+      },
+      {
+        name: "Review Volume",
+        weight: 0.15,
+        status: "missing",
+        apiField: "NOT IN API",
+        how: "Requires Google Places API.",
+        note: null,
+      },
+      {
+        name: "Keyword Sentiment (LLM)",
+        weight: 0.20,
+        status: "missing",
+        apiField: "NOT IN API",
+        how: "Requires Google Places API + LLM classification pipeline.",
+        note: null,
+      },
+    ],
+  },
+  {
+    id: "pricing_power",
+    name: "Pricing Power",
+    weight: 0.15,
+    color: "#ef4444",
+    coverage: 85,
+    verdict: "FULLY POWERED",
+    verdictColor: "#22c55e",
+    subComponents: [
+      {
+        name: "Concession vs Peer Differential",
+        weight: 0.50,
+        status: "ready",
+        apiField: "apartment_rent_comps.concessions_active vs apartment_market_snapshots.concession_rate",
+        how: "If property has concessions_active=true AND market concession_rate < 20% → property is offering more than peers. If concessions_active=false AND market concession_rate > 40% → property has pricing power (can fill without discounts when others can't).",
+        note: "The market concession_rate gives you the baseline. The per-property boolean gives you the comparison. Not as granular as 'months free' but directionally strong.",
+      },
+      {
+        name: "Concession Trend (90 days)",
+        weight: 0.30,
+        status: "ready",
+        apiField: "apartment_market_snapshots.concession_rate tracked over time + apartment_trends JSON",
+        how: "Track market concession_rate across snapshots. If declining over 90 days, market is gaining pricing power. Cross-reference with property-level: did this property drop concessions while market stayed flat? → strong signal.",
+        note: "Market-level trends available from trends JSON. Property-level builds as you accumulate comp snapshots.",
+      },
+      {
+        name: "Rent vs Concession Coherence",
+        weight: 0.20,
+        status: "ready",
+        apiField: "apartment_rent_comps.rent + concessions_active + apartment_market_snapshots.avg_concession_value",
+        how: "If property rent < peer avg AND concessions_active = true → incoherent pricing (double discounting). If rent > peer avg AND concessions_active = false → strong position. Derive effective rent: rent - (avg_concession_value / 12) for properties with active concessions.",
+        note: "Effective rent estimation uses the market-level avg_concession_value as a proxy when per-property concession amount isn't available. Reasonable approximation.",
+      },
+    ],
+  },
+  {
+    id: "amenity_position",
+    name: "Amenity Position",
+    weight: 0.10,
+    color: "#a855f7",
+    coverage: 0,
+    verdict: "NOT COVERED — needs enrichment",
+    verdictColor: "#ef4444",
+    subComponents: [
+      {
+        name: "Amenity Completeness vs Peer Set",
+        weight: 0.50,
+        status: "missing",
+        apiField: "NOT IN API — amenity lists not stored per property",
+        how: "Options: (A) Request amenity field from Apartment Locator AI API team. (B) Google Places API returns amenity-like features. (C) Enrich from apartments.com listings as secondary source. (D) Let users manually tag amenities for properties they're analyzing.",
+        note: "Recommendation: Request this as an API enhancement from Apartment Locator AI. Amenity data almost certainly exists in their source data — it just isn't exposed in the current schema.",
+      },
+      {
+        name: "High-Value Amenity Presence",
+        weight: 0.50,
+        status: "missing",
+        apiField: "NOT IN API",
+        how: "Same source needed as above. Could partially derive from apartment_user_analytics.user-preferences (what renters are searching for by amenity) but that's demand-side, not supply-side.",
+        note: "The user-preferences data from Table 6 is actually GOLD for the Opportunity Engine — it tells you what renters WANT. Cross-reference with what properties HAVE (once you get amenity data) and the gap is the renovation playbook.",
+      },
+    ],
+  },
+  {
+    id: "vintage_position",
+    name: "Vintage & Physical",
+    weight: 0.10,
+    color: "#06b6d4",
+    coverage: 90,
+    verdict: "FULLY POWERED",
+    verdictColor: "#22c55e",
+    subComponents: [
+      {
+        name: "Vintage-Adjusted Performance",
+        weight: 0.60,
+        status: "ready",
+        apiField: "apartment_rent_comps.year_built + property_class + rent + occupancy",
+        how: "Group rent_comps by year_built decade band → compute avg rent and occupancy per vintage cohort. For each property: z-score = (property_metric - vintage_cohort_avg) / vintage_cohort_std_dev. Properties performing above their vintage peers score high.",
+        note: "You have year_built + property_class + rent + occupancy all in the same table. That's everything needed for vintage-adjusted comparison.",
+      },
+      {
+        name: "Vintage Band Momentum",
+        weight: 0.40,
+        status: "ready",
+        apiField: "apartment_market_snapshots.rent_growth_90d segmented by class (class_a/b/c counts available)",
+        how: "Track rent growth by class over time. The snapshot has class_a_count, class_b_count, class_c_count — segment properties by class and compute growth per segment. Compare: is B-class growing faster than A-class? → value-add thesis validated.",
+        note: "Market-level class distribution is direct. Per-class rent growth requires segmenting rent_comps by property_class across snapshots. Straightforward query.",
+      },
+    ],
+  },
+];
+
+const BONUS_DATA = [
+  {
+    name: "Demand Intelligence (Table 6)",
+    field: "apartment_user_analytics",
+    icon: "🎯",
+    notInOriginalF40: true,
+    value: "This data DOESN'T EXIST in any competitor platform. Renter search behavior, budget ranges, unit type preferences, and where people are looking. This powers the Opportunity Engine directly — you can see demand BEFORE it becomes leases.",
+    examples: [
+      "user-stats: 4,200 active renters searching in Buckhead submarket",
+      "demand-signals: 62% searching for 1BR, avg budget $1,650, top amenity requests: in-unit W/D, parking, pool",
+      "search-trends: searches for 'pet friendly Midtown' up 340% in 90 days",
+      "user-preferences: 78% prefer < 2mi commute, 45% want move-in within 60 days",
+    ],
+    feedsInto: "Opportunity Engine (#3): demand data tells you WHO wants WHAT and WHERE. Cross-reference with supply data to find mismatches. ProForma: use actual renter budget data instead of guessing rent assumptions.",
+  },
+  {
+    name: "Supply Pipeline (Table 3)",
+    field: "apartment_supply_pipeline",
+    icon: "🏗️",
+    notInOriginalF40: false,
+    value: "Pre-built supply pipeline with delivery dates. Feeds directly into M04 Supply module and the supply dimension of JEDI Score. No need for permit database scraping for near-term supply.",
+    examples: [
+      "280-unit Class A delivering Q3 2027 in Midtown",
+      "150-unit Class B+ delivering Q1 2028 in Buckhead",
+      "Total: 1,850 units delivering in next 12 months across Atlanta MSA",
+    ],
+    feedsInto: "M04 Supply Pipeline (replaces mock data), F07 Supply Pressure calculation, Opportunity Engine (supply context for targets)",
+  },
+  {
+    name: "Submarket Breakdowns (Table 5)",
+    field: "apartment_submarkets",
+    icon: "📊",
+    notInOriginalF40: false,
+    value: "Submarket-level intelligence stored as JSON per city per day. Powers the Submarket Rank formula (F26) and the Market Vitals view without needing to compute aggregates yourself.",
+    examples: [
+      "Buckhead: avg rent $2,180, occupancy 94.8%, rent growth +3.2%",
+      "Midtown: avg rent $2,450, occupancy 93.1%, rent growth +2.1%",
+      "East Atlanta: avg rent $1,580, occupancy 96.2%, rent growth +5.8%",
+    ],
+    feedsInto: "Market Vitals Dashboard (all 5 metrics), Submarket Ranking view, Trade area context for deal analysis",
+  },
+  {
+    name: "Absorption + Leasing Velocity",
+    field: "apartment_market_snapshots.monthly_absorption_rate + avg_days_to_lease",
+    icon: "📈",
+    notInOriginalF40: false,
+    value: "Two critical metrics that are usually hard to source. Absorption rate tells you if the market is absorbing new supply. Days to lease tells you demand urgency. Together they're the strongest market health signal.",
+    examples: [
+      "Monthly absorption: 385 units/month (strong — exceeds pipeline deliveries)",
+      "Avg days to lease: 18 days (healthy — not desperate but not sitting)",
+    ],
+    feedsInto: "F08 Months of Supply, Momentum sub-score, ProForma vacancy assumptions",
+  },
+];
+
+const REVISED_WEIGHTS = {
+  withReviews: { rent: 0.25, occupancy: 0.25, review: 0.15, pricing: 0.15, amenity: 0.10, vintage: 0.10 },
+  withoutReviews: { rent: 0.30, occupancy: 0.30, review: 0, pricing: 0.20, amenity: 0, vintage: 0.20 },
+  withoutBoth: { rent: 0.30, occupancy: 0.30, review: 0, pricing: 0.20, amenity: 0, vintage: 0.20 },
+  label: {
+    withReviews: "Full F40 (Google Places added)",
+    withoutReviews: "MVP F40 (API data only, no reviews/amenities)",
+    withoutBoth: "Same — amenity & review weight redistributed to rent, occupancy, pricing, vintage",
+  }
+};
+
+const BUILD_PLAN_REVISED = [
+  {
+    phase: "Phase 0 (Day 1)",
+    title: "Activate the API",
+    tasks: [
+      { task: "Set APARTMENT_LOCATOR_API_URL and APARTMENT_LOCATOR_API_KEY env vars", effort: "5 min", who: "you" },
+      { task: "Run DB migrations for 6 tables (Claude generates from apartmentDataSync.ts)", effort: "30 min", who: "claude" },
+      { task: "Hit POST /pull for Atlanta — verify data flows", effort: "5 min", who: "you" },
+      { task: "Query GET /properties and GET /rent-comps — confirm data in tables", effort: "10 min", who: "you" },
+    ],
+    outcome: "Real property data flowing into PostgreSQL. Every subsequent phase reads from these tables.",
+  },
+  {
+    phase: "Phase 1 (Week 1)",
+    title: "F40 MVP — 4 dimensions, no external sources",
+    tasks: [
+      { task: "Build performance_score_service.py using apartment_rent_comps + market_snapshots", effort: "4-6 hrs", who: "claude" },
+      { task: "Implement Rent Position (25%) — all sub-components from rent_comps data", effort: "included above", who: "claude" },
+      { task: "Implement Occupancy (25%) — occupancy field + market avg + days_to_lease", effort: "included above", who: "claude" },
+      { task: "Implement Pricing Power (20%) — concessions_active vs market concession_rate", effort: "included above", who: "claude" },
+      { task: "Implement Vintage (20%) — year_built cohorts, class segmentation", effort: "included above", who: "claude" },
+      { task: "Skip Review Sentiment + Amenity Position (add later with Google Places)", effort: "—", who: "—" },
+      { task: "Build ranking engine: materialized view, quartiles, rank delta tracking", effort: "2 hrs", who: "claude" },
+      { task: "Build FastAPI endpoints: GET /performance/{property_id}, GET /rankings/{trade_area}", effort: "1 hr", who: "claude" },
+      { task: "Review output — gut-check scores against your market knowledge", effort: "2 hrs", who: "you" },
+    ],
+    outcome: "Every property in synced markets has a Performance Score and rank. MVP uses 4 dimensions at adjusted weights. Scores are defensible even without reviews/amenities because rent + occupancy + pricing power + vintage are the strongest signals.",
+  },
+  {
+    phase: "Phase 1.5 (Week 2, optional)",
+    title: "Add Google Places for Review Sentiment + partial Amenity data",
+    tasks: [
+      { task: "Set up Google Places API (free tier, 5 min)", effort: "5 min", who: "you" },
+      { task: "Build review ingestion: match apartment_properties to Google Place IDs", effort: "3 hrs", who: "claude" },
+      { task: "Build LLM classification for review sentiment categories", effort: "2 hrs", who: "claude" },
+      { task: "Re-enable Review Sentiment dimension (15%) + rebalance weights to full F40", effort: "30 min", who: "claude" },
+      { task: "Explore Google Places 'features' field for partial amenity data", effort: "1 hr", who: "claude" },
+    ],
+    outcome: "Full 6-dimension F40 running. Reviews add operational quality signal that rent/occupancy data can't capture.",
+  },
+  {
+    phase: "Phase 2 (Week 2-3)",
+    title: "Dual Comp Engine + Competition Analysis UI",
+    tasks: [
+      { task: "Build comp set builder using apartment_rent_comps (trade area + like-kind matching)", effort: "3 hrs", who: "claude" },
+      { task: "Build Competition Analysis page: dual-tab leaderboard, property cards, map overlay", effort: "6-8 hrs", who: "claude" },
+      { task: "Wire apartment_user_analytics demand data into Market Vitals", effort: "2 hrs", who: "claude" },
+      { task: "Build 'Push to Deal Capsule' flow from any property card", effort: "2 hrs", who: "claude" },
+    ],
+    outcome: "Working Competition Analysis with real data. Users can see ranked properties, compare trade area vs like-kind, and push targets to Deal Capsule.",
+  },
+  {
+    phase: "Phase 3 (Week 3-5)",
+    title: "Opportunity Engine + Ownership layer",
+    tasks: [
+      { task: "Build opportunity detection algorithm (high market + low property score)", effort: "4 hrs", who: "claude" },
+      { task: "Wire apartment_user_analytics demand signals into opportunity scoring", effort: "2 hrs", who: "claude" },
+      { task: "Build Opportunity Engine UI (replaces Deals Tab in Market Intelligence)", effort: "6-8 hrs", who: "claude" },
+      { task: "Add ownership data layer (county records or manual entry for MVP)", effort: "4-8 hrs", who: "claude + you" },
+      { task: "Build position projection simulator (#7 + #8)", effort: "4 hrs", who: "claude" },
+    ],
+    outcome: "Market Intelligence actively generates acquisition targets with strategy recommendations, pushed to Deal Capsule.",
+  },
+];
+
+export default function RevisedMapping() {
+  const [activeTab, setActiveTab] = useState("mapping");
+  const [weightMode, setWeightMode] = useState("withoutReviews");
+
+  const totalCoverage = DIMENSIONS.reduce((sum, d) => sum + d.coverage * d.weight, 0);
+
+  return (
+    <div style={{ fontFamily: "'Instrument Sans', -apple-system, sans-serif", background: "#0a0a0c", color: "#e4e4e7", minHeight: "100vh" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ background: "linear-gradient(135deg, #0f0f14 0%, #0a1e0a 100%)", borderBottom: "1px solid #1e3a1e", padding: "16px 20px" }}>
+        <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: "#22c55e", letterSpacing: 4, marginBottom: 4 }}>REVISED FOR APARTMENT LOCATOR AI API</div>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: "#fafafa", marginBottom: 2 }}>F40 Performance Score — API Field Mapping</h1>
+        <p style={{ fontSize: 11, color: "#64748b" }}>6 tables, 11 endpoints → mapped to 6 scoring dimensions with coverage analysis</p>
+
+        <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+          {[
+            { id: "mapping", label: "Dimension × API Mapping" },
+            { id: "bonus", label: "Bonus Data (not in original F40)" },
+            { id: "plan", label: "Revised Build Plan" },
+          ].map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${activeTab === t.id ? "#22c55e" : "#1e1e24"}`, background: activeTab === t.id ? "#052e16" : "#0f0f14", color: activeTab === t.id ? "#86efac" : "#64748b", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Coverage summary */}
+        <div style={{ display: "flex", gap: 2, marginTop: 12, height: 28, borderRadius: 6, overflow: "hidden" }}>
+          {DIMENSIONS.map(d => (
+            <div key={d.id} style={{ flex: d.weight, background: `${d.color}${d.coverage > 50 ? "40" : "15"}`, display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid #0a0a0c" }}>
+              <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: d.coverage > 50 ? d.color : "#52525b", fontWeight: 600 }}>{d.coverage}%</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
+          Overall API coverage: <span style={{ color: "#22c55e", fontWeight: 700, fontFamily: "'JetBrains Mono'" }}>{Math.round(totalCoverage)}%</span> of F40 data needs
+          <span style={{ color: "#52525b" }}> — Review Sentiment + Amenity Position need Google Places API (optional for MVP)</span>
+        </div>
+      </div>
+
+      {activeTab === "mapping" && (
+        <div style={{ padding: "16px 20px", maxWidth: 920, margin: "0 auto" }}>
+          {/* Weight mode toggle */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 16, padding: "8px 12px", background: "#111114", borderRadius: 8, border: "1px solid #1e1e24" }}>
+            <span style={{ fontSize: 10, color: "#71717a", alignSelf: "center", marginRight: 8 }}>Weight mode:</span>
+            {Object.entries(REVISED_WEIGHTS.label).map(([key, label]) => (
+              <button key={key} onClick={() => setWeightMode(key)} style={{ padding: "4px 10px", borderRadius: 4, border: `1px solid ${weightMode === key ? "#22c55e" : "#27272a"}`, background: weightMode === key ? "#052e16" : "transparent", color: weightMode === key ? "#86efac" : "#71717a", cursor: "pointer", fontSize: 10, fontFamily: "'JetBrains Mono'" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {DIMENSIONS.map(dim => {
+            const w = REVISED_WEIGHTS[weightMode];
+            const dimKey = dim.id === "rent_position" ? "rent" : dim.id === "occupancy" ? "occupancy" : dim.id === "review_sentiment" ? "review" : dim.id === "pricing_power" ? "pricing" : dim.id === "amenity_position" ? "amenity" : "vintage";
+            const currentWeight = w[dimKey];
+            const isActive = currentWeight > 0;
+
+            return (
+              <div key={dim.id} style={{ marginBottom: 8, borderRadius: 8, overflow: "hidden", border: `1px solid ${isActive ? "#1e1e24" : "#1a0a0a"}`, background: "#111114", opacity: isActive ? 1 : 0.5 }}>
+                <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 4, height: 36, borderRadius: 2, background: dim.color }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#fafafa" }}>{dim.name}</div>
+                      <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
+                        <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: dim.verdictColor === "#22c55e" ? "#052e16" : dim.verdictColor === "#f59e0b" ? "#422006" : "#450a0a", color: dim.verdictColor, fontFamily: "'JetBrains Mono'", fontWeight: 600 }}>{dim.verdict}</span>
+                        <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: "#0c1e3a", color: "#60a5fa", fontFamily: "'JetBrains Mono'" }}>API coverage: {dim.coverage}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: isActive ? dim.color : "#3f3f46" }}>{Math.round(currentWeight * 100)}%</span>
+                    {currentWeight !== dim.weight && <div style={{ fontSize: 9, color: "#52525b", fontFamily: "'JetBrains Mono'" }}>was {dim.weight * 100}%</div>}
+                  </div>
+                </div>
+
+                {isActive && (
+                  <div style={{ padding: "0 16px 12px", borderTop: "1px solid #1e1e24" }}>
+                    {dim.subComponents.map((sc, i) => (
+                      <div key={i} style={{ padding: "8px 0", borderBottom: i < dim.subComponents.length - 1 ? "1px solid #0f0f14" : "none" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, fontFamily: "'JetBrains Mono'", fontWeight: 700, background: sc.status === "ready" ? "#052e16" : sc.status === "partial" ? "#422006" : "#450a0a", color: sc.status === "ready" ? "#4ade80" : sc.status === "partial" ? "#fbbf24" : "#f87171" }}>
+                              {sc.status === "ready" ? "READY" : sc.status === "partial" ? "PARTIAL" : "MISSING"}
+                            </span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "#e4e4e7" }}>{sc.name}</span>
+                          </div>
+                          <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: "#52525b" }}>×{sc.weight}</span>
+                        </div>
+                        <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", color: "#818cf8", marginBottom: 3, padding: "2px 6px", background: "#0f0f14", borderRadius: 4, display: "inline-block" }}>{sc.apiField}</div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5, marginTop: 3 }}>{sc.how}</div>
+                        {sc.note && <div style={{ fontSize: 10, color: "#64748b", marginTop: 3, fontStyle: "italic" }}>{sc.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTab === "bonus" && (
+        <div style={{ padding: "16px 20px", maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fafafa", marginBottom: 4 }}>Data You Have That Wasn't in the Original F40 Spec</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 16 }}>The Apartment Locator AI API provides data that goes beyond property scoring — these power the Opportunity Engine directly.</div>
+
+          {BONUS_DATA.map((d, i) => (
+            <div key={i} style={{ background: "#111114", borderRadius: 8, padding: "14px 18px", marginBottom: 8, border: `1px solid ${d.notInOriginalF40 ? "#166534" : "#1e1e24"}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 20 }}>{d.icon}</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fafafa" }}>{d.name}</div>
+                  <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", color: "#818cf8" }}>{d.field}</span>
+                </div>
+                {d.notInOriginalF40 && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: "#052e16", color: "#4ade80", fontWeight: 700, fontFamily: "'JetBrains Mono'" }}>UNIQUE DATA</span>}
+              </div>
+              <div style={{ fontSize: 12, color: "#d4d4d8", lineHeight: 1.6, marginBottom: 8 }}>{d.value}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+                {d.examples.map((ex, j) => (
+                  <div key={j} style={{ fontSize: 10, padding: "3px 8px", background: "#0f0f14", borderRadius: 4, color: "#94a3b8", border: "1px solid #1e1e24" }}>{ex}</div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>→ {d.feedsInto}</div>
+            </div>
+          ))}
+
+          <div style={{ background: "#1a0a2e", borderRadius: 8, padding: "14px 18px", marginTop: 16, border: "1px solid #581c87" }}>
+            <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", color: "#c084fc", letterSpacing: 2, marginBottom: 6 }}>KEY INSIGHT: DEMAND-SIDE INTELLIGENCE</div>
+            <div style={{ fontSize: 12, color: "#e9d5ff", lineHeight: 1.7 }}>
+              The apartment_user_analytics table is a competitive moat. No other RE intelligence platform has real-time renter search behavior data. You know what unit types people want, what they'll pay, and where they're looking — BEFORE they sign leases. This transforms the Opportunity Engine from "find underperforming properties" to "find underperforming properties WHERE DEMAND EXISTS for exactly what a renovation would produce." That's a fundamentally different and more valuable signal.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "plan" && (
+        <div style={{ padding: "16px 20px", maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fafafa", marginBottom: 4 }}>Revised Build Plan</div>
+          <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>Original plan: 12 weeks, 17 tasks. Revised: <span style={{ color: "#22c55e", fontWeight: 700 }}>5 weeks, same outcome</span>. API integration eliminates Phase 0 scraper work + simplifies data layer.</div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, padding: "10px 14px", background: "#052e16", borderRadius: 8, border: "1px solid #166534" }}>
+            <div style={{ textAlign: "center", flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>5 min</div>
+              <div style={{ fontSize: 9, color: "#86efac" }}>to first real data</div>
+            </div>
+            <div style={{ width: 1, background: "#166534" }} />
+            <div style={{ textAlign: "center", flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>1 week</div>
+              <div style={{ fontSize: 9, color: "#86efac" }}>to F40 scoring live</div>
+            </div>
+            <div style={{ width: 1, background: "#166534" }} />
+            <div style={{ textAlign: "center", flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>5 weeks</div>
+              <div style={{ fontSize: 9, color: "#86efac" }}>to full Opportunity Engine</div>
+            </div>
+            <div style={{ width: 1, background: "#166534" }} />
+            <div style={{ textAlign: "center", flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>$0</div>
+              <div style={{ fontSize: 9, color: "#86efac" }}>new data costs for MVP</div>
+            </div>
+          </div>
+
+          {BUILD_PLAN_REVISED.map((phase, i) => (
+            <div key={i} style={{ marginBottom: 8, background: "#111114", borderRadius: 8, overflow: "hidden", border: "1px solid #1e1e24" }}>
+              <div style={{ padding: "12px 16px", background: "#0f0f14", borderBottom: "1px solid #1e1e24" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono'" }}>{phase.phase}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#fafafa", marginLeft: 8 }}>{phase.title}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ padding: "8px 16px 12px" }}>
+                {phase.tasks.map((t, j) => (
+                  <div key={j} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: j < phase.tasks.length - 1 ? "1px solid #0f0f14" : "none" }}>
+                    <span style={{ fontSize: 8, padding: "2px 5px", borderRadius: 3, marginTop: 2, flexShrink: 0, fontFamily: "'JetBrains Mono'", fontWeight: 700, background: t.who === "claude" ? "#0c1e3a" : t.who === "you" ? "#1a0a2e" : "#1e1e24", color: t.who === "claude" ? "#60a5fa" : t.who === "you" ? "#c084fc" : "#71717a" }}>
+                      {t.who === "claude" ? "CLAUDE" : t.who === "you" ? "YOU" : "—"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#d4d4d8", lineHeight: 1.5, flex: 1 }}>{t.task}</span>
+                    <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", color: "#52525b", flexShrink: 0 }}>{t.effort}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, padding: "6px 10px", background: "#052e16", borderRadius: 4 }}>
+                  <div style={{ fontSize: 10, color: "#86efac" }}>→ {phase.outcome}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
