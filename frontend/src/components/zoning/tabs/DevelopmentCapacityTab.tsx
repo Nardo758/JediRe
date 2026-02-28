@@ -949,7 +949,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   No exact {currentCode} matches — showing nearby development data{municipality ? ` from ${municipality}` : ''}
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
               {(showAllCodes ? sortedCodes : sortedCodes.slice(0, 3)).map((code) => {
                 const groupProjects = codeGroups[code];
                 const isDealCode = code === currentCode;
