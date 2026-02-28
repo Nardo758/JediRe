@@ -1580,11 +1580,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           );
         }
 
-        const avgDensity = benchmarks.length > 0
+        const nearbyStats = densityBenchmarks.nearbyStats;
+        const codeDataAvail = densityBenchmarks.codeDataAvailability || 'none';
+        const codeAvgDensity = benchmarks.length > 0
           ? benchmarks.reduce((sum: number, b: any) => sum + (b.avgDensityAchieved || 0), 0) / benchmarks.length
           : null;
+        const effectiveAvgDensity = (codeDataAvail === 'rich' && codeAvgDensity != null)
+          ? codeAvgDensity
+          : nearbyStats?.avgDensityAchieved ?? codeAvgDensity ?? null;
+        const effectiveAvgFar = (codeDataAvail === 'rich' && avgFarAchieved != null)
+          ? avgFarAchieved
+          : nearbyStats?.avgFarAchieved ?? avgFarAchieved ?? null;
+        const effectiveAvgLotCov = (codeDataAvail === 'rich' && avgLotCoverageAchieved != null)
+          ? avgLotCoverageAchieved
+          : nearbyStats?.avgLotCoverageAchieved ?? avgLotCoverageAchieved ?? null;
+        const effectiveAvgBuildingSf = (codeDataAvail === 'rich' && avgBuildingSf != null)
+          ? avgBuildingSf
+          : nearbyStats?.avgBuildingSf ?? avgBuildingSf ?? null;
+        const effectiveAvgLotAcres = (codeDataAvail === 'rich' && avgLotAcres != null)
+          ? avgLotAcres
+          : nearbyStats?.avgLotAcres ?? avgLotAcres ?? null;
 
-        const barMaxVal = Math.max(zonedMax || 0, avgDensity || 0, ...(allDisplayProjects.map((p: any) => p.densityAchieved || 0)));
+        const barMaxVal = Math.max(zonedMax || 0, effectiveAvgDensity || 0, ...(allDisplayProjects.map((p: any) => p.densityAchieved || 0)));
         const barScale = barMaxVal > 0 ? 100 / barMaxVal : 1;
 
         const totalProjectCount = codeMatchCount + nearbyMatchCount;
@@ -1628,33 +1645,37 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </div>
               )}
 
-              {avail === 'rich' && (
+              {(avail === 'rich' || avail === 'sparse') && (
                 <div className="space-y-4">
-                  {zonedMax && avgDensity && (
+                  {effectiveAvgDensity && (
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">Density: Zoned Max vs Achieved</div>
+                      <div className="text-xs font-medium text-gray-600 mb-2">
+                        {zonedMax ? 'Zoned Max vs Achieved Density' : 'Achieved Density'}
+                      </div>
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
-                          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                            <div
-                              className="bg-blue-200 h-full rounded-full transition-all"
-                              style={{ width: `${Math.min(zonedMax * barScale, 100)}%` }}
-                            />
-                            <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
-                              {zonedMax.toFixed(1)} units/ac
-                            </span>
+                        {zonedMax && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
+                              <div
+                                className="bg-blue-200 h-full rounded-full transition-all"
+                                style={{ width: `${Math.min(zonedMax * barScale, 100)}%` }}
+                              />
+                              <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
+                                {zonedMax.toFixed(1)} units/ac
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                        )}
                         <div className="flex items-center gap-3">
                           <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
                           <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
                             <div
                               className="bg-teal-400 h-full rounded-full transition-all"
-                              style={{ width: `${Math.min(avgDensity * barScale, 100)}%` }}
+                              style={{ width: `${Math.min(effectiveAvgDensity * barScale, 100)}%` }}
                             />
                             <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                              {avgDensity.toFixed(1)} units/ac
+                              {effectiveAvgDensity.toFixed(1)} units/ac
                             </span>
                           </div>
                         </div>
@@ -1676,11 +1697,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                     </div>
                   )}
 
-                  {zonedMaxFar != null && avgFarAchieved != null && (
+                  {zonedMaxFar != null && effectiveAvgFar != null && (
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">FAR: Zoned Max vs Achieved</div>
+                      <div className="text-xs font-medium text-gray-600 mb-2">Zoned Max vs Achieved FAR</div>
                       {(() => {
-                        const farBarMax = Math.max(zonedMaxFar || 0, avgFarAchieved || 0);
+                        const farBarMax = Math.max(zonedMaxFar || 0, effectiveAvgFar || 0);
                         const farBarScale = farBarMax > 0 ? 100 / farBarMax : 1;
                         return (
                           <div className="space-y-1.5">
@@ -1701,10 +1722,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                               <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
                                 <div
                                   className="bg-teal-400 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(avgFarAchieved * farBarScale, 100)}%` }}
+                                  style={{ width: `${Math.min(effectiveAvgFar * farBarScale, 100)}%` }}
                                 />
                                 <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                                  {avgFarAchieved.toFixed(2)} FAR
+                                  {effectiveAvgFar.toFixed(2)} FAR
                                 </span>
                               </div>
                             </div>
@@ -1728,11 +1749,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                     </div>
                   )}
 
-                  {zonedMaxLotCov != null && avgLotCoverageAchieved != null && (
+                  {zonedMaxLotCov != null && effectiveAvgLotCov != null && (
                     <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">Lot Coverage: Zoned Max vs Achieved</div>
+                      <div className="text-xs font-medium text-gray-600 mb-2">Zoned Max vs Achieved Lot Coverage</div>
                       {(() => {
-                        const lcBarMax = Math.max(zonedMaxLotCov || 0, avgLotCoverageAchieved || 0);
+                        const lcBarMax = Math.max(zonedMaxLotCov || 0, effectiveAvgLotCov || 0);
                         const lcBarScale = lcBarMax > 0 ? 100 / lcBarMax : 1;
                         return (
                           <div className="space-y-1.5">
@@ -1753,10 +1774,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                               <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
                                 <div
                                   className="bg-teal-400 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(avgLotCoverageAchieved * lcBarScale, 100)}%` }}
+                                  style={{ width: `${Math.min(effectiveAvgLotCov * lcBarScale, 100)}%` }}
                                 />
                                 <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                                  {avgLotCoverageAchieved.toFixed(1)}%
+                                  {effectiveAvgLotCov.toFixed(1)}%
                                 </span>
                               </div>
                             </div>
@@ -1780,16 +1801,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                     </div>
                   )}
 
-                  {(avgBuildingSf != null || avgLotAcres != null) && (
+                  {(effectiveAvgBuildingSf != null || effectiveAvgLotAcres != null) && (
                     <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 rounded-md px-3 py-2 border border-gray-100">
-                      {avgBuildingSf != null && (
-                        <span>Avg Building SF: <span className="font-semibold text-gray-800">{formatNumber(Math.round(avgBuildingSf))}</span></span>
+                      {effectiveAvgBuildingSf != null && (
+                        <span>Avg Building SF: <span className="font-semibold text-gray-800">{formatNumber(Math.round(effectiveAvgBuildingSf))}</span></span>
                       )}
-                      {avgBuildingSf != null && avgLotAcres != null && (
+                      {effectiveAvgBuildingSf != null && effectiveAvgLotAcres != null && (
                         <span className="text-gray-300">|</span>
                       )}
-                      {avgLotAcres != null && (
-                        <span>Avg Lot: <span className="font-semibold text-gray-800">{avgLotAcres.toFixed(2)} ac</span></span>
+                      {effectiveAvgLotAcres != null && (
+                        <span>Avg Lot: <span className="font-semibold text-gray-800">{effectiveAvgLotAcres.toFixed(2)} ac</span></span>
                       )}
                     </div>
                   )}
@@ -1798,116 +1819,56 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
               {allDisplayProjects.length > 0 && (
                 <div className="space-y-2">
-                  {projects.length > 0 && (
-                    <>
-                      <div className="text-xs font-medium text-gray-600">
-                        Code-Matched Projects
-                        <span className="ml-1 text-gray-400 font-normal">({currentCode})</span>
-                      </div>
-                      <div className="grid gap-2">
-                        {projects.map((p: any, i: number) => (
-                          <div key={`code-${i}`} className="bg-gray-50 rounded-md border border-gray-100 px-3 py-2">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
-                                  {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
-                                  {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
-                                  {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
-                                  {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
-                                </div>
-                                {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
-                                    {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
-                                    {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                {p.densityAchieved != null && (
-                                  <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
-                                )}
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                                  p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-                                  p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                  p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                  'bg-gray-50 text-gray-500 border-gray-200'
-                                }`}>{p.entitlementType || '--'}</span>
-                              </div>
+                  <div className="text-xs font-medium text-gray-600">Comparable Projects</div>
+                  <div className="grid gap-2">
+                    {allDisplayProjects.slice(0, 15).map((p: any, i: number) => (
+                      <div key={i} className="bg-gray-50 rounded-md border border-gray-100 px-3 py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</span>
+                              {p.matchType === 'nearby' && p.zoningTo && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 flex-shrink-0">
+                                  {p.zoningTo}
+                                </span>
+                              )}
                             </div>
-                            {(p.zoningFrom || p.zoningTo) && (
-                              <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
-                                {p.zoningFrom && <span>{p.zoningFrom}</span>}
-                                {p.zoningFrom && p.zoningTo && <span>→</span>}
-                                {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
-                                {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
+                              {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
+                              {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
+                              {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
+                              {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
+                            </div>
+                            {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
+                                {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
+                                {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
                               </div>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  {nearbyProjectsList.length > 0 && (
-                    <>
-                      <div className={`text-xs font-medium text-gray-600 ${projects.length > 0 ? 'mt-3 pt-3 border-t border-gray-100' : ''}`}>
-                        Nearby Development Activity
-                        <span className="ml-1 text-gray-400 font-normal">
-                          ({nearbyProjectsList.length} project{nearbyProjectsList.length !== 1 ? 's' : ''}{municipality ? ` in ${municipality}` : ''})
-                        </span>
-                      </div>
-                      <div className="grid gap-2">
-                        {nearbyProjectsList.slice(0, 10).map((p: any, i: number) => (
-                          <div key={`nearby-${i}`} className="bg-amber-50/30 rounded-md border border-amber-100 px-3 py-2">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</span>
-                                  {p.zoningTo && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 flex-shrink-0">
-                                      {p.zoningTo}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
-                                  {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
-                                  {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
-                                  {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
-                                  {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
-                                </div>
-                                {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
-                                    {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
-                                    {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                {p.densityAchieved != null && (
-                                  <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
-                                )}
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                                  p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-                                  p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                  p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                                  'bg-gray-50 text-gray-500 border-gray-200'
-                                }`}>{p.entitlementType || '--'}</span>
-                              </div>
-                            </div>
-                            {(p.zoningFrom || p.zoningTo) && (
-                              <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
-                                {p.zoningFrom && <span>{p.zoningFrom}</span>}
-                                {p.zoningFrom && p.zoningTo && <span>→</span>}
-                                {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
-                                {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
-                              </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                            {p.densityAchieved != null && (
+                              <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
                             )}
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                              p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+                              p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                              p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                              'bg-gray-50 text-gray-500 border-gray-200'
+                            }`}>{p.entitlementType || '--'}</span>
                           </div>
-                        ))}
+                        </div>
+                        {(p.zoningFrom || p.zoningTo) && (
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
+                            {p.zoningFrom && <span>{p.zoningFrom}</span>}
+                            {p.zoningFrom && p.zoningTo && <span>→</span>}
+                            {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
+                            {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
+                          </div>
+                        )}
                       </div>
-                    </>
-                  )}
+                    ))}
+                  </div>
                 </div>
               )}
 
