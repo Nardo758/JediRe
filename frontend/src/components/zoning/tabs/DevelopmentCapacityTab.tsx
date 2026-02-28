@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiClient } from '../../../services/api.client';
-import PathSelection from './PathSelection';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { MunicodeLink } from '../SourceCitation';
 
@@ -851,6 +850,335 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         )}
       </div>
 
+      {loadingBenchmarks && (
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
+          <span className="ml-2 text-gray-500 text-xs">Loading density benchmarks...</span>
+        </div>
+      )}
+
+      {!loadingBenchmarks && densityBenchmarks && (() => {
+        const avail = densityBenchmarks.dataAvailability || 'none';
+        const codeProjects: any[] = densityBenchmarks.projects || [];
+        const nearbyProjectsList: any[] = densityBenchmarks.nearbyProjects || [];
+        const allDisplayProjects = [...codeProjects, ...nearbyProjectsList];
+        const currentCode = densityBenchmarks.currentCode;
+        const zonedMax = densityBenchmarks.zonedMaxDensity;
+        const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
+        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
+        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
+        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
+        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
+        const totalProjectCount = allDisplayProjects.length;
+        const municipality = profile?.municipality || '';
+
+        if (avail === 'none' || allDisplayProjects.length === 0) {
+          return (
+            <div className="bg-gray-50 rounded-lg border border-gray-200 px-5 py-4">
+              <div className="flex items-center gap-2 mb-1">
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-500">Market Reality Check</span>
+              </div>
+              <p className="text-xs text-gray-400">
+                No density benchmarks available for {currentCode || 'this zoning code'}.
+              </p>
+            </div>
+          );
+        }
+
+        const codeGroups: Record<string, any[]> = {};
+        allDisplayProjects.forEach((p: any) => {
+          const code = p.zoningTo || p.zoningFrom || 'Other';
+          if (!codeGroups[code]) codeGroups[code] = [];
+          codeGroups[code].push(p);
+        });
+
+        const sortedCodes = Object.keys(codeGroups).sort((a, b) => {
+          if (a === currentCode) return -1;
+          if (b === currentCode) return 1;
+          return codeGroups[b].length - codeGroups[a].length;
+        });
+
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400">
+                {codeMatchCount > 0
+                  ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
+                  : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`}
+              </span>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              {avail === 'sparse' && (
+                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
+                </div>
+              )}
+              {codeMatchCount === 0 && nearbyMatchCount > 0 && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded-md border border-blue-100">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  No exact {currentCode} matches — showing nearby development data{municipality ? ` from ${municipality}` : ''}
+                </div>
+              )}
+              {sortedCodes.map((code) => {
+                const groupProjects = codeGroups[code];
+                const isDealCode = code === currentCode;
+                const densities = groupProjects.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
+                const avgDensity = densities.length > 0 ? densities.reduce((s: number, v: number) => s + v, 0) / densities.length : null;
+                const fars = groupProjects.filter((p: any) => p.farAchieved != null).map((p: any) => p.farAchieved);
+                const avgFar = fars.length > 0 ? fars.reduce((s: number, v: number) => s + v, 0) / fars.length : null;
+                const lotCovs = groupProjects.filter((p: any) => p.lotCoverageAchieved != null).map((p: any) => p.lotCoverageAchieved);
+                const avgLotCov = lotCovs.length > 0 ? lotCovs.reduce((s: number, v: number) => s + v, 0) / lotCovs.length : null;
+                const bldgSfs = groupProjects.filter((p: any) => p.buildingSf != null).map((p: any) => p.buildingSf);
+                const avgBldgSf = bldgSfs.length > 0 ? bldgSfs.reduce((s: number, v: number) => s + v, 0) / bldgSfs.length : null;
+                const lotAcres = groupProjects.filter((p: any) => p.landAcres != null).map((p: any) => p.landAcres);
+                const avgLot = lotAcres.length > 0 ? lotAcres.reduce((s: number, v: number) => s + v, 0) / lotAcres.length : null;
+
+                const cardZonedMax = isDealCode ? zonedMax : null;
+                const cardZonedFar = isDealCode ? zonedMaxFar : null;
+                const cardZonedLotCov = isDealCode ? zonedMaxLotCov : null;
+                const densityUtilPct = cardZonedMax && avgDensity ? (avgDensity / cardZonedMax) * 100 : null;
+                const farUtilPct = cardZonedFar && avgFar ? (avgFar / cardZonedFar) * 100 : null;
+                const lotCovUtilPct = cardZonedLotCov && avgLotCov ? ((avgLotCov * 100) / cardZonedLotCov) * 100 : null;
+
+                const allDensities = [...(cardZonedMax ? [cardZonedMax] : []), ...(avgDensity ? [avgDensity] : []), ...densities];
+                const barMaxVal = allDensities.length > 0 ? Math.max(...allDensities) : 1;
+                const barScale = barMaxVal > 0 ? 100 / barMaxVal : 1;
+
+                return (
+                  <div key={code} className={`rounded-lg border overflow-hidden ${isDealCode ? 'border-teal-200 bg-teal-50/20' : 'border-gray-200'}`}>
+                    <div className={`px-4 py-2.5 flex items-center justify-between ${isDealCode ? 'bg-teal-50 border-b border-teal-100' : 'bg-gray-50 border-b border-gray-100'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${isDealCode ? 'text-teal-800' : 'text-gray-700'}`}>{code}</span>
+                        {isDealCode && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200 font-medium">YOUR CODE</span>
+                        )}
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                        {groupProjects.length} project{groupProjects.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-3 space-y-3">
+                      {avgDensity != null && (
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-medium text-gray-600">
+                            {cardZonedMax ? 'Zoned Max vs Achieved Density' : 'Achieved Density'}
+                          </div>
+                          <div className="space-y-1">
+                            {cardZonedMax && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
+                                <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                  <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedMax * barScale, 100)}%` }} />
+                                  <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedMax.toFixed(1)} units/ac</span>
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
+                              <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgDensity * barScale, 100)}%` }} />
+                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{avgDensity.toFixed(1)} units/ac</span>
+                              </div>
+                            </div>
+                          </div>
+                          {densityUtilPct != null && (
+                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${
+                              densityUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                              densityUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-red-50 text-red-700 border-red-200'
+                            }`}>{densityUtilPct.toFixed(0)}% utilization</span>
+                          )}
+                        </div>
+                      )}
+
+                      {avgFar != null && (
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-medium text-gray-600">
+                            {cardZonedFar ? 'Zoned Max vs Achieved FAR' : 'Achieved FAR'}
+                          </div>
+                          {(() => {
+                            const fMax = Math.max(cardZonedFar || 0, avgFar);
+                            const fScale = fMax > 0 ? 100 / fMax : 1;
+                            return (
+                              <div className="space-y-1">
+                                {cardZonedFar != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                      <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedFar * fScale, 100)}%` }} />
+                                      <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedFar.toFixed(2)} FAR</span>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                    <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgFar * fScale, 100)}%` }} />
+                                    <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{avgFar.toFixed(2)} FAR</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {farUtilPct != null && (
+                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${
+                              farUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                              farUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-red-50 text-red-700 border-red-200'
+                            }`}>{farUtilPct.toFixed(0)}% utilization</span>
+                          )}
+                        </div>
+                      )}
+
+                      {avgLotCov != null && (
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-medium text-gray-600">
+                            {cardZonedLotCov ? 'Zoned Max vs Achieved Lot Coverage' : 'Achieved Lot Coverage'}
+                          </div>
+                          {(() => {
+                            const lMax = Math.max(cardZonedLotCov || 0, avgLotCov);
+                            const lScale = lMax > 0 ? 100 / lMax : 1;
+                            return (
+                              <div className="space-y-1">
+                                {cardZonedLotCov != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500 w-24 text-right">Code allows</span>
+                                    <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                      <div className="bg-blue-200 h-full rounded-full transition-all" style={{ width: `${Math.min(cardZonedLotCov * lScale, 100)}%` }} />
+                                      <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-blue-800">{cardZonedLotCov.toFixed(1)}%</span>
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-gray-500 w-24 text-right">Avg achieved</span>
+                                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden relative">
+                                    <div className="bg-teal-400 h-full rounded-full transition-all" style={{ width: `${Math.min(avgLotCov * lScale, 100)}%` }} />
+                                    <span className="absolute inset-0 flex items-center justify-end pr-2 text-[9px] font-semibold text-teal-800">{(avgLotCov * 100).toFixed(1)}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {lotCovUtilPct != null && (
+                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${
+                              lotCovUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                              lotCovUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-red-50 text-red-700 border-red-200'
+                            }`}>{lotCovUtilPct.toFixed(0)}% utilization</span>
+                          )}
+                        </div>
+                      )}
+
+                      {(avgBldgSf != null || avgLot != null) && (
+                        <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                          {avgBldgSf != null && <span>Avg Building SF: <span className="font-semibold text-gray-700">{formatNumber(Math.round(avgBldgSf))}</span></span>}
+                          {avgBldgSf != null && avgLot != null && <span className="text-gray-300">|</span>}
+                          {avgLot != null && <span>Avg Lot: <span className="font-semibold text-gray-700">{avgLot.toFixed(2)} ac</span></span>}
+                        </div>
+                      )}
+
+                      <div className="border-t border-gray-100 pt-2 space-y-1">
+                        <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Comparable Projects</div>
+                        {groupProjects.map((p: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</div>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                                {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
+                                {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
+                                {p.buildingSf != null && <span>{formatNumber(p.buildingSf)} SF</span>}
+                                {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
+                              </div>
+                              {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
+                                <div className="flex flex-wrap gap-x-3 text-[10px] text-gray-500">
+                                  {p.farAchieved != null && <span>FAR: {p.farAchieved.toFixed(2)}</span>}
+                                  {p.lotCoverageAchieved != null && <span>Lot Cov: {(p.lotCoverageAchieved * 100).toFixed(1)}%</span>}
+                                </div>
+                              )}
+                              {(p.zoningFrom || p.zoningTo) && (
+                                <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                                  {p.zoningFrom && <span>{p.zoningFrom}</span>}
+                                  {p.zoningFrom && p.zoningTo && <span>→</span>}
+                                  {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
+                                  {p.totalEntitlementDays != null && <span className="ml-1">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-3">
+                              {p.densityAchieved != null && (
+                                <span className="text-xs font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
+                              )}
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                                p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+                                p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                                'bg-gray-50 text-gray-500 border-gray-200'
+                              }`}>{p.entitlementType || '--'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {rezoneFrom && rezoneFrom.projectCount > 0 && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <div className="text-xs font-medium text-gray-600">
+                    Projects That Left {currentCode}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rezoneFrom.targetCodes.map((code: string, i: number) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
+                        → {code}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid gap-1.5">
+                    {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
+                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
+                        <div className="flex items-center justify-between text-[11px] text-gray-600">
+                          <span className="truncate mr-2">{p.address || '--'}</span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
+                            {p.densityAchieved != null && (
+                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
+                            )}
+                            {p.unitCount != null && (
+                              <span className="text-gray-400">{p.unitCount} units</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
           <div>
@@ -1403,128 +1731,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {/* ─── PATH SELECTION ─── */}
-      {profile && activeScenario && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden p-5">
-          <PathSelection
-            byRightUnits={activeScenario.max_units || 0}
-            overlayBonusPct={profile.overlays?.length > 0 ? (profile.overlays[0]?.density_bonus_pct ?? null) : null}
-            lotAcres={(profile.lot_area_sf || 0) / 43560}
-            maxDensityPerAcre={profile.max_density_per_acre || 0}
-            avgUnitSizeSf={activeScenario.avg_unit_size_sf || 900}
-            rezoneAnalysis={rezoneAnalysis}
-          />
-        </div>
-      )}
-
-      {rezoneAnalysis?.bestTarget && (
-        <div className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-3 flex items-center gap-3">
-            <div className="flex-shrink-0 h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
-              <svg className="h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-violet-900">Rezone Opportunity Detected</h4>
-                <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium border border-violet-200">REZONE OPPORTUNITY</span>
-              </div>
-              <p className="text-xs text-violet-700 mt-0.5">{rezoneAnalysis.bestTarget.insight}</p>
-              {entitlementStrategy?.strategyInsight && entitlementStrategy.recommendedPath && entitlementStrategy.recommendedPath !== 'rezone' && (
-                <div className="mt-1.5 bg-blue-50 border border-blue-200 rounded p-2">
-                  <div className="flex items-center gap-1.5">
-                    <svg className="h-3 w-3 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-[10px] font-bold text-blue-800">
-                      Consider {entitlementStrategy.recommendedPath === 'cup' ? 'CUP' : entitlementStrategy.recommendedPath === 'variance' ? 'Variance' : entitlementStrategy.recommendedPath}
-                    </span>
-                    {(() => {
-                      const altStats = entitlementStrategy.patterns?.byType?.[entitlementStrategy.recommendedPath];
-                      if (!altStats) return null;
-                      return (
-                        <span className="text-[10px] text-blue-700">
-                          — {altStats.approvalRate}% approval, {altStats.avgDays != null ? `${Math.round(altStats.avgDays / 30)} mo avg` : ''}, {altStats.count} projects
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <p className="text-[10px] text-blue-700 mt-1">{entitlementStrategy.strategyInsight}</p>
-                </div>
-              )}
-              {rezoneAnalysis.bestTarget.evidence && rezoneAnalysis.bestTarget.evidence.count > 0 && (
-                <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-                  <span className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full border border-green-200 font-medium">
-                    {rezoneAnalysis.bestTarget.evidence.count} similar rezonings: {rezoneAnalysis.bestTarget.evidence.approvalRate}% approved, avg {Math.round(rezoneAnalysis.bestTarget.evidence.avgDays / 30)} months
-                  </span>
-                  <span className="text-[10px] bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">
-                    Data Source: Real District Data ({rezoneAnalysis.bestTarget.evidence.count} projects)
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="text-right flex-shrink-0">
-              <p className="text-sm font-bold text-violet-900">+{rezoneAnalysis.bestTarget.delta?.additionalUnits || 0} units</p>
-              <p className="text-xs text-violet-600">+{formatNumber(rezoneAnalysis.bestTarget.delta?.additionalGFA || 0)} SF GFA</p>
-              {rezoneAnalysis.bestTarget.revenue?.valueUplift > 0 && (
-                <p className="text-[10px] text-violet-500">+${formatNumber(Math.round(rezoneAnalysis.bestTarget.revenue.valueUplift / 1000))}K est. value</p>
-              )}
-            </div>
-          </div>
-          {rezoneAnalysis.bestTarget.evidence?.examples && rezoneAnalysis.bestTarget.evidence.examples.length > 0 && (
-            <div className="px-5 py-2 border-t border-violet-200 bg-violet-50/50">
-              <p className="text-[10px] font-semibold text-violet-600 uppercase tracking-wide mb-1">Recent Precedents</p>
-              <div className="space-y-1">
-                {rezoneAnalysis.bestTarget.evidence.examples.slice(0, 3).map((ex: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2 text-[10px] text-violet-700">
-                    {ex.docketNumber && <span className="font-mono font-medium">{ex.docketNumber}</span>}
-                    {ex.fromZone && ex.toZone && <span>{ex.fromZone} → {ex.toZone}</span>}
-                    {ex.outcome && <span className={`px-1 py-0.5 rounded ${ex.outcome === 'approved' ? 'bg-green-100 text-green-700' : ex.outcome === 'denied' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'}`}>{ex.outcome}</span>}
-                    {ex.totalDays != null && <span>{Math.round(ex.totalDays / 30)}mo</span>}
-                    {ex.ordinanceUrl && (
-                      <a href={ex.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">PDF</a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {rezoneAnalysis.bestTarget.districtMunicodeUrl && (
-            <div className="px-5 py-2 border-t border-violet-200 bg-violet-50/50 flex items-center gap-2">
-              <span className="text-[10px] text-violet-500">Target District:</span>
-              <MunicodeLink url={rezoneAnalysis.bestTarget.districtMunicodeUrl} label={rezoneAnalysis.bestTarget.targetDistrictCode} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {loadingRezone && !rezoneAnalysis && (
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-500" />
-          <span className="ml-2 text-gray-500 text-xs">Analyzing rezone opportunities...</span>
-        </div>
-      )}
-
-      {!rezoneAnalysis?.bestTarget && entitlementStrategy?.strategyInsight && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-          <svg className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <p className="text-xs font-semibold text-blue-900">Entitlement Strategy Insight</p>
-              {entitlementStrategy.patterns?.totalRecords && (
-                <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full border border-blue-200">
-                  {entitlementStrategy.patterns.totalRecords} records
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-blue-800">{entitlementStrategy.strategyInsight}</p>
-          </div>
-        </div>
-      )}
-
 
       {loadingRecs && recommendations.length === 0 && (
         <div className="flex items-center justify-center py-6">
@@ -1533,397 +1739,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {loadingBenchmarks && (
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
-          <span className="ml-2 text-gray-500 text-xs">Loading density benchmarks...</span>
-        </div>
-      )}
-
-      {!loadingBenchmarks && densityBenchmarks && (() => {
-        const avail = densityBenchmarks.dataAvailability || 'none';
-        const projects = densityBenchmarks.projects || [];
-        const nearbyProjectsList = densityBenchmarks.nearbyProjects || [];
-        const allDisplayProjects = [...projects, ...nearbyProjectsList];
-        const benchmarks = densityBenchmarks.benchmarks || [];
-        const currentCode = densityBenchmarks.currentCode;
-        const zonedMax = densityBenchmarks.zonedMaxDensity;
-        const utilPct = densityBenchmarks.utilizationPct;
-        const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
-        const scope = densityBenchmarks.searchScope;
-        const avgFarAchieved = densityBenchmarks.avgFarAchieved;
-        const avgLotCoverageAchieved = densityBenchmarks.avgLotCoverageAchieved;
-        const avgBuildingSf = densityBenchmarks.avgBuildingSf;
-        const avgLotAcres = densityBenchmarks.avgLotAcres;
-        const farUtilPct = densityBenchmarks.farUtilizationPct;
-        const lotCovUtilPct = densityBenchmarks.lotCoverageUtilizationPct;
-        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
-        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
-        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
-        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
-        const municipality = profile?.municipality || '';
-
-        if (avail === 'none') {
-          return (
-            <div className="bg-gray-50 rounded-lg border border-gray-200 px-5 py-4">
-              <div className="flex items-center gap-2 mb-1">
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-500">Market Reality Check</span>
-              </div>
-              <p className="text-xs text-gray-400">
-                No density benchmarks available for {currentCode || 'this zoning code'}.
-                Benchmarks appear as more entitlement projects are tracked in this area.
-              </p>
-            </div>
-          );
-        }
-
-        const nearbyStats = densityBenchmarks.nearbyStats;
-        const codeDataAvail = densityBenchmarks.codeDataAvailability || 'none';
-        const codeAvgDensity = benchmarks.length > 0
-          ? benchmarks.reduce((sum: number, b: any) => sum + (b.avgDensityAchieved || 0), 0) / benchmarks.length
-          : null;
-        const effectiveAvgDensity = (codeDataAvail === 'rich' && codeAvgDensity != null)
-          ? codeAvgDensity
-          : nearbyStats?.avgDensityAchieved ?? codeAvgDensity ?? null;
-        const effectiveAvgFar = (codeDataAvail === 'rich' && avgFarAchieved != null)
-          ? avgFarAchieved
-          : nearbyStats?.avgFarAchieved ?? avgFarAchieved ?? null;
-        const effectiveAvgLotCov = (codeDataAvail === 'rich' && avgLotCoverageAchieved != null)
-          ? avgLotCoverageAchieved
-          : nearbyStats?.avgLotCoverageAchieved ?? avgLotCoverageAchieved ?? null;
-        const effectiveAvgBuildingSf = (codeDataAvail === 'rich' && avgBuildingSf != null)
-          ? avgBuildingSf
-          : nearbyStats?.avgBuildingSf ?? avgBuildingSf ?? null;
-        const effectiveAvgLotAcres = (codeDataAvail === 'rich' && avgLotAcres != null)
-          ? avgLotAcres
-          : nearbyStats?.avgLotAcres ?? avgLotAcres ?? null;
-
-        const barMaxVal = Math.max(zonedMax || 0, effectiveAvgDensity || 0, ...(allDisplayProjects.map((p: any) => p.densityAchieved || 0)));
-        const barScale = barMaxVal > 0 ? 100 / barMaxVal : 1;
-
-        const totalProjectCount = codeMatchCount + nearbyMatchCount;
-        const scopeLabel = codeMatchCount > 0 
-          ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
-          : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`;
-
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <span className="text-[10px] text-gray-400">
-                {scopeLabel}
-              </span>
-            </div>
-
-            <div className="px-5 py-4 space-y-4">
-              {avail === 'sparse' && (
-                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
-                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
-                </div>
-              )}
-
-              {codeMatchCount === 0 && nearbyMatchCount > 0 && (
-                <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-2 rounded-md border border-blue-100">
-                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  No exact {currentCode} matches — showing nearby development data{municipality ? ` from ${municipality}` : ''}
-                </div>
-              )}
-
-              {(avail === 'rich' || avail === 'sparse') && (
-                <div className="space-y-4">
-                  {effectiveAvgDensity && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">
-                        {zonedMax ? 'Zoned Max vs Achieved Density' : 'Achieved Density'}
-                      </div>
-                      <div className="space-y-1.5">
-                        {zonedMax && (
-                          <div className="flex items-center gap-3">
-                            <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
-                            <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                              <div
-                                className="bg-blue-200 h-full rounded-full transition-all"
-                                style={{ width: `${Math.min(zonedMax * barScale, 100)}%` }}
-                              />
-                              <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
-                                {zonedMax.toFixed(1)} units/ac
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
-                          <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                            <div
-                              className="bg-teal-400 h-full rounded-full transition-all"
-                              style={{ width: `${Math.min(effectiveAvgDensity * barScale, 100)}%` }}
-                            />
-                            <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                              {effectiveAvgDensity.toFixed(1)} units/ac
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      {utilPct != null && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
-                            utilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
-                            utilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            'bg-red-50 text-red-700 border-red-200'
-                          }`}>
-                            {utilPct.toFixed(0)}% utilization
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            Developers typically use {utilPct.toFixed(0)}% of allowed density
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {zonedMaxFar != null && effectiveAvgFar != null && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">Zoned Max vs Achieved FAR</div>
-                      {(() => {
-                        const farBarMax = Math.max(zonedMaxFar || 0, effectiveAvgFar || 0);
-                        const farBarScale = farBarMax > 0 ? 100 / farBarMax : 1;
-                        return (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
-                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                                <div
-                                  className="bg-blue-200 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(zonedMaxFar * farBarScale, 100)}%` }}
-                                />
-                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
-                                  {zonedMaxFar.toFixed(2)} FAR
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
-                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                                <div
-                                  className="bg-teal-400 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(effectiveAvgFar * farBarScale, 100)}%` }}
-                                />
-                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                                  {effectiveAvgFar.toFixed(2)} FAR
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                      {farUtilPct != null && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
-                            farUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
-                            farUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            'bg-red-50 text-red-700 border-red-200'
-                          }`}>
-                            {farUtilPct.toFixed(0)}% utilization
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            Developers typically use {farUtilPct.toFixed(0)}% of allowed FAR
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {zonedMaxLotCov != null && effectiveAvgLotCov != null && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-gray-600 mb-2">Zoned Max vs Achieved Lot Coverage</div>
-                      {(() => {
-                        const lcBarMax = Math.max(zonedMaxLotCov || 0, effectiveAvgLotCov || 0);
-                        const lcBarScale = lcBarMax > 0 ? 100 / lcBarMax : 1;
-                        return (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] text-gray-500 w-28 text-right">Code allows</span>
-                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                                <div
-                                  className="bg-blue-200 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(zonedMaxLotCov * lcBarScale, 100)}%` }}
-                                />
-                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-blue-800">
-                                  {zonedMaxLotCov.toFixed(1)}%
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-[11px] text-gray-500 w-28 text-right">Avg achieved</span>
-                              <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden relative">
-                                <div
-                                  className="bg-teal-400 h-full rounded-full transition-all"
-                                  style={{ width: `${Math.min(effectiveAvgLotCov * lcBarScale, 100)}%` }}
-                                />
-                                <span className="absolute inset-0 flex items-center justify-end pr-2 text-[10px] font-semibold text-teal-800">
-                                  {effectiveAvgLotCov.toFixed(1)}%
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                      {lotCovUtilPct != null && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${
-                            lotCovUtilPct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
-                            lotCovUtilPct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            'bg-red-50 text-red-700 border-red-200'
-                          }`}>
-                            {lotCovUtilPct.toFixed(0)}% utilization
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            Developers typically use {lotCovUtilPct.toFixed(0)}% of allowed lot coverage
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {(effectiveAvgBuildingSf != null || effectiveAvgLotAcres != null) && (
-                    <div className="flex items-center gap-4 text-[11px] text-gray-600 bg-gray-50 rounded-md px-3 py-2 border border-gray-100">
-                      {effectiveAvgBuildingSf != null && (
-                        <span>Avg Building SF: <span className="font-semibold text-gray-800">{formatNumber(Math.round(effectiveAvgBuildingSf))}</span></span>
-                      )}
-                      {effectiveAvgBuildingSf != null && effectiveAvgLotAcres != null && (
-                        <span className="text-gray-300">|</span>
-                      )}
-                      {effectiveAvgLotAcres != null && (
-                        <span>Avg Lot: <span className="font-semibold text-gray-800">{effectiveAvgLotAcres.toFixed(2)} ac</span></span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {allDisplayProjects.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-gray-600">Comparable Projects</div>
-                  <div className="grid gap-2">
-                    {allDisplayProjects.slice(0, 15).map((p: any, i: number) => (
-                      <div key={i} className="bg-gray-50 rounded-md border border-gray-100 px-3 py-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-gray-800 truncate">{p.address || 'Address not available'}</span>
-                              {p.matchType === 'nearby' && p.zoningTo && (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 flex-shrink-0">
-                                  {p.zoningTo}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[11px] text-gray-500">
-                              {p.landAcres != null && <span>{p.landAcres.toFixed(2)} ac</span>}
-                              {p.unitCount != null && <span>{p.unitCount.toLocaleString()} units</span>}
-                              {p.buildingSf != null && <span>{p.buildingSf.toLocaleString()} SF</span>}
-                              {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
-                            </div>
-                            {(p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5 text-[11px] text-gray-500">
-                                {p.farAchieved != null && <span>FAR: <span className="font-medium text-gray-700">{p.farAchieved.toFixed(2)}</span></span>}
-                                {p.lotCoverageAchieved != null && <span>Lot Cov: <span className="font-medium text-gray-700">{(p.lotCoverageAchieved * 100).toFixed(1)}%</span></span>}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            {p.densityAchieved != null && (
-                              <span className="text-xs font-bold text-teal-700 whitespace-nowrap">{p.densityAchieved.toFixed(1)} u/ac</span>
-                            )}
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
-                              p.entitlementType === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-                              p.entitlementType === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                              p.entitlementType === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-                              'bg-gray-50 text-gray-500 border-gray-200'
-                            }`}>{p.entitlementType || '--'}</span>
-                          </div>
-                        </div>
-                        {(p.zoningFrom || p.zoningTo) && (
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-gray-400">
-                            {p.zoningFrom && <span>{p.zoningFrom}</span>}
-                            {p.zoningFrom && p.zoningTo && <span>→</span>}
-                            {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
-                            {p.totalEntitlementDays != null && <span className="ml-2">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {rezoneFrom && rezoneFrom.projectCount > 0 && (
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <div className="text-xs font-medium text-gray-600">
-                    Projects That Left {currentCode}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {rezoneFrom.targetCodes.map((code: string, i: number) => (
-                      <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
-                        → {code}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="grid gap-1.5">
-                    {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
-                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
-                        <div className="flex items-center justify-between text-[11px] text-gray-600">
-                          <span className="truncate mr-2">{p.address || '--'}</span>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
-                            {p.densityAchieved != null && (
-                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
-                            )}
-                            {p.unitCount != null && (
-                              <span className="text-gray-400">{p.unitCount} units</span>
-                            )}
-                          </div>
-                        </div>
-                        {(p.landAcres != null || p.buildingSf != null || p.farAchieved != null || p.lotCoverageAchieved != null) && (
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[10px] text-gray-500">
-                            {p.landAcres != null && (
-                              <span>{p.landAcres.toFixed(2)} ac</span>
-                            )}
-                            {p.buildingSf != null && (
-                              <span>{p.buildingSf.toLocaleString()} SF</span>
-                            )}
-                            {p.farAchieved != null && (
-                              <span>FAR: {p.farAchieved.toFixed(2)}</span>
-                            )}
-                            {p.lotCoverageAchieved != null && (
-                              <span>Lot Cov: {(p.lotCoverageAchieved * 100).toFixed(1)}%</span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
