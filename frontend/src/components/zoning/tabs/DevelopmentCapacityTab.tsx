@@ -177,6 +177,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const rezoneScenarioCreatedRef = useRef(false);
   const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
   const [loadingBenchmarks, setLoadingBenchmarks] = useState(false);
+  const [showAllCodes, setShowAllCodes] = useState(false);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -888,17 +889,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           );
         }
 
+        const invalidCodePattern = /site|plan|drive|thru|allowed|permit|admin/i;
+        const isValidZoningCode = (c: string) => c && c !== 'Other' && !invalidCodePattern.test(c);
+
         const codeGroups: Record<string, any[]> = {};
         allDisplayProjects.forEach((p: any) => {
-          const code = p.zoningTo || p.zoningFrom || 'Other';
+          const rawCode = p.zoningTo || p.zoningFrom || 'Other';
+          const code = isValidZoningCode(rawCode) ? rawCode : 'Other';
           if (!codeGroups[code]) codeGroups[code] = [];
           codeGroups[code].push(p);
         });
 
+        const getGroupAvgDensity = (projs: any[]) => {
+          const d = projs.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
+          return d.length > 0 ? d.reduce((s: number, v: number) => s + v, 0) / d.length : 0;
+        };
+
         const sortedCodes = Object.keys(codeGroups).sort((a, b) => {
           if (a === currentCode) return -1;
           if (b === currentCode) return 1;
-          return codeGroups[b].length - codeGroups[a].length;
+          if (a === 'Other') return 1;
+          if (b === 'Other') return -1;
+          return getGroupAvgDensity(codeGroups[b]) - getGroupAvgDensity(codeGroups[a]);
         });
 
         return (
@@ -938,7 +950,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">
-              {sortedCodes.map((code) => {
+              {(showAllCodes ? sortedCodes : sortedCodes.slice(0, 3)).map((code) => {
                 const groupProjects = codeGroups[code];
                 const isDealCode = code === currentCode;
                 const densities = groupProjects.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
@@ -1109,12 +1121,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 {p.buildingSf != null && <span>{formatNumber(p.buildingSf)} SF</span>}
                                 {p.assessedValue != null && <span>${(p.assessedValue / 1000000).toFixed(1)}M assessed</span>}
                               </div>
-                              {(p.zoningFrom || p.zoningTo) && (
+                              {(p.zoningFrom || p.zoningTo || p.docketNumber) && (
                                 <div className="flex items-center gap-1 text-[9px] text-gray-400">
                                   {p.zoningFrom && <span>{p.zoningFrom}</span>}
                                   {p.zoningFrom && p.zoningTo && <span>→</span>}
                                   {p.zoningTo && <span className="font-medium text-gray-600">{p.zoningTo}</span>}
                                   {p.totalEntitlementDays != null && <span className="ml-1">({Math.round(p.totalEntitlementDays / 30)} mo)</span>}
+                                  {p.docketNumber && <span className="font-mono text-gray-500">{p.docketNumber}</span>}
+                                  {p.ordinanceUrl && (
+                                    <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">PDF</a>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1137,6 +1153,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 );
               })}
               </div>
+              {sortedCodes.length > 3 && (
+                <button
+                  onClick={() => setShowAllCodes(!showAllCodes)}
+                  className="text-[11px] text-teal-600 hover:text-teal-800 font-medium py-1"
+                >
+                  {showAllCodes ? 'Show less' : `Show ${sortedCodes.length - 3} more code${sortedCodes.length - 3 !== 1 ? 's' : ''}`}
+                </button>
+              )}
 
               {rezoneFrom && rezoneFrom.projectCount > 0 && (
                 <div className="space-y-2 pt-2 border-t border-gray-100">

@@ -887,6 +887,8 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       zoningFrom: p.zoning_from,
       zoningTo: p.zoning_to,
       totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
+      docketNumber: p.docket_number || null,
+      ordinanceUrl: p.ordinance_url || null,
       matchType,
     });
 
