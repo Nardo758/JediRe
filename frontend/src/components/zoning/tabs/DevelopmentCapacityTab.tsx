@@ -68,28 +68,6 @@ interface ZoningProfile {
   overlays: any[];
 }
 
-interface Scenario {
-  id: string;
-  deal_id: string;
-  name: string;
-  is_active: boolean;
-  use_mix: { residential_pct?: number; retail_pct?: number; office_pct?: number };
-  avg_unit_size_sf: number;
-  efficiency_factor: number;
-  max_gba: number | null;
-  max_footprint: number | null;
-  net_leasable_sf: number | null;
-  parking_required: number | null;
-  open_space_sf: number | null;
-  max_stories: number | null;
-  max_units: number | null;
-  applied_far: number | null;
-  binding_constraint: string | null;
-  flags: string[];
-  target_district_id: string | null;
-  target_district_code: string | null;
-}
-
 interface DevelopmentCapacityTabProps {
   dealId?: string;
   deal?: any;
@@ -142,42 +120,25 @@ function getSourceBadge(source: string) {
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showAddScenario, setShowAddScenario] = useState(false);
-  const [newScenarioName, setNewScenarioName] = useState('');
-  const [newResidentialPct, setNewResidentialPct] = useState(100);
-  const [newRetailPct, setNewRetailPct] = useState(0);
-  const [newOfficePct, setNewOfficePct] = useState(0);
-  const [newUnitSize, setNewUnitSize] = useState(900);
-  const [newEfficiency, setNewEfficiency] = useState(0.85);
-  const [newZoningCode, setNewZoningCode] = useState('');
-  const [newZoningLookupResult, setNewZoningLookupResult] = useState<any>(null);
-  const [newZoningLookupLoading, setNewZoningLookupLoading] = useState(false);
-  const [newZoningLookupMessage, setNewZoningLookupMessage] = useState('');
-  const [editingScenarioCode, setEditingScenarioCode] = useState<string | null>(null);
-  const [scenarioCodeInput, setScenarioCodeInput] = useState('');
-  const [scenarioCodeLookupResult, setScenarioCodeLookupResult] = useState<any>(null);
-  const [scenarioCodeLookupLoading, setScenarioCodeLookupLoading] = useState(false);
-  const [scenarioCodeLookupMessage, setScenarioCodeLookupMessage] = useState('');
   const [editingConstraint, setEditingConstraint] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [changingAssetType, setChangingAssetType] = useState(false);
-  const [expandedScenario, setExpandedScenario] = useState<string | null>(null);
   const [profileExists, setProfileExists] = useState(true);
   const [resolving, setResolving] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
-  const [entitlementStrategy, setEntitlementStrategy] = useState<any>(null);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
-  const [rezoneAnalysis, setRezoneAnalysis] = useState<any>(null);
-  const [loadingRezone, setLoadingRezone] = useState(false);
   const [enrichment, setEnrichment] = useState<EnvelopeEnrichment | null>(null);
-  const rezoneScenarioCreatedRef = useRef(false);
   const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
   const [loadingBenchmarks, setLoadingBenchmarks] = useState(false);
   const [showAllCodes, setShowAllCodes] = useState(false);
+  const [variancePct, setVariancePct] = useState(20);
+  const [rezoneTargetCode, setRezoneTargetCode] = useState('');
+  const [customRezoneCode, setCustomRezoneCode] = useState('');
+  const variancePctRef = useRef(variancePct);
+  const rezoneTargetCodeRef = useRef(rezoneTargetCode);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -215,43 +176,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         }
       }
 
-      const scenariosRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
-      let scenariosList = scenariosRes.data.scenarios || [];
-
-      if (profileData.exists && scenariosList.length === 0) {
-        try {
-          const projectType = profileData.deal?.project_type || 'multifamily';
-          const typeLabel = projectType.replace('_', '-').replace(/\b\w/g, (c: string) => c.toUpperCase());
-          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, {
-            name: `By-Right ${typeLabel}`,
-            use_mix: { residential_pct: 100 },
-            avg_unit_size_sf: 900,
-            efficiency_factor: 0.85,
-            is_active: true,
-          });
-          const refreshRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
-          scenariosList = refreshRes.data.scenarios || [];
-        } catch {
-        }
-      }
-
-      setScenarios(scenariosList);
-
       if (profileData.exists) {
         setLoadingRecs(true);
-        setLoadingRezone(true);
         try {
-          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`);
-          const recsData = recsRes.data.recommendations || [];
-          setRecommendations(recsData);
-          const rezoneRec = recsData.find((r: any) => r.name === 'Rezone');
-          if (rezoneRec?.entitlementPatterns) {
-            setEntitlementStrategy({
-              patterns: rezoneRec.entitlementPatterns,
-              strategyInsight: rezoneRec.strategyInsight,
-              recommendedPath: rezoneRec.recommendedPath,
-            });
-          }
+          const params: any = {};
+          if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
+          if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
+          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params });
+          setRecommendations(recsRes.data.recommendations || []);
         } catch {
           setRecommendations([]);
         } finally {
@@ -276,37 +208,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         }
 
         try {
-          const rezoneRes = await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
-          setRezoneAnalysis(rezoneRes.data);
-
-          if (rezoneRes.data?.bestTarget && !rezoneScenarioCreatedRef.current) {
-            const best = rezoneRes.data.bestTarget;
-            const existingRezoneScenario = scenariosList.find(
-              (s: any) => s.name?.startsWith('Rezone to ')
-            );
-            if (!existingRezoneScenario) {
-              try {
-                await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, {
-                  name: `Rezone to ${best.targetDistrictCode}`,
-                  use_mix: { residential_pct: 100 },
-                  avg_unit_size_sf: 900,
-                  efficiency_factor: 0.85,
-                  is_active: false,
-                  target_district_id: best.targetDistrictId || null,
-                  target_district_code: best.targetDistrictCode || null,
-                });
-                const refreshRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
-                scenariosList = refreshRes.data.scenarios || [];
-                setScenarios(scenariosList);
-                rezoneScenarioCreatedRef.current = true;
-              } catch {}
-            }
-          }
-        } catch {
-          setRezoneAnalysis(null);
-        } finally {
-          setLoadingRezone(false);
-        }
+          await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
+        } catch {}
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
@@ -317,6 +220,27 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   }, [dealId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    variancePctRef.current = variancePct;
+    rezoneTargetCodeRef.current = rezoneTargetCode;
+    if (!dealId || !profile) return;
+    const timer = setTimeout(async () => {
+      setLoadingRecs(true);
+      try {
+        const params: any = {};
+        if (variancePct !== 20) params.variance_density_pct = variancePct;
+        if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
+        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params });
+        setRecommendations(recsRes.data.recommendations || []);
+      } catch {
+        setRecommendations([]);
+      } finally {
+        setLoadingRecs(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [variancePct, rezoneTargetCode, dealId, profile]);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
@@ -331,122 +255,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   };
 
-  const lookupZoningCode = async (code: string, target: 'new' | 'edit') => {
-    if (!dealId || !code.trim()) {
-      if (target === 'new') {
-        setNewZoningLookupResult(null);
-        setNewZoningLookupMessage('');
-      } else {
-        setScenarioCodeLookupResult(null);
-        setScenarioCodeLookupMessage('');
-      }
-      return;
-    }
-    if (target === 'new') {
-      setNewZoningLookupLoading(true);
-      setNewZoningLookupMessage('');
-    } else {
-      setScenarioCodeLookupLoading(true);
-      setScenarioCodeLookupMessage('');
-    }
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/lookup-district`, {
-        params: { code: code.trim() },
-      });
-      if (target === 'new') {
-        if (res.data.found) {
-          setNewZoningLookupResult(res.data.district);
-          setNewZoningLookupMessage('');
-        } else {
-          setNewZoningLookupResult(null);
-          setNewZoningLookupMessage(res.data.message || 'Code not in database — enter constraints manually');
-        }
-      } else {
-        if (res.data.found) {
-          setScenarioCodeLookupResult(res.data.district);
-          setScenarioCodeLookupMessage('');
-        } else {
-          setScenarioCodeLookupResult(null);
-          setScenarioCodeLookupMessage(res.data.message || 'Code not in database — enter constraints manually');
-        }
-      }
-    } catch {
-      if (target === 'new') {
-        setNewZoningLookupResult(null);
-        setNewZoningLookupMessage('Failed to look up code');
-      } else {
-        setScenarioCodeLookupResult(null);
-        setScenarioCodeLookupMessage('Failed to look up code');
-      }
-    } finally {
-      if (target === 'new') setNewZoningLookupLoading(false);
-      else setScenarioCodeLookupLoading(false);
-    }
-  };
-
-  const handleCreateScenario = async () => {
-    if (!dealId) return;
-    try {
-      await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, {
-        name: newScenarioName || 'New Scenario',
-        use_mix: { residential_pct: newResidentialPct, retail_pct: newRetailPct, office_pct: newOfficePct },
-        avg_unit_size_sf: newUnitSize,
-        efficiency_factor: newEfficiency,
-        is_active: scenarios.length === 0,
-        target_district_code: newZoningCode.trim() || null,
-      });
-      setShowAddScenario(false);
-      setNewScenarioName('');
-      setNewResidentialPct(100);
-      setNewRetailPct(0);
-      setNewOfficePct(0);
-      setNewUnitSize(900);
-      setNewEfficiency(0.85);
-      setNewZoningCode('');
-      setNewZoningLookupResult(null);
-      setNewZoningLookupMessage('');
-      await loadData(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to create scenario');
-    }
-  };
-
-  const handleUpdateScenarioCode = async (scenarioId: string, code: string) => {
-    if (!dealId) return;
-    try {
-      await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}`, {
-        target_district_code: code.trim() || null,
-      });
-      setEditingScenarioCode(null);
-      setScenarioCodeInput('');
-      setScenarioCodeLookupResult(null);
-      setScenarioCodeLookupMessage('');
-      await loadData(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to update scenario zoning code');
-    }
-  };
-
-  const handleActivateScenario = async (scenarioId: string) => {
-    if (!dealId) return;
-    try {
-      await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}/activate`);
-      await loadData(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to activate scenario');
-    }
-  };
-
-  const handleDeleteScenario = async (scenarioId: string) => {
-    if (!dealId) return;
-    try {
-      await apiClient.delete(`/api/v1/deals/${dealId}/scenarios/${scenarioId}`);
-      await loadData(true);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to delete scenario');
-    }
-  };
-
   const handleSaveOverride = async (field: string) => {
     if (!dealId) return;
     try {
@@ -455,11 +263,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       });
       setEditingConstraint(null);
       setEditValue('');
-      await loadData(true);
-      const scenarioIds = scenarios.map(s => s.id);
-      for (const sid of scenarioIds) {
-        await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${sid}`, {});
-      }
       await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to save override');
@@ -555,8 +358,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     { field: 'min_parking_per_unit', label: 'Parking Ratio', value: profile.min_parking_per_unit, suffix: ' per unit' },
     { field: 'open_space_pct', label: 'Open Space', value: profile.open_space_pct, suffix: '%' },
   ].filter(r => r.value != null || profile.user_overrides?.[r.field]);
-
-  const activeScenario = scenarios.find(s => s.is_active);
 
   return (
     <div className="space-y-5">
@@ -965,557 +766,175 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         );
       })()}
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Development Scenarios</h3>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {scenarios.length === 0 ? 'Create a scenario to model development capacity' : `${scenarios.length} scenario${scenarios.length !== 1 ? 's' : ''}`}
-            </p>
-          </div>
-          <button
-            onClick={() => { setShowAddScenario(true); setNewZoningCode(profile.base_district_code || ''); }}
-            className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 flex items-center gap-1"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Scenario
-          </button>
-        </div>
+      {/* Entitlement Path Comparison */}
+      {(() => {
+        const byRight = recommendations.find((r: any) => r.name === 'By-Right');
+        const variance = recommendations.find((r: any) => r.name === 'Variance');
+        const rezone = recommendations.find((r: any) => r.name === 'Rezone');
+        if (!byRight && !variance && !rezone && !loadingRecs) return null;
 
-        {showAddScenario && (
-          <div className="border-b border-gray-200 px-5 py-4 bg-blue-50/30">
-            <div className="grid grid-cols-3 gap-4 mb-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Scenario Name</label>
-                <input
-                  type="text"
-                  value={newScenarioName}
-                  onChange={(e) => setNewScenarioName(e.target.value)}
-                  placeholder="e.g., 100% Residential"
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Zoning Code</label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="text"
-                    value={newZoningCode}
-                    onChange={(e) => setNewZoningCode(e.target.value)}
-                    onBlur={() => { if (newZoningCode.trim()) lookupZoningCode(newZoningCode, 'new'); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && newZoningCode.trim()) lookupZoningCode(newZoningCode, 'new'); }}
-                    placeholder={profile.base_district_code || 'e.g., MRC-3'}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                  />
-                  {newZoningLookupLoading && (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 flex-shrink-0" />
-                  )}
-                </div>
-                {newZoningLookupResult && (
-                  <span className="text-[10px] text-green-600 mt-0.5 block">
-                    ✓ Found: {newZoningLookupResult.zoning_code || newZoningLookupResult.district_code} — constraints will auto-fill
-                  </span>
-                )}
-                {newZoningLookupMessage && (
-                  <span className="text-[10px] text-amber-600 mt-0.5 block">{newZoningLookupMessage}</span>
-                )}
-                {!newZoningCode.trim() && profile.base_district_code && (
-                  <span className="text-[10px] text-gray-400 mt-0.5 block">Leave blank to use current code ({profile.base_district_code})</span>
-                )}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Avg Unit Size (SF)</label>
-                <input
-                  type="number"
-                  value={newUnitSize}
-                  onChange={(e) => setNewUnitSize(parseInt(e.target.value) || 900)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
+        const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
+        const getAvgMarketDensity = (code: string | null) => {
+          if (!code) return null;
+          const matching = allBenchProjects.filter((p: any) => (p.zoningTo || p.zoningFrom) === code && p.densityAchieved != null);
+          if (matching.length === 0) return null;
+          return matching.reduce((s: number, p: any) => s + p.densityAchieved, 0) / matching.length;
+        };
+
+        const mrcCodes = (() => {
+          const invalidCodePattern = /site|plan|drive|thru|allowed|permit|admin/i;
+          const codes = new Set<string>();
+          allBenchProjects.forEach((p: any) => {
+            const c = p.zoningTo || p.zoningFrom;
+            if (c && !invalidCodePattern.test(c)) codes.add(c);
+          });
+          return Array.from(codes).sort();
+        })();
+
+        const paths = [
+          { key: 'byRight', label: 'By-Right', data: byRight, color: 'green', editable: false },
+          { key: 'variance', label: 'Variance', data: variance, color: 'amber', editable: true },
+          { key: 'rezone', label: 'Rezone', data: rezone, color: 'violet', editable: true },
+        ];
+
+        const rows = [
+          { label: 'Zoning Code', render: (d: any) => d?.zoningCode || d?.targetDistrictCode || profile?.base_district_code || '--' },
+          { label: 'Density (u/ac)', render: (d: any) => d?.maxDensity != null ? `${Number(d.maxDensity).toFixed(1)}` : '--' },
+          { label: 'FAR', render: (d: any) => d?.appliedFar != null ? `${Number(d.appliedFar).toFixed(2)}` : '--' },
+          { label: 'Max Units', render: (d: any) => d?.maxUnits != null ? formatNumber(d.maxUnits) : '--' },
+          { label: 'GBA (SF)', render: (d: any) => d?.maxGba != null ? formatNumber(Math.round(d.maxGba)) : '--' },
+          { label: 'Stories', render: (d: any) => d?.maxStories != null ? `${d.maxStories}` : '--' },
+          { label: 'Parking', render: (d: any) => d?.parkingRequired != null ? formatNumber(d.parkingRequired) : '--' },
+          { label: 'Binding Constraint', render: (d: any) => d?.bindingConstraint ? getLimitingLabel(d.bindingConstraint) : '--' },
+          { label: 'Avg Market Density', render: (d: any) => {
+            const code = d?.zoningCode || d?.targetDistrictCode || profile?.base_district_code;
+            const avg = getAvgMarketDensity(code);
+            return avg != null ? `${avg.toFixed(1)} u/ac` : '--';
+          }},
+        ];
+
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Path Comparison</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Compare By-Right, Variance, and Rezone development capacity</p>
             </div>
-            {newZoningLookupResult && (
-              <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                <p className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Auto-filled from {newZoningLookupResult.zoning_code || newZoningLookupResult.district_code}</p>
-                <div className="grid grid-cols-4 gap-3 text-[11px]">
-                  {newZoningLookupResult.max_far != null && (
-                    <div><span className="text-gray-500">FAR:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_far}</span></div>
-                  )}
-                  {(newZoningLookupResult.max_density_per_acre || newZoningLookupResult.max_units_per_acre) != null && (
-                    <div><span className="text-gray-500">Density:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_density_per_acre || newZoningLookupResult.max_units_per_acre} u/ac</span></div>
-                  )}
-                  {(newZoningLookupResult.max_height_feet || newZoningLookupResult.max_building_height_ft) != null && (
-                    <div><span className="text-gray-500">Height:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_height_feet || newZoningLookupResult.max_building_height_ft} ft</span></div>
-                  )}
-                  {newZoningLookupResult.max_stories != null && (
-                    <div><span className="text-gray-500">Stories:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_stories}</span></div>
-                  )}
-                  {(newZoningLookupResult.max_lot_coverage || newZoningLookupResult.max_lot_coverage_percent) != null && (
-                    <div><span className="text-gray-500">Lot Coverage:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.max_lot_coverage || newZoningLookupResult.max_lot_coverage_percent}%</span></div>
-                  )}
-                  {(newZoningLookupResult.min_parking_per_unit || newZoningLookupResult.parking_per_unit) != null && (
-                    <div><span className="text-gray-500">Parking:</span> <span className="font-medium text-gray-800">{newZoningLookupResult.min_parking_per_unit || newZoningLookupResult.parking_per_unit}/unit</span></div>
-                  )}
-                </div>
+
+            {loadingRecs && recommendations.length === 0 ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
+                <span className="ml-2 text-gray-500 text-xs">Computing entitlement paths...</span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[18%]" />
+                      {paths.map(p => (
+                        <th key={p.key} className="text-center px-4 py-2.5 w-[27%]">
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-xs font-bold text-gray-900">{p.label}</span>
+                            {p.data?.risk && (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                                p.data.risk === 'Low' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                p.data.risk === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                'bg-red-50 text-red-700 border border-red-200'
+                              }`}>{p.data.risk}</span>
+                            )}
+                          </div>
+                          {p.data?.successRate && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">{p.data.successRate} success · {p.data.timeline}</div>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 bg-blue-50/30">
+                      <td className="px-4 py-2 text-xs font-medium text-gray-600">Variance Uplift</td>
+                      <td className="px-4 py-2 text-center text-xs text-gray-400">--</td>
+                      <td className="px-4 py-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-xs text-gray-500">+</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={variancePct}
+                            onChange={(e) => setVariancePct(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                            className="w-14 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                          />
+                          <span className="text-xs text-gray-500">% density</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <div className="relative">
+                          <select
+                            value={rezoneTargetCode}
+                            onChange={(e) => setRezoneTargetCode(e.target.value)}
+                            className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white appearance-none pr-6"
+                          >
+                            <option value="">{rezone?.targetDistrictCode ? `${rezone.targetDistrictCode} (auto)` : 'Select code...'}</option>
+                            {mrcCodes.map(c => (
+                              <option key={c} value={c}>{c}{c === profile?.base_district_code ? ' (current)' : ''}</option>
+                            ))}
+                            <option value="__custom__">Custom code...</option>
+                          </select>
+                          <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                        {rezoneTargetCode === '__custom__' && (
+                          <input
+                            type="text"
+                            placeholder="Enter code..."
+                            value={customRezoneCode}
+                            onChange={(e) => setCustomRezoneCode(e.target.value.toUpperCase())}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
+                            onBlur={() => { if (customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
+                            className="mt-1 w-full text-xs border border-violet-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            autoFocus
+                          />
+                        )}
+                      </td>
+                    </tr>
+                    {rows.map(row => (
+                      <tr key={row.label} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-4 py-2 text-xs font-medium text-gray-600">{row.label}</td>
+                        {paths.map(p => {
+                          const val = row.render(p.data);
+                          const isUplift = p.key !== 'byRight' && (row.label === 'Max Units' || row.label === 'GBA (SF)');
+                          const delta = p.key === 'variance' ? p.data?.deltaUnits : p.key === 'rezone' ? p.data?.deltaUnits : null;
+                          return (
+                            <td key={p.key} className={`px-4 py-2 text-center text-xs ${p.key === 'byRight' ? 'text-gray-900 font-medium' : 'text-gray-800'}`}>
+                              {val}
+                              {isUplift && delta != null && delta !== 0 && row.label === 'Max Units' && (
+                                <span className={`ml-1 text-[10px] ${delta > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {delta > 0 ? '+' : ''}{delta}%
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    <tr className="border-b border-gray-100 bg-gray-50/30">
+                      <td className="px-4 py-2 text-xs font-medium text-gray-600">Est. Cost</td>
+                      {paths.map(p => (
+                        <td key={p.key} className="px-4 py-2 text-center text-xs text-gray-600">
+                          {p.data?.estimatedCost || '--'}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
-            <div className="grid grid-cols-4 gap-4 mb-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Residential %</label>
-                <input
-                  type="number" min="0" max="100"
-                  value={newResidentialPct}
-                  onChange={(e) => setNewResidentialPct(parseInt(e.target.value) || 0)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Retail %</label>
-                <input
-                  type="number" min="0" max="100"
-                  value={newRetailPct}
-                  onChange={(e) => setNewRetailPct(parseInt(e.target.value) || 0)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Office %</label>
-                <input
-                  type="number" min="0" max="100"
-                  value={newOfficePct}
-                  onChange={(e) => setNewOfficePct(parseInt(e.target.value) || 0)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 block mb-1">Efficiency</label>
-                <input
-                  type="number" min="0.5" max="1" step="0.01"
-                  value={newEfficiency}
-                  onChange={(e) => setNewEfficiency(parseFloat(e.target.value) || 0.85)}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleCreateScenario} className="px-4 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">Create</button>
-              <button onClick={() => { setShowAddScenario(false); setNewZoningCode(''); setNewZoningLookupResult(null); setNewZoningLookupMessage(''); }} className="px-4 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300">Cancel</button>
-              {newResidentialPct + newRetailPct + newOfficePct !== 100 && (
-                <span className="text-xs text-amber-600">Use mix must total 100% (currently {newResidentialPct + newRetailPct + newOfficePct}%)</span>
-              )}
-            </div>
           </div>
-        )}
+        );
+      })()}
 
-        {scenarios.length === 0 && !showAddScenario && (
-          <div className="px-5 py-8 text-center text-gray-400 text-sm">
-            No scenarios yet. Click "Add Scenario" to model development capacity.
-          </div>
-        )}
-
-        {scenarios.length > 0 && (
-          <div className="divide-y divide-gray-100">
-            {scenarios.map(scenario => {
-              const isExpanded = expandedScenario === scenario.id;
-              const useMix = scenario.use_mix || {};
-              const mixParts = [];
-              if (useMix.residential_pct) mixParts.push(`${useMix.residential_pct}% Res`);
-              if (useMix.retail_pct) mixParts.push(`${useMix.retail_pct}% Retail`);
-              if (useMix.office_pct) mixParts.push(`${useMix.office_pct}% Office`);
-              const mixLabel = mixParts.join(' / ') || '100% Residential';
-
-              return (
-                <div key={scenario.id} className={`${scenario.is_active ? 'bg-blue-50/30' : ''}`}>
-                  <div className="px-5 py-4 flex items-center gap-4">
-                    <button
-                      onClick={() => handleActivateScenario(scenario.id)}
-                      className={`flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center ${scenario.is_active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 hover:border-blue-400'}`}
-                      title={scenario.is_active ? 'Active scenario' : 'Set as active'}
-                    >
-                      {scenario.is_active && (
-                        <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-900">{scenario.name}</span>
-                        {scenario.is_active && (
-                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">ACTIVE</span>
-                        )}
-                        {scenario.name?.startsWith('Rezone to ') && (
-                          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium border border-violet-200">REZONE OPPORTUNITY</span>
-                        )}
-                        <span className="text-xs text-gray-400">{mixLabel}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-6 text-center">
-                      <div>
-                        <p className="text-lg font-bold text-gray-900">{formatNumber(scenario.max_units)}</p>
-                        <p className="text-[10px] text-gray-500 uppercase">Units</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-gray-900">{formatNumber(scenario.max_gba)}</p>
-                        <p className="text-[10px] text-gray-500 uppercase">GBA (SF)</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-gray-900">{scenario.max_stories ?? '--'}</p>
-                        <p className="text-[10px] text-gray-500 uppercase">Stories</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-gray-900">{formatNumber(scenario.parking_required)}</p>
-                        <p className="text-[10px] text-gray-500 uppercase">Parking</p>
-                      </div>
-                      {scenario.binding_constraint && (
-                        <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200">
-                          {getLimitingLabel(scenario.binding_constraint)}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => setExpandedScenario(isExpanded ? null : scenario.id)}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="Show details"
-                      >
-                        <svg className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteScenario(scenario.id)}
-                        className="text-gray-300 hover:text-red-500"
-                        title="Delete scenario"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="px-5 pb-4">
-                      <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
-                        <div className="flex justify-between items-center py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Zoning Code</span>
-                          {editingScenarioCode === scenario.id ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                value={scenarioCodeInput}
-                                onChange={(e) => setScenarioCodeInput(e.target.value)}
-                                onBlur={() => { if (scenarioCodeInput.trim()) lookupZoningCode(scenarioCodeInput, 'edit'); }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleUpdateScenarioCode(scenario.id, scenarioCodeInput);
-                                  if (e.key === 'Escape') { setEditingScenarioCode(null); setScenarioCodeLookupResult(null); setScenarioCodeLookupMessage(''); }
-                                }}
-                                placeholder={profile.base_district_code || 'Enter code'}
-                                className="w-32 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                autoFocus
-                              />
-                              {scenarioCodeLookupLoading && (
-                                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500 flex-shrink-0" />
-                              )}
-                              <button onClick={() => handleUpdateScenarioCode(scenario.id, scenarioCodeInput)} className="text-green-600 hover:text-green-800">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                              </button>
-                              <button onClick={() => { setEditingScenarioCode(null); setScenarioCodeLookupResult(null); setScenarioCodeLookupMessage(''); }} className="text-gray-400 hover:text-gray-600">
-                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-gray-900">{scenario.target_district_code || profile.base_district_code || '--'}</span>
-                              {scenario.target_district_code && scenario.target_district_code !== profile.base_district_code && (
-                                <span className="text-[10px] bg-violet-50 text-violet-600 px-1.5 py-0.5 rounded border border-violet-200">Target</span>
-                              )}
-                              <button
-                                onClick={() => { setEditingScenarioCode(scenario.id); setScenarioCodeInput(scenario.target_district_code || profile.base_district_code || ''); }}
-                                className="text-gray-400 hover:text-blue-600"
-                                title="Change zoning code"
-                              >
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        {editingScenarioCode === scenario.id && scenarioCodeLookupResult && (
-                          <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5 text-[11px]">
-                            <span className="text-green-600 font-medium">✓ Found: {scenarioCodeLookupResult.zoning_code || scenarioCodeLookupResult.district_code}</span>
-                            <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-gray-600">
-                              {scenarioCodeLookupResult.max_far != null && <span>FAR: {scenarioCodeLookupResult.max_far}</span>}
-                              {(scenarioCodeLookupResult.max_density_per_acre || scenarioCodeLookupResult.max_units_per_acre) != null && <span>Density: {scenarioCodeLookupResult.max_density_per_acre || scenarioCodeLookupResult.max_units_per_acre} u/ac</span>}
-                              {(scenarioCodeLookupResult.max_height_feet || scenarioCodeLookupResult.max_building_height_ft) != null && <span>Height: {scenarioCodeLookupResult.max_height_feet || scenarioCodeLookupResult.max_building_height_ft} ft</span>}
-                              {scenarioCodeLookupResult.max_stories != null && <span>Stories: {scenarioCodeLookupResult.max_stories}</span>}
-                            </div>
-                          </div>
-                        )}
-                        {editingScenarioCode === scenario.id && scenarioCodeLookupMessage && (
-                          <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1">{scenarioCodeLookupMessage}</div>
-                        )}
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Use Mix</span>
-                          <span className="font-medium text-gray-900">{mixLabel}</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Avg Unit Size</span>
-                          <span className="font-medium text-gray-900">{formatNumber(scenario.avg_unit_size_sf)} SF</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Efficiency Factor</span>
-                          <span className="font-medium text-gray-900">{(parseFloat(String(scenario.efficiency_factor)) * 100).toFixed(0)}%</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Lot Area</span>
-                          <span className="font-medium text-gray-900">{formatNumber(parseFloat(String(profile.lot_area_sf)))} SF</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Buildable Area (after setbacks)</span>
-                          <span className="font-medium text-gray-900">{formatNumber(parseFloat(String(profile.buildable_area_sf)))} SF</span>
-                        </div>
-                        <div className="flex justify-between py-1 border-b border-gray-200">
-                          <span className="text-gray-600">Max Footprint</span>
-                          <span className="font-medium text-gray-900">{formatNumber(scenario.max_footprint)} SF</span>
-                        </div>
-                        {scenario.applied_far != null && (
-                          <div className="flex justify-between py-1 border-b border-gray-200">
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-600">GBA by FAR ({scenario.applied_far})</span>
-                              {hasSplitFAR && (
-                                <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-                                  {dealInfo?.project_type === 'office' || dealInfo?.project_type === 'retail' ? 'Nonresidential' : dealInfo?.project_type === 'mixed_use' ? 'Combined' : 'Residential'} FAR applied
-                                </span>
-                              )}
-                            </div>
-                            <span className="font-medium text-gray-900">{formatNumber(Math.round(parseFloat(String(scenario.applied_far)) * parseFloat(String(profile.lot_area_sf))))} SF</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between py-2 bg-blue-50 rounded px-3 -mx-1">
-                          <span className="text-blue-800 font-semibold">Actual GBA</span>
-                          <span className="font-bold text-blue-900">{formatNumber(scenario.max_gba)} SF</span>
-                        </div>
-                        <div className="flex justify-between py-1 text-gray-500">
-                          <span>Net Leasable (~{(parseFloat(String(scenario.efficiency_factor)) * 100).toFixed(0)}% efficiency)</span>
-                          <span className="font-medium">{formatNumber(scenario.net_leasable_sf)} SF</span>
-                        </div>
-                        {scenario.max_units != null && (
-                          <div className="flex justify-between py-1 text-gray-500">
-                            <span>Max Units ({formatNumber(scenario.avg_unit_size_sf)} SF avg)</span>
-                            <span className="font-medium">{formatNumber(scenario.max_units)}</span>
-                          </div>
-                        )}
-                        {scenario.flags && scenario.flags.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {scenario.flags.map((flag: string, i: number) => (
-                              <p key={i} className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">{flag}</p>
-                            ))}
-                          </div>
-                        )}
-                        {enrichment?.insights && scenario.is_active && (
-                          <div className="mt-3 space-y-1.5 border-t border-gray-200 pt-3">
-                            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Capacity Insights</p>
-                            {enrichment.insights.envelope && (
-                              <p className="text-[11px] text-gray-600">{enrichment.insights.envelope}</p>
-                            )}
-                            {enrichment.insights.density && (
-                              <p className="text-[11px] text-gray-600">{enrichment.insights.density}</p>
-                            )}
-                            {enrichment.insights.height && (
-                              <p className="text-[11px] text-gray-600">{enrichment.insights.height}</p>
-                            )}
-                            {enrichment.insights.parking && (
-                              <p className="text-[11px] text-gray-600">{enrichment.insights.parking}</p>
-                            )}
-                          </div>
-                        )}
-
-                        {(() => {
-                          const scenarioCode = scenario.target_district_code || profile.base_district_code;
-                          const isRezone = scenario.target_district_code && scenario.target_district_code !== profile.base_district_code;
-
-                          let refProjects: any[] = [];
-
-                          if (isRezone && rezoneAnalysis?.bestTarget?.evidence?.examples) {
-                            const rezoneExamples = rezoneAnalysis.bestTarget.evidence.examples
-                              .filter((ex: any) => ex.toZone === scenario.target_district_code)
-                              .map((ex: any) => ({
-                                address: ex.address || ex.docketNumber || 'Rezone project',
-                                landAcres: ex.landAcres ?? ex.lotAcres ?? null,
-                                unitCount: ex.unitCount ?? ex.units ?? null,
-                                buildingSf: ex.buildingSf ?? ex.building_sf ?? null,
-                                farAchieved: ex.farAchieved ?? ex.far_achieved ?? null,
-                                lotCoverageAchieved: ex.lotCoverageAchieved ?? ex.lot_coverage_achieved ?? null,
-                                assessedValue: ex.assessedValue ?? ex.assessed_value ?? null,
-                                densityAchieved: ex.densityAchieved ?? (ex.unitCount && ex.landAcres ? ex.unitCount / ex.landAcres : null),
-                                source: 'rezone',
-                              }));
-                            refProjects = [...refProjects, ...rezoneExamples];
-                          }
-
-                          const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
-                          if (allBenchProjects.length > 0) {
-                            const benchProjects = allBenchProjects
-                              .filter((p: any) => {
-                                const pCode = p.zoningTo || p.zoningCode || p.zoning_code || p.district_code;
-                                return pCode === scenarioCode;
-                              })
-                              .map((p: any) => ({
-                                address: p.address || 'Address not available',
-                                landAcres: p.landAcres ?? p.land_acres ?? null,
-                                unitCount: p.unitCount ?? p.unit_count ?? null,
-                                buildingSf: p.buildingSf ?? p.building_sf ?? null,
-                                farAchieved: p.farAchieved ?? p.far_achieved ?? null,
-                                lotCoverageAchieved: p.lotCoverageAchieved ?? p.lot_coverage_achieved ?? null,
-                                assessedValue: p.assessedValue ?? p.assessed_value ?? null,
-                                densityAchieved: p.densityAchieved ?? p.density_achieved ?? null,
-                                source: 'benchmark',
-                              }));
-                            refProjects = [...refProjects, ...benchProjects];
-                          }
-
-                          if (refProjects.length === 0 && allBenchProjects.length > 0) {
-                            refProjects = allBenchProjects.map((p: any) => ({
-                              address: p.address || 'Address not available',
-                              landAcres: p.landAcres ?? p.land_acres ?? null,
-                              unitCount: p.unitCount ?? p.unit_count ?? null,
-                              buildingSf: p.buildingSf ?? p.building_sf ?? null,
-                              farAchieved: p.farAchieved ?? p.far_achieved ?? null,
-                              lotCoverageAchieved: p.lotCoverageAchieved ?? p.lot_coverage_achieved ?? null,
-                              assessedValue: p.assessedValue ?? p.assessed_value ?? null,
-                              densityAchieved: p.densityAchieved ?? p.density_achieved ?? null,
-                              source: 'benchmark',
-                            }));
-                          }
-
-                          const seen = new Set<string>();
-                          refProjects = refProjects.filter(p => {
-                            const key = p.address;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
-                            return true;
-                          });
-
-                          refProjects.sort((a, b) => {
-                            const aDensity = a.densityAchieved || 0;
-                            const bDensity = b.densityAchieved || 0;
-                            if (bDensity !== aDensity) return bDensity - aDensity;
-                            return (b.buildingSf || 0) - (a.buildingSf || 0);
-                          });
-
-                          const top3 = refProjects.slice(0, 3);
-
-                          if (top3.length === 0) return null;
-
-                          return (
-                            <div className="mt-3 space-y-2 border-t border-gray-200 pt-3">
-                              <div className="flex items-center gap-2">
-                                <svg className="h-3.5 w-3.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
-                                <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Reference Projects</p>
-                                <span className="text-[10px] text-gray-400">
-                                  {isRezone ? `Rezoned to ${scenario.target_district_code}` : `Built under ${scenarioCode}`}
-                                </span>
-                              </div>
-                              <div className="grid gap-1.5">
-                                {top3.map((p: any, idx: number) => (
-                                  <div key={idx} className="bg-teal-50/50 rounded-md border border-teal-100 px-3 py-2">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="text-[11px] font-medium text-gray-800 truncate">{p.address}</div>
-                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-gray-500">
-                                          {p.landAcres != null && <span>{parseFloat(p.landAcres).toFixed(2)} ac</span>}
-                                          {p.unitCount != null && <span>{Number(p.unitCount).toLocaleString()} units</span>}
-                                          {p.buildingSf != null && <span>{Number(p.buildingSf).toLocaleString()} SF</span>}
-                                        </div>
-                                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[10px] text-gray-500">
-                                          {p.farAchieved != null && <span>FAR: {parseFloat(p.farAchieved).toFixed(2)}</span>}
-                                          {p.lotCoverageAchieved != null && <span>Lot Cov: {(parseFloat(p.lotCoverageAchieved) * 100).toFixed(0)}%</span>}
-                                          {p.assessedValue != null && <span>${(Number(p.assessedValue) / 1000000).toFixed(1)}M assessed</span>}
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                                        {p.densityAchieved != null && (
-                                          <span className="text-xs font-bold text-teal-700 whitespace-nowrap">
-                                            {parseFloat(p.densityAchieved).toFixed(1)} u/ac
-                                          </span>
-                                        )}
-                                        {p.source === 'rezone' && (
-                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-200">rezone</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {scenarios.length >= 2 && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
-            <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Scenario Comparison</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50/50">
-                  <th className="text-left px-5 py-3 text-gray-500 font-medium text-xs uppercase tracking-wider w-[20%]" />
-                  {scenarios.map(s => (
-                    <th key={s.id} className="text-center px-4 py-3">
-                      <div className="text-xs font-bold text-gray-900">{s.name}</div>
-                      {s.is_active && <div className="text-[10px] text-blue-600 font-medium">ACTIVE</div>}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { label: 'Max Units', key: 'max_units', format: (v: number) => formatNumber(v) },
-                  { label: 'GBA', key: 'max_gba', format: (v: number) => `${formatNumber(v)} SF` },
-                  { label: 'Net Leasable', key: 'net_leasable_sf', format: (v: number) => `${formatNumber(v)} SF` },
-                  { label: 'Stories', key: 'max_stories', format: (v: number) => `${v}` },
-                  { label: 'Parking', key: 'parking_required', format: (v: number) => `${formatNumber(v)} spaces` },
-                  { label: 'Binding Constraint', key: 'binding_constraint', format: (v: string) => getLimitingLabel(v) },
-                  { label: 'Applied FAR', key: 'applied_far', format: (v: number) => `${v}` },
-                  { label: 'Avg Unit Size', key: 'avg_unit_size_sf', format: (v: number) => `${formatNumber(v)} SF` },
-                  { label: 'Efficiency', key: 'efficiency_factor', format: (v: number) => `${(v * 100).toFixed(0)}%` },
-                ].map(row => (
-                  <tr key={row.key} className="hover:bg-gray-50/50 border-b border-gray-50">
-                    <td className="px-5 py-2.5 text-gray-600 font-medium text-xs">{row.label}</td>
-                    {scenarios.map(scenario => {
-                      const val = (scenario as any)[row.key];
-                      return (
-                        <td key={scenario.id} className={`text-center px-4 py-2.5 text-xs text-gray-900 ${scenario.is_active ? 'font-semibold' : ''}`}>
-                          {val != null ? row.format(val) : '--'}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
 
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -1747,13 +1166,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
-
-      {loadingRecs && recommendations.length === 0 && (
-        <div className="flex items-center justify-center py-6">
-          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500" />
-          <span className="ml-2 text-gray-500 text-xs">Loading entitlement strategies...</span>
-        </div>
-      )}
 
     </div>
   );
