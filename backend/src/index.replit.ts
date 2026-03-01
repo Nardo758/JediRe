@@ -90,6 +90,7 @@ import visibilityRouter from './api/rest/visibility.routes';
 import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
 import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
+import correlationRouter from './api/rest/correlation.routes';
 
 dotenv.config();
 
@@ -243,6 +244,7 @@ app.use('/api/v1/visibility', requireAuth, visibilityRouter);
 app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
+app.use('/api/v1/correlations', requireAuth, correlationRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
@@ -331,8 +333,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
 
   try {
     apartmentSyncScheduler.initialize(apartmentSyncService);
-    apartmentSyncScheduler.start(6);
-    console.log('Apartment data sync scheduler started (every 6 hours)');
+    apartmentSyncScheduler.start();
+    console.log('Apartment data sync scheduler started (weekly: Saturday 9:00 AM EST)');
   } catch (error) {
     console.error('Failed to start apartment sync scheduler:', error);
   }
