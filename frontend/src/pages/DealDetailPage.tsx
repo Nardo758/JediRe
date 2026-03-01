@@ -196,12 +196,6 @@ const DealDetailPage: React.FC = () => {
       icon: <Zap size={16} />,
       component: OpportunityEngineSection
     },
-    {
-      id: 'traffic-module',
-      label: 'Traffic Module',
-      icon: <Activity size={16} />,
-      component: TrafficModule
-    },
     { 
       id: 'trends', 
       label: 'Trends Analysis', 
@@ -211,7 +205,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
-  // Pipeline: Strategy → Traffic Module (Market Research) → Pro Forma → Debt → Financial Dashboard → Exit
+  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt → Financial Dashboard → Exit
   const dealDesignTabs: Tab[] = [
     { 
       id: '3d-design', 
@@ -224,6 +218,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Strategy', 
       icon: <Target size={16} />, 
       component: StrategySection 
+    },
+    {
+      id: 'traffic-module',
+      label: 'Traffic Module',
+      icon: <Activity size={16} />,
+      component: TrafficModule
     },
     {
       id: 'proforma',
