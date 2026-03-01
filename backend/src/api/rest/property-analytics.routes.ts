@@ -9,12 +9,58 @@ const analyticsService = new PropertyAnalyticsService(pool);
 
 router.post('/connect', async (req: Request, res: Response) => {
   try {
-    const { propertyId, domain } = req.body;
-    if (!propertyId || !domain) {
-      return res.status(400).json({ error: 'propertyId and domain are required' });
+    const { propertyId, dealId, domain } = req.body;
+    if (!domain) {
+      return res.status(400).json({ error: 'domain is required' });
     }
-    const connection = await analyticsService.connectPropertyDomain(propertyId, domain);
-    res.json({ success: true, connection });
+
+    let resolvedPropertyId = propertyId;
+    if (!resolvedPropertyId && dealId) {
+      const propLookup = await pool.query(
+        `SELECT p.id FROM properties p
+         INNER JOIN deal_properties dp ON dp.property_id = p.id
+         WHERE dp.deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      if (!propLookup.rows[0]) {
+        const fallback = await pool.query(
+          `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
+          [dealId]
+        );
+        resolvedPropertyId = fallback.rows[0]?.id;
+      } else {
+        resolvedPropertyId = propLookup.rows[0].id;
+      }
+    }
+
+    if (!resolvedPropertyId) {
+      return res.status(400).json({ error: 'Could not resolve property. Provide propertyId or dealId.' });
+    }
+
+    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
+
+    await pool.query(
+      `UPDATE properties SET website = $2 WHERE id = $1`,
+      [resolvedPropertyId, cleanDomain]
+    );
+
+    const connection = await analyticsService.connectPropertyDomain(resolvedPropertyId, cleanDomain);
+
+    let spyfuResult = null;
+    try {
+      spyfuResult = await analyticsService.fetchPropertyWebTraffic(resolvedPropertyId);
+      logger.info(`[PropertyAnalytics] SpyFu data fetched for ${cleanDomain} (property ${resolvedPropertyId})`);
+    } catch (err: any) {
+      logger.warn(`[PropertyAnalytics] SpyFu fetch after connect failed for ${cleanDomain}: ${err.message}`);
+    }
+
+    res.json({
+      success: true,
+      connection,
+      property_id: resolvedPropertyId,
+      domain: cleanDomain,
+      spyfu_synced: !!spyfuResult,
+    });
   } catch (error: any) {
     logger.error('[PropertyAnalytics] Connect failed', { error: error.message });
     res.status(500).json({ error: 'Failed to connect domain', message: error.message });

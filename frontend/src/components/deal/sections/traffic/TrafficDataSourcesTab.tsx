@@ -145,7 +145,7 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
     setConnecting(true);
     try {
       await apiClient.post('/api/v1/property-analytics/connect', {
-        propertyId: dealId,
+        dealId,
         domain: domainInput.trim(),
       });
       setShowDomainForm(false);

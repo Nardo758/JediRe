@@ -656,7 +656,7 @@ export class TrafficPredictionEngine {
 
     let web_traffic: DataSourceSignals['web_traffic'];
     try {
-      const wr = await pool.query(
+      let wr = await pool.query(
         `SELECT sessions, users, bounce_rate, is_comp_proxy, proxy_source_properties,
                 device_breakdown
          FROM property_website_analytics
@@ -664,6 +664,32 @@ export class TrafficPredictionEngine {
          ORDER BY period_end DESC LIMIT 1`,
         [propertyId]
       );
+
+      if (wr.rows.length === 0) {
+        try {
+          const propRow = await pool.query(
+            `SELECT website FROM properties WHERE id = $1`, [propertyId]
+          );
+          const website = propRow.rows[0]?.website;
+          if (website) {
+            const analyticsService = new PropertyAnalyticsService(pool);
+            const existingConn = await analyticsService.getDomainConnection(propertyId);
+            if (!existingConn) {
+              await analyticsService.connectPropertyDomain(propertyId, website);
+            }
+            await analyticsService.fetchPropertyWebTraffic(propertyId);
+            wr = await pool.query(
+              `SELECT sessions, users, bounce_rate, is_comp_proxy, proxy_source_properties,
+                      device_breakdown
+               FROM property_website_analytics
+               WHERE property_id = $1
+               ORDER BY period_end DESC LIMIT 1`,
+              [propertyId]
+            );
+          }
+        } catch { }
+      }
+
       if (wr.rows.length > 0) {
         const w = wr.rows[0];
         const sessions = w.sessions || 0;
