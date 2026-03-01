@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Car, Globe, BarChart3, Eye, AlertCircle, CheckCircle2,
-  ArrowUpRight, ArrowDownRight, Minus, RefreshCw, Link2,
+  ArrowUpRight, ArrowDownRight, Minus, Link2,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -49,12 +49,11 @@ interface TrafficDataSourcesTabProps {
   onNavigateToVisibility?: () => void;
 }
 
-function StatusBadge({ status, label }: { status: 'connected' | 'proxy' | 'not_connected' | 'synced'; label: string }) {
+function StatusBadge({ status, label }: { status: 'connected' | 'proxy' | 'not_connected'; label: string }) {
   const colors = {
     connected: 'bg-emerald-100 text-emerald-700',
     proxy: 'bg-blue-100 text-blue-700',
     not_connected: 'bg-stone-100 text-stone-500',
-    synced: 'bg-emerald-100 text-emerald-700',
   };
   return (
     <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono uppercase ${colors[status]}`}>
@@ -235,7 +234,7 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
               <span className="font-semibold text-stone-900 text-sm">Market Intelligence</span>
             </div>
             {ds?.market_intel ? (
-              <StatusBadge status="synced" label="Synced" />
+              <StatusBadge status="connected" label="Available" />
             ) : (
               <StatusBadge status="not_connected" label="No Data" />
             )}
@@ -274,10 +273,7 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
           ) : (
             <div className="text-center py-4">
               <BarChart3 size={24} className="mx-auto text-stone-300 mb-2" />
-              <p className="text-xs text-stone-400 mb-2">Sync market data from Apartment Locator AI</p>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs hover:bg-stone-800">
-                <RefreshCw size={12} /> Sync Now
-              </button>
+              <p className="text-xs text-stone-400">Market data will appear once available for this property's submarket</p>
             </div>
           )}
         </div>
