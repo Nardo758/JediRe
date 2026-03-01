@@ -4,10 +4,11 @@ import { useDealStore } from '../stores/dealStore';
 import { DealSidebar } from '../components/deal/DealSidebar';
 import { DealMapView } from '../components/deal/DealMapView';
 import { DealContextTracker } from '../components/deal/DealContextTracker';
-import { GeographicScopeTabs } from '../components/trade-area';
+import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
 import { api } from '../services/api.client';
+import { apiClient } from '../services/api.client';
 import { OverviewSection } from '../components/deal/sections/OverviewSection';
 import { AIAgentSection } from '../components/deal/sections/AIAgentSection';
 import { CompetitionSection } from '../components/deal/sections/CompetitionSection';
@@ -35,6 +36,40 @@ export const DealView: React.FC = () => {
   const [modulesLoading, setModulesLoading] = useState(false);
   const [modulesError, setModulesError] = useState<string | null>(null);
   const [geographicStats, setGeographicStats] = useState<any>(null);
+  const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+
+  const getDealCentroid = (): [number, number] | null => {
+    if (!selectedDeal) return null;
+    const deal = selectedDeal as any;
+    if (!deal.boundary?.coordinates) return null;
+    try {
+      const coords = deal.boundary.type === 'Polygon'
+        ? deal.boundary.coordinates[0]
+        : deal.boundary.type === 'Point'
+        ? [deal.boundary.coordinates]
+        : null;
+      if (!coords || coords.length === 0) return null;
+      const sumLng = coords.reduce((s: number, c: number[]) => s + c[0], 0);
+      const sumLat = coords.reduce((s: number, c: number[]) => s + c[1], 0);
+      return [sumLng / coords.length, sumLat / coords.length];
+    } catch { return null; }
+  };
+
+  const handleTradeAreaSave = async (tradeAreaId: string) => {
+    if (!id) return;
+    try {
+      await apiClient.post(`/api/v1/deals/${id}/geographic-context`, {
+        trade_area_id: tradeAreaId,
+        active_scope: 'trade_area',
+      });
+      setShowTradeAreaPanel(false);
+      loadTradeAreaForDeal(id);
+      fetchGeographicContext(id);
+      setScope('trade_area');
+    } catch (err) {
+      console.error('Failed to save trade area:', err);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -317,9 +352,34 @@ export const DealView: React.FC = () => {
           activeScope={activeScope}
           onChange={setScope}
           tradeAreaEnabled={!!geographicStats?.trade_area}
+          onDefineTradeArea={getDealCentroid() ? () => setShowTradeAreaPanel(true) : undefined}
           stats={geographicStats || {}}
         />
       </div>
+
+      {showTradeAreaPanel && getDealCentroid() && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
+                <button
+                  onClick={() => setShowTradeAreaPanel(false)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+              <TradeAreaDefinitionPanel
+                propertyLat={getDealCentroid()![1]}
+                propertyLng={getDealCentroid()![0]}
+                onSave={handleTradeAreaSave}
+                onSkip={() => setShowTradeAreaPanel(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         <DealSidebar

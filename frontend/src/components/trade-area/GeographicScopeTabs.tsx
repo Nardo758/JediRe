@@ -5,6 +5,7 @@ interface GeographicScopeTabsProps {
   activeScope: GeographicScope;
   onChange: (scope: GeographicScope) => void;
   tradeAreaEnabled?: boolean;
+  onDefineTradeArea?: () => void;
   stats?: {
     trade_area?: { occupancy?: number; avg_rent?: number };
     submarket?: { occupancy?: number; avg_rent?: number };
@@ -28,6 +29,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
   activeScope,
   onChange,
   tradeAreaEnabled = true,
+  onDefineTradeArea,
   stats,
 }) => {
   const scopes: GeographicScope[] = ['trade_area', 'submarket', 'msa'];
@@ -44,14 +46,21 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
           return (
             <button
               key={scope}
-              onClick={() => !isDisabled && onChange(scope)}
-              disabled={isDisabled}
+              onClick={() => {
+                if (isDisabled && onDefineTradeArea) {
+                  onDefineTradeArea();
+                } else if (!isDisabled) {
+                  onChange(scope);
+                }
+              }}
               className={`
                 flex-1 px-4 py-3 font-medium transition-all
                 ${isActive
                   ? 'border-b-2 border-blue-500 text-blue-600 bg-blue-50'
                   : isDisabled
-                  ? 'text-gray-400 cursor-not-allowed'
+                  ? onDefineTradeArea
+                    ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-50 cursor-pointer border-b-2 border-transparent'
+                    : 'text-gray-400 cursor-not-allowed'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }
               `}
@@ -59,7 +68,11 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               <div className="flex items-center justify-center gap-2">
                 <span>{scopeIcons[scope]}</span>
                 <span>{scopeLabels[scope]}</span>
-                {isDisabled && <span className="text-xs">(None)</span>}
+                {isDisabled && (
+                  onDefineTradeArea
+                    ? <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">+ Define</span>
+                    : <span className="text-xs">(None)</span>
+                )}
               </div>
             </button>
           );
