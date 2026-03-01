@@ -48,14 +48,14 @@ const TIME_RANGES = ['3M', '6M', '1Y', '3Y', '5Y', 'Max'] as const;
 const SUBMARKETS = ['All', 'Buckhead', 'Midtown', 'Decatur', 'Sandy Springs', 'East Atlanta'];
 
 const CORRELATION_QUARTERS = [
-  { quarter: 'Q1 2024', rentGrowth: 2.1, trafficTrend: 1.8, wageGrowth: 3.2 },
-  { quarter: 'Q2 2024', rentGrowth: 3.4, trafficTrend: 2.5, wageGrowth: 3.0 },
-  { quarter: 'Q3 2024', rentGrowth: 4.8, trafficTrend: 3.1, wageGrowth: 2.8 },
-  { quarter: 'Q4 2024', rentGrowth: 5.6, trafficTrend: 4.2, wageGrowth: 2.9 },
-  { quarter: 'Q1 2025', rentGrowth: 6.2, trafficTrend: 5.0, wageGrowth: 3.1 },
-  { quarter: 'Q2 2025', rentGrowth: 5.9, trafficTrend: 5.8, wageGrowth: 3.0 },
-  { quarter: 'Q3 2025', rentGrowth: 6.8, trafficTrend: 6.1, wageGrowth: 2.7 },
-  { quarter: 'Q4 2025', rentGrowth: 7.3, trafficTrend: 6.5, wageGrowth: 2.6 },
+  { quarter: 'Q1 2024', rentGrowth: 1.8, trafficTrend: 1.2, wageGrowth: 3.4 },
+  { quarter: 'Q2 2024', rentGrowth: 4.2, trafficTrend: 3.8, wageGrowth: 3.1 },
+  { quarter: 'Q3 2024', rentGrowth: 5.1, trafficTrend: 4.6, wageGrowth: 2.8 },
+  { quarter: 'Q4 2024', rentGrowth: 3.4, trafficTrend: 2.8, wageGrowth: 3.0 },
+  { quarter: 'Q1 2025', rentGrowth: 3.8, trafficTrend: 2.4, wageGrowth: 3.2 },
+  { quarter: 'Q2 2025', rentGrowth: 6.8, trafficTrend: 6.2, wageGrowth: 2.9 },
+  { quarter: 'Q3 2025', rentGrowth: 7.6, trafficTrend: 7.1, wageGrowth: 2.6 },
+  { quarter: 'Q4 2025', rentGrowth: 5.4, trafficTrend: 4.5, wageGrowth: 2.7 },
 ];
 
 const AFFORDABILITY_DATA = {
@@ -63,7 +63,7 @@ const AFFORDABILITY_DATA = {
   medianMonthlyRent: 1895,
   thresholdPercent: 30,
   currentPercent: 31.4,
-  historicalPercents: [27.2, 28.1, 28.9, 29.5, 30.1, 30.8, 31.0, 31.4],
+  historicalPercents: [26.8, 28.6, 29.2, 28.4, 29.0, 30.6, 31.4, 30.2],
 };
 
 const SIGNAL_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
@@ -120,71 +120,71 @@ const SUPPLY_WAVE_DATA = [
 ];
 
 const RENT_VINTAGE_DATA = [
-  { quarter: 'Q1 24', aPlus: 2450, a: 2180, bPlus: 1680, b: 1420, c: 1080 },
-  { quarter: 'Q2 24', aPlus: 2480, a: 2210, bPlus: 1720, b: 1460, c: 1110 },
-  { quarter: 'Q3 24', aPlus: 2510, a: 2250, bPlus: 1780, b: 1520, c: 1160 },
-  { quarter: 'Q4 24', aPlus: 2530, a: 2270, bPlus: 1830, b: 1570, c: 1200 },
-  { quarter: 'Q1 25', aPlus: 2560, a: 2300, bPlus: 1890, b: 1630, c: 1250 },
-  { quarter: 'Q2 25', aPlus: 2580, a: 2320, bPlus: 1940, b: 1680, c: 1300 },
-  { quarter: 'Q3 25', aPlus: 2610, a: 2350, bPlus: 2000, b: 1740, c: 1350 },
-  { quarter: 'Q4 25', aPlus: 2640, a: 2380, bPlus: 2060, b: 1800, c: 1400 },
+  { quarter: 'Q1 24', aPlus: 2420, a: 2150, bPlus: 1650, b: 1390, c: 1060 },
+  { quarter: 'Q2 24', aPlus: 2510, a: 2240, bPlus: 1740, b: 1480, c: 1130 },
+  { quarter: 'Q3 24', aPlus: 2540, a: 2280, bPlus: 1800, b: 1540, c: 1170 },
+  { quarter: 'Q4 24', aPlus: 2490, a: 2230, bPlus: 1760, b: 1500, c: 1140 },
+  { quarter: 'Q1 25', aPlus: 2520, a: 2260, bPlus: 1820, b: 1560, c: 1190 },
+  { quarter: 'Q2 25', aPlus: 2620, a: 2360, bPlus: 1960, b: 1700, c: 1310 },
+  { quarter: 'Q3 25', aPlus: 2660, a: 2400, bPlus: 2040, b: 1780, c: 1380 },
+  { quarter: 'Q4 25', aPlus: 2600, a: 2340, bPlus: 1990, b: 1730, c: 1340 },
 ];
 const RENT_FORECAST = [
-  { quarter: 'Q1 26', aPlus: 2680, a: 2410, bPlus: 2130, b: 1870, c: 1460 },
-  { quarter: 'Q2 26', aPlus: 2720, a: 2440, bPlus: 2200, b: 1940, c: 1520 },
+  { quarter: 'Q1 26', aPlus: 2640, a: 2380, bPlus: 2060, b: 1800, c: 1400 },
+  { quarter: 'Q2 26', aPlus: 2750, a: 2480, bPlus: 2220, b: 1960, c: 1540 },
 ];
 
 const SUPPLY_QUARTERLY = [
-  { quarter: 'Q1 25', underConstruction: 3200, permitted: 1400 },
-  { quarter: 'Q2 25', underConstruction: 2800, permitted: 1800 },
-  { quarter: 'Q3 25', underConstruction: 2400, permitted: 2100 },
-  { quarter: 'Q4 25', underConstruction: 2100, permitted: 1600 },
-  { quarter: 'Q1 26', underConstruction: 1800, permitted: 1200 },
-  { quarter: 'Q2 26', underConstruction: 1500, permitted: 900 },
+  { quarter: 'Q1 25', underConstruction: 2600, permitted: 1100 },
+  { quarter: 'Q2 25', underConstruction: 3400, permitted: 2200 },
+  { quarter: 'Q3 25', underConstruction: 2900, permitted: 1800 },
+  { quarter: 'Q4 25', underConstruction: 1800, permitted: 1200 },
+  { quarter: 'Q1 26', underConstruction: 1500, permitted: 900 },
+  { quarter: 'Q2 26', underConstruction: 2100, permitted: 1400 },
 ];
 
 const DEMAND_SIGNAL_DATA = [
-  { quarter: 'Q1 24', trafficGrowth: 2.1, searchInterest: 58, t02Avg: 62, t03Avg: 55 },
-  { quarter: 'Q2 24', trafficGrowth: 3.4, searchInterest: 64, t02Avg: 65, t03Avg: 61 },
-  { quarter: 'Q3 24', trafficGrowth: 4.2, searchInterest: 71, t02Avg: 68, t03Avg: 69 },
-  { quarter: 'Q4 24', trafficGrowth: 5.1, searchInterest: 78, t02Avg: 72, t03Avg: 76 },
-  { quarter: 'Q1 25', trafficGrowth: 5.8, searchInterest: 82, t02Avg: 75, t03Avg: 80 },
-  { quarter: 'Q2 25', trafficGrowth: 6.5, searchInterest: 88, t02Avg: 79, t03Avg: 85 },
-  { quarter: 'Q3 25', trafficGrowth: 7.2, searchInterest: 92, t02Avg: 82, t03Avg: 89 },
-  { quarter: 'Q4 25', trafficGrowth: 7.8, searchInterest: 96, t02Avg: 85, t03Avg: 94 },
+  { quarter: 'Q1 24', trafficGrowth: 1.4, searchInterest: 52, t02Avg: 58, t03Avg: 48 },
+  { quarter: 'Q2 24', trafficGrowth: 4.1, searchInterest: 68, t02Avg: 67, t03Avg: 64 },
+  { quarter: 'Q3 24', trafficGrowth: 5.2, searchInterest: 74, t02Avg: 72, t03Avg: 72 },
+  { quarter: 'Q4 24', trafficGrowth: 3.6, searchInterest: 62, t02Avg: 66, t03Avg: 60 },
+  { quarter: 'Q1 25', trafficGrowth: 3.8, searchInterest: 66, t02Avg: 68, t03Avg: 62 },
+  { quarter: 'Q2 25', trafficGrowth: 7.4, searchInterest: 91, t02Avg: 82, t03Avg: 88 },
+  { quarter: 'Q3 25', trafficGrowth: 8.1, searchInterest: 96, t02Avg: 86, t03Avg: 93 },
+  { quarter: 'Q4 25', trafficGrowth: 5.8, searchInterest: 78, t02Avg: 76, t03Avg: 74 },
 ];
 
 const TRANSACTION_DATA = [
-  { date: 'Mar 24', pricePerUnit: 142000, units: 180, capRate: 5.1 },
-  { date: 'Jun 24', pricePerUnit: 148000, units: 240, capRate: 5.2 },
-  { date: 'Sep 24', pricePerUnit: 135000, units: 120, capRate: 5.4 },
-  { date: 'Dec 24', pricePerUnit: 155000, units: 300, capRate: 5.0 },
-  { date: 'Mar 25', pricePerUnit: 138000, units: 160, capRate: 5.5 },
-  { date: 'Jun 25', pricePerUnit: 160000, units: 280, capRate: 4.9 },
-  { date: 'Sep 25', pricePerUnit: 145000, units: 200, capRate: 5.3 },
-  { date: 'Dec 25', pricePerUnit: 152000, units: 220, capRate: 5.2 },
+  { date: 'Mar 24', pricePerUnit: 138000, units: 140, capRate: 5.3 },
+  { date: 'Jun 24', pricePerUnit: 152000, units: 260, capRate: 5.0 },
+  { date: 'Sep 24', pricePerUnit: 144000, units: 180, capRate: 5.2 },
+  { date: 'Dec 24', pricePerUnit: 158000, units: 320, capRate: 4.8 },
+  { date: 'Mar 25', pricePerUnit: 141000, units: 150, capRate: 5.4 },
+  { date: 'Jun 25', pricePerUnit: 162000, units: 290, capRate: 4.7 },
+  { date: 'Sep 25', pricePerUnit: 148000, units: 200, capRate: 5.1 },
+  { date: 'Dec 25', pricePerUnit: 156000, units: 240, capRate: 5.0 },
 ];
 
 const CONCESSION_DATA = [
-  { quarter: 'Q1 24', concessionPct: 6.2, occupancy: 91.4 },
-  { quarter: 'Q2 24', concessionPct: 5.8, occupancy: 91.8 },
-  { quarter: 'Q3 24', concessionPct: 5.4, occupancy: 92.1 },
-  { quarter: 'Q4 24', concessionPct: 5.0, occupancy: 92.5 },
-  { quarter: 'Q1 25', concessionPct: 4.6, occupancy: 92.8 },
-  { quarter: 'Q2 25', concessionPct: 4.2, occupancy: 93.0 },
-  { quarter: 'Q3 25', concessionPct: 3.8, occupancy: 93.2 },
-  { quarter: 'Q4 25', concessionPct: 3.2, occupancy: 93.5 },
+  { quarter: 'Q1 24', concessionPct: 6.8, occupancy: 90.8 },
+  { quarter: 'Q2 24', concessionPct: 5.2, occupancy: 92.4 },
+  { quarter: 'Q3 24', concessionPct: 4.6, occupancy: 93.1 },
+  { quarter: 'Q4 24', concessionPct: 5.8, occupancy: 91.6 },
+  { quarter: 'Q1 25', concessionPct: 5.4, occupancy: 91.2 },
+  { quarter: 'Q2 25', concessionPct: 3.6, occupancy: 93.4 },
+  { quarter: 'Q3 25', concessionPct: 3.0, occupancy: 94.0 },
+  { quarter: 'Q4 25', concessionPct: 4.2, occupancy: 92.8 },
 ];
 
 const JEDI_SCORE_HISTORY = [
-  { quarter: 'Q1 24', composite: 58, demand: 52, supply: 62, momentum: 55 },
-  { quarter: 'Q2 24', composite: 63, demand: 58, supply: 63, momentum: 60 },
-  { quarter: 'Q3 24', composite: 68, demand: 65, supply: 64, momentum: 66 },
-  { quarter: 'Q4 24', composite: 72, demand: 70, supply: 64, momentum: 72 },
-  { quarter: 'Q1 25', composite: 76, demand: 74, supply: 65, momentum: 76 },
-  { quarter: 'Q2 25', composite: 81, demand: 78, supply: 64, momentum: 80 },
-  { quarter: 'Q3 25', composite: 85, demand: 82, supply: 64, momentum: 84 },
-  { quarter: 'Q4 25', composite: 87, demand: 85, supply: 64, momentum: 88 },
+  { quarter: 'Q1 24', composite: 56, demand: 48, supply: 62, momentum: 52 },
+  { quarter: 'Q2 24', composite: 65, demand: 62, supply: 60, momentum: 64 },
+  { quarter: 'Q3 24', composite: 71, demand: 70, supply: 58, momentum: 72 },
+  { quarter: 'Q4 24', composite: 66, demand: 60, supply: 63, momentum: 65 },
+  { quarter: 'Q1 25', composite: 70, demand: 64, supply: 66, momentum: 68 },
+  { quarter: 'Q2 25', composite: 82, demand: 80, supply: 62, momentum: 84 },
+  { quarter: 'Q3 25', composite: 88, demand: 86, supply: 60, momentum: 90 },
+  { quarter: 'Q4 25', composite: 81, demand: 76, supply: 65, momentum: 82 },
 ];
 
 const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
