@@ -245,9 +245,6 @@ export class JEDIScoreService {
    * For Phase 1, use baseline value (will be implemented in Phase 2)
    */
   private async calculateMomentumScore(dealId: string, tradeAreaId?: string): Promise<number> {
-    // TODO Phase 2: Implement rent growth trends, transaction velocity
-    
-    // Baseline: Check recent transaction activity
     const momentumResult = await query(
       `SELECT COUNT(*) as transaction_count
        FROM news_events ne
@@ -262,11 +259,24 @@ export class JEDIScoreService {
 
     const transactionCount = parseInt(momentumResult.rows[0].transaction_count) || 0;
 
-    // More transactions = more momentum
-    if (transactionCount === 0) return 45.0;
-    if (transactionCount < 3) return 50.0;
-    if (transactionCount < 5) return 55.0;
-    return 60.0;
+    let baseScore: number;
+    if (transactionCount === 0) baseScore = 45.0;
+    else if (transactionCount < 3) baseScore = 50.0;
+    else if (transactionCount < 5) baseScore = 55.0;
+    else baseScore = 60.0;
+
+    let trajectoryBoost = 0;
+    try {
+      const { dataFlowRouter } = require('./module-wiring/data-flow-router');
+      const trafficData = dataFlowRouter.getModuleData('M07', dealId);
+      if (trafficData?.data?.traffic_trajectory !== undefined && trafficData?.data?.traffic_trajectory !== null) {
+        const trajectory = trafficData.data.traffic_trajectory;
+        trajectoryBoost = Math.max(-15, Math.min(15, trajectory * 50));
+      }
+    } catch {
+    }
+
+    return Math.max(0, Math.min(100, baseScore + trajectoryBoost));
   }
 
   /**

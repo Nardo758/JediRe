@@ -12,6 +12,12 @@ import { pool } from '../database';
 import marketResearchEngine from './marketResearchEngine';
 import { trafficLearning } from './trafficLearningService';
 import type { LearnedRates } from './trafficLearningService';
+import { PropertyAnalyticsService } from './property-analytics.service';
+import type { DomainTrend } from './property-analytics.service';
+import { trendPatternDetector } from './trend-pattern-detector';
+import type { TrendPattern } from './trend-pattern-detector';
+import { getDotTemporalProfilesService } from './dot-temporal-profiles.service';
+import type { TemporalMultiplierResult } from './dot-temporal-profiles.service';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -24,10 +30,28 @@ export interface DataSourceSignals {
     primary_adt: number;
     primary_road_name: string;
     primary_road_classification: string;
+    primary_adt_distance_m?: number;
     secondary_adt?: number;
+    secondary_road_classification?: string;
+    secondary_adt_distance_m?: number;
     google_realtime_factor: number;
     trend_direction: string;
     trend_pct: number;
+    effective_base_adt?: number;
+    distance_decay_primary?: number;
+    distance_decay_secondary?: number;
+    road_class_weight_primary?: number;
+    road_class_weight_secondary?: number;
+    frontage_type?: string;
+    frontage_factor?: number;
+    total_exposure?: number;
+    temporal_adjusted_adt?: number;
+    temporal_source?: 'fdot_profile' | 'google_realtime' | 'default';
+    directional_factor?: number;
+    property_direction?: 'inbound' | 'outbound';
+    temporal_profile_available?: boolean;
+    d_factor_available?: boolean;
+    hourly_distribution?: Record<string, number>;
   };
   web_traffic?: {
     sessions: number;
@@ -40,6 +64,17 @@ export interface DataSourceSignals {
     organic_keywords?: number;
     paid_keywords?: number;
     domain_strength?: number;
+    digital_share?: number;
+    trend_momentum?: number;
+    trend_direction?: string;
+  };
+  trajectory?: {
+    traffic_trajectory: number;
+    trend_momentum: number;
+    trend_direction: string;
+    digital_momentum: number;
+    yoy_aadt_growth: number;
+    seasonal_deviation: number;
   };
   market_intel?: {
     supply_demand_ratio?: number;
@@ -133,6 +168,36 @@ interface Property {
   competitor_count_500m?: number;
 }
 
+export interface ConversionChainRates {
+  visibility_capture_rate: number;
+  apartment_seeker_pct: number;
+  stop_probability: number;
+  combined_rate: number;
+  source: 'visibility_assessment' | 'submarket_calibrated' | 'default';
+}
+
+export interface HourlyWalkInPotential {
+  hour: number;
+  directional_volume: number;
+  walk_in_potential: number;
+}
+
+export interface DailyBreakdown {
+  day: string;
+  dow_factor: number;
+  walk_ins: number;
+}
+
+export interface PhysicalTrafficScore {
+  score: number;
+  adt_percentile: number;
+  walkins_percentile: number;
+  adt_component: number;
+  walkins_component: number;
+  submarket_property_count: number;
+  submarket_id: string;
+}
+
 interface TrafficPrediction {
   property_id: string;
   deal_id?: string;
@@ -148,7 +213,24 @@ interface TrafficPrediction {
     market_demand_factors: number;
     supply_demand_adjustment: number;
     base_before_adjustment: number;
+    effective_base_adt?: number;
+    distance_decay?: number;
+    road_class_weight?: number;
+    frontage_factor?: number;
+    multi_segment_exposure?: number;
+    temporal_adjusted_adt?: number;
+    temporal_source?: 'fdot_profile' | 'google_realtime' | 'default';
+    directional_factor?: number;
+    hourly_distribution?: Record<string, number>;
+    traffic_trajectory?: number;
+    trend_momentum?: number;
+    trend_direction?: string;
   };
+
+  conversion_chain?: ConversionChainRates;
+  hourly_potential?: HourlyWalkInPotential[];
+  daily_breakdown?: DailyBreakdown[];
+  physical_traffic_score?: PhysicalTrafficScore;
   
   temporal_patterns: {
     weekday_avg: number;
@@ -172,15 +254,217 @@ interface TrafficPrediction {
     supply_demand_ratio: number;
   };
   
+  detected_patterns?: TrendPattern[];
+  
   model_version: string;
   prediction_date: Date;
 }
 
 export class TrafficPredictionEngine {
   
-  private readonly MODEL_VERSION = '1.1.0';
+  private readonly MODEL_VERSION = '1.2.0';
   private readonly JOBS_TO_UNITS_MULTIPLIER = 0.45;
   private readonly JOBS_TO_RETAIL_TRIPS = 15;
+
+  private readonly ROAD_CLASS_WEIGHT: Record<string, number> = {
+    'interstate': 0.3,
+    'expressway': 0.4,
+    'freeway': 0.4,
+    'arterial': 0.7,
+    'principal_arterial': 0.7,
+    'minor_arterial': 0.7,
+    'collector': 0.9,
+    'major_collector': 0.9,
+    'minor_collector': 0.9,
+    'local': 1.0,
+    'main_street': 1.0,
+  };
+
+  private readonly FRONTAGE_FACTOR: Record<string, number> = {
+    'corner': 1.4,
+    'main': 1.0,
+    'side_street': 0.7,
+    'interior': 0.4,
+  };
+
+  private readonly DEFAULT_VISIBILITY_CAPTURE_RATE = 0.04;
+  private readonly DEFAULT_APARTMENT_SEEKER_PCT = 0.02;
+  private readonly DEFAULT_STOP_PROBABILITY = 0.15;
+  private readonly LEASING_HOURS_START = 9;
+  private readonly LEASING_HOURS_END = 18;
+
+  private readonly DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  private getConversionChainRates(
+    signals: DataSourceSignals,
+    submarketId?: string,
+  ): ConversionChainRates {
+    let captureRate = this.DEFAULT_VISIBILITY_CAPTURE_RATE;
+    let source: ConversionChainRates['source'] = 'default';
+
+    if (signals.visibility && signals.visibility.capture_rate > 0) {
+      captureRate = signals.visibility.capture_rate;
+      source = 'visibility_assessment';
+    }
+
+    const seekerPct = this.DEFAULT_APARTMENT_SEEKER_PCT;
+    const stopProb = this.DEFAULT_STOP_PROBABILITY;
+
+    return {
+      visibility_capture_rate: captureRate,
+      apartment_seeker_pct: seekerPct,
+      stop_probability: stopProb,
+      combined_rate: captureRate * seekerPct * stopProb,
+      source,
+    };
+  }
+
+  private async calculateHourlyWalkInPotential(
+    effectiveBaseAdt: number,
+    roadClass: string,
+    state: string,
+    direction: 'inbound' | 'outbound',
+    conversionRates: ConversionChainRates,
+    month: number,
+    region?: string,
+  ): Promise<HourlyWalkInPotential[]> {
+    const temporalService = getDotTemporalProfilesService(pool);
+    const results: HourlyWalkInPotential[] = [];
+
+    const seasonalFactor = await temporalService.getSeasonalFactor(roadClass, state, month, region);
+
+    for (let hour = this.LEASING_HOURS_START; hour < this.LEASING_HOURS_END; hour++) {
+      const hourlyPct = await temporalService.getHourlyFactor(roadClass, state, hour, region);
+      const directionalFactor = await temporalService.getDirectionalSplit(roadClass, state, hour, direction, region);
+
+      const hourlyVolume = effectiveBaseAdt * hourlyPct * seasonalFactor;
+      const directionalVolume = hourlyVolume * directionalFactor;
+      const walkInPotential = directionalVolume
+        * conversionRates.visibility_capture_rate
+        * conversionRates.apartment_seeker_pct
+        * conversionRates.stop_probability;
+
+      results.push({
+        hour,
+        directional_volume: Math.round(directionalVolume * 100) / 100,
+        walk_in_potential: Math.round(walkInPotential * 1000) / 1000,
+      });
+    }
+
+    return results;
+  }
+
+  private async calculateDailyBreakdown(
+    hourlyPotential: HourlyWalkInPotential[],
+    roadClass: string,
+    state: string,
+    region?: string,
+  ): Promise<DailyBreakdown[]> {
+    const temporalService = getDotTemporalProfilesService(pool);
+    const baseDayWalkins = hourlyPotential.reduce((sum, h) => sum + h.walk_in_potential, 0);
+    const results: DailyBreakdown[] = [];
+
+    for (let dow = 0; dow < 7; dow++) {
+      const dowFactor = await temporalService.getDowFactor(roadClass, state, dow, region);
+      const dayName = this.DOW_NAMES[dow];
+
+      let adjustedWalkins = baseDayWalkins * dowFactor;
+      if (dow === 6) {
+        adjustedWalkins *= 1.15;
+      }
+
+      results.push({
+        day: dayName,
+        dow_factor: Math.round(dowFactor * 1000) / 1000,
+        walk_ins: Math.round(adjustedWalkins * 100) / 100,
+      });
+    }
+
+    return results;
+  }
+
+  private calculateDistanceDecay(distanceMeters: number): number {
+    const distanceMiles = distanceMeters / 1609;
+    return Math.max(0.5, 1 - (distanceMiles * 0.15));
+  }
+
+  private getRoadClassWeight(classification: string): number {
+    const normalized = this.normalizeRoadClass(classification);
+    return this.ROAD_CLASS_WEIGHT[normalized] ?? 0.9;
+  }
+
+  private normalizeRoadClass(classification: string): string {
+    const cl = (classification || '').toLowerCase().replace(/[\s-]+/g, '_');
+    if (cl.includes('interstate') || cl.includes('i_')) return 'interstate';
+    if (cl.includes('expressway') || cl.includes('freeway')) return 'expressway';
+    if (cl.includes('principal') && cl.includes('arterial')) return 'arterial';
+    if (cl.includes('arterial')) return 'arterial';
+    if (cl.includes('major') && cl.includes('collector')) return 'collector';
+    if (cl.includes('collector') || cl.includes('minor')) return 'collector';
+    if (cl.includes('local') || cl.includes('residential')) return 'local';
+    if (cl.includes('main') || cl.includes('downtown') || cl.includes('urban')) return 'main_street';
+    return 'collector';
+  }
+
+  private getFrontageFactor(frontageType: string): number {
+    return this.FRONTAGE_FACTOR[(frontageType || 'main').toLowerCase()] ?? 1.0;
+  }
+
+  private mapToFdotRoadClass(normalized: string): string {
+    const mapping: Record<string, string> = {
+      'interstate': 'interstate',
+      'expressway': 'interstate',
+      'arterial': 'urban_arterial',
+      'collector': 'urban_collector',
+      'local': 'local',
+      'main_street': 'urban_arterial',
+    };
+    return mapping[normalized] || 'urban_arterial';
+  }
+
+  private calculateMultiSegmentExposure(
+    primaryAdt: number,
+    primaryDistanceM: number,
+    primaryClassification: string,
+    secondaryAdt?: number,
+    secondaryDistanceM?: number,
+    secondaryClassification?: string,
+  ): { totalExposure: number; segments: Array<{ adt: number; decay: number; weight: number; contribution: number }> } {
+    const segments: Array<{ adt: number; decay: number; weight: number; contribution: number }> = [];
+
+    const primaryDecay = this.calculateDistanceDecay(primaryDistanceM);
+    const primaryWeight = this.getRoadClassWeight(primaryClassification);
+    const primaryContribution = primaryAdt * primaryDecay * primaryWeight;
+    segments.push({ adt: primaryAdt, decay: primaryDecay, weight: primaryWeight, contribution: primaryContribution });
+
+    if (secondaryAdt && secondaryAdt > 0 && secondaryDistanceM !== undefined) {
+      const secondaryDecay = this.calculateDistanceDecay(secondaryDistanceM);
+      const secondaryWeight = this.getRoadClassWeight(secondaryClassification || 'collector');
+      const secondaryContribution = secondaryAdt * secondaryDecay * secondaryWeight;
+      segments.push({ adt: secondaryAdt, decay: secondaryDecay, weight: secondaryWeight, contribution: secondaryContribution });
+    }
+
+    const totalExposure = segments.reduce((sum, s) => sum + s.contribution, 0);
+    return { totalExposure, segments };
+  }
+
+  private calculateEffectiveBaseAdt(
+    primaryAdt: number,
+    primaryDistanceM: number,
+    primaryClassification: string,
+    frontageType: string,
+    secondaryAdt?: number,
+    secondaryDistanceM?: number,
+    secondaryClassification?: string,
+  ): { effectiveBaseAdt: number; totalExposure: number; frontageFactor: number; segments: Array<{ adt: number; decay: number; weight: number; contribution: number }> } {
+    const { totalExposure, segments } = this.calculateMultiSegmentExposure(
+      primaryAdt, primaryDistanceM, primaryClassification,
+      secondaryAdt, secondaryDistanceM, secondaryClassification,
+    );
+    const frontageFactor = this.getFrontageFactor(frontageType);
+    const effectiveBaseAdt = totalExposure * frontageFactor;
+    return { effectiveBaseAdt, totalExposure, frontageFactor, segments };
+  }
 
   async loadDataSourceSignals(propertyId: string): Promise<DataSourceSignals> {
     const missing: string[] = [];
@@ -221,23 +505,148 @@ export class TrafficPredictionEngine {
     } catch { missing.push('visibility'); }
 
     let traffic_context: DataSourceSignals['traffic_context'];
+    let propertyState = 'FL';
+    let propertyDirection: 'inbound' | 'outbound' = 'inbound';
     try {
       const tr = await pool.query(
-        `SELECT primary_adt, primary_road_name, primary_road_classification,
-                secondary_adt, google_realtime_factor, trend_direction, trend_pct
-         FROM property_traffic_context WHERE property_id = $1`,
+        `SELECT ptc.primary_adt, ptc.primary_road_name, ptc.primary_road_classification,
+                ptc.primary_adt_distance_m,
+                ptc.secondary_adt, ptc.secondary_adt_distance_m, ptc.secondary_road_name,
+                ptc.secondary_adt_station_id,
+                ptc.google_realtime_factor, ptc.trend_direction, ptc.trend_pct,
+                p.frontage_type, p.state,
+                sec_adt.road_classification AS secondary_road_classification
+         FROM property_traffic_context ptc
+         LEFT JOIN properties p ON p.id = ptc.property_id
+         LEFT JOIN adt_counts sec_adt ON sec_adt.station_id = ptc.secondary_adt_station_id
+         WHERE ptc.property_id = $1`,
         [propertyId]
       );
       if (tr.rows.length > 0) {
         const t = tr.rows[0];
+        propertyState = t.state || 'FL';
+        const primaryAdt = t.primary_adt || 0;
+        const primaryDistanceM = t.primary_adt_distance_m != null ? Number(t.primary_adt_distance_m) : undefined;
+        const primaryClassification = t.primary_road_classification || '';
+        const secondaryAdt = t.secondary_adt || undefined;
+        const secondaryDistanceM = t.secondary_adt_distance_m != null ? Number(t.secondary_adt_distance_m) : undefined;
+        const secondaryClassification = t.secondary_road_classification || '';
+        const frontageType = t.frontage_type || 'main';
+
+        let effectiveBaseAdt: number | undefined;
+        let distanceDecayPrimary: number | undefined;
+        let distanceDecaySecondary: number | undefined;
+        let roadClassWeightPrimary: number | undefined;
+        let roadClassWeightSecondary: number | undefined;
+        let frontageFactor: number | undefined;
+        let totalExposure: number | undefined;
+
+        if (primaryAdt > 0) {
+          const result = this.calculateEffectiveBaseAdt(
+            primaryAdt,
+            primaryDistanceM !== undefined ? primaryDistanceM : 500,
+            primaryClassification, frontageType,
+            secondaryAdt,
+            secondaryDistanceM,
+            secondaryClassification,
+          );
+          effectiveBaseAdt = Math.round(result.effectiveBaseAdt);
+          totalExposure = Math.round(result.totalExposure);
+          frontageFactor = result.frontageFactor;
+          if (result.segments.length > 0) {
+            distanceDecayPrimary = Math.round(result.segments[0].decay * 1000) / 1000;
+            roadClassWeightPrimary = result.segments[0].weight;
+          }
+          if (result.segments.length > 1) {
+            distanceDecaySecondary = Math.round(result.segments[1].decay * 1000) / 1000;
+            roadClassWeightSecondary = result.segments[1].weight;
+          }
+        }
+
+        let temporalAdjustedAdt: number | undefined;
+        let temporalSource: 'fdot_profile' | 'google_realtime' | 'default' = 'default';
+        let directionalFactor: number | undefined;
+        let temporalProfileAvailable = false;
+        let dFactorAvailable = false;
+        let hourlyDistribution: Record<string, number> | undefined;
+
+        if (effectiveBaseAdt && effectiveBaseAdt > 0) {
+          try {
+            const temporalService = getDotTemporalProfilesService(pool);
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentDow = now.getDay();
+            const currentMonth = now.getMonth() + 1;
+            const roadClassNorm = this.normalizeRoadClass(primaryClassification);
+            const roadClassForProfile = this.mapToFdotRoadClass(roadClassNorm);
+
+            const multiplierResult = await temporalService.getTemporalMultiplier(
+              roadClassForProfile, propertyState, currentHour, currentDow, currentMonth
+            );
+
+            const dSplit = await temporalService.getDirectionalSplit(
+              roadClassForProfile, propertyState, currentHour, propertyDirection
+            );
+
+            const fullHourly = await temporalService.getFullHourlyDistribution(
+              roadClassForProfile, propertyState
+            );
+
+            temporalProfileAvailable = multiplierResult.source === 'fdot_profile';
+            dFactorAvailable = dSplit !== 0.5;
+            directionalFactor = Math.round(dSplit * 1000) / 1000;
+
+            temporalAdjustedAdt = Math.round(
+              effectiveBaseAdt * multiplierResult.combined * dSplit
+            );
+
+            if (temporalProfileAvailable) {
+              temporalSource = 'fdot_profile';
+            } else if (Number(t.google_realtime_factor) !== 1.0) {
+              temporalSource = 'google_realtime';
+              temporalAdjustedAdt = Math.round(effectiveBaseAdt * Number(t.google_realtime_factor));
+            }
+
+            if (fullHourly) {
+              hourlyDistribution = {};
+              for (const [k, v] of Object.entries(fullHourly)) {
+                hourlyDistribution[k] = v as number;
+              }
+            }
+          } catch (err) {
+            if (Number(t.google_realtime_factor) !== 1.0) {
+              temporalSource = 'google_realtime';
+              temporalAdjustedAdt = Math.round(effectiveBaseAdt * Number(t.google_realtime_factor));
+            }
+          }
+        }
+
         traffic_context = {
-          primary_adt: t.primary_adt || 0,
+          primary_adt: primaryAdt,
           primary_road_name: t.primary_road_name || '',
-          primary_road_classification: t.primary_road_classification || '',
-          secondary_adt: t.secondary_adt,
+          primary_road_classification: primaryClassification,
+          primary_adt_distance_m: primaryDistanceM,
+          secondary_adt: secondaryAdt,
+          secondary_road_classification: secondaryClassification || undefined,
+          secondary_adt_distance_m: secondaryDistanceM,
           google_realtime_factor: Number(t.google_realtime_factor) || 1.0,
           trend_direction: t.trend_direction || 'stable',
           trend_pct: Number(t.trend_pct) || 0,
+          effective_base_adt: effectiveBaseAdt,
+          distance_decay_primary: distanceDecayPrimary,
+          distance_decay_secondary: distanceDecaySecondary,
+          road_class_weight_primary: roadClassWeightPrimary,
+          road_class_weight_secondary: roadClassWeightSecondary,
+          frontage_type: frontageType,
+          frontage_factor: frontageFactor,
+          total_exposure: totalExposure,
+          temporal_adjusted_adt: temporalAdjustedAdt,
+          temporal_source: temporalSource,
+          directional_factor: directionalFactor,
+          property_direction: propertyDirection,
+          temporal_profile_available: temporalProfileAvailable,
+          d_factor_available: dFactorAvailable,
+          hourly_distribution: hourlyDistribution,
         };
         sourcesConnected++;
       } else {
@@ -308,6 +717,78 @@ export class TrafficPredictionEngine {
       }
     } catch { missing.push('market_intel'); }
 
+    let trajectory: DataSourceSignals['trajectory'];
+    try {
+      const analyticsService = new PropertyAnalyticsService(pool);
+      const domainTrend = await analyticsService.getDomainTrend(propertyId);
+
+      const digitalMomentum = domainTrend ? domainTrend.momentum_pct / 100 : 0;
+
+      let yoyAadtGrowth = 0;
+      try {
+        const stationResult = await pool.query(
+          `SELECT primary_adt_station_id FROM property_traffic_context WHERE property_id = $1`,
+          [propertyId]
+        );
+        const stationId = stationResult.rows[0]?.primary_adt_station_id;
+        if (stationId) {
+          const adtResult = await pool.query(
+            `SELECT adt, measurement_year FROM adt_counts
+             WHERE station_id = $1 ORDER BY measurement_year DESC LIMIT 2`,
+            [stationId]
+          );
+          if (adtResult.rows.length >= 2) {
+            const currentAadt = adtResult.rows[0].adt || 0;
+            const priorAadt = adtResult.rows[1].adt || 0;
+            if (priorAadt > 0) {
+              yoyAadtGrowth = (currentAadt - priorAadt) / priorAadt;
+            }
+          }
+        }
+      } catch { }
+
+      let seasonalDeviation = 0;
+      try {
+        const temporalService = getDotTemporalProfilesService(pool);
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+        const roadClassForProfile = this.mapToFdotRoadClass(
+          this.normalizeRoadClass(traffic_context?.primary_road_classification || 'Arterial')
+        );
+        const seasonalFactor = await temporalService.getSeasonalFactor(
+          roadClassForProfile,
+          propertyState,
+          currentMonth
+        );
+        seasonalDeviation = seasonalFactor - 1.0;
+      } catch { }
+
+      const trafficTrajectory =
+        digitalMomentum * 0.5 +
+        yoyAadtGrowth * 0.3 +
+        seasonalDeviation * 0.2;
+
+      const trendDirection = domainTrend ? domainTrend.direction : 'stable';
+
+      trajectory = {
+        traffic_trajectory: Math.round(trafficTrajectory * 1000) / 1000,
+        trend_momentum: domainTrend ? domainTrend.momentum_pct : 0,
+        trend_direction: trendDirection,
+        digital_momentum: Math.round(digitalMomentum * 1000) / 1000,
+        yoy_aadt_growth: Math.round(yoyAadtGrowth * 1000) / 1000,
+        seasonal_deviation: Math.round(seasonalDeviation * 1000) / 1000,
+      };
+
+      if (web_traffic && domainTrend) {
+        web_traffic.trend_momentum = domainTrend.momentum_pct;
+        web_traffic.trend_direction = domainTrend.direction;
+      }
+
+      sourcesConnected++;
+    } catch {
+      missing.push('trajectory');
+    }
+
     const confidenceLevel: DataSourceSignals['data_quality']['confidence_level'] =
       sourcesConnected >= 3 ? 'High' : sourcesConnected >= 2 ? 'Moderate' : 'Low';
 
@@ -315,13 +796,114 @@ export class TrafficPredictionEngine {
       visibility,
       traffic_context,
       web_traffic,
+      trajectory,
       market_intel,
       data_quality: {
         sources_connected: sourcesConnected,
-        total_sources: 4,
+        total_sources: 5,
         confidence_level: confidenceLevel,
         missing_sources: missing,
       },
+    };
+  }
+
+  private calculatePercentileRank(value: number, allValues: number[]): number {
+    if (allValues.length === 0) return 50;
+    const sorted = [...allValues].sort((a, b) => a - b);
+    let countBelow = 0;
+    for (const v of sorted) {
+      if (v < value) countBelow++;
+    }
+    const percentile = (countBelow / sorted.length) * 100;
+    return Math.round(Math.min(100, Math.max(0, percentile)));
+  }
+
+  private async calculatePhysicalTrafficScore(
+    propertyId: string,
+    submarketId: string,
+    effectiveBaseAdt: number,
+    weeklyWalkins: number,
+  ): Promise<PhysicalTrafficScore> {
+    let submarketAdts: number[] = [];
+    let submarketWalkins: number[] = [];
+    let submarketCount = 0;
+
+    try {
+      const adtResult = await pool.query(
+        `SELECT ptc.property_id,
+                ptc.primary_adt,
+                ptc.primary_adt_distance_m,
+                ptc.primary_road_classification,
+                ptc.secondary_adt,
+                ptc.secondary_adt_distance_m,
+                p.frontage_type
+         FROM property_traffic_context ptc
+         JOIN properties p ON p.id = ptc.property_id
+         WHERE p.submarket_id = $1 AND ptc.primary_adt > 0`,
+        [submarketId]
+      );
+
+      for (const row of adtResult.rows) {
+        const pAdt = row.primary_adt || 0;
+        const pDist = row.primary_adt_distance_m || 0;
+        const pClass = row.primary_road_classification || '';
+        const sAdt = row.secondary_adt || undefined;
+        const sDist = row.secondary_adt_distance_m || undefined;
+        const ft = row.frontage_type || 'main';
+
+        if (pAdt > 0) {
+          const result = this.calculateEffectiveBaseAdt(
+            pAdt, pDist, pClass, ft, sAdt, sDist, '',
+          );
+          submarketAdts.push(result.effectiveBaseAdt);
+        }
+      }
+      submarketCount = adtResult.rows.length;
+    } catch {}
+
+    try {
+      const walkinsResult = await pool.query(
+        `SELECT tp.weekly_walk_ins
+         FROM traffic_predictions tp
+         JOIN properties p ON p.id = tp.property_id
+         WHERE p.submarket_id = $1
+         AND tp.weekly_walk_ins > 0
+         ORDER BY tp.prediction_year DESC, tp.prediction_week DESC`,
+        [submarketId]
+      );
+
+      const seen = new Set<number>();
+      for (const row of walkinsResult.rows) {
+        const ww = Number(row.weekly_walk_ins);
+        if (ww > 0 && !seen.has(ww)) {
+          submarketWalkins.push(ww);
+          seen.add(ww);
+        }
+      }
+    } catch {}
+
+    if (submarketAdts.length === 0) {
+      submarketAdts = [effectiveBaseAdt];
+    }
+    if (submarketWalkins.length === 0) {
+      submarketWalkins = [weeklyWalkins];
+    }
+
+    const adtPercentile = this.calculatePercentileRank(effectiveBaseAdt, submarketAdts);
+    const walkinsPercentile = this.calculatePercentileRank(weeklyWalkins, submarketWalkins);
+
+    const adtComponent = (adtPercentile / 100) * 0.6;
+    const walkinsComponent = (walkinsPercentile / 100) * 0.4;
+    const score = Math.round((adtComponent + walkinsComponent) * 100);
+
+    return {
+      score,
+      adt_percentile: adtPercentile,
+      walkins_percentile: walkinsPercentile,
+      adt_component: Math.round(adtComponent * 100),
+      walkins_component: Math.round(walkinsComponent * 100),
+      submarket_property_count: Math.max(submarketCount, submarketWalkins.length),
+      submarket_id: submarketId,
     };
   }
 
@@ -341,7 +923,7 @@ export class TrafficPredictionEngine {
     const signals = await this.loadDataSourceSignals(propertyId);
 
     if (signals.traffic_context && signals.traffic_context.primary_adt > 0) {
-      property.adt = signals.traffic_context.primary_adt;
+      property.adt = signals.traffic_context.effective_base_adt || signals.traffic_context.primary_adt;
       property.road_type = this.mapRoadClassification(signals.traffic_context.primary_road_classification);
     }
     
@@ -367,8 +949,16 @@ export class TrafficPredictionEngine {
       baseTraffic = (visibilityPhysical * 0.60) + (demandTraffic * 0.40);
     }
 
-    if (signals.traffic_context && signals.traffic_context.google_realtime_factor !== 1.0) {
-      baseTraffic *= signals.traffic_context.google_realtime_factor;
+    if (signals.traffic_context) {
+      const tc = signals.traffic_context;
+      if (tc.temporal_profile_available && tc.temporal_adjusted_adt !== undefined) {
+        const temporalRatio = tc.effective_base_adt && tc.effective_base_adt > 0
+          ? tc.temporal_adjusted_adt / tc.effective_base_adt
+          : 1.0;
+        baseTraffic *= Math.max(0.3, Math.min(3.0, temporalRatio));
+      } else if (tc.google_realtime_factor !== 1.0) {
+        baseTraffic *= tc.google_realtime_factor;
+      }
     }
 
     if (signals.web_traffic && signals.web_traffic.score > 0) {
@@ -389,8 +979,58 @@ export class TrafficPredictionEngine {
       marketResearch
     );
     
+    const conversionChain = this.getConversionChainRates(signals, property.submarket_id);
+
+    let hourlyPotential: HourlyWalkInPotential[] | undefined;
+    let dailyBreakdown: DailyBreakdown[] | undefined;
+    let conversionWeeklyWalkins: number | undefined;
+
+    try {
+      const effectiveAdt = signals.traffic_context?.effective_base_adt || signals.traffic_context?.primary_adt || 0;
+      if (effectiveAdt > 0) {
+        const roadClass = signals.traffic_context?.primary_road_classification || 'Arterial';
+        const propState = property.state || 'FL';
+        const direction = (signals.traffic_context?.property_direction) || 'inbound';
+        const now = new Date();
+        const currentMonth = now.getMonth() + 1;
+
+        hourlyPotential = await this.calculateHourlyWalkInPotential(
+          effectiveAdt, roadClass, propState, direction,
+          conversionChain, currentMonth,
+        );
+
+        dailyBreakdown = await this.calculateDailyBreakdown(
+          hourlyPotential, roadClass, propState,
+        );
+
+        conversionWeeklyWalkins = dailyBreakdown.reduce((sum, d) => sum + d.walk_ins, 0);
+      }
+    } catch {
+    }
+
     // Step 8: Calculate temporal patterns
     const temporal = this.calculateTemporalSplit(calibrated, property);
+
+    if (dailyBreakdown && dailyBreakdown.length === 7) {
+      const weekdayDays = dailyBreakdown.filter(d => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(d.day));
+      const weekendDays = dailyBreakdown.filter(d => ['Sat', 'Sun'].includes(d.day));
+      const wdTotal = weekdayDays.reduce((s, d) => s + d.walk_ins, 0);
+      const weTotal = weekendDays.reduce((s, d) => s + d.walk_ins, 0);
+
+      temporal.weekday_total = Math.round(wdTotal);
+      temporal.weekend_total = Math.round(weTotal);
+      temporal.weekday_avg = Math.round(wdTotal / 5);
+      temporal.weekend_avg = Math.round(weTotal / 2);
+
+      const peakEntry = dailyBreakdown.reduce((best, d) => d.walk_ins > best.walk_ins ? d : best, dailyBreakdown[0]);
+      temporal.peak_day = peakEntry.day === 'Sun' ? 'Sunday'
+        : peakEntry.day === 'Mon' ? 'Monday'
+        : peakEntry.day === 'Tue' ? 'Tuesday'
+        : peakEntry.day === 'Wed' ? 'Wednesday'
+        : peakEntry.day === 'Thu' ? 'Thursday'
+        : peakEntry.day === 'Fri' ? 'Friday'
+        : 'Saturday';
+    }
     
     // Step 9: Calculate confidence
     const confidence = await this.calculateConfidence(property, marketResearch);
@@ -399,6 +1039,27 @@ export class TrafficPredictionEngine {
     const { week, year } = targetWeek 
       ? { week: targetWeek, year: new Date().getFullYear() }
       : this.getCurrentWeek();
+
+    const finalWeeklyWalkins = conversionWeeklyWalkins !== undefined
+      ? Math.round(Math.max(conversionWeeklyWalkins, calibrated * 0.1))
+      : Math.round(calibrated);
+
+    const peakHourWalkin = hourlyPotential && hourlyPotential.length > 0
+      ? Math.round(Math.max(...hourlyPotential.map(h => h.walk_in_potential)) * 100) / 100
+      : Math.round(calibrated / 7 / 10);
+
+    let physicalTrafficScore: PhysicalTrafficScore | undefined;
+    try {
+      const effectiveAdt = signals.traffic_context?.effective_base_adt || signals.traffic_context?.primary_adt || 0;
+      if (property.submarket_id && effectiveAdt > 0) {
+        physicalTrafficScore = await this.calculatePhysicalTrafficScore(
+          propertyId,
+          property.submarket_id,
+          effectiveAdt,
+          finalWeeklyWalkins,
+        );
+      }
+    } catch {}
     
     // Step 11: Build prediction object
     const prediction: TrafficPrediction = {
@@ -406,16 +1067,33 @@ export class TrafficPredictionEngine {
       prediction_week: week,
       prediction_year: year,
       
-      weekly_walk_ins: Math.round(calibrated),
-      daily_average: Math.round(calibrated / 7),
-      peak_hour_estimate: Math.round(calibrated / 7 / 10),  // Assume 10 active hours/day
+      weekly_walk_ins: finalWeeklyWalkins,
+      daily_average: Math.round(finalWeeklyWalkins / 7),
+      peak_hour_estimate: peakHourWalkin,
       
       breakdown: {
         physical_factors: Math.round(physicalTraffic),
         market_demand_factors: Math.round(demandTraffic),
         supply_demand_adjustment: adjusted.multiplier,
-        base_before_adjustment: Math.round(baseTraffic)
+        base_before_adjustment: Math.round(baseTraffic),
+        effective_base_adt: signals.traffic_context?.effective_base_adt,
+        distance_decay: signals.traffic_context?.distance_decay_primary,
+        road_class_weight: signals.traffic_context?.road_class_weight_primary,
+        frontage_factor: signals.traffic_context?.frontage_factor,
+        multi_segment_exposure: signals.traffic_context?.total_exposure,
+        temporal_adjusted_adt: signals.traffic_context?.temporal_adjusted_adt,
+        temporal_source: signals.traffic_context?.temporal_source,
+        directional_factor: signals.traffic_context?.directional_factor,
+        hourly_distribution: signals.traffic_context?.hourly_distribution,
+        traffic_trajectory: signals.trajectory?.traffic_trajectory,
+        trend_momentum: signals.trajectory?.trend_momentum,
+        trend_direction: signals.trajectory?.trend_direction,
       },
+
+      conversion_chain: conversionChain,
+      hourly_potential: hourlyPotential,
+      daily_breakdown: dailyBreakdown,
+      physical_traffic_score: physicalTrafficScore,
       
       temporal_patterns: temporal,
       
@@ -424,13 +1102,29 @@ export class TrafficPredictionEngine {
       market_context: {
         submarket: marketResearch.submarket_name,
         market_condition: adjusted.condition,
-        foot_traffic_index: marketResearch.demand_indicators?.properties_in_market || 100,
+        foot_traffic_index: physicalTrafficScore?.score ?? (marketResearch.demand_indicators?.properties_in_market || 100),
         supply_demand_ratio: marketResearch.supply_analysis?.future_supply_ratio || 1.0
       },
       
       model_version: this.MODEL_VERSION,
       prediction_date: new Date()
     };
+
+    try {
+      const digitalMomentumPct = signals.trajectory?.trend_momentum || 0;
+      const yoyAadtGrowthPct = (signals.trajectory?.yoy_aadt_growth || 0) * 100;
+      prediction.detected_patterns = trendPatternDetector.detectPatterns({
+        digital_momentum_pct: digitalMomentumPct,
+        yoy_aadt_growth_pct: yoyAadtGrowthPct,
+        seasonal_deviation: signals.trajectory?.seasonal_deviation,
+        digital_share: signals.web_traffic?.digital_share,
+      });
+    } catch {
+      prediction.detected_patterns = trendPatternDetector.detectPatterns({
+        digital_momentum_pct: 0,
+        yoy_aadt_growth_pct: 0,
+      });
+    }
     
     // Step 12: Save prediction to database
     await this.savePrediction(prediction);

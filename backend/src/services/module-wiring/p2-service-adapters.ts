@@ -47,8 +47,9 @@ function getTrafficDataSourcesService() {
 }
 function getPropertyAnalyticsService() {
   try {
-    const mod = require('../property-analytics.service');
-    return mod.propertyAnalyticsService || mod.default || null;
+    const { pool } = require('../../database');
+    const { PropertyAnalyticsService } = require('../property-analytics.service');
+    return new PropertyAnalyticsService(pool);
   } catch { return null; }
 }
 function getCompTrafficService() {
@@ -59,6 +60,12 @@ function getCompTrafficService() {
 }
 function getTrafficModuleWiring() {
   return require('../traffic-module-wiring');
+}
+function getTrendPatternDetector() {
+  try {
+    const mod = require('../trend-pattern-detector');
+    return mod.trendPatternDetector || mod.default || null;
+  } catch { return null; }
 }
 
 // ============================================================================
@@ -113,7 +120,7 @@ export async function wireTrafficIntelligence(
     const analyticsService = getPropertyAnalyticsService();
     if (analyticsService) {
       try {
-        webTraffic = await analyticsService.fetchPropertyWebTraffic(propertyId, { days: 30 });
+        webTraffic = await analyticsService.fetchPropertyWebTraffic(propertyId);
         if (webTraffic) connectedSources++;
       } catch (err) {
         if (options?.tradeAreaId) {
@@ -228,6 +235,40 @@ export async function wireTrafficIntelligence(
       seasonalRiskWindows.push({ week_start: 1, week_end: 12, risk: 'low_traffic_period' });
     }
 
+    const effectiveBaseAdt = physicalTraffic?.breakdown?.effective_base_adt ?? null;
+    const temporalAdjustedAdt = physicalTraffic?.breakdown?.temporal_adjusted_adt ?? null;
+    const trafficTrajectory = physicalTraffic?.breakdown?.traffic_trajectory ?? null;
+    const trendMomentum = physicalTraffic?.breakdown?.trend_momentum ?? null;
+    const trendDirection = physicalTraffic?.breakdown?.trend_direction ?? null;
+    const dailyBreakdown = physicalTraffic?.daily_breakdown ?? null;
+    const digitalShare = webTraffic?.digital_share ?? null;
+
+    let detectedPatterns: Array<{
+      name: string;
+      icon: string;
+      confidence: number;
+      condition: string;
+      action: string;
+      timeline: string;
+      signals_used: string[];
+    }> = [];
+    try {
+      if (physicalTraffic?.detected_patterns) {
+        detectedPatterns = physicalTraffic.detected_patterns;
+      } else {
+        const patternDetector = getTrendPatternDetector();
+        if (patternDetector) {
+          detectedPatterns = patternDetector.detectPatterns({
+            digital_momentum_pct: trendMomentum || 0,
+            yoy_aadt_growth_pct: 0,
+            digital_share: digitalShare ?? undefined,
+          });
+        }
+      }
+    } catch {
+      detectedPatterns = [];
+    }
+
     // Publish M07 outputs with full TrafficIntelligenceV2 payload
     dataFlowRouter.publishModuleData('M07', dealId, {
       predicted_leases_week: trafficToLease.predicted_leases,
@@ -245,6 +286,14 @@ export async function wireTrafficIntelligence(
       absorption_rate: absorptionRate,
       seasonal_risk_windows: seasonalRiskWindows,
       occupancy_below_threshold: occupancyBelowThreshold,
+      effective_base_adt: effectiveBaseAdt,
+      temporal_adjusted_adt: temporalAdjustedAdt,
+      traffic_trajectory: trafficTrajectory,
+      trend_momentum: trendMomentum,
+      trend_direction: trendDirection,
+      detected_patterns: detectedPatterns,
+      digital_share: digitalShare,
+      daily_breakdown: dailyBreakdown,
       physical_traffic: physicalTraffic
         ? {
             weekly_walk_ins: physicalTraffic.weekly_walk_ins,
@@ -268,6 +317,7 @@ export async function wireTrafficIntelligence(
             users: webTraffic.users,
             bounce_rate: webTraffic.bounce_rate,
             is_comp_proxy: webTraffic.is_comp_proxy || false,
+            digital_share: digitalShare,
           }
         : null,
       digital_traffic: digitalScore
@@ -308,9 +358,52 @@ export async function wireTrafficIntelligence(
         visibility_score: visibilityScore,
         capture_rate: captureRate,
         data_quality_score: connectedSources,
+        effective_base_adt: effectiveBaseAdt,
+        temporal_adjusted_adt: temporalAdjustedAdt,
+        traffic_trajectory: trafficTrajectory,
+        trend_momentum: trendMomentum,
+        trend_direction: trendDirection,
+        detected_patterns: detectedPatterns,
+        digital_share: digitalShare,
+        daily_breakdown: dailyBreakdown,
       },
       timestamp: new Date(),
     });
+
+    for (const pattern of detectedPatterns) {
+      if (pattern.name === 'DIGITAL_DIVERGENCE' || pattern.name === 'MARKET_EXHAUSTION') {
+        moduleEventBus.emit({
+          type: ModuleEventType.RISK_ALERT,
+          sourceModule: 'M07',
+          dealId,
+          data: {
+            alert_type: `traffic_${pattern.name.toLowerCase()}`,
+            pattern_name: pattern.name,
+            confidence: pattern.confidence,
+            action: pattern.action,
+            timeline: pattern.timeline,
+            severity: pattern.name === 'MARKET_EXHAUSTION' ? 'high' : 'medium',
+          },
+          timestamp: new Date(),
+        });
+      }
+
+      if (pattern.name === 'DEMAND_SURGE') {
+        moduleEventBus.emit({
+          type: ModuleEventType.ARBITRAGE_DETECTED,
+          sourceModule: 'M07',
+          dealId,
+          data: {
+            signal_type: 'DEMAND_SURGE',
+            confidence: pattern.confidence,
+            action: pattern.action,
+            timeline: pattern.timeline,
+            acquisition_confidence: 'high',
+          },
+          timestamp: new Date(),
+        });
+      }
+    }
 
     logger.info('[P2-1] Traffic intelligence wired (V2)', {
       dealId,
@@ -321,6 +414,10 @@ export async function wireTrafficIntelligence(
       captureRate,
       connectedSources,
       digitalScore: digitalScore?.score,
+      effectiveBaseAdt,
+      trafficTrajectory,
+      detectedPatterns: detectedPatterns.map((p: any) => p.name),
+      digitalShare,
     });
   } catch (error) {
     logger.error('[P2-1] Traffic intelligence wiring failed', {
@@ -811,7 +908,10 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M05',
           dealId: event.dealId,
-          data: { trigger: 'traffic_update' },
+          data: {
+            trigger: 'traffic_update',
+            digital_share: event.data?.digital_share,
+          },
           timestamp: new Date(),
         },
         `market-recalc-traffic:${event.dealId}`,
@@ -822,7 +922,11 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M08',
           dealId: event.dealId,
-          data: { trigger: 'traffic_update' },
+          data: {
+            trigger: 'traffic_update',
+            detected_patterns: event.data?.detected_patterns,
+            traffic_trajectory: event.data?.traffic_trajectory,
+          },
           timestamp: new Date(),
         },
         `strategy-recalc-traffic:${event.dealId}`,
@@ -833,7 +937,13 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
-          data: { trigger: 'traffic_update' },
+          data: {
+            trigger: 'traffic_update',
+            effective_base_adt: event.data?.effective_base_adt,
+            temporal_adjusted_adt: event.data?.temporal_adjusted_adt,
+            daily_breakdown: event.data?.daily_breakdown,
+            traffic_trajectory: event.data?.traffic_trajectory,
+          },
           timestamp: new Date(),
         },
         `proforma-recalc-traffic:${event.dealId}`,
@@ -844,7 +954,12 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M14',
           dealId: event.dealId,
-          data: { trigger: 'traffic_update', visibility_score: event.data?.visibility_score },
+          data: {
+            trigger: 'traffic_update',
+            visibility_score: event.data?.visibility_score,
+            detected_patterns: event.data?.detected_patterns,
+            traffic_trajectory: event.data?.traffic_trajectory,
+          },
           timestamp: new Date(),
         },
         `risk-recalc-traffic:${event.dealId}`,
@@ -855,10 +970,59 @@ export function setupP2Subscriptions(): void {
           type: ModuleEventType.RECALCULATE,
           sourceModule: 'M25',
           dealId: event.dealId,
-          data: { trigger: 'traffic_update', predicted_leases: event.data?.predicted_leases },
+          data: {
+            trigger: 'traffic_update',
+            predicted_leases: event.data?.predicted_leases,
+            traffic_trajectory: event.data?.traffic_trajectory,
+            trend_momentum: event.data?.trend_momentum,
+            trend_direction: event.data?.trend_direction,
+          },
           timestamp: new Date(),
         },
         `jedi-recalc-traffic:${event.dealId}`,
+      );
+    }
+  });
+
+  // When M07 detects risk patterns (DIGITAL_DIVERGENCE, MARKET_EXHAUSTION) → alert M14 Risk
+  moduleEventBus.on(ModuleEventType.RISK_ALERT, async (event) => {
+    if (event.sourceModule === 'M07') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M14',
+          dealId: event.dealId,
+          data: {
+            trigger: 'traffic_risk_pattern',
+            pattern_name: event.data?.pattern_name,
+            severity: event.data?.severity,
+            action: event.data?.action,
+          },
+          timestamp: new Date(),
+        },
+        `risk-recalc-traffic-pattern:${event.dealId}`,
+      );
+    }
+  });
+
+  // When M07 detects DEMAND_SURGE → notify M08 Strategy for acquisition confidence
+  moduleEventBus.on(ModuleEventType.ARBITRAGE_DETECTED, async (event) => {
+    if (event.sourceModule === 'M07' && event.data?.signal_type === 'DEMAND_SURGE') {
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M08',
+          dealId: event.dealId,
+          data: {
+            trigger: 'demand_surge_detected',
+            signal_type: 'DEMAND_SURGE',
+            confidence: event.data?.confidence,
+            acquisition_confidence: event.data?.acquisition_confidence,
+            timeline: event.data?.timeline,
+          },
+          timestamp: new Date(),
+        },
+        `strategy-recalc-demand-surge:${event.dealId}`,
       );
     }
   });

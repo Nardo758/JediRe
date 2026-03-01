@@ -10,6 +10,7 @@ import { apiClient } from '@/services/api.client';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
+import TrafficPredictionsTab from './traffic/TrafficPredictionsTab';
 
 interface TrafficModuleProps {
   deal?: any;
@@ -923,7 +924,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             })}
           </div>
 
-          {activeTab === 'predictions' && renderPredictionsTab()}
+          {activeTab === 'predictions' && (
+            <>
+              {renderPredictionsTab()}
+              <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
+            </>
+          )}
           {activeTab === 'data_sources' && <TrafficDataSourcesTab dealId={resolvedDealId} onNavigateToVisibility={() => setActiveTab('visibility')} />}
           {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} />}
           {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}

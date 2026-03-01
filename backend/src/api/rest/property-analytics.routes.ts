@@ -154,6 +154,32 @@ router.post('/:propertyId/comp-proxy', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/:propertyId/digital-share', async (req: Request, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const { tradeAreaId } = req.query;
+    if (!tradeAreaId) {
+      return res.status(400).json({
+        error: 'tradeAreaId query parameter is required',
+        hint: 'Define a trade area to compute digital share',
+      });
+    }
+    const result = await analyticsService.getCompetitorDigitalShare(propertyId, tradeAreaId as string);
+    if (!result) {
+      return res.json({
+        property_id: propertyId,
+        digital_share: null,
+        competitors: [],
+        message: 'No domain connection or competitor data available',
+      });
+    }
+    res.json({ property_id: propertyId, ...result });
+  } catch (error: any) {
+    logger.error('[PropertyAnalytics] Digital share failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to compute digital share', message: error.message });
+  }
+});
+
 router.post('/sync', async (req: Request, res: Response) => {
   try {
     const result = await analyticsService.syncAllPropertyAnalytics();

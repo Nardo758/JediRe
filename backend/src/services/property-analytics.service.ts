@@ -44,6 +44,14 @@ export interface WebTrafficScore {
   trend_pct: number;
 }
 
+export interface DomainTrend {
+  momentum_pct: number;
+  direction: 'accelerating' | 'stable' | 'decelerating' | 'declining';
+  recent_avg_clicks: number;
+  prior_avg_clicks: number;
+  months_analyzed: number;
+}
+
 interface SpyFuDomainStats {
   monthlyOrganicClicks: number;
   monthlyPaidClicks: number;
@@ -404,6 +412,247 @@ export class PropertyAnalyticsService {
 
   async getDomainHistory(domain: string): Promise<SpyFuDomainStats[] | null> {
     return this._fetchDomainHistory(domain);
+  }
+
+  async getCompetitorDigitalShare(
+    propertyId: string,
+    tradeAreaId: string
+  ): Promise<{ digital_share: number; competitors: Array<{ domain: string; organic_clicks: number; paid_clicks: number; overlap_keywords: number }> } | null> {
+    const connection = await this.getDomainConnection(propertyId);
+    if (!connection) {
+      logger.debug(`[PropertyAnalytics] No domain connection for digital share, property ${propertyId}`);
+      return null;
+    }
+
+    const propertyDomain = connection.ga_property_id;
+
+    const seoCompetitors = await this._fetchTopSEOCompetitors(propertyDomain);
+    const ppcCompetitors = await this._fetchTopPPCCompetitors(propertyDomain);
+
+    const competitorMap = new Map<string, { organic_clicks: number; paid_clicks: number; overlap_keywords: number }>();
+
+    if (seoCompetitors) {
+      for (const comp of seoCompetitors) {
+        competitorMap.set(comp.domain, {
+          organic_clicks: comp.monthlyOrganicClicks || 0,
+          paid_clicks: 0,
+          overlap_keywords: comp.commonTerms || 0,
+        });
+      }
+    }
+
+    if (ppcCompetitors) {
+      for (const comp of ppcCompetitors) {
+        const existing = competitorMap.get(comp.domain);
+        if (existing) {
+          existing.paid_clicks = comp.monthlyPaidClicks || 0;
+        } else {
+          competitorMap.set(comp.domain, {
+            organic_clicks: 0,
+            paid_clicks: comp.monthlyPaidClicks || 0,
+            overlap_keywords: comp.commonTerms || 0,
+          });
+        }
+      }
+    }
+
+    const tradeAreaDomains = await this.pool.query(
+      `SELECT pgc.ga_property_id as domain, pwa.sessions,
+              COALESCE((pwa.device_breakdown->>'organic_value')::numeric, 0) as organic_value
+       FROM property_ga_connections pgc
+       LEFT JOIN property_website_analytics pwa ON pwa.property_id = pgc.property_id
+       INNER JOIN traffic_comp_snapshots tcs ON tcs.property_id = pgc.property_id AND tcs.trade_area_id = $1
+       WHERE pgc.connection_status = 'active'
+         AND pwa.period_end >= (CURRENT_DATE - INTERVAL '60 days')
+       ORDER BY pwa.period_end DESC`,
+      [tradeAreaId]
+    );
+
+    const latestPropertyAnalytics = await this.pool.query(
+      `SELECT organic_sessions FROM property_website_analytics
+       WHERE property_id = $1 ORDER BY period_end DESC LIMIT 1`,
+      [propertyId]
+    );
+
+    const propertyOrganicClicks = latestPropertyAnalytics.rows.length > 0
+      ? (latestPropertyAnalytics.rows[0].organic_sessions || 0)
+      : 0;
+
+    let totalSubmarketClicks = propertyOrganicClicks;
+
+    const seenDomains = new Set<string>();
+    for (const row of tradeAreaDomains.rows) {
+      if (!seenDomains.has(row.domain) && row.domain !== propertyDomain) {
+        seenDomains.add(row.domain);
+        totalSubmarketClicks += (row.sessions || 0);
+      }
+    }
+
+    for (const [, comp] of competitorMap) {
+      totalSubmarketClicks += comp.organic_clicks;
+    }
+
+    const digitalShare = totalSubmarketClicks > 0
+      ? Math.min(1.0, propertyOrganicClicks / totalSubmarketClicks)
+      : 0;
+
+    const competitors = Array.from(competitorMap.entries()).map(([domain, data]) => ({
+      domain,
+      organic_clicks: data.organic_clicks,
+      paid_clicks: data.paid_clicks,
+      overlap_keywords: data.overlap_keywords,
+    }));
+
+    for (const comp of competitors) {
+      try {
+        await this.pool.query(
+          `INSERT INTO property_digital_competitors
+           (property_id, competitor_domain, competitor_organic_clicks, competitor_paid_clicks, overlap_keywords, fetched_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           ON CONFLICT (property_id, competitor_domain)
+           DO UPDATE SET
+             competitor_organic_clicks = EXCLUDED.competitor_organic_clicks,
+             competitor_paid_clicks = EXCLUDED.competitor_paid_clicks,
+             overlap_keywords = EXCLUDED.overlap_keywords,
+             fetched_at = NOW()`,
+          [propertyId, comp.domain, comp.organic_clicks, comp.paid_clicks, comp.overlap_keywords]
+        );
+      } catch (err: any) {
+        logger.warn(`[PropertyAnalytics] Failed to store competitor ${comp.domain}: ${err.message}`);
+      }
+    }
+
+    logger.info(`[PropertyAnalytics] Digital share for ${propertyId}: ${(digitalShare * 100).toFixed(1)}% (${competitors.length} competitors)`);
+
+    return { digital_share: Math.round(digitalShare * 1000) / 1000, competitors };
+  }
+
+  async getDomainTrend(propertyId: string): Promise<DomainTrend | null> {
+    const connection = await this.getDomainConnection(propertyId);
+    if (!connection) {
+      logger.debug(`[PropertyAnalytics] No domain connection for trend, property ${propertyId}`);
+      return null;
+    }
+
+    const domain = connection.ga_property_id;
+    const history = await this._fetchDomainHistory(domain);
+    if (!history || history.length < 2) {
+      logger.debug(`[PropertyAnalytics] Insufficient history for trend, domain ${domain}`);
+      return null;
+    }
+
+    return this._calculateTrend(history);
+  }
+
+  _calculateTrend(history: SpyFuDomainStats[]): DomainTrend | null {
+    const sorted = [...history].sort((a, b) => {
+      if (a.searchYear !== b.searchYear) return b.searchYear - a.searchYear;
+      return b.searchMonth - a.searchMonth;
+    });
+
+    const recentMonths = sorted.slice(0, 3);
+    const priorMonths = sorted.slice(3, 6);
+
+    if (recentMonths.length === 0) return null;
+
+    const avgClicks = (months: SpyFuDomainStats[]) => {
+      if (months.length === 0) return 0;
+      const total = months.reduce((sum, m) => sum + (m.monthlyOrganicClicks + m.monthlyPaidClicks), 0);
+      return total / months.length;
+    };
+
+    const recentAvg = avgClicks(recentMonths);
+    const priorAvg = priorMonths.length > 0 ? avgClicks(priorMonths) : recentAvg;
+
+    const momentumPct = priorAvg > 0
+      ? ((recentAvg - priorAvg) / priorAvg) * 100
+      : 0;
+
+    let direction: DomainTrend['direction'];
+    if (momentumPct > 15) direction = 'accelerating';
+    else if (momentumPct > -5) direction = 'stable';
+    else if (momentumPct > -15) direction = 'decelerating';
+    else direction = 'declining';
+
+    return {
+      momentum_pct: Math.round(momentumPct * 100) / 100,
+      direction,
+      recent_avg_clicks: Math.round(recentAvg),
+      prior_avg_clicks: Math.round(priorAvg),
+      months_analyzed: recentMonths.length + priorMonths.length,
+    };
+  }
+
+  private async _fetchTopSEOCompetitors(domain: string): Promise<Array<{ domain: string; monthlyOrganicClicks: number; commonTerms: number }> | null> {
+    const apiKey = process.env.SPYFU_API_KEY;
+    if (!apiKey) {
+      logger.warn('[PropertyAnalytics] SPYFU_API_KEY not configured');
+      return null;
+    }
+
+    const url = `${SPYFU_BASE}/competitors_api/v2/getTopSEOCompetitors?domain=${encodeURIComponent(domain)}&api_key=${apiKey}`;
+    logger.debug(`[PropertyAnalytics] Fetching SpyFu SEO competitors for ${domain}`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        logger.warn(`[PropertyAnalytics] SpyFu SEO competitors API error: ${response.status} — ${text.substring(0, 200)}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      if (!data || !Array.isArray(data) || data.length === 0) return null;
+
+      return data.slice(0, 20).map((row: any) => ({
+        domain: row.domain || row.competitorDomain || '',
+        monthlyOrganicClicks: row.monthlyOrganicClicks || row.organicClicks || 0,
+        commonTerms: row.commonTerms || row.sharedTerms || 0,
+      }));
+    } catch (error: any) {
+      logger.error(`[PropertyAnalytics] SpyFu SEO competitors fetch failed for ${domain}`, { error: error.message });
+      return null;
+    }
+  }
+
+  private async _fetchTopPPCCompetitors(domain: string): Promise<Array<{ domain: string; monthlyPaidClicks: number; commonTerms: number }> | null> {
+    const apiKey = process.env.SPYFU_API_KEY;
+    if (!apiKey) {
+      logger.warn('[PropertyAnalytics] SPYFU_API_KEY not configured');
+      return null;
+    }
+
+    const url = `${SPYFU_BASE}/competitors_api/v2/getTopPPCCompetitors?domain=${encodeURIComponent(domain)}&api_key=${apiKey}`;
+    logger.debug(`[PropertyAnalytics] Fetching SpyFu PPC competitors for ${domain}`);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        logger.warn(`[PropertyAnalytics] SpyFu PPC competitors API error: ${response.status} — ${text.substring(0, 200)}`);
+        return null;
+      }
+
+      const data = await response.json() as any;
+      if (!data || !Array.isArray(data) || data.length === 0) return null;
+
+      return data.slice(0, 20).map((row: any) => ({
+        domain: row.domain || row.competitorDomain || '',
+        monthlyPaidClicks: row.monthlyPaidClicks || row.paidClicks || 0,
+        commonTerms: row.commonTerms || row.sharedTerms || 0,
+      }));
+    } catch (error: any) {
+      logger.error(`[PropertyAnalytics] SpyFu PPC competitors fetch failed for ${domain}`, { error: error.message });
+      return null;
+    }
   }
 
   private async _fetchLatestDomainStats(domain: string): Promise<SpyFuDomainStats | null> {

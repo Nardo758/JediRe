@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Car, Globe, BarChart3, Eye, AlertCircle, CheckCircle2,
   ArrowUpRight, ArrowDownRight, Minus, Link2, Search,
+  Layers, Clock, TrendingUp,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -16,10 +17,28 @@ interface DataSourceSignals {
     primary_adt: number;
     primary_road_name: string;
     primary_road_classification: string;
+    primary_adt_distance_m?: number;
     secondary_adt?: number;
+    secondary_road_classification?: string;
+    secondary_adt_distance_m?: number;
     google_realtime_factor: number;
     trend_direction: string;
     trend_pct: number;
+    effective_base_adt?: number;
+    distance_decay_primary?: number;
+    distance_decay_secondary?: number;
+    road_class_weight_primary?: number;
+    road_class_weight_secondary?: number;
+    frontage_type?: string;
+    frontage_factor?: number;
+    total_exposure?: number;
+    temporal_adjusted_adt?: number;
+    temporal_source?: 'fdot_profile' | 'google_realtime' | 'default';
+    directional_factor?: number;
+    property_direction?: 'inbound' | 'outbound';
+    temporal_profile_available?: boolean;
+    d_factor_available?: boolean;
+    hourly_distribution?: Record<string, number>;
   };
   web_traffic?: {
     sessions: number;
@@ -32,6 +51,17 @@ interface DataSourceSignals {
     organic_keywords?: number;
     paid_keywords?: number;
     domain_strength?: number;
+    digital_share?: number;
+    trend_momentum?: number;
+    trend_direction?: string;
+  };
+  trajectory?: {
+    traffic_trajectory: number;
+    trend_momentum: number;
+    trend_direction: string;
+    digital_momentum: number;
+    yoy_aadt_growth: number;
+    seasonal_deviation: number;
   };
   market_intel?: {
     supply_demand_ratio?: number;
@@ -179,25 +209,80 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
           </div>
           {ds?.traffic_context ? (
             <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Layers size={12} className="text-stone-400" />
+                <span className="text-[10px] text-stone-400 uppercase font-mono">Layer 1: FDOT AADT Baseline</span>
+              </div>
               <div>
                 <div className="text-2xl font-bold text-stone-900">
-                  {ds.traffic_context.primary_adt.toLocaleString()}
-                  <span className="text-sm font-normal text-stone-500 ml-1">vehicles/day</span>
+                  {ds.traffic_context.effective_base_adt
+                    ? ds.traffic_context.effective_base_adt.toLocaleString()
+                    : ds.traffic_context.primary_adt.toLocaleString()}
+                  <span className="text-sm font-normal text-stone-500 ml-1">
+                    {ds.traffic_context.effective_base_adt ? 'effective ADT' : 'raw ADT'}
+                  </span>
                 </div>
                 <div className="text-xs text-stone-500 mt-0.5">{ds.traffic_context.primary_road_name}</div>
               </div>
+              {ds.traffic_context.effective_base_adt && (
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="bg-stone-50 rounded px-2 py-1">
+                    <span className="text-stone-400">Decay: </span>
+                    <span className="font-mono text-stone-700">
+                      {ds.traffic_context.distance_decay_primary !== undefined
+                        ? `${(ds.traffic_context.distance_decay_primary * 100).toFixed(1)}%`
+                        : '—'}
+                    </span>
+                    {ds.traffic_context.primary_adt_distance_m !== undefined && (
+                      <span className="text-stone-400 ml-1">
+                        ({(ds.traffic_context.primary_adt_distance_m / 1609).toFixed(2)}mi)
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-stone-50 rounded px-2 py-1">
+                    <span className="text-stone-400">Road Wt: </span>
+                    <span className="font-mono text-stone-700">
+                      {ds.traffic_context.road_class_weight_primary !== undefined
+                        ? ds.traffic_context.road_class_weight_primary.toFixed(1)
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="bg-stone-50 rounded px-2 py-1">
+                    <span className="text-stone-400">Frontage: </span>
+                    <span className="font-mono text-stone-700">
+                      {ds.traffic_context.frontage_factor !== undefined
+                        ? `${ds.traffic_context.frontage_factor.toFixed(1)}x`
+                        : '—'}
+                    </span>
+                    <span className="text-stone-400 ml-1">({ds.traffic_context.frontage_type || 'main'})</span>
+                  </div>
+                  <div className="bg-stone-50 rounded px-2 py-1">
+                    <span className="text-stone-400">Exposure: </span>
+                    <span className="font-mono text-stone-700">
+                      {ds.traffic_context.total_exposure
+                        ? ds.traffic_context.total_exposure.toLocaleString()
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <div className="text-xs text-stone-500">
-                  Google Real-Time: <strong className="text-stone-900">{ds.traffic_context.google_realtime_factor.toFixed(2)}x</strong>
+                  {ds.traffic_context.temporal_source === 'google_realtime'
+                    ? <>Google RT: <strong className="text-stone-900">{ds.traffic_context.google_realtime_factor.toFixed(2)}x</strong></>
+                    : <>Classification: <strong className="text-stone-900">{ds.traffic_context.primary_road_classification}</strong></>
+                  }
                 </div>
                 <TrendIndicator direction={ds.traffic_context.trend_direction} pct={ds.traffic_context.trend_pct} />
               </div>
-              <div className="text-[10px] text-stone-400">
-                Classification: {ds.traffic_context.primary_road_classification}
-                {ds.traffic_context.secondary_adt && (
-                  <span className="ml-2">| Secondary: {ds.traffic_context.secondary_adt.toLocaleString()} ADT</span>
-                )}
-              </div>
+              {ds.traffic_context.secondary_adt && (
+                <div className="text-[10px] text-stone-400">
+                  Secondary: {ds.traffic_context.secondary_adt.toLocaleString()} ADT
+                  {ds.traffic_context.secondary_road_classification && (
+                    <span> ({ds.traffic_context.secondary_road_classification})</span>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-4">
@@ -225,6 +310,10 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
           </div>
           {ds?.web_traffic ? (
             <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <TrendingUp size={12} className="text-stone-400" />
+                <span className="text-[10px] text-stone-400 uppercase font-mono">Layer 3: SpyFu Digital Intelligence</span>
+              </div>
               <div>
                 <div className="text-2xl font-bold text-stone-900">
                   {ds.web_traffic.sessions.toLocaleString()}
@@ -232,6 +321,24 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-stone-500">
                   <span>Score: <strong className="text-stone-800">{ds.web_traffic.score}/100</strong></span>
+                  {ds.web_traffic.trend_momentum !== undefined && (
+                    <span className="flex items-center gap-0.5">
+                      Trend:
+                      {ds.web_traffic.trend_momentum > 0 ? (
+                        <span className="text-emerald-600 font-semibold flex items-center">
+                          <ArrowUpRight size={10} />+{ds.web_traffic.trend_momentum.toFixed(1)}% QoQ
+                        </span>
+                      ) : ds.web_traffic.trend_momentum < 0 ? (
+                        <span className="text-red-500 font-semibold flex items-center">
+                          <ArrowDownRight size={10} />{ds.web_traffic.trend_momentum.toFixed(1)}% QoQ
+                        </span>
+                      ) : (
+                        <span className="text-stone-400 font-semibold flex items-center">
+                          <Minus size={10} />Stable
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -248,6 +355,12 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
                 <span className="text-stone-500">Domain Strength: <strong className="text-stone-900">{ds.web_traffic.domain_strength || 0}/100</strong></span>
                 <span className="text-stone-500">SEO Value: <strong className="text-stone-900">${Math.round(ds.web_traffic.organic_value || 0).toLocaleString()}</strong></span>
               </div>
+              {ds.web_traffic.digital_share !== undefined && (
+                <div className="bg-stone-50 rounded-lg p-2 flex items-center justify-between">
+                  <span className="text-[11px] text-stone-500">Digital Share vs Submarket</span>
+                  <span className="text-sm font-bold text-stone-900">{(ds.web_traffic.digital_share * 100).toFixed(1)}%</span>
+                </div>
+              )}
               {ds.web_traffic.is_comp_proxy && (
                 <div className="bg-blue-50 rounded-lg p-2 text-[11px] text-blue-700">
                   Using comp average from {ds.web_traffic.proxy_source_count} properties in trade area
@@ -348,6 +461,72 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
               <p className="text-xs text-stone-400">Market data will appear once available for this property's submarket</p>
             </div>
           )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-stone-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Clock size={16} className="text-stone-500" />
+              <span className="font-semibold text-stone-900 text-sm">Temporal Profile</span>
+            </div>
+            {ds?.traffic_context?.temporal_profile_available ? (
+              <StatusBadge status="connected" label="Active" />
+            ) : (
+              <StatusBadge status="not_connected" label="Defaults" />
+            )}
+          </div>
+          <div className="flex items-center gap-2 mb-3">
+            <Layers size={12} className="text-stone-400" />
+            <span className="text-[10px] text-stone-400 uppercase font-mono">Layer 2: FDOT Temporal Distribution</span>
+          </div>
+          {(() => {
+            const tc = ds?.traffic_context;
+            const hasHourly = tc?.hourly_distribution && Object.keys(tc.hourly_distribution).length > 0;
+            const hasDFactor = tc?.d_factor_available;
+            const hasTemporal = tc?.temporal_profile_available;
+            const completePct = [hasHourly, hasDFactor, hasTemporal].filter(Boolean).length;
+            const totalFeatures = 4;
+
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-stone-100 rounded-full h-2">
+                    <div
+                      className="h-full bg-stone-700 rounded-full transition-all"
+                      style={{ width: `${(completePct / totalFeatures) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono text-stone-500">{completePct}/{totalFeatures}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div className={`rounded px-2 py-1.5 flex items-center gap-1.5 ${hasHourly ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-50 text-stone-400'}`}>
+                    {hasHourly ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                    K-Factor / Hourly
+                  </div>
+                  <div className={`rounded px-2 py-1.5 flex items-center gap-1.5 ${hasTemporal ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-50 text-stone-400'}`}>
+                    {hasTemporal ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                    Seasonal Adj
+                  </div>
+                  <div className={`rounded px-2 py-1.5 flex items-center gap-1.5 ${hasTemporal ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-50 text-stone-400'}`}>
+                    {hasTemporal ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                    Day-of-Week
+                  </div>
+                  <div className={`rounded px-2 py-1.5 flex items-center gap-1.5 ${hasDFactor ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-50 text-stone-400'}`}>
+                    {hasDFactor ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />}
+                    D-Factor
+                  </div>
+                </div>
+                {tc?.temporal_source && (
+                  <div className="text-[10px] text-stone-400">
+                    Source: <span className="font-mono text-stone-600">
+                      {tc.temporal_source === 'fdot_profile' ? 'FDOT Continuous Count Station' :
+                       tc.temporal_source === 'google_realtime' ? 'Google Directions API' : 'Default Profiles'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         <div className="bg-white rounded-xl border border-stone-200 p-5">

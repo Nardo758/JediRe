@@ -18,6 +18,9 @@ import { supplySignalService } from '../../services/supply-signal.service';
 import { DigitalTrafficService } from '../../services/digitalTrafficService';
 import { trafficCalibrationService } from '../../services/traffic-calibration.service';
 import trafficPredictionEngine from '../../services/trafficPredictionEngine';
+import { getDotTemporalProfilesService } from '../../services/dot-temporal-profiles.service';
+import { TrafficDataSourcesService } from '../../services/traffic-data-sources.service';
+import { trendPatternDetector } from '../../services/trend-pattern-detector';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -769,6 +772,202 @@ const weeklyUpload = multer({
     } catch (error: any) {
       logger.error('[LeasingTraffic] Calibration stats failed', { error: error.message });
       res.status(500).json({ error: 'Failed to get calibration stats' });
+    }
+  });
+
+  const dotProfileUpload = multer({
+    dest: path.join(process.cwd(), 'uploads', 'dot-profiles'),
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const allowed = ['.csv', '.json'];
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, allowed.includes(ext));
+    },
+  });
+
+  router.post('/dot-profiles/ingest', dotProfileUpload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const file = req.file;
+      const state = (req.body.state as string) || 'FL';
+      const region = (req.body.region as string) || 'statewide';
+
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded. Provide a CSV or JSON file with DOT temporal profile data.' });
+      }
+
+      const service = getDotTemporalProfilesService(pool);
+      const result = await service.ingestProfiles(file.path, state, region);
+
+      res.json({
+        success: true,
+        state,
+        region,
+        inserted: result.inserted,
+        updated: result.updated,
+        errors: result.errors,
+        message: `Ingested ${result.inserted + result.updated} profiles (${result.inserted} new, ${result.updated} updated)`,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] DOT profile ingestion failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to ingest DOT profiles', message: error.message });
+    }
+  });
+
+  router.post('/dot-profiles/seed', async (_req: Request, res: Response) => {
+    try {
+      const state = (_req.body.state as string) || 'FL';
+      const region = (_req.body.region as string) || 'statewide';
+
+      const service = getDotTemporalProfilesService(pool);
+      const result = await service.seedDefaultProfiles(state, region);
+
+      res.json({
+        success: true,
+        state,
+        region,
+        seeded: result.seeded,
+        skipped: result.skipped,
+        message: `Seeded ${result.seeded} default FDOT profiles for ${state}/${region}`,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] DOT profile seeding failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to seed DOT profiles', message: error.message });
+    }
+  });
+
+  router.get('/dot-profiles/summary', async (req: Request, res: Response) => {
+    try {
+      const state = req.query.state as string | undefined;
+      const service = getDotTemporalProfilesService(pool);
+      const summary = await service.getProfileSummary(state);
+
+      res.json({ success: true, ...summary });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] DOT profile summary failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to get profile summary', message: error.message });
+    }
+  });
+
+  router.get('/dot-profiles/temporal-multiplier', async (req: Request, res: Response) => {
+    try {
+      const roadClass = (req.query.roadClass as string) || 'Arterial';
+      const state = (req.query.state as string) || 'FL';
+      const hour = parseInt(req.query.hour as string) || new Date().getHours();
+      const dayOfWeek = parseInt(req.query.dayOfWeek as string) ?? new Date().getDay();
+      const month = parseInt(req.query.month as string) || (new Date().getMonth() + 1);
+      const region = req.query.region as string | undefined;
+
+      const service = getDotTemporalProfilesService(pool);
+      const result = await service.getTemporalMultiplier(roadClass, state, hour, dayOfWeek, month, region);
+
+      res.json({
+        success: true,
+        road_class: roadClass,
+        state,
+        hour,
+        day_of_week: dayOfWeek,
+        month,
+        ...result,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Temporal multiplier lookup failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to get temporal multiplier', message: error.message });
+    }
+  });
+
+  router.get('/dot-profiles/hourly-distribution', async (req: Request, res: Response) => {
+    try {
+      const roadClass = (req.query.roadClass as string) || 'Arterial';
+      const state = (req.query.state as string) || 'FL';
+      const region = req.query.region as string | undefined;
+
+      const service = getDotTemporalProfilesService(pool);
+      const distribution = await service.getFullHourlyDistribution(roadClass, state, region);
+
+      res.json({
+        success: true,
+        road_class: roadClass,
+        state,
+        distribution,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Hourly distribution lookup failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to get hourly distribution', message: error.message });
+    }
+  });
+
+  router.post('/dot-profiles/google-calibrate/:propertyId', async (req: Request, res: Response) => {
+    try {
+      const { propertyId } = req.params;
+
+      const propResult = await pool.query(
+        `SELECT id, latitude, longitude FROM properties WHERE id = $1`,
+        [propertyId]
+      );
+
+      if (propResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Property not found' });
+      }
+
+      const property = propResult.rows[0];
+      const lat = parseFloat(property.latitude);
+      const lng = parseFloat(property.longitude);
+
+      if (isNaN(lat) || isNaN(lng)) {
+        return res.status(400).json({ error: 'Property missing coordinates' });
+      }
+
+      const trafficDataService = new TrafficDataSourcesService(pool);
+      const rtResult = await trafficDataService.getRealTimeTrafficFactor(lat, lng);
+
+      if (rtResult.factor !== 1.0 || rtResult.congestion_level !== 'unknown') {
+        await pool.query(
+          `UPDATE property_traffic_context
+           SET google_realtime_factor = $1, last_updated = CURRENT_DATE
+           WHERE property_id = $2`,
+          [rtResult.factor, propertyId]
+        );
+      }
+
+      res.json({
+        success: true,
+        property_id: propertyId,
+        calibration: {
+          google_realtime_factor: rtResult.factor,
+          congestion_level: rtResult.congestion_level,
+          duration_in_traffic: rtResult.duration_in_traffic,
+          duration_normal: rtResult.duration_normal,
+          fetched_at: rtResult.fetched_at,
+        },
+        message: rtResult.congestion_level === 'unknown'
+          ? 'Google API key not configured or unavailable. Factor set to 1.0.'
+          : `Google calibration complete. Real-time factor: ${rtResult.factor} (${rtResult.congestion_level} congestion)`,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Google calibration failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to calibrate with Google', message: error.message });
+    }
+  });
+
+  router.get('/trend-patterns/:dealId', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+
+      const result = await trendPatternDetector.detectPatternsForDeal(dealId);
+
+      res.json({
+        deal_id: dealId,
+        property_id: result.property_id,
+        patterns: result.patterns,
+        pattern_count: result.patterns.length,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Trend pattern detection failed', { error: error.message });
+      res.status(500).json({
+        error: 'Failed to detect trend patterns',
+        message: error.message,
+      });
     }
   });
 
