@@ -127,14 +127,14 @@ AI-driven travel booking platform for itinerary generation and booking orchestra
 -   **Booking.com, Viator, GetYourGuide, OpenTable, Resy, Skyscanner:** Affiliate partners (for Traveloure).
 -   **Python Libraries:** GeoPandas, NumPy, SciPy, pandas, openpyxl.
 
--   **Competitive Intelligence & Opportunity Engine (2026-03-01):** 7-system, 14-capability CI engine integrated into sidebar Intelligence section. Each system has its own standalone page following the Market Vitals design pattern (dark header with "THE DECISION THIS PAGE DRIVES", 5 KPI cards with sparklines, insight summary bar, detailed content sections). Systems and routes:
+-   **Competitive Intelligence & Opportunity Engine (2026-03-01):** 6-system CI engine integrated into sidebar Intelligence section. Each system has its own standalone page following the Market Vitals design pattern (dark header with "THE DECISION THIS PAGE DRIVES", 5 KPI cards with sparklines, insight summary bar, detailed content sections). Systems and routes:
     - S1 Performance Rankings (`/competitive-intelligence/performance`, `PerformanceRankingsPage.tsx`) — emerald theme, PCS component breakdown, rankings table, vantage group + trajectory outputs
-    - S2 Acquisition Intel (`/competitive-intelligence/acquisition`, `AcquisitionIntelPage.tsx`) — blue theme, underperformer detection algorithm, ownership/debt intelligence, vantage group targeting
-    - S3 Comp Analysis (`/competitive-intelligence/comps`, `CompAnalysisPage.tsx`) — violet theme, dual lens (trade area + like-kind), pattern cards, collision output
+    - S2 Acquisition Intel (`/competitive-intelligence/acquisition`, `AcquisitionIntelPage.tsx`) — blue theme, underperformer detection algorithm, ownership/debt intelligence, vantage group targeting, acquisition targets table with 10 properties (performance gap, owner intel, debt signals, urgency, value-add)
+    - S3 Comp Analysis (`/competitive-intelligence/comps`, `CompAnalysisPage.tsx`) — violet theme, dual lens (trade area + like-kind) with tabbed comparable properties tables (8 trade area comps, 10 like-kind comps across 6 MSAs), pattern cards, collision output
     - S4 Pattern Engine (`/competitive-intelligence/patterns`, `PatternEnginePage.tsx`) — amber theme, PR-01 Google Reviews, PR-02 Rent-Traffic-Wage, PR-03 Business Formation
     - S5 Rank-Me Tool (`/competitive-intelligence/projection`, `RankMeToolPage.tsx`) — red theme, 5-step workflow, 4 strategy scenarios (BTS/Flip/Rental/STR), gap analysis
     - S6 Opportunity Alerts (`/competitive-intelligence/alerts`, `OpportunityAlertsPage.tsx`) — cyan theme, 5 alert types with examples, 4 delivery channels
-    - S7 Data Flywheel (`/competitive-intelligence/flywheel`, `DataFlywheelPage.tsx`) — pink theme, underwriting archive, property records intelligence (4 categories)
+    - Data Flywheel removed as standalone page — its intelligence splits into: Deal Archive + Assumption Benchmarks → future tabs on Assets Owned; Property Records Intelligence + Supply Signals → future enhancement of Market Intelligence tabs
     - `/competitive-intelligence` redirects to `/competitive-intelligence/performance`
     - All pages in `frontend/src/pages/CompetitiveIntelligence/`. Original `CompetitiveIntelligencePage.tsx` retained as data reference.
 -   **CI Engine Frontend Integration Phase 1 (2026-03-01):** Embedded CI intelligence into 4 existing pages with 8 changes (P0+P1 priority). All use mock data — backend services not yet built.

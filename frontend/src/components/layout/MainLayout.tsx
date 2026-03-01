@@ -314,12 +314,6 @@ export const MainLayout: React.FC = () => {
                         path="/competitive-intelligence/alerts"
                         isActive={isActive('/competitive-intelligence/alerts')}
                       />
-                      <SidebarItem
-                        icon="🔄"
-                        label="Data Flywheel"
-                        path="/competitive-intelligence/flywheel"
-                        isActive={isActive('/competitive-intelligence/flywheel')}
-                      />
                     </div>
                   )}
 

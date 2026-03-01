@@ -56,15 +56,6 @@ const SYSTEMS = [
     items: [9],
     tagline: "Don\u2019t wait for users to search \u2014 push the best opportunities as they emerge, with specific strategy recommendations attached.",
   },
-  {
-    id: 'flywheel',
-    number: 'S7',
-    title: 'Data Flywheel & Records Intelligence',
-    subtitle: 'Every deal underwritten feeds the brain \u2192 Property records as supply signals',
-    color: '#ec4899',
-    items: [12, 14],
-    tagline: 'Save every underwritten deal (win or lose) because the data is gold. Extract supply signals, business opportunities, and ownership patterns from public records.',
-  },
 ];
 
 const PERFORMANCE_ENGINE = {
@@ -253,62 +244,6 @@ const ALERT_SYSTEM = {
   ],
 };
 
-const DATA_FLYWHEEL = {
-  underwriting_archive: {
-    concept: 'SAVE EVERY DEAL. Win or lose, the underwriting data is gold. Every deal underwritten on the platform has real assumptions, real market analysis, real financial modeling. Over time, this archive becomes a proprietary dataset that improves everything.',
-    what_to_capture: [
-      { field: 'Deal snapshot at underwriting', data: 'All Cap Capsule data frozen at time of analysis \u2014 price, rents, occupancy, market conditions, traffic scores' },
-      { field: 'Underwriting assumptions', data: 'Rent growth, exit cap, hold period, CapEx budget, management fee, vacancy assumption, debt terms' },
-      { field: 'Strategy selected', data: 'Which of the 4 strategies was chosen and why (Strategy Arbitrage output)' },
-      { field: 'Outcome (if tracked)', data: 'Did the user win the deal? At what price? If lost \u2014 to whom and at what premium?' },
-      { field: 'Post-acquisition actuals', data: 'If owned \u2014 monthly actuals vs underwritten projections' },
-    ],
-    intelligence_outputs: [
-      'Assumption Benchmarks: \u2018The average user underwriting Class B value-add in this submarket assumes 3.2% rent growth. Actual achieved: 4.1%. Your assumptions may be conservative.\u2019',
-      'Bid-to-Win Analysis: \u2018Of 47 deals underwritten in this submarket last year, 12 were won. Average winning premium over initial underwrite: 7.3%.\u2019',
-      'Outcome Validation: \u2018Properties with TOS > 70 at underwriting achieved an average 18.2% IRR vs 12.4% for TOS < 40.\u2019',
-      'Strategy Accuracy: \u2018Strategy Arbitrage recommended BTS over Rental for 23 deals. The 8 that followed the BTS recommendation averaged 22% IRR vs 14% for those that chose Rental.\u2019',
-    ],
-  },
-  property_records: {
-    concept: 'County property records contain massive intelligence beyond simple ownership data. Systematically mining these records derives supply signals, future supply predictions, business opportunity indicators, and market timing intelligence.',
-    extractions: [
-      {
-        category: 'Supply Intelligence',
-        signals: [
-          { signal: 'New plat recordings', insight: 'Land being subdivided = development intent. Track by trade area to quantify future supply before permits are filed.' },
-          { signal: 'Zoning change petitions', insight: 'Rezoning requests attached to specific parcels = early development signal.' },
-          { signal: 'Demolition permits', insight: 'Existing structures being torn down = replacement supply coming.' },
-          { signal: 'Certificate of Occupancy filings', insight: 'New units actually entering market. The real supply impact date.' },
-        ],
-      },
-      {
-        category: 'Future Supply Prediction',
-        signals: [
-          { signal: 'Land sale patterns', insight: 'When land parcels transact at prices implying multifamily development ($50K+/unit buildable), developers are planning.' },
-          { signal: 'Impact fee payments', insight: 'Spike in impact fee revenue = confirmed construction pipeline 12-24 months out.' },
-          { signal: 'Utility connection applications', insight: 'Water/sewer connection requests for large-scale residential = confirmed development.' },
-        ],
-      },
-      {
-        category: 'Business & Investment Opportunities',
-        signals: [
-          { signal: 'Foreclosure filings / lis pendens', insight: 'Rising foreclosures = distress inventory becoming available. Early notice \u2014 foreclosure takes 6-18 months in FL.' },
-          { signal: 'Estate / probate transfers', insight: 'Inherited properties often sell below market. Track probate filings for multifamily parcels.' },
-          { signal: 'Code enforcement liens', insight: 'Accumulated code violation liens = distressed operator who may welcome a buyout.' },
-        ],
-      },
-      {
-        category: 'Market Timing Intelligence',
-        signals: [
-          { signal: 'Transaction velocity by submarket', insight: 'Track monthly sales volume. Accelerating transactions = market heating up. Decelerating = cooling.' },
-          { signal: 'Price per unit trends', insight: 'Actual sale prices per unit derived from documentary stamps. More accurate than asking prices.' },
-          { signal: 'Holding period patterns', insight: 'Average hold period shortening = operators taking profits. Lengthening = holding through downturns.' },
-        ],
-      },
-    ],
-  },
-};
 
 const CONNECTION_MAP = [
   { from: 'S1: Performance Tracking', to: 'S2: Acquisition Intelligence', signal: 'Rankings identify underperformers \u2192 becomes target list' },
@@ -319,9 +254,6 @@ const CONNECTION_MAP = [
   { from: 'S4: Google Reviews', to: 'S1: Performance (Ops Score)', signal: 'Sentiment analysis feeds operational quality component of PCS' },
   { from: 'S4: Rent-Traffic-Wage', to: 'S6: Opportunity Alerts', signal: 'Divergences trigger pattern anomaly alerts' },
   { from: 'S4: Business Formation', to: 'M06: Demand Signals', signal: 'Cluster detection feeds demand driver intelligence' },
-  { from: 'S7: Underwriting Archive', to: 'S4: Pattern Engine', signal: 'Historical assumptions + outcomes train accuracy models' },
-  { from: 'S7: Property Records', to: 'S2: Acquisition Intelligence', signal: 'Ownership, debt, distress signals for targeting' },
-  { from: 'S7: Property Records', to: 'M04: Supply Pipeline', signal: 'Plats, permits, CO filings feed supply forecasting' },
   { from: 'S6: Opportunity Alerts', to: 'M08: Strategy Arbitrage', signal: 'Each alert includes strategy recommendation from arbitrage engine' },
   { from: 'All Systems', to: 'M25: JEDI Score', signal: 'Every signal ultimately flows into the 5 master signals and composite JEDI Score' },
 ];
@@ -714,55 +646,8 @@ export default function CompetitiveIntelligencePage() {
           </div>
         )}
 
-        {activeSystem === 'flywheel' && (
-          <div>
-            <Card color="rgba(236,72,153,0.04)" border="1px solid rgba(236,72,153,0.15)">
-              <div className="text-[11px] font-bold tracking-[0.05em] mb-1.5" style={{ color: '#ec4899' }}>SYSTEM 7 — ITEMS 12, 14</div>
-              <div className="text-[13px] text-slate-300 leading-[1.7]">{DATA_FLYWHEEL.underwriting_archive.concept}</div>
-            </Card>
 
-            <Divider label="UNDERWRITING INTELLIGENCE ARCHIVE" color="#ec4899" />
-            <div className="grid grid-cols-2 gap-2.5 mb-4">
-              <Card>
-                <div className="text-[11px] font-bold text-slate-50 mb-2">What Gets Captured</div>
-                {DATA_FLYWHEEL.underwriting_archive.what_to_capture.map((item, i) => (
-                  <div key={i} className="text-[10px] text-slate-400 mb-1.5 leading-snug">
-                    <strong style={{ color: '#ec4899' }}>{item.field}:</strong> {item.data}
-                  </div>
-                ))}
-              </Card>
-              <Card>
-                <div className="text-[11px] font-bold text-slate-50 mb-2">Intelligence Outputs</div>
-                {DATA_FLYWHEEL.underwriting_archive.intelligence_outputs.map((out, i) => (
-                  <div
-                    key={i}
-                    className="text-[10px] text-slate-300 leading-snug bg-black/30 rounded-md px-2.5 py-2 mb-1.5"
-                    style={{ borderLeft: '2px solid rgba(236,72,153,0.3)' }}
-                  >
-                    {out}
-                  </div>
-                ))}
-              </Card>
-            </div>
-
-            <Divider label="PROPERTY RECORDS INTELLIGENCE EXTRACTION" color="#ec4899" />
-            <div className="grid grid-cols-2 gap-2.5">
-              {DATA_FLYWHEEL.property_records.extractions.map((cat, i) => (
-                <Card key={i}>
-                  <div className="text-xs font-bold mb-2" style={{ color: '#ec4899' }}>{cat.category}</div>
-                  {cat.signals.map((sig, j) => (
-                    <div key={j} className="mb-2">
-                      <div className="text-[11px] font-semibold text-slate-50 mb-0.5">{sig.signal}</div>
-                      <div className="text-[10px] text-slate-400 leading-snug">{sig.insight}</div>
-                    </div>
-                  ))}
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <Divider label="MASTER CONNECTION MAP — HOW ALL 7 SYSTEMS INTERCONNECT" color="#94a3b8" />
+        <Divider label="MASTER CONNECTION MAP — HOW ALL 6 SYSTEMS INTERCONNECT" color="#94a3b8" />
         <div className="grid gap-1.5 mb-8">
           {CONNECTION_MAP.map((conn, i) => (
             <div
@@ -785,7 +670,7 @@ export default function CompetitiveIntelligencePage() {
         <div className="text-center py-5 text-[9px] text-slate-800" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
           JEDI RE · Competitive Intelligence & Opportunity Engine v1 · Extends Traffic Intelligence Framework
           <br />
-          14 Capabilities · 7 Systems · Feeds M25 JEDI Score, M08 Strategy Arbitrage, M09 ProForma, M14 Risk Engine
+          14 Capabilities · 6 Systems · Feeds M25 JEDI Score, M08 Strategy Arbitrage, M09 ProForma, M14 Risk Engine
         </div>
       </div>
     </div>

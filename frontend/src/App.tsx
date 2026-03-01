@@ -58,7 +58,6 @@ import {
   PatternEnginePage,
   RankMeToolPage,
   OpportunityAlertsPage,
-  DataFlywheelPage,
 } from './pages/CompetitiveIntelligence';
 
 
@@ -125,7 +124,6 @@ function AppContent() {
           <Route path="/competitive-intelligence/patterns" element={<PatternEnginePage />} />
           <Route path="/competitive-intelligence/projection" element={<RankMeToolPage />} />
           <Route path="/competitive-intelligence/alerts" element={<OpportunityAlertsPage />} />
-          <Route path="/competitive-intelligence/flywheel" element={<DataFlywheelPage />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
