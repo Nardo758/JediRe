@@ -14,7 +14,6 @@ import { apiClient } from '../services/api.client';
 import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
-import { HorizontalBar } from '../components/map/HorizontalBar';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
@@ -86,16 +85,80 @@ const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const { fetchDealById } = useDealStore();
+  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [geographicStats, setGeographicStats] = useState<any>(null);
+  const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
 
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
+      loadTradeAreaForDeal(dealId);
+      fetchGeographicContext(dealId);
     }
   }, [dealId]);
+
+  const fetchGeographicContext = async (id: string) => {
+    try {
+      const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
+      const context = response?.data?.data;
+      const stats: any = {};
+      if (context?.trade_area) {
+        stats.trade_area = context.trade_area.stats
+          ? { occupancy: context.trade_area.stats.occupancy, avg_rent: context.trade_area.stats.avg_rent }
+          : {};
+      }
+      if (context?.submarket?.stats) {
+        stats.submarket = {
+          occupancy: context.submarket.stats.avg_occupancy,
+          avg_rent: context.submarket.stats.avg_rent,
+        };
+      }
+      if (context?.msa?.stats) {
+        stats.msa = {
+          occupancy: context.msa.stats.avg_occupancy,
+          avg_rent: context.msa.stats.avg_rent,
+        };
+      }
+      setGeographicStats(stats);
+    } catch {
+      setGeographicStats(null);
+    }
+  };
+
+  const getDealCentroid = (): [number, number] | null => {
+    if (!deal?.boundary?.coordinates) return null;
+    try {
+      const coords = deal.boundary.type === 'Polygon'
+        ? deal.boundary.coordinates[0]
+        : deal.boundary.type === 'Point'
+        ? [deal.boundary.coordinates]
+        : null;
+      if (!coords || coords.length === 0) return null;
+      const sumLng = coords.reduce((s: number, c: number[]) => s + c[0], 0);
+      const sumLat = coords.reduce((s: number, c: number[]) => s + c[1], 0);
+      return [sumLng / coords.length, sumLat / coords.length];
+    } catch { return null; }
+  };
+
+  const handleTradeAreaSave = async (tradeAreaId: string) => {
+    if (!dealId) return;
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/geographic-context`, {
+        trade_area_id: tradeAreaId,
+        active_scope: 'trade_area',
+      });
+      setShowTradeAreaPanel(false);
+      loadTradeAreaForDeal(dealId);
+      fetchGeographicContext(dealId);
+      setScope('trade_area');
+    } catch (err) {
+      console.error('Failed to save trade area:', err);
+    }
+  };
 
   const loadDeal = async (id: string) => {
     try {
@@ -385,46 +448,80 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6">
-        <HorizontalBar />
-        <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
-          <button
-            className="text-sm text-slate-500 hover:text-slate-700 mb-2 flex items-center gap-1 transition-colors"
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft size={14} />
-            Back
-          </button>
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-slate-900">{deal.name || 'Untitled Deal'}</h1>
-            <span className="text-xs font-medium px-3 py-1 bg-slate-100 text-slate-600 rounded-full capitalize">
-              {deal.project_type || deal.property_type || 'multifamily'}
-            </span>
-            {deal.status && (
-              <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-                deal.status === 'active' ? 'bg-green-100 text-green-700' :
-                deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
-                'bg-yellow-100 text-yellow-700'
-              }`}>
-                {deal.status}
+        <div className="bg-white border-b border-slate-200 px-6 py-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
+                onClick={() => navigate(-1)}
+              >
+                <ArrowLeft size={16} />
+              </button>
+              <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
+              <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
+                {deal.project_type || deal.property_type || 'multifamily'}
               </span>
-            )}
-            <DevPathBadge />
-          </div>
-          <div className="flex items-center gap-4 mt-1 text-sm text-slate-500">
-            {(deal.address || deal.location) && (
-              <span className="flex items-center gap-1">
-                <MapPin size={14} />
-                {deal.address || deal.location}
-              </span>
-            )}
-            {deal.jedi_score && (
-              <span className="flex items-center gap-1">
-                <Activity size={14} />
-                JEDI Score: {deal.jedi_score}
-              </span>
-            )}
+              {deal.status && (
+                <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full flex-shrink-0 ${
+                  deal.status === 'active' ? 'bg-green-100 text-green-700' :
+                  deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {deal.status}
+                </span>
+              )}
+              <DevPathBadge />
+            </div>
+            <div className="flex items-center gap-3 text-xs text-slate-500 flex-shrink-0">
+              {(deal.address || deal.location) && (
+                <span className="flex items-center gap-1">
+                  <MapPin size={12} />
+                  {deal.address || deal.location}
+                </span>
+              )}
+              {deal.jedi_score && (
+                <span className="flex items-center gap-1">
+                  <Activity size={12} />
+                  JEDI {deal.jedi_score}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+
+        <div className="px-6 py-2 border-b border-slate-200 bg-white flex-shrink-0">
+          <GeographicScopeTabs
+            activeScope={activeScope}
+            onChange={setScope}
+            tradeAreaEnabled={!!geographicStats?.trade_area}
+            onDefineTradeArea={getDealCentroid() ? () => setShowTradeAreaPanel(true) : undefined}
+            stats={geographicStats || {}}
+          />
+        </div>
+
+        {showTradeAreaPanel && getDealCentroid() && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
+                  <button
+                    onClick={() => setShowTradeAreaPanel(false)}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                  >
+                    &times;
+                  </button>
+                </div>
+                <TradeAreaDefinitionPanel
+                  propertyLat={getDealCentroid()![1]}
+                  propertyLng={getDealCentroid()![0]}
+                  onSave={handleTradeAreaSave}
+                  onSkip={() => setShowTradeAreaPanel(false)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-1 overflow-hidden min-w-0">
           <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
