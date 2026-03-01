@@ -72,7 +72,7 @@ router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Re
     const { id: dealId } = req.params;
 
     const dealResult = await pool.query(
-      `SELECT d.trade_area_id, d.deal_data
+      `SELECT d.trade_area_id, d.deal_data, d.boundary, d.address
        FROM deals d WHERE d.id = $1`,
       [dealId]
     );
@@ -107,14 +107,116 @@ router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Re
       }
     }
 
+    let submarketId = geoCtx.submarket_id || null;
+    let msaId = geoCtx.msa_id || null;
+    let submarketData: any = null;
+    let msaData: any = null;
+
+    let dealCentroid: { lng: number; lat: number } | null = null;
+    if (deal.boundary) {
+      try {
+        const centroidResult = await pool.query(
+          `SELECT ST_X(ST_Centroid($1::geometry)) as lng, ST_Y(ST_Centroid($1::geometry)) as lat`,
+          [deal.boundary]
+        );
+        if (centroidResult.rows.length > 0) {
+          dealCentroid = centroidResult.rows[0];
+        }
+      } catch { }
+    }
+
+    try {
+      if (!submarketId && dealCentroid) {
+        const lookup = await pool.query(
+          `SELECT id, name, msa_id FROM submarkets
+           WHERE ST_Contains(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326))
+           LIMIT 1`,
+          [dealCentroid.lng, dealCentroid.lat]
+        );
+        if (lookup.rows.length > 0) {
+          submarketId = lookup.rows[0].id;
+          if (!msaId && lookup.rows[0].msa_id) {
+            msaId = lookup.rows[0].msa_id;
+          }
+        }
+      }
+
+      if (submarketId) {
+        const smResult = await pool.query(
+          `SELECT id, name, avg_occupancy, avg_rent, properties_count, total_units
+           FROM submarkets WHERE id = $1`,
+          [submarketId]
+        );
+        if (smResult.rows.length > 0) {
+          const sm = smResult.rows[0];
+          submarketData = {
+            id: sm.id,
+            name: sm.name,
+            stats: {
+              avg_occupancy: sm.avg_occupancy ? parseFloat(sm.avg_occupancy) : undefined,
+              avg_rent: sm.avg_rent ? parseFloat(sm.avg_rent) : undefined,
+              properties_count: sm.properties_count,
+              total_units: sm.total_units,
+            },
+          };
+        }
+      }
+    } catch (err: any) {
+      if (err.code !== '42P01') {
+        logger.warn('Error fetching submarket stats:', err.message);
+      }
+    }
+
+    try {
+      if (!msaId && dealCentroid) {
+        const lookup = await pool.query(
+          `SELECT id, name FROM msas
+           WHERE ST_Contains(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326))
+           LIMIT 1`,
+          [dealCentroid.lng, dealCentroid.lat]
+        );
+        if (lookup.rows.length > 0) {
+          msaId = lookup.rows[0].id;
+        }
+      }
+
+      if (msaId) {
+        const msaResult = await pool.query(
+          `SELECT id, name, avg_occupancy, avg_rent, total_properties, total_units, population
+           FROM msas WHERE id = $1`,
+          [msaId]
+        );
+        if (msaResult.rows.length > 0) {
+          const m = msaResult.rows[0];
+          msaData = {
+            id: m.id,
+            name: m.name,
+            stats: {
+              avg_occupancy: m.avg_occupancy ? parseFloat(m.avg_occupancy) : undefined,
+              avg_rent: m.avg_rent ? parseFloat(m.avg_rent) : undefined,
+              total_properties: m.total_properties,
+              total_units: m.total_units,
+              population: m.population,
+            },
+          };
+        }
+      }
+    } catch (err: any) {
+      if (err.code !== '42P01') {
+        logger.warn('Error fetching MSA stats:', err.message);
+      }
+    }
+
     res.json({
       success: true,
       data: {
         deal_id: dealId,
         active_scope: geoCtx.active_scope || (tradeArea ? 'trade_area' : 'submarket'),
         trade_area: tradeArea,
-        submarket_id: geoCtx.submarket_id || null,
-        msa_id: geoCtx.msa_id || null,
+        submarket_id: submarketId,
+        msa_id: msaId,
+        submarket: submarketData,
+        msa: msaData,
       },
     });
   } catch (error) {

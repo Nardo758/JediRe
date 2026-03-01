@@ -463,7 +463,7 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6">
-        <div className="bg-white border-b border-slate-200 px-6 py-3 flex-shrink-0">
+        <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
               <button
@@ -472,46 +472,48 @@ const DealDetailPage: React.FC = () => {
               >
                 <ArrowLeft size={16} />
               </button>
-              <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
-              <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
-                {deal.project_type || deal.property_type || 'multifamily'}
-              </span>
-              {deal.status && (
-                <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full flex-shrink-0 ${
-                  deal.status === 'active' ? 'bg-green-100 text-green-700' :
-                  deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {deal.status}
-                </span>
-              )}
-              <DevPathBadge />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
+                  <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
+                    {deal.project_type || deal.property_type || 'multifamily'}
+                  </span>
+                  {deal.status && (
+                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full flex-shrink-0 ${
+                      deal.status === 'active' ? 'bg-green-100 text-green-700' :
+                      deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {deal.status}
+                    </span>
+                  )}
+                  <DevPathBadge />
+                </div>
+                {(deal.address || deal.location) && (
+                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
+                    <MapPin size={11} className="flex-shrink-0" />
+                    <span className="truncate">{deal.address || deal.location}</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs text-slate-500 flex-shrink-0">
-              {(deal.address || deal.location) && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={12} />
-                  {deal.address || deal.location}
-                </span>
-              )}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <GeographicScopeTabs
+                activeScope={activeScope}
+                onChange={setScope}
+                tradeAreaEnabled={!!geographicStats?.trade_area}
+                onDefineTradeArea={getDealCentroid() ? () => setShowTradeAreaPanel(true) : undefined}
+                stats={geographicStats || {}}
+                compact
+              />
               {deal.jedi_score && (
-                <span className="flex items-center gap-1">
+                <span className="flex items-center gap-1 text-xs text-slate-500">
                   <Activity size={12} />
                   JEDI {deal.jedi_score}
                 </span>
               )}
             </div>
           </div>
-        </div>
-
-        <div className="px-6 py-2 border-b border-slate-200 bg-white flex-shrink-0">
-          <GeographicScopeTabs
-            activeScope={activeScope}
-            onChange={setScope}
-            tradeAreaEnabled={!!geographicStats?.trade_area}
-            onDefineTradeArea={getDealCentroid() ? () => setShowTradeAreaPanel(true) : undefined}
-            stats={geographicStats || {}}
-          />
         </div>
 
         {showTradeAreaPanel && getDealCentroid() && (
