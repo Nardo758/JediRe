@@ -50,7 +50,16 @@ import {
   TrafficIntelligencePage,
   CompetitivePositionPage,
 } from './pages/MarketIntelligence';
-import { CompetitiveIntelligencePage } from './pages/CompetitiveIntelligence';
+import {
+  CompetitiveIntelligencePage,
+  PerformanceRankingsPage,
+  AcquisitionIntelPage,
+  CompAnalysisPage,
+  PatternEnginePage,
+  RankMeToolPage,
+  OpportunityAlertsPage,
+  DataFlywheelPage,
+} from './pages/CompetitiveIntelligence';
 
 
 function AppContent() {
@@ -109,8 +118,14 @@ function AppContent() {
           <Route path="/market-intelligence/competitive-position" element={<CompetitivePositionPage />} />
 
           {/* Competitive Intelligence */}
-          <Route path="/competitive-intelligence" element={<CompetitiveIntelligencePage />} />
-          <Route path="/competitive-intelligence/:systemId" element={<CompetitiveIntelligencePage />} />
+          <Route path="/competitive-intelligence" element={<Navigate to="/competitive-intelligence/performance" replace />} />
+          <Route path="/competitive-intelligence/performance" element={<PerformanceRankingsPage />} />
+          <Route path="/competitive-intelligence/acquisition" element={<AcquisitionIntelPage />} />
+          <Route path="/competitive-intelligence/comps" element={<CompAnalysisPage />} />
+          <Route path="/competitive-intelligence/patterns" element={<PatternEnginePage />} />
+          <Route path="/competitive-intelligence/projection" element={<RankMeToolPage />} />
+          <Route path="/competitive-intelligence/alerts" element={<OpportunityAlertsPage />} />
+          <Route path="/competitive-intelligence/flywheel" element={<DataFlywheelPage />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
