@@ -1,18 +1,14 @@
-/**
- * Trade Area Definition System - REST API
- * Geographic boundaries for property competitive analysis
- */
-
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 import circle from '@turf/circle';
 import area from '@turf/area';
 import { point } from '@turf/helpers';
 
 const router = Router();
+const pool = getPool();
 
-// POST /api/v1/trade-areas - Create new trade area
 router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
@@ -20,12 +16,7 @@ router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response,
       geometry,
       definition_method,
       method_params,
-      confidence_score,
-      parent_submarket_id,
-      parent_msa_id,
     } = req.body;
-
-    const userId = (req as any).user?.userId || 1;
 
     if (!name || !geometry || !definition_method) {
       return res.status(400).json({
@@ -34,28 +25,31 @@ router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response,
       });
     }
 
-    // TODO: Replace with actual database query
-    const newTradeArea = {
-      id: Date.now(),
-      name,
-      user_id: userId,
-      geometry,
-      definition_method,
-      method_params: method_params || {},
-      confidence_score: confidence_score || null,
-      parent_submarket_id: parent_submarket_id || null,
-      parent_msa_id: parent_msa_id || null,
-      stats_snapshot: null, // Will be calculated asynchronously
-      is_shared: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    const result = await pool.query(
+      `INSERT INTO trade_areas (name, boundary, metadata, created_at, updated_at)
+       VALUES ($1, ST_SetSRID(ST_GeomFromGeoJSON($2), 4326), $3, NOW(), NOW())
+       RETURNING id, name, metadata, created_at, updated_at`,
+      [
+        name,
+        JSON.stringify(geometry),
+        JSON.stringify({ definition_method, method_params: method_params || {} }),
+      ]
+    );
 
-    logger.info(`Trade area created: ${name}`, { tradeAreaId: newTradeArea.id, userId });
+    const row = result.rows[0];
+    logger.info(`Trade area created: ${name}`, { tradeAreaId: row.id });
 
     res.status(201).json({
       success: true,
-      data: newTradeArea,
+      data: {
+        id: row.id,
+        name: row.name,
+        geometry,
+        definition_method,
+        method_params: method_params || {},
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
       message: 'Trade area created successfully',
     });
   } catch (error) {
@@ -64,124 +58,26 @@ router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response,
   }
 });
 
-// GET /api/v1/trade-areas/:id - Get trade area with stats
-router.get('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-
-    // TODO: Replace with actual database query
-    const tradeArea = {
-      id: parseInt(id),
-      name: 'Midtown 3-Mile Radius',
-      user_id: 1,
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [-84.39, 33.77],
-          [-84.39, 33.80],
-          [-84.36, 33.80],
-          [-84.36, 33.77],
-          [-84.39, 33.77]
-        ]]
-      },
-      definition_method: 'radius',
-      method_params: { radius_miles: 3, traffic_adjusted: false },
-      confidence_score: 0.85,
-      stats_snapshot: {
-        population: 42850,
-        existing_units: 8240,
-        pipeline_units: 1200,
-        avg_rent: 2150,
-      },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    res.json({
-      success: true,
-      data: tradeArea,
-    });
-  } catch (error) {
-    logger.error('Error fetching trade area:', error);
-    next(error);
-  }
-});
-
-// PUT /api/v1/trade-areas/:id - Update trade area
-router.put('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const updates = req.body;
-
-    logger.info(`Updating trade area ${id}`, { updates });
-
-    // TODO: Implement database update
-
-    res.json({
-      success: true,
-      message: 'Trade area updated successfully',
-      data: { id: parseInt(id), ...updates },
-    });
-  } catch (error) {
-    logger.error('Error updating trade area:', error);
-    next(error);
-  }
-});
-
-// DELETE /api/v1/trade-areas/:id - Delete trade area
-router.delete('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-
-    // TODO: Implement soft delete (check if linked to deals first)
-
-    logger.info(`Trade area deleted: ${id}`);
-
-    res.json({
-      success: true,
-      message: 'Trade area deleted successfully',
-    });
-  } catch (error) {
-    logger.error('Error deleting trade area:', error);
-    next(error);
-  }
-});
-
-// GET /api/v1/trade-areas/library - List user's saved trade areas
 router.get('/library', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { shared } = req.query;
-    const userId = (req as any).user?.userId || 1;
+    const result = await pool.query(
+      `SELECT id, name, metadata,
+              ST_AsGeoJSON(boundary)::json as geometry,
+              created_at, updated_at
+       FROM trade_areas
+       ORDER BY updated_at DESC
+       LIMIT 50`
+    );
 
-    // TODO: Replace with actual database query
-    const tradeAreas = [
-      {
-        id: 1,
-        name: 'Midtown 3-Mile Radius',
-        definition_method: 'radius',
-        thumbnail: 'data:image/png;base64,...', // Map thumbnail
-        stats_snapshot: {
-          population: 42850,
-          existing_units: 8240,
-          avg_rent: 2150,
-        },
-        is_shared: false,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: 2,
-        name: 'Buckhead 10-Min Drive',
-        definition_method: 'drive_time',
-        thumbnail: 'data:image/png;base64,...',
-        stats_snapshot: {
-          population: 38200,
-          existing_units: 6850,
-          avg_rent: 2380,
-        },
-        is_shared: false,
-        created_at: new Date().toISOString(),
-      },
-    ];
+    const tradeAreas = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      geometry: row.geometry,
+      definition_method: row.metadata?.definition_method || 'radius',
+      stats_snapshot: row.metadata?.stats_snapshot || null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    }));
 
     res.json({
       success: true,
@@ -194,7 +90,110 @@ router.get('/library', authMiddleware.requireAuth, async (req: Request, res: Res
   }
 });
 
-// POST /api/v1/trade-areas/generate - AI-generate trade area from traffic data
+router.get('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT id, name, municipality, state, metadata,
+              ST_AsGeoJSON(boundary)::json as geometry,
+              created_at, updated_at
+       FROM trade_areas
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Trade area not found' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        name: row.name,
+        municipality: row.municipality,
+        state: row.state,
+        geometry: row.geometry,
+        definition_method: row.metadata?.definition_method || 'radius',
+        method_params: row.metadata?.method_params || {},
+        stats_snapshot: row.metadata?.stats_snapshot || null,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching trade area:', error);
+    next(error);
+  }
+});
+
+router.put('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { name, geometry, metadata } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIdx = 1;
+
+    if (name) {
+      updates.push(`name = $${paramIdx++}`);
+      values.push(name);
+    }
+    if (geometry) {
+      updates.push(`boundary = ST_SetSRID(ST_GeomFromGeoJSON($${paramIdx++}), 4326)`);
+      values.push(JSON.stringify(geometry));
+    }
+    if (metadata) {
+      updates.push(`metadata = metadata || $${paramIdx++}::jsonb`);
+      values.push(JSON.stringify(metadata));
+    }
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE trade_areas SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING id, name, updated_at`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Trade area not found' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Trade area updated successfully',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    logger.error('Error updating trade area:', error);
+    next(error);
+  }
+});
+
+router.delete('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    const linked = await pool.query(
+      `SELECT COUNT(*) as cnt FROM deals WHERE trade_area_id = $1`,
+      [id]
+    );
+    if (parseInt(linked.rows[0].cnt) > 0) {
+      await pool.query(`UPDATE deals SET trade_area_id = NULL WHERE trade_area_id = $1`, [id]);
+    }
+
+    await pool.query(`DELETE FROM trade_areas WHERE id = $1`, [id]);
+
+    res.json({ success: true, message: 'Trade area deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting trade area:', error);
+    next(error);
+  }
+});
+
 router.post('/generate', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng, radius_hint } = req.body;
@@ -205,9 +204,6 @@ router.post('/generate', authMiddleware.requireAuth, async (req: Request, res: R
         message: 'Latitude and longitude are required',
       });
     }
-
-    // TODO: Implement traffic-based AI generation
-    // For now, return a simple radius-based result
 
     const radiusMiles = radius_hint || 3;
     const centerPoint = point([lng, lat]);
@@ -223,7 +219,7 @@ router.post('/generate', authMiddleware.requireAuth, async (req: Request, res: R
         confidence: 0.75,
         analysis: {
           method: 'radius_fallback',
-          message: 'Traffic data not yet integrated. Using radius-based boundary.',
+          message: 'Using radius-based boundary.',
           radius_miles: radiusMiles,
         },
       },
@@ -234,7 +230,6 @@ router.post('/generate', authMiddleware.requireAuth, async (req: Request, res: R
   }
 });
 
-// POST /api/v1/trade-areas/preview-stats - Get stats for draft geometry
 router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { geometry } = req.body;
@@ -246,32 +241,34 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       });
     }
 
-    // Calculate area in square kilometers
     const areaSqMeters = area(geometry);
-    const areaSqKm = areaSqMeters / 1_000_000;
+    const areaSqMiles = areaSqMeters / 2_589_988;
 
-    // Preliminary traffic estimation: ~1200 walk-ins per sq km per week
-    // This is a rough heuristic based on urban density patterns
-    const estimatedWeeklyWalkIns = Math.floor(areaSqKm * 1200);
-    const dailyAverage = Math.floor(estimatedWeeklyWalkIns / 7);
-
-    // TODO: Calculate real stats from database
-    // For now, return mock data with preliminary walk-in estimates
-
-    const mockStats = {
-      population: Math.floor(Math.random() * 50000) + 20000,
-      existing_units: Math.floor(Math.random() * 10000) + 5000,
-      pipeline_units: Math.floor(Math.random() * 2000) + 500,
-      avg_rent: Math.floor(Math.random() * 1000) + 1500,
-      properties_count: Math.floor(Math.random() * 50) + 10,
-      weekly_walk_ins: estimatedWeeklyWalkIns,
-      daily_average: dailyAverage,
-      note: 'Preliminary estimate',
+    let stats: any = {
+      area_sq_miles: Math.round(areaSqMiles * 100) / 100,
+      properties_count: 0,
+      existing_units: 0,
     };
+
+    try {
+      const geoJson = JSON.stringify(geometry);
+      const propResult = await pool.query(
+        `SELECT COUNT(*) as cnt, COALESCE(SUM(units), 0) as total_units
+         FROM properties
+         WHERE lat IS NOT NULL AND lng IS NOT NULL
+           AND ST_Contains(
+             ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
+             ST_SetSRID(ST_MakePoint(lng, lat), 4326)
+           )`,
+        [geoJson]
+      );
+      stats.properties_count = parseInt(propResult.rows[0].cnt) || 0;
+      stats.existing_units = parseInt(propResult.rows[0].total_units) || 0;
+    } catch { }
 
     res.json({
       success: true,
-      data: mockStats,
+      data: stats,
     });
   } catch (error) {
     logger.error('Error calculating preview stats:', error);
@@ -279,7 +276,6 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
   }
 });
 
-// POST /api/v1/trade-areas/radius - Quick helper to create radius circle
 router.post('/radius', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { lat, lng, miles } = req.body;

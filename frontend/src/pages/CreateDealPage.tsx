@@ -57,7 +57,7 @@ export const CreateDealPage: React.FC = () => {
   const [capRate, setCapRate] = useState('');
   const [renovationBudget, setRenovationBudget] = useState('');
 
-  const [tradeAreaId, setTradeAreaId] = useState<number | null>(null);
+  const [tradeAreaId, setTradeAreaId] = useState<string | null>(null);
   const [submarketId, setSubmarketId] = useState<number | null>(null);
   const [msaId, setMsaId] = useState<number | null>(null);
 
@@ -209,7 +209,7 @@ export const CreateDealPage: React.FC = () => {
     }
   };
 
-  const handleTradeAreaSave = (id: number) => {
+  const handleTradeAreaSave = (id: string) => {
     setTradeAreaId(id);
     handleSubmit();
   };

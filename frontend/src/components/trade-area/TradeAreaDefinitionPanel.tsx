@@ -5,7 +5,7 @@ import { DefinitionMethod } from '../../types/trade-area';
 interface TradeAreaDefinitionPanelProps {
   propertyLat: number;
   propertyLng: number;
-  onSave: (tradeAreaId: number) => void;
+  onSave: (tradeAreaId: string) => void;
   onSkip: () => void;
   onCustomDraw?: () => void;
 }
