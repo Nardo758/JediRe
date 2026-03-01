@@ -7,6 +7,12 @@ export interface UploadFileParams {
   userId: number;
   module: string;
   category: string;
+  propertyType?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  submarket?: string;
   file: {
     originalname: string;
     buffer: Buffer;
@@ -29,6 +35,12 @@ export interface ModuleLibraryFile {
   parsingStatus: 'pending' | 'parsing' | 'complete' | 'error';
   parsedAt?: Date;
   parsingErrors?: string;
+  propertyType?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  submarket?: string;
 }
 
 export interface LearnedPattern {
@@ -57,7 +69,7 @@ class ModuleLibraryService {
   }
 
   async uploadFile(params: UploadFileParams): Promise<ModuleLibraryFile> {
-    const { userId, module, category, file } = params;
+    const { userId, module, category, file, propertyType, address, city, state, zip, submarket } = params;
 
     try {
       const userDir = path.join(this.uploadDir, `user_${userId}`, module);
@@ -76,8 +88,9 @@ class ModuleLibraryService {
       const result = await query(`
         INSERT INTO module_library_files (
           user_id, module_name, category, file_name, file_path, 
-          file_size, mime_type, uploaded_by, parsing_status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+          file_size, mime_type, uploaded_by, parsing_status,
+          property_type, address, city, state, zip, submarket
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, $11, $12, $13, $14)
         RETURNING *
       `, [
         userId,
@@ -88,6 +101,12 @@ class ModuleLibraryService {
         file.size,
         file.mimetype,
         userId,
+        propertyType || null,
+        address || null,
+        city || null,
+        state || null,
+        zip || null,
+        submarket || null,
       ]);
 
       const dbFile = result.rows[0];
@@ -344,6 +363,12 @@ class ModuleLibraryService {
       parsingStatus: row.parsing_status,
       parsedAt: row.parsed_at,
       parsingErrors: row.parsing_errors,
+      propertyType: row.property_type,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      zip: row.zip,
+      submarket: row.submarket,
     };
   }
 }

@@ -11,6 +11,12 @@ interface ModuleFile {
   parsingStatus: 'pending' | 'parsing' | 'complete' | 'error';
   parsedAt?: string;
   parsingErrors?: string;
+  propertyType?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  submarket?: string;
 }
 
 interface LearningStatus {
@@ -62,6 +68,16 @@ const MODULE_INFO: Record<string, { title: string; icon: string; categories: str
       'Previous DD Files',
     ],
   },
+  traffic: {
+    title: 'Traffic Module',
+    icon: '\u{1F6A6}',
+    categories: [
+      'Weekly Traffic Reports',
+      'Leasing Velocity Data',
+      'Historical Conversion Data',
+      'Submarket Benchmarks',
+    ],
+  },
 };
 
 export function ModuleLibraryDetailPage() {
@@ -75,6 +91,12 @@ export function ModuleLibraryDetailPage() {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [uploadPropertyType, setUploadPropertyType] = useState('');
+  const [uploadAddress, setUploadAddress] = useState('');
+  const [uploadCity, setUploadCity] = useState('');
+  const [uploadState, setUploadState] = useState('');
+  const [uploadZip, setUploadZip] = useState('');
+  const [uploadSubmarket, setUploadSubmarket] = useState('');
 
   const moduleInfo = module ? MODULE_INFO[module] : null;
 
@@ -124,6 +146,12 @@ export function ModuleLibraryDetailPage() {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('category', selectedCategory);
+      if (uploadPropertyType) formData.append('propertyType', uploadPropertyType);
+      if (uploadAddress) formData.append('address', uploadAddress);
+      if (uploadCity) formData.append('city', uploadCity);
+      if (uploadState) formData.append('state', uploadState);
+      if (uploadZip) formData.append('zip', uploadZip);
+      if (uploadSubmarket) formData.append('submarket', uploadSubmarket);
 
       await apiClient.post(`/api/v1/module-libraries/${module}/upload`, formData, {
         headers: {
@@ -133,6 +161,12 @@ export function ModuleLibraryDetailPage() {
 
       await loadFiles();
       setSelectedCategory('');
+      setUploadPropertyType('');
+      setUploadAddress('');
+      setUploadCity('');
+      setUploadState('');
+      setUploadZip('');
+      setUploadSubmarket('');
     } catch (error) {
       console.error('Failed to upload file:', error);
       alert('Failed to upload file. Please try again.');
@@ -258,22 +292,102 @@ export function ModuleLibraryDetailPage() {
       <div className="bg-white border-2 border-gray-200 rounded-lg p-6 mb-6">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Upload Files</h2>
         
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">-- Select a category --</option>
+              {moduleInfo.categories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
+            <select
+              value={uploadPropertyType}
+              onChange={(e) => setUploadPropertyType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">-- Select property type --</option>
+              <option value="multifamily">Multifamily</option>
+              <option value="office">Office</option>
+              <option value="retail">Retail</option>
+              <option value="industrial">Industrial</option>
+              <option value="mixed-use">Mixed-Use</option>
+              <option value="hospitality">Hospitality</option>
+              <option value="self_storage">Self Storage</option>
+              <option value="student_housing">Student Housing</option>
+              <option value="senior_living">Senior Living</option>
+              <option value="build_to_rent">Build-to-Rent</option>
+              <option value="data_centers">Data Centers</option>
+              <option value="manufactured_mobile">Manufactured / Mobile</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+            <input
+              type="text"
+              value={uploadAddress}
+              onChange={(e) => setUploadAddress(e.target.value)}
+              placeholder="123 Main St"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <input
+              type="text"
+              value={uploadCity}
+              onChange={(e) => setUploadCity(e.target.value)}
+              placeholder="Atlanta"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+              <select
+                value={uploadState}
+                onChange={(e) => setUploadState(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">--</option>
+                {['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+              <input
+                type="text"
+                value={uploadZip}
+                onChange={(e) => setUploadZip(e.target.value)}
+                placeholder="30301"
+                maxLength={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select Category
-          </label>
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">-- Select a category --</option>
-            {moduleInfo.categories.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Submarket (optional)</label>
+          <input
+            type="text"
+            value={uploadSubmarket}
+            onChange={(e) => setUploadSubmarket(e.target.value)}
+            placeholder="e.g., Midtown Atlanta, Downtown Dallas"
+            className="w-full md:w-1/2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+          />
         </div>
 
         <div
@@ -352,9 +466,29 @@ export function ModuleLibraryDetailPage() {
                             </span>
                             <div>
                               <p className="font-medium text-gray-900">{file.fileName}</p>
-                              <p className="text-sm text-gray-500">
-                                {formatFileSize(file.fileSize)} &bull; Uploaded {new Date(file.uploadedAt).toLocaleDateString()}
-                              </p>
+                              <div className="flex items-center gap-2 text-sm text-gray-500 flex-wrap">
+                                <span>{formatFileSize(file.fileSize)}</span>
+                                <span>&bull;</span>
+                                <span>Uploaded {new Date(file.uploadedAt).toLocaleDateString()}</span>
+                                {file.propertyType && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs capitalize">{file.propertyType.replace(/_/g, ' ')}</span>
+                                  </>
+                                )}
+                                {(file.city || file.state) && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span>{[file.city, file.state].filter(Boolean).join(', ')}</span>
+                                  </>
+                                )}
+                                {file.submarket && (
+                                  <>
+                                    <span>&bull;</span>
+                                    <span className="text-gray-400">{file.submarket}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>

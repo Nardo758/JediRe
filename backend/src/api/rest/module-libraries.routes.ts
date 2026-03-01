@@ -36,7 +36,7 @@ const upload = multer({
 router.post('/:module/upload', upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     const { module } = req.params;
-    const { category } = req.body;
+    const { category, propertyType, address, city, state, zip, submarket } = req.body;
     const userId = (req as any).user?.userId;
 
     if (!req.file) {
@@ -47,7 +47,7 @@ router.post('/:module/upload', upload.single('file') as any, async (req: Request
       return res.status(400).json({ error: 'Category is required' });
     }
 
-    const validModules = ['financial', 'market', 'due_diligence', 'design'];
+    const validModules = ['financial', 'market', 'due_diligence', 'design', 'traffic'];
     if (!validModules.includes(module)) {
       return res.status(400).json({ error: 'Invalid module name' });
     }
@@ -56,6 +56,12 @@ router.post('/:module/upload', upload.single('file') as any, async (req: Request
       userId,
       module,
       category,
+      propertyType: propertyType || undefined,
+      address: address || undefined,
+      city: city || undefined,
+      state: state || undefined,
+      zip: zip || undefined,
+      submarket: submarket || undefined,
       file: {
         originalname: req.file.originalname,
         buffer: req.file.buffer,
@@ -99,6 +105,12 @@ router.get('/:module/files', async (req: Request, res: Response) => {
         parsingStatus: f.parsingStatus,
         parsedAt: f.parsedAt,
         parsingErrors: f.parsingErrors,
+        propertyType: f.propertyType,
+        address: f.address,
+        city: f.city,
+        state: f.state,
+        zip: f.zip,
+        submarket: f.submarket,
       })),
       total: files.length,
     });

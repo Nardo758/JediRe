@@ -64,7 +64,7 @@ export function ModuleLibrariesPage() {
     try {
       setLoading(true);
       
-      const modules = ['financial', 'market', 'due_diligence'];
+      const modules = ['financial', 'market', 'due_diligence', 'traffic'];
       const results = await Promise.all(
         modules.map(async (module) => {
           try {
@@ -152,7 +152,7 @@ export function ModuleLibrariesPage() {
         </p>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <ModuleLibraryCard
           module="financial"
           icon="&#x1F4B0;"
@@ -181,6 +181,16 @@ export function ModuleLibrariesPage() {
           fileCount={stats.due_diligence?.fileCount || 0}
           lastUpload={stats.due_diligence?.lastUpload}
           onClick={() => handleModuleClick('due_diligence')}
+        />
+
+        <ModuleLibraryCard
+          module="traffic"
+          icon="&#x1F6A6;"
+          title="Traffic Module"
+          description="Upload weekly traffic reports, leasing velocity data, and conversion benchmarks to calibrate predictions"
+          fileCount={stats.traffic?.fileCount || 0}
+          lastUpload={stats.traffic?.lastUpload}
+          onClick={() => handleModuleClick('traffic')}
         />
       </div>
       
