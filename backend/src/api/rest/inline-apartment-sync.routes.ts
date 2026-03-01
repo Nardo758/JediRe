@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ApartmentDataSyncService } from '../../services/apartmentDataSync';
+import { apartmentSyncScheduler } from '../../services/apartment-sync-scheduler';
 import { validate, apartmentSyncPullSchema } from './validation';
 
 export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyncService) {
@@ -23,7 +24,8 @@ export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyn
   router.get('/status', requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const status = await apartmentSyncService.getSyncStatus();
-      res.json({ success: true, data: status });
+      const scheduler = apartmentSyncScheduler.getStatus();
+      res.json({ success: true, data: { ...status, scheduler } });
     } catch (error: any) {
       console.error('Sync status error:', error);
       res.status(500).json({ success: false, error: error.message });

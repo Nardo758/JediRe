@@ -12,6 +12,7 @@ import path from 'path';
 import { requireAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { apartmentSyncScheduler } from './services/apartment-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
@@ -327,6 +328,14 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
+
+  try {
+    apartmentSyncScheduler.initialize(apartmentSyncService);
+    apartmentSyncScheduler.start(6);
+    console.log('Apartment data sync scheduler started (every 6 hours)');
+  } catch (error) {
+    console.error('Failed to start apartment sync scheduler:', error);
+  }
 });
 
 process.on('SIGTERM', async () => {
@@ -337,6 +346,13 @@ process.on('SIGTERM', async () => {
     console.log('Email sync scheduler stopped');
   } catch (error) {
     console.error('Error stopping email sync scheduler:', error);
+  }
+
+  try {
+    apartmentSyncScheduler.stop();
+    console.log('Apartment sync scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping apartment sync scheduler:', error);
   }
   
   await pool.end();
