@@ -8,11 +8,29 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
 import { pool } from '../../database';
 import { MultifamilyTrafficService, PropertyLeasingInput } from '../../services/multifamilyTrafficService';
+import { weeklyReportParser } from '../../services/weekly-report-parser.service';
+import { demandSignalService } from '../../services/demand-signal.service';
+import { supplySignalService } from '../../services/supply-signal.service';
+import { DigitalTrafficService } from '../../services/digitalTrafficService';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 const trafficService = new MultifamilyTrafficService(pool);
+const digitalTrafficService = new DigitalTrafficService(pool);
+
+const weeklyUpload = multer({
+  dest: path.join(process.cwd(), 'uploads', 'weekly-reports'),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.xlsx', '.xls', '.csv'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, allowed.includes(ext));
+  },
+});
 
   /**
    * GET /api/leasing-traffic/predict/:propertyId
@@ -391,6 +409,136 @@ const trafficService = new MultifamilyTrafficService(pool);
         error: 'Failed to fetch historical data',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  router.post('/weekly-report/upload', weeklyUpload.single('file'), async (req: Request, res: Response) => {
+    try {
+      const file = req.file;
+      const dealId = req.body.dealId;
+
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      if (!dealId) {
+        return res.status(400).json({ error: 'dealId is required' });
+      }
+
+      const result = await weeklyReportParser.parseAndStore(file.path, dealId);
+
+      res.json({
+        success: true,
+        count: result.count,
+        message: `Parsed ${result.count} weekly snapshots`,
+        latestWeek: result.snapshots.length > 0
+          ? result.snapshots[result.snapshots.length - 1].week_ending
+          : null,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Weekly report upload failed', { error: error.message });
+      res.status(500).json({
+        error: 'Failed to parse weekly report',
+        message: error.message,
+      });
+    }
+  });
+
+  router.get('/weekly-report/:dealId/history', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const snapshots = await weeklyReportParser.getHistory(dealId);
+      res.json({ dealId, count: snapshots.length, snapshots });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] History fetch failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to fetch history', message: error.message });
+    }
+  });
+
+  router.get('/weekly-report/:dealId/projection', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const view = (req.query.view as string) || 'yearly';
+      if (!['weekly', 'monthly', 'yearly'].includes(view)) {
+        return res.status(400).json({ error: 'view must be weekly, monthly, or yearly' });
+      }
+
+      let marketFactors: { demand?: number; supply?: number; digital?: number } = {};
+      try {
+        const dealResult = await pool.query(
+          `SELECT d.submarket_id, d.property_id FROM deals d WHERE d.id = $1`,
+          [dealId]
+        );
+        if (dealResult.rows.length > 0) {
+          const deal = dealResult.rows[0];
+
+          if (deal.submarket_id) {
+            try {
+              const now = new Date();
+              const quarter = `${now.getFullYear()}-Q${Math.ceil((now.getMonth() + 1) / 3)}`;
+              const forecast = await demandSignalService.getTradeAreaForecast(deal.submarket_id, quarter, quarter);
+              if (forecast && forecast.length > 0) {
+                const score = forecast[0].supplyPressureScore || 0;
+                marketFactors.demand = 1 + Math.min(0.15, score * 0.01);
+              }
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Demand signal fetch skipped');
+            }
+
+            try {
+              const risk = await supplySignalService.calculateSupplyRisk(Number(deal.submarket_id), '');
+              if (risk) {
+                marketFactors.supply = Math.max(0.85, 1 - (risk.supplyRiskScore || 0) * 0.005);
+              }
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Supply signal fetch skipped');
+            }
+          }
+
+          if (deal.property_id) {
+            try {
+              const digitalScore = await digitalTrafficService.calculateDigitalScore(deal.property_id);
+              if (digitalScore) {
+                marketFactors.digital = 1 + Math.min(0.2, (digitalScore.trending_velocity || 0) * 0.01);
+              }
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Digital traffic fetch skipped');
+            }
+          }
+        }
+      } catch (e) {
+        logger.debug('[LeasingTraffic] Market factors fetch skipped, using defaults');
+      }
+
+      const projection = await weeklyReportParser.generateProjection(
+        dealId,
+        view as 'weekly' | 'monthly' | 'yearly',
+        marketFactors
+      );
+
+      res.json(projection);
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Projection failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to generate projection', message: error.message });
+    }
+  });
+
+  router.put('/weekly-report/:dealId/snapshot', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const { weekEnding, periodLabel, isProjected, ...updates } = req.body;
+
+      if (isProjected && periodLabel) {
+        await weeklyReportParser.saveProjectionOverrides(dealId, periodLabel, updates);
+        res.json({ success: true, message: 'Projection override saved' });
+      } else if (weekEnding) {
+        await weeklyReportParser.updateSnapshot(dealId, weekEnding, updates);
+        res.json({ success: true, message: 'Snapshot updated' });
+      } else {
+        return res.status(400).json({ error: 'weekEnding or periodLabel is required' });
+      }
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Snapshot update failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to update snapshot', message: error.message });
     }
   });
 
