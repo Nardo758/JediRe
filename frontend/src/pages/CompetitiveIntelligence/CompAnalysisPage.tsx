@@ -1,257 +1,132 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState } from 'react';
 
-const SUBJECT_PROPERTIES = [
-  { id: 'sunset-ridge', name: 'Sunset Ridge Apartments', units: 248, class: 'B', submarket: 'Sandy Springs', avgRent: 1648, rentPSF: 1.74 },
-  { id: 'lakewood-crossing', name: 'Lakewood Crossing', units: 312, class: 'B-', submarket: 'Lakewood', avgRent: 1420, rentPSF: 1.52 },
-  { id: 'cascade-falls', name: 'Cascade Falls Residences', units: 186, class: 'B', submarket: 'Cascade', avgRent: 1580, rentPSF: 1.68 },
-  { id: 'peachtree-creek', name: 'Peachtree Creek Landing', units: 420, class: 'B+', submarket: 'Buckhead', avgRent: 1890, rentPSF: 2.02 },
-  { id: 'east-point', name: 'East Point Village', units: 156, class: 'C+', submarket: 'East Point', avgRent: 1180, rentPSF: 1.28 },
-  { id: 'brookhaven', name: 'Brookhaven Station Apts', units: 278, class: 'B+', submarket: 'Brookhaven', avgRent: 1760, rentPSF: 1.88 },
-  { id: 'decatur', name: 'Decatur Heights', units: 198, class: 'B', submarket: 'Decatur', avgRent: 1540, rentPSF: 1.64 },
-  { id: 'college-park', name: 'College Park Commons', units: 224, class: 'C', submarket: 'College Park', avgRent: 1120, rentPSF: 1.22 },
-  { id: 'vinings', name: 'Vinings Creek Terrace', units: 168, class: 'B', submarket: 'Vinings', avgRent: 1680, rentPSF: 1.80 },
-  { id: 'westside', name: 'Westside Lofts', units: 142, class: 'B-', submarket: 'Westside', avgRent: 1490, rentPSF: 1.58 },
-  { id: 'pines-midtown', name: 'Pines at Midtown', units: 180, class: 'B', submarket: 'Midtown', avgRent: 1720, rentPSF: 1.84 },
-  { id: 'camden-usa', name: 'Camden USA', units: 745, class: 'A', submarket: 'Buckhead', avgRent: 2180, rentPSF: 2.36 },
+const MARKET_VITALS = [
+  { id: 'tracked', label: 'Tracked Properties', value: '142', trend: '+8 this month', trendDirection: 'up' as const, sparklineData: [98, 105, 110, 112, 118, 122, 125, 128, 130, 134, 138, 142] },
+  { id: 'avg-pcs', label: 'Avg PCS Score', value: '67.4', trend: '+2.1 QoQ', trendDirection: 'up' as const, sparklineData: [58, 60, 61, 62, 63, 64, 64, 65, 66, 66, 67, 67] },
+  { id: 'rent-ceiling', label: 'Rent Ceiling', value: '$2,180', trend: 'Market top', trendDirection: 'up' as const, sparklineData: [1920, 1960, 1990, 2010, 2040, 2060, 2080, 2100, 2120, 2140, 2160, 2180] },
+  { id: 'pcs-spread', label: 'PCS Spread', value: '56.1', trend: 'Top vs bottom Q', trendDirection: 'up' as const, sparklineData: [42, 44, 46, 47, 49, 50, 51, 52, 53, 54, 55, 56] },
+  { id: 'hidden-gems', label: 'Hidden Gems Detected', value: '7', trend: '+2 this quarter', trendDirection: 'up' as const, sparklineData: [2, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 7] },
 ];
 
-const COMP_VITALS = [
-  { id: 'trade-area', label: 'Trade Area Comps', value: '24', trend: '+3 this quarter', trendDirection: 'up' as const, sparklineData: [14, 16, 17, 18, 19, 18, 20, 21, 20, 22, 23, 24] },
-  { id: 'like-kind', label: 'Like-Kind Peers', value: '38', trend: 'Across 6 MSAs', trendDirection: 'up' as const, sparklineData: [22, 24, 26, 28, 30, 29, 31, 33, 34, 35, 37, 38] },
-  { id: 'rent-premium', label: 'Avg Rent Premium', value: '+$127', trend: 'vs trade area avg', trendDirection: 'up' as const, sparklineData: [65, 72, 80, 88, 95, 102, 98, 108, 112, 118, 122, 127] },
-  { id: 'rent-ceiling', label: 'Rent Ceiling Gap', value: '$302', trend: 'Room to close', trendDirection: 'up' as const, sparklineData: [410, 395, 380, 365, 350, 340, 335, 325, 318, 312, 308, 302] },
-  { id: 'cross-market', label: 'Cross-Market Score', value: '74', trend: '+4.2 QoQ', trendDirection: 'up' as const, sparklineData: [52, 55, 58, 60, 62, 64, 66, 68, 70, 71, 73, 74] },
+const SUBMARKET_RANKINGS = [
+  { rank: 1, name: 'Camden USA', class: 'A', submarket: 'Buckhead', units: 745, avgRent: 2180, occupancy: 96.8, pcs: 94.2, rentVsCeiling: 0, trend: 'up' as const },
+  { rank: 2, name: 'Avalon Midtown Reserve', class: 'A', submarket: 'Midtown', units: 380, avgRent: 2050, occupancy: 96.1, pcs: 91.7, rentVsCeiling: -130, trend: 'up' as const },
+  { rank: 3, name: 'The Retreat at Buckhead', class: 'A', submarket: 'Buckhead', units: 298, avgRent: 1980, occupancy: 95.4, pcs: 88.3, rentVsCeiling: -200, trend: 'stable' as const },
+  { rank: 4, name: 'Alexan Buckhead Village', class: 'A', submarket: 'Buckhead', units: 340, avgRent: 2010, occupancy: 93.1, pcs: 86.8, rentVsCeiling: -170, trend: 'up' as const },
+  { rank: 5, name: 'The Vue at Buckhead', class: 'A', submarket: 'Buckhead', units: 312, avgRent: 1950, occupancy: 96.2, pcs: 84.6, rentVsCeiling: -230, trend: 'stable' as const },
+  { rank: 6, name: 'Elan Lenox', class: 'A-', submarket: 'Buckhead', units: 268, avgRent: 1875, occupancy: 94.8, pcs: 82.1, rentVsCeiling: -305, trend: 'down' as const },
+  { rank: 7, name: 'Pines at Midtown', class: 'B', submarket: 'Midtown', units: 180, avgRent: 1720, occupancy: 95.2, pcs: 79.4, rentVsCeiling: -460, trend: 'up' as const },
+  { rank: 8, name: 'Brookhaven Station Apts', class: 'B+', submarket: 'Brookhaven', units: 278, avgRent: 1760, occupancy: 94.6, pcs: 78.2, rentVsCeiling: -420, trend: 'up' as const },
+  { rank: 9, name: 'The Wyatt at West Midtown', class: 'B+', submarket: 'West Midtown', units: 208, avgRent: 1710, occupancy: 95.6, pcs: 76.5, rentVsCeiling: -470, trend: 'up' as const },
+  { rank: 10, name: 'Cortland at Phipps Plaza', class: 'A-', submarket: 'Buckhead', units: 198, avgRent: 1840, occupancy: 94.2, pcs: 74.8, rentVsCeiling: -340, trend: 'stable' as const },
+  { rank: 11, name: 'Vinings Creek Terrace', class: 'B', submarket: 'Vinings', units: 168, avgRent: 1680, occupancy: 93.8, pcs: 72.1, rentVsCeiling: -500, trend: 'stable' as const },
+  { rank: 12, name: 'ARIUM Brookhaven', class: 'B+', submarket: 'Brookhaven', units: 224, avgRent: 1720, occupancy: 95.4, pcs: 70.6, rentVsCeiling: -460, trend: 'up' as const },
+  { rank: 13, name: 'Glenwood East Village', class: 'B+', submarket: 'East Atlanta', units: 196, avgRent: 1640, occupancy: 93.2, pcs: 68.4, rentVsCeiling: -540, trend: 'down' as const },
+  { rank: 14, name: 'Sunset Ridge Apartments', class: 'B', submarket: 'Sandy Springs', units: 248, avgRent: 1648, occupancy: 92.8, pcs: 66.2, rentVsCeiling: -532, trend: 'down' as const },
+  { rank: 15, name: 'Broadstone Lenox Park', class: 'B+', submarket: 'Buckhead', units: 286, avgRent: 1690, occupancy: 93.8, pcs: 64.8, rentVsCeiling: -490, trend: 'stable' as const },
+  { rank: 16, name: 'Cascade Falls Residences', class: 'B', submarket: 'Cascade', units: 186, avgRent: 1580, occupancy: 91.4, pcs: 61.2, rentVsCeiling: -600, trend: 'down' as const },
+  { rank: 17, name: 'Decatur Heights', class: 'B', submarket: 'Decatur', units: 198, avgRent: 1540, occupancy: 92.1, pcs: 58.5, rentVsCeiling: -640, trend: 'down' as const },
+  { rank: 18, name: 'Westside Lofts', class: 'B-', submarket: 'Westside', units: 142, avgRent: 1490, occupancy: 91.0, pcs: 52.3, rentVsCeiling: -690, trend: 'stable' as const },
+  { rank: 19, name: 'Lakewood Crossing', class: 'B-', submarket: 'Lakewood', units: 312, avgRent: 1420, occupancy: 89.6, pcs: 45.8, rentVsCeiling: -760, trend: 'down' as const },
+  { rank: 20, name: 'College Park Commons', class: 'C', submarket: 'College Park', units: 224, avgRent: 1120, occupancy: 88.2, pcs: 38.1, rentVsCeiling: -1060, trend: 'down' as const },
 ];
 
-type TradeAreaComp = {
-  name: string;
-  units: number;
-  class: string;
-  yearBuilt: number;
-  distance: string;
-  avgRent: number;
-  rentPSF: number;
-  occupancy: number;
-  rentDelta: number;
-  trafficRank: number;
-  amenityScore: number;
-  threat: 'HIGH' | 'MODERATE' | 'LOW';
-  recentReno: boolean;
-};
-
-const TRADE_AREA_COMPS: TradeAreaComp[] = [
-  { name: 'The Vue at Buckhead', units: 312, class: 'A', yearBuilt: 2021, distance: '0.3 mi', avgRent: 1950, rentPSF: 2.18, occupancy: 96.2, rentDelta: +302, trafficRank: 1, amenityScore: 94, threat: 'HIGH', recentReno: false },
-  { name: 'Elan Lenox', units: 268, class: 'A-', yearBuilt: 2019, distance: '0.5 mi', avgRent: 1875, rentPSF: 2.04, occupancy: 94.8, rentDelta: +227, trafficRank: 3, amenityScore: 88, threat: 'HIGH', recentReno: false },
-  { name: 'Alexan Buckhead Village', units: 340, class: 'A', yearBuilt: 2022, distance: '0.7 mi', avgRent: 2010, rentPSF: 2.24, occupancy: 93.1, rentDelta: +362, trafficRank: 2, amenityScore: 96, threat: 'HIGH', recentReno: false },
-  { name: 'ARIUM Brookhaven', units: 224, class: 'B+', yearBuilt: 2016, distance: '0.4 mi', avgRent: 1720, rentPSF: 1.82, occupancy: 95.4, rentDelta: +72, trafficRank: 8, amenityScore: 72, threat: 'MODERATE', recentReno: true },
-  { name: 'Cortland at Phipps Plaza', units: 198, class: 'A-', yearBuilt: 2020, distance: '0.8 mi', avgRent: 1840, rentPSF: 1.98, occupancy: 94.2, rentDelta: +192, trafficRank: 5, amenityScore: 82, threat: 'MODERATE', recentReno: false },
-  { name: 'Broadstone Lenox Park', units: 286, class: 'B+', yearBuilt: 2014, distance: '0.6 mi', avgRent: 1690, rentPSF: 1.76, occupancy: 93.8, rentDelta: +42, trafficRank: 11, amenityScore: 68, threat: 'MODERATE', recentReno: true },
-  { name: 'Camden Phipps', units: 352, class: 'B', yearBuilt: 2008, distance: '0.9 mi', avgRent: 1580, rentPSF: 1.62, occupancy: 92.1, rentDelta: -68, trafficRank: 14, amenityScore: 58, threat: 'LOW', recentReno: false },
-  { name: 'MAA North Buckhead', units: 410, class: 'B', yearBuilt: 2005, distance: '1.1 mi', avgRent: 1520, rentPSF: 1.54, occupancy: 91.5, rentDelta: -128, trafficRank: 18, amenityScore: 52, threat: 'LOW', recentReno: false },
-];
-
-type LikeKindComp = {
-  name: string;
-  units: number;
-  class: string;
-  market: string;
-  avgRent: number;
-  rentPSF: number;
-  occupancy: number;
-  rentGrowthYoY: number;
-  pcsScore: number;
-  opBenchmark: 'ABOVE' | 'AT' | 'BELOW';
-  pricingAnomaly: boolean;
-  collision: boolean;
-};
-
-const LIKE_KIND_COMPS: LikeKindComp[] = [
-  { name: 'Cortland Vinings', units: 288, class: 'B+', market: 'Atlanta — Vinings', avgRent: 1680, rentPSF: 1.78, occupancy: 94.6, rentGrowthYoY: 4.8, pcsScore: 78, opBenchmark: 'ABOVE', pricingAnomaly: false, collision: false },
-  { name: 'MAA Lindbergh', units: 264, class: 'B+', market: 'Atlanta — Lindbergh', avgRent: 1590, rentPSF: 1.68, occupancy: 93.2, rentGrowthYoY: 3.2, pcsScore: 68, opBenchmark: 'AT', pricingAnomaly: false, collision: false },
-  { name: 'Retreat at Peachtree City', units: 302, class: 'B', market: 'Atlanta — South', avgRent: 1420, rentPSF: 1.48, occupancy: 91.8, rentGrowthYoY: 5.6, pcsScore: 62, opBenchmark: 'BELOW', pricingAnomaly: true, collision: true },
-  { name: 'Broadstone Centennial', units: 256, class: 'B+', market: 'Nashville — Midtown', avgRent: 1740, rentPSF: 1.86, occupancy: 95.1, rentGrowthYoY: 6.2, pcsScore: 82, opBenchmark: 'ABOVE', pricingAnomaly: false, collision: false },
-  { name: 'The Flats at Overton Park', units: 318, class: 'B+', market: 'Nashville — East', avgRent: 1620, rentPSF: 1.72, occupancy: 93.8, rentGrowthYoY: 4.1, pcsScore: 71, opBenchmark: 'AT', pricingAnomaly: false, collision: false },
-  { name: 'Hawthorne at the District', units: 244, class: 'B', market: 'Charlotte — South End', avgRent: 1560, rentPSF: 1.64, occupancy: 94.4, rentGrowthYoY: 5.8, pcsScore: 65, opBenchmark: 'BELOW', pricingAnomaly: true, collision: true },
-  { name: 'Arcadian Sugar Land', units: 276, class: 'B+', market: 'Houston — Sugar Land', avgRent: 1480, rentPSF: 1.52, occupancy: 92.6, rentGrowthYoY: 3.6, pcsScore: 60, opBenchmark: 'BELOW', pricingAnomaly: true, collision: false },
-  { name: 'Springs at Lakeline', units: 232, class: 'B', market: 'Austin — Cedar Park', avgRent: 1640, rentPSF: 1.74, occupancy: 93.0, rentGrowthYoY: 2.8, pcsScore: 58, opBenchmark: 'BELOW', pricingAnomaly: false, collision: false },
-  { name: 'Avana Westchase', units: 348, class: 'B', market: 'Tampa — Westchase', avgRent: 1510, rentPSF: 1.58, occupancy: 94.8, rentGrowthYoY: 7.2, pcsScore: 74, opBenchmark: 'AT', pricingAnomaly: true, collision: false },
-  { name: 'The Wyatt at West Midtown', units: 208, class: 'B+', market: 'Atlanta — West Midtown', avgRent: 1710, rentPSF: 1.84, occupancy: 95.6, rentGrowthYoY: 5.4, pcsScore: 76, opBenchmark: 'ABOVE', pricingAnomaly: false, collision: false },
-];
-
-const TRADE_AREA_PATTERNS = [
+const VANTAGE_GROUPS = [
   {
-    pattern: 'Rent Ceiling Gap',
-    detection: "If the top-rent comp charges $1,950 and the average is $1,650 — that $300 gap defines your renovation opportunity ceiling. Properties below average with above-average traffic position are acquisition targets.",
+    label: '200–300u Class B, 2005–2015',
+    avgPcs: 64.8,
+    rentRange: '$1,490 – $1,690',
+    propertyCount: 18,
+    topPerformer: 'Broadstone Lenox Park',
   },
   {
-    pattern: 'Amenity Arms Race Detection',
-    detection: "When 60%+ of trade area comps have added a specific amenity in the last 24 months, properties WITHOUT that amenity face accelerating competitive displacement.",
+    label: '150–250u Class B+, 2015–2022',
+    avgPcs: 76.2,
+    rentRange: '$1,680 – $1,840',
+    propertyCount: 12,
+    topPerformer: 'Brookhaven Station Apts',
   },
   {
-    pattern: 'Vintage Rotation',
-    detection: 'When new supply enters a trade area, competitive pressure cascades downward: Class A new → pushes Class A existing → pushes renovated B → pushes unrenovated B.',
+    label: '300–500u Class A, 2018–2024',
+    avgPcs: 88.4,
+    rentRange: '$1,950 – $2,180',
+    propertyCount: 8,
+    topPerformer: 'Camden USA',
+  },
+  {
+    label: '100–200u Class C/C+, Pre-2010',
+    avgPcs: 42.6,
+    rentRange: '$1,050 – $1,280',
+    propertyCount: 14,
+    topPerformer: 'East Point Village',
   },
 ];
 
-const LIKE_KIND_PATTERNS = [
+const COMPETITIVE_PATTERNS = [
   {
-    pattern: 'Cross-Market Pricing Anomaly',
-    detection: 'Markets where like-kind rent PSF is >15% below the national like-kind average AND traffic/demand signals are strong = UNDERPRICED MARKETS.',
+    title: 'Rent Ceiling Compression',
+    description: 'The gap between top-rent and median-rent properties has narrowed 12% YoY. New Class A supply is pulling the ceiling higher, but renovated B+ properties are closing fast — compressing the premium for new construction.',
+    signal: 'Narrowing',
+    severity: 'amber' as const,
   },
   {
-    pattern: 'Operational Benchmark Gap',
-    detection: "Compare operational metrics across like-kind properties. Properties performing below the like-kind national benchmark have operational upside regardless of market conditions.",
+    title: 'Amenity Arms Race',
+    description: '68% of properties in the top quartile added coworking spaces or package lockers in the past 18 months. Properties without these amenities are seeing accelerated traffic loss to competitors.',
+    signal: 'Intensifying',
+    severity: 'red' as const,
   },
   {
-    pattern: 'Rent Growth Divergence',
-    detection: "When one market's like-kind cohort grows significantly faster than others, it signals either a catch-up play or a bubble. Cross-reference with traffic trajectory to distinguish.",
+    title: 'Digital Share Shift',
+    description: 'Online-sourced leads now account for 74% of total traffic across the MSA, up from 61% two years ago. Properties investing in digital marketing are gaining disproportionate traffic share.',
+    signal: 'Accelerating',
+    severity: 'red' as const,
+  },
+  {
+    title: 'Vintage Cascade',
+    description: 'New 2023–2024 deliveries are pushing Class A existing stock to compete with renovated B+. This cascading effect is creating pricing pressure across all vintage bands, particularly 2008–2015 builds.',
+    signal: 'Active',
+    severity: 'amber' as const,
   },
 ];
 
-const THREAT_COLORS = {
-  HIGH: 'bg-red-100 text-red-700',
-  MODERATE: 'bg-amber-100 text-amber-700',
-  LOW: 'bg-emerald-100 text-emerald-700',
+const TREND_ICONS = {
+  up: { icon: '↑', color: 'text-emerald-600' },
+  down: { icon: '↓', color: 'text-red-500' },
+  stable: { icon: '→', color: 'text-stone-400' },
 } as const;
 
-const BENCHMARK_COLORS = {
-  ABOVE: 'text-emerald-600',
-  AT: 'text-stone-500',
-  BELOW: 'text-red-600',
-} as const;
-
-const BENCHMARK_ICONS = {
-  ABOVE: '↑',
-  AT: '→',
-  BELOW: '↓',
+const SEVERITY_STYLES = {
+  red: 'bg-red-100 text-red-700',
+  amber: 'bg-amber-100 text-amber-700',
 } as const;
 
 const CompAnalysisPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'trade-area' | 'like-kind'>('trade-area');
-  const [tradeSort, setTradeSort] = useState<'threat' | 'rent' | 'distance'>('threat');
-  const [likeKindSort, setLikeKindSort] = useState<'pcs' | 'anomaly' | 'growth'>('pcs');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [sortField, setSortField] = useState<'pcs' | 'rent' | 'occupancy'>('pcs');
 
-  const propertyParam = searchParams.get('property');
-  const initialProperty = propertyParam
-    ? SUBJECT_PROPERTIES.find(p => p.name.toLowerCase() === propertyParam.toLowerCase()) || SUBJECT_PROPERTIES[0]
-    : SUBJECT_PROPERTIES[0];
-  const [selectedProperty, setSelectedProperty] = useState(initialProperty);
-
-  useEffect(() => {
-    if (propertyParam) {
-      const found = SUBJECT_PROPERTIES.find(p => p.name.toLowerCase() === propertyParam.toLowerCase());
-      if (found) setSelectedProperty(found);
-    }
-  }, [propertyParam]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-        setSearchText('');
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredProperties = SUBJECT_PROPERTIES.filter(p =>
-    p.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    p.submarket.toLowerCase().includes(searchText.toLowerCase())
-  );
-
-  const sortedTradeArea = [...TRADE_AREA_COMPS].sort((a, b) => {
-    if (tradeSort === 'threat') {
-      const order = { HIGH: 0, MODERATE: 1, LOW: 2 };
-      return order[a.threat] - order[b.threat];
-    }
-    if (tradeSort === 'rent') return b.avgRent - a.avgRent;
-    return parseFloat(a.distance) - parseFloat(b.distance);
+  const sortedRankings = [...SUBMARKET_RANKINGS].sort((a, b) => {
+    if (sortField === 'rent') return b.avgRent - a.avgRent;
+    if (sortField === 'occupancy') return b.occupancy - a.occupancy;
+    return b.pcs - a.pcs;
   });
-
-  const sortedLikeKind = [...LIKE_KIND_COMPS].sort((a, b) => {
-    if (likeKindSort === 'pcs') return b.pcsScore - a.pcsScore;
-    if (likeKindSort === 'anomaly') return (b.pricingAnomaly ? 1 : 0) - (a.pricingAnomaly ? 1 : 0);
-    return b.rentGrowthYoY - a.rentGrowthYoY;
-  });
-
-  const subjectProperty = { name: selectedProperty.name, avgRent: selectedProperty.avgRent, rentPSF: selectedProperty.rentPSF };
 
   return (
     <div className="space-y-5">
       <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
         <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
-        <div className="text-lg font-semibold">How does your property compare locally and nationally — and what patterns emerge?</div>
+        <div className="text-lg font-semibold">What does the competitive landscape look like in this market — and where are the opportunities?</div>
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Dual Comp Analysis</h3>
+          <h3 className="text-lg font-bold text-stone-900">Market Competitive Vitals</h3>
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
-            <span className="text-[10px] text-stone-400">2 lenses | Trade Area + Like-Kind</span>
-          </div>
-        </div>
-
-        <div className="mb-4" ref={dropdownRef}>
-          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1.5">SUBJECT PROPERTY</div>
-          <div className="relative">
-            <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="w-full flex items-center justify-between px-4 py-2.5 bg-violet-50 border border-violet-200 rounded-lg text-left hover:border-violet-300 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 text-sm font-bold">{selectedProperty.class}</div>
-                <div>
-                  <div className="text-sm font-semibold text-stone-900">{selectedProperty.name}</div>
-                  <div className="text-[10px] text-stone-500">{selectedProperty.units} units · {selectedProperty.submarket} · ${selectedProperty.avgRent.toLocaleString()}/mo · ${selectedProperty.rentPSF}/sqft</div>
-                </div>
-              </div>
-              <svg className={`w-4 h-4 text-stone-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {dropdownOpen && (
-              <div className="absolute z-20 w-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg overflow-hidden">
-                <div className="p-2 border-b border-stone-100">
-                  <input
-                    type="text"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    placeholder="Search properties..."
-                    className="w-full px-3 py-1.5 text-sm border border-stone-200 rounded-md focus:outline-none focus:border-violet-400"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-64 overflow-y-auto">
-                  {filteredProperties.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => { setSelectedProperty(p); setDropdownOpen(false); setSearchText(''); }}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-violet-50 transition-colors ${selectedProperty.id === p.id ? 'bg-violet-50' : ''}`}
-                    >
-                      <div className="w-7 h-7 rounded-md bg-stone-100 flex items-center justify-center text-[10px] font-bold text-stone-600">{p.class}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-stone-900 truncate">{p.name}</div>
-                        <div className="text-[10px] text-stone-500">{p.units} units · {p.submarket} · ${p.avgRent.toLocaleString()}/mo</div>
-                      </div>
-                      {selectedProperty.id === p.id && <div className="w-2 h-2 rounded-full bg-violet-500" />}
-                    </button>
-                  ))}
-                  {filteredProperties.length === 0 && (
-                    <div className="px-4 py-3 text-xs text-stone-400 text-center">No properties found</div>
-                  )}
-                </div>
-              </div>
-            )}
+            <span className="text-[10px] text-stone-400">Atlanta MSA | 142 properties</span>
           </div>
         </div>
 
         <div className="grid grid-cols-5 gap-4">
-          {COMP_VITALS.map(vital => (
+          {MARKET_VITALS.map(vital => (
             <div key={vital.id} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
               <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{vital.label}</div>
               <div className="text-xl font-bold text-stone-900">{vital.value}</div>
@@ -278,253 +153,150 @@ const CompAnalysisPage: React.FC = () => {
 
       <div className="bg-violet-50 border border-violet-200 rounded-xl px-5 py-3">
         <p className="text-sm text-violet-900">
-          Dual comp analysis active across <strong>24 trade area comps</strong> and <strong>38 like-kind peers</strong> spanning 6 MSAs. Average rent premium of +$127 vs local competition with a $302 rent ceiling gap — indicating significant upside through renovation and repositioning. Cross-market score of 74 suggests strong relative performance.
+          Tracking <strong>142 properties</strong> across Atlanta MSA. Avg PCS score of <strong>67.4</strong> trending up +2.1 QoQ. Rent ceiling at <strong>$2,180/mo</strong> with a PCS spread of 56.1 between top and bottom quartiles — indicating significant competitive stratification. <strong>7 hidden gems</strong> detected with high location scores but below-expected performance.
         </p>
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-stone-900 mb-1">Comparable Properties</h3>
-            <p className="text-sm text-stone-500">Side-by-side analysis of competitive set across both lenses</p>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">Submarket Comp Landscape</h3>
+            <p className="text-sm text-stone-500">Top 20 properties ranked by PCS across Atlanta MSA</p>
           </div>
-          <div className="flex bg-stone-100 rounded-lg p-0.5">
-            <button onClick={() => setActiveTab('trade-area')} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeTab === 'trade-area' ? 'bg-white text-violet-700 shadow-sm' : 'text-stone-500'}`}>Trade Area (8)</button>
-            <button onClick={() => setActiveTab('like-kind')} className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeTab === 'like-kind' ? 'bg-white text-violet-700 shadow-sm' : 'text-stone-500'}`}>Like-Kind (10)</button>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
+            <div className="flex bg-stone-100 rounded-lg p-0.5">
+              <button onClick={() => setSortField('pcs')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'pcs' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By PCS</button>
+              <button onClick={() => setSortField('rent')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'rent' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Rent</button>
+              <button onClick={() => setSortField('occupancy')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'occupancy' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Occupancy</button>
+            </div>
           </div>
         </div>
-
-        {activeTab === 'trade-area' && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-[10px] text-stone-500">
-                <span className="font-mono">SUBJECT:</span>
-                <span className="font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded">{subjectProperty.name} — ${subjectProperty.avgRent}/mo — ${subjectProperty.rentPSF}/sqft</span>
-              </div>
-              <div className="flex bg-stone-100 rounded-lg p-0.5">
-                <button onClick={() => setTradeSort('threat')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${tradeSort === 'threat' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Threat</button>
-                <button onClick={() => setTradeSort('rent')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${tradeSort === 'rent' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Rent</button>
-                <button onClick={() => setTradeSort('distance')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${tradeSort === 'distance' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Distance</button>
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-stone-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-stone-50 text-left">
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">DISTANCE</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">AVG RENT</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">RENT PSF</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OCCUPANCY</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">vs SUBJECT</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">TRAFFIC</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">AMENITY</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">THREAT</th>
+        <div className="overflow-hidden rounded-lg border border-stone-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 text-left">
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider w-14">RANK</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">UNITS</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">AVG RENT</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OCCUPANCY</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PCS SCORE</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">RENT vs CEILING</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">TREND</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider w-20"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedRankings.map((row, idx) => {
+                const trendInfo = TREND_ICONS[row.trend];
+                const pcsColor = row.pcs >= 80 ? 'bg-emerald-500' : row.pcs >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                return (
+                  <tr key={row.rank} className="border-t border-stone-100 hover:bg-violet-50/30 transition-colors">
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${row.pcs >= 80 ? 'bg-emerald-50 text-emerald-700' : row.pcs >= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
+                        {idx + 1}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="font-semibold text-stone-900 text-xs">{row.name}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[10px] font-bold px-1.5 rounded ${row.class.startsWith('A') ? 'bg-blue-50 text-blue-600' : row.class.startsWith('B') ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'}`}>{row.class}</span>
+                        <span className="text-[10px] text-stone-300">·</span>
+                        <span className="text-[10px] text-stone-500">{row.submarket}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-xs font-mono text-stone-600">{row.units}</td>
+                    <td className="px-3 py-3 text-xs font-bold text-stone-900">${row.avgRent.toLocaleString()}</td>
+                    <td className="px-3 py-3 text-xs text-stone-700">{row.occupancy}%</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-stone-900">{row.pcs}</span>
+                        <div className="w-16 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${pcsColor}`} style={{ width: `${row.pcs}%` }} />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`text-xs font-mono ${row.rentVsCeiling === 0 ? 'text-violet-600 font-bold' : 'text-stone-500'}`}>
+                        {row.rentVsCeiling === 0 ? 'CEILING' : `$${row.rentVsCeiling.toLocaleString()}`}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`text-sm font-semibold ${trendInfo.color}`}>{trendInfo.icon}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <a href="#" className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2.5 py-1 rounded-md transition-colors">Analyze</a>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {sortedTradeArea.map((comp, i) => (
-                    <tr key={i} className="border-t border-stone-100 hover:bg-violet-50/30 transition-colors">
-                      <td className="px-3 py-3">
-                        <div className="font-semibold text-stone-900 text-xs">{comp.name}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-stone-500">{comp.units} units</span>
-                          <span className="text-[10px] text-stone-300">·</span>
-                          <span className={`text-[10px] font-bold px-1.5 rounded ${comp.class.startsWith('A') ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{comp.class}</span>
-                          <span className="text-[10px] text-stone-300">·</span>
-                          <span className="text-[10px] text-stone-500">{comp.yearBuilt}</span>
-                          {comp.recentReno && <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold">RENO</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-xs font-mono text-stone-600">{comp.distance}</td>
-                      <td className="px-3 py-3 text-xs font-bold text-stone-900">${comp.avgRent.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-stone-600">${comp.rentPSF.toFixed(2)}</td>
-                      <td className="px-3 py-3 text-xs text-stone-700">{comp.occupancy}%</td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs font-bold ${comp.rentDelta >= 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                          {comp.rentDelta >= 0 ? '+' : ''}{comp.rentDelta >= 0 ? `$${comp.rentDelta}` : `-$${Math.abs(comp.rentDelta)}`}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-xs font-mono text-stone-600">#{comp.trafficRank}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-10 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full bg-violet-500" style={{ width: `${comp.amenityScore}%` }} />
-                          </div>
-                          <span className="text-[10px] text-stone-500">{comp.amenityScore}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${THREAT_COLORS[comp.threat]}`}>{comp.threat}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-3 flex gap-5 text-[10px] text-stone-500">
-              <span>vs Subject = rent difference from your property</span>
-              <span className="text-stone-300">|</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-100 inline-block" /> HIGH threat comps charging more, closer, newer</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-100 inline-block" /> MODERATE competitive overlap</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-100 inline-block" /> LOW direct threat</span>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'like-kind' && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-[10px] text-stone-500">
-                <span className="font-mono">LIKE-KIND CRITERIA:</span>
-                <span className="font-semibold text-violet-700 bg-violet-50 px-2 py-0.5 rounded">200–400 units · Class B/B+ · 2005–2020 vintage</span>
-              </div>
-              <div className="flex bg-stone-100 rounded-lg p-0.5">
-                <button onClick={() => setLikeKindSort('pcs')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${likeKindSort === 'pcs' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By PCS</button>
-                <button onClick={() => setLikeKindSort('anomaly')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${likeKindSort === 'anomaly' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Anomaly</button>
-                <button onClick={() => setLikeKindSort('growth')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${likeKindSort === 'growth' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Growth</button>
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-stone-200">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-stone-50 text-left">
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">MARKET</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">AVG RENT</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">RENT PSF</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OCC</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">RENT GROWTH</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PCS</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OP BENCH</th>
-                    <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">SIGNALS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedLikeKind.map((comp, i) => (
-                    <tr key={i} className={`border-t border-stone-100 transition-colors ${comp.collision ? 'bg-violet-50/50 hover:bg-violet-50' : 'hover:bg-violet-50/30'}`}>
-                      <td className="px-3 py-3">
-                        <div className="font-semibold text-stone-900 text-xs">{comp.name}</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-[10px] text-stone-500">{comp.units} units</span>
-                          <span className="text-[10px] text-stone-300">·</span>
-                          <span className={`text-[10px] font-bold px-1.5 rounded ${comp.class.startsWith('A') ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{comp.class}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-stone-600">{comp.market}</td>
-                      <td className="px-3 py-3 text-xs font-bold text-stone-900">${comp.avgRent.toLocaleString()}</td>
-                      <td className="px-3 py-3 text-xs font-mono text-stone-600">${comp.rentPSF.toFixed(2)}</td>
-                      <td className="px-3 py-3 text-xs text-stone-700">{comp.occupancy}%</td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs font-bold ${comp.rentGrowthYoY >= 5 ? 'text-emerald-600' : comp.rentGrowthYoY >= 3 ? 'text-stone-600' : 'text-red-500'}`}>
-                          +{comp.rentGrowthYoY}%
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-10 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${comp.pcsScore >= 75 ? 'bg-emerald-500' : comp.pcsScore >= 65 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${comp.pcsScore}%` }} />
-                          </div>
-                          <span className="text-[10px] font-mono text-stone-600">{comp.pcsScore}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`text-xs font-bold ${BENCHMARK_COLORS[comp.opBenchmark]}`}>
-                          {BENCHMARK_ICONS[comp.opBenchmark]} {comp.opBenchmark}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {comp.pricingAnomaly && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">UNDERPRICED</span>}
-                          {comp.collision && <span className="text-[9px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-bold">⚡ COLLISION</span>}
-                          {comp.opBenchmark === 'BELOW' && <span className="text-[9px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-medium">Op Gap</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-3 flex gap-5 text-[10px] text-stone-500">
-              <span className="flex items-center gap-1"><span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-bold inline-block">UNDERPRICED</span> Rent PSF &gt;15% below like-kind avg</span>
-              <span className="flex items-center gap-1"><span className="text-[9px] bg-violet-100 text-violet-700 px-1 rounded font-bold inline-block">⚡ COLLISION</span> Flagged in both Trade Area + Like-Kind lenses</span>
-              <span className="flex items-center gap-1"><span className="text-[9px] bg-red-50 text-red-600 px-1 rounded font-medium inline-block">Op Gap</span> Below national operational benchmark</span>
-            </div>
-          </>
-        )}
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 flex gap-4 text-[10px]">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-50 border border-emerald-200 inline-block" /> PCS ≥ 80</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-50 border border-amber-200 inline-block" /> PCS 60–79</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-50 border border-red-200 inline-block" /> PCS &lt; 60</span>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center gap-3 mb-1">
-          <h3 className="text-lg font-bold text-stone-900">Competition Lens — Trade Area Comps</h3>
-          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">LENS 1</span>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">Vantage Group Clusters</h3>
+            <p className="text-sm text-stone-500">Properties grouped by similar vintage, unit count, and class for apples-to-apples comparison</p>
+          </div>
+          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
         </div>
-        <p className="text-sm text-stone-500 mb-5">Properties within the defined trade area that compete for the SAME renter pool</p>
-
-        <div className="grid grid-cols-3 gap-4">
-          {TRADE_AREA_PATTERNS.map((p, i) => (
-            <div key={i} className="border border-violet-200 rounded-lg p-4 bg-violet-50/30">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-violet-500" />
-                <div className="text-sm font-bold text-stone-900">{p.pattern}</div>
+        <div className="grid grid-cols-4 gap-4">
+          {VANTAGE_GROUPS.map((group, i) => (
+            <div key={i} className="border border-stone-200 rounded-lg p-4 hover:border-violet-300 transition-colors">
+              <div className="text-xs font-bold text-stone-900 mb-3">{group.label}</div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-stone-400">AVG PCS</span>
+                  <span className="text-sm font-bold text-stone-900">{group.avgPcs}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-stone-400">RENT RANGE</span>
+                  <span className="text-[11px] font-semibold text-stone-700">{group.rentRange}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-stone-400">PROPERTIES</span>
+                  <span className="text-sm font-bold text-stone-900">{group.propertyCount}</span>
+                </div>
+                <div className="border-t border-stone-100 pt-2 mt-2">
+                  <div className="text-[10px] font-mono text-stone-400 mb-0.5">TOP PERFORMER</div>
+                  <div className="text-xs font-semibold text-violet-700">{group.topPerformer}</div>
+                </div>
               </div>
-              <p className="text-xs text-stone-600 leading-relaxed">{p.detection}</p>
             </div>
           ))}
         </div>
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center gap-3 mb-1">
-          <h3 className="text-lg font-bold text-stone-900">Like-Kind Lens — Cross-Market Comps</h3>
-          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">LENS 2</span>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">Competitive Patterns</h3>
+            <p className="text-sm text-stone-500">Market-wide competitive dynamics shaping the landscape</p>
+          </div>
+          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
         </div>
-        <p className="text-sm text-stone-500 mb-5">Properties with similar attributes across different submarkets or MSAs</p>
-
-        <div className="grid grid-cols-3 gap-4">
-          {LIKE_KIND_PATTERNS.map((p, i) => (
-            <div key={i} className="border border-violet-200 rounded-lg p-4 bg-violet-50/30">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-violet-500" />
-                <div className="text-sm font-bold text-stone-900">{p.pattern}</div>
+        <div className="grid grid-cols-2 gap-4">
+          {COMPETITIVE_PATTERNS.map((pattern, i) => (
+            <div key={i} className="border border-stone-200 rounded-lg p-4 hover:border-violet-200 transition-colors">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-violet-500" />
+                  <h4 className="text-sm font-bold text-stone-900">{pattern.title}</h4>
+                </div>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${SEVERITY_STYLES[pattern.severity]}`}>{pattern.signal}</span>
               </div>
-              <p className="text-xs text-stone-600 leading-relaxed">{p.detection}</p>
+              <p className="text-xs text-stone-600 leading-relaxed">{pattern.description}</p>
             </div>
           ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center gap-3 mb-2">
-          <h3 className="text-lg font-bold text-stone-900">Collision Output</h3>
-          <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">SIGNAL AMPLIFIER</span>
-        </div>
-        <div className="bg-stone-50 rounded-lg p-5 border border-stone-200">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 text-lg font-bold">⚡</div>
-            <div>
-              <p className="text-sm text-stone-700 leading-relaxed">
-                When both lenses find the same property, the signal is amplified. A property that ranks low in its trade area AND ranks below like-kind benchmarks has <strong>BOTH local competitive problems AND operational problems</strong> — maximum value-add potential.
-              </p>
-              <div className="mt-3 grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-lg p-3 border border-stone-200 text-center">
-                  <div className="text-[10px] font-mono text-stone-400 tracking-wider">TRADE AREA SIGNAL</div>
-                  <div className="text-sm font-bold text-violet-600 mt-1">Below Local Avg</div>
-                </div>
-                <div className="bg-white rounded-lg p-3 border border-stone-200 text-center">
-                  <div className="text-lg font-bold text-amber-500">+</div>
-                </div>
-                <div className="bg-white rounded-lg p-3 border border-stone-200 text-center">
-                  <div className="text-[10px] font-mono text-stone-400 tracking-wider">LIKE-KIND SIGNAL</div>
-                  <div className="text-sm font-bold text-violet-600 mt-1">Below National Benchmark</div>
-                </div>
-              </div>
-              <div className="mt-3 bg-violet-50 border border-violet-200 rounded-lg p-3 text-center">
-                <div className="text-[10px] font-mono text-violet-400 tracking-widest">COLLISION RESULT</div>
-                <div className="text-sm font-bold text-violet-700 mt-1">Maximum Value-Add Target — Dual Signal Confirmed</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

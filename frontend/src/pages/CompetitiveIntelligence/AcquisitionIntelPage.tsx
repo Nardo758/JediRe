@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const ACQUISITION_VITALS = [
   { id: 'underperformers', label: 'Underperformers Detected', value: '23', trend: '+4 this quarter', trendDirection: 'up' as const, sparklineData: [12, 14, 15, 16, 18, 17, 19, 20, 21, 19, 22, 23] },
@@ -137,6 +138,7 @@ const AcquisitionIntelPage: React.FC = () => {
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">DEBT SIGNAL</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">VALUE-ADD</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">SIGNALS</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider w-16"></th>
               </tr>
             </thead>
             <tbody>
@@ -194,6 +196,14 @@ const AcquisitionIntelPage: React.FC = () => {
                         <span key={j} className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{sig}</span>
                       ))}
                     </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <button
+                      onClick={() => console.log('Navigate to Comp Analysis for target:', target.name)}
+                      className="px-2.5 py-1.5 bg-violet-100 text-violet-700 rounded text-[10px] font-bold hover:bg-violet-200 transition-colors whitespace-nowrap"
+                    >
+                      Comps
+                    </button>
                   </td>
                 </tr>
               ))}

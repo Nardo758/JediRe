@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface DealsTabProps {
   marketId: string;
@@ -40,6 +41,7 @@ const TRAFFIC_QUAL_STYLES: Record<TrafficQualification, { icon: string; color: s
 const ALL_QUADRANTS: Quadrant[] = ['Hidden Gem', 'Validated Winner', 'Hype Risk', 'Dead Weight'];
 
 const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
+  const navigate = useNavigate();
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const [activeQuadrants, setActiveQuadrants] = useState<Set<Quadrant>>(new Set());
   const [showPcsBreakdown, setShowPcsBreakdown] = useState(false);
@@ -424,6 +426,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
                   <div className="flex flex-wrap gap-2">
                     <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">Add to Pipeline</button>
                     <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Run Pro Forma</button>
+                    <button onClick={() => navigate(`/deals/${featuredDeal.id || 'preview'}?tab=competition&subtab=comp-analysis`)} className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 transition-colors">Run Comp Analysis</button>
                     <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">View Owner</button>
                     <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Strategy Arb</button>
                   </div>

@@ -7,7 +7,7 @@ import { apiClient } from '../services/api.client';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type TabType = 'rankings' | 'grid' | 'performance' | 'documents';
+type TabType = 'rankings' | 'grid' | 'performance' | 'compset' | 'documents';
 
 interface RankedAsset {
   id: string;
@@ -122,6 +122,63 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
     targetLine: 77,
     classType: 'Class B',
     units: 204,
+  },
+];
+
+interface CompSetAsset {
+  id: string;
+  name: string;
+  submarket: string;
+  classType: string;
+  units: number;
+  pcsRank: number;
+  submarketSize: number;
+  compSetSize: number;
+  avgRent: number;
+  compAvgRent: number;
+  occupancy: number;
+  compAvgOccupancy: number;
+  rentPremiumPct: number;
+  trendDirection: 'up' | 'stable' | 'down';
+  monthlyRentTrend: number[];
+}
+
+const MOCK_COMP_SET_ASSETS: CompSetAsset[] = [
+  {
+    id: 'cs-1', name: 'The Residences at Midtown', submarket: 'Midtown Atlanta', classType: 'Class A', units: 320,
+    pcsRank: 3, submarketSize: 18, compSetSize: 8, avgRent: 2150, compAvgRent: 1980,
+    occupancy: 94.2, compAvgOccupancy: 91.8, rentPremiumPct: 8.6, trendDirection: 'up',
+    monthlyRentTrend: [1980, 2000, 2020, 2040, 2060, 2080, 2090, 2100, 2110, 2120, 2140, 2150],
+  },
+  {
+    id: 'cs-2', name: 'Peachtree Commons', submarket: 'Buckhead', classType: 'Class B', units: 248,
+    pcsRank: 7, submarketSize: 22, compSetSize: 12, avgRent: 1680, compAvgRent: 1720,
+    occupancy: 91.0, compAvgOccupancy: 93.4, rentPremiumPct: -2.3, trendDirection: 'down',
+    monthlyRentTrend: [1750, 1740, 1730, 1720, 1710, 1705, 1700, 1695, 1690, 1685, 1682, 1680],
+  },
+  {
+    id: 'cs-3', name: 'Highlands Park Lofts', submarket: 'Virginia Highland', classType: 'Class A', units: 186,
+    pcsRank: 1, submarketSize: 12, compSetSize: 6, avgRent: 2380, compAvgRent: 2050,
+    occupancy: 96.1, compAvgOccupancy: 92.0, rentPremiumPct: 16.1, trendDirection: 'up',
+    monthlyRentTrend: [2200, 2220, 2250, 2270, 2290, 2310, 2330, 2340, 2350, 2360, 2370, 2380],
+  },
+  {
+    id: 'cs-4', name: 'Decatur Station', submarket: 'Decatur', classType: 'Class B', units: 156,
+    pcsRank: 5, submarketSize: 9, compSetSize: 5, avgRent: 1420, compAvgRent: 1480,
+    occupancy: 88.5, compAvgOccupancy: 91.2, rentPremiumPct: -4.1, trendDirection: 'down',
+    monthlyRentTrend: [1500, 1490, 1480, 1475, 1465, 1460, 1450, 1445, 1440, 1435, 1425, 1420],
+  },
+  {
+    id: 'cs-5', name: 'Atlantic Station Living', submarket: 'West Midtown', classType: 'Class A', units: 290,
+    pcsRank: 4, submarketSize: 15, compSetSize: 9, avgRent: 1950, compAvgRent: 1890,
+    occupancy: 93.0, compAvgOccupancy: 92.1, rentPremiumPct: 3.2, trendDirection: 'up',
+    monthlyRentTrend: [1800, 1820, 1840, 1860, 1870, 1880, 1900, 1910, 1920, 1930, 1940, 1950],
+  },
+  {
+    id: 'cs-6', name: 'Riverside Flats', submarket: 'Vinings', classType: 'Class B', units: 204,
+    pcsRank: 6, submarketSize: 11, compSetSize: 7, avgRent: 1560, compAvgRent: 1540,
+    occupancy: 90.8, compAvgOccupancy: 90.5, rentPremiumPct: 1.3, trendDirection: 'stable',
+    monthlyRentTrend: [1530, 1535, 1540, 1540, 1545, 1545, 1550, 1550, 1555, 1555, 1558, 1560],
   },
 ];
 
@@ -336,6 +393,7 @@ export function AssetsOwnedPage() {
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'rankings', label: 'Performance & Rankings', icon: '🏆' },
+    { id: 'compset', label: 'Comp Set Performance', icon: '🎯' },
     { id: 'grid', label: 'Grid View', icon: '📊' },
     { id: 'performance', label: 'Performance', icon: '📈' },
     { id: 'documents', label: 'Documents', icon: '📄' },
@@ -620,6 +678,182 @@ export function AssetsOwnedPage() {
     </div>
   );
 
+  const compSetAvgPremium = (MOCK_COMP_SET_ASSETS.reduce((s, a) => s + a.rentPremiumPct, 0) / MOCK_COMP_SET_ASSETS.length).toFixed(1);
+  const compSetLeaders = MOCK_COMP_SET_ASSETS.filter(a => a.rentPremiumPct > 0).length;
+  const compSetLaggards = MOCK_COMP_SET_ASSETS.filter(a => a.rentPremiumPct < 0).length;
+  const avgCompSetOccDelta = (MOCK_COMP_SET_ASSETS.reduce((s, a) => s + (a.occupancy - a.compAvgOccupancy), 0) / MOCK_COMP_SET_ASSETS.length).toFixed(1);
+  const totalCompSetComps = MOCK_COMP_SET_ASSETS.reduce((s, a) => s + a.compSetSize, 0);
+
+  const CompSetSparkline = ({ data }: { data: number[] }) => {
+    const max = Math.max(...data) + 20;
+    const min = Math.min(...data) - 20;
+    const range = max - min || 1;
+    const w = 100;
+    const h = 28;
+    const points = data
+      .map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`)
+      .join(' ');
+    return (
+      <svg width={w} height={h} className="inline-block">
+        <polyline fill="none" stroke="#8b5cf6" strokeWidth={1.5} points={points} />
+        <circle cx={w} cy={h - ((data[data.length - 1] - min) / range) * h} r={2.5} fill="#8b5cf6" />
+      </svg>
+    );
+  };
+
+  const renderCompSetView = () => (
+    <div className="space-y-5 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
+        <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
+        <div className="text-lg font-semibold">How is each owned asset performing relative to its competitive set — and where are we falling behind?</div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-stone-900">Comp Set Vitals</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
+            <span className="text-[10px] text-stone-400">{MOCK_COMP_SET_ASSETS.length} owned assets</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-4">
+          {[
+            { label: 'Owned Assets', value: String(MOCK_COMP_SET_ASSETS.length), trend: `${totalCompSetComps} total comps tracked`, trendDir: 'up' as const, sparkData: [4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6] },
+            { label: 'Avg Rent Premium', value: `${Number(compSetAvgPremium) > 0 ? '+' : ''}${compSetAvgPremium}%`, trend: `${compSetLeaders} leading, ${compSetLaggards} trailing`, trendDir: Number(compSetAvgPremium) > 0 ? 'up' as const : 'down' as const, sparkData: [2.1, 2.4, 2.8, 3.0, 3.2, 3.5, 3.6, 3.7, 3.8, 3.8, 3.9, Number(compSetAvgPremium)] },
+            { label: 'Avg Occ vs Comps', value: `${Number(avgCompSetOccDelta) > 0 ? '+' : ''}${avgCompSetOccDelta}%`, trend: 'vs comp set avg', trendDir: Number(avgCompSetOccDelta) > 0 ? 'up' as const : 'down' as const, sparkData: [0.2, 0.3, 0.4, 0.3, 0.5, 0.6, 0.5, 0.7, 0.6, 0.7, 0.8, Number(avgCompSetOccDelta)] },
+            { label: 'Top Rank Held', value: '#1', trend: 'Highlands Park Lofts', trendDir: 'up' as const, sparkData: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+            { label: 'Assets at Risk', value: String(compSetLaggards), trend: 'Below comp avg rent', trendDir: 'down' as const, sparkData: [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, compSetLaggards] },
+          ].map((vital, i) => (
+            <div key={i} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{vital.label}</div>
+              <div className="text-xl font-bold text-stone-900">{vital.value}</div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className={`text-[10px] font-medium ${vital.trendDir === 'up' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {vital.trendDir === 'up' ? '↑' : '↓'} {vital.trend}
+                </span>
+              </div>
+              <div className="mt-2 h-6 flex items-end gap-px">
+                {vital.sparkData.slice(-12).map((v, idx, arr) => {
+                  const min = Math.min(...arr);
+                  const max = Math.max(...arr);
+                  const range = max - min || 1;
+                  const height = ((v - min) / range) * 100;
+                  return (
+                    <div key={idx} className={`flex-1 rounded-sm ${idx === arr.length - 1 ? 'bg-violet-500' : 'bg-stone-200'}`} style={{ height: `${Math.max(10, height)}%` }} />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-violet-50 border border-violet-200 rounded-xl px-5 py-3">
+        <p className="text-sm text-violet-900">
+          Portfolio averages a <strong>{Number(compSetAvgPremium) > 0 ? '+' : ''}{compSetAvgPremium}% rent premium</strong> vs comp sets. <strong>{compSetLeaders} of {MOCK_COMP_SET_ASSETS.length}</strong> assets outperform their comp set on rent. Occupancy delta averages <strong>{Number(avgCompSetOccDelta) > 0 ? '+' : ''}{avgCompSetOccDelta}%</strong> vs competitors. Focus on underperformers to close the gap.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-stone-900">Comp Set Performance by Asset</h3>
+            <p className="text-sm text-stone-500 mt-0.5">Each owned property vs its competitive set</p>
+          </div>
+          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 text-left">
+                <th className="px-4 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">PCS RANK</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">COMP SET</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">AVG RENT</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP AVG</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">PREMIUM</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">OCC</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP OCC</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">TREND</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">RENT TREND</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">ACTION</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...MOCK_COMP_SET_ASSETS].sort((a, b) => a.pcsRank - b.pcsRank).map((asset) => (
+                <tr key={asset.id} className="border-t border-stone-100 hover:bg-stone-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-stone-900">{asset.name}</div>
+                    <div className="text-xs text-stone-500">{asset.submarket} · {asset.classType} · {asset.units} units</div>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
+                      asset.pcsRank <= Math.ceil(asset.submarketSize * 0.25) ? 'bg-emerald-100 text-emerald-800' :
+                      asset.pcsRank <= Math.ceil(asset.submarketSize * 0.75) ? 'bg-amber-100 text-amber-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      #{asset.pcsRank}
+                    </span>
+                    <div className="text-[10px] text-stone-400 mt-0.5">of {asset.submarketSize}</div>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className="text-sm font-semibold text-stone-700">{asset.compSetSize}</span>
+                    <div className="text-[10px] text-stone-400">comps</div>
+                  </td>
+                  <td className="px-3 py-3 text-right font-medium text-stone-900">
+                    ${asset.avgRent.toLocaleString()}
+                  </td>
+                  <td className="px-3 py-3 text-right text-stone-500">
+                    ${asset.compAvgRent.toLocaleString()}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                      asset.rentPremiumPct > 0 ? 'bg-emerald-100 text-emerald-700' :
+                      asset.rentPremiumPct < 0 ? 'bg-red-100 text-red-700' :
+                      'bg-stone-100 text-stone-600'
+                    }`}>
+                      {asset.rentPremiumPct > 0 ? '+' : ''}{asset.rentPremiumPct}%
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-right font-medium text-stone-900">
+                    {asset.occupancy.toFixed(1)}%
+                  </td>
+                  <td className="px-3 py-3 text-right text-stone-500">
+                    {asset.compAvgOccupancy.toFixed(1)}%
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`text-xs font-semibold ${
+                      asset.trendDirection === 'up' ? 'text-emerald-600' :
+                      asset.trendDirection === 'down' ? 'text-red-500' :
+                      'text-stone-400'
+                    }`}>
+                      {asset.trendDirection === 'up' ? '↑ Rising' : asset.trendDirection === 'down' ? '↓ Falling' : '→ Stable'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <CompSetSparkline data={asset.monthlyRentTrend} />
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/deals/${asset.id}?tab=competition&subtab=comp-analysis`);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-colors border border-violet-200"
+                    >
+                      View Comps
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderDocumentsView = () => (
     <div className="text-center py-12 text-gray-500">
       <div className="text-4xl mb-2">📄</div>
@@ -665,6 +899,7 @@ export function AssetsOwnedPage() {
 
         <div className="flex-1 overflow-hidden">
           {activeTab === 'rankings' && renderRankingsView()}
+          {activeTab === 'compset' && renderCompSetView()}
           {activeTab === 'grid' && (
             <DataGrid
               columns={columns}
