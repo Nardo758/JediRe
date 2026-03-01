@@ -20,7 +20,7 @@ import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { Design3DPageEnhanced } from './Design3DPage.enhanced';
 
-import { MarketAnalysisPage } from './development/MarketAnalysisPage';
+import { MarketIntelligencePage } from './development/MarketIntelligencePage';
 import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
@@ -232,7 +232,7 @@ const DealDetailPage: React.FC = () => {
       id: 'market-intelligence', 
       label: 'Market Intelligence', 
       icon: <TrendingUp size={16} />, 
-      component: MarketAnalysisPage 
+      component: MarketIntelligencePage 
     },
     { 
       id: 'competition', 

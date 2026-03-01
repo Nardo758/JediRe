@@ -71,6 +71,7 @@ import developmentScenariosRoutes from './development-scenarios.routes';
 import trafficDataRoutes from './traffic-data.routes';
 import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
+import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -239,6 +240,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Competition Analysis routes (Development deal competitive analysis)
   app.use(`${API_PREFIX}/deals`, competitionRoutes);
+
+  // Deal Market Intelligence routes
+  app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
 
   // Error Logging routes (Frontend error tracking and monitoring)
   app.use(`${API_PREFIX}/errors`, errorsRoutes);
