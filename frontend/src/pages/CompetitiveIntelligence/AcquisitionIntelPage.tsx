@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const ACQUISITION_VITALS = [
   { id: 'underperformers', label: 'Underperformers Detected', value: '23', trend: '+4 this quarter', trendDirection: 'up' as const, sparklineData: [12, 14, 15, 16, 18, 17, 19, 20, 21, 19, 22, 23] },
@@ -6,6 +6,19 @@ const ACQUISITION_VITALS = [
   { id: 'maturing-debt', label: 'Maturing Debt (18mo)', value: '9', trend: '3 HIGH urgency', trendDirection: 'up' as const, sparklineData: [4, 5, 5, 6, 7, 6, 7, 8, 7, 8, 9, 9] },
   { id: 'portfolio-targets', label: 'Portfolio Targets', value: '6', trend: '+2 new entities', trendDirection: 'up' as const, sparklineData: [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6] },
   { id: 'hold-period', label: 'Avg Hold Period (yrs)', value: '6.3', trend: 'Fund exit pressure', trendDirection: 'up' as const, sparklineData: [4.8, 5.0, 5.2, 5.4, 5.5, 5.7, 5.8, 5.9, 6.0, 6.1, 6.2, 6.3] },
+];
+
+const ACQUISITION_TARGETS = [
+  { rank: 1, name: 'Sunset Ridge Apartments', units: 248, class: 'B', submarket: 'Sandy Springs', actualRank: 34, expectedRank: 12, performanceGap: 22, gapSeverity: 'SEVERE' as const, owner: 'PSL Ventures LLC', purchaseYear: 2019, holdYears: 7, estDebtMaturity: 'Q2 2026', debtUrgency: 'HIGH' as const, estValueAdd: '$2.8M', signals: ['Debt Maturity', 'Hold Stress', 'Low PCS'], quadrant: 'Hidden Gem' },
+  { rank: 2, name: 'Lakewood Crossing', units: 312, class: 'B-', submarket: 'Lakewood', actualRank: 38, expectedRank: 15, performanceGap: 23, gapSeverity: 'SEVERE' as const, owner: 'Greystone Capital Partners', purchaseYear: 2020, holdYears: 6, estDebtMaturity: 'Q4 2026', debtUrgency: 'HIGH' as const, estValueAdd: '$3.4M', signals: ['Debt Maturity', 'Mgmt Underperformance', 'Tax Delinquent'], quadrant: 'Dead Weight' },
+  { rank: 3, name: 'Cascade Falls Residences', units: 186, class: 'B', submarket: 'Cascade', actualRank: 29, expectedRank: 11, performanceGap: 18, gapSeverity: 'SEVERE' as const, owner: 'Horizon Multifamily Fund III', purchaseYear: 2019, holdYears: 7, estDebtMaturity: 'Q1 2027', debtUrgency: 'HIGH' as const, estValueAdd: '$2.1M', signals: ['Hold Stress', 'Fund Exit Window', 'Review Decline'], quadrant: 'Hidden Gem' },
+  { rank: 4, name: 'Peachtree Creek Landing', units: 420, class: 'B+', submarket: 'Buckhead', actualRank: 22, expectedRank: 6, performanceGap: 16, gapSeverity: 'SEVERE' as const, owner: 'Trident RE Holdings LLC', purchaseYear: 2018, holdYears: 8, estDebtMaturity: 'Q3 2026', debtUrgency: 'MODERATE' as const, estValueAdd: '$5.2M', signals: ['Hold Stress', 'Portfolio Non-Core', 'Amenity Gap'], quadrant: 'Hidden Gem' },
+  { rank: 5, name: 'East Point Village', units: 156, class: 'C+', submarket: 'East Point', actualRank: 31, expectedRank: 19, performanceGap: 12, gapSeverity: 'SEVERE' as const, owner: 'Metro South Properties LLC', purchaseYear: 2017, holdYears: 9, estDebtMaturity: 'Q2 2027', debtUrgency: 'MODERATE' as const, estValueAdd: '$1.6M', signals: ['Mgmt Underperformance', 'Deferred Maintenance'], quadrant: 'Dead Weight' },
+  { rank: 6, name: 'Brookhaven Station Apts', units: 278, class: 'B+', submarket: 'Brookhaven', actualRank: 18, expectedRank: 9, performanceGap: 9, gapSeverity: 'MODERATE' as const, owner: 'Cornerstone Residential LLC', purchaseYear: 2020, holdYears: 6, estDebtMaturity: 'Q1 2028', debtUrgency: 'LOW' as const, estValueAdd: '$2.4M', signals: ['Hold Stress', 'Amenity Gap'], quadrant: 'Hidden Gem' },
+  { rank: 7, name: 'Decatur Heights', units: 198, class: 'B', submarket: 'Decatur', actualRank: 25, expectedRank: 17, performanceGap: 8, gapSeverity: 'MODERATE' as const, owner: 'Redwood Apartment Group', purchaseYear: 2021, holdYears: 5, estDebtMaturity: 'Q3 2028', debtUrgency: 'LOW' as const, estValueAdd: '$1.8M', signals: ['Review Decline', 'Traffic Drop'], quadrant: 'Hype Risk' },
+  { rank: 8, name: 'College Park Commons', units: 224, class: 'C', submarket: 'College Park', actualRank: 36, expectedRank: 28, performanceGap: 8, gapSeverity: 'MODERATE' as const, owner: 'Southside Investment Group', purchaseYear: 2016, holdYears: 10, estDebtMaturity: 'Q4 2026', debtUrgency: 'HIGH' as const, estValueAdd: '$1.9M', signals: ['Debt Maturity', 'Hold Stress', 'Tax Delinquent'], quadrant: 'Dead Weight' },
+  { rank: 9, name: 'Vinings Creek Terrace', units: 168, class: 'B', submarket: 'Vinings', actualRank: 20, expectedRank: 14, performanceGap: 6, gapSeverity: 'MODERATE' as const, owner: 'Atlas Residential Partners', purchaseYear: 2022, holdYears: 4, estDebtMaturity: 'Q2 2029', debtUrgency: 'LOW' as const, estValueAdd: '$1.3M', signals: ['Mgmt Underperformance'], quadrant: 'Hidden Gem' },
+  { rank: 10, name: 'Westside Lofts', units: 142, class: 'B-', submarket: 'Westside', actualRank: 27, expectedRank: 22, performanceGap: 5, gapSeverity: 'SLIGHT' as const, owner: 'Urban Core Ventures LLC', purchaseYear: 2021, holdYears: 5, estDebtMaturity: 'Q1 2029', debtUrgency: 'LOW' as const, estValueAdd: '$0.9M', signals: ['Amenity Gap'], quadrant: 'Hidden Gem' },
 ];
 
 const DATA_SOURCES = [
@@ -22,7 +35,37 @@ const DERIVED_SIGNALS = [
   { signal: 'Management Company Performance', insight: 'Some management companies consistently underperform. Properties managed by bottom-quartile managers → instant acquisition watchlist.' },
 ];
 
+const GAP_COLORS = {
+  SEVERE: 'bg-red-100 text-red-700 border-red-200',
+  MODERATE: 'bg-amber-100 text-amber-700 border-amber-200',
+  SLIGHT: 'bg-stone-100 text-stone-600 border-stone-200',
+} as const;
+
+const URGENCY_COLORS = {
+  HIGH: 'bg-red-100 text-red-700',
+  MODERATE: 'bg-amber-100 text-amber-700',
+  LOW: 'bg-emerald-100 text-emerald-700',
+} as const;
+
+const QUADRANT_COLORS: Record<string, string> = {
+  'Hidden Gem': 'bg-emerald-100 text-emerald-700',
+  'Dead Weight': 'bg-stone-200 text-stone-600',
+  'Hype Risk': 'bg-red-100 text-red-600',
+  'Validated Winner': 'bg-blue-100 text-blue-700',
+};
+
 const AcquisitionIntelPage: React.FC = () => {
+  const [sortField, setSortField] = useState<'rank' | 'gap' | 'urgency'>('rank');
+
+  const sortedTargets = [...ACQUISITION_TARGETS].sort((a, b) => {
+    if (sortField === 'gap') return b.performanceGap - a.performanceGap;
+    if (sortField === 'urgency') {
+      const urgencyOrder = { HIGH: 0, MODERATE: 1, LOW: 2 };
+      return urgencyOrder[a.debtUrgency] - urgencyOrder[b.debtUrgency];
+    }
+    return a.rank - b.rank;
+  });
+
   return (
     <div className="space-y-5">
       <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-blue-500">
@@ -69,6 +112,102 @@ const AcquisitionIntelPage: React.FC = () => {
         <p className="text-sm text-blue-900">
           Tracking 23 underperforming properties across Atlanta MSA. <strong>9 properties</strong> have debt maturing within 18 months, with 3 flagged as HIGH urgency acquisition windows. 6 portfolio entities identified with non-core assets available for trade.
         </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-stone-900 mb-1">Acquisition Targets</h3>
+            <p className="text-sm text-stone-500">Top 10 underperforming properties ranked by acquisition priority</p>
+          </div>
+          <div className="flex bg-stone-100 rounded-lg p-0.5">
+            <button onClick={() => setSortField('rank')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'rank' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Priority</button>
+            <button onClick={() => setSortField('gap')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'gap' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Gap</button>
+            <button onClick={() => setSortField('urgency')} className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${sortField === 'urgency' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>By Urgency</button>
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-stone-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-stone-50 text-left">
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider w-12"></th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PERFORMANCE GAP</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OWNER INTELLIGENCE</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">DEBT SIGNAL</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">VALUE-ADD</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">SIGNALS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedTargets.map((target) => (
+                <tr key={target.rank} className="border-t border-stone-100 hover:bg-blue-50/30 transition-colors">
+                  <td className="px-3 py-3">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                      {target.rank}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="font-semibold text-stone-900 text-xs">{target.name}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[10px] text-stone-500">{target.units} units</span>
+                      <span className="text-[10px] text-stone-300">·</span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0 rounded ${target.class.startsWith('A') ? 'bg-blue-50 text-blue-600' : target.class.startsWith('B') ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'}`}>{target.class}</span>
+                      <span className="text-[10px] text-stone-300">·</span>
+                      <span className="text-[10px] text-stone-500">{target.submarket}</span>
+                    </div>
+                    <span className={`inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${QUADRANT_COLORS[target.quadrant] || 'bg-stone-100 text-stone-500'}`}>{target.quadrant}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1 text-xs text-stone-700">
+                      <span className="font-mono">#{target.actualRank}</span>
+                      <span className="text-stone-400">→</span>
+                      <span className="font-mono font-bold">#{target.expectedRank}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <div className="w-14 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${target.gapSeverity === 'SEVERE' ? 'bg-red-500' : target.gapSeverity === 'MODERATE' ? 'bg-amber-500' : 'bg-stone-400'}`} style={{ width: `${Math.min(100, (target.performanceGap / 25) * 100)}%` }} />
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${GAP_COLORS[target.gapSeverity]}`}>
+                        {target.gapSeverity} ({target.performanceGap})
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="text-xs font-medium text-stone-900">{target.owner}</div>
+                    <div className="text-[10px] text-stone-500 mt-0.5">
+                      Acquired {target.purchaseYear} · {target.holdYears}yr hold
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="text-xs font-mono text-stone-700">{target.estDebtMaturity}</div>
+                    <span className={`inline-block mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${URGENCY_COLORS[target.debtUrgency]}`}>
+                      {target.debtUrgency}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="text-sm font-bold text-emerald-700">{target.estValueAdd}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {target.signals.map((sig, j) => (
+                        <span key={j} className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">{sig}</span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 flex gap-5 text-[10px]">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-1 rounded-full bg-red-500 inline-block" /> SEVERE gap (&gt;10 ranks)</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-1 rounded-full bg-amber-500 inline-block" /> MODERATE gap (5–10)</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-1 rounded-full bg-stone-400 inline-block" /> SLIGHT gap (&lt;5)</span>
+          <span className="ml-4 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-100 border border-red-200 inline-block" /> HIGH urgency debt</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-100 border border-amber-200 inline-block" /> MODERATE</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-100 border border-emerald-200 inline-block" /> LOW</span>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
