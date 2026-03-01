@@ -138,6 +138,22 @@ router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Re
           if (!msaId && lookup.rows[0].msa_id) {
             msaId = lookup.rows[0].msa_id;
           }
+        } else {
+          const nearest = await pool.query(
+            `SELECT id, name, msa_id,
+                    ST_Distance(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326)) as dist
+             FROM submarkets
+             WHERE geometry IS NOT NULL
+             ORDER BY geometry <-> ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326)
+             LIMIT 1`,
+            [dealCentroid.lng, dealCentroid.lat]
+          );
+          if (nearest.rows.length > 0) {
+            submarketId = nearest.rows[0].id;
+            if (!msaId && nearest.rows[0].msa_id) {
+              msaId = nearest.rows[0].msa_id;
+            }
+          }
         }
       }
 

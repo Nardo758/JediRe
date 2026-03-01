@@ -49,9 +49,9 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               <button
                 key={scope}
                 onClick={() => onDefineTradeArea?.()}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 transition-colors"
               >
-                <span>{scopeIcons[scope]}</span>
+                <span className="text-sm">{scopeIcons[scope]}</span>
                 <span>+ Define</span>
               </button>
             );
@@ -61,16 +61,16 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
             <button
               key={scope}
               onClick={() => onChange(scope)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${
                 isActive
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
               }`}
             >
-              <span className="text-xs">{scopeIcons[scope]}</span>
+              <span className="text-sm">{scopeIcons[scope]}</span>
               <span>{scopeLabels[scope]}</span>
-              {isActive && scopeStats && (
-                <span className="text-[10px] text-blue-500 font-normal ml-0.5">
+              {isActive && scopeStats && (scopeStats.occupancy !== undefined || scopeStats.avg_rent !== undefined) && (
+                <span className="text-xs text-blue-500 font-normal ml-0.5">
                   {scopeStats.occupancy !== undefined && `${scopeStats.occupancy.toFixed(1)}%`}
                   {scopeStats.occupancy !== undefined && scopeStats.avg_rent !== undefined && ' \u00B7 '}
                   {scopeStats.avg_rent !== undefined && `$${scopeStats.avg_rent.toLocaleString()}`}
