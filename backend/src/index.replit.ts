@@ -91,6 +91,7 @@ import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
 import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import correlationRouter from './api/rest/correlation.routes';
+import rankingsRouter from './api/rest/rankings.routes';
 
 dotenv.config();
 
@@ -245,6 +246,7 @@ app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/correlations', requireAuth, correlationRouter);
+app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));

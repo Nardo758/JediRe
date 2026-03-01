@@ -1,16 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { apiClient } from '../../../api/client';
 
 interface PowerRankingsTabProps {
   marketId: string;
 }
 
 interface PropertyRanking {
-  id: number;
+  id: number | string;
   name: string;
+  address?: string;
   submarket: string;
   units: number;
   yearBuilt: number;
-  class: 'A' | 'B+' | 'B' | 'B-' | 'C+' | 'C';
+  class: string;
+  owner?: string;
   pcsScore: number;
   rank: number;
   movement: number;
@@ -30,18 +33,6 @@ const MOCK_RANKINGS: PropertyRanking[] = [
   { id: 4, name: 'Brookhaven Terrace', submarket: 'Brookhaven', units: 240, yearBuilt: 1998, class: 'B+', pcsScore: 86, rank: 4, movement: -1, components: { trafficPerformance: 88, revenueStrength: 82, operationalQuality: 86, assetCondition: 84, marketPosition: 90 } },
   { id: 5, name: 'Peachtree Walk', submarket: 'Midtown', units: 310, yearBuilt: 2015, class: 'B+', pcsScore: 85, rank: 5, movement: 1, components: { trafficPerformance: 84, revenueStrength: 88, operationalQuality: 82, assetCondition: 86, marketPosition: 85 } },
   { id: 6, name: 'Decatur Station', submarket: 'Decatur', units: 156, yearBuilt: 1985, class: 'C+', pcsScore: 83, rank: 6, movement: 4, components: { trafficPerformance: 86, revenueStrength: 78, operationalQuality: 80, assetCondition: 72, marketPosition: 89 } },
-  { id: 7, name: 'Heritage Oaks', submarket: 'Sandy Springs', units: 280, yearBuilt: 2005, class: 'B', pcsScore: 81, rank: 7, movement: -2, components: { trafficPerformance: 78, revenueStrength: 84, operationalQuality: 83, assetCondition: 80, marketPosition: 82 } },
-  { id: 8, name: 'Summit Creek', submarket: 'Buckhead', units: 196, yearBuilt: 2010, class: 'B+', pcsScore: 80, rank: 8, movement: 0, components: { trafficPerformance: 82, revenueStrength: 80, operationalQuality: 79, assetCondition: 78, marketPosition: 81 } },
-  { id: 9, name: 'Sandy Springs Crossing', submarket: 'Sandy Springs', units: 312, yearBuilt: 2001, class: 'B+', pcsScore: 78, rank: 9, movement: -3, components: { trafficPerformance: 74, revenueStrength: 82, operationalQuality: 78, assetCondition: 76, marketPosition: 80 } },
-  { id: 10, name: 'Cascade Heights', submarket: 'East Atlanta', units: 144, yearBuilt: 1988, class: 'C+', pcsScore: 76, rank: 10, movement: 5, components: { trafficPerformance: 80, revenueStrength: 72, operationalQuality: 74, assetCondition: 68, marketPosition: 86 } },
-  { id: 11, name: 'Glenwood Gardens', submarket: 'East Atlanta', units: 320, yearBuilt: 1995, class: 'B-', pcsScore: 74, rank: 11, movement: 1, components: { trafficPerformance: 76, revenueStrength: 70, operationalQuality: 75, assetCondition: 72, marketPosition: 77 } },
-  { id: 12, name: 'Parkside at Buckhead', submarket: 'Buckhead', units: 280, yearBuilt: 2012, class: 'B+', pcsScore: 73, rank: 12, movement: -4, components: { trafficPerformance: 70, revenueStrength: 78, operationalQuality: 72, assetCondition: 74, marketPosition: 71 } },
-  { id: 13, name: 'Midtown 440', submarket: 'Midtown', units: 220, yearBuilt: 2022, class: 'A', pcsScore: 71, rank: 13, movement: -2, components: { trafficPerformance: 68, revenueStrength: 76, operationalQuality: 70, assetCondition: 88, marketPosition: 52 } },
-  { id: 14, name: 'Westside Lofts', submarket: 'Midtown', units: 96, yearBuilt: 1978, class: 'C', pcsScore: 68, rank: 14, movement: 0, components: { trafficPerformance: 72, revenueStrength: 64, operationalQuality: 66, assetCondition: 58, marketPosition: 80 } },
-  { id: 15, name: 'Buckhead Place', submarket: 'Buckhead', units: 180, yearBuilt: 2003, class: 'B', pcsScore: 66, rank: 15, movement: -1, components: { trafficPerformance: 64, revenueStrength: 68, operationalQuality: 65, assetCondition: 66, marketPosition: 67 } },
-  { id: 16, name: 'Cascade Pointe', submarket: 'East Atlanta', units: 148, yearBuilt: 1982, class: 'C', pcsScore: 63, rank: 16, movement: 2, components: { trafficPerformance: 66, revenueStrength: 58, operationalQuality: 62, assetCondition: 54, marketPosition: 75 } },
-  { id: 17, name: 'Vinings Glen', submarket: 'Sandy Springs', units: 200, yearBuilt: 1990, class: 'B-', pcsScore: 60, rank: 17, movement: -1, components: { trafficPerformance: 58, revenueStrength: 62, operationalQuality: 60, assetCondition: 56, marketPosition: 64 } },
-  { id: 18, name: 'Chamblee Crossings', submarket: 'Brookhaven', units: 168, yearBuilt: 1975, class: 'C', pcsScore: 55, rank: 18, movement: 0, components: { trafficPerformance: 52, revenueStrength: 56, operationalQuality: 54, assetCondition: 48, marketPosition: 65 } },
 ];
 
 type SortKey = 'rank' | 'pcsScore' | 'name' | 'units' | 'movement';
@@ -88,12 +79,45 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
   const [sizeFilter, setSizeFilter] = useState<string>('All');
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortAsc, setSortAsc] = useState(true);
-  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | string | null>(null);
+  const [rankings, setRankings] = useState<PropertyRanking[]>(MOCK_RANKINGS);
+  const [loading, setLoading] = useState(true);
+  const [isLive, setIsLive] = useState(false);
+  const [totalProperties, setTotalProperties] = useState(0);
 
-  const isAtlanta = marketId === 'atlanta';
+  useEffect(() => {
+    let cancelled = false;
+    const fetchRankings = async () => {
+      try {
+        setLoading(true);
+        const response: any = await apiClient.get(`/rankings/${marketId}`);
+        const outer = response?.data || response;
+        const report = outer?.rankings ? outer : (outer?.data || outer);
+        if (!cancelled && report?.rankings && report.rankings.length > 0) {
+          setRankings(report.rankings);
+          setIsLive(report.source === 'live');
+          setTotalProperties(report.total || report.rankings.length);
+        } else if (!cancelled) {
+          setRankings(MOCK_RANKINGS);
+          setIsLive(false);
+          setTotalProperties(MOCK_RANKINGS.length);
+        }
+      } catch {
+        if (!cancelled) {
+          setRankings(MOCK_RANKINGS);
+          setIsLive(false);
+          setTotalProperties(MOCK_RANKINGS.length);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchRankings();
+    return () => { cancelled = true; };
+  }, [marketId]);
 
   const filtered = useMemo(() => {
-    let data = [...MOCK_RANKINGS];
+    let data = [...rankings];
     if (classFilter !== 'All') data = data.filter(p => p.class === classFilter);
     if (vintageFilter !== 'All') data = data.filter(p => getVintageDecade(p.yearBuilt) === vintageFilter);
     if (sizeFilter !== 'All') data = data.filter(p => matchesSize(p.units, sizeFilter));
@@ -106,7 +130,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
     });
 
     return data;
-  }, [classFilter, vintageFilter, sizeFilter, sortKey, sortAsc]);
+  }, [rankings, classFilter, vintageFilter, sizeFilter, sortKey, sortAsc]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -118,8 +142,8 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
   };
 
   const sortArrow = (key: SortKey) => {
-    if (sortKey !== key) return <span className="text-gray-300 ml-1">↕</span>;
-    return <span className="text-blue-500 ml-1">{sortAsc ? '↑' : '↓'}</span>;
+    if (sortKey !== key) return <span className="text-gray-300 ml-1">{'\u2195'}</span>;
+    return <span className="text-blue-500 ml-1">{sortAsc ? '\u2191' : '\u2193'}</span>;
   };
 
   const COMPONENT_LABELS: { key: keyof PropertyRanking['components']; label: string; color: string }[] = [
@@ -130,12 +154,19 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
     { key: 'marketPosition', label: 'Market Position', color: '#14b8a6' },
   ];
 
-  if (!isAtlanta) {
+  const topMovers = useMemo(() => {
+    const sorted = [...rankings].sort((a, b) => b.movement - a.movement);
+    const risers = sorted.filter(p => p.movement > 0).slice(0, 3);
+    const fallers = sorted.filter(p => p.movement < 0).sort((a, b) => a.movement - b.movement).slice(0, 3);
+    return { risers, fallers };
+  }, [rankings]);
+
+  if (!marketId || marketId === '') {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <span className="text-4xl mb-4 block">🏆</span>
+        <span className="text-4xl mb-4 block">{'\uD83C\uDFC6'}</span>
         <h3 className="text-lg font-semibold text-gray-700">Power Rankings</h3>
-        <p className="text-sm text-gray-400 mt-2">Connect market data to see property competitive rankings.</p>
+        <p className="text-sm text-gray-400 mt-2">Select a market to see property competitive rankings.</p>
       </div>
     );
   }
@@ -145,11 +176,26 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Power Rankings</h2>
-          <p className="text-sm text-gray-500">Property Competitive Score (PCS) — ranked across {MOCK_RANKINGS.length} properties</p>
+          <p className="text-sm text-gray-500">
+            Property Competitive Score (PCS) {'\u2014'} ranked across {totalProperties} multifamily properties
+            {isLive && <span className="text-emerald-600 font-medium ml-1">(Fulton County records)</span>}
+          </p>
         </div>
-        <span className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
-          MOCK DATA
-        </span>
+        <div className="flex items-center gap-2">
+          {loading && (
+            <span className="text-xs text-indigo-400 animate-pulse">Loading...</span>
+          )}
+          {!loading && isLive && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+              {'\u25CF'} LIVE DATA
+            </span>
+          )}
+          {!loading && !isLive && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">
+              SAMPLE DATA
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -210,44 +256,32 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-900">Rankings Table</h3>
           <p className="text-sm text-gray-500 mt-0.5">
-            Showing {filtered.length} of {MOCK_RANKINGS.length} properties · Click a row to view PCS breakdown
+            Showing {filtered.length} of {rankings.length} properties {'\u00B7'} Click a row to view PCS breakdown
           </p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                <th
-                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-16"
-                  onClick={() => handleSort('rank')}
-                >
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-16" onClick={() => handleSort('rank')}>
                   Rank {sortArrow('rank')}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">
                   Move
                 </th>
-                <th
-                  className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 min-w-[180px]"
-                  onClick={() => handleSort('name')}
-                >
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 min-w-[180px]" onClick={() => handleSort('name')}>
                   Property {sortArrow('name')}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">
                   Class
                 </th>
-                <th
-                  className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-20"
-                  onClick={() => handleSort('units')}
-                >
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-20" onClick={() => handleSort('units')}>
                   Units {sortArrow('units')}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">
                   Submarket
                 </th>
-                <th
-                  className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-24"
-                  onClick={() => handleSort('pcsScore')}
-                >
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-24" onClick={() => handleSort('pcsScore')}>
                   PCS Score {sortArrow('pcsScore')}
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">
@@ -279,13 +313,16 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                         </span>
                       )}
                       {property.movement === 0 && (
-                        <span className="text-xs font-medium text-gray-400">—</span>
+                        <span className="text-xs font-medium text-gray-400">{'\u2014'}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
                         <span className="font-semibold text-gray-900">{property.name}</span>
-                        <span className="text-xs text-gray-400">{property.yearBuilt}</span>
+                        <span className="text-xs text-gray-400">
+                          {property.yearBuilt > 0 ? property.yearBuilt : 'N/A'}
+                          {property.owner && <span className="ml-2 text-gray-300">{'\u00B7'} {property.owner.length > 30 ? property.owner.slice(0, 28) + '...' : property.owner}</span>}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -297,7 +334,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                         {property.class}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">{property.units}</td>
+                    <td className="px-4 py-3 text-center text-gray-600">{property.units.toLocaleString()}</td>
                     <td className="px-4 py-3 text-center text-xs text-gray-600">{property.submarket}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-block px-2.5 py-1 rounded-lg text-sm font-bold ${scoreColor(property.pcsScore)}`}>
@@ -308,10 +345,11 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                       <svg viewBox="0 0 80 24" className="w-20 h-6 mx-auto">
                         {(() => {
                           const base = property.pcsScore;
+                          const idNum = typeof property.id === 'number' ? property.id : (property.units * 7 + property.yearBuilt) % 100;
                           const pts = [
-                            base - 4 + Math.round(Math.sin(property.id) * 3),
-                            base - 3 + Math.round(Math.cos(property.id * 2) * 2),
-                            base - 2 + Math.round(Math.sin(property.id * 3) * 2),
+                            base - 4 + Math.round(Math.sin(idNum) * 3),
+                            base - 3 + Math.round(Math.cos(idNum * 2) * 2),
+                            base - 2 + Math.round(Math.sin(idNum * 3) * 2),
                             base - 1,
                             base + property.movement * 0.3,
                             base,
@@ -332,7 +370,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-b border-blue-100 px-6 py-5">
                           <div className="flex items-center justify-between mb-4">
                             <div>
-                              <h4 className="text-sm font-bold text-gray-900">PCS Score Breakdown — {property.name}</h4>
+                              <h4 className="text-sm font-bold text-gray-900">PCS Score Breakdown {'\u2014'} {property.name}</h4>
                               <p className="text-xs text-gray-500 mt-0.5">5-component Property Competitive Score</p>
                             </div>
                             <span className={`inline-block px-3 py-1 rounded-lg text-lg font-bold ${scoreColor(property.pcsScore)}`}>
@@ -359,9 +397,10 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                           <div className="mt-4 pt-3 border-t border-blue-200/40 flex items-center justify-between">
                             <div className="flex items-center gap-4 text-xs text-gray-500">
                               <span>Class: <strong className="text-gray-700">{property.class}</strong></span>
-                              <span>Units: <strong className="text-gray-700">{property.units}</strong></span>
-                              <span>Year: <strong className="text-gray-700">{property.yearBuilt}</strong></span>
+                              <span>Units: <strong className="text-gray-700">{property.units.toLocaleString()}</strong></span>
+                              <span>Year: <strong className="text-gray-700">{property.yearBuilt || 'N/A'}</strong></span>
                               <span>Submarket: <strong className="text-gray-700">{property.submarket}</strong></span>
+                              {property.owner && <span>Owner: <strong className="text-gray-700">{property.owner}</strong></span>}
                             </div>
                             <button
                               onClick={e => { e.stopPropagation(); setExpandedRow(null); }}
@@ -379,7 +418,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
-                    No properties match the selected filters. Try adjusting your criteria.
+                    {loading ? 'Loading rankings...' : 'No properties match the selected filters. Try adjusting your criteria.'}
                   </td>
                 </tr>
               )}
@@ -396,9 +435,25 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
           <div>
             <h4 className="text-sm font-semibold text-teal-800 mb-1">Rankings Insight</h4>
             <p className="text-sm text-gray-700 leading-relaxed">
-              <strong className="text-teal-700">Top Movers:</strong> Cascade Heights (+5) and Decatur Station (+4) are surging driven by strong market position scores in underserved submarkets.{' '}
-              <strong className="text-red-600">Watch:</strong> Sandy Springs Crossing (-3) and Parkside at Buckhead (-4) declining due to increased supply pressure and traffic competition.{' '}
-              <strong className="text-blue-700">Opportunity:</strong> Properties ranked 6-10 with upward movement represent the best value-add targets — improving fundamentals at lower entry points.
+              {topMovers.risers.length > 0 && (
+                <>
+                  <strong className="text-teal-700">Top Risers:</strong>{' '}
+                  {topMovers.risers.map((p, i) => (
+                    <span key={p.id}>{i > 0 ? ', ' : ''}{p.name} (+{p.movement})</span>
+                  ))}
+                  {' '}showing momentum from strong market position and improving fundamentals.{' '}
+                </>
+              )}
+              {topMovers.fallers.length > 0 && (
+                <>
+                  <strong className="text-red-600">Watch:</strong>{' '}
+                  {topMovers.fallers.map((p, i) => (
+                    <span key={p.id}>{i > 0 ? ', ' : ''}{p.name} ({p.movement})</span>
+                  ))}
+                  {' '}declining due to supply pressure and competitive dynamics.{' '}
+                </>
+              )}
+              <strong className="text-blue-700">Opportunity:</strong> Properties ranked 6-15 with upward movement represent the best value-add targets {'\u2014'} improving fundamentals at lower entry points.
             </p>
           </div>
         </div>
