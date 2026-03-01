@@ -68,6 +68,8 @@ import zoningVerificationRoutes from './zoning-verification.routes';
 import zoningProfileRoutes from './zoning-profile.routes';
 import zoningTriangulationRoutes from './zoning-triangulation.routes';
 import developmentScenariosRoutes from './development-scenarios.routes';
+import trafficDataRoutes from './traffic-data.routes';
+import trafficCompsRoutes from './traffic-comps.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -266,6 +268,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Development Scenarios routes (Use-mix scenario modeling)
   app.use(`${API_PREFIX}`, developmentScenariosRoutes);
+
+  // Traffic Data routes (M07 Traffic Engine - ADT ingestion, station queries, property linking)
+  app.use(`${API_PREFIX}/traffic-data`, trafficDataRoutes);
+
+  // Traffic Comps routes (M07 Traffic Engine - comp traffic analysis per deal)
+  app.use(`${API_PREFIX}/traffic-comps`, trafficCompsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
