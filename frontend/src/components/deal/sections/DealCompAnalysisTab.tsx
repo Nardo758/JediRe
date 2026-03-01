@@ -29,25 +29,12 @@ const TREND_ICONS = {
   stable: { icon: '\u2192', color: 'text-stone-400' },
 } as const;
 
-function getPcsBarColor(pcs: number): string {
-  if (pcs >= 85) return 'bg-emerald-500';
-  if (pcs >= 70) return 'bg-emerald-400';
-  if (pcs >= 55) return 'bg-amber-400';
-  return 'bg-amber-500';
-}
-
-function getClassBadgeStyle(cls: string): string {
-  if (cls.startsWith('A')) return 'bg-violet-100 text-violet-700';
-  if (cls.startsWith('B')) return 'bg-amber-100 text-amber-700';
-  return 'bg-stone-100 text-stone-600';
-}
-
 const VITALS = [
-  { label: 'Tracked Properties', value: '142', trend: '+8 this month', sparkline: [98, 105, 110, 112, 118, 122, 125, 128, 130, 134, 138, 142] },
-  { label: 'Avg PCS Score', value: '67.4', trend: '+2.1 QoQ', sparkline: [58, 60, 61, 62, 63, 64, 64, 65, 66, 66, 67, 67] },
-  { label: 'Rent Ceiling', value: '$2,180', trend: 'Market top', sparkline: [1920, 1960, 1990, 2010, 2040, 2060, 2080, 2100, 2120, 2140, 2160, 2180] },
-  { label: 'PCS Spread', value: '56.1', trend: 'Top vs bottom Q', sparkline: [42, 44, 46, 47, 49, 50, 51, 52, 53, 54, 55, 56] },
-  { label: 'Hidden Gems Detected', value: '7', trend: '+2 this quarter', sparkline: [2, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 7] },
+  { label: 'Tracked Properties', value: '142', trend: '+8 this month', trendDirection: 'up' as const, sparkline: [98, 105, 110, 112, 118, 122, 125, 128, 130, 134, 138, 142] },
+  { label: 'Avg PCS Score', value: '67.4', trend: '+2.1 QoQ', trendDirection: 'up' as const, sparkline: [58, 60, 61, 62, 63, 64, 64, 65, 66, 66, 67, 67] },
+  { label: 'Rent Ceiling', value: '$2,180', trend: 'Market top', trendDirection: 'up' as const, sparkline: [1920, 1960, 1990, 2010, 2040, 2060, 2080, 2100, 2120, 2140, 2160, 2180] },
+  { label: 'PCS Spread', value: '56.1', trend: 'Top vs bottom Q', trendDirection: 'up' as const, sparkline: [42, 44, 46, 47, 49, 50, 51, 52, 53, 54, 55, 56] },
+  { label: 'Hidden Gems Detected', value: '7', trend: '+2 this quarter', trendDirection: 'up' as const, sparkline: [2, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 7] },
 ];
 
 const DealCompAnalysisTab: React.FC = () => {
@@ -75,28 +62,32 @@ const DealCompAnalysisTab: React.FC = () => {
           </div>
         </div>
         <div className="grid grid-cols-5 gap-4">
-        {VITALS.map((kpi, i) => (
-          <div key={i} className="bg-white border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
-            <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{kpi.label}</div>
-            <div className="text-xl font-bold text-stone-900">{kpi.value}</div>
-            <div className="text-[10px] text-stone-500 mt-0.5">{kpi.trend}</div>
-            <div className="mt-2 h-6 flex items-end gap-px">
-              {kpi.sparkline.map((v, j, arr) => {
-                const min = Math.min(...arr);
-                const max = Math.max(...arr);
-                const range = max - min || 1;
-                const height = ((v - min) / range) * 100;
-                return (
-                  <div
-                    key={j}
-                    className={`flex-1 rounded-sm ${j === arr.length - 1 ? 'bg-violet-500' : 'bg-stone-200'}`}
-                    style={{ height: `${Math.max(10, height)}%` }}
-                  />
-                );
-              })}
+          {VITALS.map((kpi, i) => (
+            <div key={i} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{kpi.label}</div>
+              <div className="text-xl font-bold text-stone-900">{kpi.value}</div>
+              <div className="flex items-center gap-1 mt-1">
+                <span className={`text-[10px] font-medium ${kpi.trendDirection === 'up' ? 'text-emerald-600' : kpi.trendDirection === 'down' ? 'text-red-500' : 'text-stone-500'}`}>
+                  {kpi.trendDirection === 'up' ? '\u2191' : kpi.trendDirection === 'down' ? '\u2193' : '\u2192'} {kpi.trend}
+                </span>
+              </div>
+              <div className="mt-2 h-6 flex items-end gap-px">
+                {kpi.sparkline.map((v, j, arr) => {
+                  const min = Math.min(...arr);
+                  const max = Math.max(...arr);
+                  const range = max - min || 1;
+                  const height = ((v - min) / range) * 100;
+                  return (
+                    <div
+                      key={j}
+                      className={`flex-1 rounded-sm ${j === arr.length - 1 ? 'bg-violet-500' : 'bg-stone-200'}`}
+                      style={{ height: `${Math.max(10, height)}%` }}
+                    />
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
         </div>
       </div>
 
@@ -134,55 +125,64 @@ const DealCompAnalysisTab: React.FC = () => {
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center w-32">PCS SCORE</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center w-28">RENT VS CEILING</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">TREND</th>
-                <th className="px-3 py-2.5 w-16"></th>
+                <th className="px-3 py-2.5 w-20"></th>
               </tr>
             </thead>
             <tbody>
               {sortedRankings.map((prop, idx) => {
                 const trendInfo = TREND_ICONS[prop.trend];
-                const pcsWidth = Math.max(8, (prop.pcs / 100) * 100);
+                const pcsColor = prop.pcs >= 80 ? 'bg-emerald-500' : prop.pcs >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                const rankBadge = prop.pcs >= 80 ? 'bg-emerald-50 text-emerald-700' : prop.pcs >= 60 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700';
                 return (
-                  <tr key={idx} className="border-t border-stone-100 hover:bg-stone-50/50 transition-colors">
-                    <td className="px-3 py-3.5">
-                      <span className="text-sm font-bold text-violet-700">{prop.rank}</span>
+                  <tr key={idx} className="border-t border-stone-100 hover:bg-violet-50/30 transition-colors">
+                    <td className="px-3 py-3">
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${rankBadge}`}>
+                        {idx + 1}
+                      </span>
                     </td>
-                    <td className="px-3 py-3.5">
-                      <div className="font-semibold text-stone-900 text-sm">{prop.name}</div>
+                    <td className="px-3 py-3">
+                      <div className="font-semibold text-stone-900 text-xs">{prop.name}</div>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${getClassBadgeStyle(prop.class)}`}>{prop.class}</span>
-                        <span className="text-[11px] text-stone-400">{prop.submarket}</span>
+                        <span className={`text-[10px] font-bold px-1.5 rounded ${prop.class.startsWith('A') ? 'bg-blue-50 text-blue-600' : prop.class.startsWith('B') ? 'bg-amber-50 text-amber-600' : 'bg-stone-100 text-stone-500'}`}>{prop.class}</span>
+                        <span className="text-[10px] text-stone-300">&middot;</span>
+                        <span className="text-[10px] text-stone-500">{prop.submarket}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 text-center text-sm text-stone-700">{prop.units}</td>
-                    <td className="px-3 py-3.5 text-center text-sm text-stone-700">{prop.avgSf.toLocaleString()}</td>
-                    <td className="px-3 py-3.5 text-center text-sm font-bold text-stone-900">${prop.avgRent.toLocaleString()}</td>
-                    <td className="px-3 py-3.5 text-center text-sm text-stone-700">{prop.occupancy}%</td>
-                    <td className="px-3 py-3.5">
+                    <td className="px-3 py-3 text-center text-xs font-mono text-stone-600">{prop.units}</td>
+                    <td className="px-3 py-3 text-center text-xs font-mono text-stone-600">{prop.avgSf.toLocaleString()}</td>
+                    <td className="px-3 py-3 text-center text-xs font-bold text-stone-900">${prop.avgRent.toLocaleString()}</td>
+                    <td className="px-3 py-3 text-center text-xs text-stone-700">{prop.occupancy}%</td>
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-stone-900 w-10 text-right">{prop.pcs}</span>
-                        <div className="flex-1 bg-stone-100 rounded-full h-2.5 overflow-hidden">
-                          <div className={`h-full rounded-full ${getPcsBarColor(prop.pcs)}`} style={{ width: `${pcsWidth}%` }} />
+                        <span className="text-xs font-bold text-stone-900">{prop.pcs}</span>
+                        <div className="w-16 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${pcsColor}`} style={{ width: `${prop.pcs}%` }} />
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3.5 text-center">
+                    <td className="px-3 py-3 text-center">
                       {prop.rentVsCeiling === 0 ? (
-                        <span className="text-xs font-bold text-violet-600 tracking-wider">CEILING</span>
+                        <span className="text-xs font-bold text-violet-600 font-mono tracking-wider">CEILING</span>
                       ) : (
-                        <span className="text-sm text-stone-600">$ {prop.rentVsCeiling.toLocaleString()}</span>
+                        <span className="text-xs font-mono text-stone-500">${prop.rentVsCeiling.toLocaleString()}</span>
                       )}
                     </td>
-                    <td className="px-3 py-3.5 text-center">
-                      <span className={`text-base font-bold ${trendInfo.color}`}>{trendInfo.icon}</span>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`text-sm font-semibold ${trendInfo.color}`}>{trendInfo.icon}</span>
                     </td>
-                    <td className="px-3 py-3.5 text-center">
-                      <button className="text-xs font-medium text-violet-600 hover:text-violet-800 transition-colors">Analyze</button>
+                    <td className="px-3 py-3 text-center">
+                      <a href="#" className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2.5 py-1 rounded-md transition-colors">Analyze</a>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+        <div className="mt-3 flex gap-4 text-[10px]">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-50 border border-emerald-200 inline-block" /> PCS &ge; 80</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-50 border border-amber-200 inline-block" /> PCS 60&ndash;79</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-50 border border-red-200 inline-block" /> PCS &lt; 60</span>
         </div>
       </div>
     </div>

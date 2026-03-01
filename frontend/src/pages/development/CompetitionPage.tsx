@@ -165,92 +165,87 @@ export default function CompetitionPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading competition analysis...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-violet-600 mx-auto mb-4"></div>
+          <p className="text-stone-500 text-sm">Loading competition analysis...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="space-y-0">
+      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+        <div className="px-5 py-4 border-b border-stone-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                  <Building2 className="h-6 w-6 text-blue-600" />
+                <h1 className="text-lg font-bold text-stone-900 flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-violet-600" />
                   Competition Analysis
                 </h1>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs text-stone-500 mt-0.5">
                   Design Differentiation & Competitive Positioning
                 </p>
               </div>
               <DataSourceBadge source={primarySource} />
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                className="px-3 py-1.5 border border-stone-300 rounded-lg hover:bg-stone-50 flex items-center gap-2 text-sm text-stone-700"
               >
-                <Filter className="h-4 w-4" />
+                <Filter className="h-3.5 w-3.5" />
                 Filters
                 {(filters.sameVintage || filters.similarSize || filters.sameClass) && (
-                  <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">
+                  <span className="bg-violet-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                     {[filters.sameVintage, filters.similarSize, filters.sameClass].filter(Boolean).length}
                   </span>
                 )}
               </button>
 
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Export Report
+              <button className="px-3 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 flex items-center gap-2 text-sm">
+                <Download className="h-3.5 w-3.5" />
+                Export
               </button>
             </div>
           </div>
 
-          {/* Filters Panel */}
           {showFilters && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mt-3 p-3 bg-stone-50 rounded-lg border border-stone-200">
               <div className="grid grid-cols-4 gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={filters.sameVintage}
                     onChange={(e) => handleFilterChange('sameVintage', e.target.checked)}
-                    className="rounded border-gray-300"
+                    className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                   />
-                  <span className="text-sm text-gray-700">Same Vintage (±5 years)</span>
+                  <span className="text-xs text-stone-600">Same Vintage (±5 years)</span>
                 </label>
-
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={filters.similarSize}
                     onChange={(e) => handleFilterChange('similarSize', e.target.checked)}
-                    className="rounded border-gray-300"
+                    className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                   />
-                  <span className="text-sm text-gray-700">Similar Size (±20%)</span>
+                  <span className="text-xs text-stone-600">Similar Size (±20%)</span>
                 </label>
-
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={filters.sameClass}
                     onChange={(e) => handleFilterChange('sameClass', e.target.checked)}
-                    className="rounded border-gray-300"
+                    className="rounded border-stone-300 text-violet-600 focus:ring-violet-500"
                   />
-                  <span className="text-sm text-gray-700">Same Class (A/B/C)</span>
+                  <span className="text-xs text-stone-600">Same Class (A/B/C)</span>
                 </label>
-
                 <div>
-                  <label className="text-sm text-gray-700 mb-1 block">
-                    Distance Radius: {filters.distanceRadius} mi
+                  <label className="text-xs text-stone-600 mb-1 block">
+                    Distance: {filters.distanceRadius} mi
                   </label>
                   <input
                     type="range"
@@ -259,15 +254,23 @@ export default function CompetitionPage() {
                     step="0.5"
                     value={filters.distanceRadius}
                     onChange={(e) => handleFilterChange('distanceRadius', parseFloat(e.target.value))}
-                    className="w-full"
+                    className="w-full accent-violet-600"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Tab Navigation */}
-          <div className="flex gap-2 mt-4 border-b border-gray-200">
+          {hasMockData && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+              <p className="text-xs text-amber-800">
+                <span className="font-bold">[SAMPLE DATA]</span> Live data is unavailable. Showing sample data for demonstration purposes. Connect a data source for real market intelligence.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-1 mt-3 border-b border-stone-200 -mx-5 px-5">
             {[
               { id: 'comp-analysis', label: 'Comp Analysis', icon: BarChart3 },
               { id: 'map', label: 'Competitive Set Map', icon: MapPin },
@@ -280,60 +283,38 @@ export default function CompetitionPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-4 py-2 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${
+                className={`px-3 py-2 font-medium text-xs flex items-center gap-1.5 border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    ? 'border-violet-600 text-violet-700'
+                    : 'border-transparent text-stone-500 hover:text-stone-800'
                 }`}
               >
-                <tab.icon className="h-4 w-4" />
+                <tab.icon className="h-3.5 w-3.5" />
                 {tab.label}
               </button>
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {hasMockData && <SampleDataBanner />}
-
-        {/* Summary Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-2xl font-bold text-gray-900">{competitors.length}</div>
-              <DataSourceBadge source={dataSources.competitors} />
+        <div className="p-5">
+          <div className="grid grid-cols-4 gap-3 mb-5">
+            <div className="bg-white p-3 rounded-lg border border-stone-200">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">DIRECT COMPETITORS</div>
+              <div className="text-xl font-bold text-stone-900">{competitors.length}</div>
             </div>
-            <div className="text-sm text-gray-600">Direct Competitors</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-2xl font-bold text-green-600">
-                {advantageMatrix?.overallScore || 0}
-              </div>
-              <DataSourceBadge source={dataSources.advantageMatrix} />
+            <div className="bg-white p-3 rounded-lg border border-stone-200">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">ADVANTAGE SCORE</div>
+              <div className="text-xl font-bold text-emerald-600">{advantageMatrix?.overallScore || 0}</div>
             </div>
-            <div className="text-sm text-gray-600">Advantage Score</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-2xl font-bold text-blue-600">{waitlistProperties.length}</div>
-              <DataSourceBadge source={dataSources.waitlist} />
+            <div className="bg-white p-3 rounded-lg border border-stone-200">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">WAITLIST PROPERTIES</div>
+              <div className="text-xl font-bold text-violet-600">{waitlistProperties.length}</div>
             </div>
-            <div className="text-sm text-gray-600">Waitlist Properties</div>
-          </div>
-
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-2xl font-bold text-orange-600">{agingCompetitors.length}</div>
-              <DataSourceBadge source={dataSources.aging} />
+            <div className="bg-white p-3 rounded-lg border border-stone-200">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">AGING COMPETITORS</div>
+              <div className="text-xl font-bold text-amber-600">{agingCompetitors.length}</div>
             </div>
-            <div className="text-sm text-gray-600">Aging Competitors</div>
           </div>
-        </div>
 
         {/* Tab Content */}
         {activeTab === 'comp-analysis' && (
@@ -380,31 +361,23 @@ export default function CompetitionPage() {
           />
         )}
 
-        {/* AI Insights Panel */}
         {aiInsights && (
-          <div className="mt-6 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-6">
+          <div className="mt-5 bg-violet-50 border border-violet-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
-              <div className="bg-purple-600 rounded-lg p-2">
-                <Sparkles className="h-5 w-5 text-white" />
+              <div className="bg-violet-600 rounded-lg p-1.5">
+                <Sparkles className="h-4 w-4 text-white" />
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-semibold text-gray-900">AI Development Insights</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-stone-900">AI Development Insights</h3>
                   <DataSourceBadge source={dataSources.insights} />
                 </div>
-                <p className="text-gray-700 whitespace-pre-line">{aiInsights}</p>
-                <div className="flex gap-3 mt-4">
-                  <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm">
-                    Apply to 3D Model
-                  </button>
-                  <button className="px-4 py-2 border border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 text-sm">
-                    View Detailed Analysis
-                  </button>
-                </div>
+                <p className="text-xs text-stone-700 leading-relaxed whitespace-pre-line">{aiInsights}</p>
               </div>
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -420,75 +393,37 @@ function CompetitiveSetMap({
   onSelectCompetitor: (id: string) => void;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="grid grid-cols-3 gap-6">
-        {/* Map Placeholder */}
+    <div className="bg-white rounded-xl border border-stone-200 p-5">
+      <div className="grid grid-cols-3 gap-5">
         <div className="col-span-2">
-          <div className="bg-gray-100 rounded-lg h-[500px] flex items-center justify-center relative">
-            <MapPin className="h-16 w-16 text-gray-400" />
-            <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-lg text-sm">
-              <div className="font-medium mb-2">Legend</div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-                  <span>Your Site</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                  <span>Direct Comps ({competitors.filter(c => c.category === 'direct').length})</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <span>Under Construction ({competitors.filter(c => c.category === 'construction').length})</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span>Planned ({competitors.filter(c => c.category === 'planned').length})</span>
-                </div>
+          <div className="bg-stone-100 rounded-lg h-[500px] flex items-center justify-center relative">
+            <MapPin className="h-16 w-16 text-stone-300" />
+            <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-lg border border-stone-200 text-xs">
+              <div className="font-semibold text-stone-900 mb-2">Legend</div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-violet-600 rounded-full"></div><span className="text-stone-600">Your Site</span></div>
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-red-500 rounded-full"></div><span className="text-stone-600">Direct ({competitors.filter(c => c.category === 'direct').length})</span></div>
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-amber-500 rounded-full"></div><span className="text-stone-600">Construction ({competitors.filter(c => c.category === 'construction').length})</span></div>
+                <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></div><span className="text-stone-600">Planned ({competitors.filter(c => c.category === 'planned').length})</span></div>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Competitor List */}
-        <div className="space-y-3 max-h-[500px] overflow-y-auto">
-          <h3 className="font-semibold text-gray-900 mb-3">
-            Competitors ({competitors.length})
-          </h3>
+        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+          <h3 className="text-sm font-semibold text-stone-900 mb-2">Competitors ({competitors.length})</h3>
           {competitors.map(competitor => (
-            <div
-              key={competitor.id}
-              onClick={() => onSelectCompetitor(competitor.id)}
-              className="p-3 border border-gray-200 rounded-lg hover:border-blue-500 cursor-pointer transition-colors"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="font-medium text-gray-900">{competitor.name}</div>
-                <span className={`px-2 py-0.5 rounded text-xs ${
+            <div key={competitor.id} onClick={() => onSelectCompetitor(competitor.id)} className="p-3 border border-stone-200 rounded-lg hover:border-violet-400 cursor-pointer transition-colors">
+              <div className="flex items-start justify-between mb-1.5">
+                <div className="text-sm font-medium text-stone-900">{competitor.name}</div>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                   competitor.category === 'direct' ? 'bg-red-100 text-red-700' :
-                  competitor.category === 'construction' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-green-100 text-green-700'
-                }`}>
-                  {competitor.category}
-                </span>
+                  competitor.category === 'construction' ? 'bg-amber-100 text-amber-700' :
+                  'bg-emerald-100 text-emerald-700'
+                }`}>{competitor.category}</span>
               </div>
-              <div className="text-sm text-gray-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <Home className="h-3 w-3" />
-                  <span>{competitor.units} units</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-3 w-3" />
-                  <span>{competitor.distance} mi</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign className="h-3 w-3" />
-                  <span>${competitor.avgRent?.toLocaleString()}/mo</span>
-                </div>
-                {competitor.f40Score !== undefined && (
-                  <div className="flex items-center gap-2 mt-1">
-                    <F40QuartileBadge score={competitor.f40Score} quartile={competitor.f40Quartile} />
-                  </div>
-                )}
+              <div className="text-xs text-stone-500 space-y-0.5">
+                <div>{competitor.units} units &middot; {competitor.distance} mi &middot; ${competitor.avgRent?.toLocaleString()}/mo</div>
+                {competitor.f40Score !== undefined && <F40QuartileBadge score={competitor.f40Score} quartile={competitor.f40Quartile} />}
               </div>
             </div>
           ))}
@@ -498,123 +433,166 @@ function CompetitiveSetMap({
   );
 }
 
+function getSfBandLabel(sf: number): string {
+  const center = Math.round(sf / 50) * 50;
+  return `${center - 25}\u2013${center + 25} SF`;
+}
+
+function getSfBandCenter(sf: number): number {
+  return Math.round(sf / 50) * 50;
+}
+
+function isInSfBand(sf: number, targetCenter: number): boolean {
+  return sf >= targetCenter - 25 && sf <= targetCenter + 25;
+}
+
+const UNIT_TYPE_KEYS = [
+  { key: 'studio' as const, label: 'Studio' },
+  { key: 'oneBed' as const, label: '1BR' },
+  { key: 'twoBed' as const, label: '2BR' },
+  { key: 'threeBed' as const, label: '3BR' },
+];
+
 function UnitComparison({ competitors }: { competitors: CompetitorProperty[] }) {
-  const [sortBy, setSortBy] = useState<'name' | 'oneBed' | 'twoBed' | 'efficiency'>('efficiency');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [activeType, setActiveType] = useState<'studio' | 'oneBed' | 'twoBed' | 'threeBed'>('oneBed');
 
-  const sortedCompetitors = [...competitors].sort((a, b) => {
-    const multiplier = sortOrder === 'asc' ? 1 : -1;
-    switch (sortBy) {
-      case 'oneBed':
-        return multiplier * ((a.unitSizes?.oneBed || 0) - (b.unitSizes?.oneBed || 0));
-      case 'twoBed':
-        return multiplier * ((a.unitSizes?.twoBed || 0) - (b.unitSizes?.twoBed || 0));
-      case 'efficiency':
-        return multiplier * ((a.efficiencyScore || 0) - (b.efficiencyScore || 0));
-      default:
-        return 0;
-    }
-  });
+  const activeLabel = UNIT_TYPE_KEYS.find(u => u.key === activeType)?.label || '1BR';
 
-  const marketAvg = {
-    oneBed: competitors.reduce((sum, c) => sum + (c.unitSizes?.oneBed || 0), 0) / competitors.length,
-    twoBed: competitors.reduce((sum, c) => sum + (c.unitSizes?.twoBed || 0), 0) / competitors.length,
-    efficiency: competitors.reduce((sum, c) => sum + (c.efficiencyScore || 0), 0) / competitors.length,
-  };
+  const compsWithSize = competitors.filter(c => c.unitSizes && c.unitSizes[activeType]);
+
+  const allSizes = compsWithSize.map(c => c.unitSizes![activeType]!);
+  const sfBands = [...new Set(allSizes.map(getSfBandCenter))].sort((a, b) => a - b);
+
+  const marketAvgSf = allSizes.length > 0 ? Math.round(allSizes.reduce((s, v) => s + v, 0) / allSizes.length) : 0;
+  const marketAvgRent = compsWithSize.length > 0 ? Math.round(compsWithSize.reduce((s, c) => s + (c.avgRent || 0), 0) / compsWithSize.length) : 0;
+  const marketAvgEff = compsWithSize.length > 0 ? Math.round(compsWithSize.reduce((s, c) => s + (c.efficiencyScore || 0), 0) / compsWithSize.length) : 0;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-gray-900">Unit Layout Comparison</h2>
-        <div className="flex gap-2">
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="efficiency">Efficiency Score</option>
-            <option value="oneBed">1BR Size</option>
-            <option value="twoBed">2BR Size</option>
-            <option value="name">Name</option>
-          </select>
-          <button
-            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-            className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            {sortOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-          </button>
+    <div className="bg-white rounded-xl border border-stone-200 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-base font-bold text-stone-900">Unit Layout Comparison</h2>
+          <p className="text-xs text-stone-500 mt-0.5">Grouped by bed type + 50 SF tolerance bands (\u00b125 SF from midpoint)</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
+          <div className="flex bg-stone-100 rounded-lg p-0.5">
+            {UNIT_TYPE_KEYS.map(ut => (
+              <button
+                key={ut.key}
+                onClick={() => setActiveType(ut.key)}
+                className={`px-3 py-1 text-[10px] font-semibold rounded-md transition-colors ${
+                  activeType === ut.key ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
+                }`}
+              >
+                {ut.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Market Average Card */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <div className="font-medium text-blue-900 mb-3">Market Average</div>
+      <div className="bg-violet-50 border border-violet-200 rounded-lg p-4 mb-4">
+        <div className="text-xs font-semibold text-violet-800 mb-2">Market Average \u2014 {activeLabel}</div>
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <div className="text-sm text-blue-700">1BR Average</div>
-            <div className="text-2xl font-bold text-blue-900">{Math.round(marketAvg.oneBed)} SF</div>
+            <div className="text-[10px] text-violet-600">Avg Size</div>
+            <div className="text-lg font-bold text-violet-900">{marketAvgSf} SF</div>
           </div>
           <div>
-            <div className="text-sm text-blue-700">2BR Average</div>
-            <div className="text-2xl font-bold text-blue-900">{Math.round(marketAvg.twoBed)} SF</div>
+            <div className="text-[10px] text-violet-600">Avg Rent</div>
+            <div className="text-lg font-bold text-violet-900">${marketAvgRent.toLocaleString()}/mo</div>
           </div>
           <div>
-            <div className="text-sm text-blue-700">Efficiency Score</div>
-            <div className="text-2xl font-bold text-blue-900">{Math.round(marketAvg.efficiency)}%</div>
+            <div className="text-[10px] text-violet-600">Avg Efficiency</div>
+            <div className="text-lg font-bold text-violet-900">{marketAvgEff}%</div>
           </div>
         </div>
       </div>
 
-      {/* Comparison Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Property</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Studio</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">1BR</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">2BR</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">3BR</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Efficiency</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedCompetitors.map((comp, idx) => (
-              <tr key={comp.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                <td className="py-3 px-4">
-                  <div className="font-medium text-gray-900">{comp.name}</div>
-                  <div className="text-xs text-gray-500">{comp.yearBuilt}</div>
-                </td>
-                <td className="py-3 px-4">
-                  <div className="text-gray-900">{comp.unitSizes?.studio || '-'} SF</div>
-                </td>
-                <td className="py-3 px-4">
-                  <div className="text-gray-900">{comp.unitSizes?.oneBed || '-'} SF</div>
-                  {comp.unitSizes?.oneBed && comp.unitSizes.oneBed > marketAvg.oneBed && (
-                    <span className="text-xs text-green-600">+{Math.round(comp.unitSizes.oneBed - marketAvg.oneBed)}</span>
-                  )}
-                </td>
-                <td className="py-3 px-4">
-                  <div className="text-gray-900">{comp.unitSizes?.twoBed || '-'} SF</div>
-                  {comp.unitSizes?.twoBed && comp.unitSizes.twoBed > marketAvg.twoBed && (
-                    <span className="text-xs text-green-600">+{Math.round(comp.unitSizes.twoBed - marketAvg.twoBed)}</span>
-                  )}
-                </td>
-                <td className="py-3 px-4">
-                  <div className="text-gray-900">{comp.unitSizes?.threeBed || '-'} SF</div>
-                </td>
-                <td className="py-3 px-4">
+      {sfBands.length === 0 ? (
+        <div className="text-center py-8 text-stone-400 text-sm">No {activeLabel} unit data available for competitors.</div>
+      ) : (
+        <div className="space-y-4">
+          {sfBands.map(bandCenter => {
+            const bandComps = compsWithSize.filter(c => isInSfBand(c.unitSizes![activeType]!, bandCenter));
+            if (bandComps.length === 0) return null;
+            const bandAvgSf = Math.round(bandComps.reduce((s, c) => s + c.unitSizes![activeType]!, 0) / bandComps.length);
+            const bandAvgRent = Math.round(bandComps.reduce((s, c) => s + (c.avgRent || 0), 0) / bandComps.length);
+            return (
+              <div key={bandCenter} className="border border-stone-200 rounded-lg overflow-hidden">
+                <div className="bg-stone-50 px-4 py-2 flex items-center justify-between border-b border-stone-200">
                   <div className="flex items-center gap-2">
-                    <div className="text-gray-900">{comp.efficiencyScore}%</div>
-                    {comp.efficiencyScore && comp.efficiencyScore > marketAvg.efficiency && (
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    )}
+                    <span className="text-xs font-bold text-stone-700">{getSfBandLabel(bandCenter)}</span>
+                    <span className="text-[10px] text-stone-400">{bandComps.length} {bandComps.length === 1 ? 'property' : 'properties'}</span>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <div className="flex items-center gap-3 text-[10px] text-stone-500">
+                    <span>Band Avg: <strong className="text-stone-700">{bandAvgSf} SF</strong></span>
+                    <span>Avg Rent: <strong className="text-stone-700">${bandAvgRent.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-100">
+                      <th className="text-left py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">YEAR</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">{activeLabel} SF</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">RENT</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">RENT PSF</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">OCC %</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">EFFICIENCY</th>
+                      <th className="text-center py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider">\u0394 vs AVG</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bandComps.map((comp, idx) => {
+                      const sf = comp.unitSizes![activeType]!;
+                      const rent = comp.avgRent || 0;
+                      const psf = sf > 0 ? rent / sf : 0;
+                      const deltaRent = rent - bandAvgRent;
+                      return (
+                        <tr key={comp.id} className="border-t border-stone-50 hover:bg-stone-50/50 transition-colors">
+                          <td className="py-2.5 px-3">
+                            <div className="text-xs font-medium text-stone-900">{comp.name}</div>
+                            <div className="text-[10px] text-stone-400">{comp.distance} mi &middot; {comp.units} units</div>
+                          </td>
+                          <td className="text-center py-2.5 px-3 text-xs text-stone-600">{comp.yearBuilt}</td>
+                          <td className="text-center py-2.5 px-3 text-xs font-mono text-stone-700">{sf}</td>
+                          <td className="text-center py-2.5 px-3 text-xs font-bold text-stone-900">${rent.toLocaleString()}</td>
+                          <td className="text-center py-2.5 px-3 text-xs font-mono text-stone-600">${psf.toFixed(2)}</td>
+                          <td className="text-center py-2.5 px-3">
+                            <span className={`text-xs font-semibold ${
+                              (comp.occupancy || 0) >= 95 ? 'text-emerald-600' : (comp.occupancy || 0) >= 93 ? 'text-amber-600' : 'text-red-600'
+                            }`}>{comp.occupancy || '\u2014'}%</span>
+                          </td>
+                          <td className="text-center py-2.5 px-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-xs text-stone-700">{comp.efficiencyScore || '\u2014'}%</span>
+                              {comp.efficiencyScore && comp.efficiencyScore > marketAvgEff && (
+                                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-center py-2.5 px-3">
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              deltaRent > 0 ? 'bg-emerald-100 text-emerald-700' : deltaRent < 0 ? 'bg-red-100 text-red-700' : 'bg-stone-100 text-stone-600'
+                            }`}>
+                              {deltaRent >= 0 ? '+' : ''}${deltaRent.toLocaleString()}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-3 text-[10px] text-stone-400">
+        SF Band tolerance: \u00b125 SF (50 SF total range). Properties are grouped by {activeLabel} unit size into bands centered on the nearest 50 SF increment.
       </div>
     </div>
   );
@@ -622,59 +600,57 @@ function UnitComparison({ competitors }: { competitors: CompetitorProperty[] }) 
 
 function AdvantageMatrixView({ matrix }: { matrix: AdvantageMatrix }) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-white rounded-xl border border-stone-200 p-5">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Competitive Advantage Matrix</h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Feature comparison against direct competitors
-          </p>
+          <h2 className="text-base font-bold text-stone-900">Competitive Advantage Matrix</h2>
+          <p className="text-xs text-stone-500 mt-0.5">Feature comparison against direct competitors</p>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-bold text-green-600">{matrix.overallScore}</div>
-          <div className="text-sm text-gray-600">Advantage Points</div>
+          <div className="text-2xl font-bold text-emerald-600">{matrix.overallScore}</div>
+          <div className="text-[10px] text-stone-500">Advantage Points</div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-lg border border-stone-200">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="text-left py-3 px-4 font-medium text-gray-700">Feature</th>
-              <th className="text-center py-3 px-4 font-medium text-gray-700">You</th>
+            <tr className="bg-stone-50">
+              <th className="text-left py-2.5 px-3 text-[10px] font-mono text-stone-400 tracking-wider">FEATURE</th>
+              <th className="text-center py-2.5 px-3 text-[10px] font-mono text-stone-400 tracking-wider">YOU</th>
               {matrix.competitors.map(comp => (
-                <th key={comp.id} className="text-center py-3 px-4 font-medium text-gray-700">
+                <th key={comp.id} className="text-center py-2.5 px-3 text-[10px] font-mono text-stone-400 tracking-wider">
                   <div className="truncate max-w-[100px]">{comp.name}</div>
                 </th>
               ))}
-              <th className="text-center py-3 px-4 font-medium text-gray-700">Advantage</th>
+              <th className="text-center py-2.5 px-3 text-[10px] font-mono text-stone-400 tracking-wider">ADVANTAGE</th>
             </tr>
           </thead>
           <tbody>
             {matrix.features.map((feature, idx) => (
-              <tr key={feature.name} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                <td className="py-3 px-4 font-medium text-gray-900">{feature.name}</td>
-                <td className="py-3 px-4 text-center">
+              <tr key={feature.name} className="border-t border-stone-100 hover:bg-stone-50/50 transition-colors">
+                <td className="py-2.5 px-3 text-xs font-medium text-stone-900">{feature.name}</td>
+                <td className="py-2.5 px-3 text-center">
                   {feature.you ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" />
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
                   ) : (
-                    <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                    <XCircle className="h-4 w-4 text-stone-300 mx-auto" />
                   )}
                 </td>
                 {matrix.competitors.map(comp => (
-                  <td key={comp.id} className="py-3 px-4 text-center">
+                  <td key={comp.id} className="py-2.5 px-3 text-center">
                     {feature.competitors[comp.id] ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
                     ) : (
-                      <XCircle className="h-5 w-5 text-gray-300 mx-auto" />
+                      <XCircle className="h-4 w-4 text-stone-300 mx-auto" />
                     )}
                   </td>
                 ))}
-                <td className="py-3 px-4 text-center">
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    feature.advantagePoints > 0 ? 'bg-green-100 text-green-700' :
+                <td className="py-2.5 px-3 text-center">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    feature.advantagePoints > 0 ? 'bg-emerald-100 text-emerald-700' :
                     feature.advantagePoints < 0 ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
+                    'bg-stone-100 text-stone-600'
                   }`}>
                     {feature.advantagePoints > 0 ? '+' : ''}{feature.advantagePoints} pts
                   </span>
@@ -685,16 +661,12 @@ function AdvantageMatrixView({ matrix }: { matrix: AdvantageMatrix }) {
         </table>
       </div>
 
-      <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
-          <div>
-            <div className="font-medium text-green-900">Strong Differentiation</div>
-            <div className="text-sm text-green-700 mt-1">
-              Your development has {matrix.overallScore} advantage points over competitors.
-              Key differentiators: {matrix.keyDifferentiators.join(', ')}.
-            </div>
-          </div>
+      <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-emerald-800">
+            <strong>Strong Differentiation:</strong> {matrix.overallScore} advantage points. Key differentiators: {matrix.keyDifferentiators.join(', ')}.
+          </p>
         </div>
       </div>
     </div>
