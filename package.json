@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@turf/area": "^7.3.4",
+    "@turf/union": "^7.3.4",
     "@types/multer": "^2.0.0",
     "@types/react-window": "^1.8.8",
     "drizzle-orm": "^0.45.1",

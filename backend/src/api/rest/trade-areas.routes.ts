@@ -278,7 +278,7 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       const demoResult = await pool.query(
         `SELECT COALESCE(SUM(pd.total_population), 0) as population
          FROM property_demographics pd
-         JOIN properties p ON p.id = pd.property_id
+         JOIN properties p ON p.id::text = pd.property_id
          WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL
            AND ${containsClause}`,
         [geoJson]

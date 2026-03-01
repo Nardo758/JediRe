@@ -167,14 +167,15 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   
   generateDriveTimeIsochrone: async (lat, lng, minutes, profile) => {
     try {
+      console.log('[TradeArea] Generating drive-time isochrone:', { lat, lng, minutes, profile });
       const response = await api.post('/isochrone/generate', { 
         lat, 
         lng, 
         minutes, 
         profile 
       });
+      console.log('[TradeArea] Drive-time response:', response.data);
       
-      // Handle different response formats
       const geometry = response.data?.data?.geometry || response.data?.geometry;
       if (!geometry) {
         throw new Error('No geometry in response');
@@ -182,9 +183,8 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       
       set({ draftGeometry: geometry });
       
-      // Update preview stats if available, otherwise load them
       const stats = response.data?.data?.stats || response.data?.stats;
-      if (stats) {
+      if (stats && stats.population !== null && stats.population !== undefined) {
         set({ previewStats: stats });
       } else {
         await get().loadPreviewStats(geometry);
@@ -192,7 +192,7 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       
       return geometry;
     } catch (error) {
-      console.error('Error generating drive-time isochrone:', error);
+      console.error('[TradeArea] Error generating drive-time isochrone:', error);
       throw error;
     }
   },
@@ -215,9 +215,8 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
       
       set({ draftGeometry: geometry });
       
-      // Update preview stats if available, otherwise load them
       const stats = response.data?.data?.stats || response.data?.stats;
-      if (stats) {
+      if (stats && stats.population !== null && stats.population !== undefined) {
         set({ previewStats: stats });
       } else {
         await get().loadPreviewStats(geometry);

@@ -72,14 +72,6 @@ router.post('/generate', async (req: Request, res: Response) => {
         profile,
         center: [lng, lat],
       },
-      stats: {
-        // These would need to be calculated by querying properties in the area
-        // For now, return null - frontend can show "calculating..." state
-        population: null,
-        existing_units: null,
-        pipeline_units: null,
-        avg_rent: null,
-      },
     });
   } catch (error: any) {
     console.error('Error generating isochrone:', error.response?.data || error.message);
