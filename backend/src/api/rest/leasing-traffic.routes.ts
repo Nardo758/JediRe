@@ -587,7 +587,7 @@ const weeklyUpload = multer({
 
       try {
         const dealCheck = await pool.query(
-          `SELECT d.trade_area_id, d.property_id FROM deals d WHERE d.id = $1`,
+          `SELECT d.trade_area_id FROM deals d WHERE d.id = $1`,
           [dealId]
         );
         if (dealCheck.rows.length > 0) {
@@ -595,24 +595,24 @@ const weeklyUpload = multer({
           if (!deal.trade_area_id) {
             tradeAreaWarning = 'Define a trade area to unlock full traffic intelligence (comp proxy, market context, visibility scoring)';
           }
-          const propId = deal.property_id;
+          let propId: string | undefined;
+          const dpLookup = await pool.query(
+            `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
+            [dealId]
+          );
+          propId = dpLookup.rows[0]?.property_id;
+          if (!propId) {
+            const propLookup = await pool.query(
+              `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
+              [dealId]
+            );
+            propId = propLookup.rows[0]?.id;
+          }
           if (propId) {
             try {
               dataSourceSignals = await trafficPredictionEngine.loadDataSourceSignals(propId);
             } catch (e) {
               logger.debug('[LeasingTraffic] Data source signals fetch skipped');
-            }
-          } else {
-            try {
-              const propLookup = await pool.query(
-                `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
-                [dealId]
-              );
-              if (propLookup.rows.length > 0) {
-                dataSourceSignals = await trafficPredictionEngine.loadDataSourceSignals(propLookup.rows[0].id);
-              }
-            } catch (e) {
-              logger.debug('[LeasingTraffic] Property data source signals lookup skipped');
             }
           }
         }
@@ -649,7 +649,7 @@ const weeklyUpload = multer({
       const { dealId } = req.params;
 
       const dealResult = await pool.query(
-        `SELECT d.trade_area_id, d.property_id FROM deals d WHERE d.id = $1`,
+        `SELECT d.trade_area_id FROM deals d WHERE d.id = $1`,
         [dealId]
       );
 
@@ -667,7 +667,12 @@ const weeklyUpload = multer({
         });
       }
 
-      let propertyId = deal.property_id;
+      let propertyId: string | undefined;
+      const dpLookup = await pool.query(
+        `SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      propertyId = dpLookup.rows[0]?.property_id;
       if (!propertyId) {
         const propLookup = await pool.query(
           `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
