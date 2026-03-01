@@ -12,8 +12,10 @@ import {
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
 import { useDealStore } from '../stores/dealStore';
+import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { HorizontalBar } from '../components/map/HorizontalBar';
+import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
