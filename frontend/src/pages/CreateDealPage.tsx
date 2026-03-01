@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
+import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { Button } from '../components/shared/Button';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import { apiClient } from '../services/api.client';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
@@ -64,6 +67,54 @@ export const CreateDealPage: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
+  const drawRef = useRef<MapboxDraw | null>(null);
+  const drawHandlerRef = useRef<(() => void) | null>(null);
+
+  const cleanupDraw = useCallback(() => {
+    if (!map.current || !drawRef.current) return;
+    try {
+      if (drawHandlerRef.current) {
+        map.current.off('draw.create', drawHandlerRef.current);
+        map.current.off('draw.update', drawHandlerRef.current);
+        drawHandlerRef.current = null;
+      }
+      map.current.removeControl(drawRef.current as any);
+    } catch (e) {}
+    drawRef.current = null;
+  }, []);
+
+  const handleCustomDraw = useCallback(() => {
+    if (!map.current) return;
+    if (drawRef.current) return;
+
+    const draw = new MapboxDraw({
+      displayControlsDefault: false,
+      controls: { polygon: true, trash: true },
+      defaultMode: 'draw_polygon',
+    });
+
+    map.current.addControl(draw as any, 'top-left');
+    drawRef.current = draw;
+
+    const onDraw = () => {
+      if (!drawRef.current) return;
+      const data = drawRef.current.getAll();
+      if (data.features.length > 0) {
+        const last = data.features[data.features.length - 1];
+        if (last.geometry.type === 'Polygon') {
+          useTradeAreaStore.getState().updateDraftGeometry(last.geometry as any);
+        }
+      }
+    };
+    drawHandlerRef.current = onDraw;
+
+    map.current.on('draw.create', onDraw);
+    map.current.on('draw.update', onDraw);
+  }, []);
+
+  const handleCustomDrawCancel = useCallback(() => {
+    cleanupDraw();
+  }, [cleanupDraw]);
 
   useEffect(() => {
     const fetchPropertyTypes = async () => {
@@ -102,6 +153,7 @@ export const CreateDealPage: React.FC = () => {
     }
 
     return () => {
+      cleanupDraw();
       if (map.current) {
         map.current.remove();
         map.current = null;
@@ -823,6 +875,8 @@ export const CreateDealPage: React.FC = () => {
                     propertyLng={coordinates[0]}
                     onSave={handleTradeAreaSave}
                     onSkip={handleSkipTradeArea}
+                    onCustomDraw={handleCustomDraw}
+                    onCustomDrawCancel={handleCustomDrawCancel}
                   />
                 </div>
               </div>

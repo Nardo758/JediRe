@@ -1,8 +1,6 @@
-import React, { useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { DefinitionMethod } from '../../types/trade-area';
-
-const TradeAreaDrawMap = lazy(() => import('./TradeAreaDrawMap').then(m => ({ default: m.TradeAreaDrawMap })));
 
 interface TradeAreaDefinitionPanelProps {
   propertyLat: number;
@@ -10,6 +8,7 @@ interface TradeAreaDefinitionPanelProps {
   onSave: (tradeAreaId: string) => void;
   onSkip: () => void;
   onCustomDraw?: () => void;
+  onCustomDrawCancel?: () => void;
 }
 
 const methodIcons: Record<DefinitionMethod, string> = {
@@ -32,6 +31,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   onSave,
   onSkip,
   onCustomDraw,
+  onCustomDrawCancel,
 }) => {
   const {
     definitionMethod,
@@ -57,7 +57,9 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   const [generatedMethod, setGeneratedMethod] = React.useState<DefinitionMethod | null>(null);
   const lastMethodRef = useRef<DefinitionMethod | null>(null);
 
-  const availableMethods: DefinitionMethod[] = ['radius', 'drive_time', 'traffic_informed', 'custom_draw'];
+  const availableMethods: DefinitionMethod[] = onCustomDraw
+    ? ['radius', 'drive_time', 'traffic_informed', 'custom_draw']
+    : ['radius', 'drive_time', 'traffic_informed'];
 
   useEffect(() => {
     if (!definitionMethod) {
@@ -88,6 +90,9 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
 
   const handleMethodChange = (method: DefinitionMethod) => {
     if (method !== definitionMethod) {
+      if (definitionMethod === 'custom_draw' && onCustomDrawCancel) {
+        onCustomDrawCancel();
+      }
       clearDraft();
       setGeneratedMethod(null);
       setDefinitionMethod(method);
@@ -330,19 +335,20 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
 
       {definitionMethod === 'custom_draw' && (
         <div className="mb-6 space-y-4">
-          <Suspense fallback={
-            <div className="w-full rounded-lg border border-gray-300 flex items-center justify-center bg-gray-50" style={{ height: '320px' }}>
-              <p className="text-gray-500">Loading map...</p>
+          <div className="p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">✏️</span>
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">
+                  Draw Your Trade Area
+                </h3>
+                <p className="text-sm text-blue-700">
+                  Use the drawing tools on the map to trace your boundary.
+                  Click to place points, then double-click to close the polygon.
+                </p>
+              </div>
             </div>
-          }>
-            <TradeAreaDrawMap
-              lat={propertyLat}
-              lng={propertyLng}
-              onDrawComplete={(geometry) => {
-                useTradeAreaStore.getState().updateDraftGeometry(geometry);
-              }}
-            />
-          </Suspense>
+          </div>
           {draftGeometry && generatedMethod === 'custom_draw' && (
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-800">
