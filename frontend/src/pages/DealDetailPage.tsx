@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
@@ -22,7 +22,6 @@ import { Design3DPageEnhanced } from './Design3DPage.enhanced';
 
 import { MarketAnalysisPage } from './development/MarketAnalysisPage';
 import CompetitionPage from './development/CompetitionPage';
-import DealCompAnalysisTab from '../components/deal/sections/DealCompAnalysisTab';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
@@ -66,39 +65,6 @@ import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 
-const CompetitionModule: React.FC<any> = (props) => {
-  const [urlParams] = useSearchParams();
-  const initialSubTab = urlParams.get('subtab') === 'competitive-map' ? 'competitive-map' : 'comp-analysis';
-  const [compSubTab, setCompSubTab] = useState<'comp-analysis' | 'competitive-map'>(initialSubTab);
-  return (
-    <div className="space-y-0">
-      <div className="flex border-b border-stone-200 bg-white rounded-t-xl overflow-hidden mb-4">
-        <button
-          onClick={() => setCompSubTab('comp-analysis')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-colors ${
-            compSubTab === 'comp-analysis'
-              ? 'bg-violet-50 text-violet-700 border-b-2 border-violet-600'
-              : 'text-stone-500 hover:bg-stone-50'
-          }`}
-        >
-          📊 Comp Analysis
-        </button>
-        <button
-          onClick={() => setCompSubTab('competitive-map')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-colors ${
-            compSubTab === 'competitive-map'
-              ? 'bg-violet-50 text-violet-700 border-b-2 border-violet-600'
-              : 'text-stone-500 hover:bg-stone-50'
-          }`}
-        >
-          🗺️ Competitive Map
-        </button>
-      </div>
-      {compSubTab === 'comp-analysis' && <DealCompAnalysisTab />}
-      {compSubTab === 'competitive-map' && <CompetitionPage />}
-    </div>
-  );
-};
 
 const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
   by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
@@ -272,7 +238,7 @@ const DealDetailPage: React.FC = () => {
       id: 'competition', 
       label: 'Competition Analysis', 
       icon: <Target size={16} />, 
-      component: CompetitionModule 
+      component: CompetitionPage 
     },
     {
       id: 'traffic-intelligence',

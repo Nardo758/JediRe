@@ -56,6 +56,7 @@ const QUADRANT_COLORS: Record<string, string> = {
 };
 
 const AcquisitionIntelPage: React.FC = () => {
+  const navigate = useNavigate();
   const [sortField, setSortField] = useState<'rank' | 'gap' | 'urgency'>('rank');
 
   const sortedTargets = [...ACQUISITION_TARGETS].sort((a, b) => {
@@ -199,7 +200,7 @@ const AcquisitionIntelPage: React.FC = () => {
                   </td>
                   <td className="px-3 py-3">
                     <button
-                      onClick={() => console.log('Navigate to Comp Analysis for target:', target.name)}
+                      onClick={() => navigate(`/competitive-intelligence/comps`)}
                       className="px-2.5 py-1.5 bg-violet-100 text-violet-700 rounded text-[10px] font-bold hover:bg-violet-200 transition-colors whitespace-nowrap"
                     >
                       Comps
