@@ -336,6 +336,12 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
               </div>
             </div>
             <div className="bg-gray-50 p-3 rounded-lg">
+              <div className="text-xs text-gray-600 mb-1">Median Income</div>
+              <div className="text-lg font-bold text-gray-900">
+                ${(previewStats.median_income ?? 0).toLocaleString()}
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs text-gray-600 mb-1">Existing Units</div>
               <div className="text-lg font-bold text-gray-900">
                 {(previewStats.existing_units ?? 0).toLocaleString()}
@@ -353,7 +359,20 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
                 ${(previewStats.avg_rent ?? 0).toLocaleString()}
               </div>
             </div>
+            {previewStats.census_housing_units > 0 && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-xs text-gray-600 mb-1">Housing Units</div>
+                <div className="text-lg font-bold text-gray-900">
+                  {(previewStats.census_housing_units ?? 0).toLocaleString()}
+                </div>
+              </div>
+            )}
           </div>
+          {previewStats.data_source === 'census_acs5' && (
+            <div className="mt-2 text-xs text-gray-400 text-right">
+              Source: U.S. Census ACS {previewStats.census_vintage}
+            </div>
+          )}
         </div>
       )}
 

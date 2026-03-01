@@ -5,6 +5,7 @@ import { getPool } from '../../database/connection';
 import circle from '@turf/circle';
 import area from '@turf/area';
 import { point } from '@turf/helpers';
+import { getCensusStatsForTradeArea } from '../../services/census.service';
 
 const router = Router();
 const pool = getPool();
@@ -287,12 +288,6 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       logger.warn('Error querying demographics for preview stats:', err);
     }
 
-    if (stats.population === 0 && stats.area_sq_miles > 0) {
-      const estimatedPopDensity = 3000;
-      stats.population = Math.round(stats.area_sq_miles * estimatedPopDensity);
-      stats.population_estimated = true;
-    }
-
     try {
       const pipelineResult = await pool.query(
         `SELECT COALESCE(SUM(d.target_units), 0) as pipeline_units
@@ -310,23 +305,50 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
       logger.warn('Error querying pipeline units for preview stats:', err);
     }
 
-    if (stats.avg_rent === 0) {
+    const centroidResult = await pool.query(
+      `SELECT ST_X(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lng,
+              ST_Y(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lat`,
+      [geoJson]
+    );
+    const centroidLat = parseFloat(centroidResult.rows[0]?.lat) || 0;
+    const centroidLng = parseFloat(centroidResult.rows[0]?.lng) || 0;
+
+    if ((stats.population === 0 || stats.avg_rent === 0) && centroidLat !== 0) {
       try {
-        const centroid = await pool.query(
-          `SELECT ST_X(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lng,
-                  ST_Y(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lat`,
-          [geoJson]
-        );
-        if (centroid.rows.length > 0) {
-          const subResult = await pool.query(
-            `SELECT avg_rent FROM submarkets
-             WHERE ST_Contains(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326))
-             LIMIT 1`,
-            [centroid.rows[0].lng, centroid.rows[0].lat]
-          );
-          if (subResult.rows.length > 0) {
-            stats.avg_rent = parseInt(subResult.rows[0].avg_rent) || 0;
+        const censusStats = await getCensusStatsForTradeArea(centroidLat, centroidLng, stats.area_sq_miles);
+        if (censusStats) {
+          if (stats.population === 0) {
+            stats.population = censusStats.population;
           }
+          if (stats.avg_rent === 0) {
+            stats.avg_rent = censusStats.medianRent;
+          }
+          stats.median_income = censusStats.medianIncome;
+          stats.census_housing_units = censusStats.totalHousingUnits;
+          stats.data_source = censusStats.source;
+          stats.census_vintage = censusStats.vintage;
+        }
+      } catch (err) {
+        logger.warn('Census API lookup failed for preview stats:', err);
+      }
+    }
+
+    if (stats.population === 0 && stats.area_sq_miles > 0) {
+      const estimatedPopDensity = 3000;
+      stats.population = Math.round(stats.area_sq_miles * estimatedPopDensity);
+      stats.population_estimated = true;
+    }
+
+    if (stats.avg_rent === 0 && centroidLat !== 0) {
+      try {
+        const subResult = await pool.query(
+          `SELECT avg_rent FROM submarkets
+           WHERE ST_Contains(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326))
+           LIMIT 1`,
+          [centroidLng, centroidLat]
+        );
+        if (subResult.rows.length > 0) {
+          stats.avg_rent = parseInt(subResult.rows[0].avg_rent) || 0;
         }
       } catch (err) {
         logger.warn('Error querying submarket avg rent for preview stats:', err);
