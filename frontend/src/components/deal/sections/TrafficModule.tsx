@@ -398,10 +398,18 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     { key: 'adjLeased', label: 'Leased %', field: 'adjLeasedPct', format: 'pct' },
   ];
 
-  const formatVal = (val: number, format: string) => {
-    if (format === 'pct') return `${(val * 100).toFixed(1)}%`;
+  const formatVal = (val: number | null | undefined, format: string): string => {
+    if (val === null || val === undefined) return '–';
+    if (format === 'pct') {
+      const pctVal = val * 100;
+      if (Math.abs(pctVal) < 0.05) return '–';
+      return `${pctVal.toFixed(1)}%`;
+    }
     if (format === 'factor') return `${val.toFixed(2)}×`;
-    return Math.round(val).toLocaleString();
+    const rounded = Math.round(val);
+    if (rounded === 0) return '–';
+    if (rounded < 0) return `(${Math.abs(rounded).toLocaleString()})`;
+    return rounded.toLocaleString();
   };
 
   const periods = projection?.periods || [];
@@ -625,31 +633,39 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </div>
             </div>
 
-            <div ref={tableContainerRef} className="overflow-x-auto border border-stone-200 rounded-lg">
-              <table className="w-full text-xs">
+            <div ref={tableContainerRef} className="overflow-x-auto rounded-lg border border-stone-200">
+              <table className="w-full text-xs border-collapse">
                 <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200">
-                    <th className="sticky left-0 bg-stone-50 z-10 text-left px-3 py-2 font-semibold text-stone-700 min-w-[140px] border-r border-stone-200">Metric</th>
-                    {periods.map(p => (
-                      <th key={p.index} className={`px-3 py-2 text-center min-w-[80px] font-mono ${p.isActual ? 'text-stone-900 font-semibold' : 'text-stone-400'}`}>
-                        {p.label}
-                      </th>
-                    ))}
+                  <tr style={{ backgroundColor: '#3C4A3B' }}>
+                    <th className="sticky left-0 z-10 text-left px-4 py-3 min-w-[160px] border-r border-[#4d5a4c]" style={{ backgroundColor: '#3C4A3B' }}>
+                      <span className="text-white/60 text-[10px] font-normal uppercase tracking-wider"></span>
+                    </th>
+                    {periods.map(p => {
+                      const parts = p.label.split('|');
+                      const topLine = parts[0] || p.label;
+                      const bottomLine = parts[1] || '';
+                      return (
+                        <th key={p.index} className="px-3 py-2.5 text-right min-w-[88px] border-r border-[#4d5a4c] last:border-r-0">
+                          <div className="text-white text-[11px] font-semibold leading-tight">{topLine}</div>
+                          {bottomLine && <div className="text-white/50 text-[9px] font-normal mt-0.5">{bottomLine}</div>}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="bg-stone-50">
-                    <td colSpan={periods.length + 1} className="sticky left-0 bg-stone-50 px-3 py-1.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200">
+                  <tr>
+                    <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 bg-stone-50">
                       Raw Traffic Metrics
                     </td>
                   </tr>
                   {rawMetricRows.map(row => (
-                    <tr key={row.key} className="border-b border-stone-100 hover:bg-stone-50/50">
-                      <td className="sticky left-0 bg-white z-10 px-3 py-2 text-stone-700 font-medium border-r border-stone-200">{row.label}</td>
+                    <tr key={row.key} className="border-b border-stone-100">
+                      <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 text-[11px] border-r border-stone-100">{row.label}</td>
                       {periods.map(p => {
                         const val = (p as any)[row.field] as number;
                         return (
-                          <td key={p.index} className={`px-3 py-2 text-center font-mono ${p.isActual ? 'text-stone-900 font-semibold' : 'text-stone-400 italic'}`}>
+                          <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-800">
                             {formatVal(val, row.format)}
                           </td>
                         );
@@ -657,46 +673,50 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     </tr>
                   ))}
 
-                  <tr className="bg-blue-50/50 cursor-pointer" onClick={() => setShowAdjustments(!showAdjustments)}>
-                    <td colSpan={periods.length + 1} className="sticky left-0 bg-blue-50/50 px-3 py-1.5 text-[10px] font-bold text-blue-600 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200">
+                  <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
+
+                  <tr className="cursor-pointer" onClick={() => setShowAdjustments(!showAdjustments)}>
+                    <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
                       <span className="flex items-center gap-1">
-                        {showAdjustments ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {showAdjustments ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                         Market Adjustments
                       </span>
                     </td>
                   </tr>
                   {showAdjustments && adjustmentRows.map(row => (
-                    <tr key={row.key} className="border-b border-stone-100 hover:bg-blue-50/30">
-                      <td className="sticky left-0 bg-white z-10 px-3 py-2 text-blue-600 font-medium text-[11px] border-r border-stone-200">{row.label}</td>
+                    <tr key={row.key} className="border-b border-stone-100">
+                      <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-600 text-[11px] border-r border-stone-100">{row.label}</td>
                       {periods.map(p => {
                         const val = (p as any)[row.field] as number;
                         return (
-                          <td key={p.index} className={`px-3 py-2 text-center font-mono text-[11px] ${p.isActual ? 'text-stone-400' : 'text-blue-600'}`}>
-                            {p.isActual ? '—' : `${val.toFixed(2)}×`}
+                          <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-700">
+                            {p.isActual ? '–' : `${val.toFixed(2)}×`}
                           </td>
                         );
                       })}
                     </tr>
                   ))}
 
-                  <tr className="bg-emerald-50/50">
-                    <td colSpan={periods.length + 1} className="sticky left-0 bg-emerald-50/50 px-3 py-1.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200">
+                  <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
+
+                  <tr>
+                    <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
                       Adjusted Output
                     </td>
                   </tr>
                   {adjOutputRows.map(row => (
-                    <tr key={row.key} className="border-b border-stone-100 hover:bg-emerald-50/30">
-                      <td className="sticky left-0 bg-white z-10 px-3 py-2 text-emerald-700 font-medium border-r border-stone-200">{row.label}</td>
+                    <tr key={row.key} className="border-b border-stone-100">
+                      <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 font-medium text-[11px] border-r border-stone-100">{row.label}</td>
                       {periods.map(p => {
                         const val = (p as any)[row.field] as number;
                         const isEditable = editing && !p.isActual;
 
                         if (isEditable) {
                           return (
-                            <td key={p.index} className="px-1 py-1 text-center">
+                            <td key={p.index} className="px-1 py-1">
                               <input
                                 type="number"
-                                className="w-full text-center text-xs font-mono border border-stone-300 rounded px-1 py-1 bg-amber-50"
+                                className="w-full text-right text-[11px] font-mono border border-stone-300 rounded px-2 py-1 bg-amber-50/50 focus:outline-none focus:border-stone-400"
                                 defaultValue={row.format === 'pct' ? (val * 100).toFixed(1) : Math.round(val)}
                                 onChange={(e) => {
                                   const newVal = row.format === 'pct' ? parseFloat(e.target.value) / 100 : parseFloat(e.target.value);
@@ -711,7 +731,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                         }
 
                         return (
-                          <td key={p.index} className={`px-3 py-2 text-center font-mono ${p.isActual ? 'text-stone-900 font-semibold' : 'text-emerald-700'}`}>
+                          <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-900 font-medium">
                             {formatVal(val, row.format)}
                           </td>
                         );
@@ -722,11 +742,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </table>
             </div>
 
-            <div className="flex items-center gap-4 mt-3 text-[10px] text-stone-400">
-              <span className="flex items-center gap-1"><span className="w-3 h-1.5 bg-stone-900 rounded" /> Actual</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-1.5 bg-stone-300 rounded" /> Projected</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-1.5 bg-blue-400 rounded" /> Market Adjustment</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-1.5 bg-emerald-500 rounded" /> Adjusted Output</span>
+            <div className="flex items-center gap-6 mt-3 text-[10px] text-stone-400">
+              <span>Parentheses indicate negative values</span>
+              <span>– indicates zero or not applicable</span>
             </div>
           </div>
 

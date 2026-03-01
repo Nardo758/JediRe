@@ -662,27 +662,35 @@ export class WeeklyReportParserService {
     const month = d.toLocaleString('en-US', { month: 'short' });
     const day = d.getDate();
     const year = d.getFullYear().toString().slice(-2);
-    return `W${index + 1} (${month} ${day}, '${year})`;
+    return `${month} ${day}, '${year}|Week ${index + 1}`;
   }
 
   private aggregateToMonthly(weekly: ProjectionPeriod[]): ProjectionPeriod[] {
-    const months: Map<string, ProjectionPeriod[]> = new Map();
+    const monthBuckets: { key: string; label: string; weeks: ProjectionPeriod[] }[] = [];
+    const seen = new Map<string, number>();
+
     for (const w of weekly) {
-      const labelParts = w.label.match(/\((\w+)\s+\d+,\s+'(\d+)\)/);
-      const monthKey = labelParts ? `${labelParts[1]}'${labelParts[2]}` : `M${Math.floor(w.index / 4.33)}`;
-      if (!months.has(monthKey)) months.set(monthKey, []);
-      months.get(monthKey)!.push(w);
+      const parts = w.label.split('|');
+      const datePart = parts[0] || w.label;
+      const dateMatch = datePart.match(/(\w+)\s+\d+,\s+'(\d+)/) || w.label.match(/\((\w+)\s+\d+,\s+'(\d+)\)/);
+      const monthKey = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}` : `M${Math.floor(w.index / 4.33)}`;
+
+      if (!seen.has(monthKey)) {
+        const monthLabel = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}` : monthKey;
+        seen.set(monthKey, monthBuckets.length);
+        monthBuckets.push({ key: monthKey, label: monthLabel, weeks: [] });
+      }
+      monthBuckets[seen.get(monthKey)!].weeks.push(w);
     }
 
-    const result: ProjectionPeriod[] = [];
-    let idx = 0;
-    for (const [label, weeks] of months) {
+    return monthBuckets.map((bucket, idx) => {
+      const weeks = bucket.weeks;
       const hasActual = weeks.some(w => w.isActual);
       const allActual = weeks.every(w => w.isActual);
 
-      result.push({
-        label,
-        index: idx++,
+      return {
+        label: `${bucket.label}|Month ${idx + 1}`,
+        index: idx,
         isActual: allActual,
         baseTraffic: this.sumField(weeks, 'baseTraffic'),
         baseTours: this.sumField(weeks, 'baseTours'),
@@ -712,9 +720,8 @@ export class WeeklyReportParserService {
         totalUnits: weeks[0].totalUnits,
         vacantTotal: hasActual ? weeks.find(w => w.isActual)?.vacantTotal ?? null : null,
         noticeTotal: hasActual ? weeks.find(w => w.isActual)?.noticeTotal ?? null : null,
-      });
-    }
-    return result;
+      };
+    });
   }
 
   private aggregateToYearly(weekly: ProjectionPeriod[]): ProjectionPeriod[] {
@@ -726,8 +733,19 @@ export class WeeklyReportParserService {
     return years.map((weeks, idx) => {
       const allActual = weeks.every(w => w.isActual);
       const hasActual = weeks.some(w => w.isActual);
+
+      const firstLabel = weeks[0]?.label || '';
+      const lastLabel = weeks[weeks.length - 1]?.label || '';
+      const firstMatch = firstLabel.match(/'(\d+)/);
+      const lastMatch = lastLabel.match(/'(\d+)/);
+      const startYr = firstMatch ? `20${firstMatch[1]}` : '';
+      const endYr = lastMatch ? `20${lastMatch[1]}` : '';
+      const yearRange = startYr && endYr && startYr !== endYr
+        ? `${startYr}-${endYr.slice(-2)}`
+        : startYr || `Yr ${idx + 1}`;
+
       return {
-        label: `Y${idx + 1}`,
+        label: `${yearRange}|Year ${idx + 1}`,
         index: idx,
         isActual: allActual,
         baseTraffic: this.sumField(weeks, 'baseTraffic'),
