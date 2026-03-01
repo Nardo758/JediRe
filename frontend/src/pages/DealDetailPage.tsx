@@ -57,6 +57,8 @@ import { EnvironmentalESGSection } from '../components/deal/sections/Environment
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
+import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
+import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
@@ -236,6 +238,18 @@ const DealDetailPage: React.FC = () => {
       label: 'Competition Analysis', 
       icon: <Target size={16} />, 
       component: CompetitionPage 
+    },
+    {
+      id: 'traffic-intelligence',
+      label: 'Traffic Intelligence',
+      icon: <Activity size={16} />,
+      component: TrafficIntelligenceSection
+    },
+    {
+      id: 'competitive-position',
+      label: 'Competitive Position',
+      icon: <Radar size={16} />,
+      component: CompetitivePositionSection
     },
     {
       id: 'supply',
