@@ -57,10 +57,16 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
             );
           }
 
+          const hasStats = scopeStats && (scopeStats.occupancy !== undefined || scopeStats.avg_rent !== undefined);
+          const tooltipParts: string[] = [];
+          if (scopeStats?.occupancy !== undefined) tooltipParts.push(`Occupancy: ${scopeStats.occupancy.toFixed(1)}%`);
+          if (scopeStats?.avg_rent !== undefined) tooltipParts.push(`Avg Rent: $${scopeStats.avg_rent.toLocaleString()}`);
+
           return (
             <button
               key={scope}
               onClick={() => onChange(scope)}
+              title={hasStats ? tooltipParts.join('  |  ') : undefined}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${
                 isActive
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
@@ -69,8 +75,8 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
             >
               <span className="text-sm">{scopeIcons[scope]}</span>
               <span>{scopeLabels[scope]}</span>
-              {isActive && scopeStats && (scopeStats.occupancy !== undefined || scopeStats.avg_rent !== undefined) && (
-                <span className="text-xs text-blue-500 font-normal ml-0.5">
+              {hasStats && (
+                <span className={`text-xs font-normal ml-0.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}`}>
                   {scopeStats.occupancy !== undefined && `${scopeStats.occupancy.toFixed(1)}%`}
                   {scopeStats.occupancy !== undefined && scopeStats.avg_rent !== undefined && ' \u00B7 '}
                   {scopeStats.avg_rent !== undefined && `$${scopeStats.avg_rent.toLocaleString()}`}
