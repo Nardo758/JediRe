@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, lazy, Suspense } from 'react';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { DefinitionMethod } from '../../types/trade-area';
+
+const TradeAreaDrawMap = lazy(() => import('./TradeAreaDrawMap').then(m => ({ default: m.TradeAreaDrawMap })));
 
 interface TradeAreaDefinitionPanelProps {
   propertyLat: number;
@@ -57,9 +59,7 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
   const [generatedMethod, setGeneratedMethod] = React.useState<DefinitionMethod | null>(null);
   const lastMethodRef = useRef<DefinitionMethod | null>(null);
 
-  const availableMethods: DefinitionMethod[] = onCustomDraw
-    ? ['radius', 'drive_time', 'traffic_informed', 'custom_draw']
-    : ['radius', 'drive_time', 'traffic_informed'];
+  const availableMethods: DefinitionMethod[] = ['radius', 'drive_time', 'traffic_informed', 'custom_draw'];
 
   useEffect(() => {
     if (!definitionMethod) {
@@ -349,6 +349,11 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
               </div>
             </div>
           </div>
+          {!onCustomDraw && (
+            <Suspense fallback={<div className="h-80 bg-gray-100 rounded-lg animate-pulse flex items-center justify-center text-gray-400">Loading map...</div>}>
+              <TradeAreaDrawMap lat={propertyLat} lng={propertyLng} />
+            </Suspense>
+          )}
           {draftGeometry && generatedMethod === 'custom_draw' && (
             <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-sm text-green-800">

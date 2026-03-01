@@ -99,17 +99,25 @@ export const CreateDealPage: React.FC = () => {
     const onDraw = () => {
       if (!drawRef.current) return;
       const data = drawRef.current.getAll();
-      if (data.features.length > 0) {
-        const last = data.features[data.features.length - 1];
-        if (last.geometry.type === 'Polygon') {
-          useTradeAreaStore.getState().updateDraftGeometry(last.geometry as any);
+      if (data.features.length > 1) {
+        const keep = data.features[data.features.length - 1];
+        const toDelete = data.features.slice(0, -1).map(f => f.id as string);
+        toDelete.forEach(id => drawRef.current!.delete(id));
+        if (keep.geometry.type === 'Polygon') {
+          useTradeAreaStore.getState().updateDraftGeometry(keep.geometry as any);
         }
+      } else if (data.features.length === 1 && data.features[0].geometry.type === 'Polygon') {
+        useTradeAreaStore.getState().updateDraftGeometry(data.features[0].geometry as any);
       }
+    };
+    const onDelete = () => {
+      useTradeAreaStore.getState().clearDraft();
     };
     drawHandlerRef.current = onDraw;
 
     map.current.on('draw.create', onDraw);
     map.current.on('draw.update', onDraw);
+    map.current.on('draw.delete', onDelete);
   }, []);
 
   const handleCustomDrawCancel = useCallback(() => {
@@ -263,15 +271,15 @@ export const CreateDealPage: React.FC = () => {
 
   const handleTradeAreaSave = (id: string) => {
     setTradeAreaId(id);
-    handleSubmit();
+    handleSubmit(id);
   };
 
   const handleSkipTradeArea = () => {
     setTradeAreaId(null);
-    handleSubmit();
+    handleSubmit(null);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (tradeAreaIdOverride?: string | null) => {
     if (!dealName.trim()) {
       setError('Please enter a deal name');
       return;
@@ -318,13 +326,14 @@ export const CreateDealPage: React.FC = () => {
 
       const result = await createDeal(dealPayload);
 
-      if (result && (submarketId || msaId || tradeAreaId)) {
+      const effectiveTradeAreaId = tradeAreaIdOverride !== undefined ? tradeAreaIdOverride : tradeAreaId;
+      if (result && (submarketId || msaId || effectiveTradeAreaId)) {
         try {
           await apiClient.post(`/api/v1/deals/${result.id}/geographic-context`, {
-            trade_area_id: tradeAreaId,
+            trade_area_id: effectiveTradeAreaId,
             submarket_id: submarketId,
             msa_id: msaId,
-            active_scope: tradeAreaId ? 'trade_area' : 'submarket',
+            active_scope: effectiveTradeAreaId ? 'trade_area' : 'submarket',
           });
         } catch (contextErr) {
           console.error('Failed to link geographic context:', contextErr);
