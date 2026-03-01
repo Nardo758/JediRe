@@ -667,8 +667,48 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
                 )}
               </div>
 
-              <div className="space-y-2">
-                {computedMetrics.map(m => renderCorrelationMetricRow(m))}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* BULLISH COLUMN */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-green-200">
+                    <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25B2'} Bullish</span>
+                    <span className="text-[10px] text-green-600 font-bold">{computedMetrics.filter(m => m.signal === 'bullish').length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {computedMetrics.filter(m => m.signal === 'bullish').map(m => renderCorrelationMetricRow(m))}
+                    {computedMetrics.filter(m => m.signal === 'bullish').length === 0 && (
+                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No bullish signals</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* NEUTRAL COLUMN */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200">
+                    <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25AC'} Neutral</span>
+                    <span className="text-[10px] text-gray-500 font-bold">{computedMetrics.filter(m => m.signal === 'neutral').length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {computedMetrics.filter(m => m.signal === 'neutral').map(m => renderCorrelationMetricRow(m))}
+                    {computedMetrics.filter(m => m.signal === 'neutral').length === 0 && (
+                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No neutral signals</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* BEARISH COLUMN */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-red-200">
+                    <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25BC'} Bearish</span>
+                    <span className="text-[10px] text-red-600 font-bold">{computedMetrics.filter(m => m.signal === 'bearish').length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {computedMetrics.filter(m => m.signal === 'bearish').map(m => renderCorrelationMetricRow(m))}
+                    {computedMetrics.filter(m => m.signal === 'bearish').length === 0 && (
+                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No bearish signals</p>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {pendingMetrics.length > 0 && (
