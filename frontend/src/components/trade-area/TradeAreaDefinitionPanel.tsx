@@ -60,6 +60,12 @@ export const TradeAreaDefinitionPanel: React.FC<TradeAreaDefinitionPanelProps> =
     : ['radius', 'drive_time', 'traffic_informed'];
 
   useEffect(() => {
+    if (!definitionMethod) {
+      setDefinitionMethod('radius');
+    }
+  }, []);
+
+  useEffect(() => {
     if (definitionMethod === 'radius' && lastMethodRef.current !== 'radius') {
       lastMethodRef.current = 'radius';
       handleGenerateRadius();

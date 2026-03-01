@@ -132,7 +132,6 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   },
   
   clearDraft: () => set({
-    definitionMethod: null,
     isDrawing: false,
     draftGeometry: null,
     previewStats: null,
