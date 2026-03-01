@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { SIGNAL_GROUPS } from '../signalGroups';
 
 interface DealsTabProps {
   marketId: string;
@@ -9,6 +8,8 @@ interface DealsTabProps {
 
 type Quadrant = 'Hidden Gem' | 'Validated Winner' | 'Hype Risk' | 'Dead Weight';
 type Movement = 'up' | 'down' | 'neutral';
+type LifecyclePhase = 'Emergence' | 'Acceleration' | 'Maturation' | 'Contraction';
+type TrafficQualification = 'Qualified' | 'Marginal' | 'Disqualified';
 
 const QUADRANT_STYLES: Record<Quadrant, { bg: string; text: string }> = {
   'Hidden Gem': { bg: 'bg-emerald-100', text: 'text-emerald-800' },
@@ -23,11 +24,25 @@ const MOVEMENT_DISPLAY: Record<Movement, { arrow: string; color: string }> = {
   neutral: { arrow: '\u25AC', color: 'text-gray-400' },
 };
 
+const LIFECYCLE_STYLES: Record<LifecyclePhase, { bg: string; text: string; icon: string }> = {
+  'Emergence': { bg: 'bg-cyan-100', text: 'text-cyan-800', icon: '\uD83C\uDF31' },
+  'Acceleration': { bg: 'bg-green-100', text: 'text-green-800', icon: '\uD83D\uDE80' },
+  'Maturation': { bg: 'bg-amber-100', text: 'text-amber-800', icon: '\uD83C\uDFDB\uFE0F' },
+  'Contraction': { bg: 'bg-red-100', text: 'text-red-800', icon: '\uD83D\uDCC9' },
+};
+
+const TRAFFIC_QUAL_STYLES: Record<TrafficQualification, { icon: string; color: string; bg: string }> = {
+  'Qualified': { icon: '\u2713', color: 'text-green-700', bg: 'bg-green-50' },
+  'Marginal': { icon: '\u26A0', color: 'text-amber-700', bg: 'bg-amber-50' },
+  'Disqualified': { icon: '\u2717', color: 'text-red-700', bg: 'bg-red-50' },
+};
+
 const ALL_QUADRANTS: Quadrant[] = ['Hidden Gem', 'Validated Winner', 'Hype Risk', 'Dead Weight'];
 
 const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const [activeQuadrants, setActiveQuadrants] = useState<Set<Quadrant>>(new Set());
+  const [showPcsBreakdown, setShowPcsBreakdown] = useState(false);
 
   const toggleQuadrant = (q: Quadrant) => {
     setActiveQuadrants((prev) => {
@@ -70,12 +85,33 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
     pcsMovementDelta: 2,
     quadrant: 'Hidden Gem' as Quadrant,
     targetScore: 91,
+    physicalScore: 76,
+    digitalScore: 34,
+    lifecyclePhase: 'Acceleration' as LifecyclePhase,
+    trajectory: '+19.1%',
+    trajectoryLabel: 'Demand Surge',
+    surgeIndex: '+35%',
+    tar: 1.28,
+    trafficQualified: 'Qualified' as TrafficQualification,
+    pcsComponents: { traffic: 76, revenue: 88, occupancy: 71, opsQuality: 62, assetQuality: 54 },
+    performanceGap: { expectedRank: 1, actualRank: 3, gap: 2 },
+    managementCompany: 'Peachtree Residential',
+    managementPcsPercentile: 31,
+    managementRating: 'bottom quartile',
+    debtMaturity: 'Q3 2026',
+    isTripleTrigger: true,
+    rentTrafficGap: { digitalDemandChange: '+28%', rentGrowth: '+1.2%', repricingRange: '$75-125/unit' },
+    wageRunway: { wageGrowth: '4.2%', rentGrowth: '1.8%', affordabilityRatio: '28%', ceiling: '30%' },
+    sentimentValue: { stars: 3.4, peerStars: 4.2, premium: '$110/unit', topComplaint: 'Maintenance' },
+    likeKindAvgRent: '$1,890/unit',
+    likeKindDiscount: '9%',
+    amenityGap: { missing: ['package lockers', 'dog park'], totalTopAmenities: 3, estRentLift: '$85/unit' },
   };
 
   const compactDeals = [
-    { rank: 2, name: 'BROOKHAVEN TERRACE', units: 240, year: 1998, class: 'B+', submarket: 'Brookhaven', jedi: 87, strategy: 'Core-Plus Hold', ltl: '$180/unit', walkIns: '2,100/wk', trafficShare: '6.8%', pcsRank: 7, pcsMovement: 'up' as Movement, pcsMovementDelta: 3, quadrant: 'Validated Winner' as Quadrant, targetScore: 84 },
-    { rank: 3, name: 'DECATUR STATION', units: 156, year: 1985, class: 'C+', submarket: 'Decatur', jedi: 84, strategy: 'Heavy Value-Add', ltl: '$290/unit', walkIns: '1,420/wk', trafficShare: '9.1%', pcsRank: 12, pcsMovement: 'down' as Movement, pcsMovementDelta: 4, quadrant: 'Hype Risk' as Quadrant, targetScore: 72 },
-    { rank: 4, name: 'SANDY SPRINGS CROSSING', units: 312, year: 2001, class: 'B+', submarket: 'Sandy Springs', jedi: 81, strategy: 'Value-Add Flip', ltl: '$155/unit', walkIns: '2,680/wk', trafficShare: '5.4%', pcsRank: 15, pcsMovement: 'neutral' as Movement, pcsMovementDelta: 0, quadrant: 'Dead Weight' as Quadrant, targetScore: 58 },
+    { rank: 2, name: 'BROOKHAVEN TERRACE', units: 240, year: 1998, class: 'B+', submarket: 'Brookhaven', jedi: 87, strategy: 'Core-Plus Hold', ltl: '$180/unit', walkIns: '2,100/wk', trafficShare: '6.8%', pcsRank: 7, pcsMovement: 'up' as Movement, pcsMovementDelta: 3, quadrant: 'Validated Winner' as Quadrant, targetScore: 84, lifecyclePhase: 'Maturation' as LifecyclePhase, trajectory: '+4.2%', trajectoryLabel: 'Steady', trafficQualified: 'Qualified' as TrafficQualification, tar: 1.12 },
+    { rank: 3, name: 'DECATUR STATION', units: 156, year: 1985, class: 'C+', submarket: 'Decatur', jedi: 84, strategy: 'Heavy Value-Add', ltl: '$290/unit', walkIns: '1,420/wk', trafficShare: '9.1%', pcsRank: 12, pcsMovement: 'down' as Movement, pcsMovementDelta: 4, quadrant: 'Hype Risk' as Quadrant, targetScore: 72, lifecyclePhase: 'Acceleration' as LifecyclePhase, trajectory: '-8.2%', trajectoryLabel: 'Decelerating', trafficQualified: 'Marginal' as TrafficQualification, tar: 0.91 },
+    { rank: 4, name: 'SANDY SPRINGS CROSSING', units: 312, year: 2001, class: 'B+', submarket: 'Sandy Springs', jedi: 81, strategy: 'Value-Add Flip', ltl: '$155/unit', walkIns: '2,680/wk', trafficShare: '5.4%', pcsRank: 15, pcsMovement: 'neutral' as Movement, pcsMovementDelta: 0, quadrant: 'Dead Weight' as Quadrant, targetScore: 58, lifecyclePhase: 'Contraction' as LifecyclePhase, trajectory: '-2.1%', trajectoryLabel: 'Flat', trafficQualified: 'Disqualified' as TrafficQualification, tar: 0.74 },
   ];
 
   const allOpportunityDeals = [
@@ -148,6 +184,46 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
     );
   };
 
+  const renderLifecycleBadge = (phase: LifecyclePhase) => {
+    const { bg, text, icon } = LIFECYCLE_STYLES[phase];
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${bg} ${text}`}>
+        {icon} {phase}
+      </span>
+    );
+  };
+
+  const renderTrafficQualBadge = (qual: TrafficQualification) => {
+    const { icon, color, bg } = TRAFFIC_QUAL_STYLES[qual];
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${color} ${bg}`}>
+        {icon} Traffic {qual}
+      </span>
+    );
+  };
+
+  const renderTrajectory = (trajectory: string, label: string) => {
+    const isPositive = trajectory.startsWith('+');
+    const color = isPositive ? 'text-green-600' : 'text-red-600';
+    return (
+      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${color}`}>
+        T-07: {trajectory} {'\u2192'} {label}
+      </span>
+    );
+  };
+
+  const renderTarBadge = (tar: number) => {
+    const pct = Math.round((tar - 1) * 100);
+    const isUnderpriced = tar > 1;
+    const color = isUnderpriced ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50';
+    const label = isUnderpriced ? `underpriced by ${pct}%` : `overpriced by ${Math.abs(pct)}%`;
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${color}`}>
+        TAR: {tar.toFixed(2)} {'\u2014'} {label}
+      </span>
+    );
+  };
+
   const renderPcsRank = (rank: number, movement: Movement, delta: number) => (
     <span className="inline-flex items-center gap-1.5">
       <span className="text-sm font-bold text-gray-900">#{rank}</span>
@@ -164,6 +240,19 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold ${color}`}>
         {score}
       </span>
+    );
+  };
+
+  const renderPcsComponentBar = (label: string, value: number, color: string) => {
+    const width = `${value}%`;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-gray-500 w-16 text-right">{label}</span>
+        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${color}`} style={{ width }} />
+        </div>
+        <span className="text-[10px] font-bold text-gray-700 w-6">{value}</span>
+      </div>
     );
   };
 
@@ -238,29 +327,107 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
                       <div className="flex items-center gap-3 text-sm">
                         <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">JEDI: {featuredDeal.jedi} (C-01)</span>
                         <span className="text-gray-600">Strategy: {featuredDeal.strategy} (C-05: {featuredDeal.arbSpread} arb)</span>
+                        {renderTrafficQualBadge(featuredDeal.trafficQualified)}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {renderPcsRank(featuredDeal.pcsRank, featuredDeal.pcsMovement, featuredDeal.pcsMovementDelta)}
-                      {renderQuadrantBadge(featuredDeal.quadrant)}
-                      {renderTargetScore(featuredDeal.targetScore)}
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-3">
+                        {renderPcsRank(featuredDeal.pcsRank, featuredDeal.pcsMovement, featuredDeal.pcsMovementDelta)}
+                        {renderQuadrantBadge(featuredDeal.quadrant)}
+                        {renderLifecycleBadge(featuredDeal.lifecyclePhase)}
+                        {renderTargetScore(featuredDeal.targetScore)}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500">Physical: <span className="font-bold text-gray-800">{featuredDeal.physicalScore}</span> | Digital: <span className="font-bold text-gray-800">{featuredDeal.digitalScore}</span></span>
+                        <span className="text-[10px] text-gray-400">T-02/T-03</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {renderTrajectory(featuredDeal.trajectory, featuredDeal.trajectoryLabel)}
+                      </div>
                     </div>
                   </div>
+
+                  {featuredDeal.isTripleTrigger && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+                      <span className="text-xs font-bold text-red-700">
+                        {'\uD83C\uDFAF'} Triple Trigger: underperforming + Year {Math.floor(featuredDeal.holdYears)} hold + est. maturity {featuredDeal.debtMaturity}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 mb-3 flex-wrap">
+                    {renderTarBadge(featuredDeal.tar)}
+                    <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                      Surge: {featuredDeal.surgeIndex} above baseline (COR-01)
+                    </span>
+                    <button
+                      onClick={() => setShowPcsBreakdown(!showPcsBreakdown)}
+                      className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {showPcsBreakdown ? 'Hide' : 'Show'} PCS Breakdown
+                    </button>
+                  </div>
+
+                  {showPcsBreakdown && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">PCS Component Breakdown</span>
+                        <span className="text-[11px] text-gray-500">
+                          Expected: #{featuredDeal.performanceGap.expectedRank} | Actual: #{featuredDeal.performanceGap.actualRank} | Gap: {featuredDeal.performanceGap.gap} positions
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {renderPcsComponentBar('Revenue', featuredDeal.pcsComponents.revenue, 'bg-green-500')}
+                        {renderPcsComponentBar('Traffic', featuredDeal.pcsComponents.traffic, 'bg-blue-500')}
+                        {renderPcsComponentBar('Occupancy', featuredDeal.pcsComponents.occupancy, 'bg-cyan-500')}
+                        {renderPcsComponentBar('Ops', featuredDeal.pcsComponents.opsQuality, 'bg-amber-500')}
+                        {renderPcsComponentBar('Asset', featuredDeal.pcsComponents.assetQuality, 'bg-purple-500')}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 mb-4">
                     <p className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">WHY THIS PROPERTY:</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 text-sm">
-                      <div className="text-gray-700">{'\u2022'} Loss-to-Lease: {featuredDeal.lossToLease} (P-03) — {featuredDeal.ltlPct} below market</div>
-                      <div className="text-gray-700">{'\u2022'} Seller Motivation: {featuredDeal.sellerMotivation}/100 (P-05) — {featuredDeal.holdYears}yr hold, debt likely</div>
+                      <div className="text-gray-700">{'\u2022'} Loss-to-Lease: {featuredDeal.lossToLease} (P-03) {'\u2014'} {featuredDeal.ltlPct} below market</div>
+                      <div className="text-gray-700">{'\u2022'} Seller Motivation: {featuredDeal.sellerMotivation}/100 (P-05) {'\u2014'} {featuredDeal.holdYears}yr hold, debt est. {featuredDeal.debtMaturity}</div>
                       <div className="text-gray-700">{'\u2022'} Demand: D-09 = {featuredDeal.demandScore}, {featuredDeal.submarket} surging</div>
                       <div className="text-gray-700">{'\u2022'} Low Cluster Risk: S-05 = nearest delivery is {featuredDeal.clusterDistance} away</div>
-                      <div className="text-blue-700 font-medium">{'\u2605'} Walk-Ins: {featuredDeal.walkIns} (T-01) — strong foot traffic</div>
+                      <div className="text-gray-700">{'\u2022'} Managed by: {featuredDeal.managementCompany} (avg PCS: {featuredDeal.managementPcsPercentile}th pctile {'\u2014'} {featuredDeal.managementRating})</div>
+                      <div className="text-blue-700 font-medium">{'\u2605'} Walk-Ins: {featuredDeal.walkIns} (T-01) {'\u2014'} strong foot traffic</div>
                       <div className="text-blue-700 font-medium">{'\u2605'} Hidden Gem: T-04 = {featuredDeal.trafficCorrelation} (undiscovered)</div>
-                      <div className="text-blue-700 font-medium">{'\u2605'} Capture Rate: {featuredDeal.captureRate} (T-06) — good corner visibility</div>
-                      <div className="text-blue-700 font-medium">{'\u2605'} Traffic Share: {featuredDeal.trafficShare} of submarket (T-09) — above avg for {featuredDeal.class}</div>
-                      <div className="text-blue-700 font-medium">{'\u2605'} Trade Area: {featuredDeal.supplyDemandRatio} supply-demand ratio (TA-03) — undersupplied</div>
+                      <div className="text-blue-700 font-medium">{'\u2605'} Capture Rate: {featuredDeal.captureRate} (T-06) {'\u2014'} good corner visibility</div>
+                      <div className="text-blue-700 font-medium">{'\u2605'} Traffic Share: {featuredDeal.trafficShare} of submarket (T-09) {'\u2014'} above avg for {featuredDeal.class}</div>
+                      <div className="text-blue-700 font-medium">{'\u2605'} Trade Area: {featuredDeal.supplyDemandRatio} supply-demand ratio (TA-03) {'\u2014'} undersupplied</div>
                       <div className="text-blue-700 font-medium">{'\u2605'} Competitive Set: {featuredDeal.compSetCount} props, avg rent {featuredDeal.compSetAvgRent} (TA-02)</div>
-                      <div className="text-blue-700 font-medium">{'\u2605'} Confidence: {featuredDeal.confidence} (T-10) — validated model</div>
+                      <div className="text-blue-700 font-medium">{'\u2605'} Confidence: {featuredDeal.confidence} (T-10) {'\u2014'} validated model</div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">CORRELATION INTELLIGENCE:</p>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="text-indigo-700 font-medium">
+                          {'\u2605'} Rent-Traffic Gap (COR-01/03): digital demand {featuredDeal.rentTrafficGap.digitalDemandChange} QoQ but rent growth only {featuredDeal.rentTrafficGap.rentGrowth} {'\u2014'} repricing opportunity of {featuredDeal.rentTrafficGap.repricingRange}
+                        </div>
+                        <div className="text-indigo-700 font-medium">
+                          {'\u2605'} Wage Runway (COR-04/13): submarket wages growing {featuredDeal.wageRunway.wageGrowth} vs rent growth {featuredDeal.wageRunway.rentGrowth} {'\u2014'} affordability ratio {featuredDeal.wageRunway.affordabilityRatio} (below {featuredDeal.wageRunway.ceiling} ceiling). Room to push rents.
+                        </div>
+                        <div className="text-indigo-700 font-medium">
+                          {'\u2605'} Review Opportunity (COR-14/15): property at {featuredDeal.sentimentValue.stars} stars. Like-kind at {featuredDeal.sentimentValue.peerStars}+ command {featuredDeal.sentimentValue.premium} premium. {featuredDeal.sentimentValue.topComplaint} is #1 complaint (fixable).
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-bold text-teal-700 uppercase tracking-wider mb-2">COMP INTELLIGENCE:</p>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="text-teal-700 font-medium">
+                          {'\u2605'} Like-Kind Benchmark: national avg rent {featuredDeal.likeKindAvgRent}. This property at {featuredDeal.compSetAvgRent} = {featuredDeal.likeKindDiscount} discount despite comparable traffic position.
+                        </div>
+                        <div className="text-teal-700 font-medium">
+                          {'\u2605'} Amenity Gap: Missing {featuredDeal.amenityGap.missing.join(', ')} ({featuredDeal.amenityGap.missing.length} of {featuredDeal.amenityGap.totalTopAmenities} top amenities in trade area). Est. rent lift: +{featuredDeal.amenityGap.estRentLift}.
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -268,7 +435,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
                     <div className="flex items-start gap-2">
                       <span className="text-sm">{'\uD83E\uDD16'}</span>
                       <p className="text-sm text-violet-800 italic">
-                        "Hidden Gem classification — strong physical traffic but low digital presence means institutional buyers haven't found this yet. $220/unit LTL with motivated seller = act fast."
+                        "Hidden Gem with TAR of 1.28 {'\u2014'} location underpriced by 28%. Wages growing 2.3x faster than rents with affordability ratio at 28%. Bottom-quartile management ({featuredDeal.managementPcsPercentile}th pctile) suggests significant operational upside. Triple trigger target {'\u2014'} act before {featuredDeal.debtMaturity} debt maturity. Missing amenities alone could unlock +{featuredDeal.amenityGap.estRentLift} rent lift."
                       </p>
                     </div>
                   </div>
@@ -291,16 +458,30 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
                     <span className="font-semibold text-gray-900">{deal.name}</span>
                     <span className="text-sm text-gray-500">{deal.units}u | {deal.year} | {deal.class} | {deal.submarket}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
+                  <div className="flex items-center gap-2 text-sm flex-wrap justify-end">
                     {renderPcsRank(deal.pcsRank, deal.pcsMovement, deal.pcsMovementDelta)}
                     {renderQuadrantBadge(deal.quadrant)}
+                    {'lifecyclePhase' in deal && renderLifecycleBadge(deal.lifecyclePhase as LifecyclePhase)}
                     {renderTargetScore(deal.targetScore)}
                     <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs">JEDI {deal.jedi}</span>
                     <span className="text-gray-500">LTL: {deal.ltl}</span>
                     <span className="text-blue-600">{'\u2605'} {deal.walkIns}</span>
-                    <span className="text-blue-600">{'\u2605'} Share: {deal.trafficShare}</span>
-                    <span className="text-xs font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded">{deal.strategy}</span>
                   </div>
+                </div>
+                <div className="flex items-center gap-3 mt-2 ml-8">
+                  {'trajectory' in deal && (
+                    <span className={`text-[11px] font-semibold ${(deal.trajectory as string).startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
+                      T-07: {deal.trajectory} {'\u2192'} {deal.trajectoryLabel}
+                    </span>
+                  )}
+                  {'tar' in deal && (
+                    <span className={`text-[11px] font-semibold ${(deal.tar as number) > 1 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      TAR: {(deal.tar as number).toFixed(2)}
+                    </span>
+                  )}
+                  <span className="text-blue-600 text-[11px]">{'\u2605'} Share: {deal.trafficShare}</span>
+                  {'trafficQualified' in deal && renderTrafficQualBadge(deal.trafficQualified as TrafficQualification)}
+                  <span className="text-xs font-medium text-teal-700 bg-teal-50 px-2 py-0.5 rounded">{deal.strategy}</span>
                 </div>
               </div>
             );
@@ -318,7 +499,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-900">My Pipeline</h3>
-          <p className="text-sm text-gray-500 mt-0.5">Kanban — stage-specific metrics per deal</p>
+          <p className="text-sm text-gray-500 mt-0.5">Kanban {'\u2014'} stage-specific metrics per deal</p>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-4 gap-4">
@@ -431,7 +612,7 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
                     <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{row.secondBest}</span>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{row.secondIRR}</td>
-                  <td className="px-4 py-3 font-bold text-amber-600">{row.spread}</td>
+                  <td className="px-4 py-3 font-bold text-green-600">{row.spread}</td>
                 </tr>
               ))}
             </tbody>
