@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { pool } from '../database';
 import { logger } from '../utils/logger';
+import { trafficCalibrationService } from './traffic-calibration.service';
 
 export interface WeeklySnapshot {
   deal_id: string;
@@ -87,12 +88,33 @@ export interface MarketIntelligence {
   overallSummary: string;
 }
 
+export interface PropertyData {
+  units?: number;
+  occupancy?: number;
+  avgRent?: number;
+  marketRent?: number;
+  submarketId?: string;
+  propertyId?: string;
+  propertyType?: string;
+}
+
+export interface CalibrationData {
+  avgTrafficPerUnit?: number;
+  avgClosingRatio?: number;
+  avgTourConversion?: number;
+  seasonalFactors?: number[];
+  websitePct?: number;
+  sampleCount?: number;
+}
+
 export interface ProjectionResult {
   periods: ProjectionPeriod[];
   marketIntelligence: MarketIntelligence;
   actualsCount: number;
   projectedCount: number;
   view: 'weekly' | 'monthly' | 'yearly';
+  dataSource: 'predicted' | 'uploaded' | 'blended';
+  calibrationSource?: string;
 }
 
 function excelDateToJS(serial: number): Date {
@@ -187,6 +209,11 @@ export class WeeklyReportParserService {
     }
 
     logger.info(`[WeeklyReportParser] Parsed ${snapshots.length} weekly snapshots for deal ${dealId}`);
+
+    trafficCalibrationService.recalculateForDeal(dealId).catch(err => {
+      logger.debug('[WeeklyReportParser] Calibration update deferred', { error: err.message });
+    });
+
     return { count: snapshots.length, snapshots };
   }
 
@@ -303,39 +330,125 @@ export class WeeklyReportParserService {
     return result.rows;
   }
 
+  private static MONTHLY_SEASONALITY = [
+    0.85, 0.88, 0.95, 1.05, 1.25, 1.20, 1.15, 1.10, 1.00, 0.92, 0.85, 0.80,
+  ];
+
+  private generateBaselineFromProperty(prop: PropertyData, calibration?: CalibrationData): {
+    traffic: number; tours: number; website: number; apps: number;
+    cancellations: number; denials: number; netLeases: number;
+    closingRatio: number; occPct: number; leasedPct: number; totalUnits: number;
+  } {
+    const units = prop.units || 290;
+    const occupancy = prop.occupancy || 0.90;
+    const avgRent = prop.avgRent || 1500;
+    const marketRent = prop.marketRent || avgRent;
+
+    const trafficPerUnit = calibration?.avgTrafficPerUnit ?? (11 / 290);
+    const baseTraffic = Math.round(units * trafficPerUnit);
+
+    let occMult = 1.0;
+    if (occupancy < 0.85) occMult = 1.3;
+    else if (occupancy > 0.95) occMult = 0.6;
+    else occMult = 1.0 + (0.95 - occupancy) * 2;
+
+    const rentRatio = avgRent / (marketRent || avgRent || 1);
+    let priceMult = 1.0;
+    if (rentRatio < 0.95) priceMult = 1.2;
+    else if (rentRatio > 1.05) priceMult = 0.8;
+
+    const traffic = Math.max(1, Math.round(baseTraffic * occMult * priceMult));
+    const tourConversion = calibration?.avgTourConversion ?? 0.99;
+    const tours = Math.round(traffic * tourConversion);
+    const websitePct = calibration?.websitePct ?? 0.40;
+    const website = Math.round(traffic * websitePct);
+    const closingRatio = calibration?.avgClosingRatio ?? 0.207;
+    const netLeases = Math.max(0, Math.round(tours * closingRatio));
+    const apps = Math.round(netLeases * 1.3);
+    const cancellations = Math.max(0, apps - netLeases);
+    const denials = 0;
+
+    return {
+      traffic, tours, website, apps, cancellations, denials, netLeases,
+      closingRatio, occPct: occupancy, leasedPct: Math.min(0.99, occupancy + 0.03),
+      totalUnits: units,
+    };
+  }
+
   async generateProjection(
     dealId: string,
     view: 'weekly' | 'monthly' | 'yearly',
-    marketFactors?: { demand?: number; supply?: number; digital?: number }
+    marketFactors?: { demand?: number; supply?: number; digital?: number },
+    propertyData?: PropertyData,
+    calibration?: CalibrationData
   ): Promise<ProjectionResult> {
     const actuals = await this.getHistory(dealId);
     const totalWeeks = 520;
     const actualWeeks = actuals.length;
+    const hasActuals = actualWeeks > 0;
 
     const demandFactor = marketFactors?.demand ?? 1.05;
     const supplyFactor = marketFactors?.supply ?? 0.97;
     const digitalFactor = marketFactors?.digital ?? 1.03;
 
-    const recentWindow = Math.min(26, actualWeeks);
-    const recentActuals = actuals.slice(-recentWindow);
+    let avgTraffic: number, avgTours: number, avgWebsite: number, avgApps: number;
+    let avgCancellations: number, avgDenials: number, avgNetLeases: number;
+    let avgClosingRatio: number, avgOccPct: number, avgLeasedPct: number;
+    let avgTotalUnits: number, avgVacantTotal: number, avgNoticeTotal: number;
+    let trendGrowth: number;
+    let seasonalFactors: number[];
 
-    const avgTraffic = this.avg(recentActuals.map(a => a.traffic));
-    const avgTours = this.avg(recentActuals.map(a => a.in_person_tours));
-    const avgWebsite = this.avg(recentActuals.map(a => a.website_leads));
-    const avgApps = this.avg(recentActuals.map(a => a.apps));
-    const avgCancellations = this.avg(recentActuals.map(a => a.cancellations));
-    const avgDenials = this.avg(recentActuals.map(a => a.denials));
-    const avgNetLeases = this.avg(recentActuals.map(a => a.net_leases));
-    const avgClosingRatio = this.avg(recentActuals.map(a => a.closing_ratio));
-    const avgOccPct = this.avg(recentActuals.map(a => a.occ_pct));
-    const avgLeasedPct = this.avg(recentActuals.map(a => a.leased_pct));
-    const avgTotalUnits = this.avg(recentActuals.map(a => a.total_units)) || 290;
-    const avgVacantTotal = this.avg(recentActuals.map(a => a.vacant_total));
-    const avgNoticeTotal = this.avg(recentActuals.map(a => a.notice_total));
-
-    const trendGrowth = this.calculateTrend(actuals.map(a => a.traffic));
-
-    const seasonalFactors = this.calculateSeasonalFactors(actuals);
+    if (hasActuals) {
+      const recentWindow = Math.min(26, actualWeeks);
+      const recentActuals = actuals.slice(-recentWindow);
+      avgTraffic = this.avg(recentActuals.map(a => a.traffic));
+      avgTours = this.avg(recentActuals.map(a => a.in_person_tours));
+      avgWebsite = this.avg(recentActuals.map(a => a.website_leads));
+      avgApps = this.avg(recentActuals.map(a => a.apps));
+      avgCancellations = this.avg(recentActuals.map(a => a.cancellations));
+      avgDenials = this.avg(recentActuals.map(a => a.denials));
+      avgNetLeases = this.avg(recentActuals.map(a => a.net_leases));
+      avgClosingRatio = this.avg(recentActuals.map(a => a.closing_ratio));
+      avgOccPct = this.avg(recentActuals.map(a => a.occ_pct));
+      avgLeasedPct = this.avg(recentActuals.map(a => a.leased_pct));
+      avgTotalUnits = this.avg(recentActuals.map(a => a.total_units)) || 290;
+      avgVacantTotal = this.avg(recentActuals.map(a => a.vacant_total));
+      avgNoticeTotal = this.avg(recentActuals.map(a => a.notice_total));
+      trendGrowth = this.calculateTrend(actuals.map(a => a.traffic));
+      seasonalFactors = this.calculateSeasonalFactors(actuals);
+    } else {
+      const baseline = this.generateBaselineFromProperty(propertyData || {}, calibration);
+      avgTraffic = baseline.traffic;
+      avgTours = baseline.tours;
+      avgWebsite = baseline.website;
+      avgApps = baseline.apps;
+      avgCancellations = baseline.cancellations;
+      avgDenials = baseline.denials;
+      avgNetLeases = baseline.netLeases;
+      avgClosingRatio = baseline.closingRatio;
+      avgOccPct = baseline.occPct;
+      avgLeasedPct = baseline.leasedPct;
+      avgTotalUnits = baseline.totalUnits;
+      avgVacantTotal = 0;
+      avgNoticeTotal = 0;
+      trendGrowth = 0.0005;
+      if (calibration?.seasonalFactors && calibration.seasonalFactors.length === 12) {
+        seasonalFactors = [];
+        for (let m = 0; m < 12; m++) {
+          const weeksInMonth = m === 1 ? 4 : (m % 2 === 0 ? 5 : 4);
+          for (let w = 0; w < weeksInMonth; w++) seasonalFactors.push(calibration.seasonalFactors[m]);
+        }
+        while (seasonalFactors.length < 52) seasonalFactors.push(1.0);
+      } else {
+        seasonalFactors = [];
+        for (let m = 0; m < 12; m++) {
+          const factor = WeeklyReportParserService.MONTHLY_SEASONALITY[m];
+          const weeksInMonth = m === 1 ? 4 : (m % 2 === 0 ? 5 : 4);
+          for (let w = 0; w < weeksInMonth; w++) seasonalFactors.push(factor);
+        }
+        while (seasonalFactors.length < 52) seasonalFactors.push(1.0);
+      }
+    }
 
     const weeklyPeriods: ProjectionPeriod[] = [];
 
@@ -482,12 +595,22 @@ export class WeeklyReportParserService {
       overallSummary: `Net Market Impact: ${overallAdj.toFixed(2)}× — Your traffic is ${direction} ${Math.abs(pctChange)}% by market conditions`,
     };
 
+    const dataSource: 'predicted' | 'uploaded' | 'blended' = !hasActuals
+      ? 'predicted'
+      : actualWeeks >= totalWeeks
+        ? 'uploaded'
+        : 'blended';
+
     return {
       periods,
       marketIntelligence,
       actualsCount: actualWeeks,
       projectedCount: periods.filter(p => !p.isActual).length,
       view,
+      dataSource,
+      calibrationSource: calibration?.sampleCount
+        ? `Calibrated from ${calibration.sampleCount} deal(s) in this submarket`
+        : undefined,
     };
   }
 

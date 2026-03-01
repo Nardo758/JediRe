@@ -16,6 +16,7 @@ import { weeklyReportParser } from '../../services/weekly-report-parser.service'
 import { demandSignalService } from '../../services/demand-signal.service';
 import { supplySignalService } from '../../services/supply-signal.service';
 import { DigitalTrafficService } from '../../services/digitalTrafficService';
+import { trafficCalibrationService } from '../../services/traffic-calibration.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -463,19 +464,46 @@ const weeklyUpload = multer({
       }
 
       let marketFactors: { demand?: number; supply?: number; digital?: number } = {};
+      let propertyData: any = {};
+      let calibrationData: any = undefined;
+
       try {
         const dealResult = await pool.query(
-          `SELECT d.submarket_id, d.property_id FROM deals d WHERE d.id = $1`,
+          `SELECT d.target_units, d.project_type, d.address, d.budget,
+                  d.trade_area_id, d.deal_data
+           FROM deals d WHERE d.id = $1`,
           [dealId]
         );
         if (dealResult.rows.length > 0) {
           const deal = dealResult.rows[0];
+          const dealData = deal.deal_data || {};
+          propertyData.units = deal.target_units || dealData.units;
+          propertyData.propertyType = deal.project_type;
+          propertyData.occupancy = dealData.occupancy || dealData.current_occupancy;
+          propertyData.avgRent = dealData.avg_rent || dealData.avgRent;
+          propertyData.marketRent = dealData.market_rent || dealData.marketRent;
 
-          if (deal.submarket_id) {
+          const tradeAreaId = deal.trade_area_id;
+          if (tradeAreaId) {
+            try {
+              const taResult = await pool.query(
+                `SELECT submarket_id, msa_id FROM trade_areas WHERE id = $1`,
+                [tradeAreaId]
+              );
+              if (taResult.rows.length > 0) {
+                propertyData.submarketId = taResult.rows[0].submarket_id;
+              }
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Trade area lookup skipped');
+            }
+          }
+
+          const subId = propertyData.submarketId;
+          if (subId) {
             try {
               const now = new Date();
               const quarter = `${now.getFullYear()}-Q${Math.ceil((now.getMonth() + 1) / 3)}`;
-              const forecast = await demandSignalService.getTradeAreaForecast(deal.submarket_id, quarter, quarter);
+              const forecast = await demandSignalService.getTradeAreaForecast(subId, quarter, quarter);
               if (forecast && forecast.length > 0) {
                 const score = forecast[0].supplyPressureScore || 0;
                 marketFactors.demand = 1 + Math.min(0.15, score * 0.01);
@@ -485,24 +513,65 @@ const weeklyUpload = multer({
             }
 
             try {
-              const risk = await supplySignalService.calculateSupplyRisk(Number(deal.submarket_id), '');
+              const risk = await supplySignalService.calculateSupplyRisk(Number(subId), '');
               if (risk) {
                 marketFactors.supply = Math.max(0.85, 1 - (risk.supplyRiskScore || 0) * 0.005);
               }
             } catch (e) {
               logger.debug('[LeasingTraffic] Supply signal fetch skipped');
             }
-          }
 
-          if (deal.property_id) {
             try {
-              const digitalScore = await digitalTrafficService.calculateDigitalScore(deal.property_id);
-              if (digitalScore) {
-                marketFactors.digital = 1 + Math.min(0.2, (digitalScore.trending_velocity || 0) * 0.01);
+              const calResult = await pool.query(
+                `SELECT avg_traffic_per_unit, avg_closing_ratio, avg_tour_conversion,
+                        seasonal_factors, website_pct, sample_count
+                 FROM traffic_submarket_calibration
+                 WHERE submarket_id = $1
+                 ORDER BY sample_count DESC LIMIT 1`,
+                [subId]
+              );
+              if (calResult.rows.length > 0) {
+                const cal = calResult.rows[0];
+                let parsedSeasonal: number[] | undefined;
+                if (cal.seasonal_factors) {
+                  const raw = typeof cal.seasonal_factors === 'string'
+                    ? JSON.parse(cal.seasonal_factors) : cal.seasonal_factors;
+                  if (Array.isArray(raw) && raw.length === 12) {
+                    parsedSeasonal = raw.map(Number);
+                  }
+                }
+                calibrationData = {
+                  avgTrafficPerUnit: cal.avg_traffic_per_unit ? Number(cal.avg_traffic_per_unit) : undefined,
+                  avgClosingRatio: cal.avg_closing_ratio ? Number(cal.avg_closing_ratio) : undefined,
+                  avgTourConversion: cal.avg_tour_conversion ? Number(cal.avg_tour_conversion) : undefined,
+                  seasonalFactors: parsedSeasonal,
+                  websitePct: cal.website_pct ? Number(cal.website_pct) : undefined,
+                  sampleCount: cal.sample_count,
+                };
               }
             } catch (e) {
-              logger.debug('[LeasingTraffic] Digital traffic fetch skipped');
+              logger.debug('[LeasingTraffic] Calibration data fetch skipped');
             }
+          }
+
+          try {
+            const propResult = await pool.query(
+              `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
+              [dealId]
+            );
+            const propId = propResult.rows[0]?.id;
+            if (propId) {
+              try {
+                const digitalScore = await digitalTrafficService.calculateDigitalScore(propId);
+                if (digitalScore) {
+                  marketFactors.digital = 1 + Math.min(0.2, (digitalScore.trending_velocity || 0) * 0.01);
+                }
+              } catch (e) {
+                logger.debug('[LeasingTraffic] Digital traffic fetch skipped');
+              }
+            }
+          } catch (e) {
+            logger.debug('[LeasingTraffic] Property lookup for digital score skipped');
           }
         }
       } catch (e) {
@@ -512,7 +581,9 @@ const weeklyUpload = multer({
       const projection = await weeklyReportParser.generateProjection(
         dealId,
         view as 'weekly' | 'monthly' | 'yearly',
-        marketFactors
+        marketFactors,
+        propertyData,
+        calibrationData
       );
 
       res.json(projection);
@@ -539,6 +610,47 @@ const weeklyUpload = multer({
     } catch (error: any) {
       logger.error('[LeasingTraffic] Snapshot update failed', { error: error.message });
       res.status(500).json({ error: 'Failed to update snapshot', message: error.message });
+    }
+  });
+
+  router.get('/weekly-report/:dealId/calibration', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const dealResult = await pool.query(
+        `SELECT d.trade_area_id, d.address FROM deals d WHERE d.id = $1`,
+        [dealId]
+      );
+
+      if (dealResult.rows.length === 0) {
+        return res.json({ calibrated: false, sampleCount: 0, comparisons: {} });
+      }
+
+      const deal = dealResult.rows[0];
+      let submarketId: string | null = null;
+      if (deal.trade_area_id) {
+        try {
+          const taResult = await pool.query(
+            `SELECT submarket_id FROM trade_areas WHERE id = $1`,
+            [deal.trade_area_id]
+          );
+          if (taResult.rows.length > 0) submarketId = taResult.rows[0].submarket_id;
+        } catch (_) {}
+      }
+      const stats = await trafficCalibrationService.getCalibrationStats(submarketId || undefined);
+
+      if (!stats) {
+        return res.json({ calibrated: false, sampleCount: 0, comparisons: {} });
+      }
+
+      res.json({
+        calibrated: true,
+        sampleCount: stats.sampleCount,
+        lastUpdated: stats.lastUpdated,
+        comparisons: stats.comparisons,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Calibration stats failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to get calibration stats' });
     }
   });
 

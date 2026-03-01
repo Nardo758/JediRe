@@ -3,7 +3,7 @@ import {
   TrendingUp, Upload, ArrowUpRight, ArrowDownRight,
   ChevronDown, ChevronRight, Edit3, Save, X, Building2,
   Users, Target, Activity, BarChart3, Globe, Footprints,
-  Minus,
+  Minus, Database, AlertCircle, CheckCircle2,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -73,6 +73,8 @@ interface ProjectionData {
   actualsCount: number;
   projectedCount: number;
   view: 'weekly' | 'monthly' | 'yearly';
+  dataSource: 'predicted' | 'uploaded' | 'blended';
+  calibrationSource?: string;
 }
 
 interface HistorySnapshot {
@@ -103,7 +105,14 @@ interface HistorySnapshot {
   move_outs: number | null;
 }
 
-const API_BASE = '/api/leasing-traffic';
+interface CalibrationStats {
+  calibrated: boolean;
+  sampleCount: number;
+  lastUpdated: string | null;
+  comparisons: Record<string, { calibrated: number; default: number }>;
+}
+
+const API_BASE = '/api/v1/leasing-traffic';
 
 function Sparkline({ data, color = '#d97706', height = 32 }: { data: number[]; color?: string; height?: number }) {
   if (!data || data.length < 2) return null;
@@ -162,11 +171,6 @@ function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
 function FactorCard({ label, factor, summary, direction }: {
   label: string; factor: number; summary: string; direction: 'up' | 'down' | 'neutral';
 }) {
-  const color = direction === 'up' ? 'emerald' : direction === 'down' ? 'red' : 'amber';
-  const bgClass = `bg-${color}-50 border-${color}-200`;
-  const textClass = `text-${color}-700`;
-  const dotClass = `bg-${color}-500`;
-
   return (
     <div className={`rounded-xl border p-4 flex flex-col gap-2 ${direction === 'up' ? 'bg-emerald-50 border-emerald-200' : direction === 'down' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
       <div className="flex items-center gap-2">
@@ -184,16 +188,66 @@ function FactorCard({ label, factor, summary, direction }: {
   );
 }
 
+function DataSourceBanner({ dataSource, actualsCount, calibrationSource, onUploadClick }: {
+  dataSource: 'predicted' | 'uploaded' | 'blended';
+  actualsCount: number;
+  calibrationSource?: string;
+  onUploadClick: () => void;
+}) {
+  if (dataSource === 'predicted') {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-amber-900">
+            Projections based on property characteristics and market intelligence
+          </div>
+          <p className="text-[11px] text-amber-700 mt-1">
+            {calibrationSource || 'Using industry-standard baselines for multifamily leasing.'}
+            {' '}Upload weekly operator data to refine predictions with actual performance.
+          </p>
+        </div>
+        <button
+          onClick={onUploadClick}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0"
+        >
+          <Upload size={12} /> Upload Data
+        </button>
+      </div>
+    );
+  }
+
+  if (dataSource === 'blended') {
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+        <CheckCircle2 size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-blue-900">
+            Based on {actualsCount} week{actualsCount !== 1 ? 's' : ''} of actual data + market intelligence
+          </div>
+          <p className="text-[11px] text-blue-700 mt-1">
+            Predictions are calibrated with your uploaded operating data. More data improves accuracy.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficModuleProps) {
   const resolvedDealId = propDealId || deal?.id || '';
   const [view, setView] = useState<'weekly' | 'monthly' | 'yearly'>('yearly');
   const [projection, setProjection] = useState<ProjectionData | null>(null);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [calibration, setCalibration] = useState<CalibrationStats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, Record<string, number>>>({});
   const [showAdjustments, setShowAdjustments] = useState(true);
+  const [showCalibration, setShowCalibration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -201,12 +255,14 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     if (!resolvedDealId) return;
     setLoading(true);
     try {
-      const [histRes, projRes] = await Promise.all([
+      const [histRes, projRes, calRes] = await Promise.all([
         apiClient.get(`${API_BASE}/weekly-report/${resolvedDealId}/history`),
         apiClient.get(`${API_BASE}/weekly-report/${resolvedDealId}/projection`, { params: { view } }),
+        apiClient.get(`${API_BASE}/weekly-report/${resolvedDealId}/calibration`).catch(() => ({ data: { calibrated: false, sampleCount: 0, comparisons: {} } })),
       ]);
       setHistory(histRes.data.snapshots || []);
       setProjection(projRes.data);
+      setCalibration(calRes.data);
     } catch (err) {
       console.error('[TrafficModule] Load failed:', err);
     } finally {
@@ -236,6 +292,10 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     }
   };
 
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleSaveEdits = async () => {
     try {
       for (const [periodLabel, updates] of Object.entries(editValues)) {
@@ -253,7 +313,10 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     }
   };
 
-  const latest = history.length > 0 ? history[history.length - 1] : null;
+  const dataSource = projection?.dataSource || 'predicted';
+  const hasHistory = history.length > 0;
+
+  const latest = hasHistory ? history[history.length - 1] : null;
   const prev4 = history.slice(-5, -1);
 
   const avg4 = (field: keyof HistorySnapshot) => {
@@ -267,28 +330,44 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     return { text: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`, up: change >= 0 };
   };
 
-  const latestTraffic = latest?.traffic || 0;
-  const latestTours = latest?.in_person_tours || 0;
-  const latestClosing = latest?.closing_ratio || 0;
-  const latestNetLeases = latest?.net_leases || 0;
-  const latestOcc = latest?.occ_pct || 0;
+  const firstPeriod = projection?.periods?.[0];
+  const kpiTraffic = latest?.traffic ?? firstPeriod?.adjTraffic ?? 0;
+  const kpiTours = latest?.in_person_tours ?? firstPeriod?.adjTours ?? 0;
+  const kpiClosing = latest?.closing_ratio ?? firstPeriod?.adjClosingRatio ?? 0;
+  const kpiNetLeases = latest?.net_leases ?? firstPeriod?.adjNetLeases ?? 0;
+  const kpiOcc = latest?.occ_pct ?? firstPeriod?.adjOccPct ?? 0;
 
-  const trafficTrend = pctChange(latestTraffic, avg4('traffic'));
-  const toursTrend = pctChange(latestTours, avg4('in_person_tours'));
-  const closingTrend = pctChange(latestClosing, avg4('closing_ratio'));
-  const leasesTrend = pctChange(latestNetLeases, avg4('net_leases'));
-  const occTrend = pctChange(latestOcc, avg4('occ_pct'));
+  const trafficTrend = hasHistory ? pctChange(kpiTraffic, avg4('traffic')) : { text: 'Predicted', up: null as boolean | null };
+  const toursTrend = hasHistory ? pctChange(kpiTours, avg4('in_person_tours')) : { text: 'Predicted', up: null as boolean | null };
+  const closingTrend = hasHistory ? pctChange(kpiClosing, avg4('closing_ratio')) : { text: 'Predicted', up: null as boolean | null };
+  const leasesTrend = hasHistory ? pctChange(kpiNetLeases, avg4('net_leases')) : { text: 'Predicted', up: null as boolean | null };
+  const occTrend = hasHistory ? pctChange(kpiOcc, avg4('occ_pct')) : { text: 'Predicted', up: null as boolean | null };
 
-  const hasData = history.length > 0;
+  const sparkTraffic = hasHistory
+    ? history.slice(-12).map(h => h.traffic || 0)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjTraffic) || []);
+  const sparkTours = hasHistory
+    ? history.slice(-12).map(h => h.in_person_tours || 0)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjTours) || []);
+  const sparkClosing = hasHistory
+    ? history.slice(-12).map(h => (h.closing_ratio || 0) * 100)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjClosingRatio * 100) || []);
+  const sparkLeases = hasHistory
+    ? history.slice(-12).map(h => h.net_leases || 0)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjNetLeases) || []);
+  const sparkOcc = hasHistory
+    ? history.slice(-12).map(h => (h.occ_pct || 0) * 100)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjOccPct * 100) || []);
+
   const mi = projection?.marketIntelligence;
 
-  const funnelTotal = latestTraffic;
-  const funnelTours = latestTours;
-  const funnelApps = latest?.apps || 0;
-  const funnelCancelDeny = (latest?.cancellations || 0);
-  const funnelNetLeases = latestNetLeases;
-  const funnelWebsite = latest?.website_leads || 0;
-  const funnelWalkIn = funnelTotal - funnelWebsite;
+  const funnelTraffic = latest?.traffic ?? firstPeriod?.adjTraffic ?? 0;
+  const funnelTours = latest?.in_person_tours ?? firstPeriod?.adjTours ?? 0;
+  const funnelApps = latest?.apps ?? firstPeriod?.adjApps ?? 0;
+  const funnelCancelDeny = latest?.cancellations ?? firstPeriod?.baseCancellations ?? 0;
+  const funnelNetLeases = latest?.net_leases ?? firstPeriod?.adjNetLeases ?? 0;
+  const funnelWebsite = latest?.website_leads ?? firstPeriod?.adjWebsite ?? 0;
+  const funnelWalkIn = funnelTraffic - funnelWebsite;
 
   const rawMetricRows = [
     { key: 'traffic', label: 'Traffic (Total)', field: 'baseTraffic', adjField: 'adjTraffic', format: 'int' },
@@ -297,6 +376,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     { key: 'tours', label: 'Tours', field: 'baseTours', adjField: 'adjTours', format: 'int' },
     { key: 'apps', label: 'Apps', field: 'baseApps', adjField: 'adjApps', format: 'int' },
     { key: 'netLeases', label: 'Net Leases', field: 'baseNetLeases', adjField: 'adjNetLeases', format: 'int' },
+    { key: 'closingRatio', label: 'Closing Ratio', field: 'baseClosingRatio', adjField: 'adjClosingRatio', format: 'pct' },
+    { key: 'occPct', label: 'Occupancy', field: 'baseOccPct', adjField: 'adjOccPct', format: 'pct' },
+    { key: 'leasedPct', label: 'Leased %', field: 'baseLeasedPct', adjField: 'adjLeasedPct', format: 'pct' },
   ];
 
   const adjustmentRows = [
@@ -324,50 +406,35 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
   const periods = projection?.periods || [];
 
-  if (!hasData && !loading) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="bg-stone-900 rounded-xl p-6 text-white">
-          <h2 className="text-lg font-bold">Traffic Intelligence</h2>
-          <p className="text-stone-300 text-sm mt-1">What is this property's true leasing velocity — and can we improve it?</p>
-        </div>
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-          <Upload size={48} className="mx-auto text-stone-300 mb-4" />
-          <h3 className="text-lg font-bold text-stone-900 mb-2">Upload a Weekly Report</h3>
-          <p className="text-stone-500 text-sm mb-6 max-w-md mx-auto">
-            Upload your property's weekly leasing report (.xlsx) to see traffic data, projections, and market intelligence impact.
-          </p>
-          <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-stone-900 text-white rounded-lg cursor-pointer hover:bg-stone-800 transition-colors">
-            <Upload size={16} />
-            {uploading ? 'Uploading...' : 'Upload Report'}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleUpload}
-              className="hidden"
-            />
-          </label>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6 p-6">
-      {/* Decision Banner */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={handleUpload}
+        className="hidden"
+      />
+
       <div className="bg-stone-900 rounded-xl p-6 text-white flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold">Traffic Intelligence</h2>
           <p className="text-stone-300 text-sm mt-1">What is this property's true leasing velocity — and can we improve it?</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
+          {dataSource === 'uploaded' && (
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
+          )}
+          {dataSource === 'blended' && (
+            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono">BLENDED</span>
+          )}
+          {dataSource === 'predicted' && (
+            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED</span>
+          )}
           <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 text-white rounded-lg cursor-pointer hover:bg-white/20 transition-colors text-sm">
             <Upload size={14} />
             {uploading ? 'Uploading...' : 'Upload Report'}
             <input
-              ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={handleUpload}
@@ -380,71 +447,81 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       {loading ? (
         <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
           <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-stone-500 text-sm">Loading traffic data...</p>
+          <p className="text-stone-500 text-sm">Loading traffic predictions...</p>
         </div>
       ) : (
         <>
-          {/* Traffic Vitals Row */}
+          <DataSourceBanner
+            dataSource={dataSource}
+            actualsCount={projection?.actualsCount || 0}
+            calibrationSource={projection?.calibrationSource}
+            onUploadClick={triggerUpload}
+          />
+
           <div className="grid grid-cols-5 gap-4">
             <KPICard
               label="Weekly Traffic"
-              value={latestTraffic.toLocaleString()}
+              value={Math.round(kpiTraffic).toLocaleString()}
               trend={trafficTrend.text}
               trendUp={trafficTrend.up}
-              sparkData={history.slice(-12).map(h => h.traffic || 0)}
+              sparkData={sparkTraffic}
               icon={Users}
             />
             <KPICard
               label="In-Person Tours"
-              value={latestTours.toLocaleString()}
+              value={Math.round(kpiTours).toLocaleString()}
               trend={toursTrend.text}
               trendUp={toursTrend.up}
-              sparkData={history.slice(-12).map(h => h.in_person_tours || 0)}
+              sparkData={sparkTours}
               icon={Footprints}
             />
             <KPICard
               label="Closing Ratio"
-              value={`${(latestClosing * 100).toFixed(1)}%`}
+              value={`${(kpiClosing * 100).toFixed(1)}%`}
               trend={closingTrend.text}
               trendUp={closingTrend.up}
-              sparkData={history.slice(-12).map(h => (h.closing_ratio || 0) * 100)}
+              sparkData={sparkClosing}
               icon={Target}
             />
             <KPICard
               label="Net Leases / Wk"
-              value={latestNetLeases.toLocaleString()}
+              value={Math.round(kpiNetLeases).toLocaleString()}
               trend={leasesTrend.text}
               trendUp={leasesTrend.up}
-              sparkData={history.slice(-12).map(h => h.net_leases || 0)}
+              sparkData={sparkLeases}
               icon={Activity}
             />
             <KPICard
               label="Occupancy"
-              value={`${(latestOcc * 100).toFixed(1)}%`}
+              value={`${(kpiOcc * 100).toFixed(1)}%`}
               trend={occTrend.text}
               trendUp={occTrend.up}
-              sparkData={history.slice(-12).map(h => (h.occ_pct || 0) * 100)}
+              sparkData={sparkOcc}
               icon={Building2}
             />
           </div>
 
-          {/* Leasing Funnel */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
-            <h3 className="text-lg font-bold text-stone-900 mb-4">Leasing Funnel</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-stone-900">Leasing Funnel</h3>
+              {!hasHistory && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
+              )}
+            </div>
             <div className="flex items-center gap-2 mb-4">
               {[
-                { label: 'Traffic', value: funnelTotal, color: 'bg-stone-900' },
-                { label: 'Tours', value: funnelTours, color: 'bg-stone-700' },
-                { label: 'Apps', value: funnelApps, color: 'bg-stone-500' },
-                { label: 'Cancel/Deny', value: funnelCancelDeny, color: 'bg-red-400' },
-                { label: 'Net Leases', value: funnelNetLeases, color: 'bg-emerald-600' },
+                { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-stone-900' },
+                { label: 'Tours', value: Math.round(funnelTours), color: 'bg-stone-700' },
+                { label: 'Apps', value: Math.round(funnelApps), color: 'bg-stone-500' },
+                { label: 'Cancel/Deny', value: Math.round(funnelCancelDeny), color: 'bg-red-400' },
+                { label: 'Net Leases', value: Math.round(funnelNetLeases), color: 'bg-emerald-600' },
               ].map((step, i, arr) => (
                 <div key={step.label} className="flex items-center gap-2 flex-1">
                   <div className="flex-1">
                     <div className="text-stone-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
                     <div className="text-lg font-bold text-stone-900">{step.value}</div>
                     <div className={`h-2 rounded-full ${step.color} mt-1`}
-                      style={{ width: `${funnelTotal > 0 ? Math.max(10, (step.value / funnelTotal) * 100) : 10}%` }} />
+                      style={{ width: `${funnelTraffic > 0 ? Math.max(10, (step.value / funnelTraffic) * 100) : 10}%` }} />
                   </div>
                   {i < arr.length - 1 && <ChevronRight size={16} className="text-stone-300 flex-shrink-0" />}
                 </div>
@@ -455,12 +532,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
                 <div className="flex h-4 rounded-full overflow-hidden bg-stone-100">
                   <div className="bg-stone-700 flex items-center justify-center"
-                    style={{ width: `${funnelTotal > 0 ? (funnelWalkIn / funnelTotal) * 100 : 50}%` }}>
-                    <span className="text-[9px] text-white font-mono">{funnelWalkIn}</span>
+                    style={{ width: `${funnelTraffic > 0 ? (Math.max(0, funnelWalkIn) / funnelTraffic) * 100 : 50}%` }}>
+                    <span className="text-[9px] text-white font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
                   </div>
                   <div className="bg-blue-500 flex items-center justify-center"
-                    style={{ width: `${funnelTotal > 0 ? (funnelWebsite / funnelTotal) * 100 : 50}%` }}>
-                    <span className="text-[9px] text-white font-mono">{funnelWebsite}</span>
+                    style={{ width: `${funnelTraffic > 0 ? (funnelWebsite / funnelTraffic) * 100 : 50}%` }}>
+                    <span className="text-[9px] text-white font-mono">{Math.round(funnelWebsite)}</span>
                   </div>
                 </div>
                 <div className="flex justify-between mt-1">
@@ -469,27 +546,36 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 </div>
               </div>
               <div className="flex-1">
-                <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">This Week vs 4-Wk Avg</div>
+                <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">
+                  {hasHistory ? 'This Week vs 4-Wk Avg' : 'Predicted Baseline'}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-stone-500">This Week</div>
-                    <div className="text-lg font-bold text-stone-900">{latestTraffic}</div>
+                    <div className="text-xs text-stone-500">{hasHistory ? 'This Week' : 'Weekly'}</div>
+                    <div className="text-lg font-bold text-stone-900">{Math.round(kpiTraffic)}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-stone-500">4-Wk Avg</div>
-                    <div className="text-lg font-bold text-stone-400">{Math.round(avg4('traffic'))}</div>
+                    <div className="text-xs text-stone-500">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
+                    <div className="text-lg font-bold text-stone-400">
+                      {hasHistory ? Math.round(avg4('traffic')) : Math.round(kpiTraffic * 4.33)}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Market Intelligence Adjustment Panel */}
           {mi && (
             <div className="bg-white rounded-xl border border-stone-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-stone-900">Market Intelligence Adjustments</h3>
-                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                  dataSource === 'uploaded' ? 'bg-emerald-100 text-emerald-700' :
+                  dataSource === 'blended' ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {dataSource === 'uploaded' ? 'LIVE DATA' : dataSource === 'blended' ? 'BLENDED' : 'MARKET SIGNALS'}
+                </span>
               </div>
               <div className="grid grid-cols-4 gap-4 mb-4">
                 <FactorCard label="Demand" factor={mi.demandFactor} summary={mi.demandSummary} direction={mi.demandDirection} />
@@ -507,7 +593,6 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
           )}
 
-          {/* 10-Year Traffic Projection Table */}
           <div className="bg-white rounded-xl border border-stone-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-stone-900">Traffic Projection</h3>
@@ -553,7 +638,6 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Section 1: Raw Traffic */}
                   <tr className="bg-stone-50">
                     <td colSpan={periods.length + 1} className="sticky left-0 bg-stone-50 px-3 py-1.5 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200">
                       Raw Traffic Metrics
@@ -573,7 +657,6 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     </tr>
                   ))}
 
-                  {/* Section 2: Market Adjustments */}
                   <tr className="bg-blue-50/50 cursor-pointer" onClick={() => setShowAdjustments(!showAdjustments)}>
                     <td colSpan={periods.length + 1} className="sticky left-0 bg-blue-50/50 px-3 py-1.5 text-[10px] font-bold text-blue-600 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200">
                       <span className="flex items-center gap-1">
@@ -596,7 +679,6 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     </tr>
                   ))}
 
-                  {/* Section 3: Adjusted Output */}
                   <tr className="bg-emerald-50/50">
                     <td colSpan={periods.length + 1} className="sticky left-0 bg-emerald-50/50 px-3 py-1.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200">
                       Adjusted Output
@@ -648,7 +730,6 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
           </div>
 
-          {/* Vacancy & Availability */}
           {latest && (
             <div className="bg-white rounded-xl border border-stone-200 p-6">
               <h3 className="text-lg font-bold text-stone-900 mb-4">Vacancy & Availability</h3>
@@ -737,6 +818,84 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </div>
             </div>
           )}
+
+          <div className="bg-white rounded-xl border border-stone-200 p-6">
+            <div
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => setShowCalibration(!showCalibration)}
+            >
+              <div className="flex items-center gap-3">
+                <Database size={18} className="text-stone-400" />
+                <div>
+                  <h3 className="text-lg font-bold text-stone-900">Data Library Calibration</h3>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    {calibration?.calibrated
+                      ? `${calibration.sampleCount} deal${calibration.sampleCount !== 1 ? 's' : ''} in this submarket contributing to calibration`
+                      : 'No submarket calibration data yet — upload weekly reports to teach the engine'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {calibration?.calibrated && (
+                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">CALIBRATED</span>
+                )}
+                {showCalibration ? <ChevronDown size={16} className="text-stone-400" /> : <ChevronRight size={16} className="text-stone-400" />}
+              </div>
+            </div>
+
+            {showCalibration && (
+              <div className="mt-4 pt-4 border-t border-stone-100">
+                {calibration?.calibrated && Object.keys(calibration.comparisons).length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {Object.entries(calibration.comparisons).map(([metric, vals]) => {
+                        const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%');
+                        const formatFn = (v: number) => isPct ? `${(v * 100).toFixed(1)}%` : v.toFixed(4);
+                        const diff = vals.calibrated - vals.default;
+                        const diffPct = vals.default !== 0 ? ((diff / vals.default) * 100).toFixed(0) : '0';
+                        const isUp = diff > 0;
+
+                        return (
+                          <div key={metric} className="bg-stone-50 rounded-lg p-3">
+                            <div className="text-stone-500 font-mono text-[10px] uppercase mb-2">{metric}</div>
+                            <div className="flex items-end justify-between">
+                              <div>
+                                <div className="text-lg font-bold text-stone-900">{formatFn(vals.calibrated)}</div>
+                                <div className="text-[11px] text-stone-400">Default: {formatFn(vals.default)}</div>
+                              </div>
+                              <div className={`text-xs font-mono ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {isUp ? '+' : ''}{diffPct}%
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {calibration.lastUpdated && (
+                      <div className="text-[10px] text-stone-400 mt-2">
+                        Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <Database size={32} className="mx-auto text-stone-300 mb-3" />
+                    <p className="text-sm text-stone-500 mb-3">
+                      Upload weekly operating reports to build submarket-specific calibration data.
+                      The more deals that contribute data, the better the predictions become.
+                    </p>
+                    <button
+                      onClick={triggerUpload}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm hover:bg-stone-800 transition-colors"
+                    >
+                      <Upload size={14} /> Upload Weekly Report
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
