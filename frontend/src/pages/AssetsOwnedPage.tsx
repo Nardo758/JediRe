@@ -511,7 +511,7 @@ export function AssetsOwnedPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate('/competitive-intelligence/projection');
+                          navigate('/competitive-intelligence/performance');
                         }}
                         className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors border border-blue-200"
                       >

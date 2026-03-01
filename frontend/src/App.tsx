@@ -55,8 +55,6 @@ import {
   PerformanceRankingsPage,
   AcquisitionIntelPage,
   CompAnalysisPage,
-  PatternEnginePage,
-  RankMeToolPage,
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
 
@@ -121,8 +119,6 @@ function AppContent() {
           <Route path="/competitive-intelligence/performance" element={<PerformanceRankingsPage />} />
           <Route path="/competitive-intelligence/acquisition" element={<AcquisitionIntelPage />} />
           <Route path="/competitive-intelligence/comps" element={<CompAnalysisPage />} />
-          <Route path="/competitive-intelligence/patterns" element={<PatternEnginePage />} />
-          <Route path="/competitive-intelligence/projection" element={<RankMeToolPage />} />
           <Route path="/competitive-intelligence/alerts" element={<OpportunityAlertsPage />} />
           
           <Route path="/deals" element={<DealsPage />} />

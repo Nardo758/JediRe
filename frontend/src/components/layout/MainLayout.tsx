@@ -297,18 +297,6 @@ export const MainLayout: React.FC = () => {
                         isActive={isActive('/competitive-intelligence/comps')}
                       />
                       <SidebarItem
-                        icon="🧩"
-                        label="Pattern Engine"
-                        path="/competitive-intelligence/patterns"
-                        isActive={isActive('/competitive-intelligence/patterns')}
-                      />
-                      <SidebarItem
-                        icon="📈"
-                        label="Rank-Me Tool"
-                        path="/competitive-intelligence/projection"
-                        isActive={isActive('/competitive-intelligence/projection')}
-                      />
-                      <SidebarItem
                         icon="🔔"
                         label="Opportunity Alerts"
                         path="/competitive-intelligence/alerts"

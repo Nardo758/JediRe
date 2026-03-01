@@ -30,24 +30,6 @@ const SYSTEMS = [
     tagline: 'Two lenses on every deal. Your local competitors define market position. Like-kind comps across markets reveal pricing anomalies and operational benchmarks.',
   },
   {
-    id: 'patterns',
-    number: 'S4',
-    title: 'Pattern Recognition Engine',
-    subtitle: 'Platform-wide intelligence from every data stream',
-    color: '#f59e0b',
-    items: [6, 10, 11, 13],
-    tagline: 'The brain. Ingests Google reviews, rent-to-traffic correlations, business formation clusters, and wage growth \u2014 finds patterns humans miss.',
-  },
-  {
-    id: 'projection',
-    number: 'S5',
-    title: 'Predictive Positioning & Rank-Me Tool',
-    subtitle: 'Project future rank \u2192 Prescribe what to do',
-    color: '#ef4444',
-    items: [7, 8],
-    tagline: "\u2018I want to be ranked 2nd in this market \u2014 what do I need to do?\u2019 The platform reverse-engineers the gap and builds a plan.",
-  },
-  {
     id: 'alerts',
     number: 'S6',
     title: 'Opportunity Alert System',
@@ -193,39 +175,6 @@ const DUAL_COMPS = {
   collision_output: 'When both lenses find the same property, the signal is amplified. A property that ranks low in its trade area AND ranks below like-kind benchmarks has BOTH local competitive problems AND operational problems \u2014 maximum value-add potential.',
 };
 
-const PATTERN_ENGINE = {
-  overview: 'A horizontal intelligence layer that runs across ALL modules. It doesn\u2019t own data \u2014 it consumes data from every module and looks for patterns, correlations, anomalies, and predictive relationships that no single module would detect alone.',
-  categories: [
-    {
-      name: 'Google Reviews Intelligence',
-      id: 'PR-01',
-      color: '#f59e0b',
-      patterns: [
-        { pattern: 'Management Transition Signal', detail: "When review sentiment shifts dramatically (\u00b10.3 in 6 months), it often indicates an ownership or management change. Early detection creates acquisition opportunities 3-6 months before deals hit the market." },
-        { pattern: 'Operational Gap Mining', detail: "Extract the TOP 3 complaint categories per property. If \u2018maintenance response time\u2019 is the #1 complaint and that property has strong traffic position, you\u2019ve found an operational fix cheaper than physical renovation." },
-        { pattern: 'Amenity Demand Signal', detail: "When reviews across multiple properties mention \u2018wish this had [X]\u2019, it\u2019s a revealed preference signal. Track which amenity mentions are rising fastest." },
-      ],
-    },
-    {
-      name: 'Rent-Traffic-Wage Correlation Engine',
-      id: 'PR-02',
-      color: '#3b82f6',
-      patterns: [
-        { pattern: 'Affordability Ceiling Predictor', detail: 'When rent/wage ratio exceeds 30% of median household income for 2+ consecutive quarters AND traffic trajectory is decelerating, the market is approaching an affordability wall.' },
-        { pattern: 'Rent Growth Runway Detector', detail: 'When wage growth > rent growth sustained AND traffic is growing \u2014 rents have room to run. The wage growth creates a \u2018permission structure\u2019 for rent increases without demand destruction.' },
-      ],
-    },
-    {
-      name: 'Business Formation & Cluster Intelligence',
-      id: 'PR-03',
-      color: '#10b981',
-      patterns: [
-        { pattern: 'Emerging Employment Center', detail: 'When business formations in a specific NAICS cluster exceed 2 standard deviations above the trailing 24-month average within a 3-mile radius, a new employment center is forming. This is a demand signal 12-24 months BEFORE the traffic data shows it.' },
-        { pattern: 'Industry Mix Shift', detail: 'When the composition of business formations shifts (e.g., healthcare NAICS growing from 8% to 15%), the INCOME PROFILE of the renter pool is changing. This informs unit mix and pricing strategy.' },
-      ],
-    },
-  ],
-};
 
 const ALERT_SYSTEM = {
   overview: "Don\u2019t wait for users to hunt for deals. The platform continuously monitors all data streams and pushes actionable opportunity alerts with specific strategy recommendations. Alerts are ranked by confidence and time-sensitivity.",
@@ -247,26 +196,13 @@ const ALERT_SYSTEM = {
 
 const CONNECTION_MAP = [
   { from: 'S1: Performance Tracking', to: 'S2: Acquisition Intelligence', signal: 'Rankings identify underperformers \u2192 becomes target list' },
-  { from: 'S1: Performance Tracking', to: 'S5: Rank-Me Tool', signal: 'Current rankings \u2192 gap to target rank \u2192 action plan' },
   { from: 'S2: Ownership Intelligence', to: 'S6: Opportunity Alerts', signal: 'Debt maturity + distress signals \u2192 timed acquisition alerts' },
   { from: 'S3: Trade Area Comps', to: 'S1: Performance Ranking', signal: 'Local competitive position feeds PCS ranking' },
-  { from: 'S3: Like-Kind Comps', to: 'S4: Pattern Engine', signal: 'Cross-market anomalies feed pattern detection' },
-  { from: 'S4: Google Reviews', to: 'S1: Performance (Ops Score)', signal: 'Sentiment analysis feeds operational quality component of PCS' },
-  { from: 'S4: Rent-Traffic-Wage', to: 'S6: Opportunity Alerts', signal: 'Divergences trigger pattern anomaly alerts' },
-  { from: 'S4: Business Formation', to: 'M06: Demand Signals', signal: 'Cluster detection feeds demand driver intelligence' },
+  { from: 'S3: Like-Kind Comps', to: 'S6: Opportunity Alerts', signal: 'Cross-market anomalies trigger pricing alerts' },
   { from: 'S6: Opportunity Alerts', to: 'M08: Strategy Arbitrage', signal: 'Each alert includes strategy recommendation from arbitrage engine' },
   { from: 'All Systems', to: 'M25: JEDI Score', signal: 'Every signal ultimately flows into the 5 master signals and composite JEDI Score' },
 ];
 
-const PROJECTION_ENGINE = {
-  overview: "The Rank-Me Tool lets users project where a property WOULD rank if they acquired it and executed specific improvements. It reverse-engineers the gap between current position and target rank, then prescribes exactly what needs to change \u2014 with cost estimates and timeline.",
-  scenarios: [
-    { strategy: 'BTS', projection: "New construction enters market at projected rank based on planned specs. \u2018A 200-unit Class A with these amenities would rank #2 in this submarket. There are currently 0 Class A properties \u2014 you\u2019d CREATE the top tier.\u2019" },
-    { strategy: 'Flip', projection: "\u2018Buy at rank #34, reposition to rank #12 in 18 months. The rank improvement from #34 \u2192 #12 historically corresponds to 35-50% value appreciation in this submarket.\u2019" },
-    { strategy: 'Rental', projection: "\u2018This property currently ranks #8. Market trajectory is Acceleration. Projected rank in 24 months with no changes: #6 (rising tide lifts this boat). With $400K in targeted improvements: #3.\u2019" },
-    { strategy: 'STR', projection: "\u2018As an STR, this property would rank #4 in the vacation rental competitive set based on location + traffic position. ADR projection based on rank: $185/night (top quartile commands $210).\u2019" },
-  ],
-};
 
 function Pill({ children, color = '#64748b' }: { children: React.ReactNode; color?: string }) {
   return (
@@ -536,64 +472,6 @@ export default function CompetitiveIntelligencePage() {
           </div>
         )}
 
-        {activeSystem === 'patterns' && (
-          <div>
-            <Card color="rgba(245,158,11,0.04)" border="1px solid rgba(245,158,11,0.15)">
-              <div className="text-[11px] font-bold tracking-[0.05em] mb-1.5" style={{ color: '#f59e0b' }}>SYSTEM 4 — ITEMS 6, 10, 11, 13</div>
-              <div className="text-[13px] text-slate-300 leading-[1.7]">{PATTERN_ENGINE.overview}</div>
-            </Card>
-
-            {PATTERN_ENGINE.categories.map((cat) => (
-              <div key={cat.id}>
-                <Divider label={cat.name.toUpperCase()} color={cat.color} />
-                <div className="grid grid-cols-1 gap-2.5">
-                  {cat.patterns.map((p, j) => (
-                    <Card key={j}>
-                      <div className="text-[11px] font-bold text-slate-50 mb-1">{p.pattern}</div>
-                      <div className="text-[10px] text-slate-400 leading-snug">{p.detail}</div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activeSystem === 'projection' && (
-          <div>
-            <Card color="rgba(239,68,68,0.04)" border="1px solid rgba(239,68,68,0.15)">
-              <div className="text-[11px] font-bold tracking-[0.05em] mb-1.5" style={{ color: '#ef4444' }}>SYSTEM 5 — ITEMS 7, 8</div>
-              <div className="text-[13px] text-slate-300 leading-[1.7]">{PROJECTION_ENGINE.overview}</div>
-            </Card>
-
-            <Divider label="RANK-ME POSITIONING ENGINE" color="#ef4444" />
-            <Card color="rgba(239,68,68,0.04)" border="1px solid rgba(239,68,68,0.12)">
-              <div className="text-xs font-bold mb-2" style={{ color: '#ef4444' }}>{PERFORMANCE_ENGINE.rank_me_tool.name}</div>
-              <div className="text-[11px] text-slate-400 leading-relaxed mb-4">{PERFORMANCE_ENGINE.rank_me_tool.description}</div>
-              <div className="space-y-2">
-                {PERFORMANCE_ENGINE.rank_me_tool.workflow.map((step) => (
-                  <div key={step.step} className="flex gap-3 bg-black/30 rounded-lg p-3">
-                    <div className="text-sm font-extrabold font-mono w-8 shrink-0" style={{ color: '#ef4444' }}>{step.step}</div>
-                    <div>
-                      <div className="text-[11px] font-bold text-slate-50 mb-0.5">{step.action}</div>
-                      <div className="text-[10px] text-slate-400 leading-snug">{step.detail}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Divider label="REDEVELOPMENT/REPOSITIONING SIMULATOR" color="#ef4444" />
-            <div className="grid gap-2.5">
-              {PROJECTION_ENGINE.scenarios.map((item, i) => (
-                <Card key={i}>
-                  <div className="text-xs font-bold text-slate-50 mb-1">{item.strategy}</div>
-                  <div className="text-[11px] text-slate-400 leading-relaxed">{item.projection}</div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
 
         {activeSystem === 'alerts' && (
           <div>
@@ -647,7 +525,7 @@ export default function CompetitiveIntelligencePage() {
         )}
 
 
-        <Divider label="MASTER CONNECTION MAP — HOW ALL 6 SYSTEMS INTERCONNECT" color="#94a3b8" />
+        <Divider label="MASTER CONNECTION MAP — HOW ALL 4 SYSTEMS INTERCONNECT" color="#94a3b8" />
         <div className="grid gap-1.5 mb-8">
           {CONNECTION_MAP.map((conn, i) => (
             <div
@@ -670,7 +548,7 @@ export default function CompetitiveIntelligencePage() {
         <div className="text-center py-5 text-[9px] text-slate-800" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
           JEDI RE · Competitive Intelligence & Opportunity Engine v1 · Extends Traffic Intelligence Framework
           <br />
-          14 Capabilities · 6 Systems · Feeds M25 JEDI Score, M08 Strategy Arbitrage, M09 ProForma, M14 Risk Engine
+          14 Capabilities · 4 Systems · Feeds M25 JEDI Score, M08 Strategy Arbitrage, M09 ProForma, M14 Risk Engine
         </div>
       </div>
     </div>
