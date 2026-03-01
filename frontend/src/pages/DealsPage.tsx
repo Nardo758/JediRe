@@ -20,6 +20,41 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 type TabType = 'all' | 'active' | 'closed';
+type QuadrantType = 'Hidden Gem' | 'Validated Winner' | 'Hype Risk' | 'Dead Weight';
+type RankTier = 'Top 10' | 'Top 25' | 'Top 50' | 'All';
+
+const quadrantColors: Record<QuadrantType, string> = {
+  'Hidden Gem': 'bg-emerald-100 text-emerald-700',
+  'Validated Winner': 'bg-blue-100 text-blue-700',
+  'Hype Risk': 'bg-amber-100 text-amber-700',
+  'Dead Weight': 'bg-red-100 text-red-700',
+};
+
+const quadrantOptions: QuadrantType[] = ['Hidden Gem', 'Validated Winner', 'Hype Risk', 'Dead Weight'];
+const rankTierOptions: RankTier[] = ['Top 10', 'Top 25', 'Top 50', 'All'];
+
+const mockIntelligenceData: { pcs_rank: number; pcs_movement: number; t04_quadrant: QuadrantType; target_score: number }[] = [
+  { pcs_rank: 3, pcs_movement: 2, t04_quadrant: 'Validated Winner', target_score: 91 },
+  { pcs_rank: 7, pcs_movement: -1, t04_quadrant: 'Hidden Gem', target_score: 84 },
+  { pcs_rank: 12, pcs_movement: 5, t04_quadrant: 'Hidden Gem', target_score: 78 },
+  { pcs_rank: 15, pcs_movement: 0, t04_quadrant: 'Hype Risk', target_score: 62 },
+  { pcs_rank: 22, pcs_movement: -3, t04_quadrant: 'Dead Weight', target_score: 41 },
+  { pcs_rank: 1, pcs_movement: 0, t04_quadrant: 'Validated Winner', target_score: 96 },
+  { pcs_rank: 5, pcs_movement: 1, t04_quadrant: 'Validated Winner', target_score: 88 },
+  { pcs_rank: 9, pcs_movement: -2, t04_quadrant: 'Hype Risk', target_score: 55 },
+  { pcs_rank: 18, pcs_movement: 4, t04_quadrant: 'Hidden Gem', target_score: 73 },
+  { pcs_rank: 28, pcs_movement: -5, t04_quadrant: 'Dead Weight', target_score: 35 },
+  { pcs_rank: 2, pcs_movement: 1, t04_quadrant: 'Validated Winner', target_score: 93 },
+  { pcs_rank: 11, pcs_movement: 3, t04_quadrant: 'Hidden Gem', target_score: 80 },
+  { pcs_rank: 20, pcs_movement: 0, t04_quadrant: 'Hype Risk', target_score: 58 },
+  { pcs_rank: 35, pcs_movement: -7, t04_quadrant: 'Dead Weight', target_score: 29 },
+  { pcs_rank: 6, pcs_movement: 2, t04_quadrant: 'Validated Winner', target_score: 86 },
+  { pcs_rank: 14, pcs_movement: -1, t04_quadrant: 'Hidden Gem', target_score: 76 },
+  { pcs_rank: 25, pcs_movement: 0, t04_quadrant: 'Hype Risk', target_score: 50 },
+  { pcs_rank: 8, pcs_movement: 3, t04_quadrant: 'Hidden Gem', target_score: 82 },
+  { pcs_rank: 30, pcs_movement: -4, t04_quadrant: 'Dead Weight', target_score: 38 },
+  { pcs_rank: 4, pcs_movement: 1, t04_quadrant: 'Validated Winner', target_score: 90 },
+];
 
 const formatCurrency = (value: any) =>
   value !== null && value !== undefined
@@ -184,6 +219,71 @@ const columns: ColumnDef[] = [
         '—'
       ),
   },
+  {
+    key: 'pcs_rank',
+    label: 'PCS Rank',
+    sortable: true,
+    filterable: true,
+    width: 110,
+    align: 'center',
+    render: (value, row) => {
+      if (!value) return <span className="text-gray-400">—</span>;
+      const movement = row.pcs_movement || 0;
+      return (
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="font-semibold text-gray-900">#{value}</span>
+          {movement !== 0 && (
+            <span className={`inline-flex items-center text-xs font-medium ${movement > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {movement > 0 ? '▲' : '▼'}{Math.abs(movement)}
+            </span>
+          )}
+          {movement === 0 && (
+            <span className="inline-flex items-center text-xs text-gray-400">—</span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    key: 't04_quadrant',
+    label: 'T-04 Quadrant',
+    sortable: true,
+    filterable: true,
+    width: 150,
+    align: 'center',
+    render: (value) => {
+      if (!value) return <span className="text-gray-400">—</span>;
+      const colorClass = quadrantColors[value as QuadrantType] || 'bg-gray-100 text-gray-700';
+      return (
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
+          {value}
+        </span>
+      );
+    },
+  },
+  {
+    key: 'target_score',
+    label: 'Target Score',
+    sortable: true,
+    filterable: true,
+    width: 110,
+    align: 'right',
+    render: (value) => {
+      if (value === null || value === undefined) return <span className="text-gray-400">—</span>;
+      const color = value >= 80 ? 'text-green-600' : value >= 60 ? 'text-blue-600' : value >= 40 ? 'text-yellow-600' : 'text-red-600';
+      return (
+        <div className="flex items-center justify-end gap-2">
+          <div className="w-12 bg-gray-200 rounded-full h-1.5">
+            <div
+              className={`h-1.5 rounded-full ${value >= 80 ? 'bg-green-500' : value >= 60 ? 'bg-blue-500' : value >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
+              style={{ width: `${Math.min(100, value)}%` }}
+            />
+          </div>
+          <span className={`font-semibold ${color}`}>{value}</span>
+        </div>
+      );
+    },
+  },
   { key: 'source', label: 'Source', sortable: true, filterable: true, width: 120 },
   { key: 'loi_deadline', label: 'LOI Deadline', sortable: true, filterable: true, width: 120, format: formatDate },
   { key: 'closing_date', label: 'Closing', sortable: true, filterable: true, width: 120, format: formatDate },
@@ -219,6 +319,8 @@ export function DealsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [quadrantFilter, setQuadrantFilter] = useState<QuadrantType | null>(null);
+  const [rankTierFilter, setRankTierFilter] = useState<RankTier>('All');
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'all', label: 'All Deals', icon: '📊' },
@@ -226,11 +328,23 @@ export function DealsPage() {
     { id: 'closed', label: 'Closed', icon: '✅' },
   ];
 
-  const filteredDeals = activeTab === 'all'
+  const tabFiltered = activeTab === 'all'
     ? gridDeals
     : activeTab === 'active'
     ? gridDeals.filter((d) => d.pipeline_stage !== 'Closed' && d.pipeline_stage !== 'Dead')
     : gridDeals.filter((d) => d.pipeline_stage === 'Closed' || d.pipeline_stage === 'Dead');
+
+  const filteredDeals = tabFiltered.filter((d) => {
+    if (quadrantFilter && d.t04_quadrant !== quadrantFilter) return false;
+    if (rankTierFilter !== 'All') {
+      const rank = d.pcs_rank;
+      if (!rank) return false;
+      if (rankTierFilter === 'Top 10' && rank > 10) return false;
+      if (rankTierFilter === 'Top 25' && rank > 25) return false;
+      if (rankTierFilter === 'Top 50' && rank > 50) return false;
+    }
+    return true;
+  });
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -247,7 +361,11 @@ export function DealsPage() {
       const params = new URLSearchParams();
       if (sort) params.append('sort', JSON.stringify(sort));
       const response = await apiClient.get(`${API_URL}/grid/pipeline?${params.toString()}`);
-      setGridDeals(response.data.deals || []);
+      const deals = (response.data.deals || []).map((deal: PipelineDeal, index: number) => ({
+        ...deal,
+        ...mockIntelligenceData[index % mockIntelligenceData.length],
+      }));
+      setGridDeals(deals);
     } catch (err) {
       console.error('Failed to load pipeline grid:', err);
       setError('Failed to load pipeline data');
@@ -386,6 +504,46 @@ export function DealsPage() {
             </button>
           ))}
           <div className="ml-auto text-xs text-gray-500">{filteredDeals.length} deals</div>
+        </div>
+
+        <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 flex-shrink-0 flex-wrap">
+          <span className="text-xs font-medium text-gray-500 mr-1">Quadrant:</span>
+          {quadrantOptions.map((q) => (
+            <button
+              key={q}
+              onClick={() => setQuadrantFilter(quadrantFilter === q ? null : q)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                quadrantFilter === q
+                  ? quadrantColors[q]
+                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
+              }`}
+            >
+              {q}
+            </button>
+          ))}
+          <div className="w-px h-5 bg-gray-300 mx-1" />
+          <span className="text-xs font-medium text-gray-500 mr-1">Rank:</span>
+          {rankTierOptions.map((tier) => (
+            <button
+              key={tier}
+              onClick={() => setRankTierFilter(tier)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                rankTierFilter === tier
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
+              }`}
+            >
+              {tier}
+            </button>
+          ))}
+          {(quadrantFilter || rankTierFilter !== 'All') && (
+            <button
+              onClick={() => { setQuadrantFilter(null); setRankTierFilter('All'); }}
+              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-hidden">

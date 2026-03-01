@@ -45,6 +45,44 @@ interface StrategySectionProps {
   deal: Deal;
 }
 
+type TrafficGateStatus = 'qualified' | 'marginal' | 'disqualified';
+
+interface TrafficGateData {
+  status: TrafficGateStatus;
+  trafficScore: number;
+  threshold: number;
+  reason: string;
+}
+
+interface QuadrantInfluence {
+  quadrant: 'Hidden Gem' | 'Validated Winner' | 'Hype Risk' | 'Dead Weight';
+  weightShift: number;
+  direction: 'boost' | 'penalty' | 'neutral';
+  explanation: string;
+}
+
+const MOCK_TRAFFIC_GATES: Record<string, TrafficGateData> = {
+  'core': { status: 'qualified', trafficScore: 82, threshold: 60, reason: 'Strong walk-in traffic supports stable occupancy thesis' },
+  'value-add': { status: 'qualified', trafficScore: 82, threshold: 55, reason: 'Current traffic volume validates post-renovation demand potential' },
+  'opportunistic': { status: 'marginal', trafficScore: 82, threshold: 80, reason: 'Traffic barely meets threshold — high risk if post-reno traffic dips' },
+  'development': { status: 'disqualified', trafficScore: 82, threshold: 90, reason: 'Insufficient foot traffic for ground-up lease-up timeline' },
+  'bts': { status: 'qualified', trafficScore: 82, threshold: 50, reason: 'Submarket traffic supports rapid absorption on delivery' },
+  'rental': { status: 'qualified', trafficScore: 82, threshold: 60, reason: 'Healthy traffic volume supports stabilized occupancy' },
+  'flip': { status: 'marginal', trafficScore: 82, threshold: 75, reason: 'Traffic adequate but thin margin for quick resale positioning' },
+  'str': { status: 'disqualified', trafficScore: 82, threshold: 85, reason: 'Digital traffic & tourist footfall below STR viability threshold' },
+};
+
+const MOCK_QUADRANT_INFLUENCES: Record<string, QuadrantInfluence> = {
+  'core': { quadrant: 'Validated Winner', weightShift: 5, direction: 'boost', explanation: 'High traffic + high rent signals de-risk core thesis' },
+  'value-add': { quadrant: 'Hidden Gem', weightShift: 12, direction: 'boost', explanation: 'Low rent but high traffic = untapped upside for value-add' },
+  'opportunistic': { quadrant: 'Hype Risk', weightShift: -8, direction: 'penalty', explanation: 'High rent but declining traffic erodes repositioning play' },
+  'development': { quadrant: 'Dead Weight', weightShift: -15, direction: 'penalty', explanation: 'Low traffic + low rent makes ground-up unlikely to pencil' },
+  'bts': { quadrant: 'Hidden Gem', weightShift: 10, direction: 'boost', explanation: 'Underpriced submarket with strong foot traffic — ideal BTS exit' },
+  'rental': { quadrant: 'Validated Winner', weightShift: 3, direction: 'boost', explanation: 'Strong traffic confirms rental demand sustainability' },
+  'flip': { quadrant: 'Hype Risk', weightShift: -6, direction: 'penalty', explanation: 'Overpriced relative to traffic — flip margins compressed' },
+  'str': { quadrant: 'Dead Weight', weightShift: -12, direction: 'penalty', explanation: 'Low digital visibility + weak tourism traffic kills STR thesis' },
+};
+
 // Map M08 strategy IDs → M11+ StrategyType for cross-module events
 const STRATEGY_ID_TO_TYPE: Record<string, StrategyType> = {
   'core': 'rental_stabilized',
@@ -271,7 +309,11 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                     </div>
                   )}
                   <div className={`text-3xl font-bold ${s.color} mb-1`}>{s.score}</div>
-                  <div className="text-sm font-semibold text-gray-900 mb-3">{s.label}</div>
+                  <div className="text-sm font-semibold text-gray-900 mb-2">{s.label}</div>
+                  <div className="flex flex-col gap-1 mb-3">
+                    <TrafficGateBadge strategyId={s.id} />
+                    <T04QuadrantInfluencer strategyId={s.id} />
+                  </div>
                   <div className="space-y-1.5 text-xs text-gray-600">
                     <div className="flex justify-between">
                       <span>{s.roiLabel}:</span>
@@ -527,6 +569,80 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
   );
 };
 
+const TrafficGateBadge: React.FC<{ strategyId: string }> = ({ strategyId }) => {
+  const gate = MOCK_TRAFFIC_GATES[strategyId];
+  if (!gate) return null;
+
+  const config = {
+    qualified: { icon: '✅', label: 'Qualified', bg: 'bg-emerald-100', text: 'text-emerald-800', border: 'border-emerald-300' },
+    marginal: { icon: '⚠️', label: 'Marginal', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-300' },
+    disqualified: { icon: '❌', label: 'Disqualified', bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
+  }[gate.status];
+
+  return (
+    <div className="relative group">
+      <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${config.bg} ${config.text} border ${config.border}`}>
+        <span>{config.icon}</span>
+        <span>TRAFFIC: {config.label.toUpperCase()}</span>
+      </div>
+      <div className="absolute z-20 bottom-full left-0 mb-1 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <div className="font-semibold mb-1">Traffic Gate Evaluation</div>
+        <div className="flex justify-between mb-1">
+          <span>Score:</span>
+          <span className="font-mono">{gate.trafficScore}</span>
+        </div>
+        <div className="flex justify-between mb-2">
+          <span>Threshold:</span>
+          <span className="font-mono">{gate.threshold}</span>
+        </div>
+        <div className="text-gray-300 leading-relaxed">{gate.reason}</div>
+      </div>
+    </div>
+  );
+};
+
+const T04QuadrantInfluencer: React.FC<{ strategyId: string }> = ({ strategyId }) => {
+  const influence = MOCK_QUADRANT_INFLUENCES[strategyId];
+  if (!influence) return null;
+
+  const quadrantColors: Record<string, string> = {
+    'Hidden Gem': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    'Validated Winner': 'bg-blue-50 text-blue-700 border-blue-200',
+    'Hype Risk': 'bg-orange-50 text-orange-700 border-orange-200',
+    'Dead Weight': 'bg-red-50 text-red-700 border-red-200',
+  };
+
+  const shiftColor = influence.direction === 'boost'
+    ? 'text-emerald-600'
+    : influence.direction === 'penalty'
+    ? 'text-red-600'
+    : 'text-gray-500';
+
+  const shiftPrefix = influence.weightShift > 0 ? '+' : '';
+
+  return (
+    <div className="relative group">
+      <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border ${quadrantColors[influence.quadrant] || 'bg-gray-50 text-gray-700 border-gray-200'}`}>
+        <span>T-04</span>
+        <span>{influence.quadrant}</span>
+        <span className={`font-mono ${shiftColor}`}>{shiftPrefix}{influence.weightShift}%</span>
+      </div>
+      <div className="absolute z-20 bottom-full left-0 mb-1 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <div className="font-semibold mb-1">T-04 Quadrant Influence</div>
+        <div className="flex justify-between mb-1">
+          <span>Quadrant:</span>
+          <span className="font-semibold">{influence.quadrant}</span>
+        </div>
+        <div className="flex justify-between mb-2">
+          <span>Weight Shift:</span>
+          <span className={`font-mono font-semibold ${shiftColor}`}>{shiftPrefix}{influence.weightShift}%</span>
+        </div>
+        <div className="text-gray-300 leading-relaxed">{influence.explanation}</div>
+      </div>
+    </div>
+  );
+};
+
 interface StrategyCardComponentProps {
   strategy: StrategyCard;
   isSelected: boolean;
@@ -565,6 +681,11 @@ const StrategyCardComponent: React.FC<StrategyCardComponentProps> = ({
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        <TrafficGateBadge strategyId={strategy.id} />
+        <T04QuadrantInfluencer strategyId={strategy.id} />
       </div>
 
       <p className="text-sm text-gray-700 mb-4">{strategy.description}</p>

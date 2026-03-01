@@ -27,6 +27,11 @@ export interface PipelineDeal {
   dd_checklist_pct: number;
   created_at: string;
   
+  pcs_rank?: number;
+  pcs_movement?: number;
+  t04_quadrant?: 'Hidden Gem' | 'Validated Winner' | 'Hype Risk' | 'Dead Weight';
+  target_score?: number;
+
   // Map view coordinates (optional, for geocoding)
   lat?: number;
   lng?: number;

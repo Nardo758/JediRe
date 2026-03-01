@@ -23,7 +23,9 @@ import {
   TeamSection,
   ContextTrackerSection,
   NotesSection,
-  TimelineSection
+  TimelineSection,
+  TrafficIntelligenceSection,
+  CompetitivePositionSection
 } from '../components/deal/sections';
 import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
@@ -167,6 +169,8 @@ export const DealPageEnhanced: React.FC = () => {
               { id: 'properties', icon: '🏢', title: 'Properties' },
               { id: 'financial', icon: '💰', title: 'Financial' },
               { id: 'market-intelligence', icon: '📊', title: 'Market Intel' },
+              { id: 'traffic-intelligence', icon: '🚦', title: 'Traffic Intel' },
+              { id: 'competitive-position', icon: '🏆', title: 'Competitive' },
               { id: 'capital', icon: '◈', title: 'Capital Structure' },
               { id: 'strategy', icon: '🎯', title: 'Strategy' },
               { id: 'exit', icon: '🚪', title: 'Exit' },
@@ -264,6 +268,30 @@ export const DealPageEnhanced: React.FC = () => {
               isPremium={true}
             >
               <MarketIntelligenceSection deal={deal} isPremium={isPremium} />
+            </DealSection>
+          </div>
+
+          {/* Traffic Intelligence */}
+          <div id="section-traffic-intelligence">
+            <DealSection
+              id="traffic-intelligence"
+              icon="🚦"
+              title="Traffic Intelligence"
+              isPremium={true}
+            >
+              <TrafficIntelligenceSection deal={deal} />
+            </DealSection>
+          </div>
+
+          {/* Competitive Position */}
+          <div id="section-competitive-position">
+            <DealSection
+              id="competitive-position"
+              icon="🏆"
+              title="Competitive Position"
+              isPremium={true}
+            >
+              <CompetitivePositionSection deal={deal} />
             </DealSection>
           </div>
 

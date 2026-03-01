@@ -7,7 +7,123 @@ import { apiClient } from '../services/api.client';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type TabType = 'grid' | 'performance' | 'documents';
+type TabType = 'rankings' | 'grid' | 'performance' | 'documents';
+
+interface RankedAsset {
+  id: string;
+  name: string;
+  submarket: string;
+  pcsScore: number;
+  rank: number;
+  totalInSubmarket: number;
+  movement: number;
+  trajectory: 'improving' | 'stable' | 'declining';
+  targetRank: number;
+  gapToTarget: number;
+  monthlyPcs: number[];
+  targetLine: number;
+  classType: string;
+  units: number;
+}
+
+const MOCK_RANKED_ASSETS: RankedAsset[] = [
+  {
+    id: 'ra-1',
+    name: 'The Residences at Midtown',
+    submarket: 'Midtown Atlanta',
+    pcsScore: 82,
+    rank: 3,
+    totalInSubmarket: 18,
+    movement: 2,
+    trajectory: 'improving',
+    targetRank: 1,
+    gapToTarget: 2,
+    monthlyPcs: [71, 73, 74, 76, 77, 78, 79, 78, 80, 80, 81, 82],
+    targetLine: 88,
+    classType: 'Class A',
+    units: 320,
+  },
+  {
+    id: 'ra-2',
+    name: 'Peachtree Commons',
+    submarket: 'Buckhead',
+    pcsScore: 74,
+    rank: 7,
+    totalInSubmarket: 22,
+    movement: -1,
+    trajectory: 'declining',
+    targetRank: 5,
+    gapToTarget: 2,
+    monthlyPcs: [78, 78, 77, 76, 76, 75, 75, 74, 75, 74, 74, 74],
+    targetLine: 80,
+    classType: 'Class B',
+    units: 248,
+  },
+  {
+    id: 'ra-3',
+    name: 'Highlands Park Lofts',
+    submarket: 'Virginia Highland',
+    pcsScore: 89,
+    rank: 1,
+    totalInSubmarket: 12,
+    movement: 0,
+    trajectory: 'stable',
+    targetRank: 1,
+    gapToTarget: 0,
+    monthlyPcs: [87, 87, 88, 88, 88, 89, 88, 89, 89, 89, 89, 89],
+    targetLine: 88,
+    classType: 'Class A',
+    units: 186,
+  },
+  {
+    id: 'ra-4',
+    name: 'Decatur Station',
+    submarket: 'Decatur',
+    pcsScore: 67,
+    rank: 5,
+    totalInSubmarket: 9,
+    movement: -2,
+    trajectory: 'declining',
+    targetRank: 3,
+    gapToTarget: 2,
+    monthlyPcs: [72, 71, 71, 70, 69, 69, 68, 68, 67, 67, 67, 67],
+    targetLine: 75,
+    classType: 'Class B',
+    units: 156,
+  },
+  {
+    id: 'ra-5',
+    name: 'Atlantic Station Living',
+    submarket: 'West Midtown',
+    pcsScore: 78,
+    rank: 4,
+    totalInSubmarket: 15,
+    movement: 3,
+    trajectory: 'improving',
+    targetRank: 2,
+    gapToTarget: 2,
+    monthlyPcs: [68, 69, 70, 72, 73, 74, 74, 75, 76, 77, 77, 78],
+    targetLine: 83,
+    classType: 'Class A',
+    units: 290,
+  },
+  {
+    id: 'ra-6',
+    name: 'Riverside Flats',
+    submarket: 'Vinings',
+    pcsScore: 71,
+    rank: 6,
+    totalInSubmarket: 11,
+    movement: 1,
+    trajectory: 'improving',
+    targetRank: 4,
+    gapToTarget: 2,
+    monthlyPcs: [65, 66, 66, 67, 68, 68, 69, 69, 70, 70, 71, 71],
+    targetLine: 77,
+    classType: 'Class B',
+    units: 204,
+  },
+];
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
@@ -17,8 +133,7 @@ export function AssetsOwnedPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   
-  // Get initial tab from URL or default to 'grid'
-  const initialTab = (searchParams.get('view') as TabType) || 'grid';
+  const initialTab = (searchParams.get('view') as TabType) || 'rankings';
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
   useEffect(() => {
@@ -220,10 +335,198 @@ export function AssetsOwnedPage() {
   };
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
+    { id: 'rankings', label: 'Performance & Rankings', icon: '🏆' },
     { id: 'grid', label: 'Grid View', icon: '📊' },
     { id: 'performance', label: 'Performance', icon: '📈' },
     { id: 'documents', label: 'Documents', icon: '📄' },
   ];
+
+  const portfolioAvgPcs = Math.round(
+    MOCK_RANKED_ASSETS.reduce((s, a) => s + a.pcsScore, 0) / MOCK_RANKED_ASSETS.length
+  );
+
+  const priorityAsset = [...MOCK_RANKED_ASSETS].sort(
+    (a, b) => (b.rank - b.targetRank) - (a.rank - a.targetRank)
+  )[0];
+
+  const MiniSparkline = ({ data, targetLine }: { data: number[]; targetLine: number }) => {
+    const max = Math.max(...data, targetLine) + 2;
+    const min = Math.min(...data, targetLine) - 2;
+    const range = max - min || 1;
+    const w = 120;
+    const h = 32;
+    const points = data
+      .map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`)
+      .join(' ');
+    const targetY = h - ((targetLine - min) / range) * h;
+    return (
+      <svg width={w} height={h} className="inline-block">
+        <line x1={0} y1={targetY} x2={w} y2={targetY} stroke="#f59e0b" strokeWidth={1} strokeDasharray="3,3" />
+        <polyline fill="none" stroke="#3b82f6" strokeWidth={1.5} points={points} />
+        <circle cx={w} cy={h - ((data[data.length - 1] - min) / range) * h} r={2.5} fill="#3b82f6" />
+      </svg>
+    );
+  };
+
+  const MovementBadge = ({ movement }: { movement: number }) => {
+    if (movement > 0) {
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+          <span>▲</span>{movement}
+        </span>
+      );
+    }
+    if (movement < 0) {
+      return (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">
+          <span>▼</span>{Math.abs(movement)}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center text-xs font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded">
+        ◆ 0
+      </span>
+    );
+  };
+
+  const TrajectoryBadge = ({ trajectory }: { trajectory: string }) => {
+    const styles: Record<string, string> = {
+      improving: 'bg-green-100 text-green-800',
+      stable: 'bg-blue-100 text-blue-800',
+      declining: 'bg-red-100 text-red-800',
+    };
+    return (
+      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${styles[trajectory] || 'bg-gray-100 text-gray-800'}`}>
+        {trajectory}
+      </span>
+    );
+  };
+
+  const renderRankingsView = () => (
+    <div className="space-y-4 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg p-4 text-white col-span-1">
+          <div className="text-sm text-blue-100 mb-1">Portfolio Aggregate PCS</div>
+          <div className="text-4xl font-bold">{portfolioAvgPcs}</div>
+          <div className="text-sm text-blue-200 mt-1">Weighted avg across {MOCK_RANKED_ASSETS.length} assets</div>
+          <div className="mt-3 w-full bg-blue-500/40 rounded-full h-2">
+            <div
+              className="bg-white rounded-full h-2 transition-all"
+              style={{ width: `${portfolioAvgPcs}%` }}
+            />
+          </div>
+        </div>
+
+        {priorityAsset && (
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 col-span-2">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-amber-600 text-lg">⚡</span>
+              <span className="text-sm font-semibold text-amber-800">Action Priority</span>
+            </div>
+            <div className="text-base font-bold text-gray-900">{priorityAsset.name}</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Currently ranked <span className="font-semibold">#{priorityAsset.rank}</span> of {priorityAsset.totalInSubmarket} in {priorityAsset.submarket}
+              {' '}— target is <span className="font-semibold">#{priorityAsset.targetRank}</span>
+              {' '}({priorityAsset.rank - priorityAsset.targetRank} positions to close)
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-gray-500">PCS: {priorityAsset.pcsScore}</span>
+              <span className="text-xs text-gray-400">|</span>
+              <span className="text-xs text-gray-500">Target PCS: {priorityAsset.targetLine}</span>
+              <span className="text-xs text-gray-400">|</span>
+              <TrajectoryBadge trajectory={priorityAsset.trajectory} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">Owned Asset Rankings</h3>
+          <span className="text-xs text-gray-500">PCS = Property Competitive Score</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-2">Asset</th>
+                <th className="px-3 py-2 text-center">PCS</th>
+                <th className="px-3 py-2 text-center">Rank</th>
+                <th className="px-3 py-2 text-center">Movement</th>
+                <th className="px-3 py-2 text-center">Trajectory</th>
+                <th className="px-3 py-2 text-center">12-Mo Trend</th>
+                <th className="px-3 py-2 text-center">Target</th>
+                <th className="px-3 py-2 text-center">Gap</th>
+                <th className="px-3 py-2 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {MOCK_RANKED_ASSETS.sort((a, b) => a.rank - b.rank).map((asset) => {
+                const isPriority = asset.id === priorityAsset?.id;
+                return (
+                  <tr
+                    key={asset.id}
+                    className={`hover:bg-gray-50 transition-colors ${isPriority ? 'bg-amber-50/40' : ''}`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{asset.name}</div>
+                      <div className="text-xs text-gray-500">{asset.submarket} · {asset.classType} · {asset.units} units</div>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold ${
+                        asset.pcsScore >= 80 ? 'bg-green-100 text-green-800' :
+                        asset.pcsScore >= 70 ? 'bg-blue-100 text-blue-800' :
+                        'bg-orange-100 text-orange-800'
+                      }`}>
+                        {asset.pcsScore}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className="font-semibold text-gray-900">#{asset.rank}</span>
+                      <span className="text-xs text-gray-400 ml-0.5">/{asset.totalInSubmarket}</span>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <MovementBadge movement={asset.movement} />
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <TrajectoryBadge trajectory={asset.trajectory} />
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <MiniSparkline data={asset.monthlyPcs} targetLine={asset.targetLine} />
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <span className="text-gray-600 font-medium">#{asset.targetRank}</span>
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      {asset.gapToTarget === 0 ? (
+                        <span className="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">On Target</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                          {asset.rank - asset.targetRank} pos
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate('/competitive-intelligence/projection');
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors border border-blue-200"
+                      >
+                        <span>📊</span> Rank Me
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderPerformanceView = () => (
     <div className="space-y-4 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
@@ -361,6 +664,7 @@ export function AssetsOwnedPage() {
         </div>
 
         <div className="flex-1 overflow-hidden">
+          {activeTab === 'rankings' && renderRankingsView()}
           {activeTab === 'grid' && (
             <DataGrid
               columns={columns}

@@ -20,6 +20,8 @@ export { AIAgentSection } from './AIAgentSection';
 export { NotesSection } from './NotesSection';
 export { MarketSection } from './MarketSection';
 export { SupplySection } from './SupplySection';
+export { CompetitivePositionSection } from './CompetitivePositionSection';
+export { TrafficIntelligenceSection } from './TrafficIntelligenceSection';
 
 export { MapViewSection } from './MapViewSection';
 export { MarketIntelligenceSection } from './MarketIntelligenceSection';
