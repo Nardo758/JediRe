@@ -1,4 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+
+const SUBJECT_PROPERTIES = [
+  { id: 'sunset-ridge', name: 'Sunset Ridge Apartments', units: 248, class: 'B', submarket: 'Sandy Springs', avgRent: 1648, rentPSF: 1.74 },
+  { id: 'lakewood-crossing', name: 'Lakewood Crossing', units: 312, class: 'B-', submarket: 'Lakewood', avgRent: 1420, rentPSF: 1.52 },
+  { id: 'cascade-falls', name: 'Cascade Falls Residences', units: 186, class: 'B', submarket: 'Cascade', avgRent: 1580, rentPSF: 1.68 },
+  { id: 'peachtree-creek', name: 'Peachtree Creek Landing', units: 420, class: 'B+', submarket: 'Buckhead', avgRent: 1890, rentPSF: 2.02 },
+  { id: 'east-point', name: 'East Point Village', units: 156, class: 'C+', submarket: 'East Point', avgRent: 1180, rentPSF: 1.28 },
+  { id: 'brookhaven', name: 'Brookhaven Station Apts', units: 278, class: 'B+', submarket: 'Brookhaven', avgRent: 1760, rentPSF: 1.88 },
+  { id: 'decatur', name: 'Decatur Heights', units: 198, class: 'B', submarket: 'Decatur', avgRent: 1540, rentPSF: 1.64 },
+  { id: 'college-park', name: 'College Park Commons', units: 224, class: 'C', submarket: 'College Park', avgRent: 1120, rentPSF: 1.22 },
+  { id: 'vinings', name: 'Vinings Creek Terrace', units: 168, class: 'B', submarket: 'Vinings', avgRent: 1680, rentPSF: 1.80 },
+  { id: 'westside', name: 'Westside Lofts', units: 142, class: 'B-', submarket: 'Westside', avgRent: 1490, rentPSF: 1.58 },
+  { id: 'pines-midtown', name: 'Pines at Midtown', units: 180, class: 'B', submarket: 'Midtown', avgRent: 1720, rentPSF: 1.84 },
+  { id: 'camden-usa', name: 'Camden USA', units: 745, class: 'A', submarket: 'Buckhead', avgRent: 2180, rentPSF: 2.36 },
+];
 
 const COMP_VITALS = [
   { id: 'trade-area', label: 'Trade Area Comps', value: '24', trend: '+3 this quarter', trendDirection: 'up' as const, sparklineData: [14, 16, 17, 18, 19, 18, 20, 21, 20, 22, 23, 24] },
@@ -112,9 +128,42 @@ const BENCHMARK_ICONS = {
 } as const;
 
 const CompAnalysisPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'trade-area' | 'like-kind'>('trade-area');
   const [tradeSort, setTradeSort] = useState<'threat' | 'rent' | 'distance'>('threat');
   const [likeKindSort, setLikeKindSort] = useState<'pcs' | 'anomaly' | 'growth'>('pcs');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const propertyParam = searchParams.get('property');
+  const initialProperty = propertyParam
+    ? SUBJECT_PROPERTIES.find(p => p.name.toLowerCase() === propertyParam.toLowerCase()) || SUBJECT_PROPERTIES[0]
+    : SUBJECT_PROPERTIES[0];
+  const [selectedProperty, setSelectedProperty] = useState(initialProperty);
+
+  useEffect(() => {
+    if (propertyParam) {
+      const found = SUBJECT_PROPERTIES.find(p => p.name.toLowerCase() === propertyParam.toLowerCase());
+      if (found) setSelectedProperty(found);
+    }
+  }, [propertyParam]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+        setSearchText('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredProperties = SUBJECT_PROPERTIES.filter(p =>
+    p.name.toLowerCase().includes(searchText.toLowerCase()) ||
+    p.submarket.toLowerCase().includes(searchText.toLowerCase())
+  );
 
   const sortedTradeArea = [...TRADE_AREA_COMPS].sort((a, b) => {
     if (tradeSort === 'threat') {
@@ -131,7 +180,7 @@ const CompAnalysisPage: React.FC = () => {
     return b.rentGrowthYoY - a.rentGrowthYoY;
   });
 
-  const subjectProperty = { name: 'Your Property', avgRent: 1648, rentPSF: 1.74 };
+  const subjectProperty = { name: selectedProperty.name, avgRent: selectedProperty.avgRent, rentPSF: selectedProperty.rentPSF };
 
   return (
     <div className="space-y-5">
@@ -146,6 +195,58 @@ const CompAnalysisPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
             <span className="text-[10px] text-stone-400">2 lenses | Trade Area + Like-Kind</span>
+          </div>
+        </div>
+
+        <div className="mb-4" ref={dropdownRef}>
+          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1.5">SUBJECT PROPERTY</div>
+          <div className="relative">
+            <button
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-violet-50 border border-violet-200 rounded-lg text-left hover:border-violet-300 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center text-violet-600 text-sm font-bold">{selectedProperty.class}</div>
+                <div>
+                  <div className="text-sm font-semibold text-stone-900">{selectedProperty.name}</div>
+                  <div className="text-[10px] text-stone-500">{selectedProperty.units} units · {selectedProperty.submarket} · ${selectedProperty.avgRent.toLocaleString()}/mo · ${selectedProperty.rentPSF}/sqft</div>
+                </div>
+              </div>
+              <svg className={`w-4 h-4 text-stone-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {dropdownOpen && (
+              <div className="absolute z-20 w-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-stone-100">
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search properties..."
+                    className="w-full px-3 py-1.5 text-sm border border-stone-200 rounded-md focus:outline-none focus:border-violet-400"
+                    autoFocus
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {filteredProperties.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setSelectedProperty(p); setDropdownOpen(false); setSearchText(''); }}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-violet-50 transition-colors ${selectedProperty.id === p.id ? 'bg-violet-50' : ''}`}
+                    >
+                      <div className="w-7 h-7 rounded-md bg-stone-100 flex items-center justify-center text-[10px] font-bold text-stone-600">{p.class}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-stone-900 truncate">{p.name}</div>
+                        <div className="text-[10px] text-stone-500">{p.units} units · {p.submarket} · ${p.avgRent.toLocaleString()}/mo</div>
+                      </div>
+                      {selectedProperty.id === p.id && <div className="w-2 h-2 rounded-full bg-violet-500" />}
+                    </button>
+                  ))}
+                  {filteredProperties.length === 0 && (
+                    <div className="px-4 py-3 text-xs text-stone-400 text-center">No properties found</div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
