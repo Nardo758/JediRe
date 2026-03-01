@@ -148,49 +148,6 @@ const PerformanceRankingsPage: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-lg font-bold text-stone-900 mb-1">PCS Score Components</h3>
-        <p className="text-sm text-stone-500 mb-4">Five weighted components that compose the Performance Composite Score</p>
-        <div className="grid grid-cols-2 gap-4">
-          {SCORE_COMPONENTS.map((comp, i) => (
-            <div key={i} className={`border border-stone-200 rounded-lg p-4 ${i === 4 ? 'col-span-2' : ''}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-stone-900">{comp.name}</span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">{comp.weight}</span>
-                </div>
-                <span className="text-[10px] font-mono text-stone-400">{comp.source}</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {comp.metrics.map((m, j) => (
-                  <span key={j} className="text-[10px] text-stone-600 bg-stone-100 px-2 py-0.5 rounded">{m}</span>
-                ))}
-              </div>
-              <pre className="font-mono text-[10px] leading-relaxed rounded-lg p-3 bg-stone-900 text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words">
-                {comp.formula}
-              </pre>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-lg font-bold text-stone-900 mb-1">Ranking Outputs</h3>
-        <p className="text-sm text-stone-500 mb-4">Three views into property performance rankings</p>
-        <div className="grid grid-cols-3 gap-4">
-          {RANKING_OUTPUTS.map((output, i) => (
-            <div key={i} className="border border-stone-200 rounded-lg p-4">
-              <h4 className="text-sm font-bold text-stone-900 mb-2">{output.name}</h4>
-              <p className="text-xs text-stone-600 leading-relaxed mb-3">{output.description}</p>
-              <div className="bg-stone-50 rounded-lg p-2.5">
-                <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-1">DISPLAY FORMAT</div>
-                <p className="text-[11px] text-stone-500 leading-relaxed">{output.display}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-bold text-stone-900 mb-1">Submarket Power Rankings</h3>
@@ -254,6 +211,50 @@ const PerformanceRankingsPage: React.FC = () => {
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-50 border border-red-200 inline-block" /> Bottom 25%</span>
         </div>
       </div>
+
+      <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <h3 className="text-lg font-bold text-stone-900 mb-1">PCS Score Components</h3>
+        <p className="text-sm text-stone-500 mb-4">Five weighted components that compose the Performance Composite Score</p>
+        <div className="grid grid-cols-2 gap-4">
+          {SCORE_COMPONENTS.map((comp, i) => (
+            <div key={i} className={`border border-stone-200 rounded-lg p-4 ${i === 4 ? 'col-span-2' : ''}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-stone-900">{comp.name}</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">{comp.weight}</span>
+                </div>
+                <span className="text-[10px] font-mono text-stone-400">{comp.source}</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {comp.metrics.map((m, j) => (
+                  <span key={j} className="text-[10px] text-stone-600 bg-stone-100 px-2 py-0.5 rounded">{m}</span>
+                ))}
+              </div>
+              <pre className="font-mono text-[10px] leading-relaxed rounded-lg p-3 bg-stone-900 text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words">
+                {comp.formula}
+              </pre>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <h3 className="text-lg font-bold text-stone-900 mb-1">Ranking Outputs</h3>
+        <p className="text-sm text-stone-500 mb-4">Three views into property performance rankings</p>
+        <div className="grid grid-cols-3 gap-4">
+          {RANKING_OUTPUTS.map((output, i) => (
+            <div key={i} className="border border-stone-200 rounded-lg p-4">
+              <h4 className="text-sm font-bold text-stone-900 mb-2">{output.name}</h4>
+              <p className="text-xs text-stone-600 leading-relaxed mb-3">{output.description}</p>
+              <div className="bg-stone-50 rounded-lg p-2.5">
+                <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-1">DISPLAY FORMAT</div>
+                <p className="text-[11px] text-stone-500 leading-relaxed">{output.display}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 };
