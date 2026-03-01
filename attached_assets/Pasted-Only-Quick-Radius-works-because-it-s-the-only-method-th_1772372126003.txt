@@ -1,0 +1,13 @@
+Only Quick Radius works because it's the only method that was fully implemented. The other three methods — Drive-Time, Traffic-Informed (AI), and Custom Draw — are UI shells with no backend wiring.
+The Specifics
+Your own UI audit (item D-5) flags this directly: "MapboxDraw is functional but no guided workflow for trade areas. No save/load trade area presets." And the audit-vs-progress tracker confirms the resolution is "spec-only" with the remaining work being: "No tradeAreaStore implementation."
+Here's what each method needs to actually work:
+Quick Radius — works because generating a circle from a center point + radius in miles is pure client-side geometry. Mapbox/Turf.js can draw that with zero backend calls.
+Drive-Time (Isochrone) — requires an isochrone API call (Mapbox Isochrone API or similar) that takes a lat/lng + drive-time minutes and returns a polygon shaped by actual road networks. The button and input field exist in the UI, but the handler likely either isn't wired to the API call, or the API endpoint isn't configured/authenticated on the backend.
+Traffic-Informed (AI) — this depends on the Traffic Engine (M07), which per your audit has three critical blockers: (1) DB migrations are empty so traffic_predictions tables don't exist, (2) routes aren't mounted in index.ts so API endpoints are unreachable, and (3) no cross-module wiring. The M05→M07 chain that would generate an AI-informed boundary polygon simply doesn't run yet.
+Custom Draw — MapboxDraw is functional for freehand polygons on the dashboard, but there's no save/persist mechanism. The tradeAreaStore that would hold user-drawn polygons was designed but never built, so any drawn boundary disappears.
+What You'd Need to Unblock Each
+
+Drive-Time (quickest win) — Wire the Mapbox Isochrone API. It's a single GET to api.mapbox.com/isochrone/v1/mapbox/driving/{lng},{lat}?contours_minutes={minutes}. Returns a GeoJSON polygon you render directly on the map. Maybe 2-3 hours of work.
+Custom Draw — Implement tradeAreaStore (Zustand) with save/load/delete. Store the GeoJSON polygon in PostgreSQL tied to the deal. Medium effort.
+Traffic-Informed — This is the XL item. Needs the full M07 Traffic Engine operational first: migrations, route mounting, data source connections, and the M05→M07 handoff chain.

@@ -1,0 +1,598 @@
+# Trade Area Implementation Guide — JEDI RE
+
+All four methods share a common output: a **GeoJSON Polygon** that gets stored in the `tradeAreaStore` and persisted to PostgreSQL. The difference is *how* that polygon gets generated.
+
+---
+
+## Shared Foundation: tradeAreaStore (Build This First)
+
+Every method depends on this Zustand store. Without it, even Radius can't save/reload.
+
+```typescript
+// stores/tradeAreaStore.ts
+interface TradeArea {
+  id: string;
+  deal_id: string;
+  name: string;
+  method: 'radius' | 'drive_time' | 'traffic_ai' | 'custom_draw';
+  geometry: GeoJSON.Polygon;          // The boundary polygon
+  parameters: Record<string, any>;    // Method-specific inputs (e.g. { radius_miles: 3 })
+  demographics?: TradeAreaDemographics;
+  created_at: string;
+  updated_at: string;
+}
+
+interface TradeAreaDemographics {
+  population: number;
+  median_income: number;
+  existing_units: number;
+  pipeline_units: number;
+}
+
+interface TradeAreaStore {
+  tradeAreas: Record<string, TradeArea>;    // keyed by trade area id
+  activeTradeAreaId: string | null;
+  isGenerating: boolean;
+
+  generateTradeArea: (method: string, params: any) => Promise<TradeArea>;
+  saveTradeArea: (tradeArea: TradeArea) => Promise<void>;
+  deleteTradeArea: (id: string) => Promise<void>;
+  loadTradeAreasForDeal: (dealId: string) => Promise<void>;
+  setActive: (id: string) => void;
+}
+```
+
+**Database table:**
+
+```sql
+CREATE TABLE trade_areas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID REFERENCES deals(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  name VARCHAR(255) NOT NULL,
+  method VARCHAR(50) NOT NULL CHECK (method IN ('radius','drive_time','traffic_ai','custom_draw')),
+  geometry GEOMETRY(Polygon, 4326) NOT NULL,
+  parameters JSONB DEFAULT '{}',
+  demographics JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_trade_areas_deal ON trade_areas(deal_id);
+CREATE INDEX idx_trade_areas_geom ON trade_areas USING GIST(geometry);
+```
+
+**FastAPI endpoint (shared for all methods):**
+
+```python
+# backend/api/routes/trade_areas.py
+@router.post("/deals/{deal_id}/trade-areas")
+async def create_trade_area(deal_id: UUID, payload: TradeAreaCreate):
+    # payload.method determines which generator to call
+    # Returns GeoJSON polygon + demographics
+
+@router.get("/deals/{deal_id}/trade-areas")
+async def list_trade_areas(deal_id: UUID):
+    # Returns all saved trade areas for deal
+
+@router.delete("/trade-areas/{trade_area_id}")
+async def delete_trade_area(trade_area_id: UUID):
+    # Removes trade area
+```
+
+---
+
+## Method 1: Quick Radius
+
+**Status:** Working (client-side only, no persistence)  
+**Effort to complete:** ~2 hours (add save/load)  
+**Dependencies:** Turf.js (already in project)
+
+### How It Works
+
+Pure client-side geometry. Turf.js draws a circle polygon around the property coordinates at the specified radius. No API calls needed.
+
+### Implementation
+
+```typescript
+import * as turf from '@turf/turf';
+
+function generateRadiusBoundary(
+  center: [number, number],  // [lng, lat]
+  radiusMiles: number
+): GeoJSON.Polygon {
+  const circle = turf.circle(center, radiusMiles, {
+    steps: 64,      // smoothness of the circle
+    units: 'miles'
+  });
+  return circle.geometry as GeoJSON.Polygon;
+}
+```
+
+### What's Missing to Complete It
+
+1. **Persistence** — The circle currently renders on the map but disappears on reload. Wire the output polygon through `tradeAreaStore.saveTradeArea()` → POST `/deals/{deal_id}/trade-areas`.
+2. **Demographics hydration** — After generating the polygon, run a point-in-polygon query against Census data to populate population, median income, etc. in the Trade Area Preview card.
+3. **Multi-ring support** — Allow 1-mile, 3-mile, 5-mile concentric rings as separate trade areas for comparison (the vision doc specifies this).
+
+### Render on Map
+
+```typescript
+// Add as a Mapbox source + fill layer
+map.addSource('trade-area-radius', {
+  type: 'geojson',
+  data: circle
+});
+map.addLayer({
+  id: 'trade-area-fill',
+  type: 'fill',
+  source: 'trade-area-radius',
+  paint: {
+    'fill-color': '#3B82F6',
+    'fill-opacity': 0.15
+  }
+});
+map.addLayer({
+  id: 'trade-area-outline',
+  type: 'line',
+  source: 'trade-area-radius',
+  paint: {
+    'line-color': '#2563EB',
+    'line-width': 2
+  }
+});
+```
+
+---
+
+## Method 2: Drive-Time (Isochrone)
+
+**Status:** UI shell exists, no API wiring  
+**Effort:** ~4 hours  
+**Dependencies:** Mapbox Isochrone API (included in your Mapbox plan)
+
+### How It Works
+
+The Mapbox Isochrone API takes a coordinate + drive time in minutes and returns a GeoJSON polygon shaped by actual road networks. Unlike radius, this accounts for highways (faster reach) and dead ends (shorter reach), producing an irregularly shaped boundary that reflects real-world accessibility.
+
+### Frontend Flow
+
+```
+User selects "Drive-Time" → enters minutes (5-20) → clicks "Generate"
+    → Frontend calls backend proxy endpoint
+    → Backend calls Mapbox Isochrone API
+    → Returns GeoJSON polygon
+    → Render on map + hydrate demographics
+    → Save to tradeAreaStore
+```
+
+### Backend Service
+
+```python
+# backend/services/isochrone_service.py
+import httpx
+
+MAPBOX_TOKEN = os.getenv("MAPBOX_ACCESS_TOKEN")
+
+async def generate_isochrone(
+    lng: float,
+    lat: float,
+    minutes: int,
+    profile: str = "driving"  # or "walking", "cycling"
+) -> dict:
+    """
+    Calls Mapbox Isochrone API and returns GeoJSON polygon.
+    
+    Profiles: driving, walking, cycling
+    Minutes: 5, 10, 15, 20 (Mapbox supports up to 60)
+    """
+    url = (
+        f"https://api.mapbox.com/isochrone/v1/mapbox/{profile}"
+        f"/{lng},{lat}"
+        f"?contours_minutes={minutes}"
+        f"&polygons=true"
+        f"&generalize=500"        # simplify geometry (meters)
+        f"&access_token={MAPBOX_TOKEN}"
+    )
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        response.raise_for_status()
+        data = response.json()
+    
+    # Mapbox returns FeatureCollection with one Feature per contour
+    # We want the polygon geometry from the first (and only) feature
+    feature = data["features"][0]
+    return {
+        "geometry": feature["geometry"],
+        "properties": {
+            "contour_minutes": minutes,
+            "profile": profile
+        }
+    }
+```
+
+### Backend Route
+
+```python
+# backend/api/routes/trade_areas.py
+@router.post("/deals/{deal_id}/trade-areas/isochrone")
+async def generate_isochrone_trade_area(
+    deal_id: UUID,
+    payload: IsochroneRequest  # { minutes: int, profile: str }
+):
+    deal = await get_deal(deal_id)
+    lng, lat = deal.longitude, deal.latitude
+    
+    result = await isochrone_service.generate_isochrone(lng, lat, payload.minutes, payload.profile)
+    
+    # Optionally hydrate demographics using PostGIS point-in-polygon
+    demographics = await demographics_service.get_for_polygon(result["geometry"])
+    
+    return {
+        "geometry": result["geometry"],
+        "parameters": { "minutes": payload.minutes, "profile": payload.profile },
+        "demographics": demographics
+    }
+```
+
+### Frontend Handler
+
+```typescript
+// In DefineTradeArea component
+async function handleGenerateDriveTime() {
+  setIsGenerating(true);
+  try {
+    const response = await api.post(
+      `/deals/${dealId}/trade-areas/isochrone`,
+      { minutes: driveTimeMinutes, profile: 'driving' }
+    );
+    
+    const tradeArea: TradeArea = {
+      id: crypto.randomUUID(),
+      deal_id: dealId,
+      name: `${driveTimeMinutes}-min Drive Time`,
+      method: 'drive_time',
+      geometry: response.data.geometry,
+      parameters: { minutes: driveTimeMinutes, profile: 'driving' },
+      demographics: response.data.demographics
+    };
+    
+    // Render on map (same layer approach as radius)
+    renderTradeAreaOnMap(tradeArea.geometry);
+    
+    // Save to store
+    tradeAreaStore.saveTradeArea(tradeArea);
+  } finally {
+    setIsGenerating(false);
+  }
+}
+```
+
+### Cost & Rate Limits
+
+Mapbox Isochrone API is included in your existing Mapbox plan. Free tier includes 100,000 requests/month. Each "Generate" click = 1 request. Effectively free at your scale.
+
+### Key Gotchas
+
+- Mapbox Isochrone only supports contours of **up to 60 minutes**
+- The `generalize` parameter controls polygon simplification — higher values = simpler polygons (faster rendering), lower = more detailed boundaries
+- For the "Trade Area Preview" demographics card, you'll need a PostGIS spatial query or Census API call using the returned polygon as the boundary — this is the same hydration step needed for all methods
+
+---
+
+## Method 3: Traffic-Informed (AI)
+
+**Status:** Spec-only, depends on M07 Traffic Engine  
+**Effort:** ~2-4 weeks (requires M07 operational first)  
+**Dependencies:** Traffic Engine (M07), State DOT data, Census API, SpyFu, tradeAreaStore
+
+### How It Works
+
+This is the JEDI RE differentiator. Instead of drawing a circle or road-based polygon, this method analyzes where traffic *actually comes from* to determine the true competitive area. It combines physical traffic patterns (DOT counts, road networks) with digital traffic signals (SpyFu search volume by geography) and demographic data to generate an AI-informed boundary.
+
+The resulting polygon is irregularly shaped — it might extend further along a highway corridor with heavy commuter traffic and cut short where a river or railroad creates a natural barrier.
+
+### Architecture (Three-Phase Pipeline)
+
+```
+Phase 1: Data Collection
+├── State DOT ADT counts (nearest stations to property)
+├── Census demographics in concentric rings (0.25mi, 0.5mi, 1mi, 3mi, 5mi)
+├── SpyFu search volume by zip code for relevant RE keywords
+├── Google Trends interest by DMA/metro
+└── Road network topology from OpenStreetMap
+
+Phase 2: Traffic Modeling (M07 Engine)
+├── T-01: Weekly walk-in prediction (12-step pipeline)
+├── T-02: Physical traffic score (road frontage, corner lot, ADT)
+├── T-03: Digital traffic score (SpyFu keyword volume by geography)
+├── T-04: Hidden Gem correlation (physical vs digital 2x2 matrix)
+├── T-08: Generator proximity (residential, worker, transit catchments)
+└── Weighted combination → traffic origin heat map
+
+Phase 3: Boundary Generation
+├── Start with a generous radius (e.g., 5-mile)
+├── Score each Census block group within that radius by:
+│   ├── Estimated trip generation TO the property location
+│   ├── Drive time accessibility
+│   ├── Demographic alignment (income, age, renter %)
+│   └── Digital search activity (are people in this area searching for RE?)
+├── Threshold: include block groups contributing ≥ X% of total traffic
+├── Alpha shape or concave hull around qualifying block groups
+└── Output: GeoJSON Polygon representing "true trade area"
+```
+
+### Backend Service (Conceptual)
+
+```python
+# backend/services/ai_trade_area_service.py
+
+async def generate_traffic_informed_boundary(
+    lng: float,
+    lat: float,
+    deal_id: UUID
+) -> dict:
+    """
+    Generates an AI-informed trade area boundary using M07 Traffic Engine signals.
+    
+    Steps:
+    1. Collect all traffic signals within a 5-mile initial radius
+    2. Score each Census block group by traffic contribution
+    3. Generate concave hull around qualifying areas
+    4. Return polygon + confidence score
+    """
+    
+    # Step 1: Get Census block groups within initial radius
+    block_groups = await census_service.get_block_groups_in_radius(lng, lat, radius_miles=5)
+    
+    # Step 2: Score each block group using Traffic Engine
+    scored_groups = []
+    for bg in block_groups:
+        # Physical traffic: road network connectivity, ADT on connecting roads
+        physical_score = await traffic_engine.score_physical_connectivity(
+            origin=bg.centroid,
+            destination=(lng, lat)
+        )
+        
+        # Digital traffic: SpyFu search volume in this zip/area
+        digital_score = await traffic_engine.score_digital_interest(
+            zip_code=bg.zip_code,
+            keywords=["apartments", "rentals", deal.submarket_name]
+        )
+        
+        # Demographic alignment: income, age, renter % match
+        demo_score = await demographics_service.score_alignment(
+            block_group=bg,
+            target_profile=deal.target_demographic
+        )
+        
+        # Drive time from block group centroid to property
+        drive_time = await routing_service.get_drive_time(
+            origin=bg.centroid,
+            destination=(lng, lat)
+        )
+        
+        composite = (
+            physical_score * 0.30 +
+            digital_score * 0.25 +
+            demo_score * 0.25 +
+            (1 / max(drive_time, 1)) * 0.20  # closer = higher score
+        )
+        
+        scored_groups.append({
+            "block_group": bg,
+            "score": composite,
+            "geometry": bg.geometry
+        })
+    
+    # Step 3: Filter block groups above threshold
+    threshold = 0.4  # tunable — include top 60% of contributing areas
+    qualifying = [sg for sg in scored_groups if sg["score"] >= threshold]
+    
+    # Step 4: Generate concave hull (alpha shape) around qualifying areas
+    from shapely.ops import unary_union
+    from shapely import concave_hull
+    
+    merged = unary_union([sg["geometry"] for sg in qualifying])
+    boundary = concave_hull(merged, ratio=0.3)  # ratio controls tightness
+    
+    # Step 5: Calculate confidence
+    confidence = calculate_confidence(scored_groups, qualifying)
+    
+    return {
+        "geometry": mapping(boundary),  # Shapely → GeoJSON
+        "confidence": confidence,
+        "parameters": {
+            "method": "traffic_ai",
+            "block_groups_analyzed": len(block_groups),
+            "block_groups_included": len(qualifying),
+            "threshold": threshold
+        },
+        "demographics": await demographics_service.aggregate_for_block_groups(qualifying)
+    }
+```
+
+### Prerequisites Before You Can Build This
+
+1. **M07 Traffic Engine operational** — DB migrations written, routes mounted, base prediction engine running
+2. **State DOT data ingested** — Florida DOT continuous count station data downloaded and loaded into PostgreSQL
+3. **Census API connected** — Block group geometries + demographics queryable by PostGIS
+4. **SpyFu API integrated** — Digital traffic scores by geography available
+5. **Shapely/PostGIS** — For concave hull generation on the backend
+
+### Suggested MVP Simplification
+
+Skip the full M07 pipeline for v1. Instead, build a "lite" version:
+
+```
+Lite Traffic-Informed = Drive-Time Isochrone + Demographic Weighting
+```
+
+Take the Mapbox isochrone polygon, query Census data within it, and then *trim* the boundary by removing block groups where demographics don't align (e.g., median income below deal's target threshold, or renter percentage too low). This gets you 70% of the value with 20% of the effort, and you can layer in the full M07 signals later.
+
+---
+
+## Method 4: Custom Draw
+
+**Status:** MapboxDraw functional, no persistence  
+**Effort:** ~6 hours  
+**Dependencies:** MapboxDraw (already installed), tradeAreaStore
+
+### How It Works
+
+User draws a freehand polygon on the map using MapboxDraw. The drawn shape becomes the trade area boundary. This is essential for users who know their market — they can trace along highways, rivers, railroad tracks, and school district boundaries that they know define the real competitive area.
+
+### Frontend Implementation
+
+```typescript
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
+
+// Initialize draw controls (likely already in your codebase)
+const draw = new MapboxDraw({
+  displayControlsDefault: false,
+  controls: {
+    polygon: true,
+    trash: true
+  },
+  defaultMode: 'draw_polygon'
+});
+
+map.addControl(draw);
+
+// Listen for polygon completion
+map.on('draw.create', (e: any) => {
+  const feature = e.features[0];
+  handleCustomDrawComplete(feature.geometry);
+});
+
+map.on('draw.update', (e: any) => {
+  const feature = e.features[0];
+  handleCustomDrawComplete(feature.geometry);
+});
+
+async function handleCustomDrawComplete(geometry: GeoJSON.Polygon) {
+  // 1. Validate the polygon (must be closed, no self-intersections)
+  const isValid = turf.booleanValid(turf.polygon(geometry.coordinates));
+  if (!isValid) {
+    showToast('Invalid polygon — lines cannot cross each other');
+    return;
+  }
+  
+  // 2. Calculate area for sanity check
+  const areaSqMiles = turf.area(turf.polygon(geometry.coordinates)) / 2589988;
+  if (areaSqMiles > 50) {
+    showToast('Trade area seems very large (>50 sq mi). Are you sure?');
+  }
+  
+  // 3. Hydrate demographics
+  const demographics = await api.post('/trade-areas/demographics', { geometry });
+  
+  // 4. Update preview card
+  setTradeAreaPreview({
+    population: demographics.population,
+    medianIncome: demographics.median_income,
+    existingUnits: demographics.existing_units,
+    pipelineUnits: demographics.pipeline_units
+  });
+  
+  // 5. Save to store
+  const tradeArea: TradeArea = {
+    id: crypto.randomUUID(),
+    deal_id: dealId,
+    name: 'Custom Trade Area',
+    method: 'custom_draw',
+    geometry,
+    parameters: { area_sq_miles: areaSqMiles },
+    demographics: demographics
+  };
+  
+  tradeAreaStore.saveTradeArea(tradeArea);
+}
+```
+
+### Guided Workflow UX (Enhancement)
+
+Rather than just dropping the user into freehand draw mode, provide a guided experience:
+
+```
+Step 1: "Start by clicking on a boundary landmark (highway, river, etc.)"
+Step 2: "Click along the boundary to trace your trade area"
+Step 3: "Double-click to close the polygon"
+Step 4: Preview demographics → Confirm or Redraw
+```
+
+Add snapping to known boundaries for precision:
+
+```typescript
+// Snap to major roads when drawing near them
+// Load road network as a reference layer
+map.addSource('major-roads', {
+  type: 'vector',
+  url: 'mapbox://mapbox.mapbox-streets-v8'
+});
+
+// In draw mode, when cursor is within 50px of a major road,
+// snap the vertex to the road geometry
+```
+
+### What's Missing
+
+1. **tradeAreaStore persistence** — same as all other methods
+2. **Name prompt** — After drawing, prompt user to name the trade area (e.g., "North of I-285" or "West Buckhead")
+3. **Edit mode** — Allow users to select a saved trade area and modify vertices
+4. **Template boundaries** — Pre-load common boundaries (zip codes, Census tracts, school districts) as toggleable reference layers so users can trace along them
+
+---
+
+## Demographics Hydration (Shared Service)
+
+All four methods need demographics after generating the polygon. Build this once:
+
+```python
+# backend/services/demographics_service.py
+
+async def get_demographics_for_polygon(geometry: dict) -> dict:
+    """
+    Queries Census data for block groups intersecting the trade area polygon.
+    Uses PostGIS spatial intersection.
+    """
+    query = """
+        SELECT
+            SUM(bg.total_population) as population,
+            AVG(bg.median_household_income) as median_income,
+            -- Existing multifamily units from your apartments.com scraper data
+            (SELECT COUNT(*) FROM properties p 
+             WHERE ST_Within(p.geom, ST_GeomFromGeoJSON($1))) as existing_units,
+            -- Pipeline units from permit/construction data
+            (SELECT COALESCE(SUM(pp.units), 0) FROM pipeline_projects pp
+             WHERE ST_Within(pp.geom, ST_GeomFromGeoJSON($1))
+             AND pp.status IN ('permitted', 'under_construction')) as pipeline_units
+        FROM census_block_groups bg
+        WHERE ST_Intersects(bg.geom, ST_GeomFromGeoJSON($1))
+    """
+    result = await db.fetch_one(query, json.dumps(geometry))
+    
+    return {
+        "population": result["population"] or 0,
+        "median_income": result["median_income"] or 0,
+        "existing_units": result["existing_units"] or 0,
+        "pipeline_units": result["pipeline_units"] or 0
+    }
+```
+
+---
+
+## Implementation Priority
+
+| # | Method | Effort | Value | Recommendation |
+|---|--------|--------|-------|----------------|
+| 0 | **tradeAreaStore + DB** | 3 hrs | Unlocks everything | Build first — all methods need this |
+| 1 | **Drive-Time** | 4 hrs | High — road-aware boundaries | Second — single API call, huge UX upgrade over radius |
+| 2 | **Custom Draw** | 6 hrs | High — power users love this | Third — MapboxDraw already works, just need persistence |
+| 3 | **Radius persistence** | 2 hrs | Med — complete existing feature | Quick win alongside tradeAreaStore |
+| 4 | **Traffic-Informed (AI)** | 2-4 wks | Highest — JEDI differentiator | Last — requires M07 operational, but plan the lite version now |
+
+**Total to get 3 of 4 methods working: ~15 hours of focused development.**
+
+The Traffic-Informed method is the long pole, but the "lite" version (isochrone + demographic trimming) could ship in ~2 days as a bridge while M07 comes online.
