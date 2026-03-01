@@ -1,10 +1,47 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
+import { apiClient } from '../../../api/client';
 
 interface TrendsTabProps {
   marketId: string;
   summary?: Record<string, any>;
   onUpdate?: () => void;
+}
+
+interface CorrelationMetric {
+  id: string;
+  name: string;
+  tier: number;
+  category: string;
+  xValue: number | null;
+  yValue: number | null;
+  correlation: number | null;
+  signal: string | null;
+  confidence: 'high' | 'medium' | 'low' | 'insufficient';
+  leadTime: string;
+  actionable: string | null;
+  dataSources: string[];
+  missingData: string[];
+}
+
+interface CorrelationReport {
+  market: string;
+  state: string;
+  computedAt: string;
+  snapshotDate: string | null;
+  metricsComputed: number;
+  metricsSkipped: number;
+  correlations: CorrelationMetric[];
+  summary: {
+    bullishSignals: number;
+    bearishSignals: number;
+    neutralSignals: number;
+    insufficientData: number;
+    rentRunway: string | null;
+    affordabilityCeiling: string | null;
+    supplyPressure: string | null;
+    topOpportunity: string | null;
+  };
 }
 
 const TIME_RANGES = ['3M', '6M', '1Y', '3Y', '5Y', 'Max'] as const;
@@ -27,6 +64,19 @@ const AFFORDABILITY_DATA = {
   thresholdPercent: 30,
   currentPercent: 31.4,
   historicalPercents: [27.2, 28.1, 28.9, 29.5, 30.1, 30.8, 31.0, 31.4],
+};
+
+const SIGNAL_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
+  bullish: { bg: 'bg-green-50', text: 'text-green-700', icon: '\u25B2' },
+  bearish: { bg: 'bg-red-50', text: 'text-red-700', icon: '\u25BC' },
+  neutral: { bg: 'bg-gray-50', text: 'text-gray-600', icon: '\u25AC' },
+};
+
+const CONFIDENCE_STYLES: Record<string, string> = {
+  high: 'bg-green-100 text-green-800',
+  medium: 'bg-blue-100 text-blue-800',
+  low: 'bg-amber-100 text-amber-800',
+  insufficient: 'bg-gray-100 text-gray-500',
 };
 
 function computeCorrelation(xs: number[], ys: number[]): number {
@@ -73,8 +123,108 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
   const [timeRange, setTimeRange] = useState<string>('1Y');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('2yr');
+  const [correlationReport, setCorrelationReport] = useState<CorrelationReport | null>(null);
+  const [correlationLoading, setCorrelationLoading] = useState(true);
+  const [correlationError, setCorrelationError] = useState<string | null>(null);
+  const [showPendingMetrics, setShowPendingMetrics] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCorrelations = async () => {
+      try {
+        setCorrelationLoading(true);
+        setCorrelationError(null);
+        const response: any = await apiClient.get('/correlations/report');
+        const report = response?.data || response;
+        if (!cancelled && report?.correlations) {
+          setCorrelationReport(report);
+        } else if (!cancelled) {
+          setCorrelationError('Invalid response format');
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setCorrelationError(err?.message || 'Failed to load correlation data');
+        }
+      } finally {
+        if (!cancelled) setCorrelationLoading(false);
+      }
+    };
+    fetchCorrelations();
+    return () => { cancelled = true; };
+  }, []);
+
+  const computedMetrics = correlationReport?.correlations.filter(c => c.confidence !== 'insufficient') || [];
+  const pendingMetrics = correlationReport?.correlations.filter(c => c.confidence === 'insufficient') || [];
+
+  const getCorMetric = (id: string): CorrelationMetric | undefined => {
+    return correlationReport?.correlations.find(c => c.id === id);
+  };
+
+  const cor04 = getCorMetric('COR-04');
+  const cor13 = getCorMetric('COR-13');
+
+  const liveAffordabilityRatio = cor04?.xValue ?? cor13?.xValue ?? null;
+  const liveRentRunway = cor04?.actionable ?? null;
 
   const maxSupplyVal = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
+
+  const renderSignalBadge = (signal: string | null) => {
+    if (!signal) return null;
+    const style = SIGNAL_STYLES[signal] || SIGNAL_STYLES.neutral;
+    return (
+      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${style.bg} ${style.text}`}>
+        {style.icon} {signal.charAt(0).toUpperCase() + signal.slice(1)}
+      </span>
+    );
+  };
+
+  const renderConfidenceBadge = (confidence: string) => {
+    const style = CONFIDENCE_STYLES[confidence] || CONFIDENCE_STYLES.insufficient;
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${style}`}>
+        {confidence}
+      </span>
+    );
+  };
+
+  const renderCorrelationMetricRow = (metric: CorrelationMetric) => {
+    const style = SIGNAL_STYLES[metric.signal || 'neutral'] || SIGNAL_STYLES.neutral;
+    return (
+      <div key={metric.id} className={`flex items-start gap-2 p-2.5 rounded-lg ${style.bg} border border-opacity-20`}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-gray-800">{metric.id}</span>
+            <span className={`text-[11px] font-semibold ${style.text}`}>{metric.name}</span>
+            {renderSignalBadge(metric.signal)}
+            {renderConfidenceBadge(metric.confidence)}
+            <span className="text-[9px] text-gray-400">Lead: {metric.leadTime}</span>
+          </div>
+          {metric.actionable && (
+            <p className={`text-[11px] mt-1 ${style.text}`}>{metric.actionable}</p>
+          )}
+          {metric.xValue !== null && (
+            <div className="flex items-center gap-3 mt-0.5">
+              <span className="text-[10px] text-gray-500">X: {metric.xValue}{metric.id === 'COR-16' || metric.id === 'COR-05' ? '' : '%'}</span>
+              {metric.yValue !== null && <span className="text-[10px] text-gray-500">Y: {metric.yValue}%</span>}
+              {metric.correlation !== null && <span className="text-[10px] text-gray-500">r: {metric.correlation}</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderPendingMetricRow = (metric: CorrelationMetric) => {
+    return (
+      <div key={metric.id} className="flex items-center gap-2 py-1.5 px-2 rounded bg-gray-50">
+        <span className="text-[10px] font-bold text-gray-400 w-12">{metric.id}</span>
+        <span className="text-[10px] text-gray-500 flex-1">{metric.name}</span>
+        <span className="text-[9px] text-gray-400 italic">
+          {metric.missingData.length > 0 ? metric.missingData[0] : 'Data pending'}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,7 +255,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               className="rounded-lg border border-gray-300 text-sm px-3 py-1.5 bg-white text-gray-700 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
             >
               {SUBMARKETS.map(s => (
-                <option key={s} value={s}>{s === 'All' ? 'All ▼' : s}</option>
+                <option key={s} value={s}>{s === 'All' ? 'All \u25BC' : s}</option>
               ))}
             </select>
           </div>
@@ -119,7 +269,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-gray-900">Rent Trends by Vintage</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">★ ENHANCED</span>
+                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
               </div>
               <p className="text-sm text-gray-500 mt-0.5">Sources: M-01, M-02, R-02 + DC-11</p>
             </div>
@@ -138,8 +288,8 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-violet-500 inline-block rounded border-dashed" /> DC-11 Forecast</span>
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-400 mt-1">
-              <span className="border-r border-gray-300 pr-4">← NOW</span>
-              <span>FORECAST →</span>
+              <span className="border-r border-gray-300 pr-4">{'\u2190'} NOW</span>
+              <span>FORECAST {'\u2192'}</span>
             </div>
             <span className="text-gray-300 text-xs mt-2">DC-11 dotted forecast line extends 12 months forward</span>
           </div>
@@ -158,7 +308,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-gray-900">Supply Pipeline Timeline</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">★ ENHANCED</span>
+                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
               </div>
               <p className="text-sm text-gray-500 mt-0.5">Sources: S-02, S-03, S-04, S-05, S-06 + DC-08</p>
             </div>
@@ -181,13 +331,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
                 supplyView === '10yr' ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200'
               }`}
             >
-              10-Year Supply Wave ★
+              10-Year Supply Wave {'\u2605'}
             </button>
           </div>
 
           {supplyView === '2yr' ? (
             <div className="w-full h-48 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center">
-              <span className="text-gray-400 text-sm font-medium">Stacked Bar Chart — Quarterly Pipeline</span>
+              <span className="text-gray-400 text-sm font-medium">Stacked Bar Chart {'\u2014'} Quarterly Pipeline</span>
               <span className="text-gray-300 text-xs mt-1">S-02 Under Construction + S-03 Permitted by Quarter</span>
               <div className="flex gap-3 mt-2">
                 <span className="flex items-center gap-1 text-xs text-gray-400"><span className="w-3 h-3 bg-red-500 rounded inline-block" /> Under Construction</span>
@@ -243,7 +393,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-gray-900">Demand Signal Trends</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">★ ENHANCED</span>
+                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
               </div>
               <p className="text-sm text-gray-500 mt-0.5">Sources: D-05, D-06, D-07, D-08, D-09 + T-02, T-03, T-07</p>
             </div>
@@ -268,7 +418,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
           </div>
           <div className="bg-green-50 border border-green-100 rounded-lg p-3">
             <p className="text-sm text-green-800">
-              <span className="font-semibold">Insight:</span> Digital leads physical by 8-12 weeks. T-03 uptick in Decatur Q4 2025 → T-02 uptick Q1 2026.
+              <span className="font-semibold">Insight:</span> Digital leads physical by 8-12 weeks. T-03 uptick in Decatur Q4 2025 {'\u2192'} T-02 uptick Q1 2026.
             </p>
           </div>
         </div>
@@ -287,11 +437,11 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
           <div className="p-4 space-y-3">
             <div className="w-full h-48 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 flex flex-col items-center justify-center">
               <span className="text-gray-400 text-sm font-medium mb-1">Scatter Plot</span>
-              <span className="text-gray-300 text-xs">X = Time · Y = $/unit · Size = unit count · Color = cap rate</span>
+              <span className="text-gray-300 text-xs">X = Time {'\u00B7'} Y = $/unit {'\u00B7'} Size = unit count {'\u00B7'} Color = cap rate</span>
             </div>
             <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
               <p className="text-sm text-orange-800">
-                <span className="font-semibold">Cap rates:</span> 5.1% → 5.5% expanding
+                <span className="font-semibold">Cap rates:</span> 5.1% {'\u2192'} 5.5% expanding
               </p>
             </div>
           </div>
@@ -312,7 +462,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             </div>
             <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 space-y-1">
               <p className="text-sm text-orange-800">
-                <span className="font-semibold">Concession as % GPR:</span> 4.8% → 3.2% (declining)
+                <span className="font-semibold">Concession as % GPR:</span> 4.8% {'\u2192'} 3.2% (declining)
               </p>
               <p className="text-sm text-orange-700">Availability declining</p>
             </div>
@@ -343,10 +493,10 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
           </div>
           <div className="bg-teal-50 border border-teal-100 rounded-lg p-3 space-y-1">
             <p className="text-sm text-teal-800">
-              <span className="font-semibold">Score trajectory:</span> 58 → 72 → 81 → 87 over 24 months
+              <span className="font-semibold">Score trajectory:</span> 58 {'\u2192'} 72 {'\u2192'} 81 {'\u2192'} 87 over 24 months
             </p>
             <p className="text-sm text-teal-700">
-              <span className="font-semibold">Primary driver:</span> Demand acceleration (D-09: 55 → 82)
+              <span className="font-semibold">Primary driver:</span> Demand acceleration (D-09: 55 {'\u2192'} 82)
             </p>
             <p className="text-sm text-teal-700">
               <span className="font-semibold">Drag factor:</span> Supply risk (S-composite: stable at 64)
@@ -355,7 +505,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
         </div>
       </div>
 
-      {/* SECTION 7: RENT–TRAFFIC–WAGE CORRELATION */}
+      {/* SECTION 7: RENT–TRAFFIC–WAGE CORRELATION (Pearson Chart) */}
       {(() => {
         const rents = CORRELATION_QUARTERS.map(q => q.rentGrowth);
         const traffic = CORRELATION_QUARTERS.map(q => q.trafficTrend);
@@ -388,7 +538,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold text-gray-900">Rent–Traffic–Wage Correlation</h3>
+                    <h3 className="text-base font-semibold text-gray-900">Rent{'\u2013'}Traffic{'\u2013'}Wage Correlation</h3>
                     <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
                   </div>
                   <p className="text-sm text-gray-500 mt-0.5">8-quarter overlay with Pearson r-values</p>
@@ -454,14 +604,14 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             </svg>
           </div>
           <div>
-            <h4 className="text-sm font-bold text-amber-900">Rent–Wage Divergence Alert</h4>
+            <h4 className="text-sm font-bold text-amber-900">Rent{'\u2013'}Wage Divergence Alert</h4>
             <p className="text-sm text-amber-800 mt-0.5">
-              Rent growth has outpaced wage growth by &gt;1.5× for 3+ consecutive quarters. This divergence signals affordability stress and may lead to increased vacancy, concession pressure, or regulatory intervention.
+              Rent growth has outpaced wage growth by &gt;1.5{'\u00D7'} for 3+ consecutive quarters. This divergence signals affordability stress and may lead to increased vacancy, concession pressure, or regulatory intervention.
             </p>
             <div className="flex gap-4 mt-2">
               {CORRELATION_QUARTERS.slice(-4).map(q => (
                 <span key={q.quarter} className="text-xs text-amber-700">
-                  <span className="font-semibold">{q.quarter}:</span> Rent {q.rentGrowth}% vs Wage {q.wageGrowth}% ({(q.rentGrowth / q.wageGrowth).toFixed(1)}×)
+                  <span className="font-semibold">{q.quarter}:</span> Rent {q.rentGrowth}% vs Wage {q.wageGrowth}% ({(q.rentGrowth / q.wageGrowth).toFixed(1)}{'\u00D7'})
                 </span>
               ))}
             </div>
@@ -469,7 +619,90 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
         </div>
       )}
 
-      {/* SECTION 8: AFFORDABILITY CEILING GAUGE */}
+      {/* SECTION 8: CORRELATION INTELLIGENCE (LIVE FROM API) */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-indigo-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-gray-900">Correlation Intelligence</h3>
+                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
+                {correlationLoading && (
+                  <span className="text-[10px] text-indigo-400 animate-pulse">Loading live data...</span>
+                )}
+                {!correlationLoading && !correlationError && correlationReport && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
+                    LIVE DATA
+                  </span>
+                )}
+                {correlationError && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">
+                    SAMPLE DATA
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-0.5">
+                COR-01 through COR-20 {'\u2014'} 20 cross-module market correlation metrics
+                {correlationReport && (
+                  <span className="ml-2 text-indigo-500 font-medium">
+                    {correlationReport.metricsComputed}/{correlationReport.correlations.length} computed from live data
+                  </span>
+                )}
+              </p>
+            </div>
+            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">20 metrics</span>
+          </div>
+        </div>
+        <div className="p-4 space-y-3">
+          {correlationReport && !correlationError ? (
+            <>
+              <div className="flex items-center gap-3 flex-wrap p-3 bg-gray-50 rounded-lg">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">MARKET SIGNALS:</span>
+                <span className="text-[11px] text-green-600 font-bold">{correlationReport.summary.bullishSignals} bullish</span>
+                <span className="text-[11px] text-red-600 font-bold">{correlationReport.summary.bearishSignals} bearish</span>
+                <span className="text-[11px] text-gray-500 font-bold">{correlationReport.summary.neutralSignals} neutral</span>
+                <span className="text-[11px] text-gray-400">{correlationReport.summary.insufficientData} pending data</span>
+                {correlationReport.summary.topOpportunity && (
+                  <span className="text-[11px] text-emerald-600 font-semibold">{'\u2605'} {correlationReport.summary.topOpportunity}</span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {computedMetrics.map(m => renderCorrelationMetricRow(m))}
+              </div>
+
+              {pendingMetrics.length > 0 && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setShowPendingMetrics(!showPendingMetrics)}
+                    className="text-[11px] font-medium text-gray-400 hover:text-gray-600 underline"
+                  >
+                    {showPendingMetrics ? 'Hide' : 'Show'} {pendingMetrics.length} pending metrics (awaiting data sources)
+                  </button>
+                  {showPendingMetrics && (
+                    <div className="mt-2 space-y-1 border border-gray-100 rounded-lg p-3">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">AWAITING DATA SOURCES:</p>
+                      {pendingMetrics.map(m => renderPendingMetricRow(m))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : correlationError ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-700">
+                <span className="font-semibold">Correlation data unavailable:</span> {correlationError}. Showing static Pearson analysis above.
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-sm text-gray-400 animate-pulse">Loading correlation metrics...</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 9: AFFORDABILITY CEILING GAUGE */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-rose-500">
           <div className="flex items-center justify-between">
@@ -477,8 +710,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-gray-900">Affordability Ceiling Gauge</h3>
                 <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
+                {liveAffordabilityRatio !== null && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
+                    LIVE
+                  </span>
+                )}
               </div>
-              <p className="text-sm text-gray-500 mt-0.5">Rent as % of median household income — {AFFORDABILITY_DATA.thresholdPercent}% threshold</p>
+              <p className="text-sm text-gray-500 mt-0.5">Rent as % of median household income {'\u2014'} {AFFORDABILITY_DATA.thresholdPercent}% threshold</p>
             </div>
             <span className={`text-sm font-bold px-3 py-1 rounded-full ${
               AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent
@@ -566,6 +804,83 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent && ' Markets above this level historically see increased turnover and concession pressure within 2-3 quarters.'}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* SECTION 10: RENT RUNWAY INDICATOR */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-emerald-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-gray-900">Rent Runway Indicator</h3>
+                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
+                {liveRentRunway && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
+                    LIVE
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 mt-0.5">When wages outpace rents, the gap represents runway for rent increases (COR-04)</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-4 space-y-4">
+          {(() => {
+            const wageGrowth = cor04?.xValue ?? 4.2;
+            const rentGrowth = cor04?.yValue ?? 1.8;
+            const hasRunway = wageGrowth > rentGrowth;
+            const gapPct = Math.abs(wageGrowth - rentGrowth).toFixed(1);
+            const ratio = (wageGrowth / rentGrowth).toFixed(1);
+
+            const barW = 480;
+            const barH = 60;
+            const maxGrowth = Math.max(wageGrowth, rentGrowth) * 1.3;
+            const toBarWidth = (val: number) => (val / maxGrowth) * (barW - 80);
+
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className={`rounded-lg p-3 text-center ${hasRunway ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                    <p className="text-xs text-gray-500">Wage Growth</p>
+                    <p className="text-2xl font-bold text-emerald-600">{wageGrowth}%</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
+                    <p className="text-xs text-gray-500">Rent Growth</p>
+                    <p className="text-2xl font-bold text-gray-700">{rentGrowth}%</p>
+                  </div>
+                </div>
+
+                <svg viewBox={`0 0 ${barW} ${barH}`} className="w-full h-auto">
+                  <rect x={40} y={8} width={toBarWidth(wageGrowth)} height={18} rx={4} className="fill-emerald-400" />
+                  <text x={36} y={21} textAnchor="end" className="fill-gray-500 text-[10px] font-medium">Wages</text>
+                  <text x={44 + toBarWidth(wageGrowth)} y={21} className="fill-emerald-700 text-[10px] font-bold">{wageGrowth}%</text>
+                  <rect x={40} y={34} width={toBarWidth(rentGrowth)} height={18} rx={4} className="fill-gray-400" />
+                  <text x={36} y={47} textAnchor="end" className="fill-gray-500 text-[10px] font-medium">Rents</text>
+                  <text x={44 + toBarWidth(rentGrowth)} y={47} className="fill-gray-700 text-[10px] font-bold">{rentGrowth}%</text>
+                  {hasRunway && (
+                    <>
+                      <rect x={40 + toBarWidth(rentGrowth)} y={34} width={toBarWidth(wageGrowth) - toBarWidth(rentGrowth)} height={18} rx={0} className="fill-emerald-200" strokeDasharray="4,3" />
+                      <text x={40 + toBarWidth(rentGrowth) + (toBarWidth(wageGrowth) - toBarWidth(rentGrowth)) / 2} y={47} textAnchor="middle" className="fill-emerald-700 text-[9px] font-bold">RUNWAY</text>
+                    </>
+                  )}
+                </svg>
+
+                <div className={`rounded-lg p-3 ${hasRunway ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                  <p className={`text-sm ${hasRunway ? 'text-emerald-800' : 'text-red-800'}`}>
+                    <span className="font-semibold">{hasRunway ? 'Runway Available:' : 'No Runway:'}</span>
+                    {hasRunway
+                      ? ` Wages are growing ${ratio}\u00D7 faster than rents, creating a ${gapPct}% gap. This suggests room for rent increases before hitting affordability pressure.`
+                      : ` Rents are growing faster than wages. Affordability ceiling may limit further increases.`
+                    }
+                    {liveRentRunway && (
+                      <span className="block mt-1 text-[11px] text-emerald-600 font-medium">{liveRentRunway}</span>
+                    )}
+                  </p>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
