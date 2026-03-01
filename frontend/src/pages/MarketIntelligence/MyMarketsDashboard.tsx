@@ -28,7 +28,7 @@ interface TabConfig {
 const TABS: TabConfig[] = [
   { id: 'overview', label: 'Overview', icon: '✦', outputs: 25, realOutputs: 8 },
   { id: 'submarkets', label: 'Submarkets', icon: '🏘', outputs: 36, realOutputs: 6 },
-  { id: 'powerRankings', label: 'Power Rankings', icon: '🏆', outputs: 18, realOutputs: 0 },
+  { id: 'powerRankings', label: 'Power Rankings', icon: '🏆', outputs: 18, realOutputs: 14 },
   { id: 'marketData', label: 'Property Data', icon: '📋', outputs: 44, realOutputs: 12 },
   { id: 'trends', label: 'Trends', icon: '📈', outputs: 23, realOutputs: 4 },
   { id: 'deals', label: 'Deals', icon: '💼', outputs: 26, realOutputs: 8 },
