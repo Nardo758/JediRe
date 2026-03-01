@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Car, Globe, BarChart3, Eye, AlertCircle, CheckCircle2,
-  ArrowUpRight, ArrowDownRight, Minus, Link2,
+  ArrowUpRight, ArrowDownRight, Minus, Link2, Search,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -28,6 +28,10 @@ interface DataSourceSignals {
     score: number;
     is_comp_proxy: boolean;
     proxy_source_count?: number;
+    organic_value?: number;
+    organic_keywords?: number;
+    paid_keywords?: number;
+    domain_strength?: number;
   };
   market_intel?: {
     supply_demand_ratio?: number;
@@ -89,15 +93,40 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
     warnings?: Array<{ type: string; message: string }>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [domainInput, setDomainInput] = useState('');
+  const [showDomainForm, setShowDomainForm] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
-  useEffect(() => {
-    if (!dealId) return;
+  const loadData = () => {
     setLoading(true);
     apiClient.get(`/api/v1/leasing-traffic/data-sources/${dealId}`)
       .then(res => setData(res.data))
       .catch(err => console.error('[DataSources] Load failed:', err))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!dealId) return;
+    loadData();
   }, [dealId]);
+
+  const handleConnectDomain = async () => {
+    if (!domainInput.trim()) return;
+    setConnecting(true);
+    try {
+      await apiClient.post('/api/v1/property-analytics/connect', {
+        propertyId: dealId,
+        domain: domainInput.trim(),
+      });
+      setShowDomainForm(false);
+      setDomainInput('');
+      loadData();
+    } catch (err) {
+      console.error('[DataSources] Domain connect failed:', err);
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -196,19 +225,28 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
           </div>
           {ds?.web_traffic ? (
             <div className="space-y-3">
+              <div>
+                <div className="text-2xl font-bold text-stone-900">
+                  {ds.web_traffic.sessions.toLocaleString()}
+                  <span className="text-sm font-normal text-stone-500 ml-1">visitors/mo</span>
+                </div>
+                <div className="flex items-center gap-3 mt-1 text-xs text-stone-500">
+                  <span>Score: <strong className="text-stone-800">{ds.web_traffic.score}/100</strong></span>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-[10px] text-stone-400 uppercase">Sessions</div>
-                  <div className="text-lg font-bold text-stone-900">{ds.web_traffic.sessions.toLocaleString()}</div>
+                  <div className="text-[10px] text-stone-400 uppercase">Organic Keywords</div>
+                  <div className="text-sm font-bold text-stone-900">{(ds.web_traffic.organic_keywords || 0).toLocaleString()}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-stone-400 uppercase">Users</div>
-                  <div className="text-lg font-bold text-stone-900">{ds.web_traffic.users.toLocaleString()}</div>
+                  <div className="text-[10px] text-stone-400 uppercase">Paid Keywords</div>
+                  <div className="text-sm font-bold text-stone-900">{(ds.web_traffic.paid_keywords || 0).toLocaleString()}</div>
                 </div>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-stone-500">Bounce Rate: <strong className="text-stone-900">{(ds.web_traffic.bounce_rate * 100).toFixed(1)}%</strong></span>
-                <span className="text-stone-500">Score: <strong className="text-stone-900">{ds.web_traffic.score}/100</strong></span>
+                <span className="text-stone-500">Domain Strength: <strong className="text-stone-900">{ds.web_traffic.domain_strength || 0}/100</strong></span>
+                <span className="text-stone-500">SEO Value: <strong className="text-stone-900">${Math.round(ds.web_traffic.organic_value || 0).toLocaleString()}</strong></span>
               </div>
               {ds.web_traffic.is_comp_proxy && (
                 <div className="bg-blue-50 rounded-lg p-2 text-[11px] text-blue-700">
@@ -218,11 +256,45 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
             </div>
           ) : (
             <div className="text-center py-4">
-              <Globe size={24} className="mx-auto text-stone-300 mb-2" />
-              <p className="text-xs text-stone-400 mb-2">Connect Google Analytics to track website traffic</p>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs hover:bg-stone-800">
-                <Link2 size={12} /> Connect GA
-              </button>
+              {showDomainForm ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={domainInput}
+                    onChange={e => setDomainInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleConnectDomain()}
+                    placeholder="e.g. solaireapartments.com"
+                    className="w-full px-3 py-2 border border-stone-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-stone-400"
+                    autoFocus
+                  />
+                  <div className="flex gap-2 justify-center">
+                    <button
+                      onClick={handleConnectDomain}
+                      disabled={connecting || !domainInput.trim()}
+                      className="px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs hover:bg-stone-800 disabled:opacity-50"
+                    >
+                      {connecting ? 'Looking up...' : 'Look Up Domain'}
+                    </button>
+                    <button
+                      onClick={() => { setShowDomainForm(false); setDomainInput(''); }}
+                      className="px-3 py-1.5 bg-stone-100 text-stone-600 rounded-lg text-xs hover:bg-stone-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Search size={24} className="mx-auto text-stone-300 mb-2" />
+                  <p className="text-xs text-stone-400 mb-2">Add this property's website domain to track its digital traffic</p>
+                  <button
+                    onClick={() => setShowDomainForm(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-900 text-white rounded-lg text-xs hover:bg-stone-800"
+                  >
+                    <Link2 size={12} /> Add Website
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

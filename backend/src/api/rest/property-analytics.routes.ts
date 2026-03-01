@@ -9,37 +9,41 @@ const analyticsService = new PropertyAnalyticsService(pool);
 
 router.post('/connect', async (req: Request, res: Response) => {
   try {
-    const { propertyId, gaPropertyId } = req.body;
-    if (!propertyId || !gaPropertyId) {
-      return res.status(400).json({ error: 'propertyId and gaPropertyId are required' });
+    const { propertyId, domain } = req.body;
+    if (!propertyId || !domain) {
+      return res.status(400).json({ error: 'propertyId and domain are required' });
     }
-    const connection = await analyticsService.connectPropertyGA(propertyId, gaPropertyId);
+    const connection = await analyticsService.connectPropertyDomain(propertyId, domain);
     res.json({ success: true, connection });
   } catch (error: any) {
     logger.error('[PropertyAnalytics] Connect failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to connect GA', message: error.message });
+    res.status(500).json({ error: 'Failed to connect domain', message: error.message });
   }
 });
 
 router.post('/disconnect', async (req: Request, res: Response) => {
   try {
-    const { propertyId, gaPropertyId } = req.body;
-    if (!propertyId || !gaPropertyId) {
-      return res.status(400).json({ error: 'propertyId and gaPropertyId are required' });
+    const { propertyId, domain } = req.body;
+    if (!propertyId || !domain) {
+      return res.status(400).json({ error: 'propertyId and domain are required' });
     }
-    await analyticsService.disconnectPropertyGA(propertyId, gaPropertyId);
+    await analyticsService.disconnectPropertyDomain(propertyId, domain);
     res.json({ success: true });
   } catch (error: any) {
     logger.error('[PropertyAnalytics] Disconnect failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to disconnect GA', message: error.message });
+    res.status(500).json({ error: 'Failed to disconnect domain', message: error.message });
   }
 });
 
 router.get('/connection/:propertyId', async (req: Request, res: Response) => {
   try {
     const { propertyId } = req.params;
-    const connection = await analyticsService.getGAConnection(propertyId);
-    res.json({ connected: !!connection, connection });
+    const connection = await analyticsService.getDomainConnection(propertyId);
+    res.json({
+      connected: !!connection,
+      domain: connection?.ga_property_id || null,
+      connection,
+    });
   } catch (error: any) {
     logger.error('[PropertyAnalytics] Connection check failed', { error: error.message });
     res.status(500).json({ error: 'Failed to check connection', message: error.message });
@@ -58,13 +62,14 @@ router.get('/:propertyId', async (req: Request, res: Response) => {
       const stored = await analyticsService.getStoredAnalytics(propertyId, 1);
       if (stored.length > 0) {
         const row = stored[0];
+        const db = row.device_breakdown || {};
         metrics = {
           sessions: row.sessions,
           users: row.users,
           new_users: row.new_users,
           pageviews: row.pageviews,
           avg_session_duration: parseFloat(row.avg_session_duration) || 0,
-          bounce_rate: parseFloat(row.bounce_rate) || 0,
+          bounce_rate: 0,
           traffic_sources: {
             organic: row.organic_sessions || 0,
             paid: row.paid_sessions || 0,
@@ -78,6 +83,10 @@ router.get('/:propertyId', async (req: Request, res: Response) => {
           period_end: row.period_end,
           is_comp_proxy: row.is_comp_proxy,
           proxy_source_properties: row.proxy_source_properties,
+          organic_value: db.organic_value || 0,
+          organic_keywords: db.organic_keywords || 0,
+          paid_keywords: db.paid_keywords || 0,
+          domain_strength: db.domain_strength || 0,
         };
       }
     }
@@ -135,7 +144,7 @@ router.post('/:propertyId/comp-proxy', async (req: Request, res: Response) => {
       return res.json({
         property_id: propertyId,
         metrics: null,
-        message: 'No comparable properties with GA data found in trade area',
+        message: 'No comparable properties with website data found in trade area',
       });
     }
     res.json({ property_id: propertyId, metrics, comp_count: metrics.proxy_source_properties?.length || 0 });

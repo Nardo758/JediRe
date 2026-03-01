@@ -36,6 +36,10 @@ export interface DataSourceSignals {
     score: number;
     is_comp_proxy: boolean;
     proxy_source_count?: number;
+    organic_value?: number;
+    organic_keywords?: number;
+    paid_keywords?: number;
+    domain_strength?: number;
   };
   market_intel?: {
     supply_demand_ratio?: number;
@@ -244,7 +248,8 @@ export class TrafficPredictionEngine {
     let web_traffic: DataSourceSignals['web_traffic'];
     try {
       const wr = await pool.query(
-        `SELECT sessions, users, bounce_rate, is_comp_proxy, proxy_source_properties
+        `SELECT sessions, users, bounce_rate, is_comp_proxy, proxy_source_properties,
+                device_breakdown
          FROM property_website_analytics
          WHERE property_id = $1
          ORDER BY period_end DESC LIMIT 1`,
@@ -253,17 +258,25 @@ export class TrafficPredictionEngine {
       if (wr.rows.length > 0) {
         const w = wr.rows[0];
         const sessions = w.sessions || 0;
-        const bounceRate = Number(w.bounce_rate) || 0.5;
-        const rawScore = Math.min(100, (sessions / 50) * (1 - bounceRate) * 100);
+        const db = w.device_breakdown || {};
+        const domainStrength = db.domain_strength || 0;
+        const rawScore = Math.min(100, Math.round(
+          (sessions >= 5000 ? 95 : sessions >= 3000 ? 85 : sessions >= 1500 ? 70 : sessions >= 500 ? 50 : sessions >= 100 ? 30 : 10) * 0.6
+          + domainStrength * 0.4
+        ));
         web_traffic = {
           sessions,
           users: w.users || 0,
-          bounce_rate: bounceRate,
-          score: Math.round(rawScore),
+          bounce_rate: 0,
+          score: rawScore,
           is_comp_proxy: w.is_comp_proxy || false,
           proxy_source_count: w.is_comp_proxy
             ? (w.proxy_source_properties || []).length
             : undefined,
+          organic_value: db.organic_value || 0,
+          organic_keywords: db.organic_keywords || 0,
+          paid_keywords: db.paid_keywords || 0,
+          domain_strength: domainStrength,
         };
         sourcesConnected++;
       } else {
@@ -359,7 +372,8 @@ export class TrafficPredictionEngine {
     }
 
     if (signals.web_traffic && signals.web_traffic.score > 0) {
-      const digitalDemandMultiplier = 1.0 + (signals.web_traffic.score / 100) * 0.15;
+      const domainBoost = (signals.web_traffic.domain_strength || 0) / 100 * 0.05;
+      const digitalDemandMultiplier = 1.0 + (signals.web_traffic.score / 100) * 0.15 + domainBoost;
       baseTraffic *= digitalDemandMultiplier;
     }
     

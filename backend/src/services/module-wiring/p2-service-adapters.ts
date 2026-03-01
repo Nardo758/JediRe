@@ -67,7 +67,7 @@ function getTrafficModuleWiring() {
 
 /**
  * Wire traffic intelligence for a property.
- * Combines all 4 data sources: DOT/Google street traffic, Google Analytics website
+ * Combines all 4 data sources: DOT/Google street traffic, SpyFu website
  * traffic, Apartment Locator AI market intel, and Location Visibility scoring.
  * Publishes TrafficIntelligenceV2 to DataFlowRouter for downstream cascade.
  * Downstream: M05 Market, M08 Strategy, M09 ProForma, M14 Risk, M25 JEDI Score

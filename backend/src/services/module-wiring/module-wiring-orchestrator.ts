@@ -179,7 +179,7 @@ export const WIRING_PIPELINES: WiringPipeline[] = [
     priority: 'P2',
     modules: ['M07'],
     formulas: ['F28', 'F29'],
-    description: 'Built: 4-source traffic intelligence (DOT ADT, Google Analytics, Apartment Locator AI, Visibility Scoring) → cascades to M05 Market, M08 Strategy, M09 ProForma, M14 Risk, M25 JEDI Score.',
+    description: 'Built: 4-source traffic intelligence (DOT ADT, SpyFu Domain Analytics, Market Intel, Visibility Scoring) → cascades to M05 Market, M08 Strategy, M09 ProForma, M14 Risk, M25 JEDI Score.',
     blockedBy: '',
     effort: 'Very High',
     impact: 'High',

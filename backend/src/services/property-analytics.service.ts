@@ -21,9 +21,13 @@ export interface WebTrafficMetrics {
   period_end: string;
   is_comp_proxy: boolean;
   proxy_source_properties?: string[];
+  organic_value?: number;
+  organic_keywords?: number;
+  paid_keywords?: number;
+  domain_strength?: number;
 }
 
-export interface GAConnection {
+export interface DomainConnection {
   id: number;
   property_id: string;
   ga_property_id: string;
@@ -40,32 +44,48 @@ export interface WebTrafficScore {
   trend_pct: number;
 }
 
+interface SpyFuDomainStats {
+  monthlyOrganicClicks: number;
+  monthlyPaidClicks: number;
+  monthlyOrganicValue: number;
+  totalOrganicResults: number;
+  totalAdsPurchased: number;
+  averageOrganicRank: number;
+  strength: number;
+  searchMonth: number;
+  searchYear: number;
+}
+
+const SPYFU_BASE = 'https://www.spyfu.com/apis';
+
 export class PropertyAnalyticsService {
   constructor(private pool: Pool) {}
 
-  async connectPropertyGA(propertyId: string, gaPropertyId: string): Promise<GAConnection> {
+  async connectPropertyDomain(propertyId: string, domain: string): Promise<DomainConnection> {
+    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
     const result = await this.pool.query(
       `INSERT INTO property_ga_connections (property_id, ga_property_id, connection_status, created_at, updated_at)
        VALUES ($1, $2, 'active', NOW(), NOW())
        ON CONFLICT (property_id, ga_property_id)
        DO UPDATE SET connection_status = 'active', sync_error = NULL, updated_at = NOW()
        RETURNING *`,
-      [propertyId, gaPropertyId]
+      [propertyId, cleanDomain]
     );
-    logger.info(`[PropertyAnalytics] Connected property ${propertyId} to GA ${gaPropertyId}`);
+    logger.info(`[PropertyAnalytics] Connected property ${propertyId} to domain ${cleanDomain}`);
     return result.rows[0];
   }
 
-  async disconnectPropertyGA(propertyId: string, gaPropertyId: string): Promise<void> {
+  async disconnectPropertyDomain(propertyId: string, domain: string): Promise<void> {
+    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLowerCase();
     await this.pool.query(
       `UPDATE property_ga_connections SET connection_status = 'disconnected', updated_at = NOW()
        WHERE property_id = $1 AND ga_property_id = $2`,
-      [propertyId, gaPropertyId]
+      [propertyId, cleanDomain]
     );
-    logger.info(`[PropertyAnalytics] Disconnected property ${propertyId} from GA ${gaPropertyId}`);
+    logger.info(`[PropertyAnalytics] Disconnected property ${propertyId} from domain ${cleanDomain}`);
   }
 
-  async getGAConnection(propertyId: string): Promise<GAConnection | null> {
+  async getDomainConnection(propertyId: string): Promise<DomainConnection | null> {
     const result = await this.pool.query(
       `SELECT * FROM property_ga_connections
        WHERE property_id = $1 AND connection_status = 'active'
@@ -79,20 +99,28 @@ export class PropertyAnalyticsService {
     propertyId: string,
     dateRange?: { start: string; end: string }
   ): Promise<WebTrafficMetrics | null> {
-    const connection = await this.getGAConnection(propertyId);
+    const connection = await this.getDomainConnection(propertyId);
 
     if (!connection) {
-      logger.debug(`[PropertyAnalytics] No GA connection for property ${propertyId}`);
+      logger.debug(`[PropertyAnalytics] No domain connection for property ${propertyId}`);
       return null;
     }
 
+    const domain = connection.ga_property_id;
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const start = dateRange?.start || thirtyDaysAgo.toISOString().split('T')[0];
     const end = dateRange?.end || now.toISOString().split('T')[0];
 
     try {
-      const gaData = await this._fetchFromGA4(connection.ga_property_id, start, end);
+      const spyFuData = await this._fetchLatestDomainStats(domain);
+
+      if (!spyFuData) {
+        logger.warn(`[PropertyAnalytics] SpyFu returned no data for domain ${domain}`);
+        return this._getCachedAnalytics(propertyId, start, end);
+      }
+
+      const totalSessions = (spyFuData.monthlyOrganicClicks || 0) + (spyFuData.monthlyPaidClicks || 0);
 
       await this.pool.query(
         `INSERT INTO property_website_analytics
@@ -117,39 +145,62 @@ export class PropertyAnalyticsService {
            top_landing_pages = EXCLUDED.top_landing_pages,
            device_breakdown = EXCLUDED.device_breakdown`,
         [
-          propertyId, connection.ga_property_id, start, end,
-          gaData.sessions, gaData.users, gaData.new_users, gaData.pageviews,
-          gaData.avg_session_duration, gaData.bounce_rate,
-          gaData.traffic_sources.organic, gaData.traffic_sources.paid,
-          gaData.traffic_sources.direct, gaData.traffic_sources.referral,
-          gaData.traffic_sources.social,
-          JSON.stringify(gaData.top_landing_pages),
-          JSON.stringify(gaData.device_breakdown),
+          propertyId, domain, start, end,
+          totalSessions, totalSessions, 0, 0,
+          0, 0,
+          spyFuData.monthlyOrganicClicks || 0,
+          spyFuData.monthlyPaidClicks || 0,
+          0, 0, 0,
+          JSON.stringify([]),
+          JSON.stringify({
+            organic_value: spyFuData.monthlyOrganicValue || 0,
+            organic_keywords: spyFuData.totalOrganicResults || 0,
+            paid_keywords: spyFuData.totalAdsPurchased || 0,
+            domain_strength: spyFuData.strength || 0,
+            avg_organic_rank: spyFuData.averageOrganicRank || 0,
+          }),
         ]
       );
 
       await this.pool.query(
         `UPDATE property_ga_connections SET last_synced = NOW(), sync_error = NULL, updated_at = NOW()
          WHERE property_id = $1 AND ga_property_id = $2`,
-        [propertyId, connection.ga_property_id]
+        [propertyId, domain]
       );
 
       return {
-        ...gaData,
+        sessions: totalSessions,
+        users: totalSessions,
+        new_users: 0,
+        pageviews: 0,
+        avg_session_duration: 0,
+        bounce_rate: 0,
+        traffic_sources: {
+          organic: spyFuData.monthlyOrganicClicks || 0,
+          paid: spyFuData.monthlyPaidClicks || 0,
+          direct: 0,
+          referral: 0,
+          social: 0,
+        },
+        device_breakdown: {},
+        top_landing_pages: [],
         period_start: start,
         period_end: end,
         is_comp_proxy: false,
+        organic_value: spyFuData.monthlyOrganicValue || 0,
+        organic_keywords: spyFuData.totalOrganicResults || 0,
+        paid_keywords: spyFuData.totalAdsPurchased || 0,
+        domain_strength: spyFuData.strength || 0,
       };
     } catch (error: any) {
-      logger.error(`[PropertyAnalytics] GA fetch failed for ${propertyId}`, { error: error.message });
+      logger.error(`[PropertyAnalytics] SpyFu fetch failed for ${domain}`, { error: error.message });
       await this.pool.query(
         `UPDATE property_ga_connections SET sync_error = $3, updated_at = NOW()
          WHERE property_id = $1 AND ga_property_id = $2`,
-        [propertyId, connection.ga_property_id, error.message]
+        [propertyId, domain, error.message]
       );
 
-      const cached = await this._getCachedAnalytics(propertyId, start, end);
-      return cached;
+      return this._getCachedAnalytics(propertyId, start, end);
     }
   }
 
@@ -188,12 +239,22 @@ export class PropertyAnalyticsService {
     }
 
     if (uniqueComps.length === 0) {
-      logger.info(`[PropertyAnalytics] No comps with GA data in trade area ${tradeAreaId}`);
+      logger.info(`[PropertyAnalytics] No comps with domain data in trade area ${tradeAreaId}`);
       return null;
     }
 
     const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
     const avgDec = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+    const extractSpyFu = (row: any) => {
+      const db = row.device_breakdown || {};
+      return {
+        organic_value: db.organic_value || 0,
+        organic_keywords: db.organic_keywords || 0,
+        paid_keywords: db.paid_keywords || 0,
+        domain_strength: db.domain_strength || 0,
+      };
+    };
 
     const proxyMetrics: WebTrafficMetrics = {
       sessions: avg(uniqueComps.map(c => c.sessions || 0)),
@@ -201,13 +262,13 @@ export class PropertyAnalyticsService {
       new_users: avg(uniqueComps.map(c => c.new_users || 0)),
       pageviews: avg(uniqueComps.map(c => c.pageviews || 0)),
       avg_session_duration: avgDec(uniqueComps.map(c => parseFloat(c.avg_session_duration) || 0)),
-      bounce_rate: avgDec(uniqueComps.map(c => parseFloat(c.bounce_rate) || 0)),
+      bounce_rate: 0,
       traffic_sources: {
         organic: avg(uniqueComps.map(c => c.organic_sessions || 0)),
         paid: avg(uniqueComps.map(c => c.paid_sessions || 0)),
-        direct: avg(uniqueComps.map(c => c.direct_sessions || 0)),
-        referral: avg(uniqueComps.map(c => c.referral_sessions || 0)),
-        social: avg(uniqueComps.map(c => c.social_sessions || 0)),
+        direct: 0,
+        referral: 0,
+        social: 0,
       },
       device_breakdown: {},
       top_landing_pages: [],
@@ -215,6 +276,10 @@ export class PropertyAnalyticsService {
       period_end: new Date().toISOString().split('T')[0],
       is_comp_proxy: true,
       proxy_source_properties: uniqueComps.map(c => c.property_id),
+      organic_value: avgDec(uniqueComps.map(c => extractSpyFu(c).organic_value)),
+      organic_keywords: avg(uniqueComps.map(c => extractSpyFu(c).organic_keywords)),
+      paid_keywords: avg(uniqueComps.map(c => extractSpyFu(c).paid_keywords)),
+      domain_strength: avgDec(uniqueComps.map(c => extractSpyFu(c).domain_strength)),
     };
 
     const now = new Date();
@@ -261,7 +326,8 @@ export class PropertyAnalyticsService {
 
   async getWebTrafficScore(propertyId: string): Promise<WebTrafficScore> {
     const result = await this.pool.query(
-      `SELECT sessions, users, pageviews, bounce_rate, period_start, period_end, is_comp_proxy
+      `SELECT sessions, users, pageviews, bounce_rate, device_breakdown,
+              period_start, period_end, is_comp_proxy
        FROM property_website_analytics
        WHERE property_id = $1
        ORDER BY period_end DESC
@@ -275,18 +341,18 @@ export class PropertyAnalyticsService {
 
     const current = result.rows[0];
     const sessions = current.sessions || 0;
+    const db = current.device_breakdown || {};
+    const domainStrength = db.domain_strength || 0;
 
-    let score: number;
-    if (sessions >= 5000) score = 95;
-    else if (sessions >= 3000) score = 85;
-    else if (sessions >= 1500) score = 70;
-    else if (sessions >= 500) score = 50;
-    else if (sessions >= 100) score = 30;
-    else score = 10;
+    let volumeScore: number;
+    if (sessions >= 5000) volumeScore = 95;
+    else if (sessions >= 3000) volumeScore = 85;
+    else if (sessions >= 1500) volumeScore = 70;
+    else if (sessions >= 500) volumeScore = 50;
+    else if (sessions >= 100) volumeScore = 30;
+    else volumeScore = 10;
 
-    const bounceRate = parseFloat(current.bounce_rate) || 0;
-    if (bounceRate < 0.3) score = Math.min(100, score + 5);
-    else if (bounceRate > 0.7) score = Math.max(0, score - 10);
+    const score = Math.round(volumeScore * 0.6 + domainStrength * 0.4);
 
     let trend_direction = 'flat';
     let trend_pct = 0;
@@ -336,121 +402,88 @@ export class PropertyAnalyticsService {
     return result.rows;
   }
 
-  private async _fetchFromGA4(
-    gaPropertyId: string,
-    startDate: string,
-    endDate: string
-  ): Promise<Omit<WebTrafficMetrics, 'period_start' | 'period_end' | 'is_comp_proxy'>> {
-    const gaAccessToken = process.env.GOOGLE_ANALYTICS_ACCESS_TOKEN;
-    const gaRefreshToken = process.env.GOOGLE_ANALYTICS_REFRESH_TOKEN;
-    const gaClientId = process.env.GOOGLE_ANALYTICS_CLIENT_ID;
-    const gaClientSecret = process.env.GOOGLE_ANALYTICS_CLIENT_SECRET;
-
-    if (gaAccessToken || gaRefreshToken) {
-      try {
-        return await this._callGA4API(gaPropertyId, startDate, endDate, gaAccessToken || '');
-      } catch (error: any) {
-        logger.warn(`[PropertyAnalytics] GA4 API call failed, using cached/estimated data`, { error: error.message });
-      }
-    }
-
-    logger.info(`[PropertyAnalytics] No GA credentials configured, generating estimated metrics for ${gaPropertyId}`);
-    return this._generateEstimatedMetrics(gaPropertyId);
+  async getDomainHistory(domain: string): Promise<SpyFuDomainStats[] | null> {
+    return this._fetchDomainHistory(domain);
   }
 
-  private async _callGA4API(
-    gaPropertyId: string,
-    startDate: string,
-    endDate: string,
-    accessToken: string
-  ): Promise<Omit<WebTrafficMetrics, 'period_start' | 'period_end' | 'is_comp_proxy'>> {
-    const url = `https://analyticsdata.googleapis.com/v1beta/properties/${gaPropertyId}:runReport`;
+  private async _fetchLatestDomainStats(domain: string): Promise<SpyFuDomainStats | null> {
+    const apiKey = process.env.SPYFU_API_KEY;
+    if (!apiKey) {
+      logger.warn('[PropertyAnalytics] SPYFU_API_KEY not configured');
+      return null;
+    }
+
+    const url = `${SPYFU_BASE}/domain_stats_api/v2/getLatestDomainStats?domain=${encodeURIComponent(domain)}&api_key=${apiKey}`;
+    logger.debug(`[PropertyAnalytics] Fetching SpyFu latest stats for ${domain}`);
 
     const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        dateRanges: [{ startDate, endDate }],
-        metrics: [
-          { name: 'sessions' },
-          { name: 'totalUsers' },
-          { name: 'newUsers' },
-          { name: 'screenPageViews' },
-          { name: 'averageSessionDuration' },
-          { name: 'bounceRate' },
-        ],
-        dimensions: [{ name: 'sessionDefaultChannelGroup' }],
-      }),
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
     });
 
     if (!response.ok) {
-      throw new Error(`GA4 API error: ${response.status} ${response.statusText}`);
+      const text = await response.text().catch(() => '');
+      throw new Error(`SpyFu API error: ${response.status} ${response.statusText} — ${text.substring(0, 200)}`);
     }
 
     const data = await response.json() as any;
-    const rows = data.rows || [];
 
-    let sessions = 0, users = 0, newUsers = 0, pageviews = 0;
-    let avgDuration = 0, bounceRate = 0;
-    const sources = { organic: 0, paid: 0, direct: 0, referral: 0, social: 0 };
-
-    for (const row of rows) {
-      const channel = (row.dimensionValues?.[0]?.value || '').toLowerCase();
-      const s = parseInt(row.metricValues?.[0]?.value || '0');
-      sessions += s;
-      users += parseInt(row.metricValues?.[1]?.value || '0');
-      newUsers += parseInt(row.metricValues?.[2]?.value || '0');
-      pageviews += parseInt(row.metricValues?.[3]?.value || '0');
-
-      if (channel.includes('organic')) sources.organic += s;
-      else if (channel.includes('paid')) sources.paid += s;
-      else if (channel.includes('direct')) sources.direct += s;
-      else if (channel.includes('referral')) sources.referral += s;
-      else if (channel.includes('social')) sources.social += s;
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      return null;
     }
 
-    if (rows.length > 0) {
-      avgDuration = parseFloat(rows[0].metricValues?.[4]?.value || '0');
-      bounceRate = parseFloat(rows[0].metricValues?.[5]?.value || '0');
-    }
+    const stats = Array.isArray(data) ? data[0] : data;
 
     return {
-      sessions, users, new_users: newUsers, pageviews,
-      avg_session_duration: Math.round(avgDuration * 100) / 100,
-      bounce_rate: Math.round(bounceRate * 10000) / 10000,
-      traffic_sources: sources,
-      device_breakdown: {},
-      top_landing_pages: [],
+      monthlyOrganicClicks: stats.monthlyOrganicClicks || 0,
+      monthlyPaidClicks: stats.monthlyPaidClicks || 0,
+      monthlyOrganicValue: stats.monthlyOrganicValue || 0,
+      totalOrganicResults: stats.totalOrganicResults || 0,
+      totalAdsPurchased: stats.totalAdsPurchased || 0,
+      averageOrganicRank: stats.averageOrganicRank || 0,
+      strength: stats.strength || 0,
+      searchMonth: stats.searchMonth || new Date().getMonth() + 1,
+      searchYear: stats.searchYear || new Date().getFullYear(),
     };
   }
 
-  private _generateEstimatedMetrics(
-    gaPropertyId: string
-  ): Omit<WebTrafficMetrics, 'period_start' | 'period_end' | 'is_comp_proxy'> {
-    const hash = gaPropertyId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const baseSessions = 800 + (hash % 3000);
-    const users = Math.round(baseSessions * 0.72);
+  private async _fetchDomainHistory(domain: string): Promise<SpyFuDomainStats[] | null> {
+    const apiKey = process.env.SPYFU_API_KEY;
+    if (!apiKey) {
+      logger.warn('[PropertyAnalytics] SPYFU_API_KEY not configured');
+      return null;
+    }
 
-    return {
-      sessions: baseSessions,
-      users,
-      new_users: Math.round(users * 0.45),
-      pageviews: Math.round(baseSessions * 2.8),
-      avg_session_duration: 95 + (hash % 120),
-      bounce_rate: 0.35 + (hash % 30) / 100,
-      traffic_sources: {
-        organic: Math.round(baseSessions * 0.42),
-        paid: Math.round(baseSessions * 0.18),
-        direct: Math.round(baseSessions * 0.25),
-        referral: Math.round(baseSessions * 0.10),
-        social: Math.round(baseSessions * 0.05),
-      },
-      device_breakdown: { desktop: 55, mobile: 38, tablet: 7 },
-      top_landing_pages: [],
-    };
+    const url = `${SPYFU_BASE}/domain_stats_api/v2/getAllDomainStats?domain=${encodeURIComponent(domain)}&api_key=${apiKey}`;
+    logger.debug(`[PropertyAnalytics] Fetching SpyFu history for ${domain}`);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`SpyFu history API error: ${response.status} ${response.statusText} — ${text.substring(0, 200)}`);
+    }
+
+    const data = await response.json() as any;
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    return data.map((row: any) => ({
+      monthlyOrganicClicks: row.monthlyOrganicClicks || 0,
+      monthlyPaidClicks: row.monthlyPaidClicks || 0,
+      monthlyOrganicValue: row.monthlyOrganicValue || 0,
+      totalOrganicResults: row.totalOrganicResults || 0,
+      totalAdsPurchased: row.totalAdsPurchased || 0,
+      averageOrganicRank: row.averageOrganicRank || 0,
+      strength: row.strength || 0,
+      searchMonth: row.searchMonth || 0,
+      searchYear: row.searchYear || 0,
+    }));
   }
 
   private async _getCachedAnalytics(
@@ -468,13 +501,14 @@ export class PropertyAnalyticsService {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
+    const db = row.device_breakdown || {};
     return {
       sessions: row.sessions,
       users: row.users,
       new_users: row.new_users,
       pageviews: row.pageviews,
       avg_session_duration: parseFloat(row.avg_session_duration) || 0,
-      bounce_rate: parseFloat(row.bounce_rate) || 0,
+      bounce_rate: 0,
       traffic_sources: {
         organic: row.organic_sessions || 0,
         paid: row.paid_sessions || 0,
@@ -488,6 +522,10 @@ export class PropertyAnalyticsService {
       period_end: row.period_end,
       is_comp_proxy: row.is_comp_proxy,
       proxy_source_properties: row.proxy_source_properties,
+      organic_value: db.organic_value || 0,
+      organic_keywords: db.organic_keywords || 0,
+      paid_keywords: db.paid_keywords || 0,
+      domain_strength: db.domain_strength || 0,
     };
   }
 }
