@@ -54,7 +54,7 @@ import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
 import marketIntelRoutes from './api/rest/marketIntel.routes';
-import leasingTrafficRoutes from './api/rest/leasingTraffic.routes';
+import leasingTrafficRoutes from './api/rest/leasing-traffic.routes';
 import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
 import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes';
