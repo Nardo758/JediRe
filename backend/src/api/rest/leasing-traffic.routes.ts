@@ -17,6 +17,7 @@ import { demandSignalService } from '../../services/demand-signal.service';
 import { supplySignalService } from '../../services/supply-signal.service';
 import { DigitalTrafficService } from '../../services/digitalTrafficService';
 import { trafficCalibrationService } from '../../services/traffic-calibration.service';
+import trafficPredictionEngine from '../../services/trafficPredictionEngine';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -578,6 +579,44 @@ const weeklyUpload = multer({
         logger.debug('[LeasingTraffic] Market factors fetch skipped, using defaults');
       }
 
+      let dataSourceSignals: any = null;
+      let tradeAreaWarning: string | undefined;
+
+      try {
+        const dealCheck = await pool.query(
+          `SELECT d.trade_area_id, d.property_id FROM deals d WHERE d.id = $1`,
+          [dealId]
+        );
+        if (dealCheck.rows.length > 0) {
+          const deal = dealCheck.rows[0];
+          if (!deal.trade_area_id) {
+            tradeAreaWarning = 'Define a trade area to unlock full traffic intelligence (comp proxy, market context, visibility scoring)';
+          }
+          const propId = deal.property_id;
+          if (propId) {
+            try {
+              dataSourceSignals = await trafficPredictionEngine.loadDataSourceSignals(propId);
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Data source signals fetch skipped');
+            }
+          } else {
+            try {
+              const propLookup = await pool.query(
+                `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
+                [dealId]
+              );
+              if (propLookup.rows.length > 0) {
+                dataSourceSignals = await trafficPredictionEngine.loadDataSourceSignals(propLookup.rows[0].id);
+              }
+            } catch (e) {
+              logger.debug('[LeasingTraffic] Property data source signals lookup skipped');
+            }
+          }
+        }
+      } catch (e) {
+        logger.debug('[LeasingTraffic] Trade area / data source check skipped');
+      }
+
       const projection = await weeklyReportParser.generateProjection(
         dealId,
         view as 'weekly' | 'monthly' | 'yearly',
@@ -586,10 +625,89 @@ const weeklyUpload = multer({
         calibrationData
       );
 
-      res.json(projection);
+      const response: any = { ...projection };
+      if (dataSourceSignals) {
+        response.data_sources = dataSourceSignals;
+      }
+      if (tradeAreaWarning) {
+        response.warnings = response.warnings || [];
+        response.warnings.push({ type: 'trade_area_missing', message: tradeAreaWarning });
+      }
+
+      res.json(response);
     } catch (error: any) {
       logger.error('[LeasingTraffic] Projection failed', { error: error.message });
       res.status(500).json({ error: 'Failed to generate projection', message: error.message });
+    }
+  });
+
+  router.get('/data-sources/:dealId', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+
+      const dealResult = await pool.query(
+        `SELECT d.trade_area_id, d.property_id FROM deals d WHERE d.id = $1`,
+        [dealId]
+      );
+
+      if (dealResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+
+      const deal = dealResult.rows[0];
+      const warnings: any[] = [];
+
+      if (!deal.trade_area_id) {
+        warnings.push({
+          type: 'trade_area_missing',
+          message: 'Define a trade area to unlock full traffic intelligence',
+        });
+      }
+
+      let propertyId = deal.property_id;
+      if (!propertyId) {
+        const propLookup = await pool.query(
+          `SELECT id FROM properties WHERE deal_id = $1 LIMIT 1`,
+          [dealId]
+        );
+        propertyId = propLookup.rows[0]?.id;
+      }
+
+      if (!propertyId) {
+        return res.json({
+          data_sources: {
+            data_quality: { sources_connected: 0, total_sources: 4, confidence_level: 'Low', missing_sources: ['visibility', 'street_traffic', 'website_traffic', 'market_intel'] },
+          },
+          trade_area_id: deal.trade_area_id,
+          warnings,
+        });
+      }
+
+      const signals = await trafficPredictionEngine.loadDataSourceSignals(propertyId);
+
+      let tradeAreaName: string | undefined;
+      if (deal.trade_area_id) {
+        try {
+          const taResult = await pool.query(
+            `SELECT name, method FROM trade_areas WHERE id = $1`,
+            [deal.trade_area_id]
+          );
+          if (taResult.rows.length > 0) {
+            tradeAreaName = taResult.rows[0].name;
+          }
+        } catch (_) {}
+      }
+
+      res.json({
+        data_sources: signals,
+        trade_area_id: deal.trade_area_id,
+        trade_area_name: tradeAreaName,
+        property_id: propertyId,
+        warnings,
+      });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Data sources fetch failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to fetch data sources' });
     }
   });
 

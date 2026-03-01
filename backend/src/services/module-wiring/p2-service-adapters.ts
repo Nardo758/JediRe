@@ -24,7 +24,6 @@ function getLeasingTrafficService() {
   return require('../leasingTrafficService').default;
 }
 function getDigitalTrafficService() {
-  // DigitalTrafficService requires a Pool instance; lazily construct
   const { DigitalTrafficService } = require('../digitalTrafficService');
   const { pool } = require('../../database');
   return new DigitalTrafficService(pool);
@@ -34,6 +33,33 @@ function getPropertyMetricsService() {
   const { pool } = require('../../database');
   return new PropertyMetricsService(pool);
 }
+function getVisibilityScoringService() {
+  try {
+    const mod = require('../visibility-scoring.service');
+    return mod.visibilityScoringService || mod.default || null;
+  } catch { return null; }
+}
+function getTrafficDataSourcesService() {
+  try {
+    const mod = require('../traffic-data-sources.service');
+    return mod.trafficDataSourcesService || mod.default || null;
+  } catch { return null; }
+}
+function getPropertyAnalyticsService() {
+  try {
+    const mod = require('../property-analytics.service');
+    return mod.propertyAnalyticsService || mod.default || null;
+  } catch { return null; }
+}
+function getCompTrafficService() {
+  try {
+    const mod = require('../comp-traffic.service');
+    return mod.compTrafficService || mod.default || null;
+  } catch { return null; }
+}
+function getTrafficModuleWiring() {
+  return require('../traffic-module-wiring');
+}
 
 // ============================================================================
 // P2-1: M07 Traffic Intelligence
@@ -41,21 +67,27 @@ function getPropertyMetricsService() {
 
 /**
  * Wire traffic intelligence for a property.
- * Combines physical foot traffic, digital engagement, and leasing predictions.
- * Downstream: M05 Market, M08 Strategy, M09 ProForma
+ * Combines all 4 data sources: DOT/Google street traffic, Google Analytics website
+ * traffic, Apartment Locator AI market intel, and Location Visibility scoring.
+ * Publishes TrafficIntelligenceV2 to DataFlowRouter for downstream cascade.
+ * Downstream: M05 Market, M08 Strategy, M09 ProForma, M14 Risk, M25 JEDI Score
  */
 export async function wireTrafficIntelligence(
   dealId: string,
   propertyId: string,
+  options?: { tradeAreaId?: string; totalUnits?: number },
 ): Promise<void> {
   try {
     const trafficEngine = getTrafficPredictionEngine();
     const leasingService = getLeasingTrafficService();
+    let connectedSources = 0;
 
-    // Get physical traffic prediction
+    // Source 1: Physical traffic prediction (DOT ADT + Google real-time)
     let physicalTraffic = null;
+    let trafficContext = null;
     try {
       physicalTraffic = await trafficEngine.predictTraffic(propertyId);
+      connectedSources++;
     } catch (err) {
       logger.warn('[P2-1] Physical traffic prediction unavailable', {
         propertyId,
@@ -63,7 +95,85 @@ export async function wireTrafficIntelligence(
       });
     }
 
-    // Get leasing traffic prediction
+    const trafficDataService = getTrafficDataSourcesService();
+    if (trafficDataService) {
+      try {
+        trafficContext = await trafficDataService.getPropertyTrafficContext(propertyId);
+        if (trafficContext && !physicalTraffic) connectedSources++;
+      } catch (err) {
+        logger.warn('[P2-1] DOT/Google traffic context unavailable', {
+          propertyId,
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    // Source 2: Website traffic (Google Analytics or comp proxy)
+    let webTraffic = null;
+    const analyticsService = getPropertyAnalyticsService();
+    if (analyticsService) {
+      try {
+        webTraffic = await analyticsService.fetchPropertyWebTraffic(propertyId, { days: 30 });
+        if (webTraffic) connectedSources++;
+      } catch (err) {
+        if (options?.tradeAreaId) {
+          try {
+            webTraffic = await analyticsService.getCompProxyTraffic(propertyId, options.tradeAreaId);
+            if (webTraffic) connectedSources++;
+          } catch {}
+        }
+        logger.warn('[P2-1] Website analytics unavailable', {
+          propertyId,
+          error: (err as Error).message,
+        });
+      }
+    }
+
+    // Source 3: Digital traffic score (Apartment Locator AI / market intel)
+    let digitalScore = null;
+    try {
+      const digitalService = getDigitalTrafficService();
+      digitalScore = await digitalService.calculateDigitalScore(propertyId);
+      if (digitalScore) connectedSources++;
+    } catch (err) {
+      logger.warn('[P2-1] Digital traffic score unavailable', {
+        propertyId,
+        error: (err as Error).message,
+      });
+    }
+
+    // Source 4: Visibility scoring
+    let visibilityData = null;
+    const visibilityService = getVisibilityScoringService();
+    if (visibilityService) {
+      try {
+        visibilityData = await visibilityService.getVisibilityScore(propertyId);
+      } catch (err) {
+        logger.warn('[P2-1] Visibility score unavailable', {
+          propertyId,
+          error: (err as Error).message,
+        });
+      }
+    }
+    if (visibilityData) connectedSources++;
+
+    // Comp traffic averages from trade area
+    let compAverages = null;
+    if (options?.tradeAreaId) {
+      const compService = getCompTrafficService();
+      if (compService) {
+        try {
+          compAverages = await compService.getCompAverages(options.tradeAreaId);
+        } catch (err) {
+          logger.warn('[P2-1] Comp averages unavailable', {
+            tradeAreaId: options.tradeAreaId,
+            error: (err as Error).message,
+          });
+        }
+      }
+    }
+
+    // Leasing traffic prediction
     let leasingTraffic = null;
     try {
       leasingTraffic = await leasingService.predictCurrentWeek(propertyId);
@@ -74,23 +184,11 @@ export async function wireTrafficIntelligence(
       });
     }
 
-    // Get digital traffic score
-    let digitalScore = null;
-    try {
-      const digitalService = getDigitalTrafficService();
-      digitalScore = await digitalService.calculateDigitalScore(propertyId);
-    } catch (err) {
-      logger.warn('[P2-1] Digital traffic score unavailable', {
-        propertyId,
-        error: (err as Error).message,
-      });
-    }
-
     // Execute F28: Traffic-to-Lease Prediction
     const trafficToLease = executeFormula('F28', {
-      daily_drive_bys: physicalTraffic?.daily_average || 0,
-      weekly_web_visits: digitalScore?.weekly_views || 0,
-      monthly_search_volume: (digitalScore?.weekly_views || 0) * 4,
+      daily_drive_bys: physicalTraffic?.daily_average || trafficContext?.primary_adt || 0,
+      weekly_web_visits: webTraffic?.sessions || digitalScore?.weekly_views || 0,
+      monthly_search_volume: (webTraffic?.sessions || digitalScore?.weekly_views || 0) * 4,
     });
 
     // Execute F29: Lease Velocity Index
@@ -98,10 +196,39 @@ export async function wireTrafficIntelligence(
       monthly_leases: leasingTraffic?.expected_leases
         ? leasingTraffic.expected_leases * 4
         : trafficToLease.predicted_leases * 4,
-      available_units: leasingTraffic?.available_units || 20,
+      available_units: leasingTraffic?.available_units || options?.totalUnits || 20,
     });
 
-    // Publish M07 outputs
+    const captureRate = visibilityData?.capture_rate ?? (physicalTraffic
+      ? trafficToLease.predicted_leases / Math.max(1, physicalTraffic.weekly_walk_ins) * 100
+      : null);
+
+    const visibilityScore = visibilityData?.composite_score ?? null;
+
+    // Calculate ProForma assumption overrides from traffic data
+    const totalUnits = options?.totalUnits || leasingTraffic?.available_units || 200;
+    const annualLeases = trafficToLease.predicted_leases * 52;
+    const annualTurnover = totalUnits * 0.50;
+    const leaseDemandRatio = annualLeases / Math.max(annualTurnover, 1);
+    const impliedOccupancy = Math.min(98, 88 + (leaseDemandRatio * 8));
+    const vacancyAssumption = Math.round((100 - impliedOccupancy) * 10) / 10;
+
+    let rentGrowthAdj = 0;
+    if (leaseVelocity.velocity_rating === 'Increasing' || leaseVelocity.velocity_rating === 'Hot') rentGrowthAdj = 0.005;
+    else if (leaseVelocity.velocity_rating === 'Decreasing' || leaseVelocity.velocity_rating === 'Cold') rentGrowthAdj = -0.005;
+
+    const absorptionRate = Math.round(trafficToLease.predicted_leases * 52);
+
+    // Calculate risk signals
+    const occupancyBelowThreshold = leasingTraffic
+      ? leasingTraffic.occupancy_pct < 93
+      : impliedOccupancy < 93;
+    const seasonalRiskWindows: Array<{ week_start: number; week_end: number; risk: string }> = [];
+    if (leaseVelocity.velocity_rating === 'Cold' || leaseVelocity.velocity_rating === 'Decreasing') {
+      seasonalRiskWindows.push({ week_start: 1, week_end: 12, risk: 'low_traffic_period' });
+    }
+
+    // Publish M07 outputs with full TrafficIntelligenceV2 payload
     dataFlowRouter.publishModuleData('M07', dealId, {
       predicted_leases_week: trafficToLease.predicted_leases,
       traffic_to_lease_ratio: physicalTraffic
@@ -109,12 +236,38 @@ export async function wireTrafficIntelligence(
         : null,
       traffic_trend: leaseVelocity.velocity_rating,
       search_volume_index: digitalScore?.score || null,
+      visibility_score: visibilityScore,
+      capture_rate: captureRate,
+      comp_averages: compAverages,
+      data_quality_score: connectedSources,
+      vacancy_assumption: vacancyAssumption,
+      rent_growth_adjustment: rentGrowthAdj,
+      absorption_rate: absorptionRate,
+      seasonal_risk_windows: seasonalRiskWindows,
+      occupancy_below_threshold: occupancyBelowThreshold,
       physical_traffic: physicalTraffic
         ? {
             weekly_walk_ins: physicalTraffic.weekly_walk_ins,
             daily_average: physicalTraffic.daily_average,
             peak_hour: physicalTraffic.peak_hour_estimate,
             confidence: physicalTraffic.confidence,
+          }
+        : null,
+      street_traffic: trafficContext
+        ? {
+            primary_adt: trafficContext.primary_adt,
+            primary_road: trafficContext.primary_road_name,
+            google_realtime_factor: trafficContext.google_realtime_factor,
+            trend_direction: trafficContext.trend_direction,
+            trend_pct: trafficContext.trend_pct,
+          }
+        : null,
+      web_traffic: webTraffic
+        ? {
+            sessions: webTraffic.sessions,
+            users: webTraffic.users,
+            bounce_rate: webTraffic.bounce_rate,
+            is_comp_proxy: webTraffic.is_comp_proxy || false,
           }
         : null,
       digital_traffic: digitalScore
@@ -124,6 +277,13 @@ export async function wireTrafficIntelligence(
             weekly_saves: digitalScore.weekly_saves,
             trending_velocity: digitalScore.trending_velocity,
             institutional_interest: digitalScore.institutional_interest_flag,
+          }
+        : null,
+      visibility: visibilityData
+        ? {
+            composite_score: visibilityData.composite_score,
+            capture_rate: visibilityData.capture_rate,
+            tier: visibilityData.tier,
           }
         : null,
       leasing_prediction: leasingTraffic
@@ -137,7 +297,7 @@ export async function wireTrafficIntelligence(
       lease_velocity: leaseVelocity,
     });
 
-    // Emit data updated for downstream cascade
+    // Emit data updated for downstream cascade (M05, M08, M09, M14, M25)
     moduleEventBus.emit({
       type: ModuleEventType.DATA_UPDATED,
       sourceModule: 'M07',
@@ -145,15 +305,21 @@ export async function wireTrafficIntelligence(
       data: {
         predicted_leases: trafficToLease.predicted_leases,
         velocity_rating: leaseVelocity.velocity_rating,
+        visibility_score: visibilityScore,
+        capture_rate: captureRate,
+        data_quality_score: connectedSources,
       },
       timestamp: new Date(),
     });
 
-    logger.info('[P2-1] Traffic intelligence wired', {
+    logger.info('[P2-1] Traffic intelligence wired (V2)', {
       dealId,
       propertyId,
       predictedLeases: trafficToLease.predicted_leases,
       velocityRating: leaseVelocity.velocity_rating,
+      visibilityScore,
+      captureRate,
+      connectedSources,
       digitalScore: digitalScore?.score,
     });
   } catch (error) {
@@ -572,6 +738,8 @@ export async function wireP2Pipeline(
   dealId: string,
   options?: {
     propertyId?: string;
+    tradeAreaId?: string;
+    totalUnits?: number;
     exitParams?: Parameters<typeof wireExitAnalysis>[1];
     portfolioAssets?: Parameters<typeof wirePortfolioPerformance>[0];
   },
@@ -586,7 +754,10 @@ export async function wireP2Pipeline(
   try {
     // Step 1: P2-1 Traffic Intelligence (if property ID provided)
     if (options?.propertyId) {
-      await wireTrafficIntelligence(dealId, options.propertyId);
+      await wireTrafficIntelligence(dealId, options.propertyId, {
+        tradeAreaId: options.tradeAreaId,
+        totalUnits: options.totalUnits,
+      });
       modulesWired.push('M07');
     }
 
@@ -632,7 +803,7 @@ export async function wireP2Pipeline(
  * Set up automatic cascade subscriptions for P2 modules.
  */
 export function setupP2Subscriptions(): void {
-  // When M07 Traffic data updates → recalculate M05 Market and M09 ProForma
+  // When M07 Traffic data updates → recalculate M05, M08, M09, M14, M25
   moduleEventBus.on(ModuleEventType.DATA_UPDATED, async (event) => {
     if (event.sourceModule === 'M07') {
       moduleEventBus.emitDebounced(
@@ -649,12 +820,45 @@ export function setupP2Subscriptions(): void {
       moduleEventBus.emitDebounced(
         {
           type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M08',
+          dealId: event.dealId,
+          data: { trigger: 'traffic_update' },
+          timestamp: new Date(),
+        },
+        `strategy-recalc-traffic:${event.dealId}`,
+      );
+
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
           sourceModule: 'M09',
           dealId: event.dealId,
           data: { trigger: 'traffic_update' },
           timestamp: new Date(),
         },
         `proforma-recalc-traffic:${event.dealId}`,
+      );
+
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M14',
+          dealId: event.dealId,
+          data: { trigger: 'traffic_update', visibility_score: event.data?.visibility_score },
+          timestamp: new Date(),
+        },
+        `risk-recalc-traffic:${event.dealId}`,
+      );
+
+      moduleEventBus.emitDebounced(
+        {
+          type: ModuleEventType.RECALCULATE,
+          sourceModule: 'M25',
+          dealId: event.dealId,
+          data: { trigger: 'traffic_update', predicted_leases: event.data?.predicted_leases },
+          timestamp: new Date(),
+        },
+        `jedi-recalc-traffic:${event.dealId}`,
       );
     }
   });

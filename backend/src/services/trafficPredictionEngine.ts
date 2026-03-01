@@ -13,6 +13,45 @@ import marketResearchEngine from './marketResearchEngine';
 import { trafficLearning } from './trafficLearningService';
 import type { LearnedRates } from './trafficLearningService';
 
+export interface DataSourceSignals {
+  visibility?: {
+    overall_score: number;
+    capture_rate: number;
+    tier: string;
+    component_scores?: Record<string, number>;
+  };
+  traffic_context?: {
+    primary_adt: number;
+    primary_road_name: string;
+    primary_road_classification: string;
+    secondary_adt?: number;
+    google_realtime_factor: number;
+    trend_direction: string;
+    trend_pct: number;
+  };
+  web_traffic?: {
+    sessions: number;
+    users: number;
+    bounce_rate: number;
+    score: number;
+    is_comp_proxy: boolean;
+    proxy_source_count?: number;
+  };
+  market_intel?: {
+    supply_demand_ratio?: number;
+    absorption_rate?: number;
+    avg_days_to_lease?: number;
+    rent_comp_avg?: number;
+    concession_rate?: number;
+  };
+  data_quality: {
+    sources_connected: number;
+    total_sources: number;
+    confidence_level: 'High' | 'Moderate' | 'Low';
+    missing_sources: string[];
+  };
+}
+
 // ============================================================================
 // v2 Prediction: Full 7-Metric Funnel
 // ============================================================================
@@ -135,45 +174,201 @@ interface TrafficPrediction {
 
 export class TrafficPredictionEngine {
   
-  private readonly MODEL_VERSION = '1.0.0';
+  private readonly MODEL_VERSION = '1.1.0';
   private readonly JOBS_TO_UNITS_MULTIPLIER = 0.45;
-  private readonly JOBS_TO_RETAIL_TRIPS = 15;  // 1 job = 15 weekly retail trips
-  
-  /**
-   * Predict weekly foot traffic for a property
-   */
+  private readonly JOBS_TO_RETAIL_TRIPS = 15;
+
+  async loadDataSourceSignals(propertyId: string): Promise<DataSourceSignals> {
+    const missing: string[] = [];
+    let sourcesConnected = 0;
+
+    let visibility: DataSourceSignals['visibility'];
+    try {
+      const vr = await pool.query(
+        `SELECT overall_visibility_score, visibility_tier,
+                positional_score, sightline_score, setback_score,
+                signage_score, transparency_score, entrance_score,
+                obstruction_penalty
+         FROM property_visibility WHERE property_id = $1`,
+        [propertyId]
+      );
+      if (vr.rows.length > 0) {
+        const v = vr.rows[0];
+        const score = v.overall_visibility_score || 50;
+        const captureRate = 0.05 + (score / 100) * 0.15;
+        visibility = {
+          overall_score: score,
+          capture_rate: Math.round(captureRate * 1000) / 1000,
+          tier: v.visibility_tier || 'Fair',
+          component_scores: {
+            positional: v.positional_score,
+            sightline: v.sightline_score,
+            setback: v.setback_score,
+            signage: v.signage_score,
+            transparency: v.transparency_score,
+            entrance: v.entrance_score,
+            obstruction_penalty: v.obstruction_penalty,
+          },
+        };
+        sourcesConnected++;
+      } else {
+        missing.push('visibility');
+      }
+    } catch { missing.push('visibility'); }
+
+    let traffic_context: DataSourceSignals['traffic_context'];
+    try {
+      const tr = await pool.query(
+        `SELECT primary_adt, primary_road_name, primary_road_classification,
+                secondary_adt, google_realtime_factor, trend_direction, trend_pct
+         FROM property_traffic_context WHERE property_id = $1`,
+        [propertyId]
+      );
+      if (tr.rows.length > 0) {
+        const t = tr.rows[0];
+        traffic_context = {
+          primary_adt: t.primary_adt || 0,
+          primary_road_name: t.primary_road_name || '',
+          primary_road_classification: t.primary_road_classification || '',
+          secondary_adt: t.secondary_adt,
+          google_realtime_factor: Number(t.google_realtime_factor) || 1.0,
+          trend_direction: t.trend_direction || 'stable',
+          trend_pct: Number(t.trend_pct) || 0,
+        };
+        sourcesConnected++;
+      } else {
+        missing.push('street_traffic');
+      }
+    } catch { missing.push('street_traffic'); }
+
+    let web_traffic: DataSourceSignals['web_traffic'];
+    try {
+      const wr = await pool.query(
+        `SELECT sessions, users, bounce_rate, is_comp_proxy, proxy_source_properties
+         FROM property_website_analytics
+         WHERE property_id = $1
+         ORDER BY period_end DESC LIMIT 1`,
+        [propertyId]
+      );
+      if (wr.rows.length > 0) {
+        const w = wr.rows[0];
+        const sessions = w.sessions || 0;
+        const bounceRate = Number(w.bounce_rate) || 0.5;
+        const rawScore = Math.min(100, (sessions / 50) * (1 - bounceRate) * 100);
+        web_traffic = {
+          sessions,
+          users: w.users || 0,
+          bounce_rate: bounceRate,
+          score: Math.round(rawScore),
+          is_comp_proxy: w.is_comp_proxy || false,
+          proxy_source_count: w.is_comp_proxy
+            ? (w.proxy_source_properties || []).length
+            : undefined,
+        };
+        sourcesConnected++;
+      } else {
+        missing.push('website_traffic');
+      }
+    } catch { missing.push('website_traffic'); }
+
+    let market_intel: DataSourceSignals['market_intel'];
+    try {
+      const mr = await pool.query(
+        `SELECT market_data FROM apartment_market_data
+         WHERE property_id = $1 OR deal_id = $1
+         ORDER BY updated_at DESC LIMIT 1`,
+        [propertyId]
+      );
+      if (mr.rows.length > 0 && mr.rows[0].market_data) {
+        const md = typeof mr.rows[0].market_data === 'string'
+          ? JSON.parse(mr.rows[0].market_data) : mr.rows[0].market_data;
+        market_intel = {
+          supply_demand_ratio: md.supply_demand_ratio,
+          absorption_rate: md.absorption_rate,
+          avg_days_to_lease: md.avg_days_to_lease,
+          rent_comp_avg: md.rent_comp_avg,
+          concession_rate: md.concession_rate,
+        };
+        sourcesConnected++;
+      } else {
+        missing.push('market_intel');
+      }
+    } catch { missing.push('market_intel'); }
+
+    const confidenceLevel: DataSourceSignals['data_quality']['confidence_level'] =
+      sourcesConnected >= 3 ? 'High' : sourcesConnected >= 2 ? 'Moderate' : 'Low';
+
+    return {
+      visibility,
+      traffic_context,
+      web_traffic,
+      market_intel,
+      data_quality: {
+        sources_connected: sourcesConnected,
+        total_sources: 4,
+        confidence_level: confidenceLevel,
+        missing_sources: missing,
+      },
+    };
+  }
+
   async predictTraffic(propertyId: string, targetWeek?: number): Promise<TrafficPrediction> {
     console.log(`🚶 Predicting traffic for property ${propertyId}`);
     
     const startTime = Date.now();
     
-    // Step 1: Load property data
     const property = await this.loadProperty(propertyId);
     
-    // Step 2: Load market research
     const marketResearch = await marketResearchEngine.getCachedReport(propertyId, 24);
     
     if (!marketResearch) {
       throw new Error('Market research required for traffic prediction. Generate market report first.');
     }
+
+    const signals = await this.loadDataSourceSignals(propertyId);
+
+    if (signals.traffic_context && signals.traffic_context.primary_adt > 0) {
+      property.adt = signals.traffic_context.primary_adt;
+      property.road_type = this.mapRoadClassification(signals.traffic_context.primary_road_classification);
+    }
     
-    // Step 3: Calculate physical traffic component
     const physicalTraffic = this.calculatePhysicalTraffic(property);
+
+    let captureOverride: number | undefined;
+    if (signals.visibility) {
+      captureOverride = signals.visibility.capture_rate;
+    }
     
-    // Step 4: Translate market demand to property traffic
     const demandTraffic = this.translateDemandToTraffic(property, marketResearch);
     
-    // Step 5: Combine components (60% physical, 40% demand)
-    const baseTraffic = (physicalTraffic * 0.60) + (demandTraffic * 0.40);
+    let baseTraffic = (physicalTraffic * 0.60) + (demandTraffic * 0.40);
+
+    if (captureOverride !== undefined) {
+      const streetPedestrians = this.calculateStreetPedestrians(property);
+      const generatorTraffic = (
+        this.calculateResidentialWalkins(property) +
+        this.calculateWorkerWalkins(property) +
+        this.calculateTransitWalkins(property)
+      );
+      const visibilityPhysical = (streetPedestrians * captureOverride) + generatorTraffic;
+      baseTraffic = (visibilityPhysical * 0.60) + (demandTraffic * 0.40);
+    }
+
+    if (signals.traffic_context && signals.traffic_context.google_realtime_factor !== 1.0) {
+      baseTraffic *= signals.traffic_context.google_realtime_factor;
+    }
+
+    if (signals.web_traffic && signals.web_traffic.score > 0) {
+      const digitalDemandMultiplier = 1.0 + (signals.web_traffic.score / 100) * 0.15;
+      baseTraffic *= digitalDemandMultiplier;
+    }
     
-    // Step 6: Apply supply-demand dynamics
     const adjusted = this.applySupplyDemandAdjustment(
       baseTraffic,
       marketResearch.supply_analysis,
       marketResearch.employment_impact
     );
     
-    // Step 7: Apply calibration factors
     const calibrated = await this.applyCalibrations(
       adjusted.traffic,
       property,
@@ -841,6 +1036,15 @@ export class TrafficPredictionEngine {
       JSON.stringify(pred.funnel_breakdown),
       pred.property_id, pred.prediction_week, pred.prediction_year,
     ]);
+  }
+
+  private mapRoadClassification(classification: string): string {
+    const cl = (classification || '').toLowerCase();
+    if (cl.includes('arterial') || cl.includes('principal')) return 'arterial';
+    if (cl.includes('collector') || cl.includes('minor')) return 'collector';
+    if (cl.includes('local') || cl.includes('residential')) return 'local';
+    if (cl.includes('main') || cl.includes('downtown') || cl.includes('urban')) return 'main_street';
+    return 'collector';
   }
 
   private getSeasonFromWeek(week: number): string {

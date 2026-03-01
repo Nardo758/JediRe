@@ -179,10 +179,10 @@ export const WIRING_PIPELINES: WiringPipeline[] = [
     priority: 'P2',
     modules: ['M07'],
     formulas: ['F28', 'F29'],
-    description: 'New module: traffic data aggregation, lease prediction model, correlation analysis.',
-    blockedBy: 'Paid data source contracts',
+    description: 'Built: 4-source traffic intelligence (DOT ADT, Google Analytics, Apartment Locator AI, Visibility Scoring) → cascades to M05 Market, M08 Strategy, M09 ProForma, M14 Risk, M25 JEDI Score.',
+    blockedBy: '',
     effort: 'Very High',
-    impact: 'Medium',
+    impact: 'High',
   },
   {
     id: 'P2-2',

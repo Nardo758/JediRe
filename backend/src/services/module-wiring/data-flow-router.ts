@@ -85,9 +85,11 @@ const DATA_FLOW_CONNECTIONS: DataFlowConnection[] = [
   { from: 'M06', to: 'M25', dataKeys: ['demand_score'], strength: 'required', description: 'Demand sub-score input' },
 
   // M07 Traffic outputs
-  { from: 'M07', to: 'M05', dataKeys: ['traffic_trend'], strength: 'optional', description: 'Traffic demand signals' },
-  { from: 'M07', to: 'M08', dataKeys: ['traffic_trend', 'predicted_leases_week'], strength: 'optional', description: 'Traffic correlation per strategy' },
-  { from: 'M07', to: 'M25', dataKeys: ['predicted_leases_week', 'traffic_trend'], strength: 'optional', description: 'Traffic sub-score input' },
+  { from: 'M07', to: 'M05', dataKeys: ['traffic_trend', 'comp_averages'], strength: 'optional', description: 'Traffic demand signals + comp averages' },
+  { from: 'M07', to: 'M08', dataKeys: ['traffic_trend', 'predicted_leases_week', 'visibility_score', 'capture_rate'], strength: 'optional', description: 'Traffic correlation per strategy + visibility' },
+  { from: 'M07', to: 'M09', dataKeys: ['predicted_leases_week', 'capture_rate', 'vacancy_assumption', 'rent_growth_adjustment', 'absorption_rate'], strength: 'optional', description: 'Traffic-derived ProForma assumptions (vacancy, rent, absorption)' },
+  { from: 'M07', to: 'M14', dataKeys: ['traffic_trend', 'visibility_score', 'seasonal_risk_windows', 'occupancy_below_threshold'], strength: 'optional', description: 'Traffic risk signals + seasonal windows' },
+  { from: 'M07', to: 'M25', dataKeys: ['predicted_leases_week', 'traffic_trend', 'visibility_score', 'capture_rate'], strength: 'optional', description: 'Traffic sub-score input + visibility' },
 
   // M08 Strategy outputs
   { from: 'M08', to: 'M01', dataKeys: ['recommended_strategy', 'strategy_scores'], strength: 'required', description: 'Strategy recommendation for overview' },

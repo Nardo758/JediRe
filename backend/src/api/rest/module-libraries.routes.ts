@@ -2,7 +2,11 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { logger } from '../../utils/logger';
 import { moduleLibraryService } from '../../services/moduleLibrary.service';
+import { weeklyReportParser } from '../../services/weekly-report-parser.service';
+import { trafficCalibrationService } from '../../services/traffic-calibration.service';
+import { query } from '../../database/connection';
 import * as fs from 'fs';
+import * as XLSX from 'xlsx';
 
 const router = Router();
 
@@ -70,11 +74,18 @@ router.post('/:module/upload', upload.single('file') as any, async (req: Request
       },
     });
 
+    let downstreamStatus: string | undefined;
+
+    if (module === 'traffic') {
+      downstreamStatus = await handleTrafficUpload(file, category, req.body);
+    }
+
     res.json({
       fileId: file.id,
       status: 'uploaded',
       fileName: file.fileName,
       parsingStatus: file.parsingStatus,
+      downstreamProcessing: downstreamStatus || undefined,
     });
   } catch (error) {
     logger.error('[ModuleLibraries] Upload error:', error);
@@ -242,5 +253,92 @@ router.post('/:module/analyze', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to trigger analysis' });
   }
 });
+
+async function handleTrafficUpload(
+  file: any,
+  category: string,
+  body: any
+): Promise<string> {
+  if (category === 'weekly_traffic_reports') {
+    return handleWeeklyTrafficReport(file, body);
+  } else if (category === 'dot_traffic_counts') {
+    return handleDOTTrafficUpload(file);
+  }
+  return 'no_processing_needed';
+}
+
+async function handleWeeklyTrafficReport(
+  file: any,
+  body: any
+): Promise<string> {
+  const dealId = body.dealId || body.deal_id;
+  if (!dealId) {
+    logger.warn('[ModuleLibraries] Weekly traffic report uploaded without dealId — skipping calibration');
+    return 'skipped_no_deal_id';
+  }
+
+  try {
+    const result = await weeklyReportParser.parseAndStore(file.filePath, dealId);
+    logger.info(`[ModuleLibraries] Weekly report parsed: ${result.count} snapshots for deal ${dealId}`);
+
+    try {
+      await trafficCalibrationService.recalculateForDeal(dealId);
+      logger.info(`[ModuleLibraries] Calibration triggered for deal ${dealId}`);
+    } catch (calError) {
+      logger.error(`[ModuleLibraries] Calibration failed for deal ${dealId}:`, calError);
+    }
+
+    return `parsed_${result.count}_snapshots_calibration_triggered`;
+  } catch (parseError) {
+    logger.error('[ModuleLibraries] Weekly report parse failed:', parseError);
+    return 'parse_error';
+  }
+}
+
+async function handleDOTTrafficUpload(file: any): Promise<string> {
+  try {
+    const workbook = XLSX.readFile(file.filePath);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+    let ingested = 0;
+    for (const row of rows) {
+      const stationId = row['station_id'] || row['Station ID'] || row['STATION_ID'] || null;
+      const routeId = row['route_id'] || row['Route ID'] || row['ROUTE_ID'] || null;
+      const roadName = row['road_name'] || row['Road Name'] || row['ROAD_NAME'] || row['road'] || null;
+      const lat = parseFloat(row['latitude'] || row['lat'] || row['Latitude'] || 0);
+      const lng = parseFloat(row['longitude'] || row['lng'] || row['lon'] || row['Longitude'] || 0);
+      const adt = parseInt(row['adt'] || row['ADT'] || row['aadt'] || row['AADT'] || row['traffic_count'] || 0, 10);
+      const measurementYear = parseInt(row['year'] || row['Year'] || row['measurement_year'] || new Date().getFullYear(), 10);
+      const roadClassification = row['road_classification'] || row['Road Classification'] || row['functional_class'] || null;
+      const lanes = parseInt(row['lanes'] || row['Lanes'] || row['num_lanes'] || 0, 10) || null;
+      const city = row['city'] || row['City'] || null;
+      const county = row['county'] || row['County'] || null;
+      const state = row['state'] || row['State'] || null;
+
+      if (!adt || adt <= 0) continue;
+
+      try {
+        await query(
+          `INSERT INTO adt_counts (
+            station_id, route_id, road_name, latitude, longitude,
+            adt, measurement_year, road_classification, number_of_lanes,
+            source_system, city, county, state
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [stationId, routeId, roadName, lat, lng, adt, measurementYear, roadClassification, lanes, 'module_library_upload', city, county, state]
+        );
+        ingested++;
+      } catch (rowError) {
+        logger.warn(`[ModuleLibraries] Failed to ingest ADT row (station ${stationId}):`, rowError);
+      }
+    }
+
+    logger.info(`[ModuleLibraries] DOT ADT ingestion complete: ${ingested}/${rows.length} records`);
+    return `adt_ingested_${ingested}_records`;
+  } catch (error) {
+    logger.error('[ModuleLibraries] DOT ADT ingestion failed:', error);
+    return 'adt_ingestion_error';
+  }
+}
 
 export default router;

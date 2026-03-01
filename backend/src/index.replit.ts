@@ -85,6 +85,10 @@ import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import municodeRouter from './api/rest/municode.routes';
 import designReferencesRouter from './api/rest/design-references.routes';
 import financialModelRouter from './api/rest/financial-model.routes';
+import visibilityRouter from './api/rest/visibility.routes';
+import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
+import trafficDataRouter from './api/rest/traffic-data.routes';
+import trafficCompsRouter from './api/rest/traffic-comps.routes';
 
 dotenv.config();
 
@@ -234,6 +238,10 @@ app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
 app.use('/api/v1/municode', requireAuth, municodeRouter);
 app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
 app.use('/api/v1/financial-model', requireAuth, financialModelRouter);
+app.use('/api/v1/visibility', requireAuth, visibilityRouter);
+app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
+app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
+app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
