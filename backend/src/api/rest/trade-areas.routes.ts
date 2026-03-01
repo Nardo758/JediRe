@@ -243,28 +243,95 @@ router.post('/preview-stats', authMiddleware.requireAuth, async (req: Request, r
 
     const areaSqMeters = area(geometry);
     const areaSqMiles = areaSqMeters / 2_589_988;
+    const geoJson = JSON.stringify(geometry);
 
     let stats: any = {
       area_sq_miles: Math.round(areaSqMiles * 100) / 100,
       properties_count: 0,
       existing_units: 0,
+      pipeline_units: 0,
+      avg_rent: 0,
+      population: 0,
     };
 
+    const containsClause = `ST_Contains(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326), ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326))`;
+
     try {
-      const geoJson = JSON.stringify(geometry);
       const propResult = await pool.query(
-        `SELECT COUNT(*) as cnt, COALESCE(SUM(units), 0) as total_units
-         FROM properties
-         WHERE lat IS NOT NULL AND lng IS NOT NULL
-           AND ST_Contains(
-             ST_SetSRID(ST_GeomFromGeoJSON($1), 4326),
-             ST_SetSRID(ST_MakePoint(lng, lat), 4326)
-           )`,
+        `SELECT COUNT(*) as cnt,
+                COALESCE(SUM(p.units), 0) as total_units,
+                ROUND(COALESCE(AVG(NULLIF(COALESCE(p.avg_rent, p.market_rent, p.rent), 0)), 0)) as avg_rent
+         FROM properties p
+         WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL
+           AND ${containsClause}`,
         [geoJson]
       );
       stats.properties_count = parseInt(propResult.rows[0].cnt) || 0;
       stats.existing_units = parseInt(propResult.rows[0].total_units) || 0;
-    } catch { }
+      stats.avg_rent = parseInt(propResult.rows[0].avg_rent) || 0;
+    } catch (err) {
+      logger.warn('Error querying properties for preview stats:', err);
+    }
+
+    try {
+      const demoResult = await pool.query(
+        `SELECT COALESCE(SUM(pd.total_population), 0) as population
+         FROM property_demographics pd
+         JOIN properties p ON p.id = pd.property_id
+         WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL
+           AND ${containsClause}`,
+        [geoJson]
+      );
+      stats.population = parseInt(demoResult.rows[0].population) || 0;
+    } catch (err) {
+      logger.warn('Error querying demographics for preview stats:', err);
+    }
+
+    if (stats.population === 0 && stats.area_sq_miles > 0) {
+      const estimatedPopDensity = 3000;
+      stats.population = Math.round(stats.area_sq_miles * estimatedPopDensity);
+      stats.population_estimated = true;
+    }
+
+    try {
+      const pipelineResult = await pool.query(
+        `SELECT COALESCE(SUM(d.target_units), 0) as pipeline_units
+         FROM deals d
+         JOIN deal_properties dp ON dp.deal_id = d.id
+         JOIN properties p ON p.id = dp.property_id
+         WHERE d.status IN ('active', 'qualified', 'due_diligence', 'under_contract', 'lead')
+           AND d.target_units > 0
+           AND p.lat IS NOT NULL AND p.lng IS NOT NULL
+           AND ${containsClause}`,
+        [geoJson]
+      );
+      stats.pipeline_units = parseInt(pipelineResult.rows[0].pipeline_units) || 0;
+    } catch (err) {
+      logger.warn('Error querying pipeline units for preview stats:', err);
+    }
+
+    if (stats.avg_rent === 0) {
+      try {
+        const centroid = await pool.query(
+          `SELECT ST_X(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lng,
+                  ST_Y(ST_Centroid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))) as lat`,
+          [geoJson]
+        );
+        if (centroid.rows.length > 0) {
+          const subResult = await pool.query(
+            `SELECT avg_rent FROM submarkets
+             WHERE ST_Contains(geometry, ST_SetSRID(ST_MakePoint($1::float, $2::float), 4326))
+             LIMIT 1`,
+            [centroid.rows[0].lng, centroid.rows[0].lat]
+          );
+          if (subResult.rows.length > 0) {
+            stats.avg_rent = parseInt(subResult.rows[0].avg_rent) || 0;
+          }
+        }
+      } catch (err) {
+        logger.warn('Error querying submarket avg rent for preview stats:', err);
+      }
+    }
 
     res.json({
       success: true,
