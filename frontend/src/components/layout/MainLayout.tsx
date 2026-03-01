@@ -251,6 +251,18 @@ export const MainLayout: React.FC = () => {
                         path="/market-intelligence/supply"
                         isActive={isActive('/market-intelligence/supply')}
                       />
+                      <SidebarItem
+                        icon="🚦"
+                        label="Traffic Intelligence"
+                        path="/market-intelligence/traffic-intelligence"
+                        isActive={isActive('/market-intelligence/traffic-intelligence')}
+                      />
+                      <SidebarItem
+                        icon="🏆"
+                        label="Competitive Position"
+                        path="/market-intelligence/competitive-position"
+                        isActive={isActive('/market-intelligence/competitive-position')}
+                      />
                     </div>
                   )}
                   
