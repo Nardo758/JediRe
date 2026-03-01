@@ -22,7 +22,8 @@ export const MainLayout: React.FC = () => {
     assets: false,
     intelligence: true,
     market: false,
-    news: false
+    news: false,
+    competitive: false
   });
   
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
@@ -253,6 +254,63 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
                   
+                  {/* COMPETITIVE INTELLIGENCE */}
+                  <SidebarItem
+                    icon="🎯"
+                    label="Competitive Intel"
+                    path="/competitive-intelligence"
+                    isActive={isActivePrefix('/competitive-intelligence')}
+                    hasSubItems={true}
+                    isExpanded={expandedSections.competitive}
+                    onToggle={() => toggleSection('competitive')}
+                  />
+                  {expandedSections.competitive && (
+                    <div className="ml-6 space-y-0.5">
+                      <SidebarItem
+                        icon="📊"
+                        label="Performance Rankings"
+                        path="/competitive-intelligence/performance"
+                        isActive={isActive('/competitive-intelligence/performance')}
+                      />
+                      <SidebarItem
+                        icon="🔍"
+                        label="Acquisition Intel"
+                        path="/competitive-intelligence/acquisition"
+                        isActive={isActive('/competitive-intelligence/acquisition')}
+                      />
+                      <SidebarItem
+                        icon="⚖️"
+                        label="Comp Analysis"
+                        path="/competitive-intelligence/comps"
+                        isActive={isActive('/competitive-intelligence/comps')}
+                      />
+                      <SidebarItem
+                        icon="🧩"
+                        label="Pattern Engine"
+                        path="/competitive-intelligence/patterns"
+                        isActive={isActive('/competitive-intelligence/patterns')}
+                      />
+                      <SidebarItem
+                        icon="📈"
+                        label="Rank-Me Tool"
+                        path="/competitive-intelligence/projection"
+                        isActive={isActive('/competitive-intelligence/projection')}
+                      />
+                      <SidebarItem
+                        icon="🔔"
+                        label="Opportunity Alerts"
+                        path="/competitive-intelligence/alerts"
+                        isActive={isActive('/competitive-intelligence/alerts')}
+                      />
+                      <SidebarItem
+                        icon="🔄"
+                        label="Data Flywheel"
+                        path="/competitive-intelligence/flywheel"
+                        isActive={isActive('/competitive-intelligence/flywheel')}
+                      />
+                    </div>
+                  )}
+
                   {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"
