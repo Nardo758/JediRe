@@ -40,7 +40,7 @@ export const MarketIntelligencePage: React.FC = () => {
     setError(null);
     try {
       const url = `/api/v1/deals/${dealId}/market-intelligence${refresh ? '?refresh=true' : ''}`;
-      const response = await apiClient.get(url) as any;
+      const response = await apiClient.get(url, { timeout: 60000 }) as any;
       setData(response?.data?.data || null);
       setCached(response?.data?.cached || false);
     } catch (err: any) {

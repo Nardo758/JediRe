@@ -8,6 +8,7 @@ import Anthropic from '@anthropic-ai/sdk';
 const router = Router();
 
 const CACHE_TTL_HOURS = 24;
+const EXTERNAL_API_TIMEOUT_MS = 10000;
 
 function isCacheValid(cached: any): boolean {
   if (!cached || !cached.timestamp) return false;
@@ -79,17 +80,38 @@ async function getMsaStats(centroid: { lat: number; lng: number }) {
   return null;
 }
 
+const STATE_ABBREV: Record<string, string> = {
+  'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+  'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+  'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+  'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+  'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+  'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+  'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+  'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+  'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+};
+
+function toStateAbbrev(state: string): string {
+  if (!state) return '';
+  const trimmed = state.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  return STATE_ABBREV[trimmed.toLowerCase()] || trimmed;
+}
+
 async function getNewsEvents(city: string, state: string) {
   try {
+    const stateAbbr = toStateAbbrev(state);
     const result = await pool.query(
       `SELECT id, event_category, event_type, event_status, source_type, source_name, source_url,
               extracted_data, impact_analysis, impact_severity, location_raw, city, state,
               published_at, created_at
        FROM news_events
-       WHERE (city ILIKE $1 OR state = $2)
+       WHERE (city ILIKE $1 OR state ILIKE $2 OR state ILIKE $3)
        ORDER BY published_at DESC
        LIMIT 20`,
-      [`%${city}%`, state]
+      [`%${city}%`, stateAbbr, state]
     );
     return result.rows;
   } catch {
@@ -206,17 +228,23 @@ Respond with ONLY valid JSON (no markdown, no code fences):
 Generate 5-8 employers and 3-5 pipeline projects. Make industry composition add up to 100%.`;
 
   try {
-    const response = await anthropic.messages.create({
+    const aiPromise = anthropic.messages.create({
       model: 'claude-sonnet-4-6-20250514',
       max_tokens: 4000,
       messages: [{ role: 'user', content: contextPrompt }],
     });
 
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('AI analysis timed out after 25s')), 25000)
+    );
+
+    const response = await Promise.race([aiPromise, timeoutPromise]);
+
     const text = response.content[0].type === 'text' ? response.content[0].text : '';
     const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     return JSON.parse(cleaned);
   } catch (err: any) {
-    logger.warn('AI market intelligence generation failed:', err.message);
+    logger.warn('[MarketIntel] AI generation failed, using template:', err.message);
     return buildTemplateResponse(deal, censusData, submarketData, msaData, newsEvents, competingProps);
   }
 }
@@ -364,20 +392,38 @@ router.get('/:dealId/market-intelligence', authMiddleware.requireAuth, async (re
       });
     }
 
-    const city = deal.address?.match(/,\s*([^,]+),/)?.[1]?.trim() || 'Atlanta';
-    const state = deal.address?.match(/,\s*([A-Z]{2})\s/)?.[1] || 'GA';
+    const addressParts = (deal.address || '').split(',').map((s: string) => s.trim());
+    const city = addressParts.length >= 2 ? addressParts[1] : 'Atlanta';
+    const stateZipPart = addressParts.length >= 3 ? addressParts[2] : '';
+    const stateMatch = stateZipPart.match(/^([A-Za-z\s]+?)(?:\s+\d{5})?$/);
+    const state = stateMatch ? stateMatch[1].trim() : 'GA';
+
+    logger.info(`[MarketIntel] Fetching data for deal ${dealId} at ${centroid.lat},${centroid.lng}`);
+
+    const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T | null> =>
+      Promise.race([
+        promise,
+        new Promise<null>((resolve) => setTimeout(() => {
+          logger.warn(`[MarketIntel] ${label} timed out after ${ms}ms`);
+          resolve(null);
+        }, ms)),
+      ]);
 
     const [censusData, submarketData, msaData, newsEvents, competingProps] = await Promise.all([
-      getCensusStatsForTradeArea(centroid.lat, centroid.lng, 3).catch(() => null),
+      withTimeout(getCensusStatsForTradeArea(centroid.lat, centroid.lng, 3).catch(() => null), EXTERNAL_API_TIMEOUT_MS, 'Census API'),
       getSubmarketStats(centroid),
       getMsaStats(centroid),
       getNewsEvents(city, state),
       getCompetingProperties(centroid, 3),
     ]);
 
+    logger.info(`[MarketIntel] Data fetched — census: ${!!censusData}, submarket: ${!!submarketData}, msa: ${!!msaData}, news: ${(newsEvents || []).length}, competing: ${!!competingProps}`);
+
     const aiAnalysis = await generateMarketIntelligence(
-      deal, centroid, censusData, submarketData, msaData, newsEvents, competingProps
+      deal, centroid, censusData, submarketData, msaData, newsEvents || [], competingProps
     );
+
+    logger.info(`[MarketIntel] Analysis complete for deal ${dealId}`);
 
     const responseData = {
       economy: {
