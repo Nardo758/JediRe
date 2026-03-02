@@ -603,7 +603,7 @@ export function AssetsOwnedPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/deals/${asset.dealId}?tab=competition&subtab=f40`);
+                            handleCompSetClick();
                           }}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-colors border border-violet-200"
                         >
