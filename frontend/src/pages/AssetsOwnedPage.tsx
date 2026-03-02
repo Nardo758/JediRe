@@ -812,7 +812,6 @@ export function AssetsOwnedPage() {
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP OCC</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">TREND</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">RENT TREND</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">DEAL CAPSULE</th>
               </tr>
             </thead>
             <tbody>
@@ -868,17 +867,6 @@ export function AssetsOwnedPage() {
                   </td>
                   <td className="px-3 py-3 text-center">
                     <CompSetSparkline data={asset.monthlyRentTrend} />
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/deals/${asset.dealId}?tab=competition&subtab=f40`);
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-colors border border-violet-200"
-                    >
-                      🎯 Comp Set
-                    </button>
                   </td>
                 </tr>
               ))}
