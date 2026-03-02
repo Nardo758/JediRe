@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
+import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 
 const router = Router();
 const pool = getPool();
@@ -175,6 +176,11 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     ]);
 
     const row = result.rows[0];
+
+    autoDiscoverComps(row.id).catch(err => {
+      console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
+    });
+
     res.status(201).json({
       success: true,
       deal: {

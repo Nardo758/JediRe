@@ -133,63 +133,26 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
 ];
 
-interface CompSetAsset {
+interface CompSetEntry {
   id: string;
-  dealId: string;
-  name: string;
-  submarket: string;
-  classType: string;
-  units: number;
-  pcsRank: number;
-  submarketSize: number;
-  compSetSize: number;
-  avgRent: number;
-  compAvgRent: number;
-  occupancy: number;
-  compAvgOccupancy: number;
-  rentPremiumPct: number;
-  trendDirection: 'up' | 'stable' | 'down';
-  monthlyRentTrend: number[];
+  deal_id: string;
+  comp_property_address: string;
+  comp_name: string;
+  source: string;
+  status: string;
+  distance_miles: number | null;
+  match_score: number | null;
+  match_factors: Record<string, number> | null;
+  year_built: number | null;
+  stories: number | null;
+  units: number | null;
+  class_code: string | null;
+  avg_rent: number | null;
+  occupancy: number | null;
+  google_rating: number | null;
+  google_review_count: number | null;
+  notes: string | null;
 }
-
-const MOCK_COMP_SET_ASSETS: CompSetAsset[] = [
-  {
-    id: 'cs-1', dealId: 'c7a7338a-b520-4f76-b15b-5be1b9400fec', name: 'The Residences at Midtown', submarket: 'Midtown Atlanta', classType: 'Class A', units: 320,
-    pcsRank: 3, submarketSize: 18, compSetSize: 8, avgRent: 2150, compAvgRent: 1980,
-    occupancy: 94.2, compAvgOccupancy: 91.8, rentPremiumPct: 8.6, trendDirection: 'up',
-    monthlyRentTrend: [1980, 2000, 2020, 2040, 2060, 2080, 2090, 2100, 2110, 2120, 2140, 2150],
-  },
-  {
-    id: 'cs-2', dealId: '5d738adc-c4fe-42e9-986b-112e5fb550a8', name: 'Peachtree Commons', submarket: 'Buckhead', classType: 'Class B', units: 248,
-    pcsRank: 7, submarketSize: 22, compSetSize: 12, avgRent: 1680, compAvgRent: 1720,
-    occupancy: 91.0, compAvgOccupancy: 93.4, rentPremiumPct: -2.3, trendDirection: 'down',
-    monthlyRentTrend: [1750, 1740, 1730, 1720, 1710, 1705, 1700, 1695, 1690, 1685, 1682, 1680],
-  },
-  {
-    id: 'cs-3', dealId: 'ab17f229-8b9e-4628-8126-76729ef1e2ee', name: 'Highlands Park Lofts', submarket: 'Virginia Highland', classType: 'Class A', units: 186,
-    pcsRank: 1, submarketSize: 12, compSetSize: 6, avgRent: 2380, compAvgRent: 2050,
-    occupancy: 96.1, compAvgOccupancy: 92.0, rentPremiumPct: 16.1, trendDirection: 'up',
-    monthlyRentTrend: [2200, 2220, 2250, 2270, 2290, 2310, 2330, 2340, 2350, 2360, 2370, 2380],
-  },
-  {
-    id: 'cs-4', dealId: 'fcaa546f-f082-432d-85b5-eb496ebd435b', name: 'Decatur Station', submarket: 'Decatur', classType: 'Class B', units: 156,
-    pcsRank: 5, submarketSize: 9, compSetSize: 5, avgRent: 1420, compAvgRent: 1480,
-    occupancy: 88.5, compAvgOccupancy: 91.2, rentPremiumPct: -4.1, trendDirection: 'down',
-    monthlyRentTrend: [1500, 1490, 1480, 1475, 1465, 1460, 1450, 1445, 1440, 1435, 1425, 1420],
-  },
-  {
-    id: 'cs-5', dealId: '1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d', name: 'Atlantic Station Living', submarket: 'West Midtown', classType: 'Class A', units: 290,
-    pcsRank: 4, submarketSize: 15, compSetSize: 9, avgRent: 1950, compAvgRent: 1890,
-    occupancy: 93.0, compAvgOccupancy: 92.1, rentPremiumPct: 3.2, trendDirection: 'up',
-    monthlyRentTrend: [1800, 1820, 1840, 1860, 1870, 1880, 1900, 1910, 1920, 1930, 1940, 1950],
-  },
-  {
-    id: 'cs-6', dealId: '4f6115a8-499f-426b-a3f0-b1c988cf8d02', name: 'Riverside Flats', submarket: 'Vinings', classType: 'Class B', units: 204,
-    pcsRank: 6, submarketSize: 11, compSetSize: 7, avgRent: 1560, compAvgRent: 1540,
-    occupancy: 90.8, compAvgOccupancy: 90.5, rentPremiumPct: 1.3, trendDirection: 'stable',
-    monthlyRentTrend: [1530, 1535, 1540, 1540, 1545, 1545, 1550, 1550, 1555, 1555, 1558, 1560],
-  },
-];
 
 export function AssetsOwnedPage() {
   const navigate = useNavigate();
@@ -203,6 +166,84 @@ export function AssetsOwnedPage() {
   const rawView = searchParams.get('view') || 'rankings';
   const initialView: ViewType = validViews.includes(rawView as ViewType) ? (rawView as ViewType) : 'rankings';
   const [activeTab, setActiveTab] = useState<ViewType>(initialView);
+
+  const [dealComps, setDealComps] = useState<Record<string, CompSetEntry[]>>({});
+  const [expandedDeals, setExpandedDeals] = useState<Set<string>>(new Set());
+  const [compsLoading, setCompsLoading] = useState<Set<string>>(new Set());
+  const [discoveringDeal, setDiscoveringDeal] = useState<string | null>(null);
+  const [addCompDeal, setAddCompDeal] = useState<string | null>(null);
+  const [addCompForm, setAddCompForm] = useState({ address: '', name: '', units: '', year_built: '', stories: '', class_code: '', avg_rent: '', occupancy: '', google_rating: '', notes: '' });
+
+  const loadCompsForDeal = async (dealId: string) => {
+    try {
+      setCompsLoading(prev => new Set(prev).add(dealId));
+      const response = await apiClient.get(`${API_URL}/deals/${dealId}/comp-set`);
+      setDealComps(prev => ({ ...prev, [dealId]: response.data.comps || [] }));
+    } catch (err) {
+      console.error('Failed to load comps for deal:', dealId, err);
+    } finally {
+      setCompsLoading(prev => { const s = new Set(prev); s.delete(dealId); return s; });
+    }
+  };
+
+  const discoverComps = async (dealId: string) => {
+    try {
+      setDiscoveringDeal(dealId);
+      await apiClient.post(`${API_URL}/deals/${dealId}/comp-set/discover`);
+      await loadCompsForDeal(dealId);
+    } catch (err) {
+      console.error('Failed to discover comps:', err);
+    } finally {
+      setDiscoveringDeal(null);
+    }
+  };
+
+  const removeComp = async (dealId: string, compId: string) => {
+    try {
+      await apiClient.delete(`${API_URL}/deals/${dealId}/comp-set/${compId}`);
+      await loadCompsForDeal(dealId);
+    } catch (err) {
+      console.error('Failed to remove comp:', err);
+    }
+  };
+
+  const addComp = async (dealId: string) => {
+    if (!addCompForm.address) return;
+    try {
+      await apiClient.post(`${API_URL}/deals/${dealId}/comp-set`, {
+        address: addCompForm.address,
+        name: addCompForm.name || addCompForm.address,
+        units: addCompForm.units ? parseInt(addCompForm.units) : null,
+        year_built: addCompForm.year_built ? parseInt(addCompForm.year_built) : null,
+        stories: addCompForm.stories ? parseInt(addCompForm.stories) : null,
+        class_code: addCompForm.class_code || null,
+        avg_rent: addCompForm.avg_rent ? parseFloat(addCompForm.avg_rent) : null,
+        occupancy: addCompForm.occupancy ? parseFloat(addCompForm.occupancy) : null,
+        google_rating: addCompForm.google_rating ? parseFloat(addCompForm.google_rating) : null,
+        notes: addCompForm.notes || null,
+      });
+      setAddCompForm({ address: '', name: '', units: '', year_built: '', stories: '', class_code: '', avg_rent: '', occupancy: '', google_rating: '', notes: '' });
+      setAddCompDeal(null);
+      await loadCompsForDeal(dealId);
+    } catch (err) {
+      console.error('Failed to add comp:', err);
+    }
+  };
+
+  const toggleDealExpanded = (dealId: string) => {
+    setExpandedDeals(prev => {
+      const next = new Set(prev);
+      if (next.has(dealId)) {
+        next.delete(dealId);
+      } else {
+        next.add(dealId);
+        if (!dealComps[dealId]) {
+          loadCompsForDeal(dealId);
+        }
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadAssets();
@@ -713,169 +754,251 @@ export function AssetsOwnedPage() {
     </div>
   );
 
-  const compSetAvgPremium = (MOCK_COMP_SET_ASSETS.reduce((s, a) => s + a.rentPremiumPct, 0) / MOCK_COMP_SET_ASSETS.length).toFixed(1);
-  const compSetLeaders = MOCK_COMP_SET_ASSETS.filter(a => a.rentPremiumPct > 0).length;
-  const compSetLaggards = MOCK_COMP_SET_ASSETS.filter(a => a.rentPremiumPct < 0).length;
-  const avgCompSetOccDelta = (MOCK_COMP_SET_ASSETS.reduce((s, a) => s + (a.occupancy - a.compAvgOccupancy), 0) / MOCK_COMP_SET_ASSETS.length).toFixed(1);
-  const totalCompSetComps = MOCK_COMP_SET_ASSETS.reduce((s, a) => s + a.compSetSize, 0);
+  const renderCompSetView = () => {
+    const totalComps = Object.values(dealComps).reduce((s, c) => s + c.length, 0);
 
-  const CompSetSparkline = ({ data }: { data: number[] }) => {
-    const max = Math.max(...data) + 20;
-    const min = Math.min(...data) - 20;
-    const range = max - min || 1;
-    const w = 100;
-    const h = 28;
-    const points = data
-      .map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`)
-      .join(' ');
     return (
-      <svg width={w} height={h} className="inline-block">
-        <polyline fill="none" stroke="#8b5cf6" strokeWidth={1.5} points={points} />
-        <circle cx={w} cy={h - ((data[data.length - 1] - min) / range) * h} r={2.5} fill="#8b5cf6" />
-      </svg>
-    );
-  };
+      <div className="space-y-5 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+        <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
+          <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
+          <div className="text-lg font-semibold">How is each owned asset performing relative to its competitive set — and where are we falling behind?</div>
+        </div>
 
-  const renderCompSetView = () => (
-    <div className="space-y-5 p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
-      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
-        <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
-        <div className="text-lg font-semibold">How is each owned asset performing relative to its competitive set — and where are we falling behind?</div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Comp Set Vitals</h3>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
-            <span className="text-[10px] text-stone-400">{MOCK_COMP_SET_ASSETS.length} owned assets</span>
+        <div className="bg-white rounded-xl border border-stone-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-stone-900">Comp Set Summary</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-stone-400">{assets.length} owned assets · {totalComps} comps tracked</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="border border-stone-200 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">OWNED ASSETS</div>
+              <div className="text-xl font-bold text-stone-900">{assets.length}</div>
+              <div className="text-[10px] text-emerald-600 mt-1">Click any asset to view its comps</div>
+            </div>
+            <div className="border border-stone-200 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">TOTAL COMPS TRACKED</div>
+              <div className="text-xl font-bold text-stone-900">{totalComps}</div>
+              <div className="text-[10px] text-stone-500 mt-1">Auto-discovered + manually added</div>
+            </div>
+            <div className="border border-stone-200 rounded-lg p-3">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">DISCOVERY FACTORS</div>
+              <div className="text-sm font-medium text-stone-700 mt-1">Trade area, proximity, vintage, size, class, stories</div>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-5 gap-4">
-          {[
-            { label: 'Owned Assets', value: String(MOCK_COMP_SET_ASSETS.length), trend: `${totalCompSetComps} total comps tracked`, trendDir: 'up' as const, sparkData: [4, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6] },
-            { label: 'Avg Rent Premium', value: `${Number(compSetAvgPremium) > 0 ? '+' : ''}${compSetAvgPremium}%`, trend: `${compSetLeaders} leading, ${compSetLaggards} trailing`, trendDir: Number(compSetAvgPremium) > 0 ? 'up' as const : 'down' as const, sparkData: [2.1, 2.4, 2.8, 3.0, 3.2, 3.5, 3.6, 3.7, 3.8, 3.8, 3.9, Number(compSetAvgPremium)] },
-            { label: 'Avg Occ vs Comps', value: `${Number(avgCompSetOccDelta) > 0 ? '+' : ''}${avgCompSetOccDelta}%`, trend: 'vs comp set avg', trendDir: Number(avgCompSetOccDelta) > 0 ? 'up' as const : 'down' as const, sparkData: [0.2, 0.3, 0.4, 0.3, 0.5, 0.6, 0.5, 0.7, 0.6, 0.7, 0.8, Number(avgCompSetOccDelta)] },
-            { label: 'Top Rank Held', value: '#1', trend: 'Highlands Park Lofts', trendDir: 'up' as const, sparkData: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
-            { label: 'Assets at Risk', value: String(compSetLaggards), trend: 'Below comp avg rent', trendDir: 'down' as const, sparkData: [1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, compSetLaggards] },
-          ].map((vital, i) => (
-            <div key={i} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
-              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{vital.label}</div>
-              <div className="text-xl font-bold text-stone-900">{vital.value}</div>
-              <div className="flex items-center gap-1 mt-1">
-                <span className={`text-[10px] font-medium ${vital.trendDir === 'up' ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {vital.trendDir === 'up' ? '↑' : '↓'} {vital.trend}
-                </span>
-              </div>
-              <div className="mt-2 h-6 flex items-end gap-px">
-                {vital.sparkData.slice(-12).map((v, idx, arr) => {
-                  const min = Math.min(...arr);
-                  const max = Math.max(...arr);
-                  const range = max - min || 1;
-                  const height = ((v - min) / range) * 100;
+        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-stone-900">Comp Set Performance by Asset</h3>
+              <p className="text-sm text-stone-500 mt-0.5">Click an asset to expand and view its competitors</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-stone-50 text-left">
+                  <th className="px-4 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">OWNED ASSET</th>
+                  <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">AVG RENT</th>
+                  <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">OCCUPANCY</th>
+                  <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">COMPS</th>
+                  <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assets.map((asset) => {
+                  const comps = dealComps[asset.id] || [];
+                  const isExpanded = expandedDeals.has(asset.id);
+                  const isLoading = compsLoading.has(asset.id);
+                  const isDiscovering = discoveringDeal === asset.id;
+
                   return (
-                    <div key={idx} className={`flex-1 rounded-sm ${idx === arr.length - 1 ? 'bg-violet-500' : 'bg-stone-200'}`} style={{ height: `${Math.max(10, height)}%` }} />
+                    <React.Fragment key={asset.id}>
+                      <tr
+                        className={`border-t border-stone-100 hover:bg-stone-50 transition-colors cursor-pointer ${isExpanded ? 'bg-violet-50/50' : ''}`}
+                        onClick={() => toggleDealExpanded(asset.id)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-stone-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>&#9654;</span>
+                            <div>
+                              <div className="font-medium text-stone-900">{asset.property_name}</div>
+                              <div className="text-xs text-stone-500">{asset.address} · {asset.asset_type}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium text-stone-900">
+                          {asset.actual_avg_rent ? formatCurrency(asset.actual_avg_rent) : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-center text-stone-700">
+                          {asset.actual_occupancy ? `${Number(asset.actual_occupancy).toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span className="text-sm font-semibold text-stone-700">{comps.length || '—'}</span>
+                        </td>
+                        <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => discoverComps(asset.id)}
+                              disabled={isDiscovering}
+                              className="px-2 py-1 text-[10px] font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded border border-violet-200 disabled:opacity-50"
+                            >
+                              {isDiscovering ? 'Finding...' : comps.length > 0 ? 'Re-discover' : 'Find Comps'}
+                            </button>
+                            <button
+                              onClick={() => setAddCompDeal(addCompDeal === asset.id ? null : asset.id)}
+                              className="px-2 py-1 text-[10px] font-medium text-stone-600 bg-stone-50 hover:bg-stone-100 rounded border border-stone-200"
+                            >
+                              + Add
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {addCompDeal === asset.id && (
+                        <tr className="bg-violet-50/30">
+                          <td colSpan={5} className="px-8 py-3">
+                            <div className="flex items-end gap-2 flex-wrap">
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">ADDRESS *</label>
+                                <input value={addCompForm.address} onChange={e => setAddCompForm(f => ({...f, address: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-48" placeholder="123 Main St" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">NAME</label>
+                                <input value={addCompForm.name} onChange={e => setAddCompForm(f => ({...f, name: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-36" placeholder="Property name" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">UNITS</label>
+                                <input value={addCompForm.units} onChange={e => setAddCompForm(f => ({...f, units: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-16" placeholder="200" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">YEAR BUILT</label>
+                                <input value={addCompForm.year_built} onChange={e => setAddCompForm(f => ({...f, year_built: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-16" placeholder="2020" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">STORIES</label>
+                                <input value={addCompForm.stories} onChange={e => setAddCompForm(f => ({...f, stories: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-14" placeholder="4" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">CLASS</label>
+                                <input value={addCompForm.class_code} onChange={e => setAddCompForm(f => ({...f, class_code: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-14" placeholder="A" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">AVG RENT</label>
+                                <input value={addCompForm.avg_rent} onChange={e => setAddCompForm(f => ({...f, avg_rent: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-20" placeholder="1800" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-mono text-stone-500 block mb-0.5">RATING</label>
+                                <input value={addCompForm.google_rating} onChange={e => setAddCompForm(f => ({...f, google_rating: e.target.value}))} className="px-2 py-1 text-xs border border-stone-300 rounded w-14" placeholder="4.2" />
+                              </div>
+                              <button onClick={() => addComp(asset.id)} className="px-3 py-1 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded">Save</button>
+                              <button onClick={() => setAddCompDeal(null)} className="px-2 py-1 text-xs text-stone-500 hover:text-stone-700">Cancel</button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+
+                      {isExpanded && (
+                        <>
+                          {isLoading ? (
+                            <tr className="bg-stone-50/50">
+                              <td colSpan={5} className="px-8 py-4 text-center">
+                                <div className="animate-spin inline-block w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full"></div>
+                                <span className="ml-2 text-sm text-stone-500">Loading comps...</span>
+                              </td>
+                            </tr>
+                          ) : comps.length === 0 ? (
+                            <tr className="bg-stone-50/50">
+                              <td colSpan={5} className="px-8 py-4 text-center">
+                                <p className="text-sm text-stone-500">No comps found yet.</p>
+                                <button
+                                  onClick={() => discoverComps(asset.id)}
+                                  className="mt-2 px-3 py-1.5 text-xs font-semibold text-violet-700 bg-violet-100 hover:bg-violet-200 rounded-md border border-violet-200"
+                                >
+                                  Discover Comps Automatically
+                                </button>
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              <tr className="bg-stone-100/50">
+                                <td colSpan={5} className="px-0">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="text-left">
+                                        <th className="pl-12 pr-2 py-1.5 text-[9px] font-mono text-stone-400">COMPETITOR</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">MATCH</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">DIST</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">UNITS</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">YR BUILT</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">STORIES</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">CLASS</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center">SOURCE</th>
+                                        <th className="px-2 py-1.5 text-[9px] font-mono text-stone-400 text-center"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {comps.map(comp => (
+                                        <tr key={comp.id} className="border-t border-stone-200/50 hover:bg-stone-100 transition-colors">
+                                          <td className="pl-12 pr-2 py-2">
+                                            <div className="font-medium text-stone-800">{comp.comp_property_address}</div>
+                                          </td>
+                                          <td className="px-2 py-2 text-center">
+                                            {comp.match_score ? (
+                                              <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                comp.match_score >= 70 ? 'bg-emerald-100 text-emerald-700' :
+                                                comp.match_score >= 50 ? 'bg-amber-100 text-amber-700' :
+                                                'bg-stone-100 text-stone-600'
+                                              }`}>
+                                                {comp.match_score.toFixed(0)}
+                                              </span>
+                                            ) : '—'}
+                                          </td>
+                                          <td className="px-2 py-2 text-center text-stone-600">
+                                            {comp.distance_miles ? `${comp.distance_miles.toFixed(1)} mi` : '—'}
+                                          </td>
+                                          <td className="px-2 py-2 text-center text-stone-600">{comp.units || '—'}</td>
+                                          <td className="px-2 py-2 text-center text-stone-600">{comp.year_built || '—'}</td>
+                                          <td className="px-2 py-2 text-center text-stone-600">{comp.stories || '—'}</td>
+                                          <td className="px-2 py-2 text-center text-stone-600">{comp.class_code || '—'}</td>
+                                          <td className="px-2 py-2 text-center">
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
+                                              comp.source === 'auto' ? 'bg-blue-100 text-blue-700' : 'bg-violet-100 text-violet-700'
+                                            }`}>
+                                              {comp.source === 'auto' ? 'AUTO' : 'MANUAL'}
+                                            </span>
+                                          </td>
+                                          <td className="px-2 py-2 text-center">
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); removeComp(asset.id, comp.id); }}
+                                              className="text-stone-400 hover:text-red-500 transition-colors text-xs"
+                                              title="Remove comp"
+                                            >
+                                              ✕
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </React.Fragment>
                   );
                 })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-violet-50 border border-violet-200 rounded-xl px-5 py-3">
-        <p className="text-sm text-violet-900">
-          Portfolio averages a <strong>{Number(compSetAvgPremium) > 0 ? '+' : ''}{compSetAvgPremium}% rent premium</strong> vs comp sets. <strong>{compSetLeaders} of {MOCK_COMP_SET_ASSETS.length}</strong> assets outperform their comp set on rent. Occupancy delta averages <strong>{Number(avgCompSetOccDelta) > 0 ? '+' : ''}{avgCompSetOccDelta}%</strong> vs competitors. Focus on underperformers to close the gap.
-        </p>
-      </div>
-
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-stone-900">Comp Set Performance by Asset</h3>
-            <p className="text-sm text-stone-500 mt-0.5">Each owned property vs its competitive set</p>
+              </tbody>
+            </table>
           </div>
-          <span className="text-[10px] bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-stone-50 text-left">
-                <th className="px-4 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">PCS RANK</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">COMP SET</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">AVG RENT</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP AVG</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">PREMIUM</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">OCC</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP OCC</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">TREND</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">RENT TREND</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...MOCK_COMP_SET_ASSETS].sort((a, b) => a.pcsRank - b.pcsRank).map((asset) => (
-                <tr key={asset.id} className="border-t border-stone-100 hover:bg-stone-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-stone-900">{asset.name}</div>
-                    <div className="text-xs text-stone-500">{asset.submarket} · {asset.classType} · {asset.units} units</div>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
-                      asset.pcsRank <= Math.ceil(asset.submarketSize * 0.25) ? 'bg-emerald-100 text-emerald-800' :
-                      asset.pcsRank <= Math.ceil(asset.submarketSize * 0.75) ? 'bg-amber-100 text-amber-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      #{asset.pcsRank}
-                    </span>
-                    <div className="text-[10px] text-stone-400 mt-0.5">of {asset.submarketSize}</div>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className="text-sm font-semibold text-stone-700">{asset.compSetSize}</span>
-                    <div className="text-[10px] text-stone-400">comps</div>
-                  </td>
-                  <td className="px-3 py-3 text-right font-medium text-stone-900">
-                    ${asset.avgRent.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-3 text-right text-stone-500">
-                    ${asset.compAvgRent.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold ${
-                      asset.rentPremiumPct > 0 ? 'bg-emerald-100 text-emerald-700' :
-                      asset.rentPremiumPct < 0 ? 'bg-red-100 text-red-700' :
-                      'bg-stone-100 text-stone-600'
-                    }`}>
-                      {asset.rentPremiumPct > 0 ? '+' : ''}{asset.rentPremiumPct}%
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-right font-medium text-stone-900">
-                    {asset.occupancy.toFixed(1)}%
-                  </td>
-                  <td className="px-3 py-3 text-right text-stone-500">
-                    {asset.compAvgOccupancy.toFixed(1)}%
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <span className={`text-xs font-semibold ${
-                      asset.trendDirection === 'up' ? 'text-emerald-600' :
-                      asset.trendDirection === 'down' ? 'text-red-500' :
-                      'text-stone-400'
-                    }`}>
-                      {asset.trendDirection === 'up' ? '↑ Rising' : asset.trendDirection === 'down' ? '↓ Falling' : '→ Stable'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <CompSetSparkline data={asset.monthlyRentTrend} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderDocumentsView = () => (
     <div className="text-center py-12 text-gray-500">
