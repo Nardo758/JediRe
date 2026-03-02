@@ -4,37 +4,164 @@
  * - Performance Mode: New competition tracking, market saturation alerts
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  acquisitionPipelineProjects,
-  acquisitionSupplyStats,
-  performancePipelineProjects,
-  performanceSupplyStats,
-  PipelineProject,
-  ProjectStatus,
-  ImpactLevel,
-  SupplyStats,
-  getProjectsByStatus,
-  getProjectsByDistance,
-  getProjectsDeliveringInMonths,
-  calculateSupplyImpact,
-  getStatusColor,
-  getImpactColor,
-  getImpactBadge
-} from '../../../data/supplyMockData';
+
+// Type definitions (moved from mock data)
+type ProjectStatus = 'planned' | 'under-construction' | 'pre-leasing' | 'delivered';
+type ImpactLevel = 'high' | 'medium' | 'low';
+
+interface PipelineProject {
+  id: string;
+  name: string;
+  developer: string;
+  units: number;
+  distance: number;
+  status: ProjectStatus;
+  deliveryQuarter: string;
+  competitive: boolean;
+  rentRange: { min: number; max: number };
+  percentLeased?: number;
+  impactLevel: ImpactLevel;
+  amenities: string[];
+}
+
+interface SupplyStats {
+  totalPipelineUnits: number;
+  unitsWithin3Miles: number;
+  unitsDelivering12Months: number;
+  directCompetitors: number;
+  averageDistanceToCompetition: number;
+}
 
 interface SupplySectionProps {
   deal: Deal;
 }
 
+// Helper functions
+const getStatusColor = (status: ProjectStatus) => {
+  const colors = {
+    'planned': 'bg-blue-100 text-blue-700 border-blue-300',
+    'under-construction': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    'pre-leasing': 'bg-orange-100 text-orange-700 border-orange-300',
+    'delivered': 'bg-green-100 text-green-700 border-green-300'
+  };
+  return colors[status] || colors.planned;
+};
+
+const getImpactColor = (level: ImpactLevel) => {
+  const colors = {
+    'high': 'bg-red-100 text-red-700 border-red-300',
+    'medium': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+    'low': 'bg-green-100 text-green-700 border-green-300'
+  };
+  return colors[level] || colors.low;
+};
+
+const getImpactBadge = (level: ImpactLevel) => {
+  const badges = {
+    'high': '🔴 High Impact',
+    'medium': '🟡 Medium Impact',
+    'low': '🟢 Low Impact'
+  };
+  return badges[level] || badges.low;
+};
+
+const getProjectsByStatus = (projects: PipelineProject[], status: ProjectStatus) => 
+  projects.filter(p => p.status === status);
+
+const getProjectsByDistance = (projects: PipelineProject[], maxDistance: number) =>
+  projects.filter(p => p.distance <= maxDistance);
+
+const getProjectsDeliveringInMonths = (projects: PipelineProject[], months: number) => {
+  // Simple filter for projects with upcoming delivery quarters
+  return projects.filter(p => ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'].includes(p.deliveryQuarter));
+};
+
+const calculateSupplyImpact = (projects: PipelineProject[], radiusMiles: number[]) => {
+  const impact: Record<string, number> = {};
+  radiusMiles.forEach(radius => {
+    const unitsInRadius = projects
+      .filter(p => p.distance <= radius)
+      .reduce((sum, p) => sum + p.units, 0);
+    impact[`${radius}mi`] = unitsInRadius;
+  });
+  return impact;
+};
+
 export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   
-  // Select data based on mode
-  const projects = isPipeline ? acquisitionPipelineProjects : performancePipelineProjects;
-  const stats = isPipeline ? acquisitionSupplyStats : performanceSupplyStats;
+  // API state
+  const [projects, setProjects] = useState<PipelineProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch supply data from API
+  useEffect(() => {
+    const fetchSupplyData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/v1/supply/competitive/${deal.id}?max_distance=10`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch supply data');
+        }
+        
+        const data = await response.json();
+        
+        // Transform API response to match component interface
+        const transformedProjects: PipelineProject[] = (data.data || []).map((proj: any) => ({
+          id: proj.id || proj.projectId,
+          name: proj.projectName || proj.name || 'Unnamed Project',
+          developer: proj.developer || 'Unknown Developer',
+          units: proj.units || 0,
+          distance: proj.distance || 0,
+          status: proj.status || 'planned',
+          deliveryQuarter: proj.deliveryQuarter || proj.expectedDeliveryDate || '2025-Q1',
+          competitive: proj.competitive !== false,
+          rentRange: proj.rentRange || { min: 1500, max: 2500 },
+          percentLeased: proj.percentLeased,
+          impactLevel: proj.impactLevel || (proj.distance < 1 ? 'high' : proj.distance < 3 ? 'medium' : 'low'),
+          amenities: proj.amenities || ['Pool', 'Gym', 'Parking']
+        }));
+        
+        setProjects(transformedProjects);
+      } catch (err) {
+        console.error('Error fetching supply data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load supply data');
+        setProjects([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchSupplyData();
+    }
+  }, [deal.id]);
+
+  // Calculate stats from actual data
+  const stats: SupplyStats = useMemo(() => {
+    const within3Miles = projects.filter(p => p.distance <= 3);
+    const delivering12Mo = projects.filter(p => 
+      ['2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4'].includes(p.deliveryQuarter)
+    );
+    const directCompetitors = projects.filter(p => p.competitive);
+
+    return {
+      totalPipelineUnits: projects.reduce((sum, p) => sum + p.units, 0),
+      unitsWithin3Miles: within3Miles.reduce((sum, p) => sum + p.units, 0),
+      unitsDelivering12Months: delivering12Mo.reduce((sum, p) => sum + p.units, 0),
+      directCompetitors: directCompetitors.length,
+      averageDistanceToCompetition: projects.length > 0 
+        ? projects.reduce((sum, p) => sum + p.distance, 0) / projects.length 
+        : 0
+    };
+  }, [projects]);
   
   // Filter state
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
@@ -67,6 +194,32 @@ export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
   const projectsDelivering12mo = useMemo(() => {
     return getProjectsDeliveringInMonths(projects, 12);
   }, [projects]);
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading supply data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading supply data</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">

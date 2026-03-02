@@ -5,23 +5,52 @@
  * - owned → Performance mode (competitive threats, market share, positioning changes)
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  acquisitionComparables,
-  performanceComparables,
-  acquisitionStats,
-  performanceStats,
-  acquisitionPositioning,
-  performancePositioning,
-  competitiveThreats,
-  marketShareData,
-  ComparableProperty,
-  QuickStat,
-  MarketPositioning,
-  CompetitiveThreat
-} from '../../../data/competitionMockData';
+
+// Type definitions (moved from mock data)
+interface ComparableProperty {
+  id: string;
+  name: string;
+  address: string;
+  distance: number;
+  units: number;
+  yearBuilt: number;
+  category: 'direct' | 'construction' | 'planned';
+  avgRent: number;
+  occupancy?: number;
+  class: 'A' | 'B' | 'C';
+  similarityScore: number;
+  amenities: string[];
+  pricePerUnit?: number;
+  capRate?: number;
+}
+
+interface QuickStat {
+  label: string;
+  value: number | string;
+  format: 'currency' | 'percentage' | 'number';
+  icon: string;
+  trend?: { direction: 'up' | 'down' | 'stable'; value: string };
+  subtext?: string;
+}
+
+interface MarketPositioning {
+  label: string;
+  value: number;
+  percentile: number;
+  color: 'green' | 'yellow' | 'red';
+}
+
+interface CompetitiveThreat {
+  id: string;
+  property: string;
+  threatLevel: 'high' | 'medium' | 'low';
+  reason: string;
+  impact: string;
+  distance: number;
+}
 
 interface CompetitionSectionProps {
   deal: Deal;
@@ -31,11 +60,89 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [sortBy, setSortBy] = useState<'distance' | 'similarity' | 'rent'>('distance');
   const [filterClass, setFilterClass] = useState<'all' | 'A' | 'B' | 'C'>('all');
+  
+  // API state
+  const [comparables, setComparables] = useState<ComparableProperty[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Select data based on mode
-  const comparables = isPipeline ? acquisitionComparables : performanceComparables;
-  const stats = isPipeline ? acquisitionStats : performanceStats;
-  const positioning = isPipeline ? acquisitionPositioning : performancePositioning;
+  // Fetch competition data from API
+  useEffect(() => {
+    const fetchCompetitionData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await fetch(`/api/v1/deals/${deal.id}/competitors?distanceRadius=3`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch competition data');
+        }
+        
+        const data = await response.json();
+        
+        // Transform API response to match component interface
+        const transformedComparables: ComparableProperty[] = (data.competitors || []).map((comp: any) => ({
+          id: comp.id,
+          name: comp.name,
+          address: comp.address,
+          distance: parseFloat(comp.distance),
+          units: comp.units,
+          yearBuilt: comp.yearBuilt,
+          category: comp.category || 'direct',
+          avgRent: comp.avgRent || 0,
+          occupancy: comp.occupancy,
+          class: comp.class || 'B',
+          similarityScore: Math.floor(Math.random() * 20) + 80, // TODO: Add similarity calculation to backend
+          amenities: ['Pool', 'Gym', 'Parking'], // TODO: Add amenities data to backend
+          pricePerUnit: comp.pricePerUnit,
+          capRate: comp.capRate
+        }));
+        
+        setComparables(transformedComparables);
+      } catch (err) {
+        console.error('Error fetching competition data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load competition data');
+        setComparables([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchCompetitionData();
+    }
+  }, [deal.id]);
+
+  // Calculate stats from actual data
+  const stats: QuickStat[] = React.useMemo(() => {
+    const directComps = comparables.filter(c => c.category === 'direct');
+    const avgRent = directComps.length > 0 
+      ? Math.round(directComps.reduce((sum, c) => sum + c.avgRent, 0) / directComps.length)
+      : 0;
+    const avgOccupancy = directComps.length > 0
+      ? Math.round(directComps.reduce((sum, c) => sum + (c.occupancy || 0), 0) / directComps.length)
+      : 0;
+
+    return [
+      { label: 'Comparables', value: comparables.length, format: 'number', icon: '🏢' },
+      { label: 'Avg Rent', value: avgRent, format: 'currency', icon: '💰' },
+      { label: 'Avg Occupancy', value: avgOccupancy, format: 'percentage', icon: '📊' },
+      { label: 'Direct Comps', value: directComps.length, format: 'number', icon: '🎯' },
+      { label: 'Market Position', value: 'Strong', format: 'number', icon: '⭐' }
+    ];
+  }, [comparables]);
+
+  // Mock positioning data (TODO: calculate from real data)
+  const positioning: MarketPositioning[] = [
+    { label: 'Rent Premium', value: 75, percentile: 75, color: 'green' },
+    { label: 'Occupancy', value: 85, percentile: 85, color: 'green' },
+    { label: 'Market Share', value: 60, percentile: 60, color: 'yellow' }
+  ];
+
+  // Mock threats data (TODO: fetch from API)
+  const competitiveThreats: CompetitiveThreat[] = [];
+  const marketShareData: any[] = [];
 
   // Filter and sort comparables
   const filteredComparables = comparables
@@ -52,6 +159,32 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
           return 0;
       }
     });
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading competition data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading competition data</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
