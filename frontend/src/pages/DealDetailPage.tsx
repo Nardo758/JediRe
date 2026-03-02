@@ -92,7 +92,6 @@ const DealDetailPage: React.FC = () => {
   const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
-  const [tabParamApplied, setTabParamApplied] = useState(false);
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -426,16 +425,6 @@ const DealDetailPage: React.FC = () => {
     ...executionTabs,
     ...aiAssistantTabs,
   ];
-
-  useEffect(() => {
-    if (tabParam && !tabParamApplied) {
-      const validTab = allTabs.find(t => t.id === tabParam);
-      if (validTab) {
-        setActiveTab(tabParam);
-      }
-      setTabParamApplied(true);
-    }
-  }, [tabParam, tabParamApplied, allTabs]);
 
   const activeTabData = allTabs.find(tab => tab.id === activeTab);
   const ActiveComponent = activeTabData?.component || OverviewSection;

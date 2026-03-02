@@ -12,6 +12,7 @@ type ViewType = TabType | 'compset';
 
 interface RankedAsset {
   id: string;
+  dealId: string;
   name: string;
   submarket: string;
   pcsScore: number;
@@ -30,6 +31,7 @@ interface RankedAsset {
 const MOCK_RANKED_ASSETS: RankedAsset[] = [
   {
     id: 'ra-1',
+    dealId: 'c7a7338a-b520-4f76-b15b-5be1b9400fec',
     name: 'The Residences at Midtown',
     submarket: 'Midtown Atlanta',
     pcsScore: 82,
@@ -46,6 +48,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
   {
     id: 'ra-2',
+    dealId: '5d738adc-c4fe-42e9-986b-112e5fb550a8',
     name: 'Peachtree Commons',
     submarket: 'Buckhead',
     pcsScore: 74,
@@ -62,6 +65,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
   {
     id: 'ra-3',
+    dealId: 'ab17f229-8b9e-4628-8126-76729ef1e2ee',
     name: 'Highlands Park Lofts',
     submarket: 'Virginia Highland',
     pcsScore: 89,
@@ -78,6 +82,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
   {
     id: 'ra-4',
+    dealId: 'fcaa546f-f082-432d-85b5-eb496ebd435b',
     name: 'Decatur Station',
     submarket: 'Decatur',
     pcsScore: 67,
@@ -94,6 +99,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
   {
     id: 'ra-5',
+    dealId: '1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d',
     name: 'Atlantic Station Living',
     submarket: 'West Midtown',
     pcsScore: 78,
@@ -110,6 +116,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
   },
   {
     id: 'ra-6',
+    dealId: '4f6115a8-499f-426b-a3f0-b1c988cf8d02',
     name: 'Riverside Flats',
     submarket: 'Vinings',
     pcsScore: 71,
@@ -583,15 +590,26 @@ export function AssetsOwnedPage() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate('/competitive-intelligence/performance');
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors border border-blue-200"
-                      >
-                        <span>📊</span> Rank Me
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/competitive-intelligence/performance');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors border border-blue-200"
+                        >
+                          <span>📊</span> Rank Me
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/deals/${asset.dealId}?tab=competition&subtab=f40`);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-colors border border-violet-200"
+                        >
+                          <span>🎯</span> Comp Set
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -922,15 +940,6 @@ export function AssetsOwnedPage() {
             ))
           )}
           <div className="ml-auto flex items-center gap-3">
-            {activeTab !== 'compset' && (
-              <button
-                onClick={handleCompSetClick}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-stone-900 text-violet-300 border border-violet-500/30 hover:bg-stone-800 hover:text-violet-200 transition-colors"
-              >
-                <span>🎯</span>
-                <span>Comp Set Performance</span>
-              </button>
-            )}
             <span className="text-xs text-gray-500">{assets.length} assets</span>
           </div>
         </div>
