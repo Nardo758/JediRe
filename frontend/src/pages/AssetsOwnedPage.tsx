@@ -7,7 +7,8 @@ import { apiClient } from '../services/api.client';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-type TabType = 'rankings' | 'grid' | 'performance' | 'compset' | 'documents';
+type TabType = 'rankings' | 'grid' | 'performance' | 'documents';
+type ViewType = TabType | 'compset';
 
 interface RankedAsset {
   id: string;
@@ -190,8 +191,10 @@ export function AssetsOwnedPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   
-  const initialTab = (searchParams.get('view') as TabType) || 'rankings';
-  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const validViews: ViewType[] = ['rankings', 'grid', 'performance', 'documents', 'compset'];
+  const rawView = searchParams.get('view') || 'rankings';
+  const initialView: ViewType = validViews.includes(rawView as ViewType) ? (rawView as ViewType) : 'rankings';
+  const [activeTab, setActiveTab] = useState<ViewType>(initialView);
 
   useEffect(() => {
     loadAssets();
@@ -386,14 +389,27 @@ export function AssetsOwnedPage() {
   };
 
   // Sync tab changes to URL
+  const [previousTab, setPreviousTab] = useState<TabType>('rankings');
+
   const handleTabChange = (tab: TabType) => {
+    setPreviousTab(tab);
     setActiveTab(tab);
     setSearchParams({ view: tab });
   };
 
+  const handleCompSetClick = () => {
+    if (activeTab !== 'compset') setPreviousTab(activeTab as TabType);
+    setActiveTab('compset');
+    setSearchParams({ view: 'compset' });
+  };
+
+  const handleBackFromCompSet = () => {
+    setActiveTab(previousTab);
+    setSearchParams({ view: previousTab });
+  };
+
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'rankings', label: 'Performance & Rankings', icon: '🏆' },
-    { id: 'compset', label: 'Comp Set Performance', icon: '🎯' },
     { id: 'grid', label: 'Grid View', icon: '📊' },
     { id: 'performance', label: 'Performance', icon: '📈' },
     { id: 'documents', label: 'Documents', icon: '📄' },
@@ -880,21 +896,42 @@ export function AssetsOwnedPage() {
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
-          {tabs.map((tab) => (
+          {activeTab === 'compset' ? (
             <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+              onClick={handleBackFromCompSet}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition-colors"
             >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span>←</span>
+              <span>Back to {tabs.find(t => t.id === previousTab)?.label || 'Assets'}</span>
             </button>
-          ))}
-          <div className="ml-auto text-xs text-gray-500">{assets.length} assets</div>
+          ) : (
+            tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {activeTab !== 'compset' && (
+              <button
+                onClick={handleCompSetClick}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-stone-900 text-violet-300 border border-violet-500/30 hover:bg-stone-800 hover:text-violet-200 transition-colors"
+              >
+                <span>🎯</span>
+                <span>Comp Set Performance</span>
+              </button>
+            )}
+            <span className="text-xs text-gray-500">{assets.length} assets</span>
+          </div>
         </div>
 
         <div className="flex-1 overflow-hidden">
