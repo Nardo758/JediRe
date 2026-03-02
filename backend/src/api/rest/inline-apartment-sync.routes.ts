@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { ApartmentDataSyncService } from '../../services/apartmentDataSync';
-import { apartmentSyncScheduler } from '../../services/apartment-sync-scheduler';
+import { apartmentSyncScheduler, COVERED_METROS } from '../../services/apartment-sync-scheduler';
 import { validate, apartmentSyncPullSchema } from './validation';
 
 export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyncService) {
@@ -11,6 +11,9 @@ export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyn
 
   router.post('/pull', requireAuth, validate(apartmentSyncPullSchema), async (req: AuthenticatedRequest, res) => {
     try {
+      if (apartmentSyncScheduler.getStatus().syncInProgress) {
+        return res.status(409).json({ success: false, error: 'Sync already in progress. Try again later.' });
+      }
       const { city = 'Atlanta', state = 'GA' } = req.body;
       console.log(`Starting apartment data sync for ${city}, ${state}...`);
       const result = await apartmentSyncService.syncAll(city, state);
@@ -143,6 +146,114 @@ export function createApartmentSyncRoutes(apartmentSyncService: ApartmentDataSyn
         "SELECT * FROM apartment_user_analytics WHERE analytics_type = 'demand-signals' ORDER BY snapshot_date DESC LIMIT 1"
       );
       res.json({ success: true, data: result.rows[0] || null });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.get('/zip-stats', requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      const coverage = apartmentSyncScheduler.getCoverage();
+      const snapshotCounts = await pool.query(
+        `SELECT city, state, COUNT(*) as snapshot_count, MAX(snapshot_date) as last_snapshot
+         FROM apartment_market_snapshots
+         GROUP BY city, state
+         ORDER BY city`
+      );
+
+      const syncedMetros = new Map(
+        snapshotCounts.rows.map((r: any) => [`${r.city}:${r.state}`, { snapshots: parseInt(r.snapshot_count), lastSnapshot: r.last_snapshot }])
+      );
+
+      const metroStats = coverage.metros.map(metro => {
+        const syncInfo = syncedMetros.get(`${metro.city}:${metro.state}`);
+        return {
+          city: metro.city,
+          state: metro.state,
+          zipCodes: metro.zipCount,
+          estimatedListings: metro.zipCount * 30,
+          synced: !!syncInfo,
+          snapshots: syncInfo?.snapshots || 0,
+          lastSnapshot: syncInfo?.lastSnapshot || null,
+        };
+      });
+
+      res.json({
+        success: true,
+        data: {
+          scrapingModel: coverage.scrapingModel,
+          schedule: coverage.schedule,
+          estimatedCostPerRun: coverage.estimatedCostPerRun,
+          totalMetros: coverage.metros.length,
+          totalZipCodes: coverage.totalZipCodes,
+          totalEstimatedListings: coverage.totalZipCodes * 30,
+          syncedMetros: metroStats.filter(m => m.synced).length,
+          unsyncedMetros: metroStats.filter(m => !m.synced).length,
+          metros: metroStats,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/zip-batch', requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (apartmentSyncScheduler.getStatus().syncInProgress) {
+        return res.status(409).json({ success: false, error: 'Sync already in progress. Try again later.' });
+      }
+      const { metros } = req.body;
+
+      if (!metros || !Array.isArray(metros) || metros.length === 0) {
+        return res.status(400).json({ success: false, error: 'metros array required, e.g. [{"city":"Atlanta","state":"GA"}]' });
+      }
+
+      const validMetros = metros.filter((m: any) =>
+        m.city && m.state && COVERED_METROS.some(cm => cm.city === m.city && cm.state === m.state)
+      );
+
+      if (validMetros.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid metros provided. Available: ' + COVERED_METROS.map(m => `${m.city}, ${m.state}`).join('; '),
+        });
+      }
+
+      const results: any[] = [];
+      for (const metro of validMetros) {
+        try {
+          const result = await apartmentSyncService.syncAll(metro.city, metro.state);
+          results.push({ city: metro.city, state: metro.state, success: true, errors: result.errors.length, duration: result.duration });
+        } catch (error: any) {
+          results.push({ city: metro.city, state: metro.state, success: false, error: error.message });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          requested: metros.length,
+          synced: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
+          results,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  router.post('/sync-all-metros', requireAuth, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (apartmentSyncScheduler.getStatus().syncInProgress) {
+        return res.status(409).json({ success: false, error: 'Sync already in progress' });
+      }
+
+      res.json({ success: true, message: `Starting sync across all ${COVERED_METROS.length} metros. This will take several minutes.` });
+
+      apartmentSyncScheduler.syncNow().catch(err => {
+        console.error('Background full sync failed:', err.message);
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }
