@@ -1,11 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { pool } from '../../database/connection';
+import { getPool } from '../../database/connection';
 import { authMiddleware } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import { getCensusStatsForTradeArea } from '../../services/census.service';
 import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
+const pool = getPool();
 
 const CACHE_TTL_HOURS = 24;
 const EXTERNAL_API_TIMEOUT_MS = 10000;

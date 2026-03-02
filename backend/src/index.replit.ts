@@ -92,6 +92,7 @@ import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
+import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 
 dotenv.config();
 
@@ -195,6 +196,7 @@ app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
 app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
 app.use('/api/v1', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
+app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
