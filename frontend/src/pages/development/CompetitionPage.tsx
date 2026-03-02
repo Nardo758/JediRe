@@ -107,7 +107,9 @@ export default function CompetitionPage() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [urlParams] = useSearchParams();
-  const initialTab = urlParams.get('subtab') === 'comp-analysis' ? 'comp-analysis' : 'map';
+  const subtabParam = urlParams.get('subtab');
+  const validSubtabs = ['comp-analysis', 'map', 'comparison', 'advantage', 'aging', 'waitlist', 'f40'];
+  const initialTab = subtabParam && validSubtabs.includes(subtabParam) ? subtabParam : 'map';
   const [activeTab, setActiveTab] = useState<'comp-analysis' | 'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>(initialTab as any);
 
   useEffect(() => {

@@ -128,6 +128,7 @@ const MOCK_RANKED_ASSETS: RankedAsset[] = [
 
 interface CompSetAsset {
   id: string;
+  dealId: string;
   name: string;
   submarket: string;
   classType: string;
@@ -146,37 +147,37 @@ interface CompSetAsset {
 
 const MOCK_COMP_SET_ASSETS: CompSetAsset[] = [
   {
-    id: 'cs-1', name: 'The Residences at Midtown', submarket: 'Midtown Atlanta', classType: 'Class A', units: 320,
+    id: 'cs-1', dealId: 'c7a7338a-b520-4f76-b15b-5be1b9400fec', name: 'The Residences at Midtown', submarket: 'Midtown Atlanta', classType: 'Class A', units: 320,
     pcsRank: 3, submarketSize: 18, compSetSize: 8, avgRent: 2150, compAvgRent: 1980,
     occupancy: 94.2, compAvgOccupancy: 91.8, rentPremiumPct: 8.6, trendDirection: 'up',
     monthlyRentTrend: [1980, 2000, 2020, 2040, 2060, 2080, 2090, 2100, 2110, 2120, 2140, 2150],
   },
   {
-    id: 'cs-2', name: 'Peachtree Commons', submarket: 'Buckhead', classType: 'Class B', units: 248,
+    id: 'cs-2', dealId: '5d738adc-c4fe-42e9-986b-112e5fb550a8', name: 'Peachtree Commons', submarket: 'Buckhead', classType: 'Class B', units: 248,
     pcsRank: 7, submarketSize: 22, compSetSize: 12, avgRent: 1680, compAvgRent: 1720,
     occupancy: 91.0, compAvgOccupancy: 93.4, rentPremiumPct: -2.3, trendDirection: 'down',
     monthlyRentTrend: [1750, 1740, 1730, 1720, 1710, 1705, 1700, 1695, 1690, 1685, 1682, 1680],
   },
   {
-    id: 'cs-3', name: 'Highlands Park Lofts', submarket: 'Virginia Highland', classType: 'Class A', units: 186,
+    id: 'cs-3', dealId: 'ab17f229-8b9e-4628-8126-76729ef1e2ee', name: 'Highlands Park Lofts', submarket: 'Virginia Highland', classType: 'Class A', units: 186,
     pcsRank: 1, submarketSize: 12, compSetSize: 6, avgRent: 2380, compAvgRent: 2050,
     occupancy: 96.1, compAvgOccupancy: 92.0, rentPremiumPct: 16.1, trendDirection: 'up',
     monthlyRentTrend: [2200, 2220, 2250, 2270, 2290, 2310, 2330, 2340, 2350, 2360, 2370, 2380],
   },
   {
-    id: 'cs-4', name: 'Decatur Station', submarket: 'Decatur', classType: 'Class B', units: 156,
+    id: 'cs-4', dealId: 'fcaa546f-f082-432d-85b5-eb496ebd435b', name: 'Decatur Station', submarket: 'Decatur', classType: 'Class B', units: 156,
     pcsRank: 5, submarketSize: 9, compSetSize: 5, avgRent: 1420, compAvgRent: 1480,
     occupancy: 88.5, compAvgOccupancy: 91.2, rentPremiumPct: -4.1, trendDirection: 'down',
     monthlyRentTrend: [1500, 1490, 1480, 1475, 1465, 1460, 1450, 1445, 1440, 1435, 1425, 1420],
   },
   {
-    id: 'cs-5', name: 'Atlantic Station Living', submarket: 'West Midtown', classType: 'Class A', units: 290,
+    id: 'cs-5', dealId: '1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d', name: 'Atlantic Station Living', submarket: 'West Midtown', classType: 'Class A', units: 290,
     pcsRank: 4, submarketSize: 15, compSetSize: 9, avgRent: 1950, compAvgRent: 1890,
     occupancy: 93.0, compAvgOccupancy: 92.1, rentPremiumPct: 3.2, trendDirection: 'up',
     monthlyRentTrend: [1800, 1820, 1840, 1860, 1870, 1880, 1900, 1910, 1920, 1930, 1940, 1950],
   },
   {
-    id: 'cs-6', name: 'Riverside Flats', submarket: 'Vinings', classType: 'Class B', units: 204,
+    id: 'cs-6', dealId: '4f6115a8-499f-426b-a3f0-b1c988cf8d02', name: 'Riverside Flats', submarket: 'Vinings', classType: 'Class B', units: 204,
     pcsRank: 6, submarketSize: 11, compSetSize: 7, avgRent: 1560, compAvgRent: 1540,
     occupancy: 90.8, compAvgOccupancy: 90.5, rentPremiumPct: 1.3, trendDirection: 'stable',
     monthlyRentTrend: [1530, 1535, 1540, 1540, 1545, 1545, 1550, 1550, 1555, 1555, 1558, 1560],
@@ -793,7 +794,7 @@ export function AssetsOwnedPage() {
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-right">COMP OCC</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">TREND</th>
                 <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">RENT TREND</th>
-                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">ACTION</th>
+                <th className="px-3 py-2.5 text-[10px] font-mono text-stone-400 tracking-wider text-center">DEAL CAPSULE</th>
               </tr>
             </thead>
             <tbody>
@@ -854,11 +855,11 @@ export function AssetsOwnedPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/deals/${asset.id}?tab=competition&subtab=comp-analysis`);
+                        navigate(`/deals/${asset.dealId}?tab=competition&subtab=f40`);
                       }}
                       className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-md transition-colors border border-violet-200"
                     >
-                      View Comps
+                      🎯 Comp Set
                     </button>
                   </td>
                 </tr>
