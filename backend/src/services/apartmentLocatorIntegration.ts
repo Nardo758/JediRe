@@ -118,6 +118,163 @@ export interface PropertyDetails {
 }
 
 // =============================================
+// DEMAND SIGNALS TYPES
+// =============================================
+
+export interface DemandSignalsBudget {
+  avg_budget: number;
+  median_budget: number;
+  min_budget: number;
+  max_budget: number;
+  budget_distribution: { range: string; count: number }[];
+}
+
+export interface DemandSignalsBedroomDemand {
+  studio: number;
+  one_bed: number;
+  two_bed: number;
+  three_bed: number;
+  four_plus: number;
+}
+
+export interface DemandSignalsCommutePreferences {
+  max_commute_minutes_avg: number;
+  preferred_transport_modes: { mode: string; count: number }[];
+  top_commute_destinations: { destination: string; count: number }[];
+}
+
+export interface DemandSignalsLocationDemand {
+  top_cities: { city: string; state: string; count: number }[];
+  top_neighborhoods: { name: string; count: number }[];
+  top_zip_codes: { zip: string; count: number }[];
+}
+
+export interface DemandSignalsMoveInTimeline {
+  immediate: number;
+  within_30_days: number;
+  within_60_days: number;
+  within_90_days: number;
+  flexible: number;
+}
+
+export interface DemandSignalsAmenity {
+  amenity: string;
+  count: number;
+  percentage: number;
+}
+
+export interface DemandSignalsDealBreaker {
+  feature: string;
+  count: number;
+  percentage: number;
+}
+
+export interface DemandSignalsApartmentFeature {
+  feature: string;
+  count: number;
+  percentage: number;
+}
+
+export interface DemandSignalsResponse {
+  budget: DemandSignalsBudget;
+  bedroom_demand: DemandSignalsBedroomDemand;
+  commute_preferences: DemandSignalsCommutePreferences;
+  location_demand: DemandSignalsLocationDemand;
+  top_amenities: DemandSignalsAmenity[];
+  deal_breakers: DemandSignalsDealBreaker[];
+  apartment_features: DemandSignalsApartmentFeature[];
+  move_in_timeline: DemandSignalsMoveInTimeline;
+  total_active_searches: number;
+  data_period: string;
+}
+
+// =============================================
+// USER PREFERENCES AGGREGATE TYPES
+// =============================================
+
+export interface UserPreferencesCity {
+  city: string;
+  state: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesPricing {
+  avg_min_price: number;
+  avg_max_price: number;
+  median_min_price: number;
+  median_max_price: number;
+  price_distribution: { range: string; count: number }[];
+}
+
+export interface UserPreferencesBedroomPrefs {
+  studio: number;
+  one_bed: number;
+  two_bed: number;
+  three_bed: number;
+  four_plus: number;
+}
+
+export interface UserPreferencesAlertPrefs {
+  email_alerts_enabled: number;
+  sms_alerts_enabled: number;
+  push_alerts_enabled: number;
+  avg_alert_frequency: string;
+}
+
+export interface UserPreferencesPOIInterest {
+  category: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesAmenity {
+  amenity: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesDealBreaker {
+  feature: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesLifestylePriority {
+  priority: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesApartmentFeature {
+  feature: string;
+  count: number;
+  percentage: number;
+}
+
+export interface UserPreferencesSetupStats {
+  total_users: number;
+  profiles_completed: number;
+  avg_preferences_set: number;
+  avg_saved_searches: number;
+}
+
+export interface UserPreferencesAggregateResponse {
+  preferred_cities: UserPreferencesCity[];
+  price_preferences: UserPreferencesPricing;
+  bedroom_preferences: UserPreferencesBedroomPrefs;
+  alert_preferences: UserPreferencesAlertPrefs;
+  poi_interests: UserPreferencesPOIInterest[];
+  top_amenities: UserPreferencesAmenity[];
+  deal_breakers: UserPreferencesDealBreaker[];
+  lifestyle_priorities: UserPreferencesLifestylePriority[];
+  apartment_features: UserPreferencesApartmentFeature[];
+  setup_stats: UserPreferencesSetupStats;
+  total_users: number;
+  data_period: string;
+}
+
+// =============================================
 // CONFIGURATION
 // =============================================
 
@@ -289,6 +446,41 @@ export class ApartmentLocatorIntegration {
     } catch (error: any) {
       console.error('Failed to fetch grouped properties:', error.message);
       throw new Error(`Grouped properties fetch failed: ${error.message}`);
+    }
+  }
+
+  // =============================================
+  // DEMAND & USER PREFERENCES
+  // =============================================
+
+  /**
+   * Get demand signals from Apartment Locator AI
+   * Returns aggregated renter demand data including budget, bedroom preferences,
+   * commute preferences, location demand, amenities, deal breakers, and move-in timeline
+   */
+  async getDemandSignals(): Promise<DemandSignalsResponse> {
+    try {
+      const response = await this.client.get('/api/jedi/demand-signals');
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Failed to fetch demand signals:', error.message);
+      throw new Error(`Demand signals fetch failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Get aggregated user preferences from Apartment Locator AI
+   * Returns consolidated preference data across all active users including
+   * city preferences, pricing, bedroom prefs, amenities, deal breakers,
+   * lifestyle priorities, apartment features, and setup stats
+   */
+  async getUserPreferencesAggregate(): Promise<UserPreferencesAggregateResponse> {
+    try {
+      const response = await this.client.get('/api/jedi/user-preferences-aggregate');
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Failed to fetch user preferences aggregate:', error.message);
+      throw new Error(`User preferences aggregate fetch failed: ${error.message}`);
     }
   }
 

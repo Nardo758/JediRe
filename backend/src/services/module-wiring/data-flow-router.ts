@@ -128,6 +128,12 @@ const DATA_FLOW_CONNECTIONS: DataFlowConnection[] = [
   // M16 Pipeline outputs
   { from: 'M16', to: 'M01', dataKeys: ['pipeline_stage', 'days_in_stage'], strength: 'optional', description: 'Pipeline stage' },
 
+  // Demand Intelligence (apartment_user_analytics) enrichment flows
+  { from: 'M06', to: 'M14', dataKeys: ['deal_breakers'], strength: 'optional', description: 'Preference-based deal breakers for risk flags' },
+  { from: 'M06', to: 'M08', dataKeys: ['budget_distribution', 'bedroom_demand'], strength: 'optional', description: 'Budget and bedroom demand for strategy rent assumptions' },
+  { from: 'M06', to: 'M07', dataKeys: ['commute_preferences'], strength: 'optional', description: 'Commute preferences for traffic intelligence enrichment' },
+  { from: 'M06', to: 'M25', dataKeys: ['apartment_features_demand', 'move_in_timeline', 'deal_breakers', 'bedroom_demand', 'budget_distribution', 'commute_preferences'], strength: 'optional', description: 'Full demand intelligence signals for JEDI score enrichment' },
+
   // M19 News Intel outputs
   { from: 'M19', to: 'M04', dataKeys: ['classified_supply_events'], strength: 'optional', description: 'Classified supply events' },
   { from: 'M19', to: 'M06', dataKeys: ['classified_demand_events'], strength: 'required', description: 'Classified demand events' },

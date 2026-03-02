@@ -54,12 +54,21 @@ export interface ArbitrageResult {
   timestamp: Date;
 }
 
+export interface DemandBudgetInput {
+  avg: number;
+  median: number;
+  min: number;
+  max: number;
+}
+
 export interface StrategySignalInputs {
   demandScore: number;
   supplyScore: number;
   momentumScore: number;
   positionScore: number;
   riskScore: number;
+  budgetDistribution?: DemandBudgetInput;
+  bedroomDemand?: { studio: number; oneBed: number; twoBed: number; threePlusBed: number };
 }
 
 // ============================================================================
@@ -246,13 +255,49 @@ class StrategyArbitrageEngine {
     signalContributions.position = parseFloat(positionContrib.toFixed(2));
     signalContributions.risk = parseFloat(riskContrib.toFixed(2));
 
-    const score = demandContrib + supplyContrib + momentumContrib + positionContrib + riskContrib;
+    let score = demandContrib + supplyContrib + momentumContrib + positionContrib + riskContrib;
+
+    if (signals.budgetDistribution && signals.budgetDistribution.avg > 0) {
+      const avgBudget = signals.budgetDistribution.avg;
+      const budgetSpread = signals.budgetDistribution.max - signals.budgetDistribution.min;
+
+      if (strategyType === 'rental' && avgBudget > 1500) {
+        score += Math.min(3, (avgBudget - 1500) / 500);
+        signalContributions.budget_enrichment = parseFloat(Math.min(3, (avgBudget - 1500) / 500).toFixed(2));
+      }
+
+      if (strategyType === 'str' && avgBudget > 2000) {
+        score += Math.min(2, (avgBudget - 2000) / 1000);
+        signalContributions.budget_enrichment = parseFloat(Math.min(2, (avgBudget - 2000) / 1000).toFixed(2));
+      }
+
+      if (strategyType === 'build_to_sell' && budgetSpread > 1000) {
+        score += Math.min(2, budgetSpread / 2000);
+        signalContributions.budget_enrichment = parseFloat(Math.min(2, budgetSpread / 2000).toFixed(2));
+      }
+    }
+
+    if (signals.bedroomDemand) {
+      const bd = signals.bedroomDemand;
+      const totalDemand = (bd.studio || 0) + (bd.oneBed || 0) + (bd.twoBed || 0) + (bd.threePlusBed || 0);
+      if (totalDemand > 0) {
+        const familyDemandRatio = ((bd.twoBed || 0) + (bd.threePlusBed || 0)) / totalDemand;
+        if (strategyType === 'build_to_sell' && familyDemandRatio > 0.4) {
+          score += 2;
+          signalContributions.bedroom_enrichment = 2;
+        }
+        if (strategyType === 'rental' && (bd.oneBed || 0) / totalDemand > 0.4) {
+          score += 1.5;
+          signalContributions.bedroom_enrichment = 1.5;
+        }
+      }
+    }
 
     return {
       strategy: strategyType,
       label: STRATEGY_LABELS[strategyType],
       score: parseFloat(Math.max(0, Math.min(100, score)).toFixed(2)),
-      rank: 0, // assigned after sorting
+      rank: 0,
       signalContributions,
       keyIndicators: KEY_INDICATORS[strategyType],
     };
@@ -268,15 +313,17 @@ class StrategyArbitrageEngine {
     return {
       demandScore: allInputs.demand_score ?? 50,
       supplyScore: allInputs.supply_pressure_score
-        ? (100 - allInputs.supply_pressure_score) // Invert: lower pressure = higher score
+        ? (100 - allInputs.supply_pressure_score)
         : 50,
       momentumScore: allInputs.rent_growth_pct
         ? Math.max(0, Math.min(100, 50 + (allInputs.rent_growth_pct - 3) * 17))
         : 50,
       positionScore: allInputs.submarket_rank ?? 50,
       riskScore: allInputs.composite_risk_score
-        ? (100 - allInputs.composite_risk_score) // Invert: lower risk = higher score
+        ? (100 - allInputs.composite_risk_score)
         : 50,
+      budgetDistribution: allInputs.budget_distribution || undefined,
+      bedroomDemand: allInputs.bedroom_demand || undefined,
     };
   }
 

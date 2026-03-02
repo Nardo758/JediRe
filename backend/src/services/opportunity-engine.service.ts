@@ -25,6 +25,55 @@ export interface OpportunitySignal {
   weight: number;
 }
 
+export interface DemandBudget {
+  avg: number;
+  median: number;
+  min: number;
+  max: number;
+}
+
+export interface BedroomDemand {
+  studio: number;
+  oneBed: number;
+  twoBed: number;
+  threePlusBed: number;
+}
+
+export interface CommutePreferences {
+  maxCommuteMinutes: number;
+  preferredModes: string[];
+  topEmploymentCenters: string[];
+}
+
+export interface LocationDemand {
+  topCities: Array<{ city: string; state?: string; count: number }>;
+  topNeighborhoods: string[];
+  topZipCodes: string[];
+}
+
+export interface MoveInTimeline {
+  immediate: number;
+  within30Days: number;
+  within60Days: number;
+  within90Days: number;
+  moreThan90Days: number;
+}
+
+export interface EnrichedDemandData {
+  activeRenters: number;
+  topAmenities: string[];
+  dealBreakers: string[];
+  apartmentFeatures: Array<{ name: string; count: number }>;
+  budget: DemandBudget;
+  bedroomDemand: BedroomDemand;
+  commutePreferences: CommutePreferences;
+  locationDemand: LocationDemand;
+  moveInTimeline: MoveInTimeline;
+  lifestylePriorities: string[];
+  setupStats: { totalProfiles: number; avgCompleteness: number };
+  preferredCities: Array<{ city: string; count: number }>;
+}
+
 export interface OpportunityEngineResult {
   opportunities: OpportunityScore[];
   marketSummary: {
@@ -62,7 +111,7 @@ export class OpportunityEngineService {
     const demandData = await this.getDemandData(city);
 
     const opportunities = marketData.submarketScores.map((sm, idx) => {
-      return this.scoreSubmarketOpportunity(sm, marketData.avgScore, trendData, demandData);
+      return this.scoreSubmarketOpportunity(sm, marketData.avgScore, trendData, demandData, city);
     });
 
     opportunities.sort((a, b) => b.opportunityScore - a.opportunityScore);
@@ -92,7 +141,8 @@ export class OpportunityEngineService {
     sm: SubmarketF40Score,
     marketAvg: number,
     trends: any,
-    demand: any
+    demand: any,
+    city: string = 'Atlanta'
   ): OpportunityScore {
     const dims = sm.dimensions;
     const signals: OpportunitySignal[] = [];
@@ -223,10 +273,30 @@ export class OpportunityEngineService {
     return rent ? rent.value : 1800;
   }
 
-  private demandSignalScore(demand: any): number {
+  private demandSignalScore(demand: EnrichedDemandData | null): number {
     if (!demand) return 50;
-    const activeScore = demand.activeRenters ? clamp(demand.activeRenters / 50) : 50;
-    return Math.round(activeScore);
+    let score = 50;
+
+    if (demand.activeRenters) {
+      score = clamp(demand.activeRenters / 50);
+    }
+
+    if (demand.moveInTimeline) {
+      const urgentDemand = (demand.moveInTimeline.immediate || 0) + (demand.moveInTimeline.within30Days || 0);
+      if (urgentDemand > 50) score = Math.min(100, score + 10);
+    }
+
+    if (demand.bedroomDemand) {
+      const totalBedDemand = (demand.bedroomDemand.studio || 0) + (demand.bedroomDemand.oneBed || 0) +
+        (demand.bedroomDemand.twoBed || 0) + (demand.bedroomDemand.threePlusBed || 0);
+      if (totalBedDemand > 100) score = Math.min(100, score + 5);
+    }
+
+    if (demand.budget && demand.budget.avg > 0) {
+      score = Math.min(100, score + 5);
+    }
+
+    return Math.round(score);
   }
 
   private async getTrendData(city: string): Promise<any> {
@@ -256,28 +326,141 @@ export class OpportunityEngineService {
     }
   }
 
-  private async getDemandData(city: string): Promise<any> {
+  async getDemandData(city: string): Promise<EnrichedDemandData | null> {
     try {
       const result = await this.pool.query(
-        `SELECT analytics_type, data FROM apartment_user_analytics WHERE analytics_type IN ('user-stats', 'demand-signals') AND (city = $1 OR city IS NULL) ORDER BY synced_at DESC LIMIT 5`,
+        `SELECT analytics_type, data FROM apartment_user_analytics WHERE analytics_type IN ('user-stats', 'demand-signals', 'user-preferences') AND (city = $1 OR city IS NULL) ORDER BY synced_at DESC LIMIT 10`,
         [city]
       );
       if (result.rows.length === 0) return null;
 
       let activeRenters = 0;
       let topAmenities: string[] = [];
+      let demandDealBreakers: string[] = [];
+      let prefDealBreakers: string[] = [];
+      let demandApartmentFeatures: Array<{ name: string; count: number }> = [];
+      let prefApartmentFeatures: Array<{ name: string; count: number }> = [];
+      let budget: DemandBudget = { avg: 0, median: 0, min: 0, max: 0 };
+      let bedroomDemand: BedroomDemand = { studio: 0, oneBed: 0, twoBed: 0, threePlusBed: 0 };
+      let commutePreferences: CommutePreferences = { maxCommuteMinutes: 0, preferredModes: [], topEmploymentCenters: [] };
+      let locationDemand: LocationDemand = { topCities: [], topNeighborhoods: [], topZipCodes: [] };
+      let moveInTimeline: MoveInTimeline = { immediate: 0, within30Days: 0, within60Days: 0, within90Days: 0, moreThan90Days: 0 };
+      let lifestylePriorities: string[] = [];
+      let setupStats: { totalProfiles: number; avgCompleteness: number } = { totalProfiles: 0, avgCompleteness: 0 };
+      let preferredCities: Array<{ city: string; count: number }> = [];
 
       for (const row of result.rows) {
         const d = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+
         if (row.analytics_type === 'user-stats') {
           activeRenters = d?.activeUsers30d || d?.totalUsers || 0;
         }
+
         if (row.analytics_type === 'demand-signals') {
-          topAmenities = (d?.topAmenities || []).map((a: any) => a.name || a);
+          topAmenities = (d?.topAmenities || d?.top_amenities || []).map((a: any) => a.name || a);
+          demandDealBreakers = (d?.dealBreakers || d?.deal_breakers || []).map((a: any) => a.name || a);
+          demandApartmentFeatures = (d?.apartmentFeatures || d?.apartment_features || []).map((a: any) =>
+            typeof a === 'string' ? { name: a, count: 0 } : { name: a.name || a.feature, count: a.count || 0 }
+          );
+
+          if (d?.budget) {
+            budget = {
+              avg: d.budget.avg || d.budget.average || d.budget.avg_budget || 0,
+              median: d.budget.median || d.budget.median_budget || 0,
+              min: d.budget.min || d.budget.min_budget || 0,
+              max: d.budget.max || d.budget.max_budget || 0,
+            };
+          }
+
+          if (d?.bedroomDemand || d?.bedroom_demand) {
+            const bd = d.bedroomDemand || d.bedroom_demand;
+            bedroomDemand = {
+              studio: bd.studio || bd['0br'] || 0,
+              oneBed: bd.oneBed || bd['1br'] || bd.one_bed || 0,
+              twoBed: bd.twoBed || bd['2br'] || bd.two_bed || 0,
+              threePlusBed: bd.threePlusBed || bd['3br+'] || bd.three_plus_bed || 0,
+            };
+          }
+
+          if (d?.commutePreferences || d?.commute_preferences) {
+            const cp = d.commutePreferences || d.commute_preferences;
+            commutePreferences = {
+              maxCommuteMinutes: cp.maxCommuteMinutes || cp.max_commute_minutes || cp.max_commute_minutes_avg || 0,
+              preferredModes: cp.preferredModes || cp.preferred_modes || (cp.preferred_transport_modes || []).map((m: any) => m.mode || m) || [],
+              topEmploymentCenters: cp.topEmploymentCenters || cp.top_employment_centers || (cp.top_commute_destinations || []).map((d: any) => d.destination || d) || [],
+            };
+          }
+
+          if (d?.locationDemand || d?.location_demand) {
+            const ld = d.locationDemand || d.location_demand;
+            locationDemand = {
+              topCities: (ld.topCities || ld.top_cities || []).map((c: any) =>
+                typeof c === 'string' ? { city: c, count: 0 } : { city: c.city || c.name, state: c.state, count: c.count || 0 }
+              ),
+              topNeighborhoods: (ld.topNeighborhoods || ld.top_neighborhoods || []).map((n: any) => n.name || n),
+              topZipCodes: (ld.topZipCodes || ld.top_zip_codes || []).map((z: any) => z.zip || z),
+            };
+          }
+
+          if (d?.moveInTimeline || d?.move_in_timeline) {
+            const mt = d.moveInTimeline || d.move_in_timeline;
+            moveInTimeline = {
+              immediate: mt.immediate || 0,
+              within30Days: mt.within30Days || mt.within_30_days || 0,
+              within60Days: mt.within60Days || mt.within_60_days || 0,
+              within90Days: mt.within90Days || mt.within_90_days || 0,
+              moreThan90Days: mt.moreThan90Days || mt.more_than_90_days || mt.flexible || 0,
+            };
+          }
+        }
+
+        if (row.analytics_type === 'user-preferences') {
+          prefDealBreakers = (d?.dealBreakers || d?.deal_breakers || []).map((a: any) => a.name || a);
+          lifestylePriorities = (d?.lifestylePriorities || d?.lifestyle_priorities || []).map((a: any) => a.name || a);
+          prefApartmentFeatures = (d?.apartmentFeatures || d?.apartment_features || []).map((a: any) =>
+            typeof a === 'string' ? { name: a, count: 0 } : { name: a.name || a.feature, count: a.count || 0 }
+          );
+
+          if (d?.setupStats || d?.setup_stats) {
+            const ss = d.setupStats || d.setup_stats;
+            setupStats = {
+              totalProfiles: ss.totalProfiles || ss.total_profiles || 0,
+              avgCompleteness: ss.avgCompleteness || ss.avg_completeness || 0,
+            };
+          }
+
+          preferredCities = (d?.preferredCities || d?.preferred_cities || []).map((a: any) =>
+            typeof a === 'string' ? { city: a, count: 0 } : { city: a.city || a.name, count: a.count || 0 }
+          );
+
+          if (!topAmenities.length) {
+            topAmenities = (d?.topAmenities || d?.top_amenities || []).map((a: any) => a.name || a);
+          }
         }
       }
 
-      return { activeRenters, topAmenities };
+      const mergedDealBreakers = [...new Set([...demandDealBreakers, ...prefDealBreakers])];
+
+      const featureMap = new Map<string, number>();
+      for (const f of [...demandApartmentFeatures, ...prefApartmentFeatures]) {
+        featureMap.set(f.name, (featureMap.get(f.name) || 0) + f.count);
+      }
+      const mergedFeatures = Array.from(featureMap.entries()).map(([name, count]) => ({ name, count }));
+
+      return {
+        activeRenters,
+        topAmenities,
+        dealBreakers: mergedDealBreakers,
+        apartmentFeatures: mergedFeatures,
+        budget,
+        bedroomDemand,
+        commutePreferences,
+        locationDemand,
+        moveInTimeline,
+        lifestylePriorities,
+        setupStats,
+        preferredCities,
+      };
     } catch {
       return null;
     }

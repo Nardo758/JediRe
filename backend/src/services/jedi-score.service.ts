@@ -12,11 +12,23 @@
  * @date 2026-02-11
  */
 
-import { query } from '../database/connection';
+import { query, getPool } from '../database/connection';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+export interface DemandIntelligence {
+  dealBreakers: string[];
+  apartmentFeatures: Array<{ name: string; count: number }>;
+  budget: { avg: number; median: number; min: number; max: number };
+  bedroomDemand: { studio: number; oneBed: number; twoBed: number; threePlusBed: number };
+  commutePreferences: { maxCommuteMinutes: number; preferredModes: string[]; topEmploymentCenters: string[] };
+  moveInTimeline: { immediate: number; within30Days: number; within60Days: number; within90Days: number; moreThan90Days: number };
+  topAmenities: string[];
+  lifestylePriorities: string[];
+  activeRenters: number;
+}
 
 export interface JEDIScore {
   totalScore: number;
@@ -84,18 +96,18 @@ export class JEDIScoreService {
   async calculateScore(context: ScoreCalculationContext): Promise<JEDIScore> {
     const { dealId, tradeAreaId } = context;
 
-    // Get deal and trade area information
     const dealInfo = await this.getDealInfo(dealId);
     if (!dealInfo) {
       throw new Error(`Deal not found: ${dealId}`);
     }
 
-    // Calculate each signal component (0-100 scale)
-    const demandScore = await this.calculateDemandScore(dealId, tradeAreaId);
-    const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId);
-    const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId);
-    const positionScore = await this.calculatePositionScore(dealId, tradeAreaId);
-    const riskScore = await this.calculateRiskScore(dealId, tradeAreaId);
+    const demandIntel = await this.fetchDemandIntelligence(dealInfo.city);
+
+    const demandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
+    const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId, demandIntel);
+    const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId, demandIntel);
+    const positionScore = await this.calculatePositionScore(dealId, tradeAreaId, demandIntel);
+    const riskScore = await this.calculateRiskScore(dealId, tradeAreaId, demandIntel);
 
     // Calculate weighted contributions
     const demandContribution = demandScore * this.WEIGHTS.demand;
@@ -129,79 +141,82 @@ export class JEDIScoreService {
 
   /**
    * Calculate Demand Signal Score (0-100)
-   * Based on employment events, population growth, economic indicators
+   * Based on employment events, population growth, economic indicators,
+   * enriched with apartment_features demand counts and bedroom_demand from demand intelligence.
    */
-  private async calculateDemandScore(dealId: string, tradeAreaId?: string): Promise<number> {
-    // Get demand signals (news events affecting this deal's trade area)
+  private async calculateDemandScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const signals = await this.getDemandSignals(dealId, tradeAreaId);
 
-    if (signals.length === 0) {
-      return 50.0; // Baseline neutral score
+    if (signals.length === 0 && !demandIntel) {
+      return 50.0;
     }
-
-    // Get signal weights
-    const weightResult = await query(
-      `SELECT event_category, event_type, base_weight, confidence_multiplier, max_jedi_impact,
-              housing_conversion_rate, occupancy_factor
-       FROM demand_signal_weights`
-    );
-    const weightMap = new Map(
-      weightResult.rows.map(w => [
-        `${w.event_category}:${w.event_type}`,
-        w
-      ])
-    );
 
     let totalImpact = 0;
-    const demandFactors = [];
 
-    for (const signal of signals) {
-      const weightKey = `${signal.eventCategory}:${signal.eventType}`;
-      const weight = weightMap.get(weightKey);
-
-      if (!weight) continue;
-
-      // Apply confidence multiplier
-      const confidenceMultiplier = weight.confidence_multiplier[signal.confidence] || 0.5;
-      
-      // Calculate impact magnitude
-      let impactMagnitude = 0;
-      
-      if (signal.employeeCount && weight.housing_conversion_rate) {
-        // Employment event: convert jobs to housing demand
-        const housingDemand = signal.employeeCount * weight.housing_conversion_rate * weight.occupancy_factor;
-        impactMagnitude = (housingDemand / 100) * weight.max_jedi_impact; // Normalize
-      } else if (signal.unitCount) {
-        // Development event: direct unit impact
-        impactMagnitude = (signal.unitCount / 500) * Math.abs(weight.max_jedi_impact); // Normalize to 500 units
-      } else {
-        // Generic event: use impact score
-        impactMagnitude = (signal.impactScore / 100) * weight.max_jedi_impact;
-      }
-
-      // Apply confidence weighting
-      const weightedImpact = impactMagnitude * confidenceMultiplier * weight.base_weight;
-      
-      // Apply proximity decay (already factored into impactScore from geographic assignment)
-      const proximityFactor = signal.impactScore / 100;
-      const finalImpact = weightedImpact * proximityFactor;
-
-      // Cap individual event impact at max_jedi_impact
-      const cappedImpact = Math.max(
-        -Math.abs(weight.max_jedi_impact),
-        Math.min(Math.abs(weight.max_jedi_impact), finalImpact)
+    if (signals.length > 0) {
+      const weightResult = await query(
+        `SELECT event_category, event_type, base_weight, confidence_multiplier, max_jedi_impact,
+                housing_conversion_rate, occupancy_factor
+         FROM demand_signal_weights`
+      );
+      const weightMap = new Map(
+        weightResult.rows.map(w => [
+          `${w.event_category}:${w.event_type}`,
+          w
+        ])
       );
 
-      totalImpact += cappedImpact;
-      demandFactors.push({
-        eventId: signal.eventId,
-        eventType: signal.eventType,
-        impact: cappedImpact,
-        confidence: signal.confidence,
-      });
+      for (const signal of signals) {
+        const weightKey = `${signal.eventCategory}:${signal.eventType}`;
+        const weight = weightMap.get(weightKey);
+
+        if (!weight) continue;
+
+        const confidenceMultiplier = weight.confidence_multiplier[signal.confidence] || 0.5;
+        
+        let impactMagnitude = 0;
+        
+        if (signal.employeeCount && weight.housing_conversion_rate) {
+          const housingDemand = signal.employeeCount * weight.housing_conversion_rate * weight.occupancy_factor;
+          impactMagnitude = (housingDemand / 100) * weight.max_jedi_impact;
+        } else if (signal.unitCount) {
+          impactMagnitude = (signal.unitCount / 500) * Math.abs(weight.max_jedi_impact);
+        } else {
+          impactMagnitude = (signal.impactScore / 100) * weight.max_jedi_impact;
+        }
+
+        const weightedImpact = impactMagnitude * confidenceMultiplier * weight.base_weight;
+        const proximityFactor = signal.impactScore / 100;
+        const finalImpact = weightedImpact * proximityFactor;
+
+        const cappedImpact = Math.max(
+          -Math.abs(weight.max_jedi_impact),
+          Math.min(Math.abs(weight.max_jedi_impact), finalImpact)
+        );
+
+        totalImpact += cappedImpact;
+      }
     }
 
-    // Convert impact to 0-100 score (baseline 50, +/- 15 max)
+    if (demandIntel) {
+      const totalFeatureDemand = demandIntel.apartmentFeatures.reduce((sum, f) => sum + f.count, 0);
+      if (totalFeatureDemand > 50) {
+        totalImpact += Math.min(3, totalFeatureDemand / 100);
+      }
+
+      const totalBedDemand = (demandIntel.bedroomDemand.studio || 0) +
+        (demandIntel.bedroomDemand.oneBed || 0) +
+        (demandIntel.bedroomDemand.twoBed || 0) +
+        (demandIntel.bedroomDemand.threePlusBed || 0);
+      if (totalBedDemand > 100) {
+        totalImpact += Math.min(3, totalBedDemand / 200);
+      }
+
+      if (demandIntel.activeRenters > 500) {
+        totalImpact += Math.min(2, demandIntel.activeRenters / 2000);
+      }
+    }
+
     const demandScore = 50 + Math.max(-15, Math.min(15, totalImpact));
 
     return demandScore;
@@ -209,12 +224,9 @@ export class JEDIScoreService {
 
   /**
    * Calculate Supply Signal Score (0-100)
-   * For Phase 1, use baseline value (will be implemented in Phase 2)
+   * Enriched with bedroom_demand for supply/demand gap analysis.
    */
-  private async calculateSupplyScore(dealId: string, tradeAreaId?: string): Promise<number> {
-    // TODO Phase 2: Implement pipeline analysis, absorption rates, vacancy trends
-    
-    // Baseline: Get development permits in trade area (supply pressure indicator)
+  private async calculateSupplyScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const supplyResult = await query(
       `SELECT COUNT(*) as permit_count,
               SUM((ne.extracted_data->>'unit_count')::INTEGER) as total_units
@@ -232,19 +244,39 @@ export class JEDIScoreService {
     const supply = supplyResult.rows[0];
     const pipelineUnits = supply.total_units || 0;
 
-    // Simplified scoring: high pipeline = lower supply score (more competition)
-    if (pipelineUnits === 0) return 60.0; // No new supply = good
-    if (pipelineUnits < 200) return 55.0;
-    if (pipelineUnits < 500) return 50.0;
-    if (pipelineUnits < 1000) return 45.0;
-    return 40.0; // Heavy supply pressure
+    let baseScore: number;
+    if (pipelineUnits === 0) baseScore = 60.0;
+    else if (pipelineUnits < 200) baseScore = 55.0;
+    else if (pipelineUnits < 500) baseScore = 50.0;
+    else if (pipelineUnits < 1000) baseScore = 45.0;
+    else baseScore = 40.0;
+
+    if (demandIntel) {
+      const totalBedDemand = (demandIntel.bedroomDemand.studio || 0) +
+        (demandIntel.bedroomDemand.oneBed || 0) +
+        (demandIntel.bedroomDemand.twoBed || 0) +
+        (demandIntel.bedroomDemand.threePlusBed || 0);
+
+      if (pipelineUnits > 0 && totalBedDemand > 0) {
+        const demandSupplyRatio = totalBedDemand / pipelineUnits;
+        if (demandSupplyRatio > 2) {
+          baseScore += 5;
+        } else if (demandSupplyRatio > 1) {
+          baseScore += 2;
+        } else if (demandSupplyRatio < 0.5) {
+          baseScore -= 3;
+        }
+      }
+    }
+
+    return Math.max(0, Math.min(100, baseScore));
   }
 
   /**
    * Calculate Momentum Signal Score (0-100)
-   * For Phase 1, use baseline value (will be implemented in Phase 2)
+   * Enriched with move_in_timeline for absorption rate projections.
    */
-  private async calculateMomentumScore(dealId: string, tradeAreaId?: string): Promise<number> {
+  private async calculateMomentumScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const momentumResult = await query(
       `SELECT COUNT(*) as transaction_count
        FROM news_events ne
@@ -276,17 +308,33 @@ export class JEDIScoreService {
     } catch {
     }
 
-    return Math.max(0, Math.min(100, baseScore + trajectoryBoost));
+    let absorptionBoost = 0;
+    if (demandIntel?.moveInTimeline) {
+      const mt = demandIntel.moveInTimeline;
+      const urgentDemand = (mt.immediate || 0) + (mt.within30Days || 0);
+      const nearTermDemand = urgentDemand + (mt.within60Days || 0);
+      const totalTimeline = nearTermDemand + (mt.within90Days || 0) + (mt.moreThan90Days || 0);
+
+      if (totalTimeline > 0) {
+        const urgencyRatio = urgentDemand / totalTimeline;
+        if (urgencyRatio > 0.5) {
+          absorptionBoost = 5;
+        } else if (urgencyRatio > 0.3) {
+          absorptionBoost = 3;
+        } else if (urgencyRatio > 0.15) {
+          absorptionBoost = 1;
+        }
+      }
+    }
+
+    return Math.max(0, Math.min(100, baseScore + trajectoryBoost + absorptionBoost));
   }
 
   /**
    * Calculate Position Signal Score (0-100)
-   * For Phase 1, use baseline value (will be implemented in Phase 2)
+   * Enriched with commute_preferences from demand intelligence.
    */
-  private async calculatePositionScore(dealId: string, tradeAreaId?: string): Promise<number> {
-    // TODO Phase 2: Implement submarket analysis, amenity proximity, competitive position
-    
-    // Baseline: Check amenity events
+  private async calculatePositionScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const positionResult = await query(
       `SELECT COUNT(*) as amenity_count
        FROM news_events ne
@@ -301,19 +349,47 @@ export class JEDIScoreService {
 
     const amenityCount = parseInt(positionResult.rows[0].amenity_count) || 0;
 
-    // More amenities = better position
-    return 50.0 + (amenityCount * 2); // +2 points per amenity, max +10
+    let baseScore = 50.0 + (amenityCount * 2);
+
+    if (demandIntel?.commutePreferences) {
+      const cp = demandIntel.commutePreferences;
+      if (cp.topEmploymentCenters && cp.topEmploymentCenters.length > 0) {
+        baseScore += Math.min(3, cp.topEmploymentCenters.length);
+      }
+      if (cp.preferredModes && cp.preferredModes.includes('transit')) {
+        baseScore += 2;
+      }
+      if (cp.maxCommuteMinutes > 0 && cp.maxCommuteMinutes <= 20) {
+        baseScore += 2;
+      }
+    }
+
+    return Math.max(0, Math.min(100, baseScore));
   }
 
   /**
    * Calculate Risk Signal Score (0-100)
-   * For Phase 1, use baseline value (will be implemented in Phase 2)
+   * Enriched with deal_breakers from demand intelligence for preference-based risk flags.
    */
-  private async calculateRiskScore(dealId: string, tradeAreaId?: string): Promise<number> {
-    // TODO Phase 2: Implement volatility analysis, regulatory risk, concentration risk
-    
-    // Baseline: Neutral risk
-    return 50.0;
+  private async calculateRiskScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
+    let baseScore = 50.0;
+
+    if (demandIntel?.dealBreakers && demandIntel.dealBreakers.length > 0) {
+      const highRiskBreakers = ['crime', 'safety', 'noise', 'flood', 'pollution', 'construction'];
+      const matchedBreakers = demandIntel.dealBreakers.filter(
+        db => highRiskBreakers.some(hrb => db.toLowerCase().includes(hrb))
+      );
+
+      if (matchedBreakers.length > 0) {
+        baseScore += Math.min(10, matchedBreakers.length * 3);
+      }
+
+      if (demandIntel.dealBreakers.length > 5) {
+        baseScore += 3;
+      }
+    }
+
+    return Math.max(0, Math.min(100, baseScore));
   }
 
   /**
@@ -356,6 +432,116 @@ export class JEDIScoreService {
       unitCount: row.extracted_data?.unit_count,
       distanceMiles: parseFloat(row.distance_miles) || 0,
     }));
+  }
+
+  /**
+   * Fetch demand intelligence data from apartment_user_analytics table.
+   * Parses demand-signals and user-preferences JSON blobs into structured data.
+   */
+  private async fetchDemandIntelligence(city?: string): Promise<DemandIntelligence | null> {
+    try {
+      const pool = getPool();
+      const result = await pool.query(
+        `SELECT analytics_type, data FROM apartment_user_analytics
+         WHERE analytics_type IN ('demand-signals', 'user-preferences', 'user-stats')
+           AND (city = $1 OR city IS NULL)
+         ORDER BY synced_at DESC LIMIT 10`,
+        [city || null]
+      );
+
+      if (result.rows.length === 0) return null;
+
+      const intel: DemandIntelligence = {
+        dealBreakers: [],
+        apartmentFeatures: [],
+        budget: { avg: 0, median: 0, min: 0, max: 0 },
+        bedroomDemand: { studio: 0, oneBed: 0, twoBed: 0, threePlusBed: 0 },
+        commutePreferences: { maxCommuteMinutes: 0, preferredModes: [], topEmploymentCenters: [] },
+        moveInTimeline: { immediate: 0, within30Days: 0, within60Days: 0, within90Days: 0, moreThan90Days: 0 },
+        topAmenities: [],
+        lifestylePriorities: [],
+        activeRenters: 0,
+      };
+
+      let demandBreakers: string[] = [];
+      let prefBreakers: string[] = [];
+
+      for (const row of result.rows) {
+        const d = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+
+        if (row.analytics_type === 'user-stats') {
+          intel.activeRenters = d?.activeUsers30d || d?.totalUsers || 0;
+        }
+
+        if (row.analytics_type === 'demand-signals') {
+          intel.topAmenities = (d?.topAmenities || d?.top_amenities || []).map((a: any) => a.name || a);
+          demandBreakers = (d?.dealBreakers || d?.deal_breakers || []).map((a: any) => a.name || a);
+          intel.apartmentFeatures = (d?.apartmentFeatures || d?.apartment_features || []).map((a: any) =>
+            typeof a === 'string' ? { name: a, count: 0 } : { name: a.name || a.feature, count: a.count || 0 }
+          );
+
+          if (d?.budget) {
+            intel.budget = {
+              avg: d.budget.avg || d.budget.average || d.budget.avg_budget || 0,
+              median: d.budget.median || d.budget.median_budget || 0,
+              min: d.budget.min || d.budget.min_budget || 0,
+              max: d.budget.max || d.budget.max_budget || 0,
+            };
+          }
+
+          if (d?.bedroomDemand || d?.bedroom_demand) {
+            const bd = d.bedroomDemand || d.bedroom_demand;
+            intel.bedroomDemand = {
+              studio: bd.studio || bd['0br'] || 0,
+              oneBed: bd.oneBed || bd['1br'] || bd.one_bed || 0,
+              twoBed: bd.twoBed || bd['2br'] || bd.two_bed || 0,
+              threePlusBed: bd.threePlusBed || bd['3br+'] || bd.three_plus_bed || 0,
+            };
+          }
+
+          if (d?.commutePreferences || d?.commute_preferences) {
+            const cp = d.commutePreferences || d.commute_preferences;
+            intel.commutePreferences = {
+              maxCommuteMinutes: cp.maxCommuteMinutes || cp.max_commute_minutes || cp.max_commute_minutes_avg || 0,
+              preferredModes: cp.preferredModes || cp.preferred_modes || (cp.preferred_transport_modes || []).map((m: any) => m.mode || m) || [],
+              topEmploymentCenters: cp.topEmploymentCenters || cp.top_employment_centers || (cp.top_commute_destinations || []).map((dest: any) => dest.destination || dest) || [],
+            };
+          }
+
+          if (d?.moveInTimeline || d?.move_in_timeline) {
+            const mt = d.moveInTimeline || d.move_in_timeline;
+            intel.moveInTimeline = {
+              immediate: mt.immediate || 0,
+              within30Days: mt.within30Days || mt.within_30_days || 0,
+              within60Days: mt.within60Days || mt.within_60_days || 0,
+              within90Days: mt.within90Days || mt.within_90_days || 0,
+              moreThan90Days: mt.moreThan90Days || mt.more_than_90_days || mt.flexible || 0,
+            };
+          }
+        }
+
+        if (row.analytics_type === 'user-preferences') {
+          prefBreakers = (d?.dealBreakers || d?.deal_breakers || []).map((a: any) => a.name || a);
+          intel.lifestylePriorities = (d?.lifestylePriorities || d?.lifestyle_priorities || []).map((a: any) => a.name || a);
+
+          const prefFeatures: Array<{ name: string; count: number }> = (d?.apartmentFeatures || d?.apartment_features || []).map((a: any) =>
+            typeof a === 'string' ? { name: a, count: 0 } : { name: a.name || a.feature, count: a.count || 0 }
+          );
+
+          const featureMap = new Map<string, number>();
+          for (const f of [...intel.apartmentFeatures, ...prefFeatures]) {
+            featureMap.set(f.name, (featureMap.get(f.name) || 0) + f.count);
+          }
+          intel.apartmentFeatures = Array.from(featureMap.entries()).map(([name, count]) => ({ name, count }));
+        }
+      }
+
+      intel.dealBreakers = [...new Set([...demandBreakers, ...prefBreakers])];
+
+      return intel;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -512,7 +698,7 @@ export class JEDIScoreService {
    */
   private async getDealInfo(dealId: string) {
     const result = await query(
-      `SELECT d.*, p.id as property_id, ta.id as trade_area_id
+      `SELECT d.*, d.city as city, p.id as property_id, ta.id as trade_area_id
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        LEFT JOIN trade_areas ta ON ta.property_id = p.id
