@@ -10,17 +10,42 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { apiClient } from '@/services/api.client';
-import {
-  acquisitionTimelineStats,
-  acquisitionMilestones,
-  acquisitionDeadlines,
-  performanceTimelineStats,
-  performanceMilestones,
-  performanceDeadlines,
-  TimelineStat,
-  Milestone,
-  DeadlineItem
-} from '../../../data/timelineMockData';
+
+// Type definitions
+interface TimelineStat {
+  label: string;
+  value: number | string;
+  format: 'days' | 'percentage' | 'number';
+  icon: string;
+  subtext?: string;
+  status?: 'success' | 'warning' | 'danger' | 'info';
+}
+
+interface Milestone {
+  id: string;
+  title: string;
+  description?: string;
+  date: string;
+  status: 'completed' | 'in-progress' | 'upcoming' | 'overdue' | 'at-risk';
+  category: 'critical' | 'standard' | 'optional';
+  owner?: string;
+  completedDate?: string;
+  daysUntil?: number;
+  notes?: string;
+  dependencies?: string[];
+}
+
+interface DeadlineItem {
+  id: string;
+  title: string;
+  dueDate: string;
+  daysUntil: number;
+  category: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  status: 'due-soon' | 'upcoming' | 'overdue';
+  owner: string;
+  completionPercent?: number;
+}
 
 interface TimelineData {
   stats?: TimelineStat[];
@@ -74,9 +99,9 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
     setIsSaving(true);
     try {
       const timelinePayload: TimelineData = {
-        stats: liveData?.stats || (isPipeline ? acquisitionTimelineStats : performanceTimelineStats),
+        stats: liveData?.stats || getDefaultTimelineStats(isPipeline),
         milestones: updatedMilestones,
-        deadlines: liveData?.deadlines || (isPipeline ? acquisitionDeadlines : performanceDeadlines),
+        deadlines: liveData?.deadlines || getDefaultDeadlines(isPipeline),
       };
       await apiClient.patch(`/api/v1/deals/${deal.id}/state`, {
         timeline_data: timelinePayload,
@@ -89,13 +114,9 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
     }
   }, [deal.id, isPipeline, liveData]);
 
-  const mockStats = isPipeline ? acquisitionTimelineStats : performanceTimelineStats;
-  const mockMilestones = isPipeline ? acquisitionMilestones : performanceMilestones;
-  const mockDeadlines = isPipeline ? acquisitionDeadlines : performanceDeadlines;
-
-  const stats = (isLive && liveData?.stats) ? liveData.stats : mockStats;
-  const milestones = (isLive && liveData?.milestones) ? liveData.milestones : mockMilestones;
-  const deadlines = (isLive && liveData?.deadlines) ? liveData.deadlines : mockDeadlines;
+  const stats = (isLive && liveData?.stats) ? liveData.stats : getDefaultTimelineStats(isPipeline);
+  const milestones = (isLive && liveData?.milestones) ? liveData.milestones : getDefaultMilestones(isPipeline);
+  const deadlines = (isLive && liveData?.deadlines) ? liveData.deadlines : getDefaultDeadlines(isPipeline);
 
   // Filter milestones
   const filteredMilestones = useMemo(() => {
@@ -935,5 +956,237 @@ const UpcomingDeadlinesCard: React.FC<UpcomingDeadlinesCardProps> = ({ deadlines
     </div>
   );
 };
+
+// ==================== DEFAULT DATA FUNCTIONS ====================
+
+function getDefaultTimelineStats(isPipeline: boolean): TimelineStat[] {
+  if (isPipeline) {
+    return [
+      { label: 'Days to Closing', value: 42, format: 'days', icon: '📅', status: 'info', subtext: 'Target: Mar 25, 2024' },
+      { label: 'Progress', value: 68, format: 'percentage', icon: '📊', status: 'success' },
+      { label: 'Milestones Complete', value: '12/18', format: 'number', icon: '✅' },
+      { label: 'At Risk', value: 2, format: 'number', icon: '⚠️', status: 'warning' },
+      { label: 'Critical Path Items', value: 4, format: 'number', icon: '🎯', status: 'info' }
+    ];
+  } else {
+    return [
+      { label: 'Days Since Acquisition', value: 487, format: 'days', icon: '📅', status: 'info', subtext: 'Acquired: Jan 15, 2023' },
+      { label: 'Operational Progress', value: 78, format: 'percentage', icon: '📊', status: 'success' },
+      { label: 'Milestones Complete', value: '24/31', format: 'number', icon: '✅' },
+      { label: 'Upcoming Deadlines', value: 8, format: 'number', icon: '⏰', status: 'info' },
+      { label: 'Critical Items', value: 3, format: 'number', icon: '🎯', status: 'warning' }
+    ];
+  }
+}
+
+function getDefaultMilestones(isPipeline: boolean): Milestone[] {
+  if (isPipeline) {
+    return [
+      {
+        id: '1',
+        title: 'Earnest Money Deposited',
+        description: 'Initial deposit submitted to title company',
+        date: '2024-01-05',
+        status: 'completed',
+        category: 'critical',
+        owner: 'John Smith',
+        completedDate: '2024-01-05',
+        daysUntil: -20
+      },
+      {
+        id: '2',
+        title: 'Property Inspection Complete',
+        description: 'Physical inspection of all units and systems',
+        date: '2024-01-15',
+        status: 'completed',
+        category: 'critical',
+        owner: 'Sarah Johnson',
+        completedDate: '2024-01-15',
+        daysUntil: -10
+      },
+      {
+        id: '3',
+        title: 'Due Diligence Period Ends',
+        description: 'Final date to terminate contract without penalty',
+        date: '2024-02-01',
+        status: 'in-progress',
+        category: 'critical',
+        owner: 'Michael Chen',
+        daysUntil: 7
+      },
+      {
+        id: '4',
+        title: 'Financing Commitment',
+        description: 'Receive loan commitment letter from lender',
+        date: '2024-02-15',
+        status: 'upcoming',
+        category: 'critical',
+        owner: 'David Park',
+        daysUntil: 21
+      },
+      {
+        id: '5',
+        title: 'Final Walkthrough',
+        description: 'Pre-closing inspection of property',
+        date: '2024-03-20',
+        status: 'upcoming',
+        category: 'standard',
+        owner: 'Sarah Johnson',
+        daysUntil: 54
+      },
+      {
+        id: '6',
+        title: 'Closing Date',
+        description: 'Transaction closing and funding',
+        date: '2024-03-25',
+        status: 'upcoming',
+        category: 'critical',
+        owner: 'John Smith',
+        daysUntil: 59
+      }
+    ];
+  } else {
+    return [
+      {
+        id: '1',
+        title: 'Q1 Unit Renovations',
+        description: 'Complete 15 unit turns with upgraded finishes',
+        date: '2024-03-31',
+        status: 'in-progress',
+        category: 'critical',
+        owner: 'Construction Team',
+        daysUntil: 65
+      },
+      {
+        id: '2',
+        title: 'Lease Renewals Campaign',
+        description: 'Outreach to 42 expiring leases in Q2',
+        date: '2024-04-15',
+        status: 'upcoming',
+        category: 'critical',
+        owner: 'Property Manager',
+        daysUntil: 80
+      },
+      {
+        id: '3',
+        title: 'Annual Budget Review',
+        description: 'Complete annual operating budget and variance analysis',
+        date: '2024-01-31',
+        status: 'completed',
+        category: 'standard',
+        owner: 'Finance Team',
+        completedDate: '2024-01-28',
+        daysUntil: -5
+      },
+      {
+        id: '4',
+        title: 'Property Tax Appeal',
+        description: 'File property tax appeal with county',
+        date: '2024-05-01',
+        status: 'upcoming',
+        category: 'standard',
+        owner: 'Asset Manager',
+        daysUntil: 96
+      },
+      {
+        id: '5',
+        title: 'Insurance Renewal',
+        description: 'Review and renew property insurance policies',
+        date: '2024-06-01',
+        status: 'upcoming',
+        category: 'standard',
+        owner: 'Risk Management',
+        daysUntil: 127
+      }
+    ];
+  }
+}
+
+function getDefaultDeadlines(isPipeline: boolean): DeadlineItem[] {
+  if (isPipeline) {
+    return [
+      {
+        id: '1',
+        title: 'Due Diligence Period Ends',
+        dueDate: '2024-02-01',
+        daysUntil: 7,
+        category: 'Legal',
+        priority: 'critical',
+        status: 'due-soon',
+        owner: 'Michael Chen',
+        completionPercent: 85
+      },
+      {
+        id: '2',
+        title: 'Financing Commitment Required',
+        dueDate: '2024-02-15',
+        daysUntil: 21,
+        category: 'Financial',
+        priority: 'critical',
+        status: 'upcoming',
+        owner: 'David Park',
+        completionPercent: 60
+      },
+      {
+        id: '3',
+        title: 'Title Commitment Review',
+        dueDate: '2024-02-08',
+        daysUntil: 14,
+        category: 'Legal',
+        priority: 'high',
+        status: 'upcoming',
+        owner: 'Legal Team',
+        completionPercent: 40
+      }
+    ];
+  } else {
+    return [
+      {
+        id: '1',
+        title: 'Q1 Renovation Milestone',
+        dueDate: '2024-03-31',
+        daysUntil: 65,
+        category: 'Physical',
+        priority: 'high',
+        status: 'upcoming',
+        owner: 'Construction Team',
+        completionPercent: 67
+      },
+      {
+        id: '2',
+        title: 'Lease Renewal Outreach',
+        dueDate: '2024-04-15',
+        daysUntil: 80,
+        category: 'Operations',
+        priority: 'high',
+        status: 'upcoming',
+        owner: 'Property Manager',
+        completionPercent: 20
+      },
+      {
+        id: '3',
+        title: 'Property Tax Appeal Filing',
+        dueDate: '2024-05-01',
+        daysUntil: 96,
+        category: 'Financial',
+        priority: 'medium',
+        status: 'upcoming',
+        owner: 'Asset Manager',
+        completionPercent: 0
+      },
+      {
+        id: '4',
+        title: 'Insurance Renewal',
+        dueDate: '2024-06-01',
+        daysUntil: 127,
+        category: 'Operations',
+        priority: 'medium',
+        status: 'upcoming',
+        owner: 'Risk Management',
+        completionPercent: 10
+      }
+    ];
+  }
+}
 
 export default TimelineSection;
