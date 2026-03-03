@@ -11,7 +11,7 @@ import { DealView } from './pages/DealView';
 import { DealPage } from './pages/DealPage';
 import { DealPageEnhanced } from './pages/DealPageEnhanced';
 import { CreateDealPage } from './pages/CreateDealPage';
-import { Design3DPage } from './pages/Design3DPage';
+import { Design3DPage } from './pages/Design3DPage.updated';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
 import { NewsIntelligencePage } from './pages/NewsIntelligencePage';

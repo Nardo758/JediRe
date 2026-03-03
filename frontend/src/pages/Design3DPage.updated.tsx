@@ -322,6 +322,8 @@ export const Design3DPage: React.FC = () => {
               setSidebarTab('ai');
               setShowMetrics(true);
             }}
+            targetUnits={(deal as any)?.target_units || deal?.targetUnits}
+            autoGenerate={!!((deal as any)?.target_units || deal?.targetUnits)}
           />
         </div>
 

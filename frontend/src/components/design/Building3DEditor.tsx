@@ -63,6 +63,8 @@ interface Building3DEditorProps {
   zoningConstraints?: ZoningConstraintsInput;
   onToggleAIChat?: () => void;
   onToggleReferencePanel?: () => void;
+  targetUnits?: number;
+  autoGenerate?: boolean;
 }
 
 export const Building3DEditor: React.FC<Building3DEditorProps> = ({
@@ -75,6 +77,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   zoningConstraints,
   onToggleAIChat,
   onToggleReferencePanel,
+  targetUnits,
+  autoGenerate = false,
 }) => {
   const { state, actions } = useDesign3D();
   const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
@@ -111,7 +115,50 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       actions.setZoningEnvelope(envelope);
     }
   }, [zoningConstraints, state.parcelBoundary]);
-  
+
+  const autoGenRef = useRef(false);
+  useEffect(() => {
+    if (
+      autoGenerate &&
+      state.parcelBoundary &&
+      state.sections.length === 0 &&
+      !autoGenRef.current
+    ) {
+      autoGenRef.current = true;
+      const units = targetUnits || 300;
+      const mixPct = {
+        studio: 15,
+        '1BR': 35,
+        '2BR': 35,
+        '3BR': 15,
+      };
+      generateFromUnitMix(state.parcelBoundary, mixPct, units);
+
+      if (onMetricsChange) {
+        const studioCount = Math.round(units * 0.15);
+        const oneBedCount = Math.round(units * 0.35);
+        const twoBedCount = Math.round(units * 0.35);
+        const threeBedCount = Math.round(units * 0.15);
+        const rentableSF = studioCount * 500 + oneBedCount * 700 + twoBedCount * 1000 + threeBedCount * 1300;
+        const grossSF = Math.round(rentableSF / 0.85);
+        const footprintArea = state.parcelBoundary.area * 0.45;
+        const stories = Math.ceil((rentableSF * 1.15) / footprintArea);
+        onMetricsChange({
+          totalUnits: units,
+          unitMix: { studio: studioCount, oneBed: oneBedCount, twoBed: twoBedCount, threeBed: threeBedCount },
+          rentableSF,
+          grossSF,
+          efficiency: 0.85,
+          stories,
+          parkingSpaces: Math.round(units * 1.2),
+          parkingType: stories > 5 ? 'garage' : 'surface',
+          amenitySF: Math.round(units * 30),
+          farUtilized: state.parcelBoundary.area > 0 ? parseFloat((grossSF / state.parcelBoundary.area).toFixed(2)) : 0,
+        });
+      }
+    }
+  }, [autoGenerate, state.parcelBoundary, state.sections.length, targetUnits, generateFromUnitMix, onMetricsChange]);
+
   const scenarios = useDesign3DStore((s) => s.scenarios);
   const activeScenarioId = useDesign3DStore((s) => s.activeScenarioId);
   const showScenarioOverlay = useDesign3DStore((s) => s.showScenarioOverlay);
@@ -131,8 +178,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       alert('Please set a parcel boundary first');
       return;
     }
-    generateSimpleBuilding(state.parcelBoundary, 100);
-  }, [state.parcelBoundary, generateSimpleBuilding]);
+    generateSimpleBuilding(state.parcelBoundary, targetUnits || 100);
+  }, [state.parcelBoundary, generateSimpleBuilding, targetUnits]);
   
   const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
