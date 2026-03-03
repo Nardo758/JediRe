@@ -59,9 +59,31 @@ const CompareMarketsPage: React.FC = () => {
   const navigate = useNavigate();
   const [markets, setMarkets] = useState(MARKETS);
   const [activeChart, setActiveChart] = useState('Rent Growth');
+  const [marketData, setMarketData] = useState<Record<string, any>>({});
+  const [loading, setLoading] = useState(false);
 
   const selectedMarkets = markets.filter(m => m.selected);
   const selectedCount = selectedMarkets.length;
+
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      if (selectedMarkets.length === 0) return;
+      
+      setLoading(true);
+      try {
+        const marketIds = selectedMarkets.map(m => m.id).join(',');
+        const res = await fetch(`/api/v1/markets/compare-data?markets=${marketIds}`);
+        const data = await res.json();
+        setMarketData(data.markets || {});
+      } catch (err) {
+        console.error('Failed to fetch market comparison data:', err);
+        setMarketData({});
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMarketData();
+  }, [selectedMarkets.map(m => m.id).join(',')]);
 
   const toggleMarket = (id: string) => {
     setMarkets(markets.map(m => m.id === id ? { ...m, selected: !m.selected } : m));
@@ -100,14 +122,17 @@ const CompareMarketsPage: React.FC = () => {
   ];
 
   const getCellColor = (metricKey: string, marketId: string) => {
-    const row = MOCK_DATA[metricKey];
-    if (!row) return '';
+    const dataToUse = Object.keys(marketData).length > 0 ? marketData : MOCK_DATA;
     const selectedIds = selectedMarkets.map(m => m.id as MarketId);
-    const values = selectedIds.map(id => row[id]?.raw ?? 0);
-    const current = row[marketId as MarketId]?.raw ?? 0;
+    const values = selectedIds
+      .map(id => dataToUse[id]?.[metricKey]?.raw ?? 0)
+      .filter(v => v !== 0);
+    const current = dataToUse[marketId]?.[metricKey]?.raw ?? 0;
+    
+    if (values.length < 2 || current === 0) return '';
     const max = Math.max(...values);
     const min = Math.min(...values);
-    if (values.length < 2 || max === min) return '';
+    if (max === min) return '';
     if (current === max) return 'text-green-700 bg-green-50 font-bold';
     if (current === min) return 'text-red-700 bg-red-50 font-bold';
     return '';
@@ -261,11 +286,15 @@ const CompareMarketsPage: React.FC = () => {
                     {section.rows.map((row) => (
                       <tr key={row} className="border-t border-gray-100">
                         <td className="px-4 py-2.5 text-gray-700 font-medium text-xs">{row}</td>
-                        {selectedMarkets.map(m => (
-                          <td key={m.id} className={`px-4 py-2.5 text-sm ${getCellColor(row, m.id)}`}>
-                            {MOCK_DATA[row]?.[m.id as MarketId]?.value ?? '—'}
-                          </td>
-                        ))}
+                        {selectedMarkets.map(m => {
+                          const dataToUse = Object.keys(marketData).length > 0 ? marketData : MOCK_DATA;
+                          const value = dataToUse[m.id]?.[row]?.value ?? '—';
+                          return (
+                            <td key={m.id} className={`px-4 py-2.5 text-sm ${getCellColor(row, m.id)}`}>
+                              {loading ? <span className="text-gray-400">...</span> : value}
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
                   </React.Fragment>

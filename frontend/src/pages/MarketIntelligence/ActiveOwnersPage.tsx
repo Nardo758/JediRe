@@ -9,25 +9,49 @@ const ActiveOwnersPage: React.FC = () => {
   const [ownerTypeFilter, setOwnerTypeFilter] = useState('All Types');
   const [holdPeriodFilter, setHoldPeriodFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [owners, setOwners] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [portfolioProperties, setPortfolioProperties] = useState<any[]>([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
 
-  const mockOwners = [
-    { name: 'Camden Property Trust', type: 'REIT', marketsStr: '4/6', props: 42, units: 18400, hold: '4.2yr', signal: 'BUY' },
-    { name: 'Cortland', type: 'PE', marketsStr: '5/6', props: 34, units: 12800, hold: '3.5yr', signal: 'BUY' },
-    { name: 'Greystone Capital Partners', type: 'Regional', marketsStr: '2/6', props: 8, units: 2200, hold: '5.8yr', signal: 'SELL?' },
-    { name: 'Smith Family Estate', type: 'Estate', marketsStr: '1/6', props: 1, units: 120, hold: '14.5yr', signal: 'SELL' },
-    { name: 'Blackstone', type: 'National', marketsStr: '3/6', props: 28, units: 9800, hold: '2.8yr', signal: 'HOLD' },
-  ];
+  useEffect(() => {
+    const fetchOwners = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch('/api/v1/markets/atlanta/owners?minProperties=2');
+        const data = await res.json();
+        setOwners(data.owners || []);
+      } catch (err) {
+        console.error('Failed to fetch owners:', err);
+        setOwners([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOwners();
+  }, []);
 
-  const greystoneProperties = [
-    { name: 'Peachtree Pointe', market: 'ATL', units: 280, purchased: 'Mar 2017', hold: '8.9yr', price: '$34.2M', perUnit: '$122K', signal: 'SELL' },
-    { name: 'Midtown Gardens', market: 'ATL', units: 196, purchased: 'Jun 2018', hold: '7.7yr', price: '$28.4M', perUnit: '$145K', signal: 'SELL?' },
-    { name: 'Buckhead Commons', market: 'ATL', units: 320, purchased: 'Nov 2019', hold: '6.3yr', price: '$52.8M', perUnit: '$165K', signal: 'SELL?' },
-    { name: 'Sandy Springs Place', market: 'ATL', units: 148, purchased: 'Feb 2020', hold: '6.0yr', price: '$22.2M', perUnit: '$150K', signal: 'HOLD' },
-    { name: 'SouthPark Residences', market: 'CLT', units: 240, purchased: 'Aug 2018', hold: '7.5yr', price: '$31.2M', perUnit: '$130K', signal: 'SELL?' },
-    { name: 'Ballantyne Crossing', market: 'CLT', units: 312, purchased: 'Jan 2019', hold: '7.1yr', price: '$43.7M', perUnit: '$140K', signal: 'SELL?' },
-    { name: 'NoDa Lofts', market: 'CLT', units: 96, purchased: 'May 2021', hold: '4.8yr', price: '$16.3M', perUnit: '$170K', signal: 'HOLD' },
-    { name: 'University Walk', market: 'CLT', units: 208, purchased: 'Sep 2020', hold: '5.4yr', price: '$29.1M', perUnit: '$140K', signal: 'HOLD' },
-  ];
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      if (!expandedOwner) {
+        setPortfolioProperties([]);
+        return;
+      }
+      
+      setPortfolioLoading(true);
+      try {
+        const res = await fetch(`/api/v1/markets/owners/${encodeURIComponent(expandedOwner)}/portfolio`);
+        const data = await res.json();
+        setPortfolioProperties(data.properties || []);
+      } catch (err) {
+        console.error('Failed to fetch owner portfolio:', err);
+        setPortfolioProperties([]);
+      } finally {
+        setPortfolioLoading(false);
+      }
+    };
+    fetchPortfolio();
+  }, [expandedOwner]);
 
   const greystoneLandPositions = [
     { parcel: 'Parcel A — Midtown ATL', acres: 4.2, capacity: '380 units', dcProbability: '72%', status: 'Entitled' },
@@ -150,7 +174,20 @@ const ActiveOwnersPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {mockOwners.map((owner, idx) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center">
+                      <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mb-2"></div>
+                      <p className="text-sm text-gray-500">Loading owners...</p>
+                    </td>
+                  </tr>
+                ) : owners.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      No owners found
+                    </td>
+                  </tr>
+                ) : owners.map((owner, idx) => (
                   <React.Fragment key={idx}>
                     <tr
                       onClick={() => setExpandedOwner(expandedOwner === owner.name ? null : owner.name)}
@@ -166,43 +203,51 @@ const ActiveOwnersPage: React.FC = () => {
                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${signalColor(owner.signal)}`}>{owner.signal}</span>
                       </td>
                     </tr>
-                    {expandedOwner === owner.name && owner.name === 'Greystone Capital Partners' && (
+                    {expandedOwner === owner.name && (
                       <tr>
                         <td colSpan={7} className="p-0">
                           <div className="bg-gray-50 border-t border-gray-200 p-6 space-y-6">
                             <div className="flex items-center justify-between">
                               <div>
-                                <h4 className="text-lg font-bold text-gray-900">GREYSTONE CAPITAL PARTNERS LLC</h4>
-                                <p className="text-sm text-gray-500">Regional PE/Operator | ATL (4) + CLT (4) | 2,200 units</p>
+                                <h4 className="text-lg font-bold text-gray-900">{owner.name.toUpperCase()}</h4>
+                                <p className="text-sm text-gray-500">{owner.type} | {owner.marketsStr} markets | {owner.units.toLocaleString()} units</p>
                               </div>
-                              <span className={`px-3 py-1 rounded-lg text-sm font-bold ${signalColor('SELL?')}`}>SELL?</span>
+                              <span className={`px-3 py-1 rounded-lg text-sm font-bold ${signalColor(owner.signal)}`}>{owner.signal}</span>
                             </div>
 
                             <div className="bg-white rounded-xl border border-dashed border-gray-200 h-40 flex items-center justify-center">
                               <div className="text-center">
                                 <div className="text-2xl mb-1">🗺️</div>
-                                <p className="text-xs text-gray-400">Portfolio Map — ATL (4 pins) + CLT (4 pins)</p>
+                                <p className="text-xs text-gray-400">Portfolio Map — {owner.props} properties</p>
                               </div>
                             </div>
 
                             <div>
                               <h5 className="text-sm font-bold text-gray-700 mb-2">PROPERTY LIST</h5>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="bg-gray-100">
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Property</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Market</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Units</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Purchased</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Hold</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Price</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">$/Unit</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-gray-500">Signal</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {greystoneProperties.map((prop, pIdx) => (
+                              {portfolioLoading ? (
+                                <div className="text-center py-8">
+                                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-teal-600 mb-2"></div>
+                                  <p className="text-sm text-gray-500">Loading portfolio...</p>
+                                </div>
+                              ) : portfolioProperties.length === 0 ? (
+                                <p className="text-sm text-gray-500 py-4">No properties found</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="bg-gray-100">
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Property</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Market</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Units</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Purchased</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Hold</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Price</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">$/Unit</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-500">Signal</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {portfolioProperties.map((prop, pIdx) => (
                                       <tr key={pIdx} className="border-t border-gray-100">
                                         <td className="px-3 py-2 font-medium text-gray-900">{prop.name}</td>
                                         <td className="px-3 py-2 text-gray-600">{prop.market}</td>
@@ -214,11 +259,12 @@ const ActiveOwnersPage: React.FC = () => {
                                         <td className="px-3 py-2">
                                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${signalColor(prop.signal)}`}>{prop.signal}</span>
                                         </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                             </div>
 
                             <div>
@@ -280,9 +326,21 @@ const ActiveOwnersPage: React.FC = () => {
                                 <h5 className="font-semibold text-gray-900">AI ASSESSMENT</h5>
                               </div>
                               <div className="text-sm text-gray-700 space-y-2">
-                                <p>Greystone is likely in <span className="font-bold">harvesting mode</span>. Their earliest ATL acquisitions (2017-2018) are approaching 8-9 year holds with significant equity appreciation. Typical PE fund lifecycle suggests exit pressure.</p>
-                                <p>However, their <span className="font-bold">2 land positions</span> (DC-09) suggest they may be planning a 1031 exchange — selling operating assets to fund ground-up development. This is a sophisticated play.</p>
-                                <p className="font-bold text-violet-800">Recommendation: Approach with portfolio offer for the 4 ATL operating assets (~$137M). Position as clean exit enabling their development pivot. Avoid CLT assets — too recently acquired.</p>
+                                <p>{owner.name} is showing <span className="font-bold">{owner.signal === 'SELL' || owner.signal === 'SELL?' ? 'exit signals' : owner.signal === 'BUY' ? 'expansion activity' : 'stable holding patterns'}</span>. 
+                                With {owner.props} properties and {owner.units.toLocaleString()} units across {owner.marketsStr} markets, their average hold period of {owner.hold} suggests {
+                                  owner.signal === 'SELL' ? 'strong exit pressure from long hold periods' :
+                                  owner.signal === 'SELL?' ? 'potential exit pressure approaching typical hold thresholds' :
+                                  owner.signal === 'BUY' ? 'active acquisition mode with recent purchases' :
+                                  'stable portfolio management with moderate hold periods'
+                                }.</p>
+                                <p className="font-bold text-violet-800">
+                                  {owner.signal === 'SELL' || owner.signal === 'SELL?' 
+                                    ? `Recommendation: Approach with portfolio offer. Position as clean exit opportunity.`
+                                    : owner.signal === 'BUY'
+                                    ? `Recommendation: Monitor for partnership opportunities as they continue expansion.`
+                                    : `Recommendation: Track for future opportunities as portfolio matures.`
+                                  }
+                                </p>
                               </div>
                             </div>
 

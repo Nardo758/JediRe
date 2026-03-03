@@ -17,74 +17,6 @@ const MAP_LAYERS = [
   { key: 'Constraint', label: 'Constraint ★', isNew: true },
 ] as const;
 
-const mockSubmarkets = [
-  {
-    name: 'Buckhead', jedi: 92, demand: 88, supply: 2800, saturation: 1.12,
-    rentAccel: '+5.2%', trfcRent: 1.8, capacity: '42%', buildout: '6.2yr',
-    constraint: 52, overhang: 'MOD', lastMover: false, pricingPower: 68,
-    adjRent: '+4.8%', traffic: 84, entryPrice: '$242K/unit',
-    detail: {
-      demand: { 'D-09': 88, 'D-10': 82, 'D-08': 91 },
-      supply: { 'S-01': 2800, 'S-08': 1.12, 'S-05': 'Clustered' },
-      momentum: { 'M-02': '+5.2%', 'M-07': 1.8 },
-      devCapacity: { 'DC-01': '42%', 'DC-02': '6.2yr', 'DC-03': 52, 'DC-04': 'MOD', 'DC-05': 'No', 'DC-07': 68, 'DC-09': 34 },
-      traffic: { 'T-02 avg': 84, 'T-08 avg': 76 },
-    },
-  },
-  {
-    name: 'Midtown', jedi: 89, demand: 86, supply: 3200, saturation: 1.08,
-    rentAccel: '+4.8%', trfcRent: 2.1, capacity: '38%', buildout: '7.4yr',
-    constraint: 62, overhang: 'LOW', lastMover: false, pricingPower: 74,
-    adjRent: '+5.1%', traffic: 88, entryPrice: '$228K/unit',
-    detail: {
-      demand: { 'D-09': 86, 'D-10': 79, 'D-08': 88 },
-      supply: { 'S-01': 3200, 'S-08': 1.08, 'S-05': 'Moderate' },
-      momentum: { 'M-02': '+4.8%', 'M-07': 2.1 },
-      devCapacity: { 'DC-01': '38%', 'DC-02': '7.4yr', 'DC-03': 62, 'DC-04': 'LOW', 'DC-05': 'No', 'DC-07': 74, 'DC-09': 41 },
-      traffic: { 'T-02 avg': 88, 'T-08 avg': 82 },
-    },
-  },
-  {
-    name: 'Decatur', jedi: 86, demand: 78, supply: 1200, saturation: 0.82,
-    rentAccel: '+4.2%', trfcRent: 2.4, capacity: '18%', buildout: '12.8yr',
-    constraint: 82, overhang: 'LOW', lastMover: true, pricingPower: 86,
-    adjRent: '+5.8%', traffic: 72, entryPrice: '$198K/unit',
-    detail: {
-      demand: { 'D-09': 78, 'D-10': 71, 'D-08': 74 },
-      supply: { 'S-01': 1200, 'S-08': 0.82, 'S-05': 'Sparse' },
-      momentum: { 'M-02': '+4.2%', 'M-07': 2.4 },
-      devCapacity: { 'DC-01': '18%', 'DC-02': '12.8yr', 'DC-03': 82, 'DC-04': 'LOW', 'DC-05': 'Yes★', 'DC-07': 86, 'DC-09': 12 },
-      traffic: { 'T-02 avg': 72, 'T-08 avg': 64 },
-    },
-  },
-  {
-    name: 'Sandy Springs', jedi: 84, demand: 74, supply: 1800, saturation: 0.92,
-    rentAccel: '+3.8%', trfcRent: 1.6, capacity: '28%', buildout: '9.2yr',
-    constraint: 72, overhang: 'LOW', lastMover: false, pricingPower: 78,
-    adjRent: '+4.4%', traffic: 76, entryPrice: '$262K/unit',
-    detail: {
-      demand: { 'D-09': 74, 'D-10': 68, 'D-08': 71 },
-      supply: { 'S-01': 1800, 'S-08': 0.92, 'S-05': 'Moderate' },
-      momentum: { 'M-02': '+3.8%', 'M-07': 1.6 },
-      devCapacity: { 'DC-01': '28%', 'DC-02': '9.2yr', 'DC-03': 72, 'DC-04': 'LOW', 'DC-05': 'No', 'DC-07': 78, 'DC-09': 22 },
-      traffic: { 'T-02 avg': 76, 'T-08 avg': 71 },
-    },
-  },
-  {
-    name: 'East Atlanta', jedi: 82, demand: 72, supply: 800, saturation: 0.74,
-    rentAccel: '+3.5%', trfcRent: 2.8, capacity: '15%', buildout: '18.4yr',
-    constraint: 88, overhang: 'LOW', lastMover: true, pricingPower: 92,
-    adjRent: '+6.2%', traffic: 68, entryPrice: '$172K/unit',
-    detail: {
-      demand: { 'D-09': 72, 'D-10': 65, 'D-08': 68 },
-      supply: { 'S-01': 800, 'S-08': 0.74, 'S-05': 'Very Sparse' },
-      momentum: { 'M-02': '+3.5%', 'M-07': 2.8 },
-      devCapacity: { 'DC-01': '15%', 'DC-02': '18.4yr', 'DC-03': 88, 'DC-04': 'LOW', 'DC-05': 'Yes★', 'DC-07': 92, 'DC-09': 8 },
-      traffic: { 'T-02 avg': 68, 'T-08 avg': 58 },
-    },
-  },
-];
-
 const TABLE_COLUMNS = [
   { key: 'jedi', label: 'JEDI', code: 'C-01', isNew: false },
   { key: 'demand', label: 'Demand', code: 'D-09', isNew: false },
@@ -225,6 +157,17 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
 
   const comparedSubmarkets = mergedSubmarkets.filter(s => compareSelection.includes(s.name));
   const expandedData = mergedSubmarkets.find(s => s.name === expandedSubmarket);
+
+  if (submarketLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mb-2"></div>
+          <p className="text-sm text-gray-500">Loading submarket data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
