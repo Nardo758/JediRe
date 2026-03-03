@@ -9,7 +9,8 @@ const pool = getPool();
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const result = await client.query(`
       SELECT 
         d.*,
@@ -60,7 +61,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const result = await client.query(`
       SELECT 
         d.*,
@@ -121,7 +123,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.post('/', requireAuth, validate(createDealSchema), async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const {
       name, boundary, projectType, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
@@ -207,7 +210,8 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
 
 router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
     const updates = req.body;
 
@@ -255,7 +259,8 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
 
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
     const result = await client.query(
       'UPDATE deals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND user_id = $2 AND archived_at IS NULL RETURNING id',
@@ -275,7 +280,8 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
 
     const dealCheck = await client.query(
@@ -342,7 +348,8 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
 
 router.get('/:id/properties', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -366,7 +373,8 @@ router.get('/:id/properties', requireAuth, async (req: AuthenticatedRequest, res
 
 router.get('/:id/activity', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
     const limit = parseInt(req.query.limit as string) || 50;
 
@@ -406,7 +414,8 @@ router.get('/:id/activity', requireAuth, async (req: AuthenticatedRequest, res) 
 
 router.get('/:id/timeline', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
 
     try {
@@ -458,7 +467,8 @@ router.get('/:id/timeline', requireAuth, async (req: AuthenticatedRequest, res) 
 
 router.get('/:id/key-moments', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
     const dealId = req.params.id;
 
     try {
@@ -512,7 +522,8 @@ router.get('/:id/key-moments', requireAuth, async (req: AuthenticatedRequest, re
 router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const dealId = req.params.id;
-    const client = req.dbClient || pool;
+    // Use pool directly instead of req.dbClient
+    const client = pool;
 
     const dealCheck = await client.query(
       'SELECT id FROM deals WHERE id = $1 AND user_id = $2',

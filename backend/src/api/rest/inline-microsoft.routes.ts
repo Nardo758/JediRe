@@ -18,7 +18,8 @@ export function createMicrosoftInlineRoutes(microsoftConfig: MicrosoftConfig) {
     const configured = !!(microsoftConfig.clientId && microsoftConfig.clientSecret);
     let connected = false;
     try {
-      const client = req.dbClient || pool;
+      // Use pool directly instead of req.dbClient
+    const client = pool;
       const result = await client.query(
         'SELECT id FROM microsoft_accounts WHERE user_id = $1 AND is_active = true LIMIT 1',
         [req.user!.userId]

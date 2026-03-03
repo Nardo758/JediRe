@@ -59,8 +59,7 @@ router.get('/alerts', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.userId;
     const limit = parseInt(req.query.limit as string) || 20;
-    const client = req.dbClient || pool;
-    const result = await client.query(
+    const result = await pool.query(
       `SELECT * FROM alerts WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [userId, limit]
     );
