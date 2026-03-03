@@ -41,12 +41,18 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'metrics', label: 'Key Metrics', icon: '⬡' },
 ];
 
-const fmt = (v: number): string =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+const fmt = (v: number | undefined | null): string => {
+  if (v == null || isNaN(v)) return '$0';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
+};
 
-const fmtPct = (v: number): string => `${v.toFixed(2)}%`;
+const fmtPct = (v: number | undefined | null): string => {
+  if (v == null || isNaN(v)) return '—';
+  return `${v.toFixed(2)}%`;
+};
 
-const fmtM = (v: number): string => {
+const fmtM = (v: number | undefined | null): string => {
+  if (v == null || isNaN(v)) return '$0';
   if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
   if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
   return fmt(v);
@@ -331,7 +337,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       loanBalance: [],
       prepaymentPenalty: 0,
       capitalRiskScore: 0,
-      structureSummary: `${ltv.toFixed(0)}% LTV ${template.label} │ ${stack.metrics.cocReturn.toFixed(1)}% CoC │ ${dscr.toFixed(2)}x DSCR`,
+      structureSummary: `${(ltv ?? 0).toFixed(0)}% LTV ${template.label} │ ${(stack.metrics.cocReturn ?? 0).toFixed(1)}% CoC │ ${(dscr ?? 0).toFixed(2)}x DSCR`,
     };
 
     updateCapitalStructure(capitalPayload);
@@ -1247,7 +1253,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         {[
           { label: 'LTV', value: fmtPct(stack.metrics.ltv), color: stack.metrics.ltv > 75 ? 'text-orange-600' : 'text-green-600', desc: 'Loan-to-Value ratio' },
           { label: 'LTC', value: fmtPct(stack.metrics.ltc), color: 'text-gray-900', desc: 'Loan-to-Cost ratio' },
-          { label: 'DSCR', value: `${stack.metrics.dscr.toFixed(2)}x`, color: stack.metrics.dscr < 1.25 ? 'text-red-600' : 'text-green-600', desc: 'Debt Service Coverage Ratio' },
+          { label: 'DSCR', value: `${(stack.metrics.dscr ?? 0).toFixed(2)}x`, color: (stack.metrics.dscr ?? 0) < 1.25 ? 'text-red-600' : 'text-green-600', desc: 'Debt Service Coverage Ratio' },
           { label: 'Debt Yield', value: fmtPct(stack.metrics.debtYield), color: 'text-gray-900', desc: 'NOI / Total Debt' },
           { label: 'Total Debt', value: fmtM(stack.metrics.totalDebt), color: 'text-blue-600', desc: 'Senior + Mezzanine' },
           { label: 'Total Equity', value: fmtM(stack.metrics.totalEquity), color: 'text-green-600', desc: 'LP + GP equity' },
@@ -1292,7 +1298,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
             { label: 'Equity Required', value: fmtM(stack.metrics.equityRequired) },
             { label: 'Senior Rate', value: fmtPct(layers.find(l => l.layerType === 'senior')?.rate || 0) },
             { label: 'Senior Term', value: `${layers.find(l => l.layerType === 'senior')?.term || 0} months` },
-            { label: 'Structure', value: `${stack.metrics.ltv.toFixed(0)}% LTV` },
+            { label: 'Structure', value: `${(stack.metrics.ltv ?? 0).toFixed(0)}% LTV` },
           ].map((item) => (
             <div key={item.label} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
               <div className="text-xs text-gray-500 uppercase">{item.label}</div>
@@ -1416,14 +1422,14 @@ export const DebtTab: React.FC<DebtTabProps> = ({
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">LP Returns</h4>
             <div className="text-3xl font-bold text-green-600">{fmtPct(result.lpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{result.lpEquityMultiple.toFixed(2)}x Multiple</div>
+            <div className="text-lg font-semibold text-gray-700 mt-1">{(result.lpEquityMultiple ?? 0).toFixed(2)}x Multiple</div>
             <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.lpTotalReturn)}</div>
           </div>
 
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">GP Returns</h4>
             <div className="text-3xl font-bold text-purple-600">{fmtPct(result.gpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{(result.gpEffectiveShare * 100).toFixed(0)}% Effective Share</div>
+            <div className="text-lg font-semibold text-gray-700 mt-1">{((result.gpEffectiveShare ?? 0) * 100).toFixed(0)}% Effective Share</div>
             <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.gpTotalReturn)}</div>
           </div>
         </div>
@@ -1462,8 +1468,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
             <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
               <div className="text-sm text-purple-900">
                 <span className="font-semibold">At projected {fmtPct(result.distributions[result.distributions.length - 1]?.irr || 0)} IRR:</span>{' '}
-                GP earns {(result.gpEffectiveShare * 100).toFixed(0)}% effective share on {wf.gpPercentage}% equity contribution.
-                LP still nets {fmtPct(result.lpIRR)} IRR and {result.lpEquityMultiple.toFixed(2)}x multiple.
+                GP earns {((result.gpEffectiveShare ?? 0) * 100).toFixed(0)}% effective share on {wf.gpPercentage}% equity contribution.
+                LP still nets {fmtPct(result.lpIRR)} IRR and {(result.lpEquityMultiple ?? 0).toFixed(2)}x multiple.
               </div>
             </div>
           )}
@@ -1499,12 +1505,12 @@ export const DebtTab: React.FC<DebtTabProps> = ({
                         className="w-full px-2 py-1 rounded border border-gray-200 text-sm" />
                     </td>
                     <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={(tier.hurdleRate * 100).toFixed(1)} step={0.5} min={0} max={100}
+                      <input type="number" value={((tier.hurdleRate ?? 0) * 100).toFixed(1)} step={0.5} min={0} max={100}
                         onChange={(e) => updateWaterfallTier(wf.id, idx, { hurdleRate: Number(e.target.value) / 100 })}
                         className="w-20 px-2 py-1 rounded border border-gray-200 text-sm text-right" />
                     </td>
                     <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={(tier.lpSplit * 100).toFixed(0)} step={5} min={0} max={100}
+                      <input type="number" value={((tier.lpSplit ?? 0) * 100).toFixed(0)} step={5} min={0} max={100}
                         onChange={(e) => {
                           const lp = Number(e.target.value) / 100;
                           updateWaterfallTier(wf.id, idx, { lpSplit: lp, gpSplit: 1 - lp });
@@ -1512,7 +1518,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
                         className="w-20 px-2 py-1 rounded border border-gray-200 text-sm text-right" />
                     </td>
                     <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={(tier.gpSplit * 100).toFixed(0)} step={5} min={0} max={100}
+                      <input type="number" value={((tier.gpSplit ?? 0) * 100).toFixed(0)} step={5} min={0} max={100}
                         onChange={(e) => {
                           const gp = Number(e.target.value) / 100;
                           updateWaterfallTier(wf.id, idx, { gpSplit: gp, lpSplit: 1 - gp });
