@@ -73,6 +73,7 @@ import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
+import rankingsRoutes from './rankings.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -286,6 +287,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
+
+  // Rankings routes (Property Competitive Scores, Performance Rankings, Pipeline Intelligence)
+  app.use(`${API_PREFIX}/rankings`, rankingsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

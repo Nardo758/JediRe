@@ -15,134 +15,86 @@ const router = Router();
 router.post('/scan-completions', async (req: Request, res: Response) => {
   try {
     const { emailIds, taskIds, daysBack = 7 } = req.body;
+    const userId = (req as any).user?.id;
 
-    // TODO: Fetch emails from database
-    // For now, return mock data
-    const mockEmails = [
-      {
-        id: 'email-101',
-        subject: 'Re: Phase I Environmental Report - COMPLETED',
-        body: 'Hi Leon, Just wanted to let you know that the Phase I environmental report for Buckhead Tower has been completed and submitted to the lender. All clear on environmental concerns. Report attached. Best, Sarah',
-        sender: 'Sarah Johnson <sarah@example.com>',
-        recipients: ['Leon D <leon@example.com>'],
-        timestamp: new Date('2026-02-14T15:30:00Z').toISOString(),
-      },
-      {
-        id: 'email-102',
-        subject: 'Property Inspection Scheduled - Feb 12',
-        body: 'Leon, I scheduled the structural engineer for the Buckhead Tower inspection on Feb 12 at 10 AM. Will send you the report when done. Mike',
-        sender: 'Mike Chen <mike@example.com>',
-        recipients: ['Leon D <leon@example.com>'],
-        timestamp: new Date('2026-02-10T09:15:00Z').toISOString(),
-      },
-      {
-        id: 'email-103',
-        subject: 'Rent Roll Update - Buckhead Tower',
-        body: 'Attached is the updated rent roll you requested for Buckhead Tower. All tenant information is current as of Feb 1st. Let me know if you need anything else. Thanks, Property Manager',
-        sender: 'Property Manager <pm@example.com>',
-        recipients: ['Leon D <leon@example.com>'],
-        timestamp: new Date('2026-02-05T14:20:00Z').toISOString(),
-      },
-      {
-        id: 'email-104',
-        subject: 'Loan Application Package Submitted',
-        body: 'Good news! I just submitted the complete loan application package to Regions Bank. They confirmed receipt and said they\'ll have preliminary approval within 5 business days. All supporting docs included. Leon',
-        sender: 'Leon D <leon@example.com>',
-        recipients: ['Regions Bank <loan@regions.com>'],
-        timestamp: new Date('2026-02-15T11:00:00Z').toISOString(),
-      },
-      {
-        id: 'email-105',
-        subject: 'Decatur Office - Tenant Improvement Work Completed',
-        body: 'The tenant improvement work for Suite 300 at Decatur Office Building has been completed ahead of schedule. Final walkthrough passed inspection. Ready for tenant move-in next week. Contractor',
-        sender: 'Tom Wilson <tom@buildco.com>',
-        recipients: ['Leon D <leon@example.com>'],
-        timestamp: new Date('2026-02-13T16:45:00Z').toISOString(),
-      },
-    ];
+    // Import database connection
+    const { query } = await import('../../database/connection');
 
-    // TODO: Fetch tasks from database
-    // For now, return mock tasks
-    const mockTasks = [
-      {
-        id: 'task-1',
-        name: 'Submit Phase I Environmental Report',
-        description: 'Phase I environmental assessment required by lender',
-        status: 'open',
-        linkedEntity: {
-          id: 'deal-1',
-          name: 'Buckhead Tower Development',
-          type: 'pipeline-deal',
-        },
-        assignedTo: {
-          userId: 'user-1',
-          name: 'Leon D',
-        },
+    // Fetch recent emails from database
+    let emailQuery = `
+      SELECT 
+        id,
+        subject,
+        body,
+        sender_email as sender,
+        recipients,
+        received_at as timestamp
+      FROM emails
+      WHERE user_id = $1
+        AND received_at > NOW() - INTERVAL '${daysBack} days'
+    `;
+    const emailParams: any[] = [userId];
+
+    if (emailIds && emailIds.length > 0) {
+      emailQuery += ` AND id = ANY($2)`;
+      emailParams.push(emailIds);
+    }
+
+    emailQuery += ` ORDER BY received_at DESC LIMIT 100`;
+
+    const emailResult = await query(emailQuery, emailParams);
+    const emails = emailResult.rows.map((row: any) => ({
+      id: row.id,
+      subject: row.subject || '',
+      body: row.body || '',
+      sender: row.sender || '',
+      recipients: row.recipients || [],
+      timestamp: row.timestamp,
+    }));
+
+    // Fetch open/in-progress tasks from database
+    let taskQuery = `
+      SELECT 
+        t.id,
+        t.title as name,
+        t.description,
+        t.status,
+        t.deal_id as linked_entity_id,
+        d.name as linked_entity_name,
+        t.assigned_to_id,
+        t.assigned_to_name
+      FROM deal_team_tasks t
+      LEFT JOIN deals d ON t.deal_id = d.id
+      WHERE t.status IN ('todo', 'in-progress')
+    `;
+    const taskParams: any[] = [];
+
+    if (taskIds && taskIds.length > 0) {
+      taskQuery += ` AND t.id = ANY($1)`;
+      taskParams.push(taskIds);
+    }
+
+    taskQuery += ` ORDER BY t.due_date ASC NULLS LAST LIMIT 100`;
+
+    const taskResult = await query(taskQuery, taskParams);
+    const tasks = taskResult.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      status: row.status,
+      linkedEntity: {
+        id: row.linked_entity_id,
+        name: row.linked_entity_name,
+        type: 'deal',
       },
-      {
-        id: 'task-2',
-        name: 'Schedule Property Inspection',
-        description: 'Coordinate with structural engineer for full building inspection',
-        status: 'in_progress',
-        linkedEntity: {
-          id: 'deal-1',
-          name: 'Buckhead Tower Development',
-          type: 'pipeline-deal',
-        },
-        assignedTo: {
-          userId: 'user-2',
-          name: 'Sarah Johnson',
-        },
+      assignedTo: {
+        userId: row.assigned_to_id,
+        name: row.assigned_to_name,
       },
-      {
-        id: 'task-3',
-        name: 'Request Updated Rent Roll',
-        description: 'Obtain current rent roll from seller',
-        status: 'open',
-        linkedEntity: {
-          id: 'deal-1',
-          name: 'Buckhead Tower Development',
-          type: 'pipeline-deal',
-        },
-        assignedTo: {
-          userId: 'user-1',
-          name: 'Leon D',
-        },
-      },
-      {
-        id: 'task-4',
-        name: 'Submit Loan Application Package',
-        description: 'Complete loan application with Regions Bank',
-        status: 'open',
-        linkedEntity: {
-          id: 'deal-1',
-          name: 'Buckhead Tower Development',
-          type: 'pipeline-deal',
-        },
-        assignedTo: {
-          userId: 'user-1',
-          name: 'Leon D',
-        },
-      },
-      {
-        id: 'task-7',
-        name: 'Complete Tenant Improvement Work',
-        description: 'Finish Suite 300 TI work at Decatur Office',
-        status: 'in_progress',
-        linkedEntity: {
-          id: 'deal-4',
-          name: 'Decatur Office Building',
-          type: 'assets-owned-property',
-        },
-        assignedTo: {
-          userId: 'user-3',
-          name: 'Mike Chen',
-        },
-      },
-    ];
+    }));
 
     // Scan emails for completion signals
-    const signals = await taskCompletionDetector.scanEmails(mockEmails, mockTasks);
+    const signals = await taskCompletionDetector.scanEmails(emails, tasks);
 
     // Filter by confidence threshold if provided
     const minConfidence = req.body.minConfidence || 40;
@@ -182,18 +134,57 @@ router.post('/:taskId/complete-from-email', async (req: Request, res: Response) 
     const { taskId } = req.params;
     const { emailId, completionDate, source = 'email-detection' } = req.body;
 
-    // TODO: Update task in database
-    // For now, return mock success
+    const { query } = await import('../../database/connection');
+
+    // Update task status in database
+    const result = await query(
+      `UPDATE deal_team_tasks 
+       SET 
+         status = 'completed',
+         completed_at = $1,
+         updated_at = NOW()
+       WHERE id = $2
+       RETURNING 
+         id,
+         title,
+         status,
+         completed_at,
+         deal_id`,
+      [completionDate || new Date(), taskId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found',
+      });
+    }
+
     const updatedTask = {
-      id: taskId,
-      status: 'complete',
-      completedAt: completionDate || new Date().toISOString(),
+      id: result.rows[0].id,
+      status: result.rows[0].status,
+      completedAt: result.rows[0].completed_at,
       source: {
         type: 'email',
         referenceId: emailId,
         sourceUrl: `/emails/${emailId}`,
       },
     };
+
+    // Log activity
+    await query(
+      `INSERT INTO deal_team_activity (
+        deal_id, action, target_type, target_id, title, description
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        result.rows[0].deal_id,
+        'completed_task',
+        'task',
+        taskId,
+        `Task completed via email detection: ${result.rows[0].title}`,
+        `Automatically detected completion from email ${emailId}`,
+      ]
+    );
 
     res.json({
       success: true,
@@ -240,11 +231,36 @@ router.post('/:taskId/reject-completion', async (req: Request, res: Response) =>
  */
 router.get('/completion-suggestions', async (req: Request, res: Response) => {
   try {
-    // TODO: Fetch from database
-    // For now, return empty array
+    const { query } = await import('../../database/connection');
+    const userId = (req as any).user?.id;
+
+    // Fetch tasks with recent activity that might indicate completion
+    const result = await query(
+      `SELECT 
+        t.id as task_id,
+        t.title,
+        t.description,
+        t.status,
+        t.deal_id,
+        d.name as deal_name,
+        t.assigned_to_name,
+        COUNT(a.id) as recent_activity_count
+      FROM deal_team_tasks t
+      LEFT JOIN deals d ON t.deal_id = d.id
+      LEFT JOIN deal_team_activity a ON a.target_id = t.id 
+        AND a.created_at > NOW() - INTERVAL '7 days'
+      WHERE t.status IN ('in-progress', 'review')
+        AND t.completed_at IS NULL
+      GROUP BY t.id, t.title, t.description, t.status, t.deal_id, d.name, t.assigned_to_name
+      HAVING COUNT(a.id) > 2
+      ORDER BY COUNT(a.id) DESC
+      LIMIT 20`,
+      []
+    );
+
     res.json({
       success: true,
-      data: [],
+      data: result.rows,
     });
   } catch (error) {
     console.error('Error fetching completion suggestions:', error);

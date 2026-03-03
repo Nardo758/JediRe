@@ -312,10 +312,9 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           };
         });
       } catch (error) {
-        // Table doesn't exist yet - return mock data for demo
-        logger.error('News Intelligence table not found, using mock data:', error);
-        const mockData = generateMockFindings();
-        results.news = mockData.news;
+        // News Intelligence table error - log but continue with empty results
+        logger.error('Error fetching news intelligence findings:', error);
+        results.news = [];
       }
     }
 
@@ -375,10 +374,9 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
         };
       });
       } catch (error) {
-        // Market snapshots table or deals query failed - return mock data
-        logger.error('Market signals query failed, using mock data:', error);
-        const mockData = generateMockFindings();
-        results.market = mockData.market;
+        // Market signals query error - log but continue with empty results
+        logger.error('Error fetching market signals:', error);
+        results.market = [];
       }
     }
 
@@ -466,10 +464,9 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
         };
       });
       } catch (error) {
-        // analysis_results table doesn't exist yet - return mock data for demo
-        logger.error('Analysis results table not found, using mock data:', error);
-        const mockData = generateMockFindings();
-        results.insights = mockData.insights;
+        // Analysis results query error - log but continue with empty results
+        logger.error('Error fetching AI insights:', error);
+        results.insights = [];
       }
     }
 
@@ -527,10 +524,9 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           };
         });
       } catch (error) {
-        // Deal state queries might fail - return mock data for demo
-        logger.error('Action items query failed, using mock data:', error);
-        const mockData = generateMockFindings();
-        results.actions = mockData.actions;
+        // Action items query error - log but continue with empty results
+        logger.error('Error fetching action items:', error);
+        results.actions = [];
       }
     }
 

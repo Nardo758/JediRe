@@ -37,14 +37,11 @@ router.get('/', [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const userId = req.query.userId as string || 'current-user';
+    const { query: dbQuery } = await import('../../database/connection');
+    const userId = req.query.userId as string || (req as any).user?.id || 'current-user';
     const includeShared = req.query.includeShared === 'true';
 
-    // TODO: Replace with actual database query
-    // const db = req.app.locals.db;
-    
-    // Mock query for development
-    let query = `
+    let sqlQuery = `
       SELECT 
         id,
         user_id as "userId",
@@ -63,20 +60,18 @@ router.get('/', [
         created_at as "createdAt",
         updated_at as "updatedAt"
       FROM user_map_annotations
-      WHERE user_id = $1
+      WHERE deleted_at IS NULL
+        AND (user_id = $1
     `;
 
     if (includeShared) {
-      query += ` OR is_shared = true OR $1 = ANY(shared_with_users)`;
+      sqlQuery += ` OR is_shared = true OR $1 = ANY(shared_with_users)`;
     }
 
-    query += ` ORDER BY created_at DESC`;
+    sqlQuery += `) ORDER BY created_at DESC`;
 
-    // const result = await db.query(query, [userId]);
-    // const annotations = result.rows;
-
-    // Mock data for development
-    const annotations: MapAnnotation[] = [];
+    const result = await dbQuery(sqlQuery, [userId]);
+    const annotations = result.rows;
 
     res.json(annotations);
   } catch (error) {
@@ -99,9 +94,9 @@ router.get('/:id', [
     }
 
     const { id } = req.params;
+    const { query: dbQuery } = await import('../../database/connection');
 
-    // TODO: Replace with actual database query
-    const query = `
+    const sqlQuery = `
       SELECT 
         id,
         user_id as "userId",
@@ -120,17 +115,16 @@ router.get('/:id', [
         created_at as "createdAt",
         updated_at as "updatedAt"
       FROM user_map_annotations
-      WHERE id = $1
+      WHERE id = $1 AND deleted_at IS NULL
     `;
 
-    // const result = await db.query(query, [id]);
-    // if (result.rows.length === 0) {
-    //   return res.status(404).json({ error: 'Annotation not found' });
-    // }
-    // const annotation = result.rows[0];
+    const result = await dbQuery(sqlQuery, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Annotation not found' });
+    }
+    const annotation = result.rows[0];
 
-    // Mock response
-    res.status(404).json({ error: 'Annotation not found' });
+    res.json(annotation);
   } catch (error) {
     console.error('Error fetching map annotation:', error);
     res.status(500).json({ error: 'Failed to fetch map annotation' });

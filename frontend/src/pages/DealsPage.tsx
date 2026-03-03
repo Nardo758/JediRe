@@ -321,6 +321,7 @@ export function DealsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [quadrantFilter, setQuadrantFilter] = useState<QuadrantType | null>(null);
   const [rankTierFilter, setRankTierFilter] = useState<RankTier>('All');
+  const [intelligenceData, setIntelligenceData] = useState<Map<string, any>>(new Map());
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'all', label: 'All Deals', icon: '📊' },
@@ -350,21 +351,50 @@ export function DealsPage() {
   const map = useRef<mapboxgl.Map | null>(null);
 
   useEffect(() => {
-    loadGridDeals();
+    const loadData = async () => {
+      try {
+        const response: any = await apiClient.get('/rankings/pipeline/atlanta');
+        const data = response?.data || response;
+        if (data?.intelligence && Array.isArray(data.intelligence)) {
+          const map = new Map();
+          data.intelligence.forEach((item: any) => {
+            map.set(item.id, {
+              pcs_rank: item.pcs_rank,
+              pcs_movement: item.pcs_movement,
+              t04_quadrant: item.t04_quadrant,
+              target_score: item.target_score,
+            });
+          });
+          setIntelligenceData(map);
+          await loadGridDeals(undefined, map);
+        } else {
+          await loadGridDeals();
+        }
+      } catch (err) {
+        console.error('Failed to load intelligence data:', err);
+        await loadGridDeals();
+      }
+    };
+    loadData();
     fetchMapDeals();
   }, [fetchMapDeals]);
 
-  const loadGridDeals = async (sort?: GridSort) => {
+  const loadGridDeals = async (sort?: GridSort, intelData?: Map<string, any>) => {
     try {
       setLoading(true);
       setError(null);
       const params = new URLSearchParams();
       if (sort) params.append('sort', JSON.stringify(sort));
       const response = await apiClient.get(`${API_URL}/grid/pipeline?${params.toString()}`);
-      const deals = (response.data.deals || []).map((deal: PipelineDeal, index: number) => ({
-        ...deal,
-        ...mockIntelligenceData[index % mockIntelligenceData.length],
-      }));
+      const dataToUse = intelData || intelligenceData;
+      const deals = (response.data.deals || []).map((deal: PipelineDeal, index: number) => {
+        // Try to get real intelligence data, fall back to mock if not available
+        const intelligence = dataToUse.get(deal.id) || mockIntelligenceData[index % mockIntelligenceData.length];
+        return {
+          ...deal,
+          ...intelligence,
+        };
+      });
       setGridDeals(deals);
     } catch (err) {
       console.error('Failed to load pipeline grid:', err);
@@ -374,7 +404,7 @@ export function DealsPage() {
     }
   };
 
-  const handleSort = (sort: GridSort) => loadGridDeals(sort);
+  const handleSort = (sort: GridSort) => loadGridDeals(sort, intelligenceData);
 
   const handleExport = async () => {
     try {

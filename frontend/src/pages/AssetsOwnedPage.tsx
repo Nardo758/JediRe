@@ -173,6 +173,10 @@ export function AssetsOwnedPage() {
   const [discoveringDeal, setDiscoveringDeal] = useState<string | null>(null);
   const [addCompDeal, setAddCompDeal] = useState<string | null>(null);
   const [addCompForm, setAddCompForm] = useState({ address: '', name: '', units: '', year_built: '', stories: '', class_code: '', avg_rent: '', occupancy: '', google_rating: '', notes: '' });
+  
+  const [rankedAssets, setRankedAssets] = useState<RankedAsset[]>(MOCK_RANKED_ASSETS);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsLive, setRankingsLive] = useState(false);
 
   const loadCompsForDeal = async (dealId: string) => {
     try {
@@ -247,7 +251,25 @@ export function AssetsOwnedPage() {
 
   useEffect(() => {
     loadAssets();
+    loadRankings();
   }, []);
+
+  const loadRankings = async () => {
+    try {
+      setRankingsLoading(true);
+      const response: any = await apiClient.get('/rankings/owned/atlanta');
+      const data = response?.data || response;
+      if (data?.rankedAssets && data.rankedAssets.length > 0) {
+        setRankedAssets(data.rankedAssets);
+        setRankingsLive(data.source === 'live');
+      }
+    } catch (err) {
+      console.error('Failed to load ranked assets:', err);
+      // Keep mock data on error
+    } finally {
+      setRankingsLoading(false);
+    }
+  };
 
   const loadAssets = async (sort?: GridSort) => {
     try {
@@ -464,13 +486,13 @@ export function AssetsOwnedPage() {
     { id: 'documents', label: 'Documents', icon: '📄' },
   ];
 
-  const portfolioAvgPcs = Math.round(
-    MOCK_RANKED_ASSETS.reduce((s, a) => s + a.pcsScore, 0) / MOCK_RANKED_ASSETS.length
-  );
+  const portfolioAvgPcs = rankedAssets.length > 0 ? Math.round(
+    rankedAssets.reduce((s, a) => s + a.pcsScore, 0) / rankedAssets.length
+  ) : 0;
 
-  const priorityAsset = [...MOCK_RANKED_ASSETS].sort(
+  const priorityAsset = rankedAssets.length > 0 ? [...rankedAssets].sort(
     (a, b) => (b.rank - b.targetRank) - (a.rank - a.targetRank)
-  )[0];
+  )[0] : null;
 
   const MiniSparkline = ({ data, targetLine }: { data: number[]; targetLine: number }) => {
     const max = Math.max(...data, targetLine) + 2;
@@ -531,8 +553,11 @@ export function AssetsOwnedPage() {
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg p-4 text-white col-span-1">
           <div className="text-sm text-blue-100 mb-1">Portfolio Aggregate PCS</div>
-          <div className="text-4xl font-bold">{portfolioAvgPcs}</div>
-          <div className="text-sm text-blue-200 mt-1">Weighted avg across {MOCK_RANKED_ASSETS.length} assets</div>
+          <div className="text-4xl font-bold">{rankingsLoading ? '...' : portfolioAvgPcs}</div>
+          <div className="text-sm text-blue-200 mt-1">
+            Weighted avg across {rankedAssets.length} assets
+            {rankingsLive && <span className="ml-2 text-xs bg-green-500/30 px-2 py-0.5 rounded-full">● LIVE</span>}
+          </div>
           <div className="mt-3 w-full bg-blue-500/40 rounded-full h-2">
             <div
               className="bg-white rounded-full h-2 transition-all"
@@ -585,7 +610,20 @@ export function AssetsOwnedPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {MOCK_RANKED_ASSETS.sort((a, b) => a.rank - b.rank).map((asset) => {
+              {rankingsLoading ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                    <div className="animate-spin inline-block w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full mb-2"></div>
+                    <div>Loading rankings...</div>
+                  </td>
+                </tr>
+              ) : rankedAssets.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                    No ranked assets available
+                  </td>
+                </tr>
+              ) : rankedAssets.sort((a, b) => a.rank - b.rank).map((asset) => {
                 const isPriority = asset.id === priorityAsset?.id;
                 return (
                   <tr

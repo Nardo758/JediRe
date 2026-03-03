@@ -8,28 +8,87 @@ import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import apiClient from '@/services/api.client';
-import {
-  acquisitionExitStats,
-  performanceExitStats,
-  acquisitionExitScenarios,
-  performanceExitScenarios,
-  acquisitionExitTimeline,
-  performanceExitTimeline,
-  acquisitionValueProjections,
-  performanceValueProjections,
-  acquisitionMarketReadiness,
-  performanceMarketReadiness,
-  performanceBrokerRecommendations,
-  acquisitionExitReadiness,
-  performanceExitReadiness,
-  ExitQuickStat,
-  ExitScenario,
-  ExitTimelineEvent,
-  ValueProjection,
-  MarketReadinessIndicator,
-  BrokerRecommendation,
-  ExitReadinessChecklistItem
-} from '../../../data/exitMockData';
+
+// Type definitions
+interface ExitQuickStat {
+  label: string;
+  value: number | string;
+  format: 'currency' | 'percentage' | 'years' | 'months' | 'number';
+  icon: string;
+  trend?: { direction: 'up' | 'down' | 'stable'; value: string };
+  subtext?: string;
+  status?: 'success' | 'warning' | 'danger' | 'info';
+}
+
+interface ExitScenario {
+  id: string;
+  name: string;
+  icon: string;
+  type: 'sale' | 'refinance' | 'hold';
+  description: string;
+  timing: string;
+  exitCap: number;
+  projectedNOI: number;
+  probability: 'high' | 'medium' | 'low';
+  salePrice?: number;
+  refinanceAmount?: number;
+  cashOut?: number;
+  equityMultiple?: number;
+  irr: number;
+  keyFeatures: string[];
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
+
+interface ExitTimelineEvent {
+  id: string;
+  name: string;
+  date: string;
+  category: 'preparation' | 'marketing' | 'transaction' | 'closing';
+  status: 'completed' | 'upcoming' | 'future';
+  description: string;
+  monthsFromNow?: number;
+}
+
+interface ValueProjection {
+  year: number;
+  noi: number;
+  capRate: number;
+  propertyValue: number;
+  equity: number;
+  irr: number;
+}
+
+interface MarketReadinessIndicator {
+  category: string;
+  score: number;
+  status: 'ready' | 'needs-attention' | 'not-ready';
+  description: string;
+  actionItems?: string[];
+}
+
+interface BrokerRecommendation {
+  id: string;
+  brokerName: string;
+  firm: string;
+  specialty: string;
+  rating: number;
+  recentSales: number;
+  avgDaysOnMarket: number;
+  avgPricePremium: number;
+  pros: string[];
+  cons: string[];
+}
+
+interface ExitReadinessChecklistItem {
+  id: string;
+  item: string;
+  status: 'completed' | 'in-progress' | 'not-started';
+  priority: 'high' | 'medium' | 'low';
+  assignee?: string;
+  dueDate?: string;
+}
 
 interface ExitStrategyData {
   stats?: ExitQuickStat[];
@@ -124,19 +183,13 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
     };
   }, [capitalStructure]);
 
-  const mockStats = isPipeline ? acquisitionExitStats : performanceExitStats;
-  const mockScenarios = isPipeline ? acquisitionExitScenarios : performanceExitScenarios;
-  const mockTimeline = isPipeline ? acquisitionExitTimeline : performanceExitTimeline;
-  const mockValueProjections = isPipeline ? acquisitionValueProjections : performanceValueProjections;
-  const mockReadinessIndicators = isPipeline ? acquisitionMarketReadiness : performanceMarketReadiness;
-  const mockReadinessChecklist = isPipeline ? acquisitionExitReadiness : performanceExitReadiness;
-
-  const stats = (isLiveData && liveData?.stats) ? liveData.stats : mockStats;
-  const scenarios = (isLiveData && liveData?.scenarios) ? liveData.scenarios : mockScenarios;
-  const timeline = (isLiveData && liveData?.timeline) ? liveData.timeline : mockTimeline;
-  const valueProjections = (isLiveData && liveData?.valueProjections) ? liveData.valueProjections : mockValueProjections;
-  const readinessIndicators = (isLiveData && liveData?.marketReadiness) ? liveData.marketReadiness : mockReadinessIndicators;
-  const readinessChecklist = (isLiveData && liveData?.readinessChecklist) ? liveData.readinessChecklist : mockReadinessChecklist;
+  const stats = (isLiveData && liveData?.stats) ? liveData.stats : getDefaultExitStats(isPipeline);
+  const scenarios = (isLiveData && liveData?.scenarios) ? liveData.scenarios : getDefaultExitScenarios(isPipeline);
+  const timeline = (isLiveData && liveData?.timeline) ? liveData.timeline : getDefaultExitTimeline(isPipeline);
+  const valueProjections = (isLiveData && liveData?.valueProjections) ? liveData.valueProjections : getDefaultValueProjections(isPipeline);
+  const readinessIndicators = (isLiveData && liveData?.marketReadiness) ? liveData.marketReadiness : getDefaultMarketReadiness(isPipeline);
+  const readinessChecklist = (isLiveData && liveData?.readinessChecklist) ? liveData.readinessChecklist : getDefaultExitReadiness(isPipeline);
+  const brokerRecommendations = (isLiveData && liveData?.brokerRecommendations) ? liveData.brokerRecommendations : getDefaultBrokerRecommendations();
 
   const handleSaveCurrentData = useCallback(() => {
     const currentData: ExitStrategyData = {
@@ -240,7 +293,7 @@ export const ExitSection: React.FC<ExitSectionProps> = ({ deal }) => {
         <>
           <MarketReadinessSection indicators={readinessIndicators} />
           
-          <BrokerRecommendationsSection brokers={performanceBrokerRecommendations} />
+          <BrokerRecommendationsSection brokers={brokerRecommendations} />
         </>
       )}
 
@@ -871,5 +924,445 @@ const ExitReadinessChecklist: React.FC<ExitReadinessChecklistProps> = ({ items, 
     </div>
   );
 };
+
+// ==================== DEFAULT DATA FUNCTIONS ====================
+
+function getDefaultExitStats(isPipeline: boolean): ExitQuickStat[] {
+  if (isPipeline) {
+    return [
+      { label: 'Target Exit Date', value: 'Q1 2028', format: 'number', icon: '📅', status: 'info' },
+      { label: 'Projected IRR', value: 18.5, format: 'percentage', icon: '📈', trend: { direction: 'up', value: '+2.1%' } },
+      { label: 'Equity Multiple', value: '2.4x', format: 'number', icon: '💰', status: 'success' },
+      { label: 'Exit Cap Rate', value: 5.25, format: 'percentage', icon: '🎯' },
+      { label: 'Projected Sale Price', value: 54285714, format: 'currency', icon: '💵' }
+    ];
+  } else {
+    return [
+      { label: 'Days Since Acquisition', value: 487, format: 'number', icon: '📅' },
+      { label: 'Current IRR', value: 16.8, format: 'percentage', icon: '📈', trend: { direction: 'up', value: '+1.2%' } },
+      { label: 'Equity Multiple', value: '2.1x', format: 'number', icon: '💰' },
+      { label: 'Market Readiness', value: 75, format: 'percentage', icon: '📊', status: 'success' },
+      { label: 'Projected Exit Value', value: 56000000, format: 'currency', icon: '💵' }
+    ];
+  }
+}
+
+function getDefaultExitScenarios(isPipeline: boolean): ExitScenario[] {
+  const baseScenarios: ExitScenario[] = [
+    {
+      id: isPipeline ? 'base-sale' : 'perf-base-sale',
+      name: 'Base Case Sale',
+      icon: '🏆',
+      type: 'sale',
+      description: 'Standard sale at stabilization with market-rate cap rate',
+      timing: isPipeline ? 'Year 5 (Q1 2028)' : 'Q4 2024',
+      exitCap: 5.25,
+      projectedNOI: 2850000,
+      probability: 'high',
+      salePrice: 54285714,
+      equityMultiple: 2.4,
+      irr: 18.5,
+      keyFeatures: ['Market cap rate', 'Full stabilization', 'Standard marketing period'],
+      color: 'text-green-700',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-300'
+    },
+    {
+      id: isPipeline ? 'upside-sale' : 'perf-upside-sale',
+      name: 'Upside Sale',
+      icon: '🚀',
+      type: 'sale',
+      description: 'Premium sale with compressed cap rate due to strong performance',
+      timing: isPipeline ? 'Year 5 (Q1 2028)' : 'Q4 2024',
+      exitCap: 4.95,
+      projectedNOI: 2950000,
+      probability: 'medium',
+      salePrice: 59595960,
+      equityMultiple: 2.8,
+      irr: 21.2,
+      keyFeatures: ['Below-market cap', 'Premium positioning', 'Strong buyer competition'],
+      color: 'text-purple-700',
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-300'
+    },
+    {
+      id: isPipeline ? 'refinance' : 'perf-refinance',
+      name: 'Refinance & Hold',
+      icon: '♻️',
+      type: 'refinance',
+      description: 'Cash-out refinance at stabilization, continue operations',
+      timing: isPipeline ? 'Year 4 (Q4 2027)' : 'Q2 2024',
+      exitCap: 5.5,
+      projectedNOI: 2750000,
+      probability: 'medium',
+      refinanceAmount: 40000000,
+      cashOut: 18500000,
+      irr: 16.8,
+      keyFeatures: ['Tax-efficient', 'Preserve upside', 'Return capital to investors'],
+      color: 'text-blue-700',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-300'
+    }
+  ];
+
+  return baseScenarios;
+}
+
+function getDefaultExitTimeline(isPipeline: boolean): ExitTimelineEvent[] {
+  if (isPipeline) {
+    return [
+      {
+        id: '1',
+        name: 'Acquisition Close',
+        date: '2024-03-01',
+        category: 'preparation',
+        status: 'upcoming',
+        description: 'Complete acquisition and take ownership',
+        monthsFromNow: 2
+      },
+      {
+        id: '2',
+        name: 'Renovations Complete',
+        date: '2025-12-01',
+        category: 'preparation',
+        status: 'future',
+        description: 'Finish all unit and common area improvements',
+        monthsFromNow: 22
+      },
+      {
+        id: '3',
+        name: 'Property Stabilized',
+        date: '2026-06-01',
+        category: 'preparation',
+        status: 'future',
+        description: 'Achieve 95%+ occupancy at target rents',
+        monthsFromNow: 28
+      },
+      {
+        id: '4',
+        name: 'Broker Engagement',
+        date: '2027-09-01',
+        category: 'marketing',
+        status: 'future',
+        description: 'Interview and select listing brokers',
+        monthsFromNow: 43
+      },
+      {
+        id: '5',
+        name: 'Marketing Launch',
+        date: '2027-11-01',
+        category: 'marketing',
+        status: 'future',
+        description: 'Begin property marketing and buyer outreach',
+        monthsFromNow: 45
+      },
+      {
+        id: '6',
+        name: 'Target Exit',
+        date: '2028-01-15',
+        category: 'closing',
+        status: 'future',
+        description: 'Close sale transaction',
+        monthsFromNow: 48
+      }
+    ];
+  } else {
+    return [
+      {
+        id: '1',
+        name: 'Property Stabilized',
+        date: '2024-01-01',
+        category: 'preparation',
+        status: 'completed',
+        description: 'Achieved 95%+ occupancy at target rents',
+        monthsFromNow: -2
+      },
+      {
+        id: '2',
+        name: 'Financial Audit',
+        date: '2024-03-01',
+        category: 'preparation',
+        status: 'upcoming',
+        description: 'Complete financial statement audit',
+        monthsFromNow: 1
+      },
+      {
+        id: '3',
+        name: 'Broker Engagement',
+        date: '2024-04-01',
+        category: 'marketing',
+        status: 'upcoming',
+        description: 'Interview and select listing brokers',
+        monthsFromNow: 2
+      },
+      {
+        id: '4',
+        name: 'Marketing Launch',
+        date: '2024-06-01',
+        category: 'marketing',
+        status: 'future',
+        description: 'Begin property marketing and buyer outreach',
+        monthsFromNow: 4
+      },
+      {
+        id: '5',
+        name: 'Offers & Negotiations',
+        date: '2024-08-01',
+        category: 'transaction',
+        status: 'future',
+        description: 'Review offers and negotiate terms',
+        monthsFromNow: 6
+      },
+      {
+        id: '6',
+        name: 'Target Exit',
+        date: '2024-10-01',
+        category: 'closing',
+        status: 'future',
+        description: 'Close sale transaction',
+        monthsFromNow: 8
+      }
+    ];
+  }
+}
+
+function getDefaultValueProjections(isPipeline: boolean): ValueProjection[] {
+  const baseYear = isPipeline ? 2024 : 2023;
+  
+  return [
+    {
+      year: 1,
+      noi: 2200000,
+      capRate: 5.8,
+      propertyValue: 37931034,
+      equity: 11793103,
+      irr: -12.5
+    },
+    {
+      year: 2,
+      noi: 2450000,
+      capRate: 5.6,
+      propertyValue: 43750000,
+      equity: 17750000,
+      irr: 8.2
+    },
+    {
+      year: 3,
+      noi: 2650000,
+      capRate: 5.4,
+      propertyValue: 49074074,
+      equity: 23074074,
+      irr: 14.8
+    },
+    {
+      year: 4,
+      noi: 2750000,
+      capRate: 5.3,
+      propertyValue: 51886792,
+      equity: 25886792,
+      irr: 16.5
+    },
+    {
+      year: 5,
+      noi: 2850000,
+      capRate: 5.25,
+      propertyValue: 54285714,
+      equity: 28285714,
+      irr: 18.5
+    }
+  ];
+}
+
+function getDefaultMarketReadiness(isPipeline: boolean): MarketReadinessIndicator[] {
+  if (isPipeline) {
+    return [
+      {
+        category: 'Property Condition',
+        score: 30,
+        status: 'not-ready',
+        description: 'Property requires renovation program',
+        actionItems: ['Complete unit renovations', 'Upgrade common areas', 'Address deferred maintenance']
+      },
+      {
+        category: 'Financial Performance',
+        score: 40,
+        status: 'needs-attention',
+        description: 'Performance below market, needs stabilization',
+        actionItems: ['Increase occupancy to 95%+', 'Achieve target rents', 'Stabilize operating expenses']
+      },
+      {
+        category: 'Market Conditions',
+        score: 75,
+        status: 'ready',
+        description: 'Strong buyer demand in submarket',
+        actionItems: []
+      }
+    ];
+  } else {
+    return [
+      {
+        category: 'Property Condition',
+        score: 95,
+        status: 'ready',
+        description: 'Property in excellent condition with recent renovations',
+        actionItems: []
+      },
+      {
+        category: 'Financial Performance',
+        score: 90,
+        status: 'ready',
+        description: 'Strong NOI growth and occupancy',
+        actionItems: ['Maintain occupancy momentum', 'Continue expense management']
+      },
+      {
+        category: 'Market Conditions',
+        score: 85,
+        status: 'ready',
+        description: 'Active buyer market with strong cap rate compression',
+        actionItems: []
+      },
+      {
+        category: 'Documentation',
+        score: 70,
+        status: 'needs-attention',
+        description: 'Financial records need final audit',
+        actionItems: ['Complete financial statement audit', 'Update rent roll', 'Compile marketing materials']
+      }
+    ];
+  }
+}
+
+function getDefaultExitReadiness(isPipeline: boolean): ExitReadinessChecklistItem[] {
+  if (isPipeline) {
+    return [
+      {
+        id: '1',
+        item: 'Complete property renovations',
+        status: 'not-started',
+        priority: 'high',
+        assignee: 'Construction Team',
+        dueDate: '2025-12-01'
+      },
+      {
+        id: '2',
+        item: 'Achieve occupancy stabilization (95%+)',
+        status: 'not-started',
+        priority: 'high',
+        assignee: 'Property Manager',
+        dueDate: '2026-06-01'
+      },
+      {
+        id: '3',
+        item: 'Financial audit and reporting',
+        status: 'not-started',
+        priority: 'medium',
+        assignee: 'Accounting',
+        dueDate: '2027-08-01'
+      },
+      {
+        id: '4',
+        item: 'Marketing materials preparation',
+        status: 'not-started',
+        priority: 'medium',
+        assignee: 'Marketing',
+        dueDate: '2027-09-01'
+      },
+      {
+        id: '5',
+        item: 'Broker selection and engagement',
+        status: 'not-started',
+        priority: 'high',
+        assignee: 'Acquisitions',
+        dueDate: '2027-09-01'
+      }
+    ];
+  } else {
+    return [
+      {
+        id: '1',
+        item: 'Financial statement audit',
+        status: 'in-progress',
+        priority: 'high',
+        assignee: 'Accounting',
+        dueDate: '2024-03-01'
+      },
+      {
+        id: '2',
+        item: 'Update rent roll and tenant files',
+        status: 'in-progress',
+        priority: 'high',
+        assignee: 'Property Manager',
+        dueDate: '2024-03-15'
+      },
+      {
+        id: '3',
+        item: 'Property marketing materials',
+        status: 'in-progress',
+        priority: 'medium',
+        assignee: 'Marketing',
+        dueDate: '2024-04-01'
+      },
+      {
+        id: '4',
+        item: 'Broker interviews and selection',
+        status: 'not-started',
+        priority: 'high',
+        assignee: 'Acquisitions',
+        dueDate: '2024-04-01'
+      },
+      {
+        id: '5',
+        item: 'Legal review and documentation',
+        status: 'completed',
+        priority: 'high',
+        assignee: 'Legal',
+        dueDate: '2024-02-15'
+      }
+    ];
+  }
+}
+
+function getDefaultBrokerRecommendations(): BrokerRecommendation[] {
+  return [
+    {
+      id: '1',
+      brokerName: 'Marcus & Millichap',
+      firm: 'Marcus & Millichap',
+      specialty: 'Multifamily Investment Sales',
+      rating: 4.8,
+      recentSales: 47,
+      avgDaysOnMarket: 82,
+      avgPricePremium: 3.2,
+      pros: [
+        'Extensive buyer network in multifamily sector',
+        'Strong track record with value-add properties',
+        'National marketing reach'
+      ],
+      cons: [
+        'Higher commission structure',
+        'Less focused on single assets'
+      ]
+    },
+    {
+      id: '2',
+      brokerName: 'CBRE Multifamily',
+      firm: 'CBRE',
+      specialty: 'Multifamily Capital Markets',
+      rating: 4.7,
+      recentSales: 38,
+      avgDaysOnMarket: 75,
+      avgPricePremium: 4.1,
+      pros: [
+        'Premium buyer network and institutional relationships',
+        'Strong marketing and analytics capabilities',
+        'Excellent market intelligence'
+      ],
+      cons: [
+        'Selective on property types and size',
+        'Premium pricing'
+      ]
+    }
+  ];
+}
 
 export default ExitSection;

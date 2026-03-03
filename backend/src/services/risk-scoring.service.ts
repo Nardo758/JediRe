@@ -684,27 +684,34 @@ export class RiskScoringService {
   }
 
   /**
-   * Calculate Composite Risk Profile
+   * Calculate Composite Risk Profile (All 6 Categories)
    * 
    * Formula: (Highest × 0.40) + (Second Highest × 0.25) + (Avg of Remaining × 0.35)
    * 
    * Ensures single severe risk isn't diluted by low scores in other categories
    */
   async calculateCompositeRisk(tradeAreaId: string): Promise<CompositeRiskProfile> {
-    // Calculate or retrieve all category scores
+    // Calculate all 6 category scores (with proper error handling)
     const supplyCalc = await this.calculateSupplyRisk(tradeAreaId);
     const demandCalc = await this.calculateDemandRisk(tradeAreaId);
+    
+    // Phase 3 categories (will use real data if available, fallback to 50.0 neutral score)
+    const regulatoryCalc = await this.calculateRegulatoryRisk(tradeAreaId);
+    const marketCalc = await this.calculateMarketRisk(tradeAreaId);
+    const executionCalc = await this.calculateExecutionRisk(tradeAreaId);
+    const climateCalc = await this.calculateClimateRisk(tradeAreaId);
 
-    // Placeholder scores for Phase 3 categories (neutral 50.0)
-    const regulatoryRisk = 50.0;
-    const marketRisk = 50.0;
-    const executionRisk = 50.0;
-    const climateRisk = 50.0;
+    const supplyRisk = supplyCalc.finalScore;
+    const demandRisk = demandCalc.finalScore;
+    const regulatoryRisk = regulatoryCalc.finalScore;
+    const marketRisk = marketCalc.finalScore;
+    const executionRisk = executionCalc.finalScore;
+    const climateRisk = climateCalc.finalScore;
 
     // Array of all scores with category names
     const scores = [
-      { category: 'supply', score: supplyCalc.finalScore },
-      { category: 'demand', score: demandCalc.finalScore },
+      { category: 'supply', score: supplyRisk },
+      { category: 'demand', score: demandRisk },
       { category: 'regulatory', score: regulatoryRisk },
       { category: 'market', score: marketRisk },
       { category: 'execution', score: executionRisk },
@@ -720,6 +727,7 @@ export class RiskScoringService {
     const avgRemaining = remaining.reduce((sum, s) => sum + s.score, 0) / remaining.length;
 
     // Calculate composite score
+    // Formula: (Highest × 0.40) + (Second × 0.25) + (Avg Remaining × 0.35)
     const compositeScore = 
       (highest.score * 0.40) +
       (secondHighest.score * 0.25) +
@@ -730,8 +738,8 @@ export class RiskScoringService {
 
     const profile: CompositeRiskProfile = {
       tradeAreaId,
-      supplyRisk: supplyCalc.finalScore,
-      demandRisk: demandCalc.finalScore,
+      supplyRisk,
+      demandRisk,
       regulatoryRisk,
       marketRisk,
       executionRisk,
@@ -1370,76 +1378,6 @@ export class RiskScoringService {
     };
   }
 
-  /**
-   * Update composite risk calculation to use all 6 categories
-   * (Overrides the placeholder version from Phase 2)
-   */
-  async calculateCompositeRisk(tradeAreaId: string): Promise<CompositeRiskProfile> {
-    // Calculate all 6 category scores
-    const supplyCalc = await this.calculateSupplyRisk(tradeAreaId);
-    const demandCalc = await this.calculateDemandRisk(tradeAreaId);
-    const regulatoryCalc = await this.calculateRegulatoryRisk(tradeAreaId);
-    const marketCalc = await this.calculateMarketRisk(tradeAreaId);
-    const executionCalc = await this.calculateExecutionRisk(tradeAreaId);
-    const climateCalc = await this.calculateClimateRisk(tradeAreaId);
-
-    const supplyRisk = supplyCalc.finalScore;
-    const demandRisk = demandCalc.finalScore;
-    const regulatoryRisk = regulatoryCalc.finalScore;
-    const marketRisk = marketCalc.finalScore;
-    const executionRisk = executionCalc.finalScore;
-    const climateRisk = climateCalc.finalScore;
-
-    // Array of all scores with category names
-    const scores = [
-      { category: 'supply', score: supplyRisk },
-      { category: 'demand', score: demandRisk },
-      { category: 'regulatory', score: regulatoryRisk },
-      { category: 'market', score: marketRisk },
-      { category: 'execution', score: executionRisk },
-      { category: 'climate', score: climateRisk },
-    ];
-
-    // Sort by score descending
-    scores.sort((a, b) => b.score - a.score);
-
-    const highest = scores[0];
-    const secondHighest = scores[1];
-    const remaining = scores.slice(2);
-    const avgRemaining = remaining.reduce((sum, s) => sum + s.score, 0) / remaining.length;
-
-    // Calculate composite score
-    // Formula: (Highest × 0.40) + (Second × 0.25) + (Avg Remaining × 0.35)
-    const compositeScore = 
-      (highest.score * 0.40) +
-      (secondHighest.score * 0.25) +
-      (avgRemaining * 0.35);
-
-    // Classify risk level
-    const riskLevel = this.classifyRiskLevel(compositeScore);
-
-    const profile: CompositeRiskProfile = {
-      tradeAreaId,
-      supplyRisk,
-      demandRisk,
-      regulatoryRisk,
-      marketRisk,
-      executionRisk,
-      climateRisk,
-      compositeScore: parseFloat(compositeScore.toFixed(2)),
-      highestCategory: highest.category,
-      highestCategoryScore: highest.score,
-      secondHighestCategory: secondHighest.category,
-      secondHighestCategoryScore: secondHighest.score,
-      riskLevel,
-      calculatedAt: new Date(),
-    };
-
-    // Save composite profile to database
-    await this.saveCompositeRiskProfile(profile);
-
-    return profile;
-  }
 }
 
 // ============================================================================

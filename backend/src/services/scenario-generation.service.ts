@@ -751,40 +751,214 @@ export class ScenarioGenerationService {
 
   /**
    * Calculate scenario financial results
-   * TODO: Integrate with actual pro forma engine
+   * Uses real pro forma calculations based on deal data and scenario assumptions
    */
   private async calculateScenarioResults(
     scenarioId: string,
     assumptions: any
   ): Promise<void> {
-    // Placeholder calculation - to be integrated with actual pro forma
-    const mockIRR = 15 + (Math.random() * 10 - 5); // 10-20%
-    const mockCoC = 1.5 + Math.random(); // 1.5-2.5x
-    const mockNPV = 1000000 + (Math.random() * 2000000 - 1000000); // -$1M to $3M
+    try {
+      // Get deal and scenario information
+      const scenarioData = await query(
+        `SELECT ds.*, d.budget, d.target_units as units, d.address, d.state
+         FROM deal_scenarios ds
+         JOIN deals d ON d.id = ds.deal_id
+         WHERE ds.id = $1`,
+        [scenarioId]
+      );
 
-    await query(
-      `UPDATE deal_scenarios 
-       SET irr_pct = $1, coc_year_5 = $2, npv = $3, 
-           cash_flow_year_5 = $4, results_calculated_at = NOW()
-       WHERE id = $5`,
-      [mockIRR, mockCoC, mockNPV, mockNPV * 0.2, scenarioId]
-    );
+      if (scenarioData.rows.length === 0) {
+        throw new Error(`Scenario ${scenarioId} not found`);
+      }
 
-    // Store detailed results
-    await query(
-      `INSERT INTO scenario_results (
-        scenario_id, irr_pct, equity_multiple, coc_year_5, npv,
-        calculation_method, calculation_timestamp
-      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT (scenario_id)
-      DO UPDATE SET
-        irr_pct = EXCLUDED.irr_pct,
-        equity_multiple = EXCLUDED.equity_multiple,
-        coc_year_5 = EXCLUDED.coc_year_5,
-        npv = EXCLUDED.npv,
-        calculation_timestamp = NOW()`,
-      [scenarioId, mockIRR, mockCoC, mockCoC, mockNPV, 'deterministic']
-    );
+      const scenario = scenarioData.rows[0];
+      const dealId = scenario.deal_id;
+      
+      // Get financial model or assumptions for this deal
+      const financialData = await query(
+        `SELECT 
+          assumptions,
+          results
+         FROM deal_financial_models
+         WHERE deal_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [dealId]
+      );
+
+      let baseAssumptions: any = {};
+      
+      if (financialData.rows.length > 0) {
+        baseAssumptions = financialData.rows[0].assumptions || {};
+      } else {
+        // Get market-based defaults
+        const marketDefaults = await query(
+          `SELECT *
+           FROM financial_assumptions
+           WHERE market = $1
+           LIMIT 1`,
+          [scenario.state || 'Atlanta']
+        );
+        
+        if (marketDefaults.rows.length > 0) {
+          const mkt = marketDefaults.rows[0];
+          baseAssumptions = {
+            rentPerUnit: 1500,
+            operatingExpensePercent: parseFloat(mkt.operating_expense_percent) || 0.35,
+            vacancyRate: parseFloat(mkt.vacancy_rate) || 0.05,
+            capRate: parseFloat(mkt.cap_rate) / 100 || 0.06,
+            propertyTaxRate: parseFloat(mkt.property_tax_rate) || 0.012,
+            insurancePerUnit: mkt.insurance_per_unit || 600,
+            managementFeePercent: parseFloat(mkt.management_fee_percent) || 0.03,
+          };
+        } else {
+          // Fallback defaults
+          baseAssumptions = {
+            rentPerUnit: 1500,
+            operatingExpensePercent: 0.35,
+            vacancyRate: 0.05,
+            capRate: 0.06,
+            propertyTaxRate: 0.012,
+            insurancePerUnit: 600,
+            managementFeePercent: 0.03,
+          };
+        }
+      }
+
+      // Apply scenario assumptions (rent growth, vacancy, etc.)
+      const rentPerUnit = baseAssumptions.rentPerUnit || 1500;
+      const units = scenario.units || 100;
+      const purchasePrice = scenario.budget || (units * 150000); // Estimate if not available
+      
+      // Calculate adjusted metrics based on scenario
+      const adjustedRentGrowth = assumptions.rentGrowth || 0.03;
+      const adjustedVacancy = assumptions.vacancy || 0.05;
+      const adjustedOpex = baseAssumptions.operatingExpensePercent || 0.35;
+      const adjustedExitCap = assumptions.exitCap || 0.06;
+
+      // 5-year pro forma calculation
+      let yearlyResults = [];
+      let cumulativeCashFlow = 0;
+      let equityInvestment = purchasePrice * 0.25; // Assume 25% equity
+      
+      for (let year = 1; year <= 5; year++) {
+        // Calculate rent with growth
+        const effectiveRent = rentPerUnit * Math.pow(1 + adjustedRentGrowth, year - 1);
+        
+        // Gross rental income
+        const potentialGrossIncome = effectiveRent * units * 12;
+        const vacancyLoss = potentialGrossIncome * adjustedVacancy;
+        const effectiveGrossIncome = potentialGrossIncome - vacancyLoss;
+        
+        // Operating expenses
+        const operatingExpenses = effectiveGrossIncome * adjustedOpex;
+        const propertyTax = purchasePrice * (baseAssumptions.propertyTaxRate || 0.012);
+        const insurance = units * (baseAssumptions.insurancePerUnit || 600);
+        const managementFees = effectiveGrossIncome * (baseAssumptions.managementFeePercent || 0.03);
+        
+        const totalExpenses = operatingExpenses + propertyTax + insurance + managementFees;
+        
+        // NOI
+        const noi = effectiveGrossIncome - totalExpenses;
+        
+        // Debt service (assume 75% LTV, 5.5% interest, 30-year amortization)
+        const loanAmount = purchasePrice * 0.75;
+        const annualDebtService = loanAmount * 0.07; // Approximate annual payment
+        
+        // Cash flow
+        const cashFlow = noi - annualDebtService;
+        cumulativeCashFlow += cashFlow;
+        
+        yearlyResults.push({
+          year,
+          effectiveRent: Math.round(effectiveRent),
+          effectiveGrossIncome: Math.round(effectiveGrossIncome),
+          noi: Math.round(noi),
+          cashFlow: Math.round(cashFlow),
+        });
+      }
+
+      // Calculate exit value at Year 5
+      const year5NOI = yearlyResults[4].noi;
+      const exitValue = year5NOI / adjustedExitCap;
+      const loanBalance = purchasePrice * 0.75 * 0.85; // ~15% paydown over 5 years
+      const netSaleProceeds = exitValue - loanBalance;
+      
+      // Calculate NPV (assuming 10% discount rate)
+      const discountRate = 0.10;
+      let npv = -equityInvestment;
+      
+      for (let year = 1; year <= 5; year++) {
+        const cashFlow = yearlyResults[year - 1].cashFlow;
+        npv += cashFlow / Math.pow(1 + discountRate, year);
+      }
+      npv += netSaleProceeds / Math.pow(1 + discountRate, 5);
+      
+      // Calculate IRR (approximation using Newton's method)
+      let irr = 0.15; // Initial guess
+      for (let iteration = 0; iteration < 20; iteration++) {
+        let npvAtRate = -equityInvestment;
+        let derivativeNpv = 0;
+        
+        for (let year = 1; year <= 5; year++) {
+          const cashFlow = yearlyResults[year - 1].cashFlow;
+          npvAtRate += cashFlow / Math.pow(1 + irr, year);
+          derivativeNpv -= (year * cashFlow) / Math.pow(1 + irr, year + 1);
+        }
+        npvAtRate += netSaleProceeds / Math.pow(1 + irr, 5);
+        derivativeNpv -= (5 * netSaleProceeds) / Math.pow(1 + irr, 6);
+        
+        if (Math.abs(npvAtRate) < 100) break; // Close enough
+        irr = irr - npvAtRate / derivativeNpv;
+        if (irr < -0.5 || irr > 1.0) break; // Unrealistic, use fallback
+      }
+      
+      // Ensure realistic bounds
+      irr = Math.max(-0.20, Math.min(0.50, irr));
+      
+      // Calculate Cash-on-Cash return (Year 5)
+      const year5CashFlow = yearlyResults[4].cashFlow;
+      const cocYear5 = equityInvestment > 0 ? (year5CashFlow / equityInvestment) : 0;
+      
+      // Calculate Equity Multiple
+      const totalCashReturned = cumulativeCashFlow + netSaleProceeds;
+      const equityMultiple = equityInvestment > 0 ? (totalCashReturned / equityInvestment) : 0;
+
+      // Store results
+      const irrPct = irr * 100;
+      const npvRounded = Math.round(npv);
+      const cashFlowYear5 = Math.round(year5CashFlow);
+      
+      await query(
+        `UPDATE deal_scenarios 
+         SET irr_pct = $1, coc_year_5 = $2, npv = $3, 
+             cash_flow_year_5 = $4, results_calculated_at = NOW()
+         WHERE id = $5`,
+        [irrPct, cocYear5, npvRounded, cashFlowYear5, scenarioId]
+      );
+
+      // Store detailed results
+      await query(
+        `INSERT INTO scenario_results (
+          scenario_id, irr_pct, equity_multiple, coc_year_5, npv,
+          calculation_method, calculation_timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        ON CONFLICT (scenario_id)
+        DO UPDATE SET
+          irr_pct = EXCLUDED.irr_pct,
+          equity_multiple = EXCLUDED.equity_multiple,
+          coc_year_5 = EXCLUDED.coc_year_5,
+          npv = EXCLUDED.npv,
+          calculation_timestamp = NOW()`,
+        [scenarioId, irrPct, equityMultiple, cocYear5, npvRounded, 'deterministic_5yr_proforma']
+      );
+      
+      logger.info(`Calculated scenario results: IRR=${irrPct.toFixed(2)}%, NPV=$${npvRounded.toLocaleString()}, CoC=${(cocYear5 * 100).toFixed(2)}%`);
+      
+    } catch (error) {
+      logger.error('Error calculating scenario results:', error);
+      // Don't throw - log error and leave results null
+    }
   }
 
   /**

@@ -4,24 +4,74 @@
  * Entry → Value Creation → Exit progression
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  getInvestmentStrategyOverview,
-  getStrategyTimeline,
-  getAcquisitionStrategy,
-  getValueCreationPlan,
-  getExitStrategy,
-  getRiskFactors,
-  getInvestmentStrategyQuickStats,
-  InvestmentStrategyOverview,
-  StrategyTimeline,
-  ValueCreationInitiative,
-  ExitScenario,
-  BrokerRecommendation,
-  RiskFactor
-} from '../../../data/investmentStrategyMockData';
+import { apiClient } from '@/services/api.client';
+
+// Type definitions
+interface InvestmentStrategyOverview {
+  currentPhase: string;
+  acquisitionDate?: string;
+  targetExitDate?: string;
+  holdPeriod?: number;
+}
+
+interface StrategyTimeline {
+  phase: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  progress: number;
+  keyMilestones: string[];
+}
+
+interface ValueCreationInitiative {
+  id: string;
+  category: string;
+  action: string;
+  impact: string;
+  timeline: string;
+  status: string;
+  annualImpact?: number;
+}
+
+interface ExitScenario {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  timing: string;
+  exitCap: number;
+  projectedNOI: number;
+  probability: string;
+  salePrice?: number;
+  refinanceAmount?: number;
+  cashOut?: number;
+  equityMultiple?: number;
+  irr: number;
+  keyFeatures: string[];
+}
+
+interface BrokerRecommendation {
+  id: string;
+  brokerName: string;
+  firm: string;
+  specialty: string;
+  rating: number;
+  recentSales: number;
+  avgDaysOnMarket: number;
+  avgPricePremium: number;
+  pros: string[];
+  cons: string[];
+}
+
+interface RiskFactor {
+  category: string;
+  level: string;
+  description: string;
+  mitigation: string;
+}
 
 interface InvestmentStrategySectionProps {
   deal: Deal;
@@ -32,13 +82,87 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
   const [activeSubSection, setActiveSubSection] = useState<'acquisition' | 'value-creation' | 'exit'>('acquisition');
   const [selectedExitScenario, setSelectedExitScenario] = useState<string>('base-sale');
 
-  const overview = getInvestmentStrategyOverview(deal);
-  const timeline = getStrategyTimeline(deal);
-  const quickStats = getInvestmentStrategyQuickStats(deal);
-  const acquisitionStrategy = getAcquisitionStrategy(deal);
-  const valueCreationPlan = getValueCreationPlan(deal);
-  const exitStrategy = getExitStrategy(deal);
-  const riskFactors = getRiskFactors(deal);
+  // API state
+  const [strategyData, setStrategyData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isLiveData, setIsLiveData] = useState(false);
+
+  // Fetch investment strategy data from API
+  useEffect(() => {
+    const fetchStrategyData = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const dealId = (deal as any).id || (deal as any).deal_id;
+        if (!dealId) throw new Error('No deal ID');
+        
+        const response = await apiClient.get(`/api/v1/deals/${dealId}/state`);
+        
+        if (!response.data?.success) {
+          throw new Error('Failed to fetch investment strategy data');
+        }
+        
+        const stateData = response.data;
+        const investmentData = stateData.timeline_data?.investment_strategy || stateData.investment_strategy;
+        
+        if (investmentData && Object.keys(investmentData).length > 0) {
+          setStrategyData(investmentData);
+          setIsLiveData(true);
+        } else {
+          // Use default empty structure
+          setStrategyData(getDefaultStrategyData(isPipeline));
+          setIsLiveData(false);
+        }
+      } catch (err) {
+        console.error('Error fetching investment strategy data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load investment strategy data');
+        setStrategyData(getDefaultStrategyData(isPipeline));
+        setIsLiveData(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal) {
+      fetchStrategyData();
+    }
+  }, [deal, isPipeline]);
+
+  const overview = strategyData?.overview || getDefaultOverview(isPipeline);
+  const timeline = strategyData?.timeline || getDefaultTimeline(isPipeline);
+  const quickStats = strategyData?.quickStats || getDefaultQuickStats(deal, isPipeline);
+  const acquisitionStrategy = strategyData?.acquisitionStrategy || getDefaultAcquisitionStrategy();
+  const valueCreationPlan = strategyData?.valueCreationPlan || getDefaultValueCreationPlan();
+  const exitStrategy = strategyData?.exitStrategy || getDefaultExitStrategy(isPipeline);
+  const riskFactors = strategyData?.riskFactors || getDefaultRiskFactors();
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading investment strategy data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && !strategyData) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading investment strategy data</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -53,6 +177,16 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
           }`}>
             {isPipeline ? '🎯 Investment Planning' : '📊 Investment Execution'}
           </div>
+          {isLiveData && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">
+              LIVE DATA
+            </span>
+          )}
+          {!isLiveData && (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300">
+              SAMPLE DATA
+            </span>
+          )}
           {isOwned && overview.acquisitionDate && (
             <div className="text-xs text-gray-500">
               Acquired: {new Date(overview.acquisitionDate).toLocaleDateString()}
@@ -886,5 +1020,245 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
     </div>
   );
 };
+
+// ==================== DEFAULT DATA FUNCTIONS ====================
+
+function getDefaultStrategyData(isPipeline: boolean) {
+  return {
+    overview: getDefaultOverview(isPipeline),
+    timeline: getDefaultTimeline(isPipeline),
+    quickStats: [],
+    acquisitionStrategy: getDefaultAcquisitionStrategy(),
+    valueCreationPlan: getDefaultValueCreationPlan(),
+    exitStrategy: getDefaultExitStrategy(isPipeline),
+    riskFactors: getDefaultRiskFactors()
+  };
+}
+
+function getDefaultOverview(isPipeline: boolean): InvestmentStrategyOverview {
+  return {
+    currentPhase: isPipeline ? 'Entry' : 'Value Creation',
+    acquisitionDate: isPipeline ? undefined : '2023-01-15',
+    targetExitDate: '2028-01-15',
+    holdPeriod: 5
+  };
+}
+
+function getDefaultTimeline(isPipeline: boolean): StrategyTimeline[] {
+  if (isPipeline) {
+    return [
+      {
+        phase: 'Entry',
+        status: 'active',
+        startDate: '2024-01-01',
+        endDate: '2024-03-01',
+        progress: 75,
+        keyMilestones: ['Due diligence', 'Financing secured', 'Close transaction']
+      },
+      {
+        phase: 'Value Creation',
+        status: 'upcoming',
+        startDate: '2024-03-01',
+        endDate: '2027-12-01',
+        progress: 0,
+        keyMilestones: ['Renovations', 'Rent growth', 'Occupancy stabilization']
+      },
+      {
+        phase: 'Exit',
+        status: 'upcoming',
+        startDate: '2027-12-01',
+        endDate: '2028-03-01',
+        progress: 0,
+        keyMilestones: ['Broker engagement', 'Marketing', 'Sale closing']
+      }
+    ];
+  } else {
+    return [
+      {
+        phase: 'Entry',
+        status: 'completed',
+        startDate: '2023-01-15',
+        endDate: '2023-03-15',
+        progress: 100,
+        keyMilestones: ['Due diligence completed', 'Financing secured', 'Transaction closed']
+      },
+      {
+        phase: 'Value Creation',
+        status: 'active',
+        startDate: '2023-03-15',
+        endDate: '2027-12-01',
+        progress: 65,
+        keyMilestones: ['Renovations 65% complete', 'Rent growth achieved', 'Occupancy at 94%']
+      },
+      {
+        phase: 'Exit',
+        status: 'upcoming',
+        startDate: '2027-12-01',
+        endDate: '2028-03-01',
+        progress: 0,
+        keyMilestones: ['Broker engagement pending', 'Marketing plan ready', 'Target Q1 2028']
+      }
+    ];
+  }
+}
+
+function getDefaultQuickStats(deal: Deal, isPipeline: boolean): any[] {
+  return [
+    { label: 'Target IRR', value: 18.5, format: 'percentage', icon: '📈', trend: { direction: 'up', value: '+2.1%' } },
+    { label: 'Hold Period', value: 5, format: 'years', icon: '📅' },
+    { label: 'Equity Multiple', value: '2.4x', format: 'text', icon: '💰' },
+    { label: 'Total Capex', value: 3250000, format: 'currency', icon: '🔨' },
+    { label: 'Exit Cap Rate', value: 5.25, format: 'percentage', icon: '🎯' }
+  ];
+}
+
+function getDefaultAcquisitionStrategy(): any {
+  return {
+    strategyType: 'Value-Add Repositioning',
+    targetIRR: 18.5,
+    timeToStabilize: '24 months',
+    investmentThesis: 'Acquire well-located but underperforming asset, implement comprehensive renovation program to drive rent growth and improve market positioning.',
+    keyValueDrivers: [
+      'Unit renovations to justify 15-20% rent increases',
+      'Common area improvements to enhance curb appeal',
+      'Operational efficiency improvements',
+      'Improved property management and leasing'
+    ],
+    competitiveAdvantage: [
+      'Prime location with limited new supply',
+      'Below-market rents provide upside potential',
+      'Experienced operator with proven value-add track record'
+    ],
+    capexBudget: 3250000
+  };
+}
+
+function getDefaultValueCreationPlan(): any {
+  return {
+    totalProjectedLift: 1850000,
+    implementationStatus: {
+      completed: 12,
+      inProgress: 8,
+      planned: 5
+    },
+    initiatives: [
+      {
+        id: '1',
+        category: 'Revenue',
+        action: 'Unit Renovations',
+        impact: 'Increase rents by $150-200/unit',
+        timeline: '18 months',
+        status: 'in-progress',
+        annualImpact: 450000
+      },
+      {
+        id: '2',
+        category: 'Operations',
+        action: 'Utility Cost Reduction',
+        impact: 'Reduce operating expenses by 8%',
+        timeline: '6 months',
+        status: 'in-progress',
+        annualImpact: 125000
+      },
+      {
+        id: '3',
+        category: 'Capex',
+        action: 'Common Area Upgrades',
+        impact: 'Improve retention and leasing velocity',
+        timeline: '12 months',
+        status: 'planned',
+        annualImpact: 85000
+      }
+    ]
+  };
+}
+
+function getDefaultExitStrategy(isPipeline: boolean): any {
+  return {
+    targetTiming: '2028-01-15',
+    marketReadiness: isPipeline ? 30 : 75,
+    exitVehicles: ['Direct Sale', 'Portfolio Aggregation', 'Refinance & Hold'],
+    scenarios: [
+      {
+        id: 'base-sale',
+        name: 'Base Case Sale',
+        type: 'sale',
+        description: 'Standard sale at stabilization with market-rate cap rate',
+        timing: 'Year 5 (Q1 2028)',
+        exitCap: 5.25,
+        projectedNOI: 2850000,
+        salePrice: 54285714,
+        probability: 'high',
+        equityMultiple: 2.4,
+        irr: 18.5,
+        keyFeatures: ['Market cap rate', 'Full stabilization', 'Standard marketing period']
+      },
+      {
+        id: 'upside-sale',
+        name: 'Upside Sale',
+        type: 'sale',
+        description: 'Premium sale with compressed cap rate due to strong performance',
+        timing: 'Year 5 (Q1 2028)',
+        exitCap: 4.95,
+        projectedNOI: 2950000,
+        salePrice: 59595960,
+        probability: 'medium',
+        equityMultiple: 2.8,
+        irr: 21.2,
+        keyFeatures: ['Below-market cap', 'Premium positioning', 'Strong buyer competition']
+      },
+      {
+        id: 'refinance',
+        name: 'Refinance & Hold',
+        type: 'refinance',
+        description: 'Cash-out refinance at stabilization, continue operations',
+        timing: 'Year 4 (Q4 2027)',
+        exitCap: 5.5,
+        projectedNOI: 2750000,
+        refinanceAmount: 40000000,
+        cashOut: 18500000,
+        probability: 'medium',
+        irr: 16.8,
+        keyFeatures: ['Tax-efficient', 'Preserve upside', 'Return capital to investors']
+      }
+    ],
+    preparationStatus: {
+      property: isPipeline ? 30 : 85,
+      financials: isPipeline ? 40 : 90,
+      marketing: isPipeline ? 20 : 70,
+      legal: isPipeline ? 50 : 95
+    },
+    recommendedBrokers: []
+  };
+}
+
+function getDefaultRiskFactors(): RiskFactor[] {
+  return [
+    {
+      category: 'Market Risk',
+      level: 'medium',
+      description: 'Local market conditions may deteriorate, affecting rent growth and occupancy',
+      mitigation: 'Diversified unit mix, conservative underwriting, flexible lease terms'
+    },
+    {
+      category: 'Execution Risk',
+      level: 'medium',
+      description: 'Renovation timeline may extend beyond projections, delaying stabilization',
+      mitigation: 'Experienced contractor, contingency budget, phased renovation approach'
+    },
+    {
+      category: 'Financing Risk',
+      level: 'low',
+      description: 'Interest rate volatility may impact debt service and refinancing options',
+      mitigation: 'Fixed-rate debt, conservative leverage, strong debt service coverage'
+    },
+    {
+      category: 'Exit Risk',
+      level: 'low',
+      description: 'Exit market conditions may be unfavorable at target sale date',
+      mitigation: 'Multiple exit strategies, flexible timing, refinance option as backup'
+    }
+  ];
+}
 
 export default InvestmentStrategySection;

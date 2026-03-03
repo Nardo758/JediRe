@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiClient } from '../../api/client';
 
 const VITALS = [
   { id: 'tracked', label: 'Tracked Properties', value: '142', trend: '+8 this month', trendDirection: 'up' as const, sparklineData: [98, 105, 110, 112, 118, 122, 125, 128, 130, 134, 138, 142] },
@@ -92,8 +93,43 @@ function getMovementDisplay(dir: 'up' | 'down' | 'stable', movement: string) {
 
 const PerformanceRankingsPage: React.FC = () => {
   const [sortField, setSortField] = useState<'rank' | 'pcs' | 'movement'>('rank');
+  const [rankings, setRankings] = useState(MOCK_RANKINGS);
+  const [loading, setLoading] = useState(true);
+  const [isLive, setIsLive] = useState(false);
 
-  const sortedRankings = [...MOCK_RANKINGS].sort((a, b) => {
+  useEffect(() => {
+    const fetchRankings = async () => {
+      try {
+        setLoading(true);
+        const response: any = await apiClient.get('/rankings/performance/atlanta');
+        const data = response?.data || response;
+        const report = data?.rankings ? data : (data?.data || data);
+        
+        if (report?.rankings && report.rankings.length > 0) {
+          // Transform backend format to match frontend expectations
+          const transformed = report.rankings.slice(0, 10).map((r: any) => ({
+            rank: r.rank,
+            name: r.name,
+            pcs: r.pcsScore,
+            movement: r.movement > 0 ? `+${r.movement}` : r.movement === 0 ? '—' : `${r.movement}`,
+            movementDir: r.movement > 0 ? 'up' as const : r.movement < 0 ? 'down' as const : 'stable' as const,
+            class: r.class,
+            submarket: r.submarket,
+          }));
+          setRankings(transformed);
+          setIsLive(report.source === 'live');
+        }
+      } catch (err) {
+        console.error('Failed to fetch performance rankings:', err);
+        // Keep mock data on error
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRankings();
+  }, []);
+
+  const sortedRankings = [...rankings].sort((a, b) => {
     if (sortField === 'pcs') return b.pcs - a.pcs;
     if (sortField === 'movement') return parseInt(b.movement) - parseInt(a.movement);
     return a.rank - b.rank;
@@ -110,8 +146,14 @@ const PerformanceRankingsPage: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-stone-900">Performance Vitals</h3>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
-            <span className="text-[10px] text-stone-400">142 properties | Atlanta MSA</span>
+            {loading && <span className="text-[10px] text-indigo-400 animate-pulse">Loading...</span>}
+            {!loading && isLive && (
+              <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">● LIVE DATA</span>
+            )}
+            {!loading && !isLive && (
+              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-mono">SAMPLE DATA</span>
+            )}
+            <span className="text-[10px] text-stone-400">{rankings.length} properties | Atlanta MSA</span>
           </div>
         </div>
 

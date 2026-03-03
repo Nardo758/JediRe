@@ -13,14 +13,55 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { apiClient } from '@/services/api.client';
-import {
-  ProjectTask,
-  ProjectOverview,
-  acquisitionProjectTasks,
-  acquisitionOverview,
-  performanceProjectTasks,
-  performanceOverview
-} from '../../../data/projectManagementMockData';
+
+// Type definitions
+interface ProjectTask {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  status: string;
+  assignee: string;
+  dueDate: string;
+  startDate?: string;
+  endDate?: string;
+  completedDate?: string;
+  progress?: number;
+  isCriticalPath: boolean;
+  type?: string;
+  dependencies?: string[];
+  documents: Array<{ name: string; url: string; uploadedAt: string }>;
+  notes?: string;
+  redFlag?: {
+    status: string;
+    severity: string;
+    description: string;
+  };
+}
+
+interface ProjectOverview {
+  totalTasks: number;
+  completedTasks: number;
+  inProgressTasks: number;
+  overdueTasks: number;
+  blockedTasks: number;
+  completionPercentage: number;
+  daysToClosing?: number;
+  daysSinceAcquisition?: number;
+  targetDate?: string;
+  criticalPathTasks: ProjectTask[];
+  blockers: ProjectTask[];
+  recentCompletions: ProjectTask[];
+  upcomingDeadlines: ProjectTask[];
+  categoryProgress: Array<{
+    category: string;
+    label: string;
+    total: number;
+    completed: number;
+    percentage: number;
+    color: string;
+  }>;
+}
 
 function buildOverviewFromTasks(taskList: ProjectTask[], isPipelineMode: boolean): ProjectOverview {
   const completed = taskList.filter(t => t.status === 'complete' || t.status === 'completed');
@@ -118,7 +159,7 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
     if (!dealId) return;
     setIsSaving(true);
     try {
-      const currentTasks = liveTasks || (isPipeline ? acquisitionProjectTasks : performanceProjectTasks);
+      const currentTasks = liveTasks || getDefaultTasks(isPipeline);
       const updatedTasks = currentTasks.map(t => t.id === updatedTask.id ? updatedTask : t);
       setLiveTasks(updatedTasks);
       const updatedOverview = buildOverviewFromTasks(updatedTasks, isPipeline);
@@ -138,8 +179,8 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
     }
   }, [deal, isPipeline, liveTasks]);
 
-  const tasks = liveTasks || (isPipeline ? acquisitionProjectTasks : performanceProjectTasks);
-  const overview = liveOverview || (isPipeline ? acquisitionOverview : performanceOverview);
+  const tasks = liveTasks || getDefaultTasks(isPipeline);
+  const overview = liveOverview || buildOverviewFromTasks(tasks, isPipeline);
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -983,5 +1024,107 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
     </div>
   );
 };
+
+// ==================== DEFAULT DATA FUNCTIONS ====================
+
+function getDefaultTasks(isPipeline: boolean): ProjectTask[] {
+  if (isPipeline) {
+    return [
+      {
+        id: 'acq-1',
+        title: 'Property Inspection',
+        description: 'Complete physical inspection of all units and common areas',
+        category: 'physical',
+        status: 'completed',
+        assignee: 'Sarah Johnson',
+        dueDate: '2024-01-15',
+        completedDate: '2024-01-12',
+        progress: 100,
+        isCriticalPath: true,
+        type: 'milestone',
+        dependencies: [],
+        documents: [
+          { name: 'Inspection Report.pdf', url: '#', uploadedAt: '2024-01-12' }
+        ]
+      },
+      {
+        id: 'acq-2',
+        title: 'Title Review',
+        description: 'Review title commitment and resolve any exceptions',
+        category: 'legal',
+        status: 'in-progress',
+        assignee: 'Michael Chen',
+        dueDate: '2024-01-25',
+        progress: 60,
+        isCriticalPath: true,
+        type: 'task',
+        dependencies: [],
+        documents: []
+      },
+      {
+        id: 'acq-3',
+        title: 'Appraisal Ordered',
+        description: 'Order and receive third-party appraisal',
+        category: 'financial',
+        status: 'in-progress',
+        assignee: 'David Park',
+        dueDate: '2024-01-28',
+        progress: 40,
+        isCriticalPath: true,
+        type: 'task',
+        dependencies: [],
+        documents: []
+      }
+    ];
+  } else {
+    return [
+      {
+        id: 'perf-1',
+        title: 'Q1 Unit Renovations',
+        description: 'Complete 15 unit turns with upgraded finishes',
+        category: 'physical',
+        status: 'in-progress',
+        assignee: 'Construction Team',
+        dueDate: '2024-03-31',
+        progress: 67,
+        isCriticalPath: true,
+        type: 'milestone',
+        dependencies: [],
+        documents: []
+      },
+      {
+        id: 'perf-2',
+        title: 'Lease Renewals Campaign',
+        description: 'Outreach to 42 expiring leases in Q2',
+        category: 'financial',
+        status: 'upcoming',
+        assignee: 'Property Manager',
+        dueDate: '2024-04-15',
+        progress: 0,
+        isCriticalPath: false,
+        type: 'task',
+        dependencies: [],
+        documents: []
+      },
+      {
+        id: 'perf-3',
+        title: 'Annual Budget Review',
+        description: 'Complete annual operating budget and variance analysis',
+        category: 'financial',
+        status: 'completed',
+        assignee: 'Finance Team',
+        dueDate: '2024-01-31',
+        completedDate: '2024-01-28',
+        progress: 100,
+        isCriticalPath: false,
+        type: 'task',
+        dependencies: [],
+        documents: [
+          { name: '2024 Budget.xlsx', url: '#', uploadedAt: '2024-01-28' }
+        ]
+      }
+    ];
+  }
+}
 
 export default ProjectManagementSection;
