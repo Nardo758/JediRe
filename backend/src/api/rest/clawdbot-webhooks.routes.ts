@@ -189,34 +189,87 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
       
       case 'get_deal': {
         // Get specific deal with full data
-        if (!params?.dealId) {
+        // Accepts either dealId OR name parameter
+        if (!params?.dealId && !params?.name) {
           return res.status(400).json({
             error: 'Bad Request',
-            message: 'dealId parameter is required',
+            message: 'Either dealId or name parameter is required',
           });
         }
         
-        const dealResult = await pool.query(`
-          SELECT 
-            d.*,
-            ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
-            (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
-            (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
-            (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
-            CASE 
-              WHEN d.boundary IS NOT NULL THEN 
-                ST_Area(d.boundary::geography) / 4046.86
-              ELSE 0
-            END as acres
-          FROM deals d
-          WHERE d.id = $1 AND d.archived_at IS NULL
-        `, [params.dealId]);
+        let dealResult;
         
-        if (dealResult.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Not Found',
-            message: 'Deal not found',
-          });
+        // Search by name if provided
+        if (params.name) {
+          dealResult = await pool.query(`
+            SELECT 
+              d.*,
+              ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+              (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+              (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+              (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
+              CASE 
+                WHEN d.boundary IS NOT NULL THEN 
+                  ST_Area(d.boundary::geography) / 4046.86
+                ELSE 0
+              END as acres
+            FROM deals d
+            WHERE d.name ILIKE $1 AND d.archived_at IS NULL
+            ORDER BY d.updated_at DESC
+          `, [`%${params.name}%`]);
+          
+          // If multiple matches, return list of matches
+          if (dealResult.rows.length > 1) {
+            result = {
+              multipleMatches: true,
+              count: dealResult.rows.length,
+              matches: dealResult.rows.map(d => ({
+                id: d.id,
+                name: d.name,
+                status: d.status,
+                projectType: d.project_type,
+                dealCategory: d.deal_category,
+                address: d.address,
+                updatedAt: d.updated_at,
+              })),
+              message: `Found ${dealResult.rows.length} deals matching "${params.name}". Use dealId to get specific deal.`,
+            };
+            break;
+          }
+          
+          // If no matches, return 404
+          if (dealResult.rows.length === 0) {
+            return res.status(404).json({
+              error: 'Not Found',
+              message: `No deals found matching "${params.name}"`,
+            });
+          }
+          
+          // Single match - continue to full deal details below
+        } else {
+          // Search by ID
+          dealResult = await pool.query(`
+            SELECT 
+              d.*,
+              ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
+              (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
+              (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
+              (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
+              CASE 
+                WHEN d.boundary IS NOT NULL THEN 
+                  ST_Area(d.boundary::geography) / 4046.86
+                ELSE 0
+              END as acres
+            FROM deals d
+            WHERE d.id = $1 AND d.archived_at IS NULL
+          `, [params.dealId]);
+          
+          if (dealResult.rows.length === 0) {
+            return res.status(404).json({
+              error: 'Not Found',
+              message: 'Deal not found',
+            });
+          }
         }
         
         const deal = dealResult.rows[0];
@@ -234,7 +287,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           LEFT JOIN properties p ON p.id = dp.property_id
           WHERE dp.deal_id = $1
           ORDER BY dp.created_at
-        `, [params.dealId]);
+        `, [deal.id]);
         
         // Get deal tasks
         const tasksResult = await pool.query(`
@@ -250,7 +303,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           WHERE deal_id = $1
           ORDER BY priority DESC, due_date ASC NULLS LAST
           LIMIT 20
-        `, [params.dealId]);
+        `, [deal.id]);
         
         result = {
           deal: {
@@ -274,6 +327,42 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           propertyCount: deal.propertyCount,
           pendingTasks: deal.pendingTasks,
           taskCount: deal.taskCount,
+        };
+        break;
+      }
+      
+      case 'search_deals': {
+        // Search deals by name with fuzzy matching
+        if (!params?.name) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'name parameter is required',
+          });
+        }
+        
+        const searchResult = await pool.query(`
+          SELECT 
+            d.id,
+            d.name,
+            d.status,
+            d.project_type as "projectType",
+            d.deal_category as "dealCategory",
+            d.address,
+            d.state,
+            d.tier,
+            d.updated_at as "updatedAt",
+            (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount"
+          FROM deals d
+          WHERE d.name ILIKE $1 
+          AND d.archived_at IS NULL
+          ORDER BY d.updated_at DESC
+          LIMIT 10
+        `, [`%${params.name}%`]);
+        
+        result = {
+          deals: searchResult.rows,
+          count: searchResult.rowCount,
+          query: params.name,
         };
         break;
       }
