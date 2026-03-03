@@ -122,7 +122,7 @@ function fmtPctRaw(n: number): string {
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
-  const { debtTerms } = useDealModule();
+  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy } = useDealModule();
   const lastAppliedTimestamp = useRef(0);
   const [modelType, setModelType] = useState<'existing' | 'development'>('existing');
   const [holdPeriod, setHoldPeriod] = useState(5);
@@ -198,6 +198,44 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       setDebtSource('Debt & Equity');
     }
   }, [debtTerms]);
+
+  const lastStrategyTimestamp = useRef(0);
+  useEffect(() => {
+    if (lastEvent?.type === 'strategy-selected' && lastEvent.timestamp > lastStrategyTimestamp.current) {
+      lastStrategyTimestamp.current = lastEvent.timestamp;
+      const selected = strategy?.selectedStrategy || lastEvent.payload?.strategy;
+      if (selected) {
+        const strategyDefaults: Record<string, { exitCap: number; holdYears: number; capexMultiplier: number }> = {
+          'build_to_sell': { exitCap: 0.045, holdYears: 3, capexMultiplier: 0 },
+          'flip': { exitCap: 0.05, holdYears: 3, capexMultiplier: 1.5 },
+          'rental_value_add': { exitCap: 0.055, holdYears: 5, capexMultiplier: 1.0 },
+          'rental_stabilized': { exitCap: 0.06, holdYears: 7, capexMultiplier: 0.5 },
+          'str': { exitCap: 0.065, holdYears: 5, capexMultiplier: 0.8 },
+        };
+        const defaults = strategyDefaults[selected] || strategyDefaults['rental_value_add'];
+        setExitCapRate(defaults.exitCap);
+        setHoldPeriod(defaults.holdYears);
+      }
+    }
+  }, [lastEvent, strategy]);
+
+  const lastMarketTimestamp = useRef(0);
+  useEffect(() => {
+    if (lastEvent?.type === 'market-updated' && lastEvent.timestamp > lastMarketTimestamp.current) {
+      lastMarketTimestamp.current = lastEvent.timestamp;
+      if (market) {
+        if (market.occupancy > 0) {
+          setStabilizedOccupancy(market.occupancy);
+        }
+        if (market.rentGrowth > 0) {
+          setRentGrowth(prev => prev.map((_, i) => {
+            const base = market.rentGrowth;
+            return Math.max(0.01, base - (i * 0.002));
+          }));
+        }
+      }
+    }
+  }, [lastEvent, market]);
 
   const [capexItems, setCapexItems] = useState<CapexLineItem[]>([
     { description: 'Interior Renovations', amount: 1500000 },
@@ -337,10 +375,40 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const assumptions = buildAssumptionsPayload();
       const res = await apiClient.post('/api/v1/financial-model/build', { dealId: id, assumptions });
       const data = (res as any)?.data;
+      let results: ModelResults | null = null;
       if (data?.data) {
+        results = data.data;
         setModelResults(data.data);
       } else if (data) {
+        results = data;
         setModelResults(data);
+      }
+
+      if (results) {
+        const summary = results.summary || {};
+        const totalCapex = capexItems.reduce((s, i) => s + i.amount, 0);
+        const contingency = totalCapex * contingencyPct;
+        const hardCostsVal = modelType === 'development'
+          ? hardCostPerSF * netRentableSF * (1 + hardCostContingency)
+          : totalCapex + contingency;
+        const softCostsVal = modelType === 'development'
+          ? hardCostPerSF * netRentableSF * softCostPct
+          : Object.values(closingCosts).reduce((s, v) => s + v, 0);
+        const totalDevCost = modelType === 'development'
+          ? landCost + hardCostsVal + softCostsVal + (hardCostPerSF * netRentableSF * developerFee)
+          : purchasePrice + softCostsVal + hardCostsVal;
+
+        updateFinancial({
+          totalDevelopmentCost: summary.totalDevelopmentCost ?? totalDevCost,
+          landCost: summary.landCost ?? (modelType === 'development' ? landCost : 0),
+          hardCosts: summary.hardCosts ?? hardCostsVal,
+          softCosts: summary.softCosts ?? softCostsVal,
+          noi: summary.noi ?? summary.year1NOI ?? 0,
+          irr: summary.irr ?? 0,
+          equityMultiple: summary.equityMultiple ?? 0,
+          cashOnCash: summary.cashOnCash ?? 0,
+        });
+        emitEvent({ source: 'ProFormaTab', type: 'financial-updated', payload: { dealId: id } });
       }
     } catch (err: any) {
       console.error('Model build failed:', err);

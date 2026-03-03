@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiClient } from '@/services/api.client';
+import { useDealModule } from '@/contexts/DealModuleContext';
 
 interface DealProps {
   deal?: any;
@@ -47,7 +48,7 @@ const TABS = [
 
 const QP = ['Which loan wins?', 'Stress: 6% exit cap', 'Break-even occupancy?', 'Build best case', 'IRR vs rent growth?', 'Raise CapEx $7K/unit'];
 
-function buildSysPrompt(model: any, ms: Record<string, string>) {
+function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { financial?: any; market?: any; capitalStructure?: any; strategy?: any; debtTerms?: any }) {
   const conn = MODULES_DEF.filter(m => ms[m.id] && ms[m.id] !== 'none').map(m => `${m.label}(${ms[m.id]})`).join(', ') || 'none';
   const acq = model?.acquisition || {};
   const rev = model?.revenue || {};
@@ -56,10 +57,21 @@ function buildSysPrompt(model: any, ms: Record<string, string>) {
   const scenarios = model?.scenarios || {};
   const base = scenarios?.base || {};
 
+  let ctxBlock = '';
+  if (ctxData) {
+    const parts: string[] = [];
+    if (ctxData.strategy?.lastUpdated) parts.push(`Strategy: ${ctxData.strategy.selectedStrategy} (arbitrage=${ctxData.strategy.arbitrageFlag})`);
+    if (ctxData.market?.lastUpdated) parts.push(`Market: occ=${fmtPct(ctxData.market.occupancy || 0)} avgRent=$${ctxData.market.avgRent || 0} rentGrowth=${fmtPct(ctxData.market.rentGrowth || 0)} supply=${ctxData.market.supplyPipeline || 0} demand=${ctxData.market.demandScore || 0}`);
+    if (ctxData.financial?.lastUpdated) parts.push(`Financial: NOI=${fmt$(ctxData.financial.noi || 0)} IRR=${ctxData.financial.irr || 0}% EM=${ctxData.financial.equityMultiple || 0}x CoC=${ctxData.financial.cashOnCash || 0}% TDC=${fmt$(ctxData.financial.totalDevelopmentCost || 0)}`);
+    if (ctxData.capitalStructure?.lastUpdated) parts.push(`Capital: DSCR=${ctxData.capitalStructure.dscr || 0}x LTV=${fmtPct(ctxData.capitalStructure.ltv || 0)} equity=${fmt$(ctxData.capitalStructure.totalEquity || 0)} debtService=${fmt$(ctxData.capitalStructure.annualDebtService || 0)}`);
+    if (ctxData.debtTerms?.lastUpdated) parts.push(`Debt: ${ctxData.debtTerms.loanType} @ ${fmtPct(ctxData.debtTerms.interestRate || 0)} IO=${ctxData.debtTerms.ioPeriod || 0}mo amount=${fmt$(ctxData.debtTerms.loanAmount || 0)}`);
+    if (parts.length > 0) ctxBlock = `\nLIVE CONTEXT DATA:\n${parts.join('\n')}`;
+  }
+
   return `You are JEDI — elite real estate financial modeling AI embedded in JEDI RE. You can modify the live deal model.
 DEAL: ${model?.propertyName || 'Unknown'} | ${model?.meta || ''}
 CONNECTED MODULES: ${conn}
-MODEL: Purchase ${fmt$(acq.purchasePrice || 0)} | ${acq.units || 0} units | Occ ${fmtPct(rev.currentOccupancy || 0)}\u2192${fmtPct(rev.stabilizedOccupancy || 0)} | ${loan.name || 'N/A'} @ ${fmtPct(loan.rate || 0)} IO:${loan.ioYears || 0}yr | IRR Base:${base.irr || 0}% Best:${scenarios.best?.irr || 0}% Worst:${scenarios.worst?.irr || 0}%
+MODEL: Purchase ${fmt$(acq.purchasePrice || 0)} | ${acq.units || 0} units | Occ ${fmtPct(rev.currentOccupancy || 0)}\u2192${fmtPct(rev.stabilizedOccupancy || 0)} | ${loan.name || 'N/A'} @ ${fmtPct(loan.rate || 0)} IO:${loan.ioYears || 0}yr | IRR Base:${base.irr || 0}% Best:${scenarios.best?.irr || 0}% Worst:${scenarios.worst?.irr || 0}%${ctxBlock}
 To modify: respond with \`\`\`model_update\n{"description":"...","changes":{"acquisition.purchasePrice":56000000},"explanation":"..."}\`\`\`
 Speak like a senior institutional analyst — direct, data-driven, precise.`;
 }
@@ -934,6 +946,7 @@ td.cwo .cv{color:#dc2626}
 
 const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const id = dealId || deal?.id;
+  const { financial: ctxFinancial, market: ctxMarket, capitalStructure: ctxCapital, strategy: ctxStrategy, debtTerms: ctxDebt, moduleStatus } = useDealModule();
   const [model, setModel] = useState<any>(null);
   const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none' });
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -944,6 +957,77 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const [spin, setSpin] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const ctxData = useMemo(() => ({
+    financial: ctxFinancial,
+    market: ctxMarket,
+    capitalStructure: ctxCapital,
+    strategy: ctxStrategy,
+    debtTerms: ctxDebt,
+  }), [ctxFinancial, ctxMarket, ctxCapital, ctxStrategy, ctxDebt]);
+
+  useEffect(() => {
+    setMs(prev => {
+      const newMs: Record<string, string> = { ...prev };
+      for (const key of ['strategy', 'traffic', 'proforma', 'debt', 'exit'] as const) {
+        if (moduleStatus[key] === 'live') {
+          newMs[key] = 'live';
+        }
+      }
+      if (newMs.strategy !== prev.strategy || newMs.traffic !== prev.traffic || newMs.proforma !== prev.proforma || newMs.debt !== prev.debt || newMs.exit !== prev.exit) {
+        return newMs;
+      }
+      return prev;
+    });
+  }, [moduleStatus]);
+
+  useEffect(() => {
+    setModel(prev => {
+      if (!prev) return prev;
+      let updated = false;
+      const patch = JSON.parse(JSON.stringify(prev));
+
+      if (ctxFinancial?.lastUpdated) {
+        if (ctxFinancial.noi && ctxFinancial.noi > 0) {
+          patch.scenarios = patch.scenarios || {};
+          patch.scenarios.base = patch.scenarios.base || {};
+          patch.scenarios.base.noi = ctxFinancial.noi;
+          patch.scenarios.base.irr = ctxFinancial.irr || patch.scenarios.base.irr;
+          patch.scenarios.base.equityMultiple = ctxFinancial.equityMultiple || patch.scenarios.base.equityMultiple;
+          patch.scenarios.base.cashOnCash = ctxFinancial.cashOnCash || patch.scenarios.base.cashOnCash;
+          if (ctxFinancial.irr) {
+            patch.scenarios.best = patch.scenarios.best || {};
+            patch.scenarios.best.irr = ctxFinancial.irr * 1.15;
+            patch.scenarios.best.equityMultiple = (ctxFinancial.equityMultiple || 0) * 1.2;
+            patch.scenarios.best.noi = ctxFinancial.noi * 1.07;
+            patch.scenarios.worst = patch.scenarios.worst || {};
+            patch.scenarios.worst.irr = ctxFinancial.irr * 0.75;
+            patch.scenarios.worst.equityMultiple = (ctxFinancial.equityMultiple || 0) * 0.7;
+            patch.scenarios.worst.noi = ctxFinancial.noi * 0.9;
+          }
+          updated = true;
+        }
+      }
+
+      if (ctxMarket?.lastUpdated) {
+        patch.revenue = patch.revenue || {};
+        if (ctxMarket.occupancy > 0) { patch.revenue.currentOccupancy = ctxMarket.occupancy; updated = true; }
+        if (ctxMarket.avgRent > 0) { patch.revenue.currentAvgMarketRent = ctxMarket.avgRent; updated = true; }
+        if (ctxMarket.rentGrowth > 0) { patch.revenue.rentGrowthY1 = ctxMarket.rentGrowth; updated = true; }
+      }
+
+      if (ctxCapital?.lastUpdated) {
+        if (ctxCapital.dscr > 0) {
+          patch.scenarios = patch.scenarios || {};
+          patch.scenarios.base = patch.scenarios.base || {};
+          patch.scenarios.base.dscr = ctxCapital.dscr;
+          updated = true;
+        }
+      }
+
+      return updated ? patch : prev;
+    });
+  }, [ctxFinancial?.lastUpdated, ctxMarket?.lastUpdated, ctxCapital?.lastUpdated]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, load]);
 
@@ -1012,7 +1096,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
     try {
       const res = await apiClient.post(`/api/v1/financial-dashboard/${id}/chat`, {
         messages: [...msgs, um].map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text })),
-        systemPrompt: buildSysPrompt(model, ms),
+        systemPrompt: buildSysPrompt(model, ms, ctxData),
       });
       const raw = res.data?.data?.content || res.data?.data?.text || 'No response.';
       const { text: ct, update } = parseResp(raw);
@@ -1024,7 +1108,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
         const r = await fetch('/api/v1/financial-model/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
-          body: JSON.stringify({ messages: hist, systemPrompt: buildSysPrompt(model, ms) }),
+          body: JSON.stringify({ messages: hist, systemPrompt: buildSysPrompt(model, ms, ctxData) }),
         });
         const d = await r.json();
         const raw = d.data?.content || d.content?.map((c: any) => c.text || '').join('') || 'Connection error.';
@@ -1037,7 +1121,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
     } finally {
       setLoad(false);
     }
-  }, [inp, load, msgs, model, ms, id]);
+  }, [inp, load, msgs, model, ms, id, ctxData]);
 
   if (initialLoading) {
     return (

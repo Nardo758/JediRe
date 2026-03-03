@@ -26,7 +26,7 @@ const QUARTERS = ['Q1 25','Q2 25','Q3 25','Q4 25','Q1 26','Q2 26','Q3 26','Q4 26
 
 const SUPPLY_DELIVERING = [0, 0, 185, 0, 0, 0, 350, 280, 0, 185, 0, 0, 0, 0];
 
-const RENT_GROWTH = [8.7, 7.8, 6.2, 5.4, 4.8, 4.1, 2.1, 0.8, -0.4, -1.2, 0.3, 1.1, 2.0, 2.8];
+const DEFAULT_RENT_GROWTH = [8.7, 7.8, 6.2, 5.4, 4.8, 4.1, 2.1, 0.8, -0.4, -1.2, 0.3, 1.1, 2.0, 2.8];
 
 const RATES = [4.35, 4.28, 4.15, 4.05, 3.92, 3.78, 3.65, 3.55, 3.50, 3.48, 3.45, 3.50, 3.55, 3.60];
 
@@ -40,8 +40,8 @@ const computeExitScore = (rentG: number, rate: number, supply: number): number =
   return Math.round(Math.max(0, Math.min(100, rentScore + rateScore + supplyScore)));
 };
 
-const EXIT_SCORES = QUARTERS.map((_, i) =>
-  computeExitScore(RENT_GROWTH[i], RATES[i], SUPPLY_DELIVERING[i])
+const DEFAULT_EXIT_SCORES = QUARTERS.map((_, i) =>
+  computeExitScore(DEFAULT_RENT_GROWTH[i], RATES[i], SUPPLY_DELIVERING[i])
 );
 
 const SCENARIOS = [
@@ -115,6 +115,23 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
   const ctx = useDealModule();
   const financial = financialProp || ctx.financial;
   const capitalStructure = capitalStructureProp || ctx.capitalStructure;
+  const market = ctx.market;
+
+  const RENT_GROWTH = useMemo(() => {
+    if (market?.rentGrowth && market.lastUpdated > 0) {
+      const baseGrowth = market.rentGrowth;
+      return DEFAULT_RENT_GROWTH.map((fallback, i) => {
+        const decay = Math.max(0, 1 - i * 0.07);
+        return parseFloat((baseGrowth * decay).toFixed(1)) || fallback;
+      });
+    }
+    return DEFAULT_RENT_GROWTH;
+  }, [market?.rentGrowth, market?.lastUpdated]);
+
+  const EXIT_SCORES = useMemo(() =>
+    QUARTERS.map((_, i) => computeExitScore(RENT_GROWTH[i], RATES[i], SUPPLY_DELIVERING[i])),
+    [RENT_GROWTH]
+  );
 
   const [selectedScenario, setSelectedScenario] = useState(1);
   const [whyExpanded, setWhyExpanded] = useState(false);

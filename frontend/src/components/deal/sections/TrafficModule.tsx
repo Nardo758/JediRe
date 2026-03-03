@@ -7,6 +7,7 @@ import {
   Layers, SlidersHorizontal, Gauge,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { useDealModule } from '@/contexts/DealModuleContext';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
@@ -255,6 +256,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, onUploa
 
 export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficModuleProps) {
   const resolvedDealId = propDealId || deal?.id || '';
+  const { updateMarket, emitEvent, lastEvent, strategy } = useDealModule();
   const [activeTab, setActiveTab] = useState<TabId>('predictions');
   const [view, setView] = useState<'weekly' | 'monthly' | 'yearly'>('yearly');
   const [projection, setProjection] = useState<ProjectionData | null>(null);
@@ -288,6 +290,36 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   }, [resolvedDealId, view]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!projection) return;
+    const mi = projection.marketIntelligence;
+    const firstPeriod = projection.periods?.[0];
+    const latestSnap = history.length > 0 ? history[history.length - 1] : null;
+
+    const occupancy = latestSnap?.occ_pct ?? firstPeriod?.adjOccPct ?? 0;
+    const rentGrowth = mi ? (mi.demandFactor - 1) * 100 : 0;
+    const supplyPipeline = mi ? Math.round(mi.supplyFactor * 10) : 0;
+    const demandScore = mi ? Math.round(mi.demandFactor * 50) : 0;
+
+    updateMarket({
+      occupancy,
+      avgRent: 0,
+      rentGrowth,
+      supplyPipeline,
+      demandScore,
+    });
+    emitEvent({ source: 'TrafficModule', type: 'market-updated', payload: { occupancy, rentGrowth, supplyPipeline, demandScore } });
+  }, [projection, history, updateMarket, emitEvent]);
+
+  const prevStrategyRef = useRef(strategy?.selectedStrategy);
+  useEffect(() => {
+    if (!strategy) return;
+    if (prevStrategyRef.current !== undefined && prevStrategyRef.current !== strategy.selectedStrategy) {
+      loadData();
+    }
+    prevStrategyRef.current = strategy.selectedStrategy;
+  }, [strategy?.selectedStrategy, loadData]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

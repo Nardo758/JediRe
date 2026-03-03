@@ -124,10 +124,10 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 
   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
     baseNOI: financial?.noi || 3000000,
-    equityInvested: stack?.metrics?.totalEquity || 8000000,
-    loanBalance: stack?.metrics?.totalDebt || 19200000,
+    equityInvested: capitalStructure?.totalEquity || stack?.metrics?.totalEquity || 8000000,
+    loanBalance: capitalStructure?.loanBalance?.[0] ?? stack?.metrics?.totalDebt ?? 19200000,
     dealStatus: dealStatus || 'pipeline',
-  }), [financial?.noi, stack?.metrics?.totalEquity, stack?.metrics?.totalDebt, dealStatus]);
+  }), [financial?.noi, capitalStructure?.totalEquity, capitalStructure?.loanBalance, stack?.metrics?.totalEquity, stack?.metrics?.totalDebt, dealStatus]);
 
   const activeWaterfall = useMemo(() => waterfalls.find(w => w.id === activeWaterfallId) || waterfalls[0], [waterfalls, activeWaterfallId]);
 

@@ -106,6 +106,16 @@ export interface DebtTermsState {
   lastUpdated: number;
 }
 
+export type ModuleStatusValue = 'live' | 'none';
+
+export interface ModuleStatus {
+  strategy: ModuleStatusValue;
+  traffic: ModuleStatusValue;
+  proforma: ModuleStatusValue;
+  debt: ModuleStatusValue;
+  exit: ModuleStatusValue;
+}
+
 export type DealModuleEventType =
   | 'design-updated'
   | 'financial-updated'
@@ -159,6 +169,8 @@ interface DealModuleContextValue {
 
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
+
+  moduleStatus: ModuleStatus;
 
   navigateToTab: (tabId: string) => void;
   activeTab: string;
@@ -298,6 +310,14 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     onTabChange(tabId);
   }, [onTabChange]);
 
+  const moduleStatus = useMemo<ModuleStatus>(() => ({
+    strategy: (strategy?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    traffic: (market?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    proforma: (financial?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    debt: ((capitalStructure?.lastUpdated ?? 0) > 0 || (debtTerms?.lastUpdated ?? 0) > 0) ? 'live' : 'none',
+    exit: (capitalStructure?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+  }), [strategy?.lastUpdated, market?.lastUpdated, financial?.lastUpdated, capitalStructure?.lastUpdated, debtTerms?.lastUpdated]);
+
   const value = useMemo<DealModuleContextValue>(() => ({
     dealId,
     deal,
@@ -319,9 +339,10 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateDebtTerms,
     emitEvent,
     lastEvent,
+    moduleStatus,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, emitEvent, lastEvent, navigateToTab, activeTab]);
+  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -354,6 +375,7 @@ export const useDealModule = (): DealModuleContextValue => {
       updateDebtTerms: () => {},
       emitEvent: () => {},
       lastEvent: null,
+      moduleStatus: { strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none' },
       navigateToTab: () => {},
       activeTab: 'overview',
     };
