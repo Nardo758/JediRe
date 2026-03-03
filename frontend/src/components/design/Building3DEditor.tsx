@@ -61,6 +61,8 @@ interface Building3DEditorProps {
   onMetricsChange?: (metrics: any) => void;
   onSave?: () => void;
   zoningConstraints?: ZoningConstraintsInput;
+  onToggleAIChat?: () => void;
+  onToggleReferencePanel?: () => void;
 }
 
 export const Building3DEditor: React.FC<Building3DEditorProps> = ({
@@ -71,6 +73,8 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   onMetricsChange,
   onSave,
   zoningConstraints,
+  onToggleAIChat,
+  onToggleReferencePanel,
 }) => {
   const { state, actions } = useDesign3D();
   const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
@@ -130,66 +134,23 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
     generateSimpleBuilding(state.parcelBoundary, 100);
   }, [state.parcelBoundary, generateSimpleBuilding]);
   
-  /**
-   * AI IMAGE-TO-3D HOOK (Placeholder for Phase 2 Qwen Integration)
-   * This will eventually send images to Qwen API for terrain/site analysis
-   */
   const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    
-    console.log('📸 Image uploaded:', file.name);
-    
-    // TODO: Phase 2 - Send to Qwen API for image-to-3D terrain generation
-    // For now: Display alert with instructions
-    alert(`AI Image-to-3D (Phase 2)\n\nFile: ${file.name}\n\nThis will eventually:\n1. Send image to Qwen API\n2. Extract terrain/topography\n3. Generate 3D site model\n4. Identify existing structures\n\nFor now, use manual parcel drawing.`);
-    
-    // Call placeholder hook
     if (state.parcelBoundary) {
       await aiImageToTerrain({
         image: file,
         parcelId: state.parcelBoundary.id,
-        options: {
-          enhanceDetail: true,
-          extractContours: true,
-        },
+        options: { enhanceDetail: true, extractContours: true },
       });
     }
   }, [state.parcelBoundary, aiImageToTerrain]);
   
-  /**
-   * AI DESIGN GENERATION HOOK (Placeholder for Phase 2 Qwen Integration)
-   * This will eventually send prompts like "Design 280-unit building" to Qwen
-   */
-  const handleAIGenerate = useCallback(async () => {
-    if (!state.parcelBoundary || !state.zoningEnvelope) {
-      alert('Please set parcel boundary and zoning envelope first');
-      return;
+  const handleAIGenerate = useCallback(() => {
+    if (onToggleAIChat) {
+      onToggleAIChat();
     }
-    
-    const prompt = window.prompt(
-      'AI Design Generation (Phase 2)\n\nEnter your design prompt:',
-      'Design a 280-unit multifamily building with modern amenities'
-    );
-    
-    if (!prompt) return;
-    
-    console.log('🤖 AI Design Prompt:', prompt);
-    
-    // TODO: Phase 2 - Send to Qwen API for intelligent design generation
-    // For now: Use algorithmic fallback
-    alert(`AI Design Generation (Phase 2)\n\nPrompt: "${prompt}"\n\nThis will eventually:\n1. Send prompt to Qwen API\n2. Analyze site constraints\n3. Generate optimal building design\n4. Provide multiple alternatives\n\nFor now, using algorithmic generation...`);
-    
-    await aiGenerateDesign({
-      prompt,
-      constraints: {
-        unitCount: 280,
-        minEfficiency: 82,
-      },
-      parcelBoundary: state.parcelBoundary,
-      zoningEnvelope: state.zoningEnvelope,
-    });
-  }, [state.parcelBoundary, state.zoningEnvelope, aiGenerateDesign]);
+  }, [onToggleAIChat]);
   
   // ============================================================================
   // Render
@@ -312,55 +273,38 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         </Suspense>
       </Canvas>
       
-      {/* Metrics Panel */}
-      {showMetricsPanel && <MetricsPanel metrics={state.metrics} />}
-      
-      {/* Toolbar */}
-      <Toolbar
+      <VerticalToolbar
         onAddBuilding={handleAddSimpleBuilding}
-        onAIGenerate={handleAIGenerate}
+        onAIGenerate={onToggleAIChat || handleAIGenerate}
         onImageUpload={() => imageInputRef.current?.click()}
         onToggleGrid={actions.toggleGrid}
         onToggleMeasurements={actions.toggleMeasurements}
+        onToggleParcel={actions.toggleParcel}
+        onToggleZoning={actions.toggleZoningEnvelope}
+        onToggleContext={actions.toggleContextBuildings}
+        onToggleReferencePanel={onToggleReferencePanel || (() => setShowReferencePanel(!showReferencePanel))}
         onUndo={actions.undo}
         onRedo={actions.redo}
         canUndo={actions.canUndo}
         canRedo={actions.canRedo}
         showGrid={state.showGrid}
         showMeasurements={state.showMeasurements}
+        showParcel={state.showParcel}
+        showZoningEnvelope={state.showZoningEnvelope}
+        showContextBuildings={state.showContextBuildings}
         aiLoading={aiLoading || imageLoading}
+        editMode={state.editMode}
       />
-      
-      {/* View Settings */}
-      <ViewSettings
-        settings={{
-          showParcel: state.showParcel,
-          showZoningEnvelope: state.showZoningEnvelope,
-          showContextBuildings: state.showContextBuildings,
-          showGrid: state.showGrid,
-          showMeasurements: state.showMeasurements,
-        }}
-        onToggleParcel={actions.toggleParcel}
-        onToggleZoning={actions.toggleZoningEnvelope}
-        onToggleContext={actions.toggleContextBuildings}
-        onToggleGrid={actions.toggleGrid}
-        onToggleMeasurements={actions.toggleMeasurements}
-      />
-      
-      {/* Edit Mode Indicator */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg">
-        Mode: <span className="font-bold uppercase">{state.editMode}</span>
-      </div>
-      
+
       {/* Scenario Selector Panel */}
       <ScenarioSelectorPanel />
-      
+
       {/* Design Reference Panel */}
       {dealId && (
         <DesignReferencePanel
           dealId={dealId}
           isOpen={showReferencePanel}
-          onToggle={() => setShowReferencePanel(!showReferencePanel)}
+          onToggle={onToggleReferencePanel || (() => setShowReferencePanel(!showReferencePanel))}
           onPinToViewport={(ref) => {
             setPinnedOverlay({
               url: `/api/v1/design-references/file/${ref.file_path}`,
@@ -562,162 +506,93 @@ const LoadingFallback: React.FC = () => {
 // UI Components
 // ============================================================================
 
-/**
- * Metrics Display Panel
- */
-interface MetricsPanelProps {
-  metrics: any;
-}
-
-const MetricsPanel: React.FC<MetricsPanelProps> = ({ metrics }) => {
-  return (
-    <div className="absolute top-4 right-4 bg-gray-800 text-white p-4 rounded-lg shadow-lg min-w-[200px]">
-      <h3 className="font-bold text-lg mb-3 border-b border-gray-700 pb-2">
-        Building Metrics
-      </h3>
-      
-      <div className="space-y-2 text-sm">
-        <MetricRow label="Units" value={metrics.unitCount} />
-        <MetricRow
-          label="Total SF"
-          value={metrics.totalSF.toLocaleString()}
-        />
-        <MetricRow
-          label="Parking"
-          value={`${metrics.parkingSpaces} spaces`}
-        />
-        <MetricRow
-          label="Height"
-          value={`${metrics.height.feet}' (${metrics.height.stories} stories)`}
-        />
-        <MetricRow
-          label="Coverage"
-          value={`${metrics.coverage.percentage}%`}
-        />
-        <MetricRow label="FAR" value={metrics.far.toFixed(2)} />
-        <MetricRow label="Efficiency" value={`${metrics.efficiency}%`} />
-      </div>
-    </div>
-  );
-};
-
-const MetricRow: React.FC<{ label: string; value: string | number }> = ({
-  label,
-  value,
-}) => (
-  <div className="flex justify-between items-center">
-    <span className="text-gray-400">{label}:</span>
-    <span className="font-semibold">{value}</span>
-  </div>
-);
-
-/**
- * Toolbar with actions
- */
-interface ToolbarProps {
+interface VerticalToolbarProps {
   onAddBuilding: () => void;
   onAIGenerate: () => void;
   onImageUpload: () => void;
   onToggleGrid: () => void;
   onToggleMeasurements: () => void;
+  onToggleParcel: () => void;
+  onToggleZoning: () => void;
+  onToggleContext: () => void;
+  onToggleReferencePanel: () => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
   showGrid: boolean;
   showMeasurements: boolean;
+  showParcel: boolean;
+  showZoningEnvelope: boolean;
+  showContextBuildings: boolean;
   aiLoading: boolean;
+  editMode: string;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({
+const VerticalToolbar: React.FC<VerticalToolbarProps> = ({
   onAddBuilding,
   onAIGenerate,
   onImageUpload,
   onToggleGrid,
   onToggleMeasurements,
+  onToggleParcel,
+  onToggleZoning,
+  onToggleContext,
+  onToggleReferencePanel,
   onUndo,
   onRedo,
   canUndo,
   canRedo,
   showGrid,
   showMeasurements,
+  showParcel,
+  showZoningEnvelope,
+  showContextBuildings,
   aiLoading,
+  editMode,
 }) => {
   return (
-    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
-      <ToolbarButton onClick={onAddBuilding} title="Add Simple Building">
-        ➕ Add
-      </ToolbarButton>
-      
-      <div className="w-px h-6 bg-gray-600" />
-      
-      <ToolbarButton
-        onClick={onAIGenerate}
-        title="AI Design Generation (Phase 2)"
-        disabled={aiLoading}
-      >
-        🤖 AI Design
-      </ToolbarButton>
-      
-      <ToolbarButton
-        onClick={onImageUpload}
-        title="Upload Site Image (Phase 2)"
-        disabled={aiLoading}
-      >
-        📸 Upload Image
-      </ToolbarButton>
-      
-      <div className="w-px h-6 bg-gray-600" />
-      
-      <ToolbarButton
-        onClick={onToggleGrid}
-        title="Toggle Grid (G)"
-        active={showGrid}
-      >
-        ⊞ Grid
-      </ToolbarButton>
-      
-      <ToolbarButton
-        onClick={onToggleMeasurements}
-        title="Toggle Measurements (M)"
-        active={showMeasurements}
-      >
-        📏 Measure
-      </ToolbarButton>
-      
-      <div className="w-px h-6 bg-gray-600" />
-      
-      <ToolbarButton
-        onClick={onUndo}
-        title="Undo (Ctrl+Z)"
-        disabled={!canUndo}
-      >
-        ↶ Undo
-      </ToolbarButton>
-      
-      <ToolbarButton
-        onClick={onRedo}
-        title="Redo (Ctrl+Shift+Z)"
-        disabled={!canRedo}
-      >
-        ↷ Redo
-      </ToolbarButton>
+    <div className="absolute left-3 top-1/2 -translate-y-1/2 z-20 flex flex-col bg-gray-800/95 backdrop-blur rounded-xl shadow-xl py-2 px-1 gap-0.5">
+      <div className="px-1 pb-1 mb-1 border-b border-gray-700 text-[10px] text-gray-400 uppercase tracking-wider text-center">
+        {editMode}
+      </div>
+
+      <VerticalToolbarButton onClick={onAddBuilding} title="Add Building" icon="+" />
+      <VerticalToolbarButton onClick={onAIGenerate} title="AI Design Chat" icon="AI" disabled={aiLoading} />
+      <VerticalToolbarButton onClick={onImageUpload} title="Upload Site Image" icon="IMG" disabled={aiLoading} />
+
+      <div className="h-px bg-gray-700 my-1 mx-1" />
+
+      <VerticalToolbarButton onClick={onToggleGrid} title="Toggle Grid (G)" icon="GR" active={showGrid} />
+      <VerticalToolbarButton onClick={onToggleMeasurements} title="Toggle Measurements (M)" icon="ME" active={showMeasurements} />
+      <VerticalToolbarButton onClick={onToggleParcel} title="Toggle Parcel" icon="PA" active={showParcel} />
+      <VerticalToolbarButton onClick={onToggleZoning} title="Toggle Zoning Envelope" icon="ZE" active={showZoningEnvelope} />
+      <VerticalToolbarButton onClick={onToggleContext} title="Toggle Context Buildings" icon="CB" active={showContextBuildings} />
+
+      <div className="h-px bg-gray-700 my-1 mx-1" />
+
+      <VerticalToolbarButton onClick={onToggleReferencePanel} title="Design References" icon="RF" />
+
+      <div className="h-px bg-gray-700 my-1 mx-1" />
+
+      <VerticalToolbarButton onClick={onUndo} title="Undo (Ctrl+Z)" icon="&#8630;" disabled={!canUndo} />
+      <VerticalToolbarButton onClick={onRedo} title="Redo (Ctrl+Shift+Z)" icon="&#8631;" disabled={!canRedo} />
     </div>
   );
 };
 
-interface ToolbarButtonProps {
+interface VerticalToolbarButtonProps {
   onClick: () => void;
   title: string;
-  children: React.ReactNode;
+  icon: string;
   disabled?: boolean;
   active?: boolean;
 }
 
-const ToolbarButton: React.FC<ToolbarButtonProps> = ({
+const VerticalToolbarButton: React.FC<VerticalToolbarButtonProps> = ({
   onClick,
   title,
-  children,
+  icon,
   disabled = false,
   active = false,
 }) => (
@@ -725,103 +600,15 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     onClick={onClick}
     title={title}
     disabled={disabled}
-    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+    className={`w-9 h-9 flex items-center justify-center rounded-lg text-xs font-bold transition-colors ${
       disabled
-        ? 'opacity-50 cursor-not-allowed'
+        ? 'opacity-40 cursor-not-allowed text-gray-500'
         : active
-        ? 'bg-indigo-600 hover:bg-indigo-700'
-        : 'hover:bg-gray-700'
+        ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
     }`}
-  >
-    {children}
-  </button>
-);
-
-/**
- * View Settings Panel
- */
-interface ViewSettingsProps {
-  settings: {
-    showParcel: boolean;
-    showZoningEnvelope: boolean;
-    showContextBuildings: boolean;
-    showGrid: boolean;
-    showMeasurements: boolean;
-  };
-  onToggleParcel: () => void;
-  onToggleZoning: () => void;
-  onToggleContext: () => void;
-  onToggleGrid: () => void;
-  onToggleMeasurements: () => void;
-}
-
-const ViewSettings: React.FC<ViewSettingsProps> = ({
-  settings,
-  onToggleParcel,
-  onToggleZoning,
-  onToggleContext,
-  onToggleGrid,
-  onToggleMeasurements,
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  return (
-    <div className="absolute top-4 left-4 bg-gray-800 text-white rounded-lg shadow-lg overflow-hidden">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-2 font-medium hover:bg-gray-700 transition-colors flex items-center justify-between"
-      >
-        <span>👁️ View Settings</span>
-        <span>{isOpen ? '▼' : '▶'}</span>
-      </button>
-      
-      {isOpen && (
-        <div className="px-4 py-3 space-y-2 border-t border-gray-700">
-          <SettingCheckbox
-            label="Show Parcel"
-            checked={settings.showParcel}
-            onChange={onToggleParcel}
-          />
-          <SettingCheckbox
-            label="Show Zoning Envelope"
-            checked={settings.showZoningEnvelope}
-            onChange={onToggleZoning}
-          />
-          <SettingCheckbox
-            label="Show Context Buildings"
-            checked={settings.showContextBuildings}
-            onChange={onToggleContext}
-          />
-          <SettingCheckbox
-            label="Show Grid"
-            checked={settings.showGrid}
-            onChange={onToggleGrid}
-          />
-          <SettingCheckbox
-            label="Show Measurements"
-            checked={settings.showMeasurements}
-            onChange={onToggleMeasurements}
-          />
-        </div>
-      )}
-    </div>
-  );
-};
-
-const SettingCheckbox: React.FC<{
-  label: string;
-  checked: boolean;
-  onChange: () => void;
-}> = ({ label, checked, onChange }) => (
-  <label className="flex items-center gap-2 text-sm cursor-pointer hover:text-gray-300 transition-colors">
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={onChange}
-      className="rounded"
-    />
-    <span>{label}</span>
-  </label>
+    dangerouslySetInnerHTML={{ __html: icon }}
+  />
 );
 
 export default Building3DEditor;
