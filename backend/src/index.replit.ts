@@ -96,6 +96,8 @@ import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
+import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
+import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 
 dotenv.config();
 
@@ -182,6 +184,8 @@ const microsoftConfig = {
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
+
+app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 
 // Data Tracker - public admin stats (no auth required)
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
@@ -315,6 +319,7 @@ if (isProduction) {
   });
 }
 
+app.use(errorWebhookMiddleware);
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({
@@ -322,6 +327,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
     error: err.message || 'Internal server error'
   });
 });
+
+setupUnhandledRejectionHandler();
+setupUncaughtExceptionHandler();
 
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log('='.repeat(60));
