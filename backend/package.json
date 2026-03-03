@@ -10,6 +10,7 @@
     "replit": "npm install && npm run build && npm run start"
   },
   "dependencies": {
+    "@turf/area": "^7.3.4",
     "@turf/circle": "^7.3.4",
     "@turf/helpers": "^7.3.4",
     "@turf/union": "^7.3.4",
