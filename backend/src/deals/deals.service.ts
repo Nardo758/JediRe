@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { CreateDealDto, UpdateDealDto, DealQueryDto } from './dto';
 import { DealAnalysisService } from '../services/dealAnalysis';
 import { DealTriageService } from '../services/DealTriageService';
+import { clawdbotWebhook } from '../webhooks/clawdbot';
 
 @Injectable()
 export class DealsService {
@@ -89,6 +90,20 @@ export class DealsService {
     this.autoTriageDeal(deal.id).catch(error => {
       console.error(`[AutoTriage] Failed for deal ${deal.id}:`, error);
     });
+
+    // Send deal creation notification to Clawdbot
+    if (clawdbotWebhook.isEnabled()) {
+      clawdbotWebhook.sendDealCreated({
+        id: deal.id,
+        name: deal.name,
+        address: dto.address,
+        propertyType: dto.projectType,
+        status: 'active',
+        createdBy: userId,
+      }).catch(error => {
+        console.error(`[Clawdbot] Failed to send deal creation webhook:`, error);
+      });
+    }
 
     return {
       ...deal,
