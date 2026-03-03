@@ -37,7 +37,10 @@ router.get('/markets', async (req, res) => {
 
 router.get('/properties', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 50;
+    // Validate and sanitize limit parameter
+    const limitParam = parseInt(req.query.limit as string);
+    const limit = !isNaN(limitParam) && limitParam > 0 && limitParam <= 500 ? limitParam : 50;
+    
     const city = req.query.city as string;
     let query = 'SELECT * FROM properties';
     const params: any[] = [];
@@ -45,7 +48,7 @@ router.get('/properties', async (req, res) => {
       query += ' WHERE city ILIKE $1';
       params.push(`%${city}%`);
     }
-    query += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
     params.push(limit);
     const result = await pool.query(query, params);
     res.json({ success: true, count: result.rows.length, data: result.rows });
