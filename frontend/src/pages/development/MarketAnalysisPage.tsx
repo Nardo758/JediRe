@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Settings, RefreshCw, Send } from 'lucide-react';
 import { Button } from '@/components/shared/Button';
@@ -8,11 +8,13 @@ import { DemographicInsights } from '@/components/development/market-analysis/De
 import { AmenityAnalysisTable } from '@/components/development/market-analysis/AmenityAnalysisTable';
 import { AIInsightsPanel } from '@/components/development/market-analysis/AIInsightsPanel';
 import { useMarketAnalysisData } from '@/hooks/useMarketAnalysisData';
+import { useDealModule } from '@/contexts/DealModuleContext';
 import type { MarketInsights, UnitMix } from '@/types/development';
 
 export const MarketAnalysisPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
+  const { updateMarketIntelligence, emitEvent } = useDealModule();
   
   const [selectedRadius, setSelectedRadius] = useState<number>(1); // miles
   const [currentUnitMix, setCurrentUnitMix] = useState<UnitMix>({
@@ -32,27 +34,49 @@ export const MarketAnalysisPage: React.FC = () => {
     dataSource,
     refetch
   } = useMarketAnalysisData(dealId || '', selectedRadius);
+
+  useEffect(() => {
+    if (demandData?.recommendedMix) {
+      const targetDemo = typeof demographicData?.primaryProfile === 'string'
+        ? demographicData.primaryProfile
+        : (demographicData?.primaryProfile?.ageRange || '');
+      updateMarketIntelligence({
+        recommendedMix: demandData.recommendedMix,
+        ...(targetDemo ? { targetDemographic: targetDemo } : {}),
+        ...(demographicData?.medianIncome ? { medianIncome: demographicData.medianIncome } : {}),
+        ...(demographicData?.medianRent ? { medianRent: demographicData.medianRent } : {}),
+        ...(demographicData?.population ? { population: demographicData.population } : {}),
+      });
+      emitEvent({
+        source: 'MarketAnalysisPage',
+        type: 'market-intelligence-updated',
+        payload: { dealId, source: 'market-analysis' },
+      });
+    }
+  }, [demandData?.recommendedMix, demographicData]);
   
   const handleExport = () => {
-    // Export functionality
     console.log('Exporting market analysis data...');
   };
   
   const handleApplyToDesign = async () => {
-    // Send recommendations to 3D Design page
-    const insights: MarketInsights = {
-      unitMix: currentUnitMix,
-      amenities: selectedAmenities,
-      targetDemographic: demographicData?.primaryProfile || 'young-professionals',
-    };
-    
-    console.log('Applying insights to 3D design:', insights);
-    // Navigate to 3D design page with pre-filled data
-    navigate(`/deals/${dealId}/design?insights=${encodeURIComponent(JSON.stringify(insights))}`);
+    updateMarketIntelligence({
+      recommendedMix: currentUnitMix,
+      targetDemographic: typeof demographicData?.primaryProfile === 'string'
+        ? demographicData.primaryProfile
+        : (demographicData?.primaryProfile?.ageRange || 'young-professionals'),
+    });
+
+    emitEvent({
+      source: 'MarketAnalysisPage',
+      type: 'market-intelligence-updated',
+      payload: { dealId, source: 'apply-to-design' },
+    });
+
+    navigate(`/deals/${dealId}/design`);
   };
   
   const handleOptimizeUnitMix = () => {
-    // Optimize based on market data
     if (demandData?.recommendedMix) {
       setCurrentUnitMix(demandData.recommendedMix);
     }

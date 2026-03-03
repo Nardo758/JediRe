@@ -18,6 +18,7 @@ interface ModuleDef {
 const MODULES_DEF: ModuleDef[] = [
   { id: 'strategy', label: 'Strategy', icon: '\u2295', description: 'Strategy Arbitrage Engine (M08)', fields: ['BTS / Flip / Rental / STR scores', 'Arbitrage flag when delta >15pts', 'Recommended strategy'] },
   { id: 'traffic', label: 'Traffic', icon: '\u2197', description: 'Traffic Fusion Engine v2 (M07)', fields: ['Leasing traffic predictions', 'Digital traffic via SpyFu', 'Weekly walk-in forecast'] },
+  { id: 'marketIntelligence', label: 'Market Intel', icon: '\u25C8', description: 'Market Intelligence Engine', fields: ['Recommended unit mix', 'Demand pool & capture rate', 'Target demographic & census'] },
   { id: 'proforma', label: 'Pro Forma', icon: '$', description: 'Pro Forma Engine (M09)', fields: ['NOI projection multi-year', 'Rent roll with occupancy', 'Expense assumptions'] },
   { id: 'debt', label: 'Debt', icon: '\u25CB', description: 'Capital Structure Engine (M11)', fields: ['Loan options compared', 'DSCR & IO analysis', 'Defeasance modeling'] },
   { id: 'exit', label: 'Exit', icon: '\u25CE', description: 'Exit Strategy & Convergence (M11+)', fields: ['Three-factor convergence score', 'Optimal exit window timing', 'Capital structure alignment'] },
@@ -48,7 +49,7 @@ const TABS = [
 
 const QP = ['Which loan wins?', 'Stress: 6% exit cap', 'Break-even occupancy?', 'Build best case', 'IRR vs rent growth?', 'Raise CapEx $7K/unit'];
 
-function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { financial?: any; market?: any; capitalStructure?: any; strategy?: any; debtTerms?: any }) {
+function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { financial?: any; market?: any; capitalStructure?: any; strategy?: any; debtTerms?: any; marketIntelligence?: any }) {
   const conn = MODULES_DEF.filter(m => ms[m.id] && ms[m.id] !== 'none').map(m => `${m.label}(${ms[m.id]})`).join(', ') || 'none';
   const acq = model?.acquisition || {};
   const rev = model?.revenue || {};
@@ -62,6 +63,11 @@ function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { fina
     const parts: string[] = [];
     if (ctxData.strategy?.lastUpdated) parts.push(`Strategy: ${ctxData.strategy.selectedStrategy} (arbitrage=${ctxData.strategy.arbitrageFlag})`);
     if (ctxData.market?.lastUpdated) parts.push(`Market: occ=${fmtPct(ctxData.market.occupancy || 0)} avgRent=$${ctxData.market.avgRent || 0} rentGrowth=${fmtPct(ctxData.market.rentGrowth || 0)} supply=${ctxData.market.supplyPipeline || 0} demand=${ctxData.market.demandScore || 0}`);
+    if (ctxData.marketIntelligence?.lastUpdated) {
+      const mi = ctxData.marketIntelligence;
+      const mix = mi.recommendedMix || {};
+      parts.push(`MarketIntel: recommendedMix=[Studio ${fmtPct(mix.studio || 0)}, 1BR ${fmtPct(mix.oneBR || 0)}, 2BR ${fmtPct(mix.twoBR || 0)}, 3BR ${fmtPct(mix.threeBR || 0)}] demandPool=${mi.demandPool || 0} captureRate=${fmtPct(mi.captureRate || 0)} demographic=${mi.targetDemographic || 'N/A'} medianIncome=$${mi.medianIncome || 0} medianRent=$${mi.medianRent || 0} population=${mi.population || 0}`);
+    }
     if (ctxData.financial?.lastUpdated) parts.push(`Financial: NOI=${fmt$(ctxData.financial.noi || 0)} IRR=${ctxData.financial.irr || 0}% EM=${ctxData.financial.equityMultiple || 0}x CoC=${ctxData.financial.cashOnCash || 0}% TDC=${fmt$(ctxData.financial.totalDevelopmentCost || 0)}`);
     if (ctxData.capitalStructure?.lastUpdated) parts.push(`Capital: DSCR=${ctxData.capitalStructure.dscr || 0}x LTV=${fmtPct(ctxData.capitalStructure.ltv || 0)} equity=${fmt$(ctxData.capitalStructure.totalEquity || 0)} debtService=${fmt$(ctxData.capitalStructure.annualDebtService || 0)}`);
     if (ctxData.debtTerms?.lastUpdated) parts.push(`Debt: ${ctxData.debtTerms.loanType} @ ${fmtPct(ctxData.debtTerms.interestRate || 0)} IO=${ctxData.debtTerms.ioPeriod || 0}mo amount=${fmt$(ctxData.debtTerms.loanAmount || 0)}`);
@@ -946,9 +952,9 @@ td.cwo .cv{color:#dc2626}
 
 const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const id = dealId || deal?.id;
-  const { financial: ctxFinancial, market: ctxMarket, capitalStructure: ctxCapital, strategy: ctxStrategy, debtTerms: ctxDebt, moduleStatus } = useDealModule();
+  const { financial: ctxFinancial, market: ctxMarket, capitalStructure: ctxCapital, strategy: ctxStrategy, debtTerms: ctxDebt, marketIntelligence: ctxMarketIntel, moduleStatus } = useDealModule();
   const [model, setModel] = useState<any>(null);
-  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none' });
+  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', marketIntelligence: 'none', proforma: 'none', debt: 'none', exit: 'none' });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [inp, setInp] = useState('');
@@ -964,17 +970,18 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
     capitalStructure: ctxCapital,
     strategy: ctxStrategy,
     debtTerms: ctxDebt,
-  }), [ctxFinancial, ctxMarket, ctxCapital, ctxStrategy, ctxDebt]);
+    marketIntelligence: ctxMarketIntel,
+  }), [ctxFinancial, ctxMarket, ctxCapital, ctxStrategy, ctxDebt, ctxMarketIntel]);
 
   useEffect(() => {
     setMs(prev => {
       const newMs: Record<string, string> = { ...prev };
-      for (const key of ['strategy', 'traffic', 'proforma', 'debt', 'exit'] as const) {
+      for (const key of ['strategy', 'traffic', 'marketIntelligence', 'proforma', 'debt', 'exit'] as const) {
         if (moduleStatus[key] === 'live') {
           newMs[key] = 'live';
         }
       }
-      if (newMs.strategy !== prev.strategy || newMs.traffic !== prev.traffic || newMs.proforma !== prev.proforma || newMs.debt !== prev.debt || newMs.exit !== prev.exit) {
+      if (newMs.strategy !== prev.strategy || newMs.traffic !== prev.traffic || newMs.marketIntelligence !== prev.marketIntelligence || newMs.proforma !== prev.proforma || newMs.debt !== prev.debt || newMs.exit !== prev.exit) {
         return newMs;
       }
       return prev;
@@ -1052,6 +1059,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
         setMs({
           strategy: moduleMap.strategy || 'none',
           traffic: moduleMap.traffic || 'none',
+          marketIntelligence: moduleMap.marketIntelligence || moduleMap['market-intelligence'] || 'none',
           proforma: moduleMap.proforma || 'none',
           debt: moduleMap.debt || 'none',
           exit: moduleMap.exit || (moduleMap.debt && moduleMap.debt !== 'none' ? moduleMap.debt : 'none'),

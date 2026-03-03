@@ -1,17 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Building3DEditor } from '../components/design';
 import { useDealStore } from '../stores/dealStore';
 import { useDealDataStore } from '../stores/dealData.store';
 import { useAutoSaveWithGuard } from '../hooks/useAutoSave';
+import { useDealModule } from '../contexts/DealModuleContext';
 import type { Design3D } from '../types/financial.types';
 
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const { fetchDealById, selectedDeal } = useDealStore();
+
+  const {
+    marketIntelligence,
+    activeScenario,
+    updateDesign3D: updateDesign3DContext,
+    emitEvent,
+  } = useDealModule();
   
-  // Use centralized persistence store
   const {
     design3D,
     updateDesign3D,
@@ -19,7 +26,6 @@ export const Design3DPage: React.FC = () => {
     error: storeError,
   } = useDealDataStore();
   
-  // Auto-save with navigation guard
   const {
     hasUnsavedChanges,
     isSaving,
@@ -39,6 +45,46 @@ export const Design3DPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showMetrics, setShowMetrics] = useState(true);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+  const [showMarketBanner, setShowMarketBanner] = useState(true);
+
+  const hasMarketMix = !!(marketIntelligence?.recommendedMix && (marketIntelligence.lastUpdated ?? 0) > 0);
+  const hasZoningConstraints = !!(activeScenario && (activeScenario.lastUpdated ?? 0) > 0);
+
+  const zoningConstraints = hasZoningConstraints ? {
+    maxGba: activeScenario!.maxGba ?? undefined,
+    maxUnits: activeScenario!.maxUnits ?? undefined,
+    maxStories: activeScenario!.maxStories ?? undefined,
+    parkingRequired: activeScenario!.parkingRequired ?? undefined,
+    appliedFar: activeScenario!.appliedFar ?? undefined,
+  } : undefined;
+
+  const handleApplyMarketMix = useCallback(() => {
+    if (!marketIntelligence?.recommendedMix || !design3D) return;
+    const mix = marketIntelligence.recommendedMix;
+    const total = design3D.totalUnits || 100;
+    const updatedDesign: Design3D = {
+      ...design3D,
+      unitMix: {
+        studio: Math.round(total * mix.studio),
+        oneBed: Math.round(total * mix.oneBR),
+        twoBed: Math.round(total * mix.twoBR),
+        threeBed: Math.round(total * mix.threeBR),
+      },
+      lastModified: new Date().toISOString(),
+    };
+    updateDesign3D(updatedDesign);
+    updateDesign3DContext({
+      totalUnits: updatedDesign.totalUnits,
+      unitMix: updatedDesign.unitMix,
+      rentableSF: updatedDesign.rentableSF,
+      parkingSpaces: updatedDesign.parkingSpaces,
+      amenitySF: updatedDesign.amenitySF,
+      floors: updatedDesign.stories,
+      efficiency: updatedDesign.efficiency,
+    });
+    emitEvent({ source: 'Design3DPage', type: 'design-updated', payload: { dealId, source: 'market-mix-applied' } });
+    setShowMarketBanner(false);
+  }, [marketIntelligence, design3D, updateDesign3D, updateDesign3DContext, emitEvent, dealId]);
 
   // Load deal data on mount
   useEffect(() => {
@@ -65,7 +111,6 @@ export const Design3DPage: React.FC = () => {
   }, [dealId, selectedDeal, fetchDealById]);
 
   const handleMetricsChange = (metrics: any) => {
-    // Update design3D state with metrics from editor
     const updatedDesign: Design3D = {
       id: design3D?.id || `${dealId}-design`,
       dealId: dealId!,
@@ -79,12 +124,23 @@ export const Design3DPage: React.FC = () => {
       amenitySF: metrics.amenitySF || 0,
       stories: metrics.stories || 1,
       farUtilized: metrics.farUtilized || 0,
-      farMax: metrics.farMax,
+      farMax: zoningConstraints?.appliedFar ?? metrics.farMax,
       lastModified: new Date().toISOString(),
     };
-    
-    // Update in centralized store (triggers auto-save)
+
     updateDesign3D(updatedDesign);
+
+    updateDesign3DContext({
+      totalUnits: updatedDesign.totalUnits,
+      unitMix: updatedDesign.unitMix,
+      rentableSF: updatedDesign.rentableSF,
+      parkingSpaces: updatedDesign.parkingSpaces,
+      amenitySF: updatedDesign.amenitySF,
+      floors: updatedDesign.stories,
+      efficiency: updatedDesign.efficiency,
+    });
+
+    emitEvent({ source: 'Design3DPage', type: 'design-updated', payload: { dealId } });
   };
 
   const handleExport = async () => {
@@ -238,6 +294,52 @@ export const Design3DPage: React.FC = () => {
         </div>
       </div>
 
+      {hasMarketMix && showMarketBanner && (
+        <div className="bg-indigo-50 border-b border-indigo-200 px-6 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-3">
+            <span className="text-indigo-600 font-semibold text-sm">Market Recommendation</span>
+            <span className="text-sm text-indigo-800">
+              {Math.round((marketIntelligence!.recommendedMix.studio) * 100)}% Studio,{' '}
+              {Math.round((marketIntelligence!.recommendedMix.oneBR) * 100)}% 1BR,{' '}
+              {Math.round((marketIntelligence!.recommendedMix.twoBR) * 100)}% 2BR,{' '}
+              {Math.round((marketIntelligence!.recommendedMix.threeBR) * 100)}% 3BR
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleApplyMarketMix}
+              className="px-3 py-1 bg-indigo-600 text-white text-sm rounded-md hover:bg-indigo-700 transition"
+            >
+              Apply
+            </button>
+            <button
+              onClick={() => setShowMarketBanner(false)}
+              className="text-indigo-400 hover:text-indigo-600 text-sm"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {hasZoningConstraints && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-4 text-sm z-10">
+          <span className="text-amber-700 font-semibold">Zoning Constraints Active</span>
+          {activeScenario!.maxStories != null && (
+            <span className="text-amber-800">Max Stories: {activeScenario!.maxStories}</span>
+          )}
+          {activeScenario!.maxUnits != null && (
+            <span className="text-amber-800">Max Units: {activeScenario!.maxUnits}</span>
+          )}
+          {activeScenario!.maxGba != null && (
+            <span className="text-amber-800">Max GBA: {activeScenario!.maxGba.toLocaleString()} SF</span>
+          )}
+          {activeScenario!.appliedFar != null && (
+            <span className="text-amber-800">FAR: {activeScenario!.appliedFar}</span>
+          )}
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* 3D Editor */}
@@ -249,6 +351,7 @@ export const Design3DPage: React.FC = () => {
             onSave={() => manualSave()}
             fullScreen={true}
             showMetricsPanel={showMetrics}
+            zoningConstraints={zoningConstraints}
           />
         </div>
 

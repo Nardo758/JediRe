@@ -7,6 +7,7 @@ import {
   RefreshCw, Activity, DollarSign, Home
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { useDealModule } from '../../contexts/DealModuleContext';
 
 interface MarketIntelData {
   economy: any;
@@ -28,11 +29,42 @@ type TabId = typeof TABS[number]['id'];
 export const MarketIntelligencePage: React.FC = () => {
   const { dealId: paramDealId } = useParams<{ dealId: string }>();
   const dealId = paramDealId || '';
+  const { updateMarketIntelligence, emitEvent } = useDealModule();
   const [activeTab, setActiveTab] = useState<TabId>('economy');
   const [data, setData] = useState<MarketIntelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
+
+  const pushToContext = (intelData: MarketIntelData) => {
+    const demographics = intelData.demographics;
+    const funnel = demographics?.renterDemandFunnel;
+    const census = demographics?.census;
+
+    const recommendedMix = funnel?.recommendedMix || { studio: 0.15, oneBR: 0.45, twoBR: 0.30, threeBR: 0.10 };
+    const demandPool = typeof funnel?.demandPool === 'string'
+      ? parseInt(funnel.demandPool.replace(/[^0-9]/g, ''), 10) || 0
+      : (funnel?.demandPool || 0);
+    const captureRateRaw = typeof funnel?.captureRate === 'string'
+      ? parseFloat(funnel.captureRate.replace(/[^0-9.]/g, '')) || 0
+      : (funnel?.captureRate || 0);
+
+    updateMarketIntelligence({
+      recommendedMix,
+      demandPool,
+      captureRate: captureRateRaw,
+      targetDemographic: demographics?.submarket?.name || demographics?.msa?.name || '',
+      medianIncome: census?.medianIncome || 0,
+      medianRent: census?.medianRent || 0,
+      population: census?.population || 0,
+    });
+
+    emitEvent({
+      source: 'MarketIntelligencePage',
+      type: 'market-intelligence-updated',
+      payload: { dealId },
+    });
+  };
 
   const fetchData = async (refresh = false) => {
     if (!dealId) return;
@@ -41,8 +73,12 @@ export const MarketIntelligencePage: React.FC = () => {
     try {
       const url = `/api/v1/deals/${dealId}/market-intelligence${refresh ? '?refresh=true' : ''}`;
       const response = await apiClient.get(url, { timeout: 60000 }) as any;
-      setData(response?.data?.data || null);
+      const intelData = response?.data?.data || null;
+      setData(intelData);
       setCached(response?.data?.cached || false);
+      if (intelData) {
+        pushToContext(intelData);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load market intelligence');
     } finally {

@@ -122,8 +122,10 @@ function fmtPctRaw(n: number): string {
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
-  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy } = useDealModule();
+  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D } = useDealModule();
   const lastAppliedTimestamp = useRef(0);
+  const lastAppliedDesign3DTimestamp = useRef(0);
+  const [designSource, setDesignSource] = useState<string | null>(null);
   const [modelType, setModelType] = useState<'existing' | 'development'>('existing');
   const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -236,6 +238,46 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       }
     }
   }, [lastEvent, market]);
+
+  useEffect(() => {
+    if (design3D && design3D.lastUpdated > 0 && design3D.lastUpdated > lastAppliedDesign3DTimestamp.current) {
+      lastAppliedDesign3DTimestamp.current = design3D.lastUpdated;
+      if (design3D.totalUnits > 0) setTotalUnitsManual(design3D.totalUnits);
+      if (design3D.rentableSF > 0) setNetRentableSF(design3D.rentableSF);
+      const mix = design3D.unitMix;
+      if (mix && (mix.studio + mix.oneBed + mix.twoBed + mix.threeBed) > 0) {
+        const newMix: UnitMixRow[] = [];
+        if (mix.studio > 0) newMix.push({ floorPlan: 'Studio', unitSize: 550, beds: 0, units: mix.studio, occupied: Math.round(mix.studio * 0.94), vacant: mix.studio - Math.round(mix.studio * 0.94), marketRent: 1350, inPlaceRent: 1300 });
+        if (mix.oneBed > 0) newMix.push({ floorPlan: '1BR/1BA', unitSize: 750, beds: 1, units: mix.oneBed, occupied: Math.round(mix.oneBed * 0.94), vacant: mix.oneBed - Math.round(mix.oneBed * 0.94), marketRent: 1550, inPlaceRent: 1480 });
+        if (mix.twoBed > 0) newMix.push({ floorPlan: '2BR/2BA', unitSize: 1050, beds: 2, units: mix.twoBed, occupied: Math.round(mix.twoBed * 0.94), vacant: mix.twoBed - Math.round(mix.twoBed * 0.94), marketRent: 1900, inPlaceRent: 1820 });
+        if (mix.threeBed > 0) newMix.push({ floorPlan: '3BR/2BA', unitSize: 1350, beds: 3, units: mix.threeBed, occupied: Math.round(mix.threeBed * 0.94), vacant: mix.threeBed - Math.round(mix.threeBed * 0.94), marketRent: 2400, inPlaceRent: 2300 });
+        if (newMix.length > 0) setUnitMix(newMix);
+      }
+      setDesignSource('3D Design');
+    }
+  }, [design3D]);
+
+  const lastDesignEventTimestamp = useRef(0);
+  useEffect(() => {
+    if (lastEvent?.type === 'design-updated' && lastEvent.timestamp > lastDesignEventTimestamp.current) {
+      lastDesignEventTimestamp.current = lastEvent.timestamp;
+      if (design3D && design3D.lastUpdated > lastAppliedDesign3DTimestamp.current) {
+        lastAppliedDesign3DTimestamp.current = design3D.lastUpdated;
+        if (design3D.totalUnits > 0) setTotalUnitsManual(design3D.totalUnits);
+        if (design3D.rentableSF > 0) setNetRentableSF(design3D.rentableSF);
+        const mix = design3D.unitMix;
+        if (mix && (mix.studio + mix.oneBed + mix.twoBed + mix.threeBed) > 0) {
+          const newMix: UnitMixRow[] = [];
+          if (mix.studio > 0) newMix.push({ floorPlan: 'Studio', unitSize: 550, beds: 0, units: mix.studio, occupied: Math.round(mix.studio * 0.94), vacant: mix.studio - Math.round(mix.studio * 0.94), marketRent: 1350, inPlaceRent: 1300 });
+          if (mix.oneBed > 0) newMix.push({ floorPlan: '1BR/1BA', unitSize: 750, beds: 1, units: mix.oneBed, occupied: Math.round(mix.oneBed * 0.94), vacant: mix.oneBed - Math.round(mix.oneBed * 0.94), marketRent: 1550, inPlaceRent: 1480 });
+          if (mix.twoBed > 0) newMix.push({ floorPlan: '2BR/2BA', unitSize: 1050, beds: 2, units: mix.twoBed, occupied: Math.round(mix.twoBed * 0.94), vacant: mix.twoBed - Math.round(mix.twoBed * 0.94), marketRent: 1900, inPlaceRent: 1820 });
+          if (mix.threeBed > 0) newMix.push({ floorPlan: '3BR/2BA', unitSize: 1350, beds: 3, units: mix.threeBed, occupied: Math.round(mix.threeBed * 0.94), vacant: mix.threeBed - Math.round(mix.threeBed * 0.94), marketRent: 2400, inPlaceRent: 2300 });
+          if (newMix.length > 0) setUnitMix(newMix);
+        }
+        setDesignSource('3D Design');
+      }
+    }
+  }, [lastEvent, design3D]);
 
   const [capexItems, setCapexItems] = useState<CapexLineItem[]>([
     { description: 'Interior Renovations', amount: 1500000 },
@@ -577,19 +619,39 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
               {isExpanded && (
                 <div className="px-4 pb-4 border-t border-stone-100">
                   {section.id === 'dealInfo' && (
-                    <DealInfoSection
-                      dealName={dealName} setDealName={setDealName}
-                      totalUnits={totalUnits} setTotalUnits={setTotalUnits}
-                      netRentableSF={netRentableSF} setNetRentableSF={setNetRentableSF}
-                      vintage={vintage} setVintage={setVintage}
-                      address={address} setAddress={setAddress}
-                      city={city} setCity={setCity}
-                      state={state} setState={setState}
-                      platformData={platformData}
-                    />
+                    <>
+                      {designSource && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                            Source: {designSource}
+                          </span>
+                          <span className="text-[10px] text-stone-400">Units & SF pre-filled from 3D Design module — edit to override</span>
+                        </div>
+                      )}
+                      <DealInfoSection
+                        dealName={dealName} setDealName={setDealName}
+                        totalUnits={totalUnits} setTotalUnits={setTotalUnits}
+                        netRentableSF={netRentableSF} setNetRentableSF={setNetRentableSF}
+                        vintage={vintage} setVintage={setVintage}
+                        address={address} setAddress={setAddress}
+                        city={city} setCity={setCity}
+                        state={state} setState={setState}
+                        platformData={platformData}
+                      />
+                    </>
                   )}
                   {section.id === 'unitMix' && (
-                    <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
+                    <>
+                      {designSource && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                            Source: {designSource}
+                          </span>
+                          <span className="text-[10px] text-stone-400">Unit mix pre-filled from 3D Design module — edit to override</span>
+                        </div>
+                      )}
+                      <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
+                    </>
                   )}
                   {section.id === 'acquisition' && modelType === 'existing' && (
                     <AcquisitionSection

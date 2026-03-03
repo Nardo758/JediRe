@@ -45,6 +45,14 @@ import { ViewportOverlay } from './ViewportOverlay';
 // Main Component
 // ============================================================================
 
+interface ZoningConstraintsInput {
+  maxGba?: number;
+  maxUnits?: number;
+  maxStories?: number;
+  parkingRequired?: number;
+  appliedFar?: number;
+}
+
 interface Building3DEditorProps {
   dealId?: string;
   parcelGeometry?: any;
@@ -52,6 +60,7 @@ interface Building3DEditorProps {
   showMetricsPanel?: boolean;
   onMetricsChange?: (metrics: any) => void;
   onSave?: () => void;
+  zoningConstraints?: ZoningConstraintsInput;
 }
 
 export const Building3DEditor: React.FC<Building3DEditorProps> = ({
@@ -61,6 +70,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   showMetricsPanel = true,
   onMetricsChange,
   onSave,
+  zoningConstraints,
 }) => {
   const { state, actions } = useDesign3D();
   const { generateSimpleBuilding, generateFromUnitMix } = useBuildingGenerator();
@@ -81,6 +91,22 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       }
     }
   }, [parcelGeometry, dealId]);
+
+  useEffect(() => {
+    if (zoningConstraints && state.parcelBoundary) {
+      const maxHeight = zoningConstraints.maxStories ? zoningConstraints.maxStories * 10 : 200;
+      const envelope: ZoningEnvelope = {
+        id: `zoning-${dealId || 'default'}`,
+        maxHeight,
+        floorAreaRatio: zoningConstraints.appliedFar ?? 0,
+        buildableArea: zoningConstraints.maxGba ?? state.parcelBoundary.area ?? 0,
+        setbacks: { front: 10, rear: 10, side: 5 },
+        color: '#3b82f6',
+        wireframe: true,
+      };
+      actions.setZoningEnvelope(envelope);
+    }
+  }, [zoningConstraints, state.parcelBoundary]);
   
   const scenarios = useDesign3DStore((s) => s.scenarios);
   const activeScenarioId = useDesign3DStore((s) => s.activeScenarioId);
