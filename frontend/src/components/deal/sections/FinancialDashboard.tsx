@@ -805,7 +805,11 @@ const CSS = `
 .fm-mist.live{background:#dcfce7;color:#166534}
 .fm-mist.mock{background:#fef3c7;color:#92400e}
 .fm-mist.none{background:#f3f4f6;color:#6b7280}
-.fm-tabs{margin:0 20px;border-bottom:1px solid #e2e5ed;background:#fff;display:flex;align-items:center;padding:0 4px;flex-shrink:0;overflow-x:auto;scrollbar-width:none}
+.fm-tabs{margin:0 20px;border-bottom:1px solid #e2e5ed;background:#fff;display:flex;align-items:center;padding:0 4px;flex-shrink:0;overflow-x:auto;scrollbar-width:thin;scrollbar-color:#c5cad4 transparent}
+.fm-tabs::-webkit-scrollbar{height:4px}
+.fm-tabs::-webkit-scrollbar-track{background:transparent}
+.fm-tabs::-webkit-scrollbar-thumb{background:#c5cad4;border-radius:4px}
+.fm-tabs::-webkit-scrollbar-thumb:hover{background:#9ca3af}
 .fm-tab{padding:11px 16px;font-size:12.5px;font-weight:500;color:#9ba3b0;cursor:pointer;border-bottom:2px solid transparent;transition:all .12s;white-space:nowrap;background:transparent;border-top:none;border-left:none;border-right:none;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif}
 .fm-tab:hover:not(.on){color:#4b5563}
 .fm-tab.on{color:#111827;border-bottom-color:#111827;font-weight:600}
