@@ -81,21 +81,27 @@ router.get(
         // Same vintage filter
         if (sameVintage === 'true' && deal.year_built) {
           const yearBuilt = parseInt(deal.year_built);
-          whereConditions.push(`
-            pr.year_built::integer BETWEEN ${yearBuilt - 5} AND ${yearBuilt + 5}
-          `);
+          const minYear = yearBuilt - 5;
+          const maxYear = yearBuilt + 5;
+          whereConditions.push(`pr.year_built::integer BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+          queryParams.push(minYear, maxYear);
+          paramIndex += 2;
         }
 
         // Similar size filter
         if (similarSize === 'true' && deal.units) {
           const minUnits = Math.floor(deal.units * 0.8);
           const maxUnits = Math.ceil(deal.units * 1.2);
-          whereConditions.push(`pr.units BETWEEN ${minUnits} AND ${maxUnits}`);
+          whereConditions.push(`pr.units BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+          queryParams.push(minUnits, maxUnits);
+          paramIndex += 2;
         }
 
         // Same class filter
         if (sameClass === 'true' && deal.property_class) {
-          whereConditions.push(`pr.property_class = '${deal.property_class}'`);
+          whereConditions.push(`pr.property_class = $${paramIndex}`);
+          queryParams.push(deal.property_class);
+          paramIndex += 1;
         }
 
         const query = `
