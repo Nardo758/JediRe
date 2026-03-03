@@ -323,4 +323,5 @@ class MunicodeUrlService {
   }
 }
 
+export { MunicodeUrlService };
 export const municodeUrlService = new MunicodeUrlService();
