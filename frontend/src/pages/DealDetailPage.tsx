@@ -287,7 +287,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
-  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt → Financial Dashboard → Exit
+  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt → Exit Strategy → Financial Dashboard
   const dealDesignTabs: Tab[] = [
     { 
       id: '3d-design', 
@@ -319,17 +319,17 @@ const DealDetailPage: React.FC = () => {
       icon: <DollarSign size={16} />,
       component: DebtTab
     },
-    {
-      id: 'financial-dashboard',
-      label: 'Financial Dashboard',
-      icon: <BarChart3 size={16} />,
-      component: FinancialDashboard
-    },
     { 
       id: 'exit', 
       label: 'Exit Strategy', 
       icon: <LogOut size={16} />, 
       component: ExitSection 
+    },
+    {
+      id: 'financial-dashboard',
+      label: 'Financial Dashboard',
+      icon: <BarChart3 size={16} />,
+      component: FinancialDashboard
     },
   ];
 
