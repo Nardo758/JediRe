@@ -19,6 +19,7 @@ const MODULES_DEF: ModuleDef[] = [
   { id: 'traffic', label: 'Traffic', icon: '\u2197', description: 'Traffic Fusion Engine v2 (M07)', fields: ['Leasing traffic predictions', 'Digital traffic via SpyFu', 'Weekly walk-in forecast'] },
   { id: 'proforma', label: 'Pro Forma', icon: '$', description: 'Pro Forma Engine (M09)', fields: ['NOI projection multi-year', 'Rent roll with occupancy', 'Expense assumptions'] },
   { id: 'debt', label: 'Debt', icon: '\u25CB', description: 'Capital Structure Engine (M11)', fields: ['Loan options compared', 'DSCR & IO analysis', 'Defeasance modeling'] },
+  { id: 'exit', label: 'Exit', icon: '\u25CE', description: 'Exit Strategy & Convergence (M11+)', fields: ['Three-factor convergence score', 'Optimal exit window timing', 'Capital structure alignment'] },
 ];
 
 const METRICS = [
@@ -227,6 +228,17 @@ function buildModelFromSummary(summary: any): any {
 function CompView({ model }: { model: any }) {
   const s = model.scenarios || {};
   const hasData = s.base?.irr > 0;
+
+  const exitScore = useMemo(() => {
+    const rentGrowth = (model.revenue?.rentGrowthY1 || 0.04) * 100;
+    const rate = 4.15;
+    const supply = 200;
+    const rentScore = Math.max(0, Math.min(100, (rentGrowth / 10) * 100)) * 0.40;
+    const rateScore = Math.max(0, Math.min(100, ((5.0 - rate) / 2.0) * 100)) * 0.35;
+    const supplyScore = Math.max(0, Math.min(100, ((400 - supply) / 400) * 100)) * 0.25;
+    return Math.round(Math.max(0, Math.min(100, rentScore + rateScore + supplyScore)));
+  }, [model]);
+
   if (!hasData) {
     return (
       <div className="cmp">
@@ -239,6 +251,23 @@ function CompView({ model }: { model: any }) {
       <div className="cmp-hdr">
         <div><h3>Side-by-Side Model Comparison</h3><p>3 scenarios generated from upstream data</p></div>
         <span className="bgr">Auto-calculated</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20, padding: '14px 0' }}>
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#166534', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>EXIT SCORE</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: exitScore >= 70 ? '#16a34a' : exitScore >= 50 ? '#d97706' : '#dc2626' }}>{exitScore}</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>{exitScore >= 70 ? 'Strong window' : exitScore >= 50 ? 'Fair window' : 'Weak window'}</div>
+        </div>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#1e40af', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>Q1 26</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Low rates + low supply</div>
+        </div>
+        <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#854d0e', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>CONVERGENCE</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>3</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Factors aligned</div>
+        </div>
       </div>
       <table className="cmp-tbl">
         <thead>
@@ -277,6 +306,7 @@ function CompView({ model }: { model: any }) {
               <li><span>&rarr;</span><span><strong>IRR spread of {Math.abs((s.best?.irr || 0) - (s.worst?.irr || 0)).toFixed(1)}%</strong> between Best/Worst &mdash; deal is exit cap-sensitive.</span></li>
               <li><span>&rarr;</span><span><strong>Base DSCR at {(s.base?.dscr || 0).toFixed(2)}x</strong> provides {(s.base?.dscr || 0) >= 1.25 ? 'comfortable' : 'tight'} debt coverage.</span></li>
               <li><span>&rarr;</span><span><strong>Yield on Cost at {(s.base?.yoc || 0).toFixed(1)}%</strong> &mdash; {(s.base?.yoc || 0) > 6 ? 'strong value creation margin' : 'limited spread over going-in cap'}.</span></li>
+              <li><span>&rarr;</span><span><strong>Exit convergence score: {exitScore}/100</strong> &mdash; {exitScore >= 70 ? 'strong alignment of rates, supply, and rent growth for near-term exit' : 'monitor convergence factors before committing to exit timing'}.</span></li>
             </>
           )}
         </ul>
@@ -361,6 +391,10 @@ function DebtView({ model, setModel }: { model: any; setModel: React.Dispatch<Re
             <div className="lr"><span className="lk">Proceeds</span><span className="lv">{fmt$(loan.proceeds)}</span></div>
           </div>
         ))}
+      </div>
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 12, color: '#1e40af' }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
+        <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>&rarr; Edit in Module</div>
       </div>
       <div className="ai-call">
         <h4>&#x26A1; AI Debt Analysis</h4>
@@ -704,6 +738,22 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
           <li><span style={{ color: '#059669' }}>&rarr;</span><span>Order Phase I ESA and Property Condition Report concurrently with DD.</span></li>
         </ul>
       </div>
+      <div className="slbl">EXIT READINESS</div>
+      <div className="dc">
+        <h4>&#x25CE; Three-Factor Convergence</h4>
+        <ul>
+          <li><span style={{ color: '#16a34a' }}>&#x25CF;</span><span><strong>Rent Growth: {((model.revenue?.rentGrowthY1 || 0.04) * 100).toFixed(1)}%</strong> &mdash; {(model.revenue?.rentGrowthY1 || 0) >= 0.04 ? 'Strong organic growth supports higher exit valuation' : 'Moderate growth — exit timing depends on other factors'}.</span></li>
+          <li><span style={{ color: '#3b82f6' }}>&#x25CF;</span><span><strong>Interest Rates: ~4.15% (10yr)</strong> &mdash; Declining trajectory favors near-term exit as buyer leverage improves.</span></li>
+          <li><span style={{ color: '#d97706' }}>&#x25CF;</span><span><strong>Supply Pipeline: ~200 units/qtr</strong> &mdash; Below-average delivery supports occupancy and rent growth.</span></li>
+        </ul>
+      </div>
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
+          <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>Q1 2026 &ndash; Q2 2026 &mdash; all three factors converge</div>
+        </div>
+        <div style={{ fontSize: 11, color: '#6b7280' }}>View details in Debt, Equity &amp; Exit tab</div>
+      </div>
       {scenarios?.base?.irr > 0 && (
         <button onClick={fetchAnalysis} style={{
           marginTop: 16, padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e5ed',
@@ -716,7 +766,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
-.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#f0f2f5;border-radius:10px}
+.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#f8fafc;border-radius:10px}
 .fc{width:380px;min-width:320px;display:flex;flex-direction:column;background:#0c0d10;border-right:1px solid #1c1e26;flex-shrink:0;border-radius:10px 0 0 10px}
 .fc-top{padding:14px 16px 12px;border-bottom:1px solid #181a21;flex-shrink:0}
 .fc-brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -760,7 +810,7 @@ const CSS = `
 .fc-sb:disabled{background:#1c1e26;color:#272b35;cursor:not-allowed}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .mi{animation:mi .2s ease-out}
-.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f0f2f5}
+.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
 .fm-tb{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#fff;border-bottom:1px solid #e2e5ed;flex-shrink:0}
 .fm-tbl{display:flex;align-items:center;gap:8px}
 .fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#111827}
@@ -893,7 +943,7 @@ td.cwo .cv{color:#dc2626}
 const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const id = dealId || deal?.id;
   const [model, setModel] = useState<any>(null);
-  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none' });
+  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none' });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [inp, setInp] = useState('');
@@ -928,6 +978,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
           traffic: moduleMap.traffic || 'none',
           proforma: moduleMap.proforma || 'none',
           debt: moduleMap.debt || 'none',
+          exit: moduleMap.exit || (moduleMap.debt && moduleMap.debt !== 'none' ? moduleMap.debt : 'none'),
         });
         const liveModules = Object.values(moduleMap).filter((s: any) => s === 'live').length;
         setMsgs([{
@@ -1065,7 +1116,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
 
           <div className="fm-hero">
             <div className="fm-hl">FINANCIAL MODULE DASHBOARD</div>
-            <div className="fm-ht">Strategy + Traffic + Pro Forma + Debt &rarr; Model Variations</div>
+            <div className="fm-ht">Strategy + Traffic + Pro Forma + Debt + Exit &rarr; Model Variations</div>
             <div className="fm-hs">Auto-builds Base, Best, Worst, and strategy-specific scenarios from all upstream modules</div>
           </div>
 

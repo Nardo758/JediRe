@@ -4,7 +4,7 @@ import {
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box,
-  LogOut, Search, ArrowLeft, Activity, LineChart,
+  Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
   Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
   Shield, Layers, BarChart2, Radar, Zap
@@ -33,7 +33,6 @@ import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
 import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
-import ExitSection from '../components/deal/sections/ExitSection';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
@@ -287,7 +286,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
-  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt → Exit Strategy → Financial Dashboard
+  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
   const dealDesignTabs: Tab[] = [
     { 
       id: '3d-design', 
@@ -315,15 +314,9 @@ const DealDetailPage: React.FC = () => {
     },
     {
       id: 'debt',
-      label: 'Debt & Equity',
+      label: 'Debt, Equity & Exit',
       icon: <DollarSign size={16} />,
       component: DebtTab
-    },
-    { 
-      id: 'exit', 
-      label: 'Exit Strategy', 
-      icon: <LogOut size={16} />, 
-      component: ExitSection 
     },
     {
       id: 'financial-dashboard',

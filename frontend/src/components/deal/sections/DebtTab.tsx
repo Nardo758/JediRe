@@ -22,6 +22,11 @@ import {
   calcSourcesEqualsUses,
   calcRateSensitivity,
 } from '../../../data/capitalStructureMockData';
+import ExitDrivesCapital from './ExitDrivesCapital';
+import { ExitWindowsTab, SensitivityTab, MonitorTab } from './ExitStrategyTabs';
+import type { ExitStrategyConfig } from './ExitStrategyTabs';
+import DebtCycleChart from './DebtCycleChart';
+import DebtProductsChart from './DebtProductsChart';
 
 const API_BASE = '/api/v1/capital-structure';
 
@@ -31,14 +36,18 @@ interface DebtTabProps {
   dealStatus?: 'pipeline' | 'owned';
 }
 
-type TabId = 'stack' | 'debt' | 'rates' | 'metrics' | 'waterfall';
+type TabId = 'exit-overview' | 'stack' | 'waterfall' | 'debt' | 'rates' | 'metrics' | 'exit' | 'sensitivity' | 'monitor';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'exit-overview', label: 'Exit & Capital', icon: '⊕' },
   { id: 'stack', label: 'Capital Stack', icon: '◈' },
   { id: 'waterfall', label: 'Equity Waterfall', icon: '▽' },
   { id: 'debt', label: 'Debt Products', icon: '◇' },
   { id: 'rates', label: 'Rate Strategy', icon: '◆' },
   { id: 'metrics', label: 'Key Metrics', icon: '⬡' },
+  { id: 'exit', label: 'Exit Windows', icon: '◉' },
+  { id: 'sensitivity', label: 'Sensitivity', icon: '∿' },
+  { id: 'monitor', label: 'Monitor', icon: '◎' },
 ];
 
 const fmt = (v: number | undefined | null): string => {
@@ -63,7 +72,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   isPremium = false,
   dealStatus = 'pipeline',
 }) => {
-  const [activeTab, setActiveTab] = useState<TabId>('stack');
+  const [activeTab, setActiveTab] = useState<TabId>('exit-overview');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
   const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
 
@@ -95,7 +104,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const [aiStrategyLoading, setAiStrategyLoading] = useState(false);
 
   const [tabLoading, setTabLoading] = useState<Record<TabId, boolean>>({
-    stack: false, debt: false, rates: false, metrics: false, waterfall: false,
+    'exit-overview': false, stack: false, debt: false, rates: false, metrics: false, waterfall: false, exit: false, sensitivity: false, monitor: false,
   });
   const [liveDataSources, setLiveDataSources] = useState<Set<TabId>>(new Set());
   const fetchedTabs = useRef<Set<TabId>>(new Set());
@@ -112,6 +121,13 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 
   const template = strategyTemplates[selectedStrategy];
   const stack = liveStack || defaultCapitalStack;
+
+  const exitConfig = useMemo<ExitStrategyConfig>(() => ({
+    baseNOI: financial?.noi || 3000000,
+    equityInvested: stack?.metrics?.totalEquity || 8000000,
+    loanBalance: stack?.metrics?.totalDebt || 19200000,
+    dealStatus: dealStatus || 'pipeline',
+  }), [financial?.noi, stack?.metrics?.totalEquity, stack?.metrics?.totalDebt, dealStatus]);
 
   const activeWaterfall = useMemo(() => waterfalls.find(w => w.id === activeWaterfallId) || waterfalls[0], [waterfalls, activeWaterfallId]);
 
@@ -1603,11 +1619,33 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         ))}
       </div>
 
+      {activeTab === 'exit-overview' && (
+        <ExitDrivesCapital
+          deal={deal}
+          dealId={deal?.id}
+          financial={financial}
+          capitalStructure={capitalStructure}
+          dealStatus={dealStatus}
+        />
+      )}
       {activeTab === 'stack' && (tabLoading.stack ? renderTabLoading() : renderCapitalStack())}
-      {activeTab === 'debt' && (tabLoading.debt ? renderTabLoading() : renderDebtSelector())}
-      {activeTab === 'rates' && (tabLoading.rates ? renderTabLoading() : renderRateStrategy())}
+      {activeTab === 'debt' && (tabLoading.debt ? renderTabLoading() : (
+        <div className="space-y-6">
+          <DebtProductsChart products={debtProducts} targetRate={template.rateRange?.[0] || 5.0} exitWindowMonths={42} />
+          {renderDebtSelector()}
+        </div>
+      ))}
+      {activeTab === 'rates' && (tabLoading.rates ? renderTabLoading() : (
+        <div className="space-y-6">
+          <DebtCycleChart currentRates={liveRates || currentRates} rateForecast={rateForecast} />
+          {renderRateStrategy()}
+        </div>
+      ))}
       {activeTab === 'metrics' && renderKeyMetrics()}
       {activeTab === 'waterfall' && (tabLoading.waterfall ? renderTabLoading() : renderEquityWaterfall())}
+      {activeTab === 'exit' && <ExitWindowsTab config={exitConfig} />}
+      {activeTab === 'sensitivity' && <SensitivityTab config={exitConfig} />}
+      {activeTab === 'monitor' && <MonitorTab dealStatus={dealStatus || 'pipeline'} />}
     </div>
   );
 };
