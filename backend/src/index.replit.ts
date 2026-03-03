@@ -95,6 +95,8 @@ import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
+import clawdbotWebhooksRoutes from './api/rest/clawdbot-webhooks.routes';
+import { errorWebhookMiddleware } from './middleware/errorWebhook';
 
 dotenv.config();
 
@@ -200,6 +202,7 @@ app.use('/api/v1', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/deals', dealCompSetsRoutes);
+app.use('/api/v1/clawdbot', clawdbotWebhooksRoutes);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
@@ -313,6 +316,10 @@ if (isProduction) {
   });
 }
 
+// Error webhook middleware (sends errors to Clawdbot)
+app.use(errorWebhookMiddleware);
+
+// Final error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', err);
   res.status(500).json({
