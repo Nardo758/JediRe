@@ -804,7 +804,7 @@ export interface DevCapacitySignal {
 
   // DC-02: Buildout Timeline
   buildoutTimeline: {
-    yearsToBuil dout: number;
+    yearsToBuildout: number;
     practicalBuildout: boolean;
     metadata: OutputMetadata;
   };

@@ -915,6 +915,15 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     const rates = liveRates || currentRates;
     const isLive = !!liveRates;
 
+    // Guard against missing data
+    if (!currentRates || !lockVsFloatAnalysis || !spreadAnalysis || !rateForecast) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-sm text-gray-500">Loading rate data...</div>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6">
         {renderHistoricalChart()}

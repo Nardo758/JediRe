@@ -621,7 +621,7 @@ export const mockPropertyIntelligence: PropertyIntelligence = {
       metadata: createMetadata('DC-01', 'Zoning + Vacant Parcels / S-01'),
     },
     buildoutTimeline: {
-      yearsToBuil dout: 12.4,
+      yearsToBuildout: 12.4,
       practicalBuildout: true,
       metadata: createMetadata('DC-02', 'Capacity / Annual absorption'),
     },
