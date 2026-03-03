@@ -393,7 +393,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           d.state,
           ar.jedi_score,
           ar.verdict,
-          ar.recommendations,
+          ar.analysis_data->'recommendations' as recommendations,
           ar.created_at,
           ar.analysis_data
         FROM analysis_results ar
@@ -406,7 +406,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
             -- Risk alerts on portfolio deals
             OR (ar.jedi_score < 50 AND d.deal_category = 'portfolio')
             -- Optimization opportunities
-            OR (ar.recommendations IS NOT NULL AND jsonb_array_length(ar.recommendations) > 0)
+            OR (ar.analysis_data->'recommendations' IS NOT NULL AND jsonb_array_length(COALESCE(ar.analysis_data->'recommendations', '[]'::jsonb)) > 0)
           )
         ORDER BY 
           CASE 
