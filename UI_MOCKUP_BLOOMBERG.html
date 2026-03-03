@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JediRe - Bloomberg Terminal UI Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #1a1d21;
+            --bg-secondary: #252830;
+            --bg-tertiary: #2d3139;
+            --text-primary: #ecf0f1;
+            --text-secondary: #bdc3c7;
+            --accent-gold: #f39c12;
+            --accent-blue: #3498db;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --border: #34495e;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        /* Top Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--accent-gold);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-gold);
+            letter-spacing: 2px;
+        }
+
+        .search-trigger {
+            flex: 1;
+            max-width: 600px;
+            margin: 0 40px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 16px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: border-color 0.2s;
+        }
+
+        .search-trigger:hover {
+            border-color: var(--accent-gold);
+        }
+
+        .search-trigger span {
+            opacity: 0.6;
+        }
+
+        .kbd {
+            background: var(--bg-secondary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            border: 1px solid var(--border);
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .location {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .notification-icon {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: var(--danger);
+            color: white;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 10px;
+        }
+
+        /* Market Pulse Bar */
+        .market-pulse {
+            background: var(--bg-secondary);
+            padding: 12px 20px;
+            display: flex;
+            gap: 30px;
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        .pulse-item {
+            display: flex;
+            flex-direction: column;
+            min-width: 140px;
+        }
+
+        .pulse-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .pulse-value {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .pulse-change {
+            font-size: 12px;
+            margin-top: 2px;
+        }
+
+        .pulse-change.up {
+            color: var(--success);
+        }
+
+        .pulse-change.down {
+            color: var(--danger);
+        }
+
+        /* Main Container */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 140px);
+        }
+
+        /* Left Panel - Map */
+        .map-panel {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border-right: 1px solid var(--border);
+            position: relative;
+        }
+
+        .map-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #2d3139 0%, #1a1d21 100%);
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .property-bubble {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            border: 2px solid rgba(255,255,255,0.2);
+            transition: transform 0.2s;
+        }
+
+        .property-bubble:hover {
+            transform: scale(1.1);
+            border-color: white;
+        }
+
+        .bubble-hot {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            top: 30%;
+            left: 25%;
+        }
+
+        .bubble-warm {
+            background: linear-gradient(135deg, #f39c12, #d68910);
+            top: 45%;
+            left: 60%;
+        }
+
+        .bubble-cool {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            top: 60%;
+            left: 40%;
+        }
+
+        /* Right Panel - Intelligence Feed */
+        .intel-panel {
+            width: 380px;
+            background: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .intel-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+
+        .intel-tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .intel-tab.active {
+            border-bottom-color: var(--accent-gold);
+            color: var(--accent-gold);
+        }
+
+        .intel-tab:hover {
+            background: var(--bg-secondary);
+        }
+
+        .intel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .intel-item {
+            background: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            border-left: 3px solid var(--accent-blue);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .intel-item:hover {
+            background: #353943;
+        }
+
+        .intel-item.opportunity {
+            border-left-color: var(--success);
+        }
+
+        .intel-item.news {
+            border-left-color: var(--accent-gold);
+        }
+
+        .intel-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .intel-title {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .intel-score {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--success);
+        }
+
+        .intel-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .intel-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+
+        /* Ticker Bar (Bottom) */
+        .ticker-bar {
+            background: var(--bg-secondary);
+            border-top: 2px solid var(--accent-gold);
+            padding: 8px 20px;
+            display: flex;
+            gap: 30px;
+            overflow-x: auto;
+            white-space: nowrap;
+            font-size: 12px;
+        }
+
+        .ticker-item {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .ticker-label {
+            color: var(--text-secondary);
+        }
+
+        .ticker-value {
+            font-weight: 600;
+        }
+
+        .ticker-change {
+            font-size: 11px;
+        }
+
+        /* Command Palette Modal */
+        .command-palette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: flex-start;
+            justify-content: center;
+            padding-top: 120px;
+            z-index: 1000;
+        }
+
+        .command-palette.active {
+            display: flex;
+        }
+
+        .command-content {
+            background: var(--bg-secondary);
+            width: 600px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .command-input {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: none;
+            padding: 20px;
+            font-size: 18px;
+            color: var(--text-primary);
+            outline: none;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .command-results {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .command-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .command-item:hover,
+        .command-item.selected {
+            background: var(--bg-tertiary);
+            border-left-color: var(--accent-gold);
+        }
+
+        .command-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .command-details {
+            flex: 1;
+        }
+
+        .command-title {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .command-subtitle {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .command-shortcut {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* Property Detail Modal */
+        .property-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+
+        .property-modal.active {
+            display: flex;
+        }
+
+        .property-content {
+            background: var(--bg-secondary);
+            width: 90%;
+            max-width: 1400px;
+            height: 90vh;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .property-header {
+            background: var(--bg-tertiary);
+            padding: 20px;
+            border-bottom: 2px solid var(--accent-gold);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .property-title-section {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .property-address {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .property-price {
+            font-size: 20px;
+            color: var(--success);
+        }
+
+        .property-score {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--accent-gold);
+        }
+
+        .close-btn {
+            font-size: 28px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+
+        .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .property-tabs {
+            display: flex;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .property-tab {
+            padding: 16px 24px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .property-tab.active {
+            border-bottom-color: var(--accent-gold);
+            background: var(--bg-secondary);
+        }
+
+        .property-tab:hover {
+            background: var(--bg-secondary);
+        }
+
+        .property-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .metric-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 24px;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .metric-change {
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .chart-section {
+            background: var(--bg-tertiary);
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+        }
+
+        .chart-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .chart-placeholder {
+            height: 200px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        .help-text {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">JEDIRE TERMINAL</div>
+        <div class="search-trigger" onclick="openCommandPalette()">
+            <span>Search properties, modules, actions...</span>
+            <kbd class="kbd">⌘K</kbd>
+        </div>
+        <div class="header-right">
+            <div class="location">📍 Austin, TX</div>
+            <div class="notification-icon" onclick="alert('Notifications feature')">
+                🔔
+                <span class="notification-badge">3</span>
+            </div>
+            <div style="color: var(--text-secondary); cursor: pointer;">⚙️</div>
+        </div>
+    </div>
+
+    <!-- Market Pulse -->
+    <div class="market-pulse">
+        <div class="pulse-item">
+            <div class="pulse-label">Market Supply</div>
+            <div class="pulse-value">2,341</div>
+            <div class="pulse-change down">▼ 5.2%</div>
+        </div>
+        <div class="pulse-item">
+            <div class="pulse-label">Avg Cap Rate</div>
+            <div class="pulse-value">6.4%</div>
+            <div class="pulse-change up">▲ 0.2%</div>
+        </div>
+        <div class="pulse-item">
+            <div class="pulse-label">Vacancy</div>
+            <div class="pulse-value">4.3%</div>
+            <div class="pulse-change down">▼ 0.8%</div>
+        </div>
+        <div class="pulse-item">
+            <div class="pulse-label">Demand Index</div>
+            <div class="pulse-value">82</div>
+            <div class="pulse-change up">▲ 8.1%</div>
+        </div>
+        <div class="pulse-item">
+            <div class="pulse-label">Trend</div>
+            <div class="pulse-value" style="color: var(--danger);">🔥 Hot</div>
+            <div class="pulse-change up">Strong</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Map Panel -->
+        <div class="map-panel">
+            <div class="map-placeholder">
+                🗺️ Interactive Map with Mapbox GL
+                <div class="property-bubble bubble-hot" onclick="openPropertyModal('123 Main St', 85)">85</div>
+                <div class="property-bubble bubble-warm" onclick="openPropertyModal('456 Oak Ave', 78)">78</div>
+                <div class="property-bubble bubble-cool" onclick="openPropertyModal('789 Pine St', 72)">72</div>
+            </div>
+        </div>
+
+        <!-- Intelligence Feed Panel -->
+        <div class="intel-panel">
+            <div class="intel-tabs">
+                <div class="intel-tab active">Opportunities</div>
+                <div class="intel-tab">News</div>
+                <div class="intel-tab">Team</div>
+            </div>
+            <div class="intel-content">
+                <div class="intel-item opportunity">
+                    <div class="intel-header">
+                        <div class="intel-title">123 Main Street, Austin</div>
+                        <div class="intel-score">85</div>
+                    </div>
+                    <div class="intel-desc">
+                        4-unit multifamily in high-demand area. Strong zoning potential for ADU. Current cap rate 7.2%.
+                    </div>
+                    <div class="intel-time">🕒 2 hours ago</div>
+                </div>
+
+                <div class="intel-item opportunity">
+                    <div class="intel-header">
+                        <div class="intel-title">456 Oak Avenue, Austin</div>
+                        <div class="intel-score">78</div>
+                    </div>
+                    <div class="intel-desc">
+                        Value-add opportunity. Below-market rents. Strong traffic patterns. 6.8% current yield.
+                    </div>
+                    <div class="intel-time">🕒 5 hours ago</div>
+                </div>
+
+                <div class="intel-item news">
+                    <div class="intel-header">
+                        <div class="intel-title">Austin Zoning Changes</div>
+                    </div>
+                    <div class="intel-desc">
+                        City Council approves new mixed-use zoning for East Austin. Potential for increased density in target areas.
+                    </div>
+                    <div class="intel-time">🕒 1 day ago</div>
+                </div>
+
+                <div class="intel-item opportunity">
+                    <div class="intel-header">
+                        <div class="intel-title">789 Pine Street, Austin</div>
+                        <div class="intel-score">72</div>
+                    </div>
+                    <div class="intel-desc">
+                        Development land opportunity. Excellent school district. Low competition in micro-market.
+                    </div>
+                    <div class="intel-time">🕒 2 days ago</div>
+                </div>
+
+                <div class="intel-item news">
+                    <div class="intel-header">
+                        <div class="intel-title">Market Update</div>
+                    </div>
+                    <div class="intel-desc">
+                        Austin multifamily cap rates compress 20bps to 6.4%. Strong investor demand drives competition.
+                    </div>
+                    <div class="intel-time">🕒 3 days ago</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ticker Bar -->
+    <div class="ticker-bar">
+        <div class="ticker-item">
+            <span class="ticker-label">Austin Cap Rate:</span>
+            <span class="ticker-value">6.2%</span>
+            <span class="ticker-change up">▲0.1%</span>
+        </div>
+        <div class="ticker-item">
+            <span class="ticker-label">Inventory:</span>
+            <span class="ticker-value">2.4K</span>
+            <span class="ticker-change down">▼3%</span>
+        </div>
+        <div class="ticker-item">
+            <span class="ticker-label">Miami:</span>
+            <span class="ticker-value">5.8%</span>
+            <span class="ticker-change down">▼0.2%</span>
+        </div>
+        <div class="ticker-item">
+            <span class="ticker-label">Denver:</span>
+            <span class="ticker-value">6.5%</span>
+            <span class="ticker-change up">▲0.3%</span>
+        </div>
+        <div class="ticker-item">
+            <span class="ticker-label">Atlanta:</span>
+            <span class="ticker-value">6.8%</span>
+            <span class="ticker-change">—</span>
+        </div>
+        <div class="ticker-item">
+            <span class="ticker-label">Phoenix:</span>
+            <span class="ticker-value">6.1%</span>
+            <span class="ticker-change up">▲0.4%</span>
+        </div>
+    </div>
+
+    <!-- Command Palette -->
+    <div class="command-palette" id="commandPalette" onclick="closeCommandPalette(event)">
+        <div class="command-content" onclick="event.stopPropagation()">
+            <input type="text" class="command-input" placeholder="Type to search properties, modules, or actions..." autofocus>
+            <div class="command-results">
+                <div class="command-item selected">
+                    <div class="command-icon">🏠</div>
+                    <div class="command-details">
+                        <div class="command-title">123 Main Street, Austin TX</div>
+                        <div class="command-subtitle">Multifamily • 4 units • Score: 85</div>
+                    </div>
+                    <div class="command-shortcut">↵</div>
+                </div>
+                <div class="command-item">
+                    <div class="command-icon">📊</div>
+                    <div class="command-details">
+                        <div class="command-title">Open Zoning Module</div>
+                        <div class="command-subtitle">Analyze development capacity</div>
+                    </div>
+                    <div class="command-shortcut">⌘1</div>
+                </div>
+                <div class="command-item">
+                    <div class="command-icon">💰</div>
+                    <div class="command-details">
+                        <div class="command-title">Generate Pro Forma</div>
+                        <div class="command-subtitle">Financial analysis</div>
+                    </div>
+                    <div class="command-shortcut">⌘2</div>
+                </div>
+                <div class="command-item">
+                    <div class="command-icon">🎯</div>
+                    <div class="command-details">
+                        <div class="command-title">View Supply Trends</div>
+                        <div class="command-subtitle">Market intelligence</div>
+                    </div>
+                    <div class="command-shortcut">⌘3</div>
+                </div>
+                <div class="command-item">
+                    <div class="command-icon">➕</div>
+                    <div class="command-details">
+                        <div class="command-title">Create New Deal</div>
+                        <div class="command-subtitle">Start analysis</div>
+                    </div>
+                    <div class="command-shortcut">⌘N</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Property Detail Modal -->
+    <div class="property-modal" id="propertyModal" onclick="closePropertyModal(event)">
+        <div class="property-content" onclick="event.stopPropagation()">
+            <div class="property-header">
+                <div class="property-title-section">
+                    <div class="property-address" id="modalAddress">123 Main Street, Austin TX</div>
+                    <div class="property-price">$2.4M</div>
+                    <div class="property-score" id="modalScore">85</div>
+                </div>
+                <div class="close-btn" onclick="closePropertyModal()">×</div>
+            </div>
+            <div class="property-tabs">
+                <div class="property-tab active">Overview</div>
+                <div class="property-tab">Financials</div>
+                <div class="property-tab">Zoning</div>
+                <div class="property-tab">Market</div>
+                <div class="property-tab">Operations</div>
+                <div class="property-tab">Team</div>
+            </div>
+            <div class="property-body">
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Cap Rate</div>
+                        <div class="metric-value">7.2%</div>
+                        <div class="metric-change up">▲ 0.3%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">NOI</div>
+                        <div class="metric-value">$172K</div>
+                        <div class="metric-change up">▲ 8.2%</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Occupancy</div>
+                        <div class="metric-value">95%</div>
+                        <div class="metric-change">—</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Rent/SF</div>
+                        <div class="metric-value">$1.85</div>
+                        <div class="metric-change up">▲ 5.1%</div>
+                    </div>
+                    <div class="metric-card" style="border-left-color: var(--success);">
+                        <div class="metric-label">IRR (5yr)</div>
+                        <div class="metric-value">18.4%</div>
+                        <div class="metric-change up">Strong</div>
+                    </div>
+                    <div class="metric-card" style="border-left-color: var(--success);">
+                        <div class="metric-label">Equity Multiple</div>
+                        <div class="metric-value">2.1x</div>
+                        <div class="metric-change up">Target: 1.8x</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Zoning</div>
+                        <div class="metric-value">R-4</div>
+                        <div class="metric-change">Max 8 units</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Competition</div>
+                        <div class="metric-value">Low</div>
+                        <div class="metric-change up">Top 15%</div>
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <div class="chart-title">📈 Pro Forma Projection (5-Year)</div>
+                    <div class="chart-placeholder">
+                        [Interactive Chart: NOI growth vs Market Average]<br>
+                        Subject: $172K → $248K (+44%)<br>
+                        Market Avg: $165K → $215K (+30%)
+                    </div>
+                </div>
+
+                <div class="chart-section">
+                    <div class="chart-title">🎯 Competitive Positioning</div>
+                    <div class="chart-placeholder">
+                        [Scatter Plot: Price/SF vs Cap Rate]<br>
+                        Subject positioned in "Sweet Spot" quadrant<br>
+                        Below market price, above market returns
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Text -->
+    <div class="help-text">
+        Press <kbd class="kbd">⌘K</kbd> for command palette • Click bubbles to view properties • Press <kbd class="kbd">ESC</kbd> to close
+    </div>
+
+    <script>
+        // Command Palette
+        function openCommandPalette() {
+            document.getElementById('commandPalette').classList.add('active');
+        }
+
+        function closeCommandPalette(event) {
+            if (event && event.target.id !== 'commandPalette') return;
+            document.getElementById('commandPalette').classList.remove('active');
+        }
+
+        // Property Modal
+        function openPropertyModal(address, score) {
+            document.getElementById('modalAddress').textContent = address;
+            document.getElementById('modalScore').textContent = score;
+            document.getElementById('propertyModal').classList.add('active');
+        }
+
+        function closePropertyModal(event) {
+            if (event && event.target.id !== 'propertyModal') return;
+            document.getElementById('propertyModal').classList.remove('active');
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                openCommandPalette();
+            }
+            if (e.key === 'Escape') {
+                closeCommandPalette();
+                closePropertyModal();
+            }
+        });
+
+        // Tab switching
+        document.querySelectorAll('.property-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.property-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+
+        document.querySelectorAll('.intel-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.intel-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
