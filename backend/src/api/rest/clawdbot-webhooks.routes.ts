@@ -205,9 +205,9 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           SELECT 
             dp.id,
             dp.property_id as "propertyId",
-            p.address,
+            CONCAT_WS(', ', p.address_line1, p.address_line2) as address,
             p.city,
-            p.state,
+            p.state_code as state,
             p.zip_code as "zipCode"
           FROM deal_properties dp
           LEFT JOIN properties p ON p.id = dp.property_id
