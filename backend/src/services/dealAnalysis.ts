@@ -2,12 +2,14 @@
  * Deal Analysis Service
  * 
  * Orchestrates Python analysis engines for deal-level analysis
+ * Integrated with Clawdbot webhook notifications
  */
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { Pool } from 'pg';
+import { clawdbotWebhook } from '../webhooks/clawdbot';
 
 const execPromise = promisify(exec);
 
@@ -85,6 +87,13 @@ export class DealAnalysisService {
       };
 
       await this.saveAnalysis(analysisResult);
+
+      // Send completion notification to Clawdbot
+      if (clawdbotWebhook.isEnabled()) {
+        clawdbotWebhook.sendAnalysisComplete(input.dealId, analysisResult).catch((error) => {
+          console.error('Failed to send analysis completion webhook:', error);
+        });
+      }
 
       return analysisResult;
     } catch (error) {

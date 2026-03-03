@@ -74,6 +74,7 @@ import correlationRoutes from './correlation.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
+import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -290,6 +291,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Rankings routes (Property Competitive Scores, Performance Rankings, Pipeline Intelligence)
   app.use(`${API_PREFIX}/rankings`, rankingsRoutes);
+
+  // Clawdbot Webhook routes (Receive commands and queries from Clawdbot)
+  app.use(`${API_PREFIX}/clawdbot`, clawdbotWebhooksRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

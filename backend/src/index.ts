@@ -17,6 +17,7 @@ import { typeDefs, resolvers } from './api/graphql';
 import { setupRESTRoutes } from './api/rest';
 import { setupWebSocket } from './api/websocket';
 import { errorHandler } from './middleware/errorHandler';
+import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { rateLimiter } from './middleware/rateLimiter';
 import { authMiddleware } from './middleware/auth';
 
@@ -129,6 +130,9 @@ class JediReServer {
     setupWebSocket(this.io);
 
     // Error handling (must be last)
+    // First: Error webhook middleware (sends to Clawdbot)
+    this.app.use(errorWebhookMiddleware);
+    // Second: Final error handler (sends response to client)
     this.app.use(errorHandler);
   }
 
@@ -150,6 +154,10 @@ class JediReServer {
 
   public async start(): Promise<void> {
     try {
+      // Setup global error handlers for unhandled rejections and exceptions
+      setupUnhandledRejectionHandler();
+      setupUncaughtExceptionHandler();
+
       // Connect to database
       await this.connectDatabase();
 
