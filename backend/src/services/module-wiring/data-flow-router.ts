@@ -9,6 +9,7 @@
 import { ModuleId, MODULE_REGISTRY, ModuleDependency } from './module-registry';
 import { moduleEventBus, ModuleEventType } from './module-event-bus';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 
 // ============================================================================
 // Types
@@ -370,3 +371,187 @@ class DataFlowRouter {
 
 export const dataFlowRouter = new DataFlowRouter();
 export { DATA_FLOW_CONNECTIONS };
+
+// ============================================================================
+// Financial Module (M09) Data Aggregation
+// ============================================================================
+
+export interface FinancialModuleInputs {
+  market: {
+    avgRentPsf: number | null;
+    vacancyRate: number | null;
+    rentGrowthPct: number | null;
+    source: 'live' | 'none';
+  };
+  demand: {
+    demandUnitsTotal: number | null;
+    demandUnitsPhased: any[] | null;
+    demandScore: number | null;
+    source: 'live' | 'none';
+  };
+  traffic: {
+    predictedLeasesWeek: number | null;
+    captureRate: number | null;
+    vacancyAssumption: number | null;
+    rentGrowthAdjustment: number | null;
+    absorptionRate: number | null;
+    trafficTrend: string | null;
+    source: 'live' | 'none';
+  };
+  strategy: {
+    recommendedStrategy: string | null;
+    strategyScores: Record<string, number> | null;
+    holdPeriod: number | null;
+    exitCap: number | null;
+    capex: number | null;
+    source: 'live' | 'none';
+  };
+  moduleStatus: Record<string, 'live' | 'none'>;
+}
+
+export async function getFinancialInputsFromModules(dealId: string): Promise<FinancialModuleInputs> {
+  const pool = getPool();
+
+  const [marketResult, demandResult, trafficResult, strategyResult, dealResult] = await Promise.all([
+    pool.query(
+      `SELECT data FROM apartment_market_snapshots
+       WHERE deal_id = $1 OR city = (SELECT city FROM deals WHERE id = $1)
+       ORDER BY snapshot_date DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] })),
+
+    pool.query(
+      `SELECT data FROM apartment_user_analytics
+       WHERE analytics_type = 'demand-signals'
+       ORDER BY snapshot_date DESC LIMIT 1`
+    ).catch(() => ({ rows: [] })),
+
+    pool.query(
+      `SELECT data FROM leasing_traffic_data
+       WHERE deal_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] })),
+
+    pool.query(
+      `SELECT * FROM strategy_analyses
+       WHERE deal_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] })),
+
+    pool.query(
+      `SELECT city, state FROM deals WHERE id = $1`,
+      [dealId]
+    ).catch(() => ({ rows: [] })),
+  ]);
+
+  const marketData = marketResult.rows[0]?.data;
+  const demandData = demandResult.rows[0]?.data;
+  const trafficData = trafficResult.rows[0]?.data;
+  const strategyRow = strategyResult.rows[0];
+
+  const market: FinancialModuleInputs['market'] = {
+    avgRentPsf: marketData?.avg_rent_psf ?? marketData?.avgRentPsf ?? null,
+    vacancyRate: marketData?.vacancy_rate ?? marketData?.vacancyRate ?? null,
+    rentGrowthPct: marketData?.rent_growth_pct ?? marketData?.rentGrowthPct ?? null,
+    source: marketData ? 'live' : 'none',
+  };
+
+  const demand: FinancialModuleInputs['demand'] = {
+    demandUnitsTotal: demandData?.demand_units_total ?? demandData?.demandUnitsTotal ?? null,
+    demandUnitsPhased: demandData?.demand_units_phased ?? demandData?.demandUnitsPhased ?? null,
+    demandScore: demandData?.demand_score ?? demandData?.demandScore ?? null,
+    source: demandData ? 'live' : 'none',
+  };
+
+  const traffic: FinancialModuleInputs['traffic'] = {
+    predictedLeasesWeek: trafficData?.predicted_leases_week ?? trafficData?.predictedLeasesWeek ?? null,
+    captureRate: trafficData?.capture_rate ?? trafficData?.captureRate ?? null,
+    vacancyAssumption: trafficData?.vacancy_assumption ?? trafficData?.vacancyAssumption ?? null,
+    rentGrowthAdjustment: trafficData?.rent_growth_adjustment ?? trafficData?.rentGrowthAdjustment ?? null,
+    absorptionRate: trafficData?.absorption_rate ?? trafficData?.absorptionRate ?? null,
+    trafficTrend: trafficData?.traffic_trend ?? trafficData?.trafficTrend ?? null,
+    source: trafficData ? 'live' : 'none',
+  };
+
+  const strategy: FinancialModuleInputs['strategy'] = {
+    recommendedStrategy: strategyRow?.recommended_strategy ?? strategyRow?.strategy_type ?? null,
+    strategyScores: strategyRow?.strategy_scores ? (typeof strategyRow.strategy_scores === 'string' ? JSON.parse(strategyRow.strategy_scores) : strategyRow.strategy_scores) : null,
+    holdPeriod: strategyRow?.hold_period ?? null,
+    exitCap: strategyRow?.exit_cap ?? null,
+    capex: strategyRow?.capex ?? null,
+    source: strategyRow ? 'live' : 'none',
+  };
+
+  const cachedInputs = dataFlowRouter.gatherInputs('M09', dealId);
+  for (const [key, value] of Object.entries(cachedInputs.requiredInputs)) {
+    if (key === 'avg_rent_psf' && market.avgRentPsf === null) market.avgRentPsf = value;
+    if (key === 'vacancy_rate' && market.vacancyRate === null) market.vacancyRate = value;
+    if (key === 'rent_growth_pct' && market.rentGrowthPct === null) market.rentGrowthPct = value;
+    if (key === 'recommended_strategy' && strategy.recommendedStrategy === null) strategy.recommendedStrategy = value;
+    if (key === 'strategy_scores' && strategy.strategyScores === null) strategy.strategyScores = value;
+  }
+  for (const [key, value] of Object.entries(cachedInputs.optionalInputs)) {
+    if (key === 'demand_units_total' && demand.demandUnitsTotal === null) demand.demandUnitsTotal = value;
+    if (key === 'demand_units_phased' && demand.demandUnitsPhased === null) demand.demandUnitsPhased = value;
+    if (key === 'predicted_leases_week' && traffic.predictedLeasesWeek === null) traffic.predictedLeasesWeek = value;
+    if (key === 'capture_rate' && traffic.captureRate === null) traffic.captureRate = value;
+    if (key === 'vacancy_assumption' && traffic.vacancyAssumption === null) traffic.vacancyAssumption = value;
+    if (key === 'rent_growth_adjustment' && traffic.rentGrowthAdjustment === null) traffic.rentGrowthAdjustment = value;
+    if (key === 'absorption_rate' && traffic.absorptionRate === null) traffic.absorptionRate = value;
+  }
+
+  const moduleStatus: Record<string, 'live' | 'none'> = {
+    M05_Market: market.source,
+    M06_Demand: demand.source,
+    M07_Traffic: traffic.source,
+    M08_Strategy: strategy.source,
+  };
+
+  logger.info('Financial module inputs gathered', {
+    dealId,
+    moduleStatus,
+    hasMarket: market.source === 'live',
+    hasDemand: demand.source === 'live',
+    hasTraffic: traffic.source === 'live',
+    hasStrategy: strategy.source === 'live',
+  });
+
+  return { market, demand, traffic, strategy, moduleStatus };
+}
+
+// ============================================================================
+// Financial Module Event Bus Listeners
+// ============================================================================
+
+export function setupFinancialModuleListeners(): void {
+  const upstreamModules: ModuleId[] = ['M05', 'M06', 'M07', 'M08'];
+
+  moduleEventBus.onInputsChanged('M09', upstreamModules, (event) => {
+    logger.info('Financial module notified of upstream change', {
+      sourceModule: event.sourceModule,
+      dealId: event.dealId,
+      dataKeys: event.data ? Object.keys(event.data) : [],
+    });
+
+    moduleEventBus.emitDebounced({
+      type: ModuleEventType.RECALCULATE,
+      sourceModule: 'M09',
+      dealId: event.dealId,
+      data: { trigger: event.sourceModule, upstreamData: event.data },
+      timestamp: new Date(),
+    }, `m09-recalc:${event.dealId}`);
+  });
+
+  moduleEventBus.on(ModuleEventType.DATA_UPDATED, (event) => {
+    if (event.sourceModule === 'M08' && event.data?.recommended_strategy) {
+      logger.info('Strategy change detected — financial model should refresh', {
+        dealId: event.dealId,
+        newStrategy: event.data.recommended_strategy,
+      });
+    }
+  }, 'M08');
+
+  logger.info('Financial module (M09) event bus listeners registered');
+}

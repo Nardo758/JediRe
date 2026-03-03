@@ -56,6 +56,8 @@ export type {
 export {
   dataFlowRouter,
   DATA_FLOW_CONNECTIONS,
+  getFinancialInputsFromModules,
+  setupFinancialModuleListeners,
 } from './data-flow-router';
 
 export type {
@@ -63,6 +65,7 @@ export type {
   DataFlowConnection,
   ModuleDataPacket,
   DataFlowResult,
+  FinancialModuleInputs,
 } from './data-flow-router';
 
 // Module Event Bus

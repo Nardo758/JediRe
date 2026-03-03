@@ -1,5 +1,8 @@
 import axios from 'axios';
 import { getPool } from '../database/connection';
+import { getFinancialInputsFromModules, FinancialModuleInputs } from './module-wiring/data-flow-router';
+import { dataFlowRouter } from './module-wiring/data-flow-router';
+import { logger } from '../utils/logger';
 
 const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
@@ -415,6 +418,22 @@ ${a.modelType === 'development' ? '7. developmentSchedule (monthly during constr
 Return ONLY valid JSON. No markdown, no explanation.`;
 
     return prompt;
+  }
+
+  async getUpstreamModuleInputs(dealId: string): Promise<FinancialModuleInputs> {
+    return getFinancialInputsFromModules(dealId);
+  }
+
+  publishResultsToDataFlow(dealId: string, result: FinancialModelResult): void {
+    dataFlowRouter.publishModuleData('M09', dealId, {
+      noi: result.summary.noiYear1,
+      irr: result.summary.irr,
+      coc_return: result.summary.cashOnCash?.[0] ?? null,
+      cash_flow_projections: result.annualCashFlow,
+      equity_multiple: result.summary.equityMultiple,
+      cap_rate: result.summary.purchaseCapRate,
+    });
+    logger.info('Financial model results published to data flow router', { dealId });
   }
 }
 
