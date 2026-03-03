@@ -123,59 +123,52 @@ function formatTimestamp(date: Date): string {
 }
 
 export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
-  // Stub data - would normally come from API
-  const [activities, setActivities] = useState<ActivityItem[]>([
-    {
-      id: '1',
-      dealId: deal.id,
-      type: 'deal_created',
-      description: `Deal created: ${deal.name}`,
-      userId: '1',
-      userName: 'Leon D',
-      timestamp: new Date(Date.now() - 86400000 * 5),
-      metadata: { dealName: deal.name }
-    },
-    {
-      id: '2',
-      dealId: deal.id,
-      type: 'boundary_defined',
-      description: `Boundary defined (${deal.acres} acres)`,
-      userId: '1',
-      userName: 'Leon D',
-      timestamp: new Date(Date.now() - 86400000 * 5 + 60000),
-      metadata: { acres: deal.acres }
-    },
-    {
-      id: '3',
-      dealId: deal.id,
-      type: 'property_added',
-      description: `Added ${deal.propertyCount} properties to deal`,
-      userId: 'ai',
-      userName: 'RocketMan (AI)',
-      timestamp: new Date(Date.now() - 86400000 * 5 + 1800000),
-      metadata: { count: deal.propertyCount }
-    },
-    {
-      id: '4',
-      dealId: deal.id,
-      type: 'document_uploaded',
-      description: 'Uploaded: Financial_Proforma.xlsx',
-      userId: '1',
-      userName: 'Leon D',
-      timestamp: new Date(Date.now() - 86400000 * 4),
-      metadata: { filename: 'Financial_Proforma.xlsx' }
-    },
-    {
-      id: '5',
-      dealId: deal.id,
-      type: 'analysis_run',
-      description: 'Ran market analysis',
-      userId: 'ai',
-      userName: 'RocketMan (AI)',
-      timestamp: new Date(Date.now() - 86400000 * 3),
-      metadata: {}
+  // API state
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch activity data from API
+  React.useEffect(() => {
+    const fetchActivity = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/v1/deals/${deal.id}/team/activity`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch activity data');
+        }
+
+        const data = await response.json();
+
+        // Transform API response to match component interface
+        const transformedActivities: ActivityItem[] = (data || []).map((activity: any) => ({
+          id: activity.id,
+          dealId: activity.deal_id,
+          type: activity.action || 'default',
+          description: activity.details?.description || activity.action || 'Activity',
+          userId: activity.actor_id || 'system',
+          userName: activity.actor_name || 'System',
+          timestamp: new Date(activity.created_at),
+          metadata: activity.details || {}
+        }));
+
+        setActivities(transformedActivities);
+      } catch (err) {
+        console.error('Error fetching activity:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load activity feed');
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchActivity();
     }
-  ]);
+  }, [deal.id]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
@@ -198,6 +191,32 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
     .slice(0, displayCount);
 
   const hasMore = filteredActivities.length < activities.length;
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading activity feed...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading activity feed</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

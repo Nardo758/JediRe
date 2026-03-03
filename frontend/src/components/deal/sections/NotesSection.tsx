@@ -5,20 +5,47 @@
  * Performance Mode: Property updates, maintenance notes, tenant issues
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  acquisitionNotes,
-  acquisitionCategories,
-  acquisitionStats,
-  performanceNotes,
-  performanceCategories,
-  performanceStats,
-  Note,
-  NoteCategory,
-  NoteStats
-} from '../../../data/notesMockData';
+
+// Type definitions
+interface Note {
+  id: string;
+  dealId: string;
+  author: string;
+  authorId: string;
+  authorAvatar: string;
+  title: string;
+  content: string;
+  type: string;
+  category: string;
+  priority?: string;
+  tags: string[];
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  mentions?: string[];
+  attachments?: number;
+}
+
+interface NoteCategory {
+  id: string;
+  label: string;
+  icon: string;
+  color: string;
+  count: number;
+}
+
+interface NoteStats {
+  label: string;
+  value: number | string;
+  icon: string;
+  trend?: {
+    direction: string;
+    value: string;
+  };
+}
 
 interface NotesSectionProps {
   deal: Deal;
@@ -27,10 +54,103 @@ interface NotesSectionProps {
 export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
 
-  // Select data based on mode
-  const notes = isPipeline ? acquisitionNotes : performanceNotes;
-  const categories = isPipeline ? acquisitionCategories : performanceCategories;
-  const stats = isPipeline ? acquisitionStats : performanceStats;
+  // API state
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch notes from API
+  useEffect(() => {
+    const fetchNotes = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/v1/deals/${deal.id}/notes`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch notes');
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          // Transform API response to match component interface
+          const transformedNotes: Note[] = (data.data || []).map((note: any) => ({
+            id: note.id,
+            dealId: note.deal_id,
+            author: note.author_name || 'Unknown',
+            authorId: note.author_id,
+            authorAvatar: (note.author_name || 'U').charAt(0).toUpperCase(),
+            title: note.title,
+            content: note.content,
+            type: note.type || 'note',
+            category: note.category || 'General',
+            priority: note.priority,
+            tags: note.tags || [],
+            isPinned: note.pinned || false,
+            createdAt: new Date(note.created_at).toLocaleDateString(),
+            updatedAt: note.updated_at ? new Date(note.updated_at).toLocaleDateString() : undefined,
+            mentions: note.mentions || [],
+            attachments: note.attachments_count || 0
+          }));
+
+          setNotes(transformedNotes);
+        } else {
+          setNotes([]);
+        }
+      } catch (err) {
+        console.error('Error fetching notes:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load notes');
+        setNotes([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchNotes();
+    }
+  }, [deal.id]);
+
+  // Calculate categories and stats from actual data
+  const categories: NoteCategory[] = useMemo(() => {
+    const categoryMap = new Map<string, number>();
+    notes.forEach(note => {
+      const cat = note.category || 'General';
+      categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+    });
+
+    const defaultCategories = isPipeline
+      ? [
+          { id: 'deal-notes', label: 'Deal Notes', icon: '📝', color: 'blue' },
+          { id: 'observations', label: 'Observations', icon: '👁️', color: 'purple' },
+          { id: 'follow-ups', label: 'Follow-Ups', icon: '⏰', color: 'orange' }
+        ]
+      : [
+          { id: 'property-updates', label: 'Property Updates', icon: '🔄', color: 'green' },
+          { id: 'maintenance-notes', label: 'Maintenance Notes', icon: '🔧', color: 'blue' },
+          { id: 'tenant-issues', label: 'Tenant Issues', icon: '👥', color: 'orange' }
+        ];
+
+    return defaultCategories.map(cat => ({
+      ...cat,
+      count: categoryMap.get(cat.label) || 0
+    }));
+  }, [notes, isPipeline]);
+
+  const stats: NoteStats[] = useMemo(() => {
+    const pinned = notes.filter(n => n.isPinned).length;
+    const highPriority = notes.filter(n => n.priority === 'high').length;
+    
+    return [
+      { label: 'Total Notes', value: notes.length, icon: '📝' },
+      { label: 'Pinned', value: pinned, icon: '📌' },
+      { label: 'High Priority', value: highPriority, icon: '🔴' },
+      { label: 'This Week', value: notes.length, icon: '📅' },
+      { label: 'Mentions', value: notes.reduce((sum, n) => sum + (n.mentions?.length || 0), 0), icon: '@' }
+    ];
+  }, [notes]);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,6 +172,32 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
     
     return matchesSearch && matchesCategory && matchesPinned;
   });
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading notes...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading notes</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

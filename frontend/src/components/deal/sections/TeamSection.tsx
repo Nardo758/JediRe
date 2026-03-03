@@ -5,30 +5,91 @@
  * - owned → Performance mode: Property team, vendors, escalations
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  acquisitionTeamMembers,
-  acquisitionCommunications,
-  acquisitionDecisions,
-  acquisitionActionItems,
-  acquisitionStats,
-  performanceTeamMembers,
-  performanceCommunications,
-  performanceDecisions,
-  performanceActionItems,
-  performanceStats,
-  performanceVendors,
-  performanceEscalations,
-  TeamMember,
-  Communication,
-  Decision,
-  ActionItem,
-  TeamStats,
-  Vendor,
-  Escalation
-} from '../../../data/teamMockData';
+
+// Type definitions
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  department: string;
+  avatar: string;
+  status: string;
+  contactPreference?: string;
+  responsibilities?: string[];
+}
+
+interface Communication {
+  id: string;
+  type: string;
+  subject: string;
+  summary: string;
+  participants: string[];
+  timestamp: string;
+  priority?: string;
+  hasAttachment: boolean;
+}
+
+interface Decision {
+  id: string;
+  title: string;
+  decision: string;
+  context: string;
+  impact: string;
+  madeBy: string;
+  date: string;
+}
+
+interface ActionItem {
+  id: string;
+  title: string;
+  description?: string;
+  category: string;
+  priority: string;
+  status: string;
+  dueDate: string;
+  assignedTo: string;
+}
+
+interface TeamStats {
+  label: string;
+  value: number | string;
+  icon: string;
+  subtext?: string;
+}
+
+interface Vendor {
+  id: string;
+  name: string;
+  category: string;
+  contact: string;
+  phone: string;
+  email: string;
+  status: string;
+  contract?: {
+    value: number;
+    start: string;
+    end: string;
+  };
+  rating?: number;
+  lastContact?: string;
+}
+
+interface Escalation {
+  id: string;
+  title: string;
+  description: string;
+  severity: string;
+  status: string;
+  reportedBy: string;
+  reportedDate: string;
+  assignedTo: string;
+  resolution?: string;
+}
 
 interface TeamSectionProps {
   deal: Deal;
@@ -37,12 +98,113 @@ interface TeamSectionProps {
 export const TeamSection: React.FC<TeamSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
 
-  // Select data based on mode
-  const teamMembers = isPipeline ? acquisitionTeamMembers : performanceTeamMembers;
-  const communications = isPipeline ? acquisitionCommunications : performanceCommunications;
-  const decisions = isPipeline ? acquisitionDecisions : performanceDecisions;
-  const actionItems = isPipeline ? acquisitionActionItems : performanceActionItems;
-  const stats = isPipeline ? acquisitionStats : performanceStats;
+  // API state
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch team data from API
+  useEffect(() => {
+    const fetchTeamData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch team members
+        const membersResponse = await fetch(`/api/v1/deals/${deal.id}/team/members`);
+        if (!membersResponse.ok) throw new Error('Failed to fetch team members');
+        const membersData = await membersResponse.json();
+
+        // Fetch tasks/action items
+        const tasksResponse = await fetch(`/api/v1/deals/${deal.id}/team/tasks`);
+        if (!tasksResponse.ok) throw new Error('Failed to fetch tasks');
+        const tasksData = await tasksResponse.json();
+
+        // Transform team members
+        const transformedMembers: TeamMember[] = (membersData || []).map((member: any) => ({
+          id: member.id,
+          name: member.name,
+          email: member.email || '',
+          phone: member.phone || '',
+          role: member.role || 'Member',
+          department: member.title || member.company || 'General',
+          avatar: (member.name || 'U').charAt(0).toUpperCase(),
+          status: member.status === 'active' ? 'online' : 'offline',
+          contactPreference: member.email ? 'email' : 'phone',
+          responsibilities: []
+        }));
+
+        // Transform action items
+        const transformedActionItems: ActionItem[] = (tasksData || []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          category: task.category || 'General',
+          priority: task.priority || 'medium',
+          status: task.status || 'open',
+          dueDate: task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No deadline',
+          assignedTo: task.assigned_to_name || 'Unassigned'
+        }));
+
+        setTeamMembers(transformedMembers);
+        setActionItems(transformedActionItems);
+      } catch (err) {
+        console.error('Error fetching team data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load team data');
+        setTeamMembers([]);
+        setActionItems([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchTeamData();
+    }
+  }, [deal.id]);
+
+  // Calculate stats from actual data
+  const stats: TeamStats[] = useMemo(() => [
+    { label: 'Team Members', value: teamMembers.length, icon: '👥' },
+    { label: 'Active Members', value: teamMembers.filter(m => m.status === 'online').length, icon: '🟢' },
+    { label: 'Open Tasks', value: actionItems.filter(a => a.status !== 'completed').length, icon: '📋' },
+    { label: 'Completed', value: actionItems.filter(a => a.status === 'completed').length, icon: '✅' },
+    { label: 'Overdue', value: actionItems.filter(a => a.status === 'overdue').length, icon: '🔴' }
+  ], [teamMembers, actionItems]);
+
+  // Mock data for communications, decisions, vendors, escalations
+  // TODO: Create backend endpoints for these
+  const communications: Communication[] = [];
+  const decisions: Decision[] = [];
+  const performanceVendors: Vendor[] = [];
+  const performanceEscalations: Escalation[] = [];
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading team data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading team data</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

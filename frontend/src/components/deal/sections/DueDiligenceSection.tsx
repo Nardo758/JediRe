@@ -5,20 +5,57 @@
  * - owned → Performance mode: Ongoing compliance, audits, remediation
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import {
-  acquisitionDDStats,
-  acquisitionChecklist,
-  acquisitionInspections,
-  performanceDDStats,
-  performanceChecklist,
-  performanceInspections,
-  DDChecklistItem,
-  DDInspection,
-  DDStat
-} from '../../../data/dueDiligenceMockData';
+
+// Type definitions
+interface DDChecklistItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: string;
+  status: string;
+  dueDate: string;
+  completedDate?: string;
+  assignee: string;
+  isCriticalPath: boolean;
+  redFlag?: {
+    severity: string;
+    description: string;
+    status: string;
+  };
+  notes?: string;
+  documents: Array<{
+    name: string;
+    url: string;
+    uploadedAt: string;
+  }>;
+}
+
+interface DDInspection {
+  id: string;
+  type: string;
+  status: string;
+  scheduledDate: string;
+  completedDate?: string;
+  inspector: string;
+  cost: number;
+  findings?: string[];
+  reportUrl?: string;
+}
+
+interface DDStat {
+  label: string;
+  value: number | string;
+  icon: string;
+  color?: string;
+  trend?: {
+    direction: string;
+    value: string;
+  };
+}
 
 interface DueDiligenceSectionProps {
   deal: Deal;
@@ -29,10 +66,88 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
-  // Select data based on mode
-  const stats = isPipeline ? acquisitionDDStats : performanceDDStats;
-  const checklist = isPipeline ? acquisitionChecklist : performanceChecklist;
-  const inspections = isPipeline ? acquisitionInspections : performanceInspections;
+  // API state
+  const [checklist, setChecklist] = useState<DDChecklistItem[]>([]);
+  const [inspections, setInspections] = useState<DDInspection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch DD data from API
+  useEffect(() => {
+    const fetchDDData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/v1/dd-checklists/${deal.id}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch due diligence data');
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          // Transform tasks to checklist items
+          const transformedChecklist: DDChecklistItem[] = (data.data.tasks || []).map((task: any) => ({
+            id: task.id,
+            title: task.title,
+            description: task.description || '',
+            category: task.category || 'general',
+            priority: task.priority || 'medium',
+            status: task.status || 'pending',
+            dueDate: task.due_date || new Date().toISOString().split('T')[0],
+            completedDate: task.completed_at,
+            assignee: task.assigned_to || 'Unassigned',
+            isCriticalPath: task.priority === 'critical',
+            redFlag: task.has_red_flag ? {
+              severity: task.priority === 'critical' ? 'high' : 'medium',
+              description: task.notes || 'Requires attention',
+              status: 'open'
+            } : undefined,
+            notes: task.notes,
+            documents: []
+          }));
+
+          setChecklist(transformedChecklist);
+          // TODO: Fetch inspections from separate endpoint if available
+          setInspections([]);
+        } else {
+          setChecklist([]);
+          setInspections([]);
+        }
+      } catch (err) {
+        console.error('Error fetching DD data:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load due diligence data');
+        setChecklist([]);
+        setInspections([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchDDData();
+    }
+  }, [deal.id]);
+
+  // Calculate stats from actual data
+  const stats: DDStat[] = useMemo(() => {
+    const total = checklist.length;
+    const completed = checklist.filter(item => item.status === 'complete').length;
+    const inProgress = checklist.filter(item => item.status === 'in-progress').length;
+    const blocked = checklist.filter(item => item.status === 'blocked').length;
+    const redFlags = checklist.filter(item => item.redFlag && item.redFlag.status === 'open').length;
+    const completionPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return [
+      { label: 'Completion', value: `${completionPct}%`, icon: '📊', color: completionPct > 75 ? 'green' : completionPct > 50 ? 'yellow' : 'orange' },
+      { label: 'Tasks', value: total, icon: '📋' },
+      { label: 'Completed', value: completed, icon: '✅' },
+      { label: 'In Progress', value: inProgress, icon: '🔄', color: 'blue' },
+      { label: 'Red Flags', value: redFlags, icon: '🚩', color: redFlags > 0 ? 'red' : undefined }
+    ];
+  }, [checklist]);
 
   // Filter checklist
   const filteredChecklist = useMemo(() => {
@@ -78,6 +193,32 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
   const criticalItems = useMemo(() => {
     return checklist.filter(item => item.isCriticalPath && item.status !== 'complete');
   }, [checklist]);
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading due diligence data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <p className="text-red-700 mb-2">⚠️ Error loading due diligence data</p>
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
