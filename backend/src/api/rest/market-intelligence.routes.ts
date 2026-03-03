@@ -46,7 +46,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // GET /api/v1/markets/preferences - Get user's tracked markets
   router.get('/preferences', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -68,7 +68,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // POST /api/v1/markets/preferences - Add market to tracking
   router.post('/preferences', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -110,7 +110,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // PUT /api/v1/markets/preferences/:id - Update market preference
   router.put('/preferences/:id', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -169,7 +169,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // DELETE /api/v1/markets/preferences/:id - Remove market from tracking
   router.delete('/preferences/:id', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -195,7 +195,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // GET /api/v1/markets/overview - Dashboard data for "My Markets"
   router.get('/overview', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -282,7 +282,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // GET /api/v1/markets/:marketId/summary - Single market card data
   router.get('/:marketId/summary', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -335,7 +335,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // GET /api/v1/markets/:marketId/alerts - Market-specific alerts
   router.get('/:marketId/alerts', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -375,7 +375,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
   // GET /api/v1/markets/compare - Multi-market comparison
   router.get('/compare', async (req, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
