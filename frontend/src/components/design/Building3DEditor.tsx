@@ -121,7 +121,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
     if (
       autoGenerate &&
       state.parcelBoundary &&
-      state.sections.length === 0 &&
+      (state.sections?.length ?? 0) === 0 &&
       !autoGenRef.current
     ) {
       autoGenRef.current = true;
@@ -157,7 +157,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         });
       }
     }
-  }, [autoGenerate, state.parcelBoundary, state.sections.length, targetUnits, generateFromUnitMix, onMetricsChange]);
+  }, [autoGenerate, state.parcelBoundary, state.sections?.length, targetUnits, generateFromUnitMix, onMetricsChange]);
 
   const scenarios = useDesign3DStore((s) => s.scenarios);
   const activeScenarioId = useDesign3DStore((s) => s.activeScenarioId);
@@ -374,7 +374,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
 const ParcelMesh: React.FC<{ parcel: ParcelBoundary }> = ({ parcel }) => {
   const shape = new THREE.Shape();
   
-  if (parcel.coordinates.length > 0) {
+  if (parcel.coordinates?.length > 0) {
     // Convert lat/lng to local x/z coordinates (simplified)
     const localCoords = parcel.coordinates.map((coord, i) => ({
       x: (coord.lng - parcel.coordinates[0].lng) * 364000, // ~111km per degree * 1000m * 3.28ft
@@ -445,9 +445,9 @@ const BuildingSectionMesh: React.FC<BuildingSectionMeshProps> = ({
   
   // Create shape from footprint
   const shape = new THREE.Shape();
-  const points = section.geometry.footprint.points;
+  const points = section.geometry?.footprint?.points;
   
-  if (points.length > 0) {
+  if (points?.length > 0) {
     shape.moveTo(points[0].x, points[0].z);
     points.slice(1).forEach((p) => shape.lineTo(p.x, p.z));
     shape.closePath();
