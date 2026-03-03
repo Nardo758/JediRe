@@ -23,7 +23,6 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { NotesSection } from '../components/deal/sections/NotesSection';
 import { TimelineSection } from '../components/deal/sections/TimelineSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
-import { ExitSection } from '../components/deal/sections/ExitSection';
 
 
 export const DealView: React.FC = () => {
@@ -240,8 +239,8 @@ export const DealView: React.FC = () => {
         );
       case 'exit':
         return (
-          <div className="p-6">
-            <ExitSection deal={deal} />
+          <div className="p-6 text-center text-[#64748b]">
+            <p className="text-sm">Exit strategy analysis has been integrated into the <strong>Debt, Equity & Exit</strong> module.</p>
           </div>
         );
       case 'context':

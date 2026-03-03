@@ -5,13 +5,12 @@ import {
   Building2,
   Target,
   ArrowRight,
-  ChevronDown,
-  ChevronUp,
   AlertTriangle,
   Lock,
   DollarSign,
   ShieldAlert,
-  Activity,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 
@@ -100,29 +99,11 @@ const SCENARIOS = [
 ];
 
 const MISMATCH_WARNINGS = [
-  { title: '7yr Fixed Agency', reason: 'Paying for 7 years of rate lock but exiting at 3.5 years. Yield maintenance penalty at exit would cost ~$420K.' },
-  { title: '3yr Bridge (no extension)', reason: 'If exit window shifts to Q1 2027, loan matures before sale. Forced refi at potentially higher rates.' },
-  { title: 'Floating Rate (no cap)', reason: 'If rates reverse course and rise 100bps, annual debt service increases $337K, compressing CoC by 3.7%.' },
+  { title: '7yr Fixed Agency', reason: 'Yield maintenance penalty ~$420K at 3.5yr exit' },
+  { title: '3yr Bridge (no ext)', reason: 'Loan matures before sale if window shifts to Q1 2027' },
+  { title: 'Floating Rate (no cap)', reason: '+100bps = +$337K debt service, -3.7% CoC' },
 ];
 
-const MONITOR_TRIGGERS = {
-  accelerate: [
-    'Rent growth exceeds 6% for 2 consecutive quarters',
-    '10yr Treasury drops below 3.50%',
-    'Competitor project delayed 6+ months',
-  ],
-  delay: [
-    'Rent growth turns negative before Q1 2026',
-    'Fed pauses rate cuts or reverses course',
-    'New 500+ unit project announced in submarket',
-  ],
-};
-
-const fmtM = (v: number): string => {
-  if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
-  if (v >= 1000) return `$${(v / 1000).toFixed(0)}K`;
-  return `$${v.toFixed(0)}`;
-};
 
 export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
   deal,
@@ -136,17 +117,9 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
   const capitalStructure = capitalStructureProp || ctx.capitalStructure;
 
   const [selectedScenario, setSelectedScenario] = useState(1);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    whyStructure: false,
-    mismatch: false,
-    monitor: false,
-  });
+  const [whyExpanded, setWhyExpanded] = useState(false);
 
   const sel = SCENARIOS[selectedScenario];
-
-  const toggleSection = (key: string) => {
-    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
-  };
 
   const chartW = 900;
   const chartH = 320;
@@ -467,7 +440,7 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
         <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
           Exit Scenarios
         </h3>
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-3 gap-3">
           {SCENARIOS.map((s, i) => {
             const isSelected = selectedScenario === i;
             const borderColor = s.color === 'amber' ? 'border-amber-400' : s.color === 'emerald' ? 'border-emerald-400' : 'border-red-400';
@@ -494,61 +467,7 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
             );
           })}
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-[#f8fafc] rounded-lg border border-[#e2e8f0] p-4">
-            <div className="text-[11px] font-bold text-[#64748b] uppercase tracking-wider mb-3">
-              Financial Outcome
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricBlock label="Exit Cap Rate" value={`${sel.exitCap}%`} />
-              <MetricBlock label="Gross Value" value={fmtM(sel.grossValue)} />
-              <MetricBlock label="Net Proceeds" value={fmtM(sel.netProceeds)} highlight />
-              <MetricBlock
-                label="Prepay Penalty"
-                value={sel.prepayPenalty ? fmtM(sel.prepayPenalty) : 'None'}
-                good={!sel.prepayPenalty}
-              />
-            </div>
-            <div className="flex gap-3 mt-4">
-              <div className="flex-1 rounded-lg p-3 text-center" style={{ backgroundColor: `${sel.colorHex}10` }}>
-                <div className="text-2xl font-extrabold" style={{ color: sel.colorHex }}>{sel.irr}%</div>
-                <div className="text-[11px] text-[#64748b]">IRR</div>
-              </div>
-              <div className="flex-1 rounded-lg p-3 text-center" style={{ backgroundColor: `${sel.colorHex}10` }}>
-                <div className="text-2xl font-extrabold" style={{ color: sel.colorHex }}>{sel.multiple}x</div>
-                <div className="text-[11px] text-[#64748b]">Equity Multiple</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#f8fafc] rounded-lg border border-[#e2e8f0] p-4">
-            <div className="text-[11px] font-bold text-[#64748b] uppercase tracking-wider mb-3">
-              Capital Structure Implication
-            </div>
-            <div className="mb-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Lock className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-[12px] font-bold text-blue-600">DEBT MATCH</span>
-              </div>
-              <p className="text-[13px] text-[#334155] leading-relaxed">{sel.debtMatch}</p>
-            </div>
-            <div className="mb-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <DollarSign className="w-3.5 h-3.5 text-purple-500" />
-                <span className="text-[12px] font-bold text-purple-600">EQUITY IMPACT</span>
-              </div>
-              <p className="text-[13px] text-[#334155] leading-relaxed">{sel.equityNote}</p>
-            </div>
-            <div className="rounded-lg p-3 border" style={{ backgroundColor: `${sel.colorHex}08`, borderColor: `${sel.colorHex}30` }}>
-              <div className="flex items-center gap-1.5 mb-1">
-                <AlertTriangle className="w-3 h-3" style={{ color: sel.colorHex }} />
-                <span className="text-[11px] font-bold" style={{ color: sel.colorHex }}>KEY RISK</span>
-              </div>
-              <p className="text-[12px] text-[#475569] leading-relaxed">{sel.risk}</p>
-            </div>
-          </div>
-        </div>
+        <p className="text-[11px] text-[#94a3b8] mt-3">See Exit Windows tab for detailed year-by-year analysis</p>
       </div>
 
       <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
@@ -568,42 +487,28 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
-          Capital Stack Summary
-        </h3>
-        <div className="flex rounded-lg overflow-hidden h-10 border border-[#e2e8f0]">
-          <div className="bg-blue-500 flex items-center justify-center text-white text-xs font-semibold" style={{ width: '65%' }}>
-            Senior Debt 65%
+      {MISMATCH_WARNINGS.length > 0 && (
+        <div className="bg-red-50 rounded-lg border border-red-200 px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0" />
+            <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider">Structure Mismatches</span>
           </div>
-          <div className="bg-purple-500 flex items-center justify-center text-white text-xs font-semibold" style={{ width: '28%' }}>
-            LP Equity 28%
-          </div>
-          <div className="bg-emerald-500 flex items-center justify-center text-white text-xs font-semibold" style={{ width: '7%' }}>
-            GP 7%
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-4 mt-3">
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[#0f172a]">$18.5M</div>
-            <div className="text-[11px] text-[#64748b]">5yr Fixed, 4.25%</div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[#0f172a]">$8.0M</div>
-            <div className="text-[11px] text-[#64748b]">20% Pref, 80/20 split</div>
-          </div>
-          <div className="text-center">
-            <div className="text-sm font-semibold text-[#0f172a]">$2.0M</div>
-            <div className="text-[11px] text-[#64748b]">Co-invest + promote</div>
+          <div className="space-y-1">
+            {MISMATCH_WARNINGS.map((w, i) => (
+              <div key={i} className="flex items-baseline gap-2">
+                <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
+                <span className="text-[12px] text-red-700"><strong>{w.title}:</strong> {w.reason}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
 
       <CollapsibleSection
         title="Why This Structure"
         icon={<Lock className="w-4 h-4 text-blue-500" />}
-        expanded={expandedSections.whyStructure}
-        onToggle={() => toggleSection('whyStructure')}
+        expanded={whyExpanded}
+        onToggle={() => setWhyExpanded(!whyExpanded)}
       >
         <div className="space-y-3">
           <ReasonRow
@@ -621,58 +526,6 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
             title="65% LTV (conservative)"
             reason="Lower leverage preserves DSCR cushion during value-add phase. Can refinance into higher LTV agency product once stabilized if hold is extended."
           />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Mismatch Warnings"
-        icon={<ShieldAlert className="w-4 h-4 text-red-500" />}
-        expanded={expandedSections.mismatch}
-        onToggle={() => toggleSection('mismatch')}
-        accentColor="red"
-      >
-        <div className="space-y-3">
-          {MISMATCH_WARNINGS.map((w, i) => (
-            <div key={i} className="flex items-start gap-3 bg-red-50 rounded-lg p-3 border border-red-100">
-              <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-semibold text-red-700">{w.title}</div>
-                <div className="text-[12px] text-red-600 mt-0.5 leading-relaxed">{w.reason}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Monitoring Triggers"
-        icon={<Activity className="w-4 h-4 text-blue-500" />}
-        expanded={expandedSections.monitor}
-        onToggle={() => toggleSection('monitor')}
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-2">
-              Accelerate Exit If...
-            </div>
-            {MONITOR_TRIGGERS.accelerate.map((t, i) => (
-              <div key={i} className="flex items-start gap-2 mb-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
-                <span className="text-[13px] text-[#334155]">{t}</span>
-              </div>
-            ))}
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-red-600 uppercase tracking-wider mb-2">
-              Delay Exit If...
-            </div>
-            {MONITOR_TRIGGERS.delay.map((t, i) => (
-              <div key={i} className="flex items-start gap-2 mb-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
-                <span className="text-[13px] text-[#334155]">{t}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </CollapsibleSection>
     </div>
@@ -705,22 +558,6 @@ const FactorCard: React.FC<{
         Score: <span className="font-semibold text-[#0f172a]">{Math.round(score)}</span>/100
       </div>
       {sparkline}
-    </div>
-  </div>
-);
-
-const MetricBlock: React.FC<{
-  label: string;
-  value: string;
-  highlight?: boolean;
-  good?: boolean;
-}> = ({ label, value, highlight, good }) => (
-  <div>
-    <div className="text-[11px] text-[#64748b]">{label}</div>
-    <div className={`text-base font-bold ${
-      highlight ? 'text-emerald-600' : good ? 'text-emerald-600' : 'text-[#0f172a]'
-    }`}>
-      {value}
     </div>
   </div>
 );

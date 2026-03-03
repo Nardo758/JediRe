@@ -15,7 +15,6 @@ export { DebtSection } from './DebtSection.legacy';
 export { CapitalStructureSection } from './CapitalStructureSection';
 export { CompetitionSection } from './CompetitionSection';
 export { DueDiligenceSection } from './DueDiligenceSection';
-export { ExitSection } from './ExitSection';
 export { AIAgentSection } from './AIAgentSection';
 export { NotesSection } from './NotesSection';
 export { MarketSection } from './MarketSection';

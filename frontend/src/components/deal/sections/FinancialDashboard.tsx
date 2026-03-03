@@ -739,14 +739,6 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
         </ul>
       </div>
       <div className="slbl">EXIT READINESS</div>
-      <div className="dc">
-        <h4>&#x25CE; Three-Factor Convergence</h4>
-        <ul>
-          <li><span style={{ color: '#16a34a' }}>&#x25CF;</span><span><strong>Rent Growth: {((model.revenue?.rentGrowthY1 || 0.04) * 100).toFixed(1)}%</strong> &mdash; {(model.revenue?.rentGrowthY1 || 0) >= 0.04 ? 'Strong organic growth supports higher exit valuation' : 'Moderate growth — exit timing depends on other factors'}.</span></li>
-          <li><span style={{ color: '#3b82f6' }}>&#x25CF;</span><span><strong>Interest Rates: ~4.15% (10yr)</strong> &mdash; Declining trajectory favors near-term exit as buyer leverage improves.</span></li>
-          <li><span style={{ color: '#d97706' }}>&#x25CF;</span><span><strong>Supply Pipeline: ~200 units/qtr</strong> &mdash; Below-average delivery supports occupancy and rent growth.</span></li>
-        </ul>
-      </div>
       <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
