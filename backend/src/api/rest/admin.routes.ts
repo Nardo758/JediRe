@@ -1,10 +1,30 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { query, transaction } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
 
 const router = Router();
+
+const requireAdminAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const apiKey = req.headers['x-api-key'] as string
+    || req.query.api_key as string
+    || (req.headers.authorization?.startsWith('Bearer ') && req.headers.authorization.slice(7));
+
+  const configuredKey = process.env.API_KEY_ADMIN;
+  if (configuredKey && apiKey === configuredKey) {
+    req.user = { userId: 'admin-api-key', email: 'admin@api', role: 'admin' };
+    return next();
+  }
+
+  requireAuth(req, res, (err?: any) => {
+    if (err) return next(err);
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  });
+};
 
 const requireAdmin = (req: AuthenticatedRequest, res: Response, next: any) => {
   if (!req.user || req.user.role !== 'admin') {
@@ -44,7 +64,7 @@ function createJob(type: string): IngestionJob {
   return job;
 }
 
-router.post('/ingest/zoning-districts', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ingest/zoning-districts', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = createJob('zoning-districts');
   job.status = 'running';
   job.logs.push('Starting zoning district ingestion...');
@@ -82,7 +102,7 @@ router.post('/ingest/zoning-districts', requireAuth, requireAdmin, async (req: A
   }
 });
 
-router.post('/ingest/atlanta-benchmarks', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ingest/atlanta-benchmarks', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = createJob('atlanta-benchmarks');
   job.status = 'running';
   job.logs.push('Starting Atlanta benchmark ingestion...');
@@ -95,8 +115,8 @@ router.post('/ingest/atlanta-benchmarks', requireAuth, requireAdmin, async (req:
 
     const deals = await query(`
       SELECT d.id, d.name, d.address, d.city, d.state,
-        ds.max_units, ds.max_gba, ds.max_stories, ds.entitlement_type,
-        ds.total_entitlement_days, ds.parking_required
+        ds.max_units, ds.max_gba, ds.max_stories, ds.binding_constraint,
+        ds.parking_required
       FROM deals d
       LEFT JOIN development_scenarios ds ON ds.deal_id = d.id AND ds.is_active = true
       WHERE LOWER(d.city) = 'atlanta' OR LOWER(d.state) IN ('ga', 'georgia')
@@ -123,10 +143,10 @@ router.post('/ingest/atlanta-benchmarks', requireAuth, requireAdmin, async (req:
         }
 
         await query(`
-          INSERT INTO benchmark_projects (county, state, project_name, project_type, unit_count, stories, entitlement_type, total_entitlement_days, confidence)
-          VALUES ($1, $2, $3, 'multifamily', $4, $5, $6, $7, 0.7)
+          INSERT INTO benchmark_projects (county, state, project_name, project_type, unit_count, stories, entitlement_type, confidence)
+          VALUES ($1, $2, $3, 'multifamily', $4, $5, $6, 0.7)
           ON CONFLICT DO NOTHING
-        `, ['Fulton', 'GA', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.entitlement_type || 'by_right', deal.total_entitlement_days || 0]);
+        `, ['Fulton', 'GA', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.binding_constraint || 'by_right']);
 
         job.logs.push(`Added benchmark: ${deal.name}`);
         job.recordsProcessed++;
@@ -146,7 +166,7 @@ router.post('/ingest/atlanta-benchmarks', requireAuth, requireAdmin, async (req:
   }
 });
 
-router.post('/ingest/florida-benchmarks', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ingest/florida-benchmarks', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = createJob('florida-benchmarks');
   job.status = 'running';
   job.logs.push('Starting Florida benchmark ingestion...');
@@ -159,8 +179,8 @@ router.post('/ingest/florida-benchmarks', requireAuth, requireAdmin, async (req:
 
     const deals = await query(`
       SELECT d.id, d.name, d.address, d.city, d.state,
-        ds.max_units, ds.max_gba, ds.max_stories, ds.entitlement_type,
-        ds.total_entitlement_days, ds.parking_required
+        ds.max_units, ds.max_gba, ds.max_stories, ds.binding_constraint,
+        ds.parking_required
       FROM deals d
       LEFT JOIN development_scenarios ds ON ds.deal_id = d.id AND ds.is_active = true
       WHERE LOWER(d.state) IN ('fl', 'florida')
@@ -187,10 +207,10 @@ router.post('/ingest/florida-benchmarks', requireAuth, requireAdmin, async (req:
         }
 
         await query(`
-          INSERT INTO benchmark_projects (county, state, project_name, project_type, unit_count, stories, entitlement_type, total_entitlement_days, confidence)
-          VALUES ($1, $2, $3, 'multifamily', $4, $5, $6, $7, 0.7)
+          INSERT INTO benchmark_projects (county, state, project_name, project_type, unit_count, stories, entitlement_type, confidence)
+          VALUES ($1, $2, $3, 'multifamily', $4, $5, $6, 0.7)
           ON CONFLICT DO NOTHING
-        `, [deal.city || 'Unknown', 'FL', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.entitlement_type || 'by_right', deal.total_entitlement_days || 0]);
+        `, [deal.city || 'Unknown', 'FL', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.binding_constraint || 'by_right']);
 
         job.logs.push(`Added benchmark: ${deal.name}`);
         job.recordsProcessed++;
@@ -210,7 +230,7 @@ router.post('/ingest/florida-benchmarks', requireAuth, requireAdmin, async (req:
   }
 });
 
-router.post('/ingest/map-properties-to-zoning', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ingest/map-properties-to-zoning', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = createJob('map-properties-to-zoning');
   job.status = 'running';
   job.logs.push('Starting property-to-zoning mapping...');
@@ -267,7 +287,7 @@ router.post('/ingest/map-properties-to-zoning', requireAuth, requireAdmin, async
   }
 });
 
-router.post('/ingest/full', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const jobId = `full-${++jobCounter}`;
   const job: IngestionJob = {
     id: jobId,
@@ -425,7 +445,7 @@ router.post('/ingest/full', requireAuth, requireAdmin, async (req: Authenticated
   })();
 });
 
-router.get('/ingest/status', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/ingest/status', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const jobs = Array.from(activeJobs.values())
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .slice(0, 20);
@@ -445,7 +465,7 @@ router.get('/ingest/status', requireAuth, requireAdmin, async (req: Authenticate
   });
 });
 
-router.get('/system/health', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/system/health', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const dbHealth = await query(`
       SELECT
@@ -482,7 +502,7 @@ router.get('/system/health', requireAuth, requireAdmin, async (req: Authenticate
   }
 });
 
-router.get('/system/stats', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/system/stats', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const stats = await query(`
       SELECT
@@ -507,9 +527,9 @@ router.get('/system/stats', requireAuth, requireAdmin, async (req: Authenticated
     `);
 
     const scenariosByType = await query(`
-      SELECT entitlement_type, count(*) as cnt, count(*) FILTER (WHERE is_active = true) as active
+      SELECT binding_constraint as type, count(*) as cnt, count(*) FILTER (WHERE is_active = true) as active
       FROM development_scenarios
-      GROUP BY entitlement_type
+      GROUP BY binding_constraint
       ORDER BY cnt DESC
     `);
 
@@ -527,7 +547,7 @@ router.get('/system/stats', requireAuth, requireAdmin, async (req: Authenticated
   }
 });
 
-router.get('/system/logs', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/system/logs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
 
@@ -559,7 +579,7 @@ router.get('/system/logs', requireAuth, requireAdmin, async (req: AuthenticatedR
   }
 });
 
-router.get('/data/municipalities', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/data/municipalities', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`
       SELECT m.id, m.name, m.state, m.has_api, m.api_type, m.api_url,
@@ -574,7 +594,7 @@ router.get('/data/municipalities', requireAuth, requireAdmin, async (req: Authen
   }
 });
 
-router.get('/data/zoning-coverage', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/data/zoning-coverage', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const total = await query(`SELECT count(*) as cnt FROM properties`);
     const withZoning = await query(`SELECT count(*) as cnt FROM property_zoning_cache`);
@@ -602,7 +622,7 @@ router.get('/data/zoning-coverage', requireAuth, requireAdmin, async (req: Authe
   }
 });
 
-router.get('/data/benchmark-stats', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/data/benchmark-stats', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const total = await query(`SELECT count(*) as cnt FROM benchmark_projects`);
 
@@ -635,7 +655,7 @@ router.get('/data/benchmark-stats', requireAuth, requireAdmin, async (req: Authe
   }
 });
 
-router.post('/data/refresh-cache', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/data/refresh-cache', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const cleared: Record<string, number> = {};
 
@@ -658,7 +678,7 @@ router.post('/data/refresh-cache', requireAuth, requireAdmin, async (req: Authen
   }
 });
 
-router.get('/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/users', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -697,7 +717,7 @@ router.get('/users', requireAuth, requireAdmin, async (req: AuthenticatedRequest
   }
 });
 
-router.get('/users/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/users/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userResult = await query(`
       SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at
@@ -730,7 +750,7 @@ router.get('/users/:id', requireAuth, requireAdmin, async (req: AuthenticatedReq
   }
 });
 
-router.post('/users/:id/suspend', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/users/:id/suspend', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userResult = await query(`SELECT id, is_active FROM users WHERE id = $1`, [req.params.id]);
     if (userResult.rows.length === 0) {
@@ -751,7 +771,7 @@ router.post('/users/:id/suspend', requireAuth, requireAdmin, async (req: Authent
   }
 });
 
-router.delete('/users/:id', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/users/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userResult = await query(`SELECT id, email FROM users WHERE id = $1`, [req.params.id]);
     if (userResult.rows.length === 0) {
@@ -774,7 +794,7 @@ router.delete('/users/:id', requireAuth, requireAdmin, async (req: Authenticated
   }
 });
 
-router.get('/deals', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/deals', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
@@ -822,7 +842,7 @@ router.get('/deals', requireAuth, requireAdmin, async (req: AuthenticatedRequest
   }
 });
 
-router.get('/deals/:id/audit', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/deals/:id/audit', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const deal = await query(`SELECT id, name, address, city, state, created_at, updated_at FROM deals WHERE id = $1`, [req.params.id]);
     if (deal.rows.length === 0) {
@@ -830,7 +850,7 @@ router.get('/deals/:id/audit', requireAuth, requireAdmin, async (req: Authentica
     }
 
     const scenarios = await query(`
-      SELECT id, name, entitlement_type, is_active, max_units, max_gba, max_stories, created_at, updated_at
+      SELECT id, name, binding_constraint, is_active, max_units, max_gba, max_stories, created_at, updated_at
       FROM development_scenarios WHERE deal_id = $1 ORDER BY updated_at DESC
     `, [req.params.id]);
 
@@ -862,7 +882,7 @@ router.get('/deals/:id/audit', requireAuth, requireAdmin, async (req: Authentica
   }
 });
 
-router.post('/deals/:id/fix', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/deals/:id/fix', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const deal = await query(`SELECT id, name FROM deals WHERE id = $1`, [req.params.id]);
     if (deal.rows.length === 0) {
@@ -897,7 +917,7 @@ router.post('/deals/:id/fix', requireAuth, requireAdmin, async (req: Authenticat
   }
 });
 
-router.delete('/deals/:id/force', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/deals/:id/force', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const deal = await query(`SELECT id, name FROM deals WHERE id = $1`, [req.params.id]);
     if (deal.rows.length === 0) {
@@ -937,7 +957,7 @@ router.delete('/deals/:id/force', requireAuth, requireAdmin, async (req: Authent
   }
 });
 
-router.get('/quality/missing-zoning', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/quality/missing-zoning', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
 
@@ -968,7 +988,7 @@ router.get('/quality/missing-zoning', requireAuth, requireAdmin, async (req: Aut
   }
 });
 
-router.get('/quality/invalid-boundaries', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/quality/invalid-boundaries', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const noBoundary = await query(`
       SELECT d.id, d.name, d.address, d.city, d.state
@@ -995,7 +1015,7 @@ router.get('/quality/invalid-boundaries', requireAuth, requireAdmin, async (req:
   }
 });
 
-router.get('/quality/orphaned-data', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/quality/orphaned-data', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const orphanedScenarios = await query(`
       SELECT count(*) as cnt FROM development_scenarios ds
@@ -1031,7 +1051,7 @@ router.get('/quality/orphaned-data', requireAuth, requireAdmin, async (req: Auth
   }
 });
 
-router.post('/quality/auto-fix', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/quality/auto-fix', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const fixes: Record<string, number> = {};
 
@@ -1064,7 +1084,7 @@ router.post('/quality/auto-fix', requireAuth, requireAdmin, async (req: Authenti
   }
 });
 
-router.get('/integrations/apartment-locator-ai', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/integrations/apartment-locator-ai', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const baseUrl = process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app';
   const apiKey = process.env.APARTMENT_LOCATOR_API_KEY;
 
@@ -1109,7 +1129,7 @@ router.get('/integrations/apartment-locator-ai', requireAuth, requireAdmin, asyn
   }
 });
 
-router.get('/integrations/apis', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/integrations/apis', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const munis = await query(`
       SELECT name, state, has_api, api_type, api_url, total_zoning_districts, last_scraped_at
@@ -1132,7 +1152,7 @@ router.get('/integrations/apis', requireAuth, requireAdmin, async (req: Authenti
   }
 });
 
-router.post('/integrations/test', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/integrations/test', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const results: Record<string, any> = {};
 
   try {
@@ -1160,7 +1180,7 @@ router.post('/integrations/test', requireAuth, requireAdmin, async (req: Authent
   res.json({ success: true, integrations: results });
 });
 
-router.get('/jobs', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/jobs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const status = req.query.status as string;
   let jobs = Array.from(activeJobs.values());
 
@@ -1186,7 +1206,7 @@ router.get('/jobs', requireAuth, requireAdmin, async (req: AuthenticatedRequest,
   });
 });
 
-router.post('/jobs/:id/cancel', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/jobs/:id/cancel', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = activeJobs.get(req.params.id);
   if (!job) {
     return res.status(404).json({ success: false, error: 'Job not found' });
@@ -1203,7 +1223,7 @@ router.post('/jobs/:id/cancel', requireAuth, requireAdmin, async (req: Authentic
   res.json({ success: true, message: `Job ${job.id} cancelled` });
 });
 
-router.get('/jobs/:id/logs', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/jobs/:id/logs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const job = activeJobs.get(req.params.id);
   if (!job) {
     return res.status(404).json({ success: false, error: 'Job not found' });
