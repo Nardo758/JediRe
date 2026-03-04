@@ -184,6 +184,19 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
 
+    // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
+    // Fire async (don't block response)
+    if (boundary && (boundary.type === 'Point' || boundary.type === 'Polygon')) {
+      setImmediate(async () => {
+        try {
+          const { m26m27Integration } = await import('../services/module-wiring/m26-m27-integration');
+          await m26m27Integration.triggerCompSetOnLocationSet(row.id);
+        } catch (error) {
+          console.error('M27 auto-trigger error:', error);
+        }
+      });
+    }
+
     res.status(201).json({
       success: true,
       deal: {
@@ -216,13 +229,16 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
     const updates = req.body;
 
     const dealCheck = await client.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      'SELECT id, budget, target_units FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
       [dealId, req.user!.userId]
     );
 
     if (dealCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
+
+    const previousDeal = dealCheck.rows[0];
+    const priceChanged = updates.budget !== undefined && updates.budget !== previousDeal.budget;
 
     const allowedFields: Record<string, string> = {
       name: 'name', projectType: 'project_type', project_type: 'project_type',
@@ -249,6 +265,28 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
       `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
+
+    // M26 AUTO-TRIGGER: Recalculate tax projection when purchase price changes
+    if (priceChanged) {
+      const newPrice = updates.budget;
+      const units = updates.targetUnits || previousDeal.target_units;
+      
+      if (newPrice && units) {
+        // Fire async (don't block response)
+        setImmediate(async () => {
+          try {
+            const { m26m27Integration } = await import('../services/module-wiring/m26-m27-integration');
+            await m26m27Integration.triggerTaxProjectionOnPriceChange(
+              dealId,
+              newPrice,
+              units
+            );
+          } catch (error) {
+            console.error('M26 auto-trigger error:', error);
+          }
+        });
+      }
+    }
 
     res.json({ success: true, deal: result.rows[0] });
   } catch (error) {
