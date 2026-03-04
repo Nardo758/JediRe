@@ -1022,19 +1022,6 @@ app.patch('/api/v1/inbox/:id', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 // ============================================
-// Apartment Locator AI Integration
-// ============================================
-import { initializeApartmentLocatorIntegration } from './services/apartmentLocatorIntegration';
-import { ApartmentDataSyncService } from './services/apartmentDataSync';
-
-initializeApartmentLocatorIntegration({
-  baseUrl: process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app',
-  timeout: 30000,
-  apiKey: process.env.APARTMENT_LOCATOR_API_KEY || process.env.API_KEY_APARTMENT_LOCATOR,
-});
-
-const apartmentSyncService = new ApartmentDataSyncService(pool);
-
 // ============================================
 // News Intelligence Endpoints
 // ============================================
