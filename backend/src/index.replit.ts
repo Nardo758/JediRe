@@ -78,6 +78,7 @@ import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import proformaRouter from './api/rest/proforma.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
+import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import municodeRouter from './api/rest/municode.routes';
@@ -155,6 +156,7 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+<<<<<<< HEAD
 
 // Admin routes MUST be registered before generic /api/v1 routes
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
@@ -162,6 +164,10 @@ app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 import adminRouter from './api/rest/admin.routes';
 app.use('/api/v1/admin', adminRouter);
 
+=======
+// Admin API (API Key Auth) - must be before generic /api/v1 routes
+app.use('/api/v1/admin-api', adminApiKeyRouter);
+>>>>>>> 3d0d809884075126f03ced9d9e8d65383c683f20
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
