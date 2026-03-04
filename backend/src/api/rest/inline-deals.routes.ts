@@ -610,4 +610,91 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
+/**
+ * GET /deals/:dealId/trade-area
+ * Get trade area for a specific deal
+ */
+router.get('/:dealId/trade-area', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    const result = await client.query(
+      `SELECT ta.id, ta.name, ta.metadata,
+              ST_AsGeoJSON(ta.boundary)::json as geometry,
+              ta.created_at, ta.updated_at
+       FROM trade_areas ta
+       INNER JOIN deals d ON d.trade_area_id = ta.id
+       WHERE d.id = $1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No trade area assigned to this deal'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error: any) {
+    console.error('Error fetching deal trade area:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch trade area'
+    });
+  }
+});
+
+/**
+ * GET /deals/:dealId/zoning-analysis
+ * Get zoning analysis for a deal (alias to zoning-capacity)
+ */
+router.get('/:dealId/zoning-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Fetch zoning capacity data
+    const result = await client.query(
+      `SELECT zoning_code, max_density, max_far, max_height_feet, max_stories 
+       FROM zoning_capacity 
+       WHERE deal_id = $1 
+       LIMIT 1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          dealId,
+          message: 'No zoning data available yet. Run zoning capacity analysis first.',
+          hasData: false
+        }
+      });
+    }
+    
+    const zoningData = result.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        dealId,
+        hasData: true,
+        zoning: zoningData
+      }
+    });
+  } catch (error: any) {
+    console.error('Error fetching zoning analysis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch zoning analysis'
+    });
+  }
+});
+
 export default router;

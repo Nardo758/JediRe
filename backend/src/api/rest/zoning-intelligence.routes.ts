@@ -15,6 +15,35 @@ export function createZoningIntelligenceRoutes(pool: Pool): Router {
   const pipeline = new ZoningApplicationPipeline(pool, knowledgeService, reasoningService);
   const boundaryResolver = new PropertyBoundaryResolver(pool);
 
+  /**
+   * GET /api/v1/zoning-intelligence
+   * Get available zoning intelligence features
+   */
+  router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          features: [
+            'Natural language zoning queries',
+            'Automatic deal-based analysis',
+            'Multi-scenario capacity modeling',
+            'Regulatory constraint extraction'
+          ],
+          endpoints: {
+            query: 'POST /api/v1/zoning-intelligence/query',
+            analyze: 'POST /api/v1/zoning-intelligence/analyze',
+            scenarios: 'POST /api/v1/zoning-intelligence/scenarios',
+            learn: 'POST /api/v1/zoning-intelligence/learn'
+          }
+        }
+      });
+    } catch (error: any) {
+      console.error('Error fetching zoning intelligence info:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   router.post('/query', async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { question, districtCode, municipality, state, parcelContext, dealId } = req.body;
