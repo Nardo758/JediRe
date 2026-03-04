@@ -41,13 +41,13 @@ args = "JediRe"
 name = "JediRe"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "./start.sh"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [userenv]
 
