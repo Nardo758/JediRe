@@ -151,10 +151,9 @@ interface SubmarketData {
 
 class CompetitionService {
   private async fetchSubmarkets(): Promise<SubmarketData[]> {
-    const response = await api.get('/apartment-sync/submarkets', {
-      params: { city: 'Atlanta' },
-    });
-    return response.data.submarkets || response.data || [];
+    // Apartment sync endpoint removed - returning empty array
+    // TODO: Replace with alternative data source
+    return [];
   }
 
   private mapSubmarketsToCompetitors(submarkets: SubmarketData[], filters: CompetitionFilters): CompetitorProperty[] {

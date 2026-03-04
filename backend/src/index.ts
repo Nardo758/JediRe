@@ -12,7 +12,6 @@ import path from 'path';
 import { requireAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
-import { apartmentSyncScheduler } from './services/apartment-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
@@ -31,11 +30,7 @@ import dealsRouter from './api/rest/inline-deals.routes';
 import tasksRouter from './api/rest/inline-tasks.routes';
 import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
-import { createApartmentSyncRoutes } from './api/rest/inline-apartment-sync.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
-
-import { initializeApartmentLocatorIntegration } from './services/apartmentLocatorIntegration';
-import { ApartmentDataSyncService } from './services/apartmentDataSync';
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
@@ -51,10 +46,8 @@ import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
 import gmailRouter from './api/rest/gmail.routes';
 import marketResearchRoutes from './api/rest/marketResearch.routes';
-import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
-import marketIntelRoutes from './api/rest/marketIntel.routes';
 import leasingTrafficRoutes from './api/rest/leasing-traffic.routes';
 import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
@@ -166,15 +159,6 @@ app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/inbox', inboxRouter);
 app.use('/api/v1', zoningAnalyzeRouter);
 
-initializeApartmentLocatorIntegration({
-  baseUrl: process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app',
-  timeout: 30000,
-  apiKey: process.env.APARTMENT_LOCATOR_API_KEY || process.env.API_KEY_APARTMENT_LOCATOR,
-});
-
-const apartmentSyncService = new ApartmentDataSyncService(pool);
-app.use('/api/v1/apartment-sync', createApartmentSyncRoutes(apartmentSyncService));
-
 app.use('/api/v1/f40', f40PerformanceRoutes);
 app.use('/api/v1/opportunities', opportunityEngineRoutes);
 
@@ -216,8 +200,6 @@ app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
 app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
 app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
-app.use('/api/v1/apartment-market', requireAuth, apartmentMarketRoutes);
-app.use('/api/v1/market-intel', requireAuth, marketIntelRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
 app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
@@ -353,14 +335,6 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
-
-  try {
-    apartmentSyncScheduler.initialize(apartmentSyncService);
-    apartmentSyncScheduler.start();
-    console.log('Apartment data sync scheduler started (weekly: Saturday 9:00 AM EST)');
-  } catch (error) {
-    console.error('Failed to start apartment sync scheduler:', error);
-  }
 });
 
 process.on('SIGTERM', async () => {
@@ -371,13 +345,6 @@ process.on('SIGTERM', async () => {
     console.log('Email sync scheduler stopped');
   } catch (error) {
     console.error('Error stopping email sync scheduler:', error);
-  }
-
-  try {
-    apartmentSyncScheduler.stop();
-    console.log('Apartment sync scheduler stopped');
-  } catch (error) {
-    console.error('Error stopping apartment sync scheduler:', error);
   }
   
   await pool.end();
