@@ -160,6 +160,72 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const recsAbortRef = useRef<AbortController | null>(null);
   const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
   const [selectedColKey, setSelectedColKey] = useState<string | null>(null);
+  const syncedRecsRef = useRef<string | null>(null);
+
+  const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
+    if (!dealId || !recs || recs.length === 0) return;
+
+    const syncKey = recs.map(r => `${r.name}:${r.maxUnits}:${r.maxGba}`).join('|');
+    if (syncedRecsRef.current === syncKey) return;
+    syncedRecsRef.current = syncKey;
+
+    console.log('🔄 Syncing recommendations to database...', recs.map(r => r.name));
+
+    try {
+      let existingNames: string[] = [];
+      try {
+        const existing = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+        existingNames = (existing.data?.scenarios || existing.data || []).map((s: any) => s.name);
+      } catch {}
+
+      const recNameMap: Record<string, string> = {
+        'By Right': 'by_right',
+        'Variance': 'variance',
+        'Rezone': 'rezone'
+      };
+
+      for (const rec of recs) {
+        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+
+        if (existingNames.includes(scenarioName)) continue;
+
+        const units = rec.maxUnits || 0;
+        const gba = rec.maxGba || 0;
+        const stories = rec.maxStories || 1;
+        const parking = rec.parkingRequired || 0;
+        const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+
+        const scenarioData = {
+          name: scenarioName,
+          is_active: false,
+          use_mix: { residential_pct: 100 },
+          avg_unit_size_sf: units > 0 ? Math.round(gba / units) : 0,
+          efficiency_factor: 0.85,
+          max_gba: gba,
+          max_footprint: footprint,
+          net_leasable_sf: Math.round(gba * 0.85),
+          parking_required: parking,
+          max_stories: stories,
+          max_units: units,
+          applied_far: rec.appliedFar || null,
+          binding_constraint: rec.bindingConstraint || null
+        };
+
+        try {
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status !== 409 && status !== 422) {
+            console.warn(`Failed to create ${scenarioName} scenario:`, err);
+          }
+        }
+      }
+
+      console.log('✅ Sync complete, scenarios loaded');
+    } catch (error) {
+      console.error('Failed to sync recommendations to database:', error);
+    }
+  }, [dealId]);
 
   const handleSelectPath = useCallback((colKey: string, rec: any) => {
     setSelectedColKey(colKey);
@@ -237,7 +303,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
           if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
           const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
-          setRecommendations(recsRes.data.recommendations || []);
+          const recs = recsRes.data.recommendations || [];
+          setRecommendations(recs);
+          if (recs.length > 0) {
+            syncRecommendationsToDatabase(recs).catch(err => {
+              console.warn('Failed to sync recommendations:', err);
+            });
+          }
           setComparison(recsRes.data.comparison || null);
         } catch (err) {
           if (!isCancelled(err)) {
@@ -303,7 +375,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
         if (avgUnitSize !== 900) params.avg_unit_size_sf = avgUnitSize;
         const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
-        setRecommendations(recsRes.data.recommendations || []);
+        const recs = recsRes.data.recommendations || [];
+        setRecommendations(recs);
+        if (recs.length > 0) {
+          syncRecommendationsToDatabase(recs).catch(err => {
+            console.warn('Failed to sync recommendations:', err);
+          });
+        }
         setComparison(recsRes.data.comparison || null);
       } catch (err) {
         if (!isCancelled(err)) {
