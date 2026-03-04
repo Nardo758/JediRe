@@ -101,7 +101,7 @@ LAYER 4: PRESENTATION
 | M15 Competition | Competitive set data | `{ competitive_projects[], distance, price_tier, delivery }` | On supply event |
 | M25 JEDI Score | Supply sub-score input (F03) | `{ supply_score }` | On supply event |
 
-**Receives from:** Permit databases, M19 (classified supply news), apartments.com scraper, user input
+**Receives from:** Permit databases, M19 (classified supply news), user input
 
 ---
 
@@ -118,7 +118,7 @@ LAYER 4: PRESENTATION
 | M15 Competition | Rent comp data | `{ comp_rents[], comp_vacancy[], amenity_sets[] }` | Weekly |
 | M25 JEDI Score | Momentum + Position inputs (F04, F05) | `{ momentum_score, position_score }` | Monthly |
 
-**Receives from:** Apartments.com scraper, RentCast API, Census/ACS, BLS employment, M02 (zoning context), M04 (supply pressure)
+**Receives from:** RentCast API, Census/ACS, BLS employment, M02 (zoning context), M04 (supply pressure)
 
 ---
 
