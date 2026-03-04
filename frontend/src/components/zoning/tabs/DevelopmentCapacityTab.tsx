@@ -467,7 +467,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     );
   }
 
-  if (!profile && !hasExistingData) return null;
+  if (!profile && !hasExistingData && !loading && !loadingRecs) return null;
 
   const isConditionalVariant = profile?.base_district_code?.match(/-[A-Z]{1,2}$/);
   const hasSplitFAR = profile?.residential_far != null || profile?.nonresidential_far != null;
