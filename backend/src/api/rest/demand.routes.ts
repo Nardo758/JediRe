@@ -20,6 +20,58 @@ const router = Router();
 router.use(authenticateToken);
 
 /**
+ * GET /api/v1/deals/:dealId/demand
+ * Get demand forecast for a specific deal (based on its trade area)
+ */
+router.get('/deals/:dealId/demand', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { start_quarter, end_quarter } = req.query;
+    
+    // Get deal's trade area
+    const dealResult = await query(
+      `SELECT trade_area_id FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deal not found'
+      });
+    }
+    
+    const tradeAreaId = dealResult.rows[0].trade_area_id;
+    
+    if (!tradeAreaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Deal does not have a trade area assigned'
+      });
+    }
+    
+    const forecast = await demandSignalService.getTradeAreaForecast(
+      tradeAreaId,
+      start_quarter as string,
+      end_quarter as string
+    );
+    
+    return res.json({
+      success: true,
+      dealId,
+      tradeAreaId,
+      data: forecast
+    });
+  } catch (error: any) {
+    console.error('Error fetching deal demand forecast:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error'
+    });
+  }
+});
+
+/**
  * GET /api/v1/demand/trade-area/:id
  * Get demand forecast for a trade area
  * Query params: start_quarter, end_quarter

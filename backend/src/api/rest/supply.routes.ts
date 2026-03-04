@@ -11,6 +11,61 @@ import { logger } from '../../utils/logger';
 const router = Router();
 
 /**
+ * GET /api/v1/deals/:dealId/supply
+ * Get supply data for a specific deal (based on its trade area)
+ */
+router.get('/deals/:dealId/supply', async (req, res) => {
+  try {
+    const { dealId } = req.params;
+    
+    // Get deal's trade area
+    const { getClient } = require('../../database/connection');
+    const client = await getClient();
+    
+    try {
+      const dealResult = await client.query(
+        `SELECT trade_area_id FROM deals WHERE id = $1`,
+        [dealId]
+      );
+      
+      if (dealResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Deal not found'
+        });
+      }
+      
+      const tradeAreaId = dealResult.rows[0].trade_area_id;
+      
+      if (!tradeAreaId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Deal does not have a trade area assigned'
+        });
+      }
+      
+      // Get supply pipeline for this trade area
+      const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
+      
+      res.json({
+        success: true,
+        dealId,
+        tradeAreaId,
+        data: pipeline
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error: any) {
+    logger.error('Error getting deal supply data', { error: error.message, dealId: req.params.dealId });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/v1/supply/trade-area/:id
  * Get supply pipeline for a trade area
  */
