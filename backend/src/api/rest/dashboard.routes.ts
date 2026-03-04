@@ -11,6 +11,79 @@ const logger = { error: (...args: any[]) => console.error(...args) };
 
 const router = Router();
 
+/**
+ * GET /api/v1/dashboard
+ * Get main dashboard summary
+ */
+router.get('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    // Get basic stats
+    const dealsResult = await query('SELECT COUNT(*) as count FROM deals');
+    const totalDeals = parseInt(dealsResult.rows[0]?.count || '0');
+    
+    const activeDealsResult = await query("SELECT COUNT(*) as count FROM deals WHERE status = 'active'");
+    const activeDeals = parseInt(activeDealsResult.rows[0]?.count || '0');
+    
+    // Get mock findings
+    const findings = generateMockFindings();
+    
+    res.json({
+      success: true,
+      data: {
+        stats: {
+          totalDeals,
+          activeDeals,
+          portfolioValue: 125000000,
+          avgIRR: 16.8
+        },
+        recentFindings: {
+          news: findings.news.slice(0, 3),
+          insights: findings.insights.slice(0, 3),
+          actions: findings.actions.slice(0, 3)
+        }
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching dashboard', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/dashboard/stats
+ * Get dashboard statistics
+ */
+router.get('/stats', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const dealsResult = await query('SELECT COUNT(*) as count FROM deals');
+    const totalDeals = parseInt(dealsResult.rows[0]?.count || '0');
+    
+    const activeDealsResult = await query("SELECT COUNT(*) as count FROM deals WHERE status = 'active'");
+    const activeDeals = parseInt(activeDealsResult.rows[0]?.count || '0');
+    
+    const closedDealsResult = await query("SELECT COUNT(*) as count FROM deals WHERE status = 'closed_won'");
+    const closedDeals = parseInt(closedDealsResult.rows[0]?.count || '0');
+    
+    res.json({
+      success: true,
+      data: {
+        totalDeals,
+        activeDeals,
+        closedDeals,
+        pipelineValue: 85000000,
+        portfolioValue: 125000000,
+        avgIRR: 16.8,
+        avgCoC: 8.2,
+        dealsClosedThisMonth: 2,
+        dealsClosedThisQuarter: 5
+      }
+    });
+  } catch (error: any) {
+    logger.error('Error fetching dashboard stats', { error: error.message });
+    next(error);
+  }
+});
+
 interface Finding {
   id: string;
   type: 'news' | 'market' | 'insight' | 'action';

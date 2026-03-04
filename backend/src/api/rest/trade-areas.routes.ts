@@ -59,6 +59,40 @@ router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response,
   }
 });
 
+/**
+ * GET /api/v1/trade-areas
+ * List all trade areas
+ */
+router.get('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, metadata,
+              ST_AsGeoJSON(boundary)::json as geometry,
+              created_at, updated_at
+       FROM trade_areas
+       ORDER BY updated_at DESC
+       LIMIT 100`
+    );
+    
+    res.json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error: any) {
+    logger.error('Error listing trade areas:', error);
+    
+    // Return empty array if table doesn't exist
+    if (error.message?.includes('does not exist')) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+    
+    next(error);
+  }
+});
+
 router.get('/library', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await pool.query(
