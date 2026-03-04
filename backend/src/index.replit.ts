@@ -78,6 +78,7 @@ import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
 import proformaRouter from './api/rest/proforma.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
+import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import municodeRouter from './api/rest/municode.routes';
@@ -174,6 +175,9 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+
+// Admin API (API Key Auth)
+app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 // Data Tracker - public admin stats (no auth required)
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
