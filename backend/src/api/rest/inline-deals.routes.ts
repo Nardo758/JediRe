@@ -346,8 +346,10 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'competition', is_enabled: true, config: {} },
       { module_name: 'supply', is_enabled: true, config: {} },
       { module_name: 'market', is_enabled: true, config: {} },
-      { module_name: 'debt', is_enabled: true, config: {} },
+      { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
+      { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
       { module_name: 'financial', is_enabled: true, config: {} },
+      { module_name: 'debt', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
       { module_name: 'due-diligence', is_enabled: true, config: {} },
       { module_name: 'team', is_enabled: true, config: {} },
@@ -363,8 +365,10 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'map', is_enabled: true, config: {} },
       { module_name: 'overview', is_enabled: true, config: {} },
       { module_name: 'ai-agent', is_enabled: true, config: {} },
-      { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'market', is_enabled: true, config: {} },
+      { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
+      { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
+      { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
       { module_name: 'exit', is_enabled: true, config: {} },
       { module_name: 'team', is_enabled: true, config: {} },
