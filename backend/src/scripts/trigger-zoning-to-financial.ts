@@ -13,6 +13,14 @@ const pool = getPool();
 const DEAL_ID = process.argv[2] || 'e044db04-439b-4442-82df-b36a840f2fd8';
 const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
+if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY.includes('DUMMY') || ANTHROPIC_API_KEY.length < 10) {
+  console.error('ERROR: No valid Anthropic API key found.');
+  console.error('Set one of these environment variables:');
+  console.error('  - AI_INTEGRATIONS_ANTHROPIC_API_KEY');
+  console.error('  - CLAUDE_API_KEY');
+  process.exit(1);
+}
+
 interface ZoningData {
   code: string;
   name?: string;
@@ -48,8 +56,10 @@ async function analyzeZoningCapacity(dealId: string, zoningData: ZoningData) {
     return;
   }
   
-  // Use Claude to interpret the zoning code
+  const lotAcres = zoningData.lot_acres || 3.59;
+
   const prompt = `Analyze zoning code ${zoningData.code} (${zoningData.name || 'Mixed Use'}) in ${zoningData.municipality}, ${zoningData.state}.
+The site is ${lotAcres} acres.
 
 Provide development capacity in this JSON format:
 {
@@ -57,11 +67,12 @@ Provide development capacity in this JSON format:
   "max_far": <floor area ratio>,
   "max_height_feet": <feet>,
   "max_stories": <number>,
-  "min_setback_front": <feet>,
-  "min_setback_side": <feet>,
-  "min_setback_rear": <feet>,
-  "parking_ratio": <spaces per unit>,
-  "allowed_uses": ["multifamily", "commercial", "retail"]
+  "min_parking_per_unit": <spaces per unit>,
+  "coverage_ratio": <lot coverage as decimal 0-1>,
+  "limiting_factor": "<what limits density: height, FAR, parking, or density cap>",
+  "unit_mix": "<recommended mix e.g. 60% 1BR, 30% 2BR, 10% 3BR>",
+  "avg_rent_per_unit": <monthly rent estimate>,
+  "zoning_notes": "<any special conditions, overlay zones, or restrictions>"
 }
 
 Be realistic based on typical ${zoningData.code} regulations.`;
@@ -82,43 +93,72 @@ Be realistic based on typical ${zoningData.code} regulations.`;
         }
       }
     );
-    
+
     const content = response.data.content[0].text;
     const jsonMatch = content.match(/\{[\s\S]*\}/);
-    
+
     if (!jsonMatch) {
       throw new Error('Could not parse JSON from Claude response');
     }
-    
+
     const capacity = JSON.parse(jsonMatch[0]);
-    
-    // Insert into zoning_capacity table
+
+    const maxUnitsByRight = Math.round((capacity.max_density || 50) * lotAcres);
+    const maxUnitsWithIncentives = Math.round(maxUnitsByRight * 1.15);
+    const buildableSqFt = Math.round(lotAcres * 43560 * (capacity.coverage_ratio || 0.75));
+    const avgRent = capacity.avg_rent_per_unit || 1800;
+    const annualRevenue = Math.round(maxUnitsByRight * avgRent * 12 * 0.95);
+    const proFormaNoi = Math.round(annualRevenue * 0.60);
+    const estimatedValue = Math.round(proFormaNoi / 0.055);
+
     await pool.query(
       `INSERT INTO zoning_capacity (
-        deal_id, zoning_code, max_density, max_far, max_height_feet, 
-        max_stories, min_setback_front, min_setback_side, min_setback_rear,
-        parking_ratio, allowed_uses
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        deal_id, zoning_code, base_zoning, max_density, max_far, max_height_feet,
+        max_stories, min_parking_per_unit, coverage_ratio, limiting_factor,
+        max_units_by_right, max_units_with_incentives, buildable_sq_ft,
+        unit_mix, avg_rent_per_unit, annual_revenue, pro_forma_noi,
+        estimated_value, zoning_notes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      ON CONFLICT (deal_id) DO UPDATE SET
+        zoning_code = EXCLUDED.zoning_code, max_density = EXCLUDED.max_density,
+        max_far = EXCLUDED.max_far, max_height_feet = EXCLUDED.max_height_feet,
+        max_stories = EXCLUDED.max_stories, min_parking_per_unit = EXCLUDED.min_parking_per_unit,
+        coverage_ratio = EXCLUDED.coverage_ratio, limiting_factor = EXCLUDED.limiting_factor,
+        max_units_by_right = EXCLUDED.max_units_by_right, max_units_with_incentives = EXCLUDED.max_units_with_incentives,
+        buildable_sq_ft = EXCLUDED.buildable_sq_ft, unit_mix = EXCLUDED.unit_mix,
+        avg_rent_per_unit = EXCLUDED.avg_rent_per_unit, annual_revenue = EXCLUDED.annual_revenue,
+        pro_forma_noi = EXCLUDED.pro_forma_noi, estimated_value = EXCLUDED.estimated_value,
+        zoning_notes = EXCLUDED.zoning_notes, updated_at = NOW()`,
       [
         dealId,
+        zoningData.code,
         zoningData.code,
         capacity.max_density,
         capacity.max_far,
         capacity.max_height_feet,
         capacity.max_stories,
-        capacity.min_setback_front || 10,
-        capacity.min_setback_side || 5,
-        capacity.min_setback_rear || 15,
-        capacity.parking_ratio || 1.5,
-        JSON.stringify(capacity.allowed_uses || ['multifamily'])
+        capacity.min_parking_per_unit || 1.5,
+        capacity.coverage_ratio || 0.75,
+        capacity.limiting_factor || 'density',
+        maxUnitsByRight,
+        maxUnitsWithIncentives,
+        buildableSqFt,
+        JSON.stringify(capacity.unit_mix || '60% 1BR, 30% 2BR, 10% 3BR'),
+        avgRent,
+        annualRevenue,
+        proFormaNoi,
+        estimatedValue,
+        capacity.zoning_notes || ''
       ]
     );
-    
+
     console.log('   ✅ Zoning capacity analyzed and saved');
     console.log('   📊 Max density:', capacity.max_density, 'units/acre');
     console.log('   📊 Max FAR:', capacity.max_far);
-    console.log('   📊 Max height:', capacity.max_height_feet, 'feet');
-    
+    console.log('   📊 Max height:', capacity.max_height_feet, 'feet /', capacity.max_stories, 'stories');
+    console.log('   📊 Max units by right:', maxUnitsByRight);
+    console.log('   📊 Estimated value:', '$' + estimatedValue.toLocaleString());
+
   } catch (error: any) {
     console.error('   ❌ Error:', error.message);
     throw error;
@@ -141,7 +181,7 @@ async function generateStrategy(dealId: string) {
   
   // Get deal and capacity data
   const dealResult = await pool.query(
-    `SELECT d.*, zc.max_density, zc.max_far, zc.allowed_uses
+    `SELECT d.*, zc.max_density, zc.max_far, zc.max_units_by_right, zc.unit_mix
      FROM deals d
      LEFT JOIN zoning_capacity zc ON zc.deal_id = d.id
      WHERE d.id = $1::uuid`,
@@ -193,7 +233,7 @@ async function generateFinancialModel(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM deal_financial_models WHERE deal_id = $1::uuid AND status = 'complete' LIMIT 1`,
+    `SELECT id FROM deal_financial_models WHERE deal_id = $1::text AND status = 'complete' LIMIT 1`,
     [dealId]
   );
   
@@ -266,7 +306,7 @@ async function generateTrafficProjections(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM traffic_projections WHERE deal_id = $1::uuid::uuid LIMIT 1`,
+    `SELECT id FROM traffic_projections WHERE deal_id = $1 LIMIT 1`,
     [dealId]
   );
   
@@ -279,8 +319,8 @@ async function generateTrafficProjections(dealId: string) {
   const dealResult = await pool.query(
     `SELECT d.*, fm.assumptions
      FROM deals d
-     LEFT JOIN deal_financial_models fm ON fm.deal_id = d.id
-     WHERE d.id = $1::uuid::uuid
+     LEFT JOIN deal_financial_models fm ON fm.deal_id = d.id::text
+     WHERE d.id = $1
      ORDER BY fm.created_at DESC
      LIMIT 1`,
     [dealId]
@@ -301,11 +341,30 @@ async function generateTrafficProjections(dealId: string) {
     effective_rent_trajectory: Array(12).fill(1800)
   };
   
+  const propertyResult = await pool.query(
+    `SELECT p.id FROM properties p
+     JOIN deals d ON d.address ILIKE '%' || p.city || '%' OR p.address_line1 ILIKE '%' || d.address || '%'
+     WHERE d.id = $1
+     LIMIT 1`,
+    [dealId]
+  );
+  let propertyId = propertyResult.rows[0]?.id;
+  if (!propertyId) {
+    const fallback = await pool.query(`SELECT id FROM properties LIMIT 1`);
+    propertyId = fallback.rows[0]?.id;
+  }
+  if (!propertyId) {
+    console.log('   ⚠️ No properties found, skipping traffic projections');
+    return;
+  }
+
   await pool.query(
     `INSERT INTO traffic_projections (
-      deal_id, total_units, year1_summary, occupancy_trajectory, effective_rent_trajectory
-    ) VALUES ($1, $2, $3, $4, $5)`,
+      property_id, deal_id, projection_date, horizon_months,
+      total_units, year1_summary, occupancy_trajectory, effective_rent_trajectory
+    ) VALUES ($1, $2, CURRENT_DATE, 12, $3, $4, $5, $6)`,
     [
+      propertyId,
       dealId,
       projection.total_units,
       JSON.stringify(projection.year1_summary),

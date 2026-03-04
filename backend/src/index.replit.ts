@@ -104,8 +104,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
-const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+  : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://localhost:4000', 'http://0.0.0.0:4000', 'http://localhost:3000'];
+const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/, /\.repl\.co(:\d+)?$/];
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
@@ -156,8 +156,14 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
-// Admin API (API Key Auth) - must be before generic /api/v1 routes
+
+// Admin routes MUST be registered before generic /api/v1 routes
+import dataTrackerRoutes from './api/rest/data-tracker.routes';
+app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+import adminRouter from './api/rest/admin.routes';
+app.use('/api/v1/admin', adminRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
+
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
@@ -177,10 +183,6 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
-
-// Data Tracker - public admin stats (no auth required)
-import dataTrackerRoutes from './api/rest/data-tracker.routes';
-app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
