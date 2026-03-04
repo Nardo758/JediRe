@@ -40,6 +40,8 @@ import { ScenarioEnvelopeMesh } from './ScenarioEnvelopeMesh';
 import { ScenarioSelectorPanel } from './ScenarioSelectorPanel';
 import { DesignReferencePanel } from './DesignReferencePanel';
 import { ViewportOverlay } from './ViewportOverlay';
+import { BuildingGeneratorPanel } from './BuildingGeneratorPanel';
+import { SectionEditorPanel } from './SectionEditorPanel';
 
 // ============================================================================
 // Main Component
@@ -91,21 +93,35 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
 
   const [showReferencePanel, setShowReferencePanel] = useState(false);
   const [pinnedOverlay, setPinnedOverlay] = useState<{ url: string; name: string } | null>(null);
+  const [showGeneratorPanel, setShowGeneratorPanel] = useState(false);
+  const [showEditorPanel, setShowEditorPanel] = useState(false);
   
   // File input ref for image upload
   const imageInputRef = useRef<HTMLInputElement>(null);
+  
+  // Get selected section for editor
+  const selectedSection = state.buildingSections.find(s => s.id === state.selectedSectionId);
   
   // ============================================================================
   // Event Handlers
   // ============================================================================
   
-  const handleAddSimpleBuilding = useCallback(() => {
-    if (!state.parcelBoundary) {
-      alert('Please set a parcel boundary first');
-      return;
+  const handleOpenGenerator = useCallback(() => {
+    setShowGeneratorPanel(true);
+  }, []);
+  
+  const handleGenerateBuilding = useCallback((sections: BuildingSection[]) => {
+    sections.forEach(section => actions.addBuildingSection(section));
+  }, [actions]);
+  
+  // Auto-open editor when section is selected
+  React.useEffect(() => {
+    if (state.selectedSectionId && !showEditorPanel) {
+      setShowEditorPanel(true);
+    } else if (!state.selectedSectionId && showEditorPanel) {
+      setShowEditorPanel(false);
     }
-    generateSimpleBuilding(state.parcelBoundary, 100);
-  }, [state.parcelBoundary, generateSimpleBuilding]);
+  }, [state.selectedSectionId, showEditorPanel]);
   
   /**
    * AI IMAGE-TO-3D HOOK (Placeholder for Phase 2 Qwen Integration)
@@ -344,7 +360,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       
       {/* Toolbar */}
       <Toolbar
-        onAddBuilding={handleAddSimpleBuilding}
+        onAddBuilding={handleOpenGenerator}
         onAIGenerate={handleAIGenerate}
         onImageUpload={() => imageInputRef.current?.click()}
         onToggleGrid={actions.toggleGrid}
@@ -362,6 +378,28 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         loading={loading}
         hasUnsavedChanges={hasUnsavedChanges}
       />
+      
+      {/* Building Generator Panel */}
+      {showGeneratorPanel && (
+        <BuildingGeneratorPanel
+          parcelBoundary={state.parcelBoundary}
+          onGenerate={handleGenerateBuilding}
+          onClose={() => setShowGeneratorPanel(false)}
+        />
+      )}
+      
+      {/* Section Editor Panel */}
+      {showEditorPanel && selectedSection && (
+        <SectionEditorPanel
+          section={selectedSection}
+          onUpdate={actions.updateBuildingSection}
+          onDelete={actions.removeBuildingSection}
+          onClose={() => {
+            actions.selectSection(null);
+            setShowEditorPanel(false);
+          }}
+        />
+      )}
       
       {/* View Settings */}
       <ViewSettings
@@ -702,8 +740,8 @@ const Toolbar: React.FC<ToolbarProps> = ({
       
       <div className="w-px h-6 bg-gray-600" />
       
-      <ToolbarButton onClick={onAddBuilding} title="Add Simple Building">
-        ➕ Add
+      <ToolbarButton onClick={onAddBuilding} title="Generate Building">
+        🏗️ Generate
       </ToolbarButton>
       
       <div className="w-px h-6 bg-gray-600" />
