@@ -156,6 +156,8 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+// Admin API (API Key Auth) - must be before generic /api/v1 routes
+app.use('/api/v1/admin-api', adminApiKeyRouter);
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
@@ -175,9 +177,6 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
-
-// Admin API (API Key Auth)
-app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 // Data Tracker - public admin stats (no auth required)
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
