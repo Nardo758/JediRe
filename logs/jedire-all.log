@@ -1,0 +1,50 @@
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 1: Pulling 100+ unit tax parcels...","service":"jedire-api","timestamp":"2026-03-04T15:50:46.421Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 1028 parcels with 100+ units","service":"jedire-api","timestamp":"2026-03-04T15:50:48.639Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 2: Fetching rezoning cases (last 5 years)...","service":"jedire-api","timestamp":"2026-03-04T15:50:48.640Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 459 rezoning cases","service":"jedire-api","timestamp":"2026-03-04T15:50:50.537Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 3: Fetching SUPs...","service":"jedire-api","timestamp":"2026-03-04T15:50:50.537Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 592 SUP records","service":"jedire-api","timestamp":"2026-03-04T15:50:50.652Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 4: Fetching admin permits...","service":"jedire-api","timestamp":"2026-03-04T15:50:50.653Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 1553 admin permit records","service":"jedire-api","timestamp":"2026-03-04T15:50:50.846Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 5: Spatial-matching parcels to rezonings...","service":"jedire-api","timestamp":"2026-03-04T15:50:50.847Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Spatial match: 1028 parcels, 458 valid rezonings (of 459 total)","service":"jedire-api","timestamp":"2026-03-04T15:50:50.848Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Parcels with centroids: 1028, matches found: 9","service":"jedire-api","timestamp":"2026-03-04T15:50:50.937Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Matched 9 parcels to rezoning cases","service":"jedire-api","timestamp":"2026-03-04T15:50:50.937Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 6: Upserting benchmark records...","service":"jedire-api","timestamp":"2026-03-04T15:50:50.937Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-065: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.941Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-24-011: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.942Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-04-079: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.943Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-22-071: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.946Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-20-031: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.947Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-06-028: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.947Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-07-090: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.948Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-035: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.949Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-23-069: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.950Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.951Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.952Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Complete. Upserted 0 records.","service":"jedire-api","timestamp":"2026-03-04T15:50:50.955Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 1: Pulling 100+ unit tax parcels...","service":"jedire-api","timestamp":"2026-03-04T17:17:11.151Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 1028 parcels with 100+ units","service":"jedire-api","timestamp":"2026-03-04T17:17:15.969Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 2: Fetching rezoning cases (last 5 years)...","service":"jedire-api","timestamp":"2026-03-04T17:17:15.970Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 459 rezoning cases","service":"jedire-api","timestamp":"2026-03-04T17:17:18.415Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 3: Fetching SUPs...","service":"jedire-api","timestamp":"2026-03-04T17:17:18.415Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 592 SUP records","service":"jedire-api","timestamp":"2026-03-04T17:17:18.494Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 4: Fetching admin permits...","service":"jedire-api","timestamp":"2026-03-04T17:17:18.495Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Found 1553 admin permit records","service":"jedire-api","timestamp":"2026-03-04T17:17:18.761Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 5: Spatial-matching parcels to rezonings...","service":"jedire-api","timestamp":"2026-03-04T17:17:18.762Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Spatial match: 1028 parcels, 458 valid rezonings (of 459 total)","service":"jedire-api","timestamp":"2026-03-04T17:17:18.762Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Parcels with centroids: 1028, matches found: 9","service":"jedire-api","timestamp":"2026-03-04T17:17:18.850Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Matched 9 parcels to rezoning cases","service":"jedire-api","timestamp":"2026-03-04T17:17:18.850Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Step 6: Upserting benchmark records...","service":"jedire-api","timestamp":"2026-03-04T17:17:18.850Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-065: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:28.856Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-24-011: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:39.657Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-04-079: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:49.665Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-22-071: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:59.671Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-20-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:09.684Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-06-028: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:20.558Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-07-090: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:30.561Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-035: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:40.570Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-23-069: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:51.395Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:01.408Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:11.420Z"}
+{"environment":"development","level":"info","message":"[AtlantaIngestion] Complete. Upserted 0 records.","service":"jedire-api","timestamp":"2026-03-04T17:20:13.255Z"}
