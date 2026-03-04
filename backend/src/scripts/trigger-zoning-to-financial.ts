@@ -233,7 +233,7 @@ async function generateFinancialModel(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM deal_financial_models WHERE deal_id = $1::uuid AND status = 'complete' LIMIT 1`,
+    `SELECT id FROM deal_financial_models WHERE deal_id = $1::text AND status = 'complete' LIMIT 1`,
     [dealId]
   );
   
@@ -306,7 +306,7 @@ async function generateTrafficProjections(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM traffic_projections WHERE deal_id = $1::uuid::uuid LIMIT 1`,
+    `SELECT id FROM traffic_projections WHERE deal_id = $1 LIMIT 1`,
     [dealId]
   );
   
@@ -319,8 +319,8 @@ async function generateTrafficProjections(dealId: string) {
   const dealResult = await pool.query(
     `SELECT d.*, fm.assumptions
      FROM deals d
-     LEFT JOIN deal_financial_models fm ON fm.deal_id = d.id
-     WHERE d.id = $1::uuid::uuid
+     LEFT JOIN deal_financial_models fm ON fm.deal_id = d.id::text
+     WHERE d.id = $1
      ORDER BY fm.created_at DESC
      LIMIT 1`,
     [dealId]
@@ -341,11 +341,30 @@ async function generateTrafficProjections(dealId: string) {
     effective_rent_trajectory: Array(12).fill(1800)
   };
   
+  const propertyResult = await pool.query(
+    `SELECT p.id FROM properties p
+     JOIN deals d ON d.address ILIKE '%' || p.city || '%' OR p.address_line1 ILIKE '%' || d.address || '%'
+     WHERE d.id = $1
+     LIMIT 1`,
+    [dealId]
+  );
+  let propertyId = propertyResult.rows[0]?.id;
+  if (!propertyId) {
+    const fallback = await pool.query(`SELECT id FROM properties LIMIT 1`);
+    propertyId = fallback.rows[0]?.id;
+  }
+  if (!propertyId) {
+    console.log('   ⚠️ No properties found, skipping traffic projections');
+    return;
+  }
+
   await pool.query(
     `INSERT INTO traffic_projections (
-      deal_id, total_units, year1_summary, occupancy_trajectory, effective_rent_trajectory
-    ) VALUES ($1, $2, $3, $4, $5)`,
+      property_id, deal_id, projection_date, horizon_months,
+      total_units, year1_summary, occupancy_trajectory, effective_rent_trajectory
+    ) VALUES ($1, $2, CURRENT_DATE, 12, $3, $4, $5, $6)`,
     [
+      propertyId,
       dealId,
       projection.total_units,
       JSON.stringify(projection.year1_summary),
