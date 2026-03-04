@@ -132,7 +132,7 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
 }
 
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
-  const { development_path, selectDevelopmentPath } = useZoningModuleStore();
+  const { development_path, selected_path_data, selectDevelopmentPath } = useZoningModuleStore();
   const { updateActiveScenario, emitEvent } = useDealModule();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
@@ -161,7 +161,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const initialLoadDone = useRef(false);
   const recsAbortRef = useRef<AbortController | null>(null);
   const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
-  const [selectedColKey, setSelectedColKey] = useState<string | null>(null);
+  const [selectedColKey, setSelectedColKey] = useState<string | null>(selected_path_data?.colKey ?? null);
   const syncedRecsRef = useRef<string | null>(null);
 
   const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
@@ -1186,44 +1186,44 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </tbody>
                 </table>
               </div>
-              {comparison?.aiSummary && (
-                <div className="px-5 py-3 border-t border-gray-100 bg-blue-50/30">
-                  <div className="flex items-start gap-2">
-                    <span className="text-blue-500 mt-0.5 flex-shrink-0">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </span>
-                    <p className="text-[11px] text-gray-700 leading-relaxed">{comparison.aiSummary}</p>
-                  </div>
-                </div>
-              )}
-              {development_path && (
-                <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
-                  <div className="flex items-center gap-3">
-                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="flex-1">
-                      <span className="text-xs font-bold text-blue-900">
-                        Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                      </span>
-                      <span className="text-[10px] text-blue-600 ml-3">
-                        Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => { selectDevelopmentPath(null, null, null); setSelectedColKey(null); }}
-                      className="text-[10px] text-blue-500 hover:text-blue-700 underline"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           );
         })()}
+        {(comparison?.aiSummary || selected_path_data?.aiSummary) && (
+          <div className="px-5 py-3 border-t border-gray-100 bg-blue-50/30">
+            <div className="flex items-start gap-2">
+              <span className="text-blue-500 mt-0.5 flex-shrink-0">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+              <p className="text-[11px] text-gray-700 leading-relaxed">{comparison?.aiSummary || selected_path_data?.aiSummary}</p>
+            </div>
+          </div>
+        )}
+        {development_path && (
+          <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1">
+                <span className="text-xs font-bold text-blue-900">
+                  Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                </span>
+                <span className="text-[10px] text-blue-600 ml-3">
+                  Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
+                </span>
+              </div>
+              <button
+                onClick={() => { selectDevelopmentPath(null, null, null); setSelectedColKey(null); }}
+                className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {profile && (
