@@ -43,6 +43,7 @@ import { ViewportOverlay } from './ViewportOverlay';
 import { BuildingGeneratorPanel } from './BuildingGeneratorPanel';
 import { SectionEditorPanel } from './SectionEditorPanel';
 import { AIRenderingPanel } from './AIRenderingPanel';
+import { DesignAssistantChat } from './DesignAssistantChat';
 
 // ============================================================================
 // Main Component
@@ -97,6 +98,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const [showGeneratorPanel, setShowGeneratorPanel] = useState(false);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
   const [showAIRenderingPanel, setShowAIRenderingPanel] = useState(false);
+  const [showDesignAssistant, setShowDesignAssistant] = useState(false);
   
   // File input ref for image upload
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -400,6 +402,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         onAddBuilding={handleOpenGenerator}
         onAIGenerate={handleAIGenerate}
         onAIRender={handleOpenAIRendering}
+        onDesignAssistant={() => setShowDesignAssistant(true)}
         onImageUpload={() => imageInputRef.current?.click()}
         onToggleGrid={actions.toggleGrid}
         onToggleMeasurements={actions.toggleMeasurements}
@@ -445,6 +448,11 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
           onClose={() => setShowAIRenderingPanel(false)}
           captureScreenshot={captureScreenshot}
         />
+      )}
+      
+      {/* Design Assistant Chat */}
+      {showDesignAssistant && (
+        <DesignAssistantChat onClose={() => setShowDesignAssistant(false)} />
       )}
       
       {/* View Settings */}
@@ -734,6 +742,7 @@ interface ToolbarProps {
   onAddBuilding: () => void;
   onAIGenerate: () => void;
   onAIRender: () => void;
+  onDesignAssistant: () => void;
   onImageUpload: () => void;
   onToggleGrid: () => void;
   onToggleMeasurements: () => void;
@@ -755,6 +764,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onAddBuilding,
   onAIGenerate,
   onAIRender,
+  onDesignAssistant,
   onImageUpload,
   onToggleGrid,
   onToggleMeasurements,
@@ -790,6 +800,13 @@ const Toolbar: React.FC<ToolbarProps> = ({
       
       <ToolbarButton onClick={onAddBuilding} title="Generate Building">
         🏗️ Generate
+      </ToolbarButton>
+      
+      <ToolbarButton
+        onClick={onDesignAssistant}
+        title="Design Assistant (Chat with AI)"
+      >
+        💬 Assistant
       </ToolbarButton>
       
       <ToolbarButton
