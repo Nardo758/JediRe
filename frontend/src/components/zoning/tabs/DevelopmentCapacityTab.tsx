@@ -313,8 +313,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           setComparison(recsRes.data.comparison || null);
         } catch (err) {
           if (!isCancelled(err)) {
-            setRecommendations([]);
-            setComparison(null);
           }
         } finally {
           setLoadingRecs(false);
@@ -385,8 +383,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setComparison(recsRes.data.comparison || null);
       } catch (err) {
         if (!isCancelled(err)) {
-          setRecommendations([]);
-          setComparison(null);
         }
       } finally {
         setLoadingRecs(false);
@@ -434,16 +430,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
-        <span className="ml-3 text-gray-600 text-sm">Loading development capacity...</span>
-      </div>
-    );
-  }
+  const showInlineLoading = loading && !profile && !comparison;
 
-  if (error) {
+  const hasExistingData = comparison || recommendations.length > 0;
+
+  if (error && !hasExistingData) {
     return (
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
         <svg className="mx-auto h-10 w-10 mb-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -457,7 +448,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     );
   }
 
-  if (!profileExists) {
+  if (!profileExists && !hasExistingData) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
         <svg className="mx-auto h-12 w-12 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -476,13 +467,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     );
   }
 
-  if (!profile) return null;
+  if (!profile && !hasExistingData) return null;
 
-  const isConditionalVariant = profile.base_district_code?.match(/-[A-Z]{1,2}$/);
-  const hasSplitFAR = profile.residential_far != null || profile.nonresidential_far != null;
-  const lotAreaAcres = profile.lot_area_sf ? parseFloat(String(profile.lot_area_sf)) / 43560 : null;
-  const hasResolutionErrors = profile.resolution_errors && profile.resolution_errors.length > 0;
-  const hasHeightBuffer = profile.height_buffer_ft != null && profile.height_beyond_buffer_ft != null;
+  const isConditionalVariant = profile?.base_district_code?.match(/-[A-Z]{1,2}$/);
+  const hasSplitFAR = profile?.residential_far != null || profile?.nonresidential_far != null;
+  const lotAreaAcres = profile?.lot_area_sf ? parseFloat(String(profile.lot_area_sf)) / 43560 : null;
+  const hasResolutionErrors = profile?.resolution_errors && profile.resolution_errors.length > 0;
+  const hasHeightBuffer = profile?.height_buffer_ft != null && profile?.height_beyond_buffer_ft != null;
 
   const fieldToSourceKey: Record<string, string> = {
     applied_far: 'maxFAR',
@@ -497,7 +488,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     open_space_pct: 'maxLotCoverage',
   };
 
-  const constraintRows = [
+  const constraintRows = profile ? [
     { field: 'applied_far', label: 'Applied FAR', value: profile.applied_far, suffix: '' },
     ...(hasSplitFAR ? [
       { field: 'residential_far', label: 'Residential FAR', value: profile.residential_far, suffix: '' },
@@ -510,11 +501,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     { field: 'max_lot_coverage_pct', label: 'Lot Coverage', value: profile.max_lot_coverage_pct, suffix: '%' },
     { field: 'min_parking_per_unit', label: 'Parking Ratio', value: profile.min_parking_per_unit, suffix: ' per unit' },
     { field: 'open_space_pct', label: 'Open Space', value: profile.open_space_pct, suffix: '%' },
-  ].filter(r => r.value != null || profile.user_overrides?.[r.field]);
+  ].filter(r => r.value != null || profile.user_overrides?.[r.field]) : [];
 
   return (
     <div className="space-y-5">
-      <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      {showInlineLoading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+          <span className="ml-3 text-gray-600 text-sm">Loading development capacity...</span>
+        </div>
+      )}
+      {profile && <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>
           <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
@@ -559,9 +556,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </svg>
           {resolving ? 'Resolving...' : 'Re-resolve'}
         </button>
-      </div>
+      </div>}
 
-      {hasResolutionErrors && (
+      {profile && hasResolutionErrors && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
           <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
@@ -881,8 +878,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const dynRows = comparison?.rows || [];
         const cells = comparison?.cells || {};
         const hasData = cols.length > 0 || recommendations.length > 0;
-        if (!hasData && !loadingRecs && !loading && profileExists) return null;
-        if (!profileExists && !loading) return null;
+        if (!hasData && !loadingRecs && !loading) return null;
 
         const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
 
@@ -1169,8 +1165,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         );
       })()}
 
-
-
+      {profile && (
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between">
@@ -1400,6 +1395,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+      )}
 
     </div>
   );
