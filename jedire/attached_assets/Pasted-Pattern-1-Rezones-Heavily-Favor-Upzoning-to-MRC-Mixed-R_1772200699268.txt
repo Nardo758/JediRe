@@ -1,0 +1,48 @@
+Pattern 1: Rezones Heavily Favor Upzoning to MRC (Mixed Residential-Commercial)
+The dominant rezone pattern in this area is moving from lower-density residential or industrial codes into MRC-2 or MRC-3 classifications:
+
+From → To	Examples	Outcome
+I-1 → MRC-3	660 11th St NW (327 units)	Approved, 126 days
+I-2 → MRC-3-C	400 Bishop St NW (274 units)	Approved, 164 days
+MRC-2-C → MRC-3-C	2190 Marietta Blvd NW (576 units)	Approved, 158 days
+MR-3-C → MRC-2	4005 Campbellton Rd SW (300 units)	Approved, 365 days
+R-4A → MR-2	505 Englewood Ave SE (160 units)	Approved, 200 days
+R-4 → MRC-2-C	1600 Thomasville Blvd SE (135 units)	Approved, 365 days
+Key insight: MRC-3 is the most aggressive target code (150 units/acre, 7.2 FAR, 225ft height, 20 stories). Industrial-to-MRC-3 rezones have the fastest approval timelines — averaging around 145 days — because the city actively encourages converting industrial land to mixed-use.
+
+Pattern 2: Approval Rates Are Very High, but Timelines Vary Dramatically
+Approval rate: ~85% approved outright, ~15% approved with modifications, zero outright denials in this dataset
+Fastest rezones: Industrial conversions (I-1, I-2 → MRC) at 126–164 days
+Slowest rezones: Lower-density residential conversions (R-4 → MRC, MR-3 → MRC) at 365 days
+By-right permits: 60–90 days (fastest path, no rezone needed)
+Variances: 180–240 days
+Conditional use permits: Consistently 180 days
+Key insight: If your site's current zoning is industrial-adjacent or already multi-family (MR/RG), the rezone path is faster. Single-family residential (R-4/R-4A) rezones take roughly a full year.
+
+Pattern 3: Unit Counts Cluster Around 150–330 Units
+Most approved projects in the corridor fall into two tiers:
+
+Mid-scale: 100–200 units (typically 3–7 stories, by-right or variance)
+Large-scale: 250–580 units (typically 12–24 stories, requires rezone)
+The largest approved project — 2190 Marietta Blvd (576 units) — went MRC-2-C → MRC-3-C and got approved in just 158 days.
+
+Pattern 4: Conditional Use Permits Along the Piedmont/Peachtree Corridor
+Several CUPs cluster near your address along the Piedmont/Peachtree corridor:
+
+1020 Piedmont Ave NE — 329 units (CUP approved)
+2045 Peachtree Rd NE — 213 units (CUP approved)
+3600 Piedmont Rd NE — 100 units (CUP approved)
+551 Ponce de Leon Ave NE — 111 units (CUP approved)
+675 Ponce de Leon Ave NE — 259 units (CUP approved)
+Key insight: The Piedmont/Midtown corridor has a strong pattern of CUP-based multifamily approvals without requiring a full rezone. This could be the path of least resistance for your site — 180-day timeline, 100% approval rate in the data.
+
+Pattern 5: The Beltline Effect
+Variance-based projects near the Beltline (Westside Trail, Old Fourth Ward) are getting approved at 180–240 days with moderate density (88–280 units). The Beltline overlay creates a favorable approval environment.
+
+Bottom Line for 1950 Piedmont Circle NE
+Your property sits in the Piedmont Heights corridor where the data shows:
+
+CUPs are the proven play — 5 successful multifamily CUPs within a mile of your address, all approved, all 180-day timelines
+If rezoning, the city strongly favors MRC-class targets — MRC-2 for moderate density (65 units/acre, 5 stories) or MRC-3 if you're going big (150 units/acre, 20 stories)
+Industrial conversions get fast-tracked — if any adjacent parcels are I-1/I-2, those are prime acquisition targets
+No denials in the dataset — Atlanta's entitlement environment in this corridor is very developer-friendly

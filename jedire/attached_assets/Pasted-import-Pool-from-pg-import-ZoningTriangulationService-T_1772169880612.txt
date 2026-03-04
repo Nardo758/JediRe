@@ -1,0 +1,1078 @@
+import { Pool } from 'pg';
+import { ZoningTriangulationService, TriangulationResult, FieldReconciliation } from './zoning-triangulation.service';
+import { ZoningKnowledgeService, ZoningDistrictProfile, UsePermissionResult } from './zoning-knowledge.service';
+import { BuildingEnvelopeService, BuildingEnvelopeResult, HighestBestUseResult, PropertyType, PROPERTY_TYPE_CONFIGS, ZoningConstraints, Setbacks } from './building-envelope.service';
+import { zoningEventBus } from './zoning-event-bus.service';
+import { logger } from '../utils/logger';
+
+/**
+ * Zoning Confirmation Chain Service
+ *
+ * Runs the full 10-link confirmation chain for a deal, where each link's output
+ * feeds the next. The chain transforms raw zoning data into an investment decision.
+ *
+ * CHAIN:
+ *   1. DEFINITIONS    → What are the dimensional standards?         (triangulation)
+ *   2. PERMITTED USES → What can you do on this parcel?             (use table + overlays)
+ *   3. CAPACITY       → What's the max building envelope?           (envelope calculator on confirmed inputs)
+ *   4. HIGHEST & BEST → Which use maximizes value?                  (envelope × market data)
+ *   5. STRATEGY       → Which of 4 strategies wins?                 (HBU × 5 JEDI signals)
+ *   6. PROCESS        → What entitlement path is required?          (precedent + code)
+ *   7. TIMELINE       → How long will it take?                      (calibrated from outcomes)
+ *   8. COST           → What does entitlement + development cost?   (fee schedules + precedent)
+ *   9. OVERLAYS       → What additional layers modify the answer?   (special districts)
+ *  10. PRECEDENT      → What's the approval probability?            (outcome feedback loop)
+ *
+ * EACH LINK PRODUCES:
+ *   - confirmed_value:  the reconciled answer
+ *   - source:           which data source(s) confirmed it
+ *   - confidence:       0.00 – 1.00
+ *   - citations:        code section references
+ *   - feeds_into:       which downstream links consume this
+ *   - gap:              what data is missing to improve confidence
+ */
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface ChainLink {
+  link: number;
+  name: string;
+  status: 'confirmed' | 'partial' | 'unconfirmed' | 'gap';
+  confidence: number;
+  source: string[];
+  citations: string[];
+  feedsInto: number[];
+  gap?: string;
+  data: any;
+}
+
+export interface UseConfirmation {
+  use: string;
+  status: 'by_right' | 'conditional' | 'prohibited' | 'unknown';
+  conditions: string | null;
+  approval: string | null;
+  confidence: number;
+  citation: string | null;
+}
+
+export interface CapacityConfirmation {
+  maxUnits: number;
+  maxGFA: number;
+  maxFloors: number;
+  buildableArea: number;
+  limitingFactor: string;
+  parkingRequired: number;
+  inputsConfirmed: boolean;  // true if using triangulated values, not defaults
+}
+
+export interface HBUConfirmation {
+  rankings: Array<{
+    propertyType: PropertyType;
+    maxCapacity: number;
+    maxGFA: number;
+    estimatedNOI: number;
+    estimatedValue: number;
+    recommended: boolean;
+    reasoning: string;
+    marketAdjusted: boolean;  // true if we used real market data vs defaults
+  }>;
+  topUse: PropertyType;
+  topValue: number;
+  marketDataAvailable: boolean;
+}
+
+export interface StrategyConfirmation {
+  scores: Record<string, number>;        // BTS, Flip, Rental, STR → 0-100
+  recommended: string;
+  arbitrageDetected: boolean;
+  arbitrageDelta: number;
+  signalBreakdown: Record<string, any>;  // per-strategy signal weights
+  capacityFed: boolean;                  // true if capacity data was available
+}
+
+export interface CostConfirmation {
+  applicationFees: number | null;
+  impactFees: number | null;
+  legalEstimate: number | null;
+  consultantEstimate: number | null;
+  totalSoftCosts: number | null;
+  hardCostPerSf: number | null;
+  totalDevelopmentCost: number | null;
+  source: 'fee_schedule' | 'precedent' | 'estimate' | 'unknown';
+  feeScheduleUrl: string | null;
+}
+
+export interface OverlayConfirmation {
+  overlays: Array<{
+    name: string;
+    code: string;
+    type: 'historic' | 'environmental' | 'tod' | 'opportunity_zone' | 'floodplain' | 'conservation' | 'design_review' | 'other';
+    impactOnCapacity: 'increases' | 'decreases' | 'neutral' | 'unknown';
+    capacityModifier: number | null;   // multiplier: 0.85 = 15% reduction
+    additionalRequirements: string[];
+    overrides: string[];               // which base zoning parameters get overridden
+    citation: string | null;
+  }>;
+  netCapacityModifier: number;         // product of all overlay modifiers
+  hasRestrictions: boolean;
+}
+
+export interface PrecedentConfirmation {
+  totalCases: number;
+  approvalRate: number;
+  avgTimelineMonths: number;
+  avgApprovedUnits: number | null;
+  recentExamples: Array<{
+    address: string | null;
+    zoningCode: string;
+    outcome: string;
+    timelineMonths: number | null;
+    units: number | null;
+    year: number | null;
+  }>;
+  riskLevel: 'low' | 'moderate' | 'high' | 'very_high' | 'unknown';
+  approvalProbability: number;
+}
+
+export interface ConfirmationChainResult {
+  dealId: string;
+  parcelId: string | null;
+  municipality: string;
+  state: string;
+  zoningCode: string | null;
+
+  chain: ChainLink[];
+  overallConfidence: number;
+  overallStatus: 'complete' | 'partial' | 'critical_gaps';
+  criticalGaps: string[];
+
+  // Link-specific confirmed data (typed access)
+  definitions: TriangulationResult['reconciledStandards'] | null;
+  uses: UseConfirmation[];
+  capacity: CapacityConfirmation | null;
+  highestBestUse: HBUConfirmation | null;
+  strategy: StrategyConfirmation | null;
+  process: { path: string; confidence: number } | null;
+  timeline: { months: number; confidence: number } | null;
+  cost: CostConfirmation | null;
+  overlays: OverlayConfirmation | null;
+  precedent: PrecedentConfirmation | null;
+
+  executedAt: string;
+  executionMs: number;
+}
+
+
+// ============================================================================
+// Service
+// ============================================================================
+
+export class ConfirmationChainService {
+  private triangulationService: ZoningTriangulationService;
+  private knowledgeService: ZoningKnowledgeService;
+  private envelopeService: BuildingEnvelopeService;
+
+  constructor(private pool: Pool) {
+    this.triangulationService = new ZoningTriangulationService(pool);
+    this.knowledgeService = new ZoningKnowledgeService(pool);
+    this.envelopeService = new BuildingEnvelopeService();
+  }
+
+  /**
+   * Execute the full 10-link confirmation chain for a deal
+   */
+  async execute(input: {
+    dealId: string;
+    parcelId?: string;
+    lat?: number;
+    lng?: number;
+    municipality: string;
+    state: string;
+    userProvidedZoningCode?: string;
+    propertyType?: PropertyType;
+    targetUses?: string[];          // what does the investor want to do?
+    marketData?: {                  // from M05 if available
+      avgRentPerUnit?: number;
+      avgRentPsf?: number;
+      vacancyRate?: number;
+      capRate?: number;
+      rentGrowthPct?: number;
+    };
+    demandScore?: number;           // from M06
+    supplyPressureScore?: number;   // from M04
+    momentumScore?: number;         // from M05
+  }): Promise<ConfirmationChainResult> {
+    const start = Date.now();
+    const chain: ChainLink[] = [];
+    const criticalGaps: string[] = [];
+
+    // ==================================================================
+    // LINK 1: DEFINITIONS (triangulate dimensional standards)
+    // ==================================================================
+    const triangulation = await this.triangulationService.triangulate({
+      dealId: input.dealId,
+      parcelId: input.parcelId,
+      lat: input.lat,
+      lng: input.lng,
+      municipality: input.municipality,
+      state: input.state,
+      userProvidedZoningCode: input.userProvidedZoningCode,
+    });
+
+    const zoningCode = triangulation.reconciledZoningCode;
+
+    chain.push({
+      link: 1,
+      name: 'Definitions',
+      status: triangulation.status === 'complete' || triangulation.status === 'confirmed' ? 'confirmed' : 'partial',
+      confidence: triangulation.overallConfidence,
+      source: [
+        triangulation.sourceA.available ? 'county_parcel' : null,
+        triangulation.sourceB.available ? 'county_category' : null,
+        triangulation.sourceC.available ? 'municode' : null,
+      ].filter(Boolean) as string[],
+      citations: triangulation.sourceC.municodeUrl ? [triangulation.sourceC.municodeUrl] : [],
+      feedsInto: [2, 3, 6, 9],
+      gap: !triangulation.sourceA.available ? 'No county parcel record loaded — code unconfirmed by authoritative source' : undefined,
+      data: triangulation.reconciledStandards,
+    });
+
+    if (!zoningCode) {
+      criticalGaps.push('LINK 1: No zoning code resolved — entire chain is unanchored');
+    }
+
+
+    // ==================================================================
+    // LINK 2: PERMITTED USES
+    // ==================================================================
+    const useConfirmations: UseConfirmation[] = [];
+    const usesToCheck = input.targetUses || ['multifamily', 'mixed_use', 'retail', 'office'];
+
+    let profile: ZoningDistrictProfile | null = null;
+    if (zoningCode) {
+      const lookup = await this.knowledgeService.lookupDistrict(zoningCode, input.municipality);
+      profile = lookup.profile;
+
+      for (const use of usesToCheck) {
+        const result = await this.knowledgeService.checkUsePermission(zoningCode, input.municipality, use);
+        useConfirmations.push({
+          use: result.use,
+          status: result.status,
+          conditions: result.conditions,
+          approval: result.approvalRequired,
+          confidence: result.confidence,
+          citation: result.citation,
+        });
+      }
+    }
+
+    const byRightUses = useConfirmations.filter(u => u.status === 'by_right');
+    const conditionalUses = useConfirmations.filter(u => u.status === 'conditional');
+    const unknownUses = useConfirmations.filter(u => u.status === 'unknown');
+
+    chain.push({
+      link: 2,
+      name: 'Permitted Uses',
+      status: unknownUses.length === usesToCheck.length ? 'gap' : byRightUses.length > 0 ? 'confirmed' : 'partial',
+      confidence: useConfirmations.length > 0
+        ? useConfirmations.reduce((s, u) => s + u.confidence, 0) / useConfirmations.length / 100
+        : 0,
+      source: profile ? ['municode'] : [],
+      citations: useConfirmations.map(u => u.citation).filter(Boolean) as string[],
+      feedsInto: [3, 4, 5, 6],
+      gap: unknownUses.length > 0 ? `${unknownUses.length} target use(s) have unknown status — use table may be incomplete` : undefined,
+      data: useConfirmations,
+    });
+
+    if (byRightUses.length === 0 && conditionalUses.length === 0) {
+      criticalGaps.push('LINK 2: No confirmed by-right or conditional uses — cannot determine buildable program');
+    }
+
+
+    // ==================================================================
+    // LINK 9: OVERLAYS (run before capacity so modifiers are available)
+    // ==================================================================
+    const overlayConfirmation = await this.confirmOverlays(zoningCode, input.municipality, profile);
+
+    chain.push({
+      link: 9,
+      name: 'Overlays & Special Districts',
+      status: overlayConfirmation.overlays.length > 0 ? 'confirmed' : 'partial',
+      confidence: overlayConfirmation.overlays.length > 0 ? 0.70 : 0.50,
+      source: profile?.applicableOverlays?.length ? ['municode'] : ['inferred'],
+      citations: overlayConfirmation.overlays.map(o => o.citation).filter(Boolean) as string[],
+      feedsInto: [3, 4, 8],
+      gap: overlayConfirmation.overlays.length === 0 ? 'No overlay data — if parcel is in historic/TOD/flood district, capacity may be wrong' : undefined,
+      data: overlayConfirmation,
+    });
+
+
+    // ==================================================================
+    // LINK 3: DEVELOPMENT CAPACITY (envelope on confirmed inputs)
+    // ==================================================================
+    const capacityConfirmation = this.confirmCapacity(
+      triangulation,
+      input.propertyType || 'multifamily',
+      overlayConfirmation.netCapacityModifier,
+    );
+
+    chain.push({
+      link: 3,
+      name: 'Development Capacity',
+      status: capacityConfirmation.inputsConfirmed ? 'confirmed' : 'partial',
+      confidence: capacityConfirmation.inputsConfirmed
+        ? Math.min(triangulation.overallConfidence, 0.90)
+        : 0.50,
+      source: capacityConfirmation.inputsConfirmed ? ['triangulated'] : ['defaults'],
+      citations: [],
+      feedsInto: [4, 5, 8],
+      gap: !capacityConfirmation.inputsConfirmed
+        ? 'Capacity calculated on default/partial inputs — key dimensional standards missing'
+        : undefined,
+      data: capacityConfirmation,
+    });
+
+
+    // ==================================================================
+    // LINK 4: HIGHEST & BEST USE (envelope × market data)
+    // ==================================================================
+    const hbuConfirmation = this.confirmHBU(
+      triangulation,
+      input.propertyType,
+      input.marketData,
+      byRightUses.map(u => u.use),
+      overlayConfirmation.netCapacityModifier,
+    );
+
+    chain.push({
+      link: 4,
+      name: 'Highest & Best Use',
+      status: hbuConfirmation.marketDataAvailable ? 'confirmed' : 'partial',
+      confidence: hbuConfirmation.marketDataAvailable ? 0.80 : 0.55,
+      source: hbuConfirmation.marketDataAvailable ? ['triangulated', 'M05_market'] : ['triangulated', 'defaults'],
+      citations: [],
+      feedsInto: [5, 8],
+      gap: !hbuConfirmation.marketDataAvailable
+        ? 'HBU using default revenue assumptions — wire M05 market data for accurate ranking'
+        : undefined,
+      data: hbuConfirmation,
+    });
+
+    if (!hbuConfirmation.marketDataAvailable) {
+      criticalGaps.push('LINK 4: HBU ranking uses default cap rates & revenue — not property-specific');
+    }
+
+
+    // ==================================================================
+    // LINK 5: STRATEGY RECOMMENDATION (HBU × 5 signals)
+    // ==================================================================
+    const strategyConfirmation = this.confirmStrategy(
+      hbuConfirmation,
+      capacityConfirmation,
+      input.demandScore,
+      input.supplyPressureScore,
+      input.momentumScore,
+      triangulation.overallConfidence,
+    );
+
+    chain.push({
+      link: 5,
+      name: 'Strategy Recommendation',
+      status: strategyConfirmation.capacityFed ? 'confirmed' : 'partial',
+      confidence: strategyConfirmation.capacityFed ? 0.75 : 0.40,
+      source: [
+        strategyConfirmation.capacityFed ? 'M03_capacity' : null,
+        input.demandScore ? 'M06_demand' : null,
+        input.supplyPressureScore ? 'M04_supply' : null,
+        input.momentumScore ? 'M05_momentum' : null,
+      ].filter(Boolean) as string[],
+      citations: [],
+      feedsInto: [8],
+      gap: !input.demandScore ? 'No demand/supply/momentum signals — strategy scores are capacity-only' : undefined,
+      data: strategyConfirmation,
+    });
+
+
+    // ==================================================================
+    // LINK 6: ENTITLEMENT PROCESS
+    // ==================================================================
+    chain.push({
+      link: 6,
+      name: 'Entitlement Process',
+      status: triangulation.entitlementPath ? 'confirmed' : 'partial',
+      confidence: triangulation.processConfidence,
+      source: triangulation.processConfidence > 0.60 ? ['precedent', 'municode'] : ['inferred'],
+      citations: [],
+      feedsInto: [7, 8, 10],
+      gap: triangulation.processConfidence < 0.50
+        ? 'Low process confidence — no precedent outcomes for this code in this jurisdiction'
+        : undefined,
+      data: { path: triangulation.entitlementPath, confidence: triangulation.processConfidence },
+    });
+
+
+    // ==================================================================
+    // LINK 7: TIMELINE
+    // ==================================================================
+    chain.push({
+      link: 7,
+      name: 'Timeline',
+      status: triangulation.predictedTimelineMonths ? 'confirmed' : 'partial',
+      confidence: triangulation.timelineConfidence,
+      source: triangulation.timelineConfidence > 0.50 ? ['calibrated_outcomes'] : ['default_estimate'],
+      citations: [],
+      feedsInto: [8],
+      gap: triangulation.timelineConfidence < 0.50
+        ? 'Timeline is default estimate — no calibration data for this entitlement path'
+        : undefined,
+      data: { months: triangulation.predictedTimelineMonths, confidence: triangulation.timelineConfidence },
+    });
+
+
+    // ==================================================================
+    // LINK 8: COST
+    // ==================================================================
+    const costConfirmation = await this.confirmCost(
+      input.municipality,
+      input.state,
+      triangulation.entitlementPath,
+      capacityConfirmation.maxUnits,
+      capacityConfirmation.maxGFA,
+    );
+
+    chain.push({
+      link: 8,
+      name: 'Cost',
+      status: costConfirmation.source === 'fee_schedule' ? 'confirmed'
+        : costConfirmation.source === 'precedent' ? 'partial' : 'gap',
+      confidence: costConfirmation.source === 'fee_schedule' ? 0.80
+        : costConfirmation.source === 'precedent' ? 0.60 : 0.30,
+      source: [costConfirmation.source],
+      citations: costConfirmation.feeScheduleUrl ? [costConfirmation.feeScheduleUrl] : [],
+      feedsInto: [],
+      gap: costConfirmation.source === 'estimate'
+        ? 'No fee schedule or precedent cost data — using regional estimates'
+        : costConfirmation.source === 'unknown'
+          ? 'No cost data available — critical gap for proforma accuracy'
+          : undefined,
+      data: costConfirmation,
+    });
+
+    if (costConfirmation.source === 'unknown' || costConfirmation.source === 'estimate') {
+      criticalGaps.push('LINK 8: No fee schedule data — soft cost estimates may be significantly off');
+    }
+
+
+    // ==================================================================
+    // LINK 10: PRECEDENT & RISK
+    // ==================================================================
+    const precedentConfirmation = await this.confirmPrecedent(
+      zoningCode,
+      input.municipality,
+      input.state,
+      triangulation.entitlementPath,
+    );
+
+    chain.push({
+      link: 10,
+      name: 'Precedent & Risk',
+      status: precedentConfirmation.totalCases > 5 ? 'confirmed'
+        : precedentConfirmation.totalCases > 0 ? 'partial' : 'gap',
+      confidence: precedentConfirmation.totalCases > 10 ? 0.85
+        : precedentConfirmation.totalCases > 3 ? 0.65
+          : precedentConfirmation.totalCases > 0 ? 0.45 : 0.20,
+      source: precedentConfirmation.totalCases > 0 ? ['outcome_history'] : [],
+      citations: [],
+      feedsInto: [6, 7],   // feeds back to improve process + timeline
+      gap: precedentConfirmation.totalCases < 3
+        ? `Only ${precedentConfirmation.totalCases} precedent case(s) — approval probability is unreliable`
+        : undefined,
+      data: precedentConfirmation,
+    });
+
+    // Sort chain by link number
+    chain.sort((a, b) => a.link - b.link);
+
+    // ==================================================================
+    // OVERALL ASSESSMENT
+    // ==================================================================
+    const confirmedLinks = chain.filter(l => l.status === 'confirmed').length;
+    const gapLinks = chain.filter(l => l.status === 'gap').length;
+
+    const weightedConfidence = chain.reduce((sum, link) => {
+      const weight = LINK_WEIGHTS[link.link] || 0.10;
+      return sum + (link.confidence * weight);
+    }, 0);
+
+    const overallStatus: ConfirmationChainResult['overallStatus'] =
+      confirmedLinks >= 7 ? 'complete'
+        : gapLinks >= 3 ? 'critical_gaps'
+          : 'partial';
+
+    const result: ConfirmationChainResult = {
+      dealId: input.dealId,
+      parcelId: input.parcelId || null,
+      municipality: input.municipality,
+      state: input.state,
+      zoningCode,
+      chain,
+      overallConfidence: Math.round(weightedConfidence * 100) / 100,
+      overallStatus,
+      criticalGaps,
+      definitions: triangulation.reconciledStandards,
+      uses: useConfirmations,
+      capacity: capacityConfirmation,
+      highestBestUse: hbuConfirmation,
+      strategy: strategyConfirmation,
+      process: triangulation.entitlementPath
+        ? { path: triangulation.entitlementPath, confidence: triangulation.processConfidence }
+        : null,
+      timeline: triangulation.predictedTimelineMonths
+        ? { months: triangulation.predictedTimelineMonths, confidence: triangulation.timelineConfidence }
+        : null,
+      cost: costConfirmation,
+      overlays: overlayConfirmation,
+      precedent: precedentConfirmation,
+      executedAt: new Date().toISOString(),
+      executionMs: Date.now() - start,
+    };
+
+    // Persist chain result
+    await this.persistChain(result);
+
+    // Emit event for downstream consumers
+    zoningEventBus.publish('confirmation_chain:completed', {
+      dealId: input.dealId,
+      overallStatus,
+      overallConfidence: result.overallConfidence,
+      criticalGaps: criticalGaps.length,
+      confirmedLinks,
+    });
+
+    return result;
+  }
+
+
+  // =========================================================================
+  // Link implementations
+  // =========================================================================
+
+  private confirmCapacity(
+    tri: TriangulationResult,
+    propertyType: PropertyType,
+    overlayModifier: number,
+  ): CapacityConfirmation {
+    const std = tri.reconciledStandards;
+
+    // Check if we have real triangulated values
+    const hasFar = std.maxFar.value !== null;
+    const hasDensity = std.maxDensityPerAcre.value !== null;
+    const hasHeight = std.maxHeightFt.value !== null;
+    const hasSetbacks = std.setbackFrontFt.value !== null;
+    const inputsConfirmed = (hasFar || hasDensity) && hasHeight;
+
+    // Build zoning constraints from triangulated values
+    const constraints: ZoningConstraints = {
+      maxFAR: std.maxFar.value ? parseFloat(std.maxFar.value) : null,
+      maxDensity: std.maxDensityPerAcre.value ? parseFloat(std.maxDensityPerAcre.value) : null,
+      maxHeight: std.maxHeightFt.value ? parseInt(std.maxHeightFt.value) : null,
+      minParkingPerUnit: std.parkingPerUnit.value ? parseFloat(std.parkingPerUnit.value) : null,
+      maxLotCoverage: std.maxLotCoverage.value ? parseFloat(std.maxLotCoverage.value) : null,
+    };
+
+    const setbacks: Setbacks = {
+      front: std.setbackFrontFt.value ? parseInt(std.setbackFrontFt.value) : 25,
+      side: std.setbackSideFt.value ? parseInt(std.setbackSideFt.value) : 10,
+      rear: std.setbackRearFt.value ? parseInt(std.setbackRearFt.value) : 20,
+    };
+
+    // Default land area — should come from parcel record
+    const landArea = 43560; // 1 acre default — TODO: wire from county_parcels.lot_area_sf
+
+    const envelope = this.envelopeService.calculateEnvelope({
+      landArea,
+      setbacks,
+      zoningConstraints: constraints,
+      propertyType,
+    });
+
+    // Apply overlay modifier
+    const adjustedUnits = Math.floor(envelope.maxCapacity * overlayModifier);
+    const adjustedGFA = Math.floor(envelope.maxGFA * overlayModifier);
+
+    return {
+      maxUnits: adjustedUnits,
+      maxGFA: adjustedGFA,
+      maxFloors: envelope.maxFloors,
+      buildableArea: envelope.buildableArea,
+      limitingFactor: envelope.limitingFactor,
+      parkingRequired: envelope.parkingRequired,
+      inputsConfirmed,
+    };
+  }
+
+  private confirmHBU(
+    tri: TriangulationResult,
+    preferredType: PropertyType | undefined,
+    marketData: any | undefined,
+    byRightUses: string[],
+    overlayModifier: number,
+  ): HBUConfirmation {
+    const std = tri.reconciledStandards;
+
+    const constraints: ZoningConstraints = {
+      maxFAR: std.maxFar.value ? parseFloat(std.maxFar.value) : null,
+      maxDensity: std.maxDensityPerAcre.value ? parseFloat(std.maxDensityPerAcre.value) : null,
+      maxHeight: std.maxHeightFt.value ? parseInt(std.maxHeightFt.value) : null,
+      minParkingPerUnit: std.parkingPerUnit.value ? parseFloat(std.parkingPerUnit.value) : null,
+      maxLotCoverage: std.maxLotCoverage.value ? parseFloat(std.maxLotCoverage.value) : null,
+    };
+
+    const setbacks: Setbacks = {
+      front: std.setbackFrontFt.value ? parseInt(std.setbackFrontFt.value) : 25,
+      side: std.setbackSideFt.value ? parseInt(std.setbackSideFt.value) : 10,
+      rear: std.setbackRearFt.value ? parseInt(std.setbackRearFt.value) : 20,
+    };
+
+    const landArea = 43560; // TODO: wire from parcel
+
+    // Build revenue assumptions from market data if available
+    const revenueAssumptions = marketData ? {
+      multifamily: marketData.avgRentPerUnit || undefined,
+      office: marketData.avgRentPsf ? marketData.avgRentPsf * 12 : undefined,
+      retail: marketData.avgRentPsf ? marketData.avgRentPsf * 14 : undefined, // retail premium
+    } : undefined;
+
+    const hbuResults = this.envelopeService.calculateHighestBestUse(
+      { landArea, setbacks, zoningConstraints: constraints },
+      revenueAssumptions,
+    );
+
+    // Filter to only by-right uses if we have that data
+    const filteredResults = byRightUses.length > 0
+      ? hbuResults.filter(r => this.useMatchesPropertyType(byRightUses, r.propertyType))
+      : hbuResults;
+
+    const finalResults = (filteredResults.length > 0 ? filteredResults : hbuResults);
+
+    // Apply overlay modifier to values
+    const rankings = finalResults.map((r, i) => ({
+      propertyType: r.propertyType,
+      maxCapacity: Math.floor(r.maxCapacity * overlayModifier),
+      maxGFA: Math.floor(r.maxGFA * overlayModifier),
+      estimatedNOI: Math.round(r.estimatedNOI * overlayModifier),
+      estimatedValue: Math.round(r.estimatedValue * overlayModifier),
+      recommended: i === 0,
+      reasoning: r.reasoning,
+      marketAdjusted: !!marketData,
+    }));
+
+    return {
+      rankings,
+      topUse: rankings[0]?.propertyType || 'multifamily',
+      topValue: rankings[0]?.estimatedValue || 0,
+      marketDataAvailable: !!marketData,
+    };
+  }
+
+  private confirmStrategy(
+    hbu: HBUConfirmation,
+    capacity: CapacityConfirmation,
+    demandScore?: number,
+    supplyScore?: number,
+    momentumScore?: number,
+    positionConfidence?: number,
+  ): StrategyConfirmation {
+    // Strategy weights from the Strategy Matrix (Sheet 6)
+    const STRATEGY_WEIGHTS: Record<string, Record<string, number>> = {
+      BTS:    { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
+      Flip:   { demand: 0.15, supply: 0.20, momentum: 0.30, position: 0.20, risk: 0.15 },
+      Rental: { demand: 0.25, supply: 0.25, momentum: 0.20, position: 0.20, risk: 0.10 },
+      STR:    { demand: 0.25, supply: 0.20, momentum: 0.25, position: 0.20, risk: 0.10 },
+    };
+
+    // Compute raw signal values (0-100)
+    const signals = {
+      demand: demandScore || 50,          // default to neutral if not available
+      supply: supplyScore ? 100 - supplyScore : 50,  // invert: low supply pressure = good
+      momentum: momentumScore || 50,
+      position: (positionConfidence || 0.50) * 100,
+      risk: 50,                           // placeholder until M14 feeds in
+    };
+
+    // BTS bonus: if capacity shows significant development upside
+    const btsBonus = capacity.maxUnits > 20 ? 10 : capacity.maxUnits > 10 ? 5 : 0;
+
+    const scores: Record<string, number> = {};
+    const signalBreakdown: Record<string, any> = {};
+
+    for (const [strategy, weights] of Object.entries(STRATEGY_WEIGHTS)) {
+      let score = 0;
+      const breakdown: Record<string, number> = {};
+      for (const [signal, weight] of Object.entries(weights)) {
+        const contribution = (signals[signal as keyof typeof signals] || 50) * weight;
+        score += contribution;
+        breakdown[signal] = Math.round(contribution * 10) / 10;
+      }
+      if (strategy === 'BTS') score += btsBonus;
+      scores[strategy] = Math.round(Math.min(100, score));
+      signalBreakdown[strategy] = breakdown;
+    }
+
+    // Find top 2 and compute arbitrage delta
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const recommended = sorted[0][0];
+    const delta = sorted[0][1] - sorted[1][1];
+
+    return {
+      scores,
+      recommended,
+      arbitrageDetected: delta >= 10,
+      arbitrageDelta: delta,
+      signalBreakdown,
+      capacityFed: capacity.inputsConfirmed,
+    };
+  }
+
+  private async confirmCost(
+    municipality: string,
+    state: string,
+    entitlementPath: string | null,
+    units: number,
+    gfa: number,
+  ): Promise<CostConfirmation> {
+    // Check for fee schedule data
+    const feeResult = await this.pool.query(
+      `SELECT * FROM municipality_fee_schedules
+       WHERE LOWER(municipality) = LOWER($1) AND state = $2
+       ORDER BY effective_date DESC LIMIT 1`,
+      [municipality, state.toUpperCase()]
+    ).catch(() => ({ rows: [] }));
+
+    if (feeResult.rows.length > 0) {
+      const fees = feeResult.rows[0];
+      return {
+        applicationFees: fees.application_fee ? parseFloat(fees.application_fee) : null,
+        impactFees: fees.impact_fee_per_unit ? parseFloat(fees.impact_fee_per_unit) * units : null,
+        legalEstimate: 15000, // base legal for entitlement
+        consultantEstimate: entitlementPath === 'by_right' ? 5000 : 25000,
+        totalSoftCosts: null, // computed downstream
+        hardCostPerSf: fees.construction_cost_per_sf ? parseFloat(fees.construction_cost_per_sf) : null,
+        totalDevelopmentCost: null,
+        source: 'fee_schedule',
+        feeScheduleUrl: fees.source_url || null,
+      };
+    }
+
+    // Check for precedent costs from outcomes
+    const precedentCost = await this.pool.query(
+      `SELECT AVG(actual_cost) as avg_cost, COUNT(*) as cnt
+       FROM triangulation_outcomes
+       WHERE actual_cost IS NOT NULL
+         AND actual_outcome IN ('approved_as_predicted', 'approved_with_conditions')`,
+    ).catch(() => ({ rows: [{ avg_cost: null, cnt: 0 }] }));
+
+    if (parseInt(precedentCost.rows[0]?.cnt) > 2) {
+      const avgCost = parseFloat(precedentCost.rows[0].avg_cost);
+      return {
+        applicationFees: null,
+        impactFees: null,
+        legalEstimate: null,
+        consultantEstimate: null,
+        totalSoftCosts: avgCost,
+        hardCostPerSf: null,
+        totalDevelopmentCost: null,
+        source: 'precedent',
+        feeScheduleUrl: null,
+      };
+    }
+
+    // Regional estimates as fallback
+    const estimatedSoftCosts = entitlementPath === 'by_right' ? 20000
+      : entitlementPath === 'variance' ? 40000
+        : entitlementPath === 'cup' ? 60000
+          : entitlementPath === 'rezone' ? 100000
+            : 50000;
+
+    // Regional construction cost per SF (Southeast US default)
+    const hardCostPerSf = 175;
+
+    return {
+      applicationFees: null,
+      impactFees: null,
+      legalEstimate: null,
+      consultantEstimate: null,
+      totalSoftCosts: estimatedSoftCosts,
+      hardCostPerSf,
+      totalDevelopmentCost: Math.round(gfa * hardCostPerSf + estimatedSoftCosts),
+      source: 'estimate',
+      feeScheduleUrl: null,
+    };
+  }
+
+  private async confirmOverlays(
+    zoningCode: string | null,
+    municipality: string,
+    profile: ZoningDistrictProfile | null,
+  ): Promise<OverlayConfirmation> {
+    const overlays: OverlayConfirmation['overlays'] = [];
+
+    // From Municode profile
+    if (profile?.applicableOverlays) {
+      for (const overlay of profile.applicableOverlays) {
+        const type = this.classifyOverlay(overlay.overlay, overlay.name);
+        const modifier = this.overlayCapacityModifier(type, overlay.overrides || []);
+
+        overlays.push({
+          name: overlay.name || overlay.overlay,
+          code: overlay.overlay,
+          type,
+          impactOnCapacity: modifier < 1 ? 'decreases' : modifier > 1 ? 'increases' : 'neutral',
+          capacityModifier: modifier,
+          additionalRequirements: overlay.additionalRequirements || [],
+          overrides: overlay.overrides || [],
+          citation: null,
+        });
+      }
+    }
+
+    // Check for deal-specific overlay data
+    if (zoningCode) {
+      const dealOverlays = await this.pool.query(
+        `SELECT * FROM zoning_overlays
+         WHERE LOWER(municipality) = LOWER($1)
+           AND (applies_to_code = $2 OR applies_to_code IS NULL)`,
+        [municipality, zoningCode]
+      ).catch(() => ({ rows: [] }));
+
+      for (const row of dealOverlays.rows) {
+        if (!overlays.find(o => o.code === row.overlay_code)) {
+          const type = this.classifyOverlay(row.overlay_code, row.overlay_name);
+          overlays.push({
+            name: row.overlay_name,
+            code: row.overlay_code,
+            type,
+            impactOnCapacity: row.capacity_impact || 'unknown',
+            capacityModifier: row.capacity_modifier ? parseFloat(row.capacity_modifier) : null,
+            additionalRequirements: row.requirements || [],
+            overrides: row.overrides || [],
+            citation: row.code_section || null,
+          });
+        }
+      }
+    }
+
+    // Compute net modifier
+    const netModifier = overlays.reduce((product, o) => {
+      return product * (o.capacityModifier || 1.0);
+    }, 1.0);
+
+    return {
+      overlays,
+      netCapacityModifier: Math.round(netModifier * 100) / 100,
+      hasRestrictions: overlays.some(o => o.impactOnCapacity === 'decreases'),
+    };
+  }
+
+  private async confirmPrecedent(
+    zoningCode: string | null,
+    municipality: string,
+    state: string,
+    entitlementPath: string | null,
+  ): Promise<PrecedentConfirmation> {
+    if (!zoningCode) {
+      return { totalCases: 0, approvalRate: 0, avgTimelineMonths: 0, avgApprovedUnits: null, recentExamples: [], riskLevel: 'unknown', approvalProbability: 0 };
+    }
+
+    // Query outcome history
+    const outcomes = await this.pool.query(
+      `SELECT to2.*, zt.reconciled_zoning_code
+       FROM triangulation_outcomes to2
+       JOIN zoning_triangulations zt ON zt.id = to2.triangulation_id
+       WHERE UPPER(zt.reconciled_zoning_code) = UPPER($1)
+         AND to2.actual_outcome != 'pending'
+       ORDER BY to2.reported_at DESC
+       LIMIT 50`,
+      [zoningCode]
+    ).catch(() => ({ rows: [] }));
+
+    // Also check rezone precedents
+    const rezonePrecedents = await this.pool.query(
+      `SELECT * FROM zoning_precedents
+       WHERE UPPER(from_zone) = UPPER($1) OR UPPER(to_zone) = UPPER($1)
+       ORDER BY decided_at DESC
+       LIMIT 20`,
+      [zoningCode]
+    ).catch(() => ({ rows: [] }));
+
+    const allCases = outcomes.rows.length + rezonePrecedents.rows.length;
+    const approved = outcomes.rows.filter((r: any) =>
+      r.actual_outcome === 'approved_as_predicted' || r.actual_outcome === 'approved_with_conditions'
+    ).length + rezonePrecedents.rows.filter((r: any) => r.outcome === 'approved').length;
+
+    const approvalRate = allCases > 0 ? (approved / allCases) * 100 : 0;
+
+    const timelinesMonths = outcomes.rows
+      .filter((r: any) => r.actual_timeline_months)
+      .map((r: any) => parseFloat(r.actual_timeline_months));
+    const avgTimeline = timelinesMonths.length > 0
+      ? timelinesMonths.reduce((s: number, t: number) => s + t, 0) / timelinesMonths.length
+      : 0;
+
+    const approvedUnits = outcomes.rows
+      .filter((r: any) => r.actual_approved_units)
+      .map((r: any) => parseInt(r.actual_approved_units));
+    const avgUnits = approvedUnits.length > 0
+      ? Math.round(approvedUnits.reduce((s: number, u: number) => s + u, 0) / approvedUnits.length)
+      : null;
+
+    // Recent examples
+    const recentExamples = [
+      ...outcomes.rows.slice(0, 5).map((r: any) => ({
+        address: null,
+        zoningCode: r.predicted_zoning_code || zoningCode,
+        outcome: r.actual_outcome,
+        timelineMonths: r.actual_timeline_months ? parseFloat(r.actual_timeline_months) : null,
+        units: r.actual_approved_units ? parseInt(r.actual_approved_units) : null,
+        year: r.reported_at ? new Date(r.reported_at).getFullYear() : null,
+      })),
+      ...rezonePrecedents.rows.slice(0, 3).map((r: any) => ({
+        address: r.address || null,
+        zoningCode: `${r.from_zone} → ${r.to_zone}`,
+        outcome: r.outcome || 'unknown',
+        timelineMonths: r.total_days ? Math.round(parseInt(r.total_days) / 30) : null,
+        units: r.units ? parseInt(r.units) : null,
+        year: r.decided_at ? new Date(r.decided_at).getFullYear() : null,
+      })),
+    ];
+
+    // Risk level
+    let riskLevel: PrecedentConfirmation['riskLevel'] = 'unknown';
+    if (allCases >= 5) {
+      if (approvalRate >= 80) riskLevel = 'low';
+      else if (approvalRate >= 60) riskLevel = 'moderate';
+      else if (approvalRate >= 40) riskLevel = 'high';
+      else riskLevel = 'very_high';
+    } else if (allCases > 0) {
+      riskLevel = 'moderate'; // insufficient data defaults to moderate
+    }
+
+    // Approval probability: base on precedent, penalize for sparse data
+    const dataPenalty = allCases < 5 ? 0.20 : allCases < 10 ? 0.10 : 0;
+    const approvalProbability = Math.max(0, (approvalRate / 100) - dataPenalty);
+
+    return {
+      totalCases: allCases,
+      approvalRate: Math.round(approvalRate * 10) / 10,
+      avgTimelineMonths: Math.round(avgTimeline * 10) / 10,
+      avgApprovedUnits: avgUnits,
+      recentExamples,
+      riskLevel,
+      approvalProbability: Math.round(approvalProbability * 100) / 100,
+    };
+  }
+
+
+  // =========================================================================
+  // Helpers
+  // =========================================================================
+
+  private useMatchesPropertyType(uses: string[], propertyType: PropertyType): boolean {
+    const typeMap: Record<PropertyType, string[]> = {
+      multifamily: ['multifamily', 'multi_family', 'residential', 'apartment', 'dwelling'],
+      office: ['office', 'commercial', 'professional'],
+      retail: ['retail', 'commercial', 'restaurant', 'store', 'shop'],
+      industrial: ['industrial', 'warehouse', 'manufacturing', 'logistics'],
+      'mixed-use': ['mixed', 'mixed_use', 'multifamily', 'retail', 'commercial'],
+      hospitality: ['hotel', 'hospitality', 'lodging', 'motel', 'inn'],
+    };
+    const keywords = typeMap[propertyType] || [];
+    return uses.some(u => keywords.some(k => u.toLowerCase().includes(k)));
+  }
+
+  private classifyOverlay(code: string, name: string): OverlayConfirmation['overlays'][0]['type'] {
+    const combined = `${code} ${name}`.toLowerCase();
+    if (combined.includes('historic') || combined.includes('landmark') || combined.includes('preservation')) return 'historic';
+    if (combined.includes('flood') || combined.includes('fema') || combined.includes('sfha')) return 'floodplain';
+    if (combined.includes('tod') || combined.includes('transit') || combined.includes('marta')) return 'tod';
+    if (combined.includes('opportunity') || combined.includes('oz') || combined.includes('qoz')) return 'opportunity_zone';
+    if (combined.includes('conservation') || combined.includes('wetland') || combined.includes('stream')) return 'conservation';
+    if (combined.includes('environment') || combined.includes('protected')) return 'environmental';
+    if (combined.includes('design') || combined.includes('review') || combined.includes('architecture')) return 'design_review';
+    return 'other';
+  }
+
+  private overlayCapacityModifier(type: OverlayConfirmation['overlays'][0]['type'], overrides: string[]): number {
+    // Base modifiers by overlay type
+    const baseModifiers: Record<string, number> = {
+      historic: 0.80,           // typically reduces capacity via height/design limits
+      floodplain: 0.70,         // significant buildable area reduction
+      conservation: 0.60,       // major restriction
+      environmental: 0.75,
+      design_review: 0.95,      // minor: adds process, minimal capacity impact
+      tod: 1.15,                // typically INCREASES density near transit
+      opportunity_zone: 1.00,   // tax benefit, no capacity impact
+      other: 1.00,
+    };
+    return baseModifiers[type] || 1.00;
+  }
+
+  private async persistChain(result: ConfirmationChainResult): Promise<void> {
+    try {
+      await this.pool.query(
+        `INSERT INTO confirmation_chain_results (
+          deal_id, parcel_id, municipality, state, zoning_code,
+          chain_json, overall_confidence, overall_status,
+          critical_gaps, executed_at, execution_ms
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ON CONFLICT (deal_id) DO UPDATE SET
+          chain_json = EXCLUDED.chain_json,
+          overall_confidence = EXCLUDED.overall_confidence,
+          overall_status = EXCLUDED.overall_status,
+          critical_gaps = EXCLUDED.critical_gaps,
+          executed_at = EXCLUDED.executed_at,
+          execution_ms = EXCLUDED.execution_ms,
+          updated_at = NOW()`,
+        [
+          result.dealId,
+          result.parcelId,
+          result.municipality,
+          result.state,
+          result.zoningCode,
+          JSON.stringify({ chain: result.chain, definitions: result.definitions, uses: result.uses, capacity: result.capacity, hbu: result.highestBestUse, strategy: result.strategy, process: result.process, timeline: result.timeline, cost: result.cost, overlays: result.overlays, precedent: result.precedent }),
+          result.overallConfidence,
+          result.overallStatus,
+          result.criticalGaps,
+          result.executedAt,
+          result.executionMs,
+        ]
+      ).catch(() => {
+        // Table might not exist yet — that's ok
+        logger.warn('confirmation_chain_results table not available, skipping persist');
+      });
+    } catch (e) {
+      logger.warn('Failed to persist chain result:', e);
+    }
+  }
+}
+
+
+// ============================================================================
+// Link weights for overall confidence calculation
+// ============================================================================
+// Higher weight = more important to overall deal confidence
+
+const LINK_WEIGHTS: Record<number, number> = {
+  1: 0.20,   // Definitions — foundation for everything
+  2: 0.12,   // Permitted Uses — determines what's buildable
+  3: 0.15,   // Capacity — the envelope that drives proforma
+  4: 0.10,   // HBU — directs capital allocation
+  5: 0.10,   // Strategy — the recommendation
+  6: 0.08,   // Process — path to approval
+  7: 0.05,   // Timeline — when
+  8: 0.08,   // Cost — accuracy of proforma assumptions
+  9: 0.05,   // Overlays — modifiers
+  10: 0.07,  // Precedent — probability calibration
+};

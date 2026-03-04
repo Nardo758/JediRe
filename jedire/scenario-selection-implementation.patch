@@ -1,0 +1,418 @@
+# Scenario Selection Implementation Patch
+# This file contains the changes needed to implement persistent scenario selection
+
+## Step 1: Update DevelopmentCapacityTab.tsx
+
+### Add state for scenarios and loading
+```typescript
+// Add near other state declarations (around line 140-160)
+const [scenarios, setScenarios] = useState<any[]>([]);
+const [activeScenario, setActiveScenario] = useState<any>(null);
+const [activatingScenario, setActivatingScenario] = useState(false);
+```
+
+### Update handleSelectPath to persist to database
+Replace the existing handleSelectPath function (around line 164) with:
+
+```typescript
+const handleSelectPath = useCallback(async (colKey: string, rec: any) => {
+  if (!dealId) return;
+  
+  setSelectedColKey(colKey);
+  const pathId = colKeyToPathId(colKey);
+  const units = rec.maxUnits || 0;
+  const gba = rec.maxGba || 0;
+  const stories = rec.maxStories || 1;
+  const parking = rec.parkingRequired || 0;
+  const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+  const constructionType: BuildingEnvelope['construction_type'] =
+    stories <= 4 ? 'wood_frame' : stories <= 7 ? 'podium_wood' : 'steel_concrete';
+  const parkingType: BuildingEnvelope['parking_structure_type'] =
+    units > 200 ? 'podium' : units > 100 ? 'garage' : 'surface';
+
+  const envelope: BuildingEnvelope = {
+    max_units: units,
+    max_gfa_sf: gba,
+    max_stories: stories,
+    max_footprint_sf: footprint,
+    buildable_polygon: null,
+    required_parking_spaces: parking,
+    parking_structure_type: parkingType,
+    parking_levels: parkingType === 'surface' ? 0 : Math.ceil(parking * 350 / Math.max(footprint, 1)),
+    residential_floors: stories - (parkingType !== 'surface' ? 1 : 0),
+    ground_floor_retail_sf: units > 150 ? 5000 : 0,
+    construction_type: constructionType,
+  };
+
+  // Update Zustand store
+  selectDevelopmentPath(pathId, envelope);
+  
+  // NEW: Persist to database
+  try {
+    setActivatingScenario(true);
+    
+    // First, create or update the scenario
+    const scenarioData = {
+      name: pathId,
+      is_active: true,
+      use_mix: { residential_pct: 100 },
+      avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
+      efficiency_factor: 0.85,
+      max_gba: gba,
+      max_footprint: footprint,
+      net_leasable_sf: Math.round(gba * 0.85),
+      parking_required: parking,
+      max_stories: stories,
+      max_units: units,
+      applied_far: rec.appliedFar || null,
+      binding_constraint: rec.bindingConstraint || null
+    };
+    
+    // Check if scenario exists
+    const existingRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+    const existing = existingRes.data.scenarios?.find((s: any) => s.name === pathId);
+    
+    let scenarioId: string;
+    if (existing) {
+      // Update existing scenario
+      await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${existing.id}`, scenarioData);
+      scenarioId = existing.id;
+    } else {
+      // Create new scenario
+      const createRes = await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+      scenarioId = createRes.data.scenario.id;
+    }
+    
+    // Activate the scenario
+    await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}/activate`);
+    
+    // Reload scenarios to get updated state
+    await loadScenarios();
+    
+    console.log(`✅ Activated ${pathId} scenario for deal ${dealId}`);
+  } catch (error) {
+    console.error('Failed to persist scenario selection:', error);
+    // Don't block UI - selection still works in memory
+  } finally {
+    setActivatingScenario(false);
+  }
+}, [dealId, selectDevelopmentPath]);
+```
+
+### Add loadScenarios function
+Add this function after handleSelectPath:
+
+```typescript
+const loadScenarios = useCallback(async () => {
+  if (!dealId) return;
+  
+  try {
+    const response = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+    const scenarioList = response.data.scenarios || [];
+    const active = scenarioList.find((s: any) => s.is_active);
+    
+    setScenarios(scenarioList);
+    setActiveScenario(active || null);
+    
+    // If there's an active scenario, set it in Zustand store
+    if (active) {
+      const pathId = active.name as DevelopmentPath;
+      const envelope: BuildingEnvelope = {
+        max_units: active.max_units,
+        max_gfa_sf: active.max_gba,
+        max_stories: active.max_stories,
+        max_footprint_sf: active.max_footprint,
+        buildable_polygon: null,
+        required_parking_spaces: active.parking_required,
+        parking_structure_type: active.max_units > 200 ? 'podium' : active.max_units > 100 ? 'garage' : 'surface',
+        parking_levels: 0,
+        residential_floors: active.max_stories,
+        ground_floor_retail_sf: 0,
+        construction_type: active.max_stories <= 4 ? 'wood_frame' : active.max_stories <= 7 ? 'podium_wood' : 'steel_concrete',
+      };
+      
+      selectDevelopmentPath(pathId, envelope);
+      setSelectedColKey(pathId);
+    }
+  } catch (error) {
+    console.error('Failed to load scenarios:', error);
+    setScenarios([]);
+    setActiveScenario(null);
+  }
+}, [dealId, selectDevelopmentPath]);
+```
+
+### Load scenarios on mount
+Add to the useEffect that calls loadData (around line 270):
+
+```typescript
+useEffect(() => {
+  loadData();
+  loadScenarios(); // NEW: Load active scenario on mount
+}, [loadData, loadScenarios]);
+```
+
+### Update the visual indicator
+In the "Select Path" button rendering (around line 1030), update to show if scenario is persisted:
+
+```typescript
+{cols.map((col: any, colIdx: number) => {
+  const isSelected = selectedColKey === col.key;
+  const pathId = colKeyToPathId(col.key);
+  const isPersisted = activeScenario?.name === pathId;
+  const rec = recommendations[colIdx];
+  
+  return (
+    <td key={col.key} className="px-3 py-3 text-center">
+      <button
+        onClick={() => rec && handleSelectPath(col.key, rec)}
+        disabled={activatingScenario}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+          isPersisted
+            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+            : isSelected
+            ? 'bg-blue-100 text-blue-700 border border-blue-300'
+            : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
+        } ${activatingScenario ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        {activatingScenario && isSelected ? (
+          <>
+            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
+            Saving...
+          </>
+        ) : isPersisted ? (
+          <>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+            Active
+          </>
+        ) : isSelected ? (
+          'Selected'
+        ) : (
+          'Select'
+        )}
+      </button>
+    </td>
+  );
+})}
+```
+
+---
+
+## Step 2: Update backend to auto-create scenarios
+
+### File: backend/src/api/rest/property-boundary.routes.ts
+
+Add helper function after the existing triggerZoningAutoPopulate function:
+
+```typescript
+async function createOrUpdateScenarios(
+  dealId: string,
+  capacityData: any
+) {
+  try {
+    const scenarios = capacityData.scenarios || [];
+    
+    // Map scenario types
+    const byRight = scenarios.find((s: any) => 
+      s.scenarioType === 'by_right' || s.label?.includes('Current Zoning')
+    );
+    const variance = scenarios.find((s: any) => 
+      s.scenarioType === 'variance' || s.label?.includes('Variance')
+    );
+    const rezone = scenarios.find((s: any) => 
+      s.scenarioType === 'rezone' || s.label?.includes('Rezone')
+    );
+    
+    // Create scenarios array
+    const scenariosToCreate = [];
+    
+    if (byRight) {
+      scenariosToCreate.push({
+        name: 'by_right',
+        is_active: true, // Default active
+        max_units: byRight.maxUnits,
+        max_gba: byRight.totalGFA,
+        max_footprint: Math.round(byRight.totalGFA / byRight.stories / 0.82),
+        max_stories: byRight.stories,
+        parking_required: byRight.parkingRequired,
+        applied_far: byRight.far || null,
+        binding_constraint: capacityData.envelope?.limitingFactor || null,
+        timeline: byRight.timeline,
+        cost_estimate: byRight.cost,
+        risk_level: 'low',
+        success_probability: 95
+      });
+    }
+    
+    if (variance) {
+      scenariosToCreate.push({
+        name: 'variance',
+        is_active: false,
+        max_units: variance.maxUnits,
+        max_gba: variance.totalGFA,
+        max_footprint: Math.round(variance.totalGFA / variance.stories / 0.82),
+        max_stories: variance.stories,
+        parking_required: variance.parkingRequired,
+        applied_far: variance.far || null,
+        timeline: variance.timeline,
+        cost_estimate: variance.cost,
+        risk_level: 'medium',
+        success_probability: 65
+      });
+    }
+    
+    if (rezone) {
+      scenariosToCreate.push({
+        name: 'rezone',
+        is_active: false,
+        max_units: rezone.maxUnits,
+        max_gba: rezone.totalGFA,
+        max_footprint: Math.round(rezone.totalGFA / rezone.stories / 0.82),
+        max_stories: rezone.stories,
+        parking_required: rezone.parkingRequired,
+        applied_far: rezone.far || null,
+        timeline: rezone.timeline,
+        cost_estimate: rezone.cost,
+        risk_level: 'high',
+        success_probability: 35
+      });
+    }
+    
+    // Delete existing scenarios and create new ones
+    await pool.query('DELETE FROM development_scenarios WHERE deal_id = $1', [dealId]);
+    
+    for (const scenario of scenariosToCreate) {
+      await pool.query(`
+        INSERT INTO development_scenarios (
+          deal_id, name, is_active, max_units, max_gba, max_footprint,
+          max_stories, parking_required, applied_far, binding_constraint,
+          timeline, cost_estimate, risk_level, success_probability,
+          use_mix, avg_unit_size_sf, efficiency_factor
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      `, [
+        dealId,
+        scenario.name,
+        scenario.is_active,
+        scenario.max_units,
+        scenario.max_gba,
+        scenario.max_footprint,
+        scenario.max_stories,
+        scenario.parking_required,
+        scenario.applied_far,
+        scenario.binding_constraint || null,
+        scenario.timeline || null,
+        scenario.cost_estimate || null,
+        scenario.risk_level,
+        scenario.success_probability,
+        JSON.stringify({ residential_pct: 100 }),
+        Math.round(scenario.max_gba / Math.max(scenario.max_units, 1)),
+        0.85
+      ]);
+    }
+    
+    console.log(`Created ${scenariosToCreate.length} scenarios for deal ${dealId}`);
+  } catch (error) {
+    console.error(`Failed to create scenarios for deal ${dealId}:`, error);
+  }
+}
+```
+
+### Update triggerZoningAutoPopulate to call createOrUpdateScenarios
+
+In the existing triggerZoningAutoPopulate function, after the capacity data is calculated, add:
+
+```typescript
+// Around line 165-170, after capacity calculation
+const analysisResult = await pipeline.execute(resolved.pipelineInput);
+
+// NEW: Create scenarios from capacity data
+await createOrUpdateScenarios(dealId, analysisResult);
+
+const byRight = analysisResult.step4_capacityScenarios.find((s: any) => s.name === 'By Right');
+// ... rest of existing code ...
+```
+
+---
+
+## Step 3: Add database migration for scenario metadata
+
+### File: backend/src/db/migrations/073_scenario_metadata.sql
+
+```sql
+-- Migration 073: Add metadata fields to development_scenarios
+
+ALTER TABLE development_scenarios 
+  ADD COLUMN IF NOT EXISTS timeline VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS cost_estimate VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS risk_level VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS success_probability INTEGER;
+
+-- Add comments
+COMMENT ON COLUMN development_scenarios.timeline IS 'Human-readable timeline (e.g., "6-9 months")';
+COMMENT ON COLUMN development_scenarios.cost_estimate IS 'Human-readable cost (e.g., "$50K-$150K")';
+COMMENT ON COLUMN development_scenarios.risk_level IS 'low | medium | high';
+COMMENT ON COLUMN development_scenarios.success_probability IS 'Percent (0-100)';
+
+-- Populate defaults for existing records
+UPDATE development_scenarios 
+SET 
+  timeline = CASE name
+    WHEN 'by_right' THEN '6-9 months'
+    WHEN 'variance' THEN '9-18 months'
+    WHEN 'rezone' THEN '12-36 months'
+  END,
+  cost_estimate = CASE name
+    WHEN 'by_right' THEN '$50K-$150K'
+    WHEN 'variance' THEN '$100K-$350K'
+    WHEN 'rezone' THEN '$200K-$750K'
+  END,
+  risk_level = CASE name
+    WHEN 'by_right' THEN 'low'
+    WHEN 'variance' THEN 'medium'
+    WHEN 'rezone' THEN 'high'
+  END,
+  success_probability = CASE name
+    WHEN 'by_right' THEN 95
+    WHEN 'variance' THEN 65
+    WHEN 'rezone' THEN 35
+  END
+WHERE timeline IS NULL;
+```
+
+---
+
+## Testing Checklist
+
+After implementing these changes:
+
+1. [ ] Navigate to Development Capacity tab
+2. [ ] Verify scenarios table loads with "Select" buttons
+3. [ ] Click "Select" on By-Right scenario
+   - [ ] Button shows "Saving..." briefly
+   - [ ] Button changes to "Active" with checkmark
+   - [ ] Selection persists after page refresh
+4. [ ] Switch to different scenario (Variance)
+   - [ ] Previous scenario deactivates
+   - [ ] New scenario becomes active
+5. [ ] Check database:
+   ```sql
+   SELECT name, is_active, max_units, max_stories 
+   FROM development_scenarios 
+   WHERE deal_id = 'e044db04-439b-4442-82df-b36a840f2fd8';
+   ```
+6. [ ] Navigate to 3D Design tab
+   - [ ] Should load envelope constraints from active scenario
+7. [ ] Check console logs for "Activated {path} scenario" message
+
+---
+
+## Implementation Order
+
+1. **First**: Run migration 073_scenario_metadata.sql
+2. **Second**: Update property-boundary.routes.ts (backend)
+3. **Third**: Update DevelopmentCapacityTab.tsx (frontend)
+4. **Fourth**: Test end-to-end flow
+
+Estimated time: 2-3 hours

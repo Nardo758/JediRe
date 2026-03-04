@@ -1,0 +1,58 @@
+---
+title: JEDI RE — Zoning Triangulation Feedback Loop
+---
+flowchart TB
+    subgraph SOURCES["Three Data Sources"]
+        direction LR
+        A["🏛️ Source A<br/><b>County Parcel Records</b><br/>Authoritative designation<br/>parcel_id → zoning_code"]
+        B["📋 Source B<br/><b>County Zoning Categories</b><br/>Category-level rules<br/>code → base standards"]
+        C["📖 Source C<br/><b>Municode Ordinance</b><br/>Specific dimensional standards<br/>code → FAR, height, setbacks"]
+    end
+
+    subgraph ENGINE["Triangulation Engine"]
+        direction TB
+        T1["1️⃣ <b>CODE Reconciliation</b><br/>Do all sources agree on the<br/>zoning designation?<br/><i>Parcel record wins ties</i>"]
+        T2["2️⃣ <b>MATH Reconciliation</b><br/>Cross-reference dimensional<br/>standards per field<br/><i>Municode wins for specifics</i>"]
+        T3["3️⃣ <b>PROCESS Determination</b><br/>By-right? Variance? Rezone?<br/>Based on uses + precedent"]
+        T4["4️⃣ <b>TIMELINE Prediction</b><br/>Calibrated from actual<br/>outcome history"]
+        T1 --> T2 --> T3 --> T4
+    end
+
+    subgraph OUTPUT["Triangulation Result"]
+        R["✅ Reconciled Profile<br/>• Confirmed zoning code<br/>• Per-field confidence scores<br/>• Entitlement path + timeline<br/>• Overall confidence 0–100%"]
+    end
+
+    subgraph DEAL["Deal Pipeline"]
+        D1["Deal Created"] --> D2["Zoning Tab → Confirm"]
+        D2 --> D3["Capacity Analysis"]
+        D3 --> D4["Strategy Arbitrage"]
+        D4 --> D5["ProForma"]
+    end
+
+    subgraph FEEDBACK["Outcome Feedback Loop"]
+        direction TB
+        O1["📊 <b>Outcome Recorded</b><br/>Entitlement approved/denied<br/>Actual units, FAR, timeline"]
+        O2["🔄 <b>Source Accuracy Scored</b><br/>Which source was right?<br/>Per-field delta computation"]
+        O3["⚖️ <b>Jurisdiction Calibration</b><br/>Dynamic source weights<br/>Maturity level + confidence cap"]
+        O1 --> O2 --> O3
+    end
+
+    A --> T1
+    B --> T1
+    B --> T2
+    C --> T1
+    C --> T2
+
+    T4 --> R
+    R --> D2
+
+    D5 -.->|"Deal closes or<br/>entitlement decided"| O1
+    O3 -.->|"Updated weights<br/>feed next triangulation"| ENGINE
+
+    style A fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style B fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style C fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style R fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style O3 fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style ENGINE fill:#fafafa,stroke:#616161,stroke-width:1px
+    style FEEDBACK fill:#fff8e1,stroke:#f9a825,stroke-width:1px

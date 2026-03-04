@@ -1,0 +1,661 @@
+import { useState } from "react";
+
+// ─── DATA MODEL ──────────────────────────────────────────────
+const LAYERS = {
+  dot: {
+    id: "dot",
+    label: "LAYER 1: DOT BASELINE",
+    tag: "STATIC FOUNDATION",
+    color: "#60a5fa",
+    icon: "▣",
+    description: "State DOT Annual Average Daily Traffic (AADT) is your anchor. It tells you how many vehicles pass a road segment per day, averaged over the year. This is the most reliable, government-validated traffic count available — but it's static, updated annually, and doesn't capture real-time fluctuations or temporal patterns.",
+    formula: "base_adt = DOT_AADT(nearest_segment)",
+    dataSource: "State DOT traffic count stations (free)",
+    refreshRate: "Annually (1-2 year lag typical)",
+    accuracy: "±10% for major roads, ±25% for minor",
+    cost: "Free — public data",
+    limitations: [
+      "Annual average hides seasonal swings (summer vs winter)",
+      "Count stations may be 0.5–2 miles from property",
+      "No time-of-day breakdown (no AM/PM peak split)",
+      "1–2 year data lag — new developments not reflected",
+      "Measures vehicles, not people (no occupancy factor)",
+    ],
+    outputs: [
+      { name: "base_adt", type: "number", unit: "vehicles/day", example: "24,500" },
+      { name: "segment_distance", type: "number", unit: "miles", example: "0.3" },
+      { name: "road_class", type: "enum", unit: "functional class", example: "Urban Arterial" },
+      { name: "station_year", type: "number", unit: "year", example: "2023" },
+    ],
+    adjustments: [
+      { name: "Distance Decay", formula: "decay = 1 - (distance_to_station × 0.15)", note: "Properties further from count station get discounted" },
+      { name: "Road Class Weight", formula: "weight = { Interstate: 0.3, Arterial: 0.7, Collector: 0.9, Local: 1.0 }", note: "Higher class roads = more pass-through, less property-relevant traffic" },
+      { name: "Frontage Factor", formula: "frontage = corner_lot ? 1.4 : single_frontage ? 1.0 : interior ? 0.6", note: "Corner lots capture traffic from two roads" },
+    ],
+  },
+  google: {
+    id: "google",
+    label: "LAYER 2: GOOGLE LIVE MULTIPLIER",
+    tag: "REAL-TIME ADJUSTMENT",
+    color: "#22c55e",
+    icon: "◉",
+    description: "Google Routes API gives you two critical numbers: static_duration (travel time with no traffic) and live_duration (actual travel time right now). The ratio between these IS your real-time traffic density proxy. When live_duration is 2× static_duration, the road is at ~2× normal congestion — which means roughly proportional vehicle density increase. Run this at intervals to build temporal patterns DOT can't provide.",
+    formula: "congestion_ratio = live_duration / static_duration",
+    dataSource: "Google Routes API (TRAFFIC_AWARE_OPTIMAL)",
+    refreshRate: "Every 15 min (peak) / 1 hour (off-peak)",
+    accuracy: "High — sourced from billions of Android/Google Maps users",
+    cost: "$15/1000 requests (Preferred tier)",
+    limitations: [
+      "Measures road speed, not vehicle COUNT directly",
+      "Congestion ratio is a proxy — not a true volume measurement",
+      "Rural roads with few Google Maps users = less accurate",
+      "Can't distinguish vehicle types (cars vs trucks vs buses)",
+      "API costs scale with polling frequency × number of road segments",
+    ],
+    outputs: [
+      { name: "congestion_ratio", type: "number", unit: "multiplier", example: "1.45" },
+      { name: "live_duration_sec", type: "number", unit: "seconds", example: "342" },
+      { name: "static_duration_sec", type: "number", unit: "seconds", example: "236" },
+      { name: "speed_intervals[]", type: "array", unit: "NORMAL|SLOW|TRAFFIC_JAM", example: "[NORMAL, SLOW, NORMAL]" },
+    ],
+    adjustments: [
+      { name: "Time-of-Day Profile", formula: "tod_factor = avg_congestion_ratio(hour_of_day) over 30 days", note: "Build hourly congestion curves from historical polling" },
+      { name: "Day-of-Week Factor", formula: "dow_factor = avg_ratio(day) / avg_ratio(all_days)", note: "Mon-Fri vs Sat-Sun patterns — apartments see more weekend traffic" },
+      { name: "Seasonal Calibration", formula: "seasonal = month_avg / annual_avg", note: "Florida winter = snowbird surge; college towns = academic calendar" },
+    ],
+  },
+  leading: {
+    id: "leading",
+    label: "LAYER 3: DIGITAL LEADING INDICATORS",
+    tag: "PREDICTIVE SIGNAL",
+    color: "#f59e0b",
+    icon: "△",
+    description: "Digital signals from SpyFu and Google Trends are LEADING indicators — they show where demand is going before physical traffic responds. When search volume for 'apartments in [submarket]' spikes 40% but road traffic hasn't changed yet, the physical traffic increase is coming in 2-4 months. This layer doesn't adjust today's count — it predicts tomorrow's trajectory and feeds the T-07 trend signal.",
+    formula: "trend_momentum = (current_period_volume / prior_period_volume) - 1",
+    dataSource: "SpyFu API + Google Trends (pytrends)",
+    refreshRate: "Weekly (SpyFu) / Daily (Google Trends)",
+    accuracy: "Directional — relative trends, not absolute numbers",
+    cost: "SpyFu $89/mo + pytrends free",
+    limitations: [
+      "Relative index (0–100), not absolute traffic numbers",
+      "Leading indicator lag varies: 2–6 months before physical change",
+      "Keyword selection bias — wrong keywords = wrong signal",
+      "SpyFu better for domains, Google Trends better for market-level",
+      "Can't distinguish search intent (moving vs browsing vs research)",
+    ],
+    outputs: [
+      { name: "search_momentum", type: "number", unit: "% change QoQ", example: "+34%" },
+      { name: "digital_traffic_score", type: "number", unit: "0-100", example: "72" },
+      { name: "keyword_volume", type: "number", unit: "searches/mo", example: "8,400" },
+      { name: "trend_direction", type: "enum", unit: "direction", example: "accelerating" },
+    ],
+    adjustments: [
+      { name: "Keyword Relevance Filter", formula: "relevance = apartment_intent_keywords / all_area_keywords", note: "Filter out noise: 'restaurants in [area]' ≠ apartment demand" },
+      { name: "Origin Geography", formula: "migration_signal = out_of_market_searches / total_searches", note: "High out-of-market search = migration inflow signal" },
+      { name: "Competitor Digital Share", formula: "share = property_traffic / sum(all_submarket_property_traffic)", note: "Your digital share vs submarket total — are you capturing or losing?" },
+    ],
+  },
+};
+
+const FUSION_STEPS = [
+  {
+    step: 1,
+    title: "ANCHOR: DOT Baseline ADT",
+    formula: "base_adt = DOT_AADT × distance_decay × road_class_weight × frontage_factor",
+    example: "24,500 × 0.96 × 0.7 × 1.4 = 23,049 effective vehicles/day",
+    explanation: "Start with the government-validated count. Adjust for how far the count station is, what kind of road it is (interstate pass-through traffic is less relevant than arterial), and whether the property has corner visibility or single frontage.",
+    output: "effective_base_adt",
+    color: "#60a5fa",
+  },
+  {
+    step: 2,
+    title: "MULTIPLY: Google Live Congestion Factor",
+    formula: "temporal_adt = effective_base_adt × time_of_day_curve(hour) × day_of_week_factor × seasonal_factor",
+    example: "23,049 × 1.35 (5pm peak) × 1.08 (Tuesday) × 1.12 (January FL) = 37,614 at this moment",
+    explanation: "The DOT number is a flat daily average. Google's congestion ratio at different hours tells you HOW traffic distributes throughout the day. At 5pm the road might carry 1.35× the hourly average. Build these curves from 30 days of polling at 15-min intervals — this is your temporal resolution layer.",
+    output: "temporal_adjusted_adt",
+    color: "#22c55e",
+  },
+  {
+    step: 3,
+    title: "CONVERT: Vehicles → Potential Walk-Ins",
+    formula: "potential_walkins = temporal_adt × visibility_capture_rate × apartment_seeker_pct × stop_probability",
+    example: "37,614 × 0.04 (4% notice property) × 0.02 (2% are apt seekers) × 0.15 (15% would stop) = 4.5 potential walk-ins/hour at peak",
+    explanation: "Not everyone driving by is a customer. This conversion chain narrows from all vehicles to those who: see the property (visibility), are actually looking for an apartment (market rate), and would stop to inquire (impulse rate). These rates calibrate from your owned asset actual data.",
+    output: "hourly_walkin_potential",
+    color: "#8b5cf6",
+  },
+  {
+    step: 4,
+    title: "AGGREGATE: Daily/Weekly Walk-In Prediction",
+    formula: "weekly_walkins = Σ(hourly_walkin_potential × hours_open) for each day in week",
+    example: "Mon: 18 + Tue: 22 + Wed: 20 + Thu: 24 + Fri: 26 + Sat: 35 + Sun: 15 = ~160 walk-ins/week",
+    explanation: "Sum the hourly predictions across your leasing office hours for each day. Saturday typically peaks because searchers have time off. This is your T-01 Weekly Walk-In output — the number your leasing team actually cares about for staffing and tour scheduling.",
+    output: "weekly_walk_in_prediction (T-01)",
+    color: "#f59e0b",
+  },
+  {
+    step: 5,
+    title: "SCORE: Physical Traffic Score (T-02)",
+    formula: "physical_score = normalize(effective_base_adt, submarket_percentile) × 0.6 + normalize(walkin_prediction, submarket_percentile) × 0.4",
+    example: "percentile_rank(23,049 in submarket) = 78th → 78 × 0.6 = 46.8 + percentile_rank(160/wk) = 72nd → 72 × 0.4 = 28.8 → T-02 = 76",
+    explanation: "Convert the raw numbers into a 0–100 score relative to the submarket. Weight base ADT at 60% (location quality signal) and walk-in prediction at 40% (actionable business metric). This score becomes the Y-axis of your correlation matrix.",
+    output: "physical_traffic_score (T-02) → Y-axis of Correlation Matrix",
+    color: "#ef4444",
+  },
+  {
+    step: 6,
+    title: "PROJECT: Leading Indicator Trajectory (T-07)",
+    formula: "trajectory = trend_momentum × lead_time_weight + congestion_trend_slope × recency_weight",
+    example: "search_momentum(+34% QoQ) × 0.6 + congestion_slope(+8% over 90 days) × 0.4 = +23.6% projected physical traffic increase",
+    explanation: "The digital leading indicator says where demand IS GOING. The Google congestion trend says where physical traffic IS GOING. Combine them with lead-time weighting (digital leads by 2-4 months, congestion trends lead by 1-2 months). This is your trajectory arrow on the correlation matrix — telling you which direction a property is moving between quadrants.",
+    output: "traffic_trajectory (T-07) → Movement vector on matrix",
+    color: "#a855f7",
+  },
+];
+
+const POLLING_STRATEGY = [
+  { segment: "Primary frontage road", frequency: "Every 15 min, 6am–10pm", dailyCalls: 64, monthlyCalls: 1920, cost: "$28.80/mo" },
+  { segment: "Secondary cross street", frequency: "Every 30 min, 6am–10pm", dailyCalls: 32, monthlyCalls: 960, cost: "$14.40/mo" },
+  { segment: "Nearest highway on-ramp", frequency: "Every 1 hour, 6am–10pm", dailyCalls: 16, monthlyCalls: 480, cost: "$7.20/mo" },
+  { segment: "Competitor frontage (×5)", frequency: "Every 2 hours, 8am–8pm", dailyCalls: 30, monthlyCalls: 900, cost: "$13.50/mo" },
+];
+
+const CALIBRATION_DATA = {
+  title: "CALIBRATION: Your 290-Unit Baseline",
+  description: "Your owned assets provide the ground truth that makes the entire model work. When you know actual walk-in counts, you can reverse-engineer the conversion rates (visibility capture, apartment seeker %, stop probability) for your specific market. Every owned asset that uploads actuals makes the model more accurate for ALL properties in that submarket.",
+  fields: [
+    { input: "Actual weekly walk-ins (leasing log)", calibrates: "stop_probability rate" },
+    { input: "Actual tours scheduled", calibrates: "walk-in → tour conversion" },
+    { input: "Actual leases signed", calibrates: "T-05 Traffic-to-Lease model" },
+    { input: "Google Analytics website visits", calibrates: "digital_traffic_score baseline" },
+    { input: "ILS lead source tracking", calibrates: "digital vs physical attribution split" },
+    { input: "Marketing spend by channel", calibrates: "digital lift from paid campaigns" },
+  ],
+};
+
+const TREND_PATTERNS = [
+  {
+    name: "DEMAND SURGE DETECTED",
+    icon: "🔥",
+    color: "#22c55e",
+    condition: "Digital momentum > +25% QoQ AND congestion flat",
+    meaning: "Online interest is spiking but physical traffic hasn't caught up yet. This is the earliest signal — physical traffic increase follows in 2-4 months.",
+    action: "Acquire in this submarket NOW before physical traffic confirms the digital signal and prices adjust.",
+    timeline: "2–4 month lead time before physical traffic responds",
+  },
+  {
+    name: "MOMENTUM CONFIRMED",
+    icon: "✅",
+    color: "#3b82f6",
+    condition: "Digital momentum > +15% AND congestion ratio rising > +10%",
+    meaning: "Both digital and physical signals are accelerating in the same direction. The demand is real and already manifesting in road traffic. This is the strongest buy signal.",
+    action: "High-confidence investment thesis. Lock in acquisitions — the market will reprice within 6 months.",
+    timeline: "0–6 month window before market reprices",
+  },
+  {
+    name: "DIGITAL DIVERGENCE",
+    icon: "⚠️",
+    color: "#f59e0b",
+    condition: "Digital momentum declining AND congestion stable/rising",
+    meaning: "Physical traffic is holding but digital interest is fading. Could mean: market is saturating, rents are too high for searchers, or a better submarket is pulling demand away. This is an early warning.",
+    action: "Investigate cause. If rent-driven, consider concession strategy. If competition-driven, monitor for 60 days before sell decision.",
+    timeline: "4–8 month lead time before occupancy impact",
+  },
+  {
+    name: "MARKET EXHAUSTION",
+    icon: "🔴",
+    color: "#ef4444",
+    condition: "Digital momentum < -15% AND congestion declining",
+    meaning: "Both signals declining together. The market is losing demand on every channel. This is a structural shift, not a temporary dip.",
+    action: "SELL SIGNAL. Exit the submarket. Redeploy capital to Demand Surge or Momentum Confirmed markets.",
+    timeline: "Immediate — you're already behind the curve",
+  },
+  {
+    name: "SEASONAL NOISE",
+    icon: "📊",
+    color: "#64748b",
+    condition: "Digital fluctuation < ±10% AND congestion follows historical seasonal curve",
+    meaning: "Both signals are moving within their normal seasonal range. No action needed — this is just the market breathing.",
+    action: "Hold position. Continue monitoring. Seasonal corrections are priced in by sophisticated operators.",
+    timeline: "N/A — normal cycle",
+  },
+];
+
+
+function LayerCard({ layer, isActive, onClick }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: isActive ? `${layer.color}08` : "rgba(255,255,255,0.02)",
+        border: `1px solid ${isActive ? `${layer.color}40` : "rgba(255,255,255,0.06)"}`,
+        borderRadius: 12,
+        padding: 16,
+        cursor: "pointer",
+        transition: "all 0.25s ease",
+        borderLeft: `3px solid ${isActive ? layer.color : "transparent"}`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 16, color: layer.color }}>{layer.icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: isActive ? layer.color : "#94a3b8" }}>
+          {layer.label}
+        </span>
+      </div>
+      <div style={{
+        fontSize: 9, fontWeight: 700, color: layer.color,
+        background: `${layer.color}15`, padding: "2px 8px",
+        borderRadius: 4, display: "inline-block", letterSpacing: "0.06em",
+      }}>
+        {layer.tag}
+      </div>
+    </div>
+  );
+}
+
+export default function TrafficFusion() {
+  const [activeLayer, setActiveLayer] = useState("dot");
+  const [activeView, setActiveView] = useState("formula");
+
+  const layer = LAYERS[activeLayer];
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#0a0e17",
+      color: "#e2e8f0",
+      fontFamily: "'Inter', -apple-system, sans-serif",
+      padding: "32px 24px",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ maxWidth: 1200, margin: "0 auto 28px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: "linear-gradient(135deg, #60a5fa, #22c55e, #f59e0b)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 14, fontWeight: 800, color: "#fff",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>3L</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em" }}>
+              M07 TRAFFIC ENGINE · UNIFIED FORMULA
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+              Three-Layer Traffic Fusion
+            </h1>
+          </div>
+        </div>
+        <p style={{ fontSize: 14, color: "#94a3b8", maxWidth: 800, lineHeight: 1.6 }}>
+          DOT baseline anchors the count. Google live traffic reveals the temporal pattern. Digital signals predict where it's going.
+          Three layers fuse into the Physical Traffic Score (T-02) and Trajectory Signal (T-07) that feed your Correlation Matrix.
+        </p>
+      </div>
+
+      {/* FUSION EQUATION BANNER */}
+      <div style={{
+        maxWidth: 1200, margin: "0 auto 24px",
+        background: "linear-gradient(135deg, rgba(96,165,250,0.08), rgba(34,197,94,0.08), rgba(245,158,11,0.08))",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16, padding: "20px 28px",
+      }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", marginBottom: 10 }}>
+          THE UNIFIED EQUATION
+        </div>
+        <div style={{
+          fontSize: 15, fontWeight: 600, color: "#f8fafc",
+          fontFamily: "'JetBrains Mono', monospace",
+          lineHeight: 2,
+          overflowX: "auto",
+        }}>
+          <span style={{ color: "#60a5fa" }}>DOT_AADT</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>distance_decay</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>road_weight</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>frontage</span>
+          <span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#94a3b8" }}>base</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#22c55e" }}>tod_curve(h)</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#22c55e" }}>dow_factor</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#22c55e" }}>seasonal</span>
+          <span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#94a3b8" }}>temporal</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#8b5cf6" }}>capture_rate</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#8b5cf6" }}>seeker_%</span>
+          <span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#8b5cf6" }}>stop_prob</span>
+          <span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#f59e0b", fontWeight: 800 }}>weekly_walk_ins</span>
+        </div>
+        <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>
+          <span style={{ color: "#60a5fa" }}>■</span> Layer 1: DOT Static &nbsp;
+          <span style={{ color: "#22c55e" }}>■</span> Layer 2: Google Temporal &nbsp;
+          <span style={{ color: "#8b5cf6" }}>■</span> Conversion Chain &nbsp;
+          <span style={{ color: "#f59e0b" }}>■</span> Output T-01
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "280px 1fr", gap: 20 }}>
+
+        {/* LEFT: Layer Selector */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {Object.values(LAYERS).map(l => (
+            <LayerCard key={l.id} layer={l} isActive={activeLayer === l.id} onClick={() => setActiveLayer(l.id)} />
+          ))}
+
+          {/* Calibration Card */}
+          <div style={{
+            background: "rgba(168,85,247,0.06)",
+            border: "1px solid rgba(168,85,247,0.2)",
+            borderRadius: 12, padding: 16, marginTop: 8,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#a855f7", letterSpacing: "0.06em", marginBottom: 8 }}>
+              🔄 {CALIBRATION_DATA.title}
+            </div>
+            <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginBottom: 10 }}>
+              {CALIBRATION_DATA.description}
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {CALIBRATION_DATA.fields.map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: 6, fontSize: 10, alignItems: "flex-start" }}>
+                  <span style={{ color: "#a855f7", flexShrink: 0 }}>→</span>
+                  <span style={{ color: "#cbd5e1" }}>{f.input}</span>
+                  <span style={{ color: "#475569", flexShrink: 0 }}>calibrates</span>
+                  <span style={{ color: "#a855f7", fontFamily: "'JetBrains Mono', monospace" }}>{f.calibrates}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT: Detail Panel */}
+        <div>
+          {/* Layer Detail Header */}
+          <div style={{
+            background: `${layer.color}08`,
+            border: `1px solid ${layer.color}30`,
+            borderRadius: 14, padding: 20, marginBottom: 16,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 22, color: layer.color }}>{layer.icon}</span>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, color: layer.color }}>{layer.label}</h2>
+                </div>
+                <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, maxWidth: 600 }}>{layer.description}</p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0, textAlign: "right" }}>
+                {[
+                  { label: "Source", value: layer.dataSource },
+                  { label: "Refresh", value: layer.refreshRate },
+                  { label: "Cost", value: layer.cost },
+                ].map(m => (
+                  <div key={m.label}>
+                    <div style={{ fontSize: 9, color: "#475569" }}>{m.label}</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>{m.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Core Formula */}
+            <div style={{
+              background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "10px 14px",
+              fontFamily: "'JetBrains Mono', monospace", fontSize: 13,
+              color: layer.color, fontWeight: 600,
+            }}>
+              {layer.formula}
+            </div>
+          </div>
+
+          {/* Tab Navigation */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+            {[
+              { key: "formula", label: "ADJUSTMENTS & FORMULAS" },
+              { key: "outputs", label: "DATA OUTPUTS" },
+              { key: "limitations", label: "LIMITATIONS" },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveView(tab.key)}
+                style={{
+                  flex: 1, padding: "10px 12px",
+                  background: activeView === tab.key ? `${layer.color}10` : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${activeView === tab.key ? `${layer.color}30` : "rgba(255,255,255,0.06)"}`,
+                  borderRadius: 8,
+                  color: activeView === tab.key ? layer.color : "#64748b",
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
+                  cursor: "pointer", transition: "all 0.2s",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div style={{
+            background: "rgba(255,255,255,0.02)",
+            border: "1px solid rgba(255,255,255,0.06)",
+            borderRadius: 12, padding: 20,
+          }}>
+            {activeView === "formula" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {layer.adjustments.map((adj, i) => (
+                  <div key={i} style={{
+                    padding: 14, background: "rgba(255,255,255,0.02)",
+                    border: "1px solid rgba(255,255,255,0.04)",
+                    borderRadius: 10, borderLeft: `3px solid ${layer.color}`,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>{adj.name}</div>
+                    <div style={{
+                      fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
+                      color: layer.color, background: "rgba(0,0,0,0.25)",
+                      padding: "6px 10px", borderRadius: 6, marginBottom: 6,
+                    }}>
+                      {adj.formula}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5 }}>{adj.note}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeView === "outputs" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {layer.outputs.map((out, i) => (
+                  <div key={i} style={{
+                    display: "grid", gridTemplateColumns: "180px 80px 120px 1fr",
+                    padding: "10px 14px", alignItems: "center",
+                    background: i % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent",
+                    borderRadius: 6, fontSize: 12,
+                  }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", color: layer.color, fontWeight: 600 }}>{out.name}</span>
+                    <span style={{ color: "#64748b" }}>{out.type}</span>
+                    <span style={{ color: "#94a3b8" }}>{out.unit}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#475569" }}>e.g. {out.example}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeView === "limitations" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {layer.limitations.map((lim, i) => (
+                  <div key={i} style={{
+                    display: "flex", gap: 8, alignItems: "flex-start",
+                    padding: "8px 12px", background: "rgba(239,68,68,0.04)",
+                    borderRadius: 6, fontSize: 12, color: "#94a3b8", lineHeight: 1.5,
+                  }}>
+                    <span style={{ color: "#ef4444", flexShrink: 0, marginTop: 2 }}>⚠</span>
+                    {lim}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* FUSION PIPELINE */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          6-STEP FUSION PIPELINE — DOT BASELINE → TEMPORAL ADJUSTMENT → WALK-IN PREDICTION → SCORE → TRAJECTORY
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {FUSION_STEPS.map((step) => (
+            <div key={step.step} style={{
+              display: "grid", gridTemplateColumns: "48px 1fr",
+              gap: 16, alignItems: "flex-start",
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 12,
+                background: `${step.color}15`, border: `1px solid ${step.color}30`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18, fontWeight: 800, color: step.color,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                {step.step}
+              </div>
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 12, padding: 16,
+                borderLeft: `3px solid ${step.color}`,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>
+                  {step.title}
+                </div>
+                <div style={{
+                  fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
+                  color: step.color, background: "rgba(0,0,0,0.3)",
+                  padding: "8px 12px", borderRadius: 6, marginBottom: 8,
+                  overflowX: "auto",
+                }}>
+                  {step.formula}
+                </div>
+                <div style={{
+                  fontSize: 12, color: "#22c55e", background: "rgba(34,197,94,0.06)",
+                  padding: "6px 10px", borderRadius: 6, marginBottom: 8,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  ▸ {step.example}
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>{step.explanation}</div>
+                <div style={{
+                  marginTop: 8, fontSize: 11, fontWeight: 700, color: step.color,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  OUTPUT → {step.output}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* TREND PATTERN DETECTION */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          LEADING INDICATOR PATTERNS — CROSS-LAYER TREND DETECTION
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {TREND_PATTERNS.map((p, i) => (
+            <div key={i} style={{
+              background: `${p.color}06`,
+              border: `1px solid ${p.color}20`,
+              borderRadius: 12, padding: 16,
+              gridColumn: i === 4 ? "1 / -1" : undefined,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>{p.icon}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: p.color }}>{p.name}</span>
+              </div>
+              <div style={{
+                fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                color: "#94a3b8", background: "rgba(0,0,0,0.2)",
+                padding: "6px 10px", borderRadius: 6, marginBottom: 8,
+              }}>
+                IF: {p.condition}
+              </div>
+              <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.6, marginBottom: 8 }}>{p.meaning}</div>
+              <div style={{
+                fontSize: 11, color: p.color, fontWeight: 600,
+                background: `${p.color}10`, padding: "6px 10px", borderRadius: 6, marginBottom: 6,
+              }}>
+                ▸ {p.action}
+              </div>
+              <div style={{ fontSize: 10, color: "#475569" }}>Lead Time: {p.timeline}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* GOOGLE API COST MODEL */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          GOOGLE ROUTES API — POLLING STRATEGY & COST PER PROPERTY
+        </div>
+        <div style={{
+          background: "rgba(255,255,255,0.02)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 12, overflow: "hidden",
+        }}>
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 100px 100px 100px",
+            padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)",
+            fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em",
+          }}>
+            <span>ROAD SEGMENT</span><span>POLLING FREQUENCY</span><span>DAILY</span><span>MONTHLY</span><span>COST</span>
+          </div>
+          {POLLING_STRATEGY.map((row, i) => (
+            <div key={i} style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr 100px 100px 100px",
+              padding: "10px 16px", fontSize: 12,
+              borderBottom: "1px solid rgba(255,255,255,0.04)",
+              background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+            }}>
+              <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{row.segment}</span>
+              <span style={{ color: "#94a3b8" }}>{row.frequency}</span>
+              <span style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{row.dailyCalls}</span>
+              <span style={{ color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{row.monthlyCalls}</span>
+              <span style={{ color: "#22c55e", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{row.cost}</span>
+            </div>
+          ))}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 100px 100px 100px",
+            padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.1)",
+            background: "rgba(34,197,94,0.05)",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc" }}>TOTAL PER PROPERTY</span>
+            <span></span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc", fontFamily: "'JetBrains Mono', monospace" }}>142</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc", fontFamily: "'JetBrains Mono', monospace" }}>4,260</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#22c55e", fontFamily: "'JetBrains Mono', monospace" }}>$63.90/mo</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>
+          At $15/1000 requests (Preferred tier). Monitoring 10 properties + 5 competitors each = ~$640/mo for full temporal coverage. 
+          Start with 1 owned asset to calibrate, then expand.
+        </div>
+      </div>
+    </div>
+  );
+}
