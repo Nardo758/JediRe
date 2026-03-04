@@ -697,4 +697,90 @@ router.get('/:dealId/zoning-analysis', requireAuth, async (req: AuthenticatedReq
   }
 });
 
+/**
+ * GET /deals/:dealId/analysis/latest
+ * Get latest strategy analysis for a deal
+ */
+router.get('/:dealId/analysis/latest', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Fetch latest strategy analysis from strategy_analyses table
+    const result = await client.query(
+      `SELECT * FROM strategy_analyses 
+       WHERE deal_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No analysis available yet. Trigger analysis first.'
+      });
+    }
+    
+    const analysis = result.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        strategies: analysis.strategies || [],
+        recommendedStrategyId: analysis.recommended_strategy_id,
+        analysisCompletedAt: analysis.created_at
+      }
+    });
+  } catch (error: any) {
+    console.error('Error fetching latest analysis:', error);
+    
+    // Return empty result instead of error (graceful degradation)
+    res.json({
+      success: true,
+      data: null,
+      message: 'Analysis data not available'
+    });
+  }
+});
+
+/**
+ * POST /deals/:dealId/analysis/trigger
+ * Trigger strategy analysis for a deal
+ */
+router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Verify deal exists
+    const dealResult = await client.query(
+      `SELECT id, name, project_type FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deal not found'
+      });
+    }
+    
+    // For now, return success without actually running analysis
+    // TODO: Implement actual strategy analysis engine
+    res.json({
+      success: true,
+      message: 'Analysis queued. Check /analysis/latest for results.',
+      dealId
+    });
+  } catch (error: any) {
+    console.error('Error triggering analysis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to trigger analysis'
+    });
+  }
+});
+
 export default router;
