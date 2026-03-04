@@ -42,6 +42,7 @@ import { DesignReferencePanel } from './DesignReferencePanel';
 import { ViewportOverlay } from './ViewportOverlay';
 import { BuildingGeneratorPanel } from './BuildingGeneratorPanel';
 import { SectionEditorPanel } from './SectionEditorPanel';
+import { AIRenderingPanel } from './AIRenderingPanel';
 
 // ============================================================================
 // Main Component
@@ -95,9 +96,13 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const [pinnedOverlay, setPinnedOverlay] = useState<{ url: string; name: string } | null>(null);
   const [showGeneratorPanel, setShowGeneratorPanel] = useState(false);
   const [showEditorPanel, setShowEditorPanel] = useState(false);
+  const [showAIRenderingPanel, setShowAIRenderingPanel] = useState(false);
   
   // File input ref for image upload
   const imageInputRef = useRef<HTMLInputElement>(null);
+  
+  // Canvas ref for screenshot capture
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Get selected section for editor
   const selectedSection = state.buildingSections.find(s => s.id === state.selectedSectionId);
@@ -200,6 +205,38 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
   
+  /**
+   * Capture screenshot from Three.js canvas
+   */
+  const captureScreenshot = useCallback((): string => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) {
+      console.error('Canvas not found');
+      return '';
+    }
+    
+    try {
+      // Capture canvas as base64 PNG
+      const dataUrl = canvas.toDataURL('image/png');
+      console.log('[Screenshot] Captured from canvas');
+      return dataUrl;
+    } catch (error) {
+      console.error('[Screenshot] Failed to capture:', error);
+      return '';
+    }
+  }, []);
+
+  /**
+   * Open AI rendering panel
+   */
+  const handleOpenAIRendering = useCallback(() => {
+    if (state.buildingSections.length === 0) {
+      alert('Please generate a building first before creating a rendering');
+      return;
+    }
+    setShowAIRenderingPanel(true);
+  }, [state.buildingSections]);
+
   /**
    * AI DESIGN GENERATION HOOK (Placeholder for Phase 2 Qwen Integration)
    * This will eventually send prompts like "Design 280-unit building" to Qwen
@@ -362,6 +399,7 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       <Toolbar
         onAddBuilding={handleOpenGenerator}
         onAIGenerate={handleAIGenerate}
+        onAIRender={handleOpenAIRendering}
         onImageUpload={() => imageInputRef.current?.click()}
         onToggleGrid={actions.toggleGrid}
         onToggleMeasurements={actions.toggleMeasurements}
@@ -398,6 +436,14 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
             actions.selectSection(null);
             setShowEditorPanel(false);
           }}
+        />
+      )}
+      
+      {/* AI Rendering Panel */}
+      {showAIRenderingPanel && (
+        <AIRenderingPanel
+          onClose={() => setShowAIRenderingPanel(false)}
+          captureScreenshot={captureScreenshot}
         />
       )}
       
@@ -687,6 +733,7 @@ const MetricRow: React.FC<{ label: string; value: string | number }> = ({
 interface ToolbarProps {
   onAddBuilding: () => void;
   onAIGenerate: () => void;
+  onAIRender: () => void;
   onImageUpload: () => void;
   onToggleGrid: () => void;
   onToggleMeasurements: () => void;
@@ -707,6 +754,7 @@ interface ToolbarProps {
 const Toolbar: React.FC<ToolbarProps> = ({
   onAddBuilding,
   onAIGenerate,
+  onAIRender,
   onImageUpload,
   onToggleGrid,
   onToggleMeasurements,
@@ -742,6 +790,13 @@ const Toolbar: React.FC<ToolbarProps> = ({
       
       <ToolbarButton onClick={onAddBuilding} title="Generate Building">
         🏗️ Generate
+      </ToolbarButton>
+      
+      <ToolbarButton
+        onClick={onAIRender}
+        title="AI Photorealistic Rendering"
+      >
+        🎨 AI Render
       </ToolbarButton>
       
       <div className="w-px h-6 bg-gray-600" />

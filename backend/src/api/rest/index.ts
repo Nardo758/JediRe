@@ -76,6 +76,7 @@ import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
 import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
 import buildingDesign3DRoutes from './building-design-3d.routes';
+import aiRenderingRoutes from './ai-rendering.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -298,6 +299,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Building 3D Design routes (3D massing editor persistence)
   app.use(`${API_PREFIX}/deals`, buildingDesign3DRoutes);
+
+  // AI Rendering routes (Massing → Photorealistic rendering via ControlNet)
+  app.use(`${API_PREFIX}/ai`, aiRenderingRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
