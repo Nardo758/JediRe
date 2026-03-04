@@ -179,6 +179,10 @@ app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
 app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 
+// Admin API - full admin panel (auth + admin role required internally)
+import adminRouter from './api/rest/admin.routes';
+app.use('/api/v1/admin', adminRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
