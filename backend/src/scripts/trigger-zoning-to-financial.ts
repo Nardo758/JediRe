@@ -13,6 +13,14 @@ const pool = getPool();
 const DEAL_ID = process.argv[2] || 'e044db04-439b-4442-82df-b36a840f2fd8';
 const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
 
+if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY.includes('DUMMY') || ANTHROPIC_API_KEY.length < 10) {
+  console.error('ERROR: No valid Anthropic API key found.');
+  console.error('Set one of these environment variables:');
+  console.error('  - AI_INTEGRATIONS_ANTHROPIC_API_KEY');
+  console.error('  - CLAUDE_API_KEY');
+  process.exit(1);
+}
+
 interface ZoningData {
   code: string;
   name?: string;
