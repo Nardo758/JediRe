@@ -1249,6 +1249,20 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
   }
 });
 
+router.post('/deals/:dealId/scenarios/deactivate-all', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    await pool.query(
+      'UPDATE development_scenarios SET is_active = false, updated_at = NOW() WHERE deal_id = $1',
+      [dealId]
+    );
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deactivating scenarios:', error);
+    res.status(500).json({ error: error.message || 'Failed to deactivate scenarios' });
+  }
+});
+
 router.put('/deals/:dealId/scenarios/:id/activate', async (req: Request, res: Response) => {
   try {
     const { dealId, id } = req.params;
