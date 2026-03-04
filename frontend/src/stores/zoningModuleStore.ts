@@ -14,6 +14,7 @@ import type {
   DealTimeline,
   DevelopmentPath,
   BuildingEnvelope,
+  SelectedPathData,
   ZoningModuleState,
 } from '../types/zoning.types';
 
@@ -54,6 +55,7 @@ export const useZoningModuleStore = create<ZoningModuleState>((set) => ({
   // Phase 2: Development Path Selection
   development_path: null,
   selected_envelope: null,
+  selected_path_data: null,
   path_target_code: null,
 
   setActiveTab: (tab: ZoningTabId) => set({ activeTab: tab }),
@@ -93,6 +95,6 @@ export const useZoningModuleStore = create<ZoningModuleState>((set) => ({
       },
     })),
 
-  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null) =>
-    set({ development_path: path, selected_envelope: envelope }),
+  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null, pathData?: SelectedPathData | null) =>
+    set({ development_path: path, selected_envelope: envelope, selected_path_data: pathData ?? null }),
 }));

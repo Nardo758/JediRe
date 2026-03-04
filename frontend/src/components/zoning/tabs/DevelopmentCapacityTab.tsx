@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
-import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
+import type { DevelopmentPath, BuildingEnvelope, SelectedPathData } from '../../../types/zoning.types';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 import { MunicodeLink } from '../SourceCitation';
 
 interface EnvelopeEnrichment {
@@ -132,6 +133,7 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
 
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
+  const { updateActiveScenario, emitEvent } = useDealModule();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -227,7 +229,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   }, [dealId]);
 
-  const handleSelectPath = useCallback((colKey: string, rec: any) => {
+  const handleSelectPath = useCallback((colKey: string, rec: any, col: any) => {
     setSelectedColKey(colKey);
     const pathId = colKeyToPathId(colKey);
     const units = rec.maxUnits || 0;
@@ -254,8 +256,58 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       construction_type: constructionType,
     };
 
-    selectDevelopmentPath(pathId, envelope);
-  }, [selectDevelopmentPath]);
+    const colCells = comparison?.cells?.[colKey] || {};
+    const selectedPathData: SelectedPathData = {
+      pathId,
+      colKey,
+      zoningCode: colCells.zoningCode || rec.zoningCode || null,
+      density: colCells.density || rec.density || null,
+      far: colCells.far || rec.far || null,
+      maxUnits: units,
+      maxGba: gba,
+      maxStories: stories,
+      parkingRequired: parking,
+      bindingConstraint: colCells.bindingConstraint || rec.bindingConstraint || null,
+      appliedFar: rec.appliedFar ?? null,
+      risk: col?.risk || rec.risk || null,
+      successRate: col?.successRate || null,
+      timeline: col?.timeline || null,
+      aiInsight: col?.aiInsight || rec.aiInsight || null,
+      aiSummary: comparison?.aiSummary || null,
+      allCellData: { ...colCells },
+    };
+
+    selectDevelopmentPath(pathId, envelope, selectedPathData);
+
+    const efficiencyFactor = 0.82;
+    const netLeasableSf = Math.round(gba * efficiencyFactor);
+    updateActiveScenario({
+      id: `${pathId}-${colKey}`,
+      name: col?.label || pathId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+      maxGba: gba,
+      maxUnits: units,
+      netLeasableSf,
+      parkingRequired: parking,
+      maxStories: stories,
+      bindingConstraint: selectedPathData.bindingConstraint,
+      appliedFar: selectedPathData.appliedFar,
+      avgUnitSize,
+      efficiencyFactor,
+      lastUpdated: Date.now(),
+    });
+
+    emitEvent({
+      source: 'zoning',
+      type: 'capacity-updated',
+      payload: {
+        pathId,
+        envelope,
+        selectedPathData,
+        avgUnitSize,
+        efficiencyFactor,
+      },
+    });
+  }, [selectDevelopmentPath, comparison, avgUnitSize, updateActiveScenario, emitEvent]);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -872,48 +924,35 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         );
       })()}
 
-      {/* Entitlement Comparison */}
-      {(() => {
-        const cols = comparison?.columns || [];
-        const dynRows = comparison?.rows || [];
-        const cells = comparison?.cells || {};
-        const hasData = cols.length > 0 || recommendations.length > 0;
-        if (!hasData && !loadingRecs && !loading) return null;
-
-        const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
-
-        const mrcCodes = (() => {
-          const invalidCodePattern = /site|plan|drive|thru|allowed|permit|admin/i;
-          const codes = new Set<string>();
-          allBenchProjects.forEach((p: any) => {
-            const c = p.zoningTo || p.zoningFrom;
-            if (c && !invalidCodePattern.test(c)) codes.add(c);
-          });
-          return Array.from(codes).sort();
-        })();
-
-        const rezone = recommendations.find((r: any) => r.name === 'Rezone');
-
-        const colWidth = cols.length > 0 ? `${Math.floor(82 / cols.length)}%` : '27%';
-
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Comparison</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">AI-analyzed development capacity across entitlement paths</p>
-                </div>
-                {(loadingRecs || loading) && !comparison && (
-                  <div className="flex items-center gap-1.5">
-                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
-                    <span className="text-[10px] text-gray-400">{loadingRecs ? 'Analyzing paths...' : 'Loading profile...'}</span>
-                  </div>
-                )}
-              </div>
+      {/* Entitlement Comparison — container always visible */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Comparison</h3>
+              <p className="text-xs text-gray-500 mt-0.5">AI-analyzed development capacity across entitlement paths</p>
             </div>
+            {(loadingRecs || loading) && (
+              <div className="flex items-center gap-1.5">
+                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
+                <span className="text-[10px] text-gray-400">
+                  {comparison ? 'Refreshing paths...' : loadingRecs ? 'Analyzing paths...' : 'Loading profile...'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
 
-            {(loadingRecs || loading) && cols.length === 0 ? (
+        {(() => {
+          const cols = comparison?.columns || [];
+          const dynRows = comparison?.rows || [];
+          const cells = comparison?.cells || {};
+          const hasData = cols.length > 0;
+
+          if (!hasData) {
+            const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
+            void allBenchProjects;
+            return (
               <div className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -952,218 +991,240 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                     </tbody>
                   </table>
                 </div>
-                <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-                  <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
-                </div>
+                {(loadingRecs || loading) && (
+                  <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                    <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
+                  </div>
+                )}
+                {!loadingRecs && !loading && (
+                  <div className="flex items-center justify-center py-6 border-t border-gray-100">
+                    <span className="text-xs text-gray-400">Entitlement data will appear here once the zoning profile is loaded</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50/50">
-                        <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[18%]" />
-                        {cols.map((col: any) => (
-                          <th key={col.key} className="text-center px-3 py-2.5" style={{ width: colWidth }}>
-                            <div className="flex items-center justify-center gap-2">
-                              <span className="text-xs font-bold text-gray-900">{col.label}</span>
-                              {col.risk && (
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                                  col.risk === 'Low' ? 'bg-green-50 text-green-700 border border-green-200' :
-                                  col.risk === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                  'bg-red-50 text-red-700 border border-red-200'
-                                }`}>{col.risk}</span>
-                              )}
-                            </div>
-                            {col.successRate && (
-                              <div className="text-[10px] text-gray-400 mt-0.5">{col.successRate} success · {col.timeline}</div>
-                            )}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-gray-100 bg-blue-50/30">
-                        <td className="px-4 py-2 text-xs font-medium text-gray-600">Avg Unit Size</td>
-                        <td colSpan={cols.length} className="px-3 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <input
-                              type="number"
-                              min="400"
-                              max="2000"
-                              step="50"
-                              value={avgUnitSize}
-                              onChange={(e) => setAvgUnitSize(Math.max(400, Math.min(2000, parseInt(e.target.value) || 900)))}
-                              className="w-16 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
-                            />
-                            <span className="text-xs text-gray-500">SF</span>
-                            {avgUnitSize !== 900 && (
-                              <button onClick={() => setAvgUnitSize(900)} className="text-[10px] text-blue-500 hover:text-blue-700 ml-1">reset</button>
+            );
+          }
+
+          const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
+          const mrcCodes = (() => {
+            const invalidCodePattern = /site|plan|drive|thru|allowed|permit|admin/i;
+            const codes = new Set<string>();
+            allBenchProjects.forEach((p: any) => {
+              const c = p.zoningTo || p.zoningFrom;
+              if (c && !invalidCodePattern.test(c)) codes.add(c);
+            });
+            return Array.from(codes).sort();
+          })();
+          const rezone = recommendations.find((r: any) => r.name === 'Rezone');
+          const colWidth = cols.length > 0 ? `${Math.floor(82 / cols.length)}%` : '27%';
+
+          return (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[18%]" />
+                      {cols.map((col: any) => (
+                        <th key={col.key} className="text-center px-3 py-2.5" style={{ width: colWidth }}>
+                          <div className="flex items-center justify-center gap-2">
+                            <span className="text-xs font-bold text-gray-900">{col.label}</span>
+                            {col.risk && (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                                col.risk === 'Low' ? 'bg-green-50 text-green-700 border border-green-200' :
+                                col.risk === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                'bg-red-50 text-red-700 border border-red-200'
+                              }`}>{col.risk}</span>
                             )}
                           </div>
-                        </td>
-                      </tr>
-                      <tr className="border-b border-gray-100 bg-blue-50/30">
-                        <td className="px-4 py-2 text-xs font-medium text-gray-600">Controls</td>
-                        {cols.map((col: any) => (
-                          <td key={col.key} className="px-3 py-2 text-center">
-                            {col.key === 'variance' ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <span className="text-xs text-gray-500">+</span>
+                          {col.successRate && (
+                            <div className="text-[10px] text-gray-400 mt-0.5">{col.successRate} success · {col.timeline}</div>
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100 bg-blue-50/30">
+                      <td className="px-4 py-2 text-xs font-medium text-gray-600">Avg Unit Size</td>
+                      <td colSpan={cols.length} className="px-3 py-2">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="400"
+                            max="2000"
+                            step="50"
+                            value={avgUnitSize}
+                            onChange={(e) => setAvgUnitSize(Math.max(400, Math.min(2000, parseInt(e.target.value) || 900)))}
+                            className="w-16 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                          />
+                          <span className="text-xs text-gray-500">SF</span>
+                          {avgUnitSize !== 900 && (
+                            <button onClick={() => setAvgUnitSize(900)} className="text-[10px] text-blue-500 hover:text-blue-700 ml-1">reset</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-100 bg-blue-50/30">
+                      <td className="px-4 py-2 text-xs font-medium text-gray-600">Controls</td>
+                      {cols.map((col: any) => (
+                        <td key={col.key} className="px-3 py-2 text-center">
+                          {col.key === 'variance' ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <span className="text-xs text-gray-500">+</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={variancePct}
+                                onChange={(e) => setVariancePct(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                                className="w-14 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                              />
+                              <span className="text-xs text-gray-500">%</span>
+                            </div>
+                          ) : col.key === 'rezone' ? (
+                            <div>
+                              <div className="relative">
+                                <select
+                                  value={rezoneTargetCode}
+                                  onChange={(e) => setRezoneTargetCode(e.target.value)}
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white appearance-none pr-6"
+                                >
+                                  <option value="">{rezone?.zoningCode ? `${rezone.zoningCode} (auto)` : 'Select code...'}</option>
+                                  {mrcCodes.map((c: string) => (
+                                    <option key={c} value={c}>{c}{c === profile?.base_district_code ? ' (current)' : ''}</option>
+                                  ))}
+                                  <option value="__custom__">Custom code...</option>
+                                </select>
+                                <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </div>
+                              {rezoneTargetCode === '__custom__' && (
                                 <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  value={variancePct}
-                                  onChange={(e) => setVariancePct(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                                  className="w-14 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                  type="text"
+                                  placeholder="Enter code..."
+                                  value={customRezoneCode}
+                                  onChange={(e) => setCustomRezoneCode(e.target.value.toUpperCase())}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
+                                  onBlur={() => { if (customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
+                                  className="mt-1 w-full text-xs border border-violet-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                                  autoFocus
                                 />
-                                <span className="text-xs text-gray-500">%</span>
-                              </div>
-                            ) : col.key === 'rezone' ? (
-                              <div>
-                                <div className="relative">
-                                  <select
-                                    value={rezoneTargetCode}
-                                    onChange={(e) => setRezoneTargetCode(e.target.value)}
-                                    className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white appearance-none pr-6"
-                                  >
-                                    <option value="">{rezone?.zoningCode ? `${rezone.zoningCode} (auto)` : 'Select code...'}</option>
-                                    {mrcCodes.map((c: string) => (
-                                      <option key={c} value={c}>{c}{c === profile?.base_district_code ? ' (current)' : ''}</option>
-                                    ))}
-                                    <option value="__custom__">Custom code...</option>
-                                  </select>
-                                  <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                  </svg>
-                                </div>
-                                {rezoneTargetCode === '__custom__' && (
-                                  <input
-                                    type="text"
-                                    placeholder="Enter code..."
-                                    value={customRezoneCode}
-                                    onChange={(e) => setCustomRezoneCode(e.target.value.toUpperCase())}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' && customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
-                                    onBlur={() => { if (customRezoneCode.trim()) setRezoneTargetCode(customRezoneCode.trim()); }}
-                                    className="mt-1 w-full text-xs border border-violet-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                                    autoFocus
-                                  />
-                                )}
-                              </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">--</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                    {dynRows.map((row: any) => (
+                      <tr key={row.key} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-4 py-2 text-xs font-medium text-gray-600">{row.label}</td>
+                        {cols.map((col: any) => {
+                          const cellVal = cells[col.key]?.[row.key] || '--';
+                          const displayVal = row.key === 'bindingConstraint' && cellVal !== '--' ? getLimitingLabel(cellVal) : cellVal;
+                          const deltaUnits = parseInt(cells[col.key]?.deltaUnits || '0');
+                          const showDelta = col.key !== 'byRight' && row.key === 'maxUnits' && deltaUnits !== 0;
+                          return (
+                            <td key={col.key} className={`px-3 py-2 text-center text-xs ${col.key === 'byRight' ? 'text-gray-900 font-medium' : 'text-gray-800'}`}>
+                              {displayVal}
+                              {showDelta && (
+                                <span className={`ml-1 text-[10px] ${deltaUnits > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {deltaUnits > 0 ? '+' : ''}{deltaUnits}%
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    {cols.some((col: any) => col.aiInsight) && (
+                      <tr className="border-b border-gray-100">
+                        <td className="px-4 py-2.5 text-xs font-medium text-gray-600 align-top">AI Insight</td>
+                        {cols.map((col: any) => (
+                          <td key={col.key} className="px-3 py-2.5 text-left">
+                            {col.aiInsight ? (
+                              <p className="text-[11px] text-gray-600 leading-relaxed bg-gray-50 rounded px-2 py-1.5">{col.aiInsight}</p>
                             ) : (
                               <span className="text-xs text-gray-400">--</span>
                             )}
                           </td>
                         ))}
                       </tr>
-                      {dynRows.map((row: any) => (
-                        <tr key={row.key} className="border-b border-gray-50 hover:bg-gray-50/50">
-                          <td className="px-4 py-2 text-xs font-medium text-gray-600">{row.label}</td>
-                          {cols.map((col: any) => {
-                            const cellVal = cells[col.key]?.[row.key] || '--';
-                            const displayVal = row.key === 'bindingConstraint' && cellVal !== '--' ? getLimitingLabel(cellVal) : cellVal;
-                            const deltaUnits = parseInt(cells[col.key]?.deltaUnits || '0');
-                            const showDelta = col.key !== 'byRight' && row.key === 'maxUnits' && deltaUnits !== 0;
-                            return (
-                              <td key={col.key} className={`px-3 py-2 text-center text-xs ${col.key === 'byRight' ? 'text-gray-900 font-medium' : 'text-gray-800'}`}>
-                                {displayVal}
-                                {showDelta && (
-                                  <span className={`ml-1 text-[10px] ${deltaUnits > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {deltaUnits > 0 ? '+' : ''}{deltaUnits}%
-                                  </span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                      {cols.some((col: any) => col.aiInsight) && (
-                        <tr className="border-b border-gray-100">
-                          <td className="px-4 py-2.5 text-xs font-medium text-gray-600 align-top">AI Insight</td>
-                          {cols.map((col: any) => (
-                            <td key={col.key} className="px-3 py-2.5 text-left">
-                              {col.aiInsight ? (
-                                <p className="text-[11px] text-gray-600 leading-relaxed bg-gray-50 rounded px-2 py-1.5">{col.aiInsight}</p>
+                    )}
+                    <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
+                      <td className="px-4 py-3 text-xs font-bold text-gray-700">Select Path</td>
+                      {cols.map((col: any, colIdx: number) => {
+                        const isSelected = selectedColKey === col.key;
+                        const rec = recommendations[colIdx];
+                        return (
+                          <td key={col.key} className="px-3 py-3 text-center">
+                            <button
+                              onClick={() => rec && handleSelectPath(col.key, rec, col)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                                  : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                  Selected
+                                </>
                               ) : (
-                                <span className="text-xs text-gray-400">--</span>
+                                <>Select</>
                               )}
-                            </td>
-                          ))}
-                        </tr>
-                      )}
-                      <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
-                        <td className="px-4 py-3 text-xs font-bold text-gray-700">Select Path</td>
-                        {cols.map((col: any, colIdx: number) => {
-                          const isSelected = selectedColKey === col.key;
-                          const rec = recommendations[colIdx];
-                          return (
-                            <td key={col.key} className="px-3 py-3 text-center">
-                              <button
-                                onClick={() => rec && handleSelectPath(col.key, rec)}
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                  isSelected
-                                    ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
-                                    : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
-                                }`}
-                              >
-                                {isSelected ? (
-                                  <>
-                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                    Selected
-                                  </>
-                                ) : (
-                                  <>Select</>
-                                )}
-                              </button>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                {comparison?.aiSummary && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-blue-50/30">
-                    <div className="flex items-start gap-2">
-                      <span className="text-blue-500 mt-0.5 flex-shrink-0">
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </span>
-                      <p className="text-[11px] text-gray-700 leading-relaxed">{comparison.aiSummary}</p>
-                    </div>
-                  </div>
-                )}
-                {development_path && (
-                  <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {comparison?.aiSummary && (
+                <div className="px-5 py-3 border-t border-gray-100 bg-blue-50/30">
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-500 mt-0.5 flex-shrink-0">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <div className="flex-1">
-                        <span className="text-xs font-bold text-blue-900">
-                          Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                        </span>
-                        <span className="text-[10px] text-blue-600 ml-3">
-                          Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
-                        className="text-[10px] text-blue-500 hover:text-blue-700 underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
+                    </span>
+                    <p className="text-[11px] text-gray-700 leading-relaxed">{comparison.aiSummary}</p>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        );
-      })()}
+                </div>
+              )}
+              {development_path && (
+                <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <span className="text-xs font-bold text-blue-900">
+                        Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      </span>
+                      <span className="text-[10px] text-blue-600 ml-3">
+                        Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { selectDevelopmentPath(null, null, null); setSelectedColKey(null); }}
+                      className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+      </div>
 
       {profile && (
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
