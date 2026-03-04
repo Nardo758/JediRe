@@ -155,6 +155,13 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+
+// Admin routes MUST be registered before generic /api/v1 routes
+import dataTrackerRoutes from './api/rest/data-tracker.routes';
+app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+import adminRouter from './api/rest/admin.routes';
+app.use('/api/v1/admin', adminRouter);
+
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
@@ -174,14 +181,6 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
-
-// Data Tracker - public admin stats (no auth required)
-import dataTrackerRoutes from './api/rest/data-tracker.routes';
-app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
-
-// Admin API - full admin panel (auth + admin role required internally)
-import adminRouter from './api/rest/admin.routes';
-app.use('/api/v1/admin', adminRouter);
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
