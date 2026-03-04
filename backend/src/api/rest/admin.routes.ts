@@ -267,6 +267,164 @@ router.post('/ingest/map-properties-to-zoning', requireAuth, requireAdmin, async
   }
 });
 
+router.post('/ingest/full', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+  const jobId = `full-${++jobCounter}`;
+  const job: IngestionJob = {
+    id: jobId,
+    type: 'full-ingestion',
+    status: 'running',
+    startedAt: new Date(),
+    recordsProcessed: 0,
+    recordsTotal: 0,
+    errors: [],
+    logs: [],
+  };
+  activeJobs.set(jobId, job);
+  logger.info(`Full ingestion started by admin ${req.user?.email}`, { jobId });
+
+  res.json({ success: true, jobId, message: 'Full ingestion started' });
+
+  (async () => {
+    try {
+      job.logs.push('Step 1/5: Seeding API municipalities...');
+      try {
+        const { CITY_APIS } = await import('../../services/municipal-api-connectors');
+        const cityIds = Object.keys(CITY_APIS);
+        job.recordsTotal += cityIds.length;
+        for (const cityId of cityIds) {
+          try {
+            const config = CITY_APIS[cityId];
+            await query(
+              `INSERT INTO municipalities (id, name, state, county, has_api, api_type, api_url, data_quality)
+               VALUES ($1, $2, $3, $4, TRUE, $5, $6, 'excellent')
+               ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, has_api = TRUE, api_type = EXCLUDED.api_type, data_quality = 'excellent'`,
+              [cityId, config.name, config.state, config.name, config.type || 'arcgis', config.url || '']
+            );
+            job.recordsProcessed++;
+          } catch (err: any) {
+            job.errors.push(`Municipality ${cityId}: ${err.message?.slice(0, 100)}`);
+          }
+        }
+        job.logs.push(`  Seeded ${job.recordsProcessed} municipalities`);
+      } catch (err: any) {
+        job.logs.push(`  Skipped municipalities: ${err.message?.slice(0, 80)}`);
+      }
+
+      if (job.status === 'cancelled') return;
+
+      job.logs.push('Step 2/5: Fetching zoning districts...');
+      try {
+        const { fetchZoningData, saveAPIDistricts, CITY_APIS } = await import('../../services/municipal-api-connectors');
+        const munis = await query(`SELECT id, name, state FROM municipalities WHERE has_api = true ORDER BY state, name`);
+        let districtsSaved = 0;
+        for (const muni of munis.rows) {
+          if (job.status === 'cancelled') break;
+          if (!CITY_APIS[muni.id]) continue;
+          const existing = await query(`SELECT COUNT(*) as cnt FROM zoning_districts WHERE municipality_id = $1`, [muni.id]);
+          if (parseInt(existing.rows[0].cnt) > 0) {
+            job.logs.push(`  ${muni.name}: already has ${existing.rows[0].cnt} districts`);
+            job.recordsProcessed++;
+            continue;
+          }
+          try {
+            const districts = await fetchZoningData(muni.id);
+            const saved = await saveAPIDistricts(districts);
+            districtsSaved += saved;
+            await query(`UPDATE municipalities SET total_zoning_districts = $1, last_scraped_at = NOW(), data_quality = 'good' WHERE id = $2`, [districts.length, muni.id]);
+            job.logs.push(`  ${muni.name}: ${saved} districts saved`);
+            job.recordsProcessed++;
+          } catch (err: any) {
+            job.errors.push(`Zoning ${muni.name}: ${err.message?.slice(0, 100)}`);
+          }
+        }
+        job.logs.push(`  Total: ${districtsSaved} new districts`);
+      } catch (err: any) {
+        job.logs.push(`  Skipped zoning: ${err.message?.slice(0, 80)}`);
+      }
+
+      if (job.status === 'cancelled') return;
+
+      job.logs.push('Step 3/5: Florida benchmarks...');
+      try {
+        const { floridaBenchmarkIngestionService } = await import('../../services/florida-benchmark-ingestion.service');
+        const counties = floridaBenchmarkIngestionService.getAvailableCounties();
+        let totalRecords = 0;
+        for (const countyId of counties) {
+          if (job.status === 'cancelled') break;
+          try {
+            const stats = await floridaBenchmarkIngestionService.ingest(countyId);
+            totalRecords += stats.recordsUpserted || 0;
+            job.logs.push(`  ${countyId}: ${stats.recordsUpserted} records`);
+            job.recordsProcessed++;
+          } catch (err: any) {
+            job.errors.push(`Benchmark ${countyId}: ${err.message?.slice(0, 100)}`);
+          }
+        }
+        job.logs.push(`  Total: ${totalRecords} benchmark records`);
+      } catch (err: any) {
+        job.logs.push(`  Skipped benchmarks: ${err.message?.slice(0, 80)}`);
+      }
+
+      if (job.status === 'cancelled') return;
+
+      job.logs.push('Step 4/5: Mapping properties to zoning...');
+      try {
+        const deals = await query(
+          `SELECT d.id, d.name, d.city, d.state FROM deals d
+           LEFT JOIN property_zoning_cache pzc ON pzc.deal_id = d.id
+           WHERE pzc.deal_id IS NULL AND d.city IS NOT NULL AND d.state IS NOT NULL
+           ORDER BY d.created_at DESC LIMIT 500`
+        );
+        let mapped = 0;
+        for (const deal of deals.rows) {
+          if (job.status === 'cancelled') break;
+          try {
+            const muniResult = await query(`SELECT id FROM municipalities WHERE LOWER(name) = $1 AND LOWER(state) = $2 LIMIT 1`, [deal.city.toLowerCase(), deal.state.toLowerCase()]);
+            if (muniResult.rows.length === 0) continue;
+            const districtResult = await query(`SELECT zoning_code FROM zoning_districts WHERE municipality_id = $1 LIMIT 1`, [muniResult.rows[0].id]);
+            if (districtResult.rows.length > 0) {
+              await query(
+                `INSERT INTO property_zoning_cache (id, deal_id, municipality_id, zoning_code, verification_method, verified_at)
+                 VALUES (gen_random_uuid(), $1, $2, $3, 'admin_batch', NOW())
+                 ON CONFLICT (deal_id) DO UPDATE SET municipality_id = $2, zoning_code = $3, verified_at = NOW()`,
+                [deal.id, muniResult.rows[0].id, districtResult.rows[0].zoning_code]
+              );
+              mapped++;
+            }
+          } catch {}
+          job.recordsProcessed++;
+        }
+        job.logs.push(`  Mapped ${mapped} of ${deals.rows.length} deals`);
+      } catch (err: any) {
+        job.logs.push(`  Skipped property mapping: ${err.message?.slice(0, 80)}`);
+      }
+
+      if (job.status === 'cancelled') return;
+
+      job.logs.push('Step 5/5: Data quality cleanup...');
+      try {
+        const r1 = await query(`DELETE FROM development_scenarios WHERE deal_id NOT IN (SELECT id FROM deals)`);
+        const r2 = await query(`DELETE FROM development_scenarios WHERE name IS NULL AND max_units IS NULL AND max_gba IS NULL AND max_stories IS NULL`);
+        const cleaned = (r1.rowCount || 0) + (r2.rowCount || 0);
+        job.logs.push(`  Cleaned ${cleaned} orphaned/empty records`);
+        job.recordsProcessed++;
+      } catch (err: any) {
+        job.logs.push(`  Skipped cleanup: ${err.message?.slice(0, 80)}`);
+      }
+
+      job.status = job.errors.length > 0 ? 'failed' : 'completed';
+      job.completedAt = new Date();
+      job.logs.push(`Ingestion ${job.status}: ${job.recordsProcessed} processed, ${job.errors.length} errors`);
+      logger.info(`Full ingestion ${job.status}`, { jobId, processed: job.recordsProcessed, errors: job.errors.length });
+    } catch (err: any) {
+      job.status = 'failed';
+      job.completedAt = new Date();
+      job.errors.push(`Fatal: ${err.message}`);
+      logger.error(`Full ingestion failed`, { jobId, error: err.message });
+    }
+  })();
+});
+
 router.get('/ingest/status', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   const jobs = Array.from(activeJobs.values())
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())

@@ -30,6 +30,7 @@ const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = 
 };
 
 const TRIGGER_JOBS = [
+  { label: 'Full Ingestion (All Steps)', endpoint: '/api/v1/admin/ingest/full', primary: true },
   { label: 'Ingest Zoning Districts', endpoint: '/api/v1/admin/ingest/zoning-districts' },
   { label: 'Ingest Atlanta Benchmarks', endpoint: '/api/v1/admin/ingest/atlanta-benchmarks' },
   { label: 'Ingest Florida Benchmarks', endpoint: '/api/v1/admin/ingest/florida-benchmarks' },
@@ -145,7 +146,7 @@ export function BackgroundJobsSection() {
               key={tj.endpoint}
               onClick={() => triggerJob(tj.endpoint, tj.label)}
               disabled={triggering === tj.endpoint}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-50 border border-blue-200 text-blue-700 rounded-md hover:bg-blue-100 disabled:opacity-50"
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-md disabled:opacity-50 ${(tj as any).primary ? 'bg-blue-600 border border-blue-700 text-white hover:bg-blue-700 col-span-2 md:col-span-4 justify-center font-medium' : 'bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100'}`}
             >
               {triggering === tj.endpoint ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
