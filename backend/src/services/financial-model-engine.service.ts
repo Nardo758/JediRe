@@ -172,15 +172,23 @@ export class FinancialModelEngineService {
   async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
     const pool = getPool();
 
+    // PHASE 2: Enhance assumptions with M26 tax and M27 comp data
+    const { m26m27ProFormaEnhancer } = await import('./financial-model-engine.m26-m27-enhancer');
+    const enhancedAssumptions = await m26m27ProFormaEnhancer.enhanceAssumptions(dealId, assumptions);
+    
+    // Log enhancement summary
+    const enhancementSummary = m26m27ProFormaEnhancer.getEnhancementSummary(enhancedAssumptions);
+    logger.info(`M26/M27→M09 Enhancement for deal ${dealId}:\n${enhancementSummary}`);
+
     const insertResult = await pool.query(
       `INSERT INTO deal_financial_models (deal_id, model_type, assumptions, status) 
        VALUES ($1, $2, $3, 'building') RETURNING id`,
-      [dealId, assumptions.modelType, JSON.stringify(assumptions)]
+      [dealId, assumptions.modelType, JSON.stringify(enhancedAssumptions)]
     );
     const modelId = insertResult.rows[0].id;
 
     try {
-      const result = await this.callClaudeForModel(assumptions);
+      const result = await this.callClaudeForModel(enhancedAssumptions);
 
       await pool.query(
         `UPDATE deal_financial_models SET results = $1, status = 'complete', updated_at = NOW() WHERE id = $2`,
