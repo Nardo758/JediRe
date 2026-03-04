@@ -165,6 +165,107 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
   }
 });
 
+async function createOrUpdateScenarios(dealId: string, analysisResult: any) {
+  try {
+    const scenarios = analysisResult.step4_capacityScenarios || [];
+    
+    // Map scenario data
+    const byRight = scenarios.find((s: any) => s.name === 'By Right');
+    const variance = scenarios.find((s: any) => s.name === 'Variance');
+    const rezone = scenarios.find((s: any) => s.name === 'Rezone');
+    
+    const scenariosToCreate = [];
+    
+    if (byRight) {
+      scenariosToCreate.push({
+        name: 'by_right',
+        is_active: true, // Default active
+        max_units: byRight.maxUnits || 0,
+        max_gba: byRight.maxGFA || 0,
+        max_footprint: Math.round((byRight.maxGFA || 0) / Math.max(byRight.maxFloors || 1, 1) / 0.82),
+        max_stories: byRight.maxFloors || 1,
+        parking_required: byRight.parkingRequired || 0,
+        applied_far: byRight.appliedFAR || null,
+        binding_constraint: byRight.limitingFactor || null,
+        timeline: '6-9 months',
+        cost_estimate: '$50K-$150K',
+        risk_level: 'low',
+        success_probability: 95
+      });
+    }
+    
+    if (variance) {
+      scenariosToCreate.push({
+        name: 'variance',
+        is_active: false,
+        max_units: variance.maxUnits || 0,
+        max_gba: variance.maxGFA || 0,
+        max_footprint: Math.round((variance.maxGFA || 0) / Math.max(variance.maxFloors || 1, 1) / 0.82),
+        max_stories: variance.maxFloors || 1,
+        parking_required: variance.parkingRequired || 0,
+        applied_far: variance.appliedFAR || null,
+        timeline: '9-18 months',
+        cost_estimate: '$100K-$350K',
+        risk_level: 'medium',
+        success_probability: 65
+      });
+    }
+    
+    if (rezone) {
+      scenariosToCreate.push({
+        name: 'rezone',
+        is_active: false,
+        max_units: rezone.maxUnits || 0,
+        max_gba: rezone.maxGFA || 0,
+        max_footprint: Math.round((rezone.maxGFA || 0) / Math.max(rezone.maxFloors || 1, 1) / 0.82),
+        max_stories: rezone.maxFloors || 1,
+        parking_required: rezone.parkingRequired || 0,
+        applied_far: rezone.appliedFAR || null,
+        timeline: '12-36 months',
+        cost_estimate: '$200K-$750K',
+        risk_level: 'high',
+        success_probability: 35
+      });
+    }
+    
+    // Delete existing scenarios and create new ones
+    await pool.query('DELETE FROM development_scenarios WHERE deal_id = $1', [dealId]);
+    
+    for (const scenario of scenariosToCreate) {
+      await pool.query(`
+        INSERT INTO development_scenarios (
+          deal_id, name, is_active, max_units, max_gba, max_footprint,
+          max_stories, parking_required, applied_far, binding_constraint,
+          timeline, cost_estimate, risk_level, success_probability,
+          use_mix, avg_unit_size_sf, efficiency_factor
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      `, [
+        dealId,
+        scenario.name,
+        scenario.is_active,
+        scenario.max_units,
+        scenario.max_gba,
+        scenario.max_footprint,
+        scenario.max_stories,
+        scenario.parking_required,
+        scenario.applied_far,
+        scenario.binding_constraint || null,
+        scenario.timeline || null,
+        scenario.cost_estimate || null,
+        scenario.risk_level,
+        scenario.success_probability,
+        JSON.stringify({ residential_pct: 100 }),
+        Math.round(scenario.max_gba / Math.max(scenario.max_units, 1)),
+        0.85
+      ]);
+    }
+    
+    console.log(`✅ Created ${scenariosToCreate.length} development scenarios for deal ${dealId}`);
+  } catch (error) {
+    console.error(`Failed to create scenarios for deal ${dealId}:`, error);
+  }
+}
+
 async function triggerZoningAutoPopulate(dealId: string) {
   try {
     const resolver = new PropertyBoundaryResolver(pool);
@@ -180,6 +281,9 @@ async function triggerZoningAutoPopulate(dealId: string) {
     const pipeline = new ZoningApplicationPipeline(pool, knowledgeService, reasoningService);
 
     const analysisResult = await pipeline.execute(resolved.pipelineInput);
+
+    // Create development scenarios
+    await createOrUpdateScenarios(dealId, analysisResult);
 
     const byRight = analysisResult.step4_capacityScenarios.find((s: any) => s.name === 'By Right');
     const moduleOutputs = {

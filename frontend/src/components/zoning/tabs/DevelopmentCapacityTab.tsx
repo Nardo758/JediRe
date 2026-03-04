@@ -160,8 +160,114 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const recsAbortRef = useRef<AbortController | null>(null);
   const isCancelled = (err: any) => axios.isCancel(err) || err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError';
   const [selectedColKey, setSelectedColKey] = useState<string | null>(null);
+  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [activeScenario, setActiveScenario] = useState<any>(null);
+  const [activatingScenario, setActivatingScenario] = useState(false);
 
-  const handleSelectPath = useCallback((colKey: string, rec: any) => {
+  const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
+    if (!dealId || !recs || recs.length === 0) return;
+    
+    console.log('🔄 Syncing recommendations to database...', recs.map(r => r.name));
+    
+    try {
+      // Map recommendation names to scenario names
+      const recNameMap: Record<string, string> = {
+        'By Right': 'by_right',
+        'Variance': 'variance',
+        'Rezone': 'rezone'
+      };
+      
+      // Create scenarios from recommendations
+      for (const rec of recs) {
+        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+        const units = rec.maxUnits || 0;
+        const gba = rec.maxGba || 0;
+        const stories = rec.maxStories || 1;
+        const parking = rec.parkingRequired || 0;
+        const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+        
+        const scenarioData = {
+          name: scenarioName,
+          is_active: false, // Don't activate yet
+          use_mix: { residential_pct: 100 },
+          avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
+          efficiency_factor: 0.85,
+          max_gba: gba,
+          max_footprint: footprint,
+          net_leasable_sf: Math.round(gba * 0.85),
+          parking_required: parking,
+          max_stories: stories,
+          max_units: units,
+          applied_far: rec.appliedFar || null,
+          binding_constraint: rec.bindingConstraint || null
+        };
+        
+        // Try to create (will fail silently if exists)
+        try {
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        } catch (err: any) {
+          // Ignore if already exists
+          if (!err?.response?.data?.error?.includes('already exists')) {
+            console.warn(`Failed to create ${scenarioName} scenario:`, err);
+          }
+        }
+      }
+      
+      // After syncing, load scenarios to get active state
+      await loadScenarios();
+      console.log('✅ Sync complete, scenarios loaded');
+    } catch (error) {
+      console.error('Failed to sync recommendations to database:', error);
+    }
+  }, [dealId, loadScenarios]);
+
+  const loadScenarios = useCallback(async () => {
+    if (!dealId) return;
+    
+    try {
+      const response = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+      const scenarioList = response.data.scenarios || [];
+      const active = scenarioList.find((s: any) => s.is_active);
+      
+      setScenarios(scenarioList);
+      setActiveScenario(active || null);
+      
+      console.log('📋 Loaded scenarios:', {
+        total: scenarioList.length,
+        active: active?.name,
+        all: scenarioList.map(s => ({name: s.name, active: s.is_active}))
+      });
+      
+      // If there's an active scenario, set it in Zustand store
+      if (active) {
+        const pathId = active.name as DevelopmentPath;
+        const envelope: BuildingEnvelope = {
+          max_units: active.max_units,
+          max_gfa_sf: active.max_gba,
+          max_stories: active.max_stories,
+          max_footprint_sf: active.max_footprint,
+          buildable_polygon: null,
+          required_parking_spaces: active.parking_required,
+          parking_structure_type: active.max_units > 200 ? 'podium' : active.max_units > 100 ? 'garage' : 'surface',
+          parking_levels: 0,
+          residential_floors: active.max_stories,
+          ground_floor_retail_sf: 0,
+          construction_type: active.max_stories <= 4 ? 'wood_frame' : active.max_stories <= 7 ? 'podium_wood' : 'steel_concrete',
+        };
+        
+        selectDevelopmentPath(pathId, envelope);
+        setSelectedColKey(pathId);
+      }
+    } catch (error) {
+      console.error('Failed to load scenarios:', error);
+      setScenarios([]);
+      setActiveScenario(null);
+    }
+  }, [dealId, selectDevelopmentPath]);
+
+  const handleSelectPath = useCallback(async (colKey: string, rec: any) => {
+    if (!dealId) return;
+    
     setSelectedColKey(colKey);
     const pathId = colKeyToPathId(colKey);
     const units = rec.maxUnits || 0;
@@ -188,8 +294,55 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       construction_type: constructionType,
     };
 
+    // Update Zustand store
     selectDevelopmentPath(pathId, envelope);
-  }, [selectDevelopmentPath]);
+    
+    // Persist to database
+    try {
+      setActivatingScenario(true);
+      
+      // Check if scenario exists
+      const existingRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+      const existing = existingRes.data.scenarios?.find((s: any) => s.name === pathId);
+      
+      let scenarioId: string;
+      if (existing) {
+        scenarioId = existing.id;
+      } else {
+        // Create scenario if it doesn't exist
+        const scenarioData = {
+          name: pathId,
+          is_active: false,
+          use_mix: { residential_pct: 100 },
+          avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
+          efficiency_factor: 0.85,
+          max_gba: gba,
+          max_footprint: footprint,
+          net_leasable_sf: Math.round(gba * 0.85),
+          parking_required: parking,
+          max_stories: stories,
+          max_units: units,
+          applied_far: rec.appliedFar || null,
+          binding_constraint: rec.bindingConstraint || null
+        };
+        const createRes = await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        scenarioId = createRes.data.scenario.id;
+      }
+      
+      // Activate the scenario
+      await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${scenarioId}/activate`);
+      
+      // Reload scenarios
+      await loadScenarios();
+      
+      console.log(`✅ Activated ${pathId} scenario for deal ${dealId}`);
+    } catch (error) {
+      console.error('Failed to persist scenario selection:', error);
+      // Don't block UI - selection still works in memory
+    } finally {
+      setActivatingScenario(false);
+    }
+  }, [dealId, selectDevelopmentPath, loadScenarios]);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -237,8 +390,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
           if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
           const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
-          setRecommendations(recsRes.data.recommendations || []);
+          const recs = recsRes.data.recommendations || [];
+          setRecommendations(recs);
           setComparison(recsRes.data.comparison || null);
+          
+          // Sync recommendations to database scenarios
+          if (recs.length > 0) {
+            syncRecommendationsToDatabase(recs).catch(err => {
+              console.warn('Failed to sync recommendations:', err);
+            });
+          }
         } catch (err) {
           if (!isCancelled(err)) {
             setRecommendations([]);
@@ -275,9 +436,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     } finally {
       setLoading(false);
     }
-  }, [dealId]);
+  }, [dealId, syncRecommendationsToDatabase]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    loadData();
+    loadScenarios();
+  }, [loadData, loadScenarios]);
 
   useEffect(() => {
     return () => { recsAbortRef.current?.abort(); };
@@ -303,8 +467,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
         if (avgUnitSize !== 900) params.avg_unit_size_sf = avgUnitSize;
         const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
-        setRecommendations(recsRes.data.recommendations || []);
+        const recs = recsRes.data.recommendations || [];
+        setRecommendations(recs);
         setComparison(recsRes.data.comparison || null);
+        
+        // Sync recommendations to database scenarios
+        if (recs.length > 0) {
+          syncRecommendationsToDatabase(recs).catch(err => {
+            console.warn('Failed to sync recommendations:', err);
+          });
+        }
       } catch (err) {
         if (!isCancelled(err)) {
           setRecommendations([]);
@@ -1023,24 +1195,47 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         <td className="px-4 py-3 text-xs font-bold text-gray-700">Select Path</td>
                         {cols.map((col: any, colIdx: number) => {
                           const isSelected = selectedColKey === col.key;
+                          const pathId = colKeyToPathId(col.key);
+                          const isPersisted = activeScenario?.name === pathId;
                           const rec = recommendations[colIdx];
+                          
+                          // Debug logging
+                          if (colIdx === 0) {
+                            console.log('🔍 Scenario Debug:', {
+                              activeScenario: activeScenario?.name,
+                              scenarios: scenarios.map(s => ({name: s.name, active: s.is_active})),
+                              pathId,
+                              isPersisted
+                            });
+                          }
+                          
                           return (
                             <td key={col.key} className="px-3 py-3 text-center">
                               <button
                                 onClick={() => rec && handleSelectPath(col.key, rec)}
+                                disabled={activatingScenario}
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                                  isSelected
+                                  isPersisted
                                     ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
+                                    : isSelected
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
                                     : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
-                                }`}
+                                } ${activatingScenario ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
-                                {isSelected ? (
+                                {activatingScenario && isSelected ? (
+                                  <>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
+                                    Saving...
+                                  </>
+                                ) : isPersisted ? (
                                   <>
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                    Selected
+                                    Active
                                   </>
+                                ) : isSelected ? (
+                                  'Selected'
                                 ) : (
-                                  <>Select</>
+                                  'Select'
                                 )}
                               </button>
                             </td>

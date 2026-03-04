@@ -1,0 +1,28 @@
+Clawdbot access to JEdiRe
+
+Here are your three secrets for Replit:
+
+1. CLAWDBOT_WEBHOOK_URL
+
+For now, leave this empty or use a placeholder like:
+
+http://localhost:8080/webhook/jedire
+
+(We can set up the real webhook receiver later - inbound commands will work without this)
+
+2. CLAWDBOT_WEBHOOK_SECRET
+
+abc2337eb1e6471eb0aeb42a6671f77a2ca92a62ca0c5e600cf5f073a02673f9
+
+3. CLAWDBOT_AUTH_TOKEN
+
+69295404e382acd00de4facdaa053fd20ae0a1cf15dc63c0b8a55cffc0e088b6
+
+Copy those values into the Replit secrets form and click Continue!
+
+Once that's done, pull the latest commit and restart your server:
+
+git pull origin master
+npm run dev
+
+Then I'll be able to send commands to your JediRe API! 🚀
