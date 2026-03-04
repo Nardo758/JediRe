@@ -103,8 +103,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
-const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+  : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://localhost:4000', 'http://0.0.0.0:4000', 'http://localhost:3000'];
+const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/, /\.repl\.co(:\d+)?$/];
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
