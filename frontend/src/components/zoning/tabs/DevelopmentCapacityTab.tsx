@@ -307,7 +307,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         efficiencyFactor,
       },
     });
-  }, [selectDevelopmentPath, comparison, avgUnitSize, updateActiveScenario, emitEvent]);
+
+    if (dealId) {
+      const recNameMap: Record<string, string> = {
+        'By Right': 'by_right',
+        'Variance': 'variance',
+        'Rezone': 'rezone'
+      };
+      const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+
+      apiClient.get(`/api/v1/deals/${dealId}/scenarios`).then((res) => {
+        const scenarios = res.data?.scenarios || res.data || [];
+        const match = scenarios.find((s: any) => s.name === scenarioName);
+        if (match?.id) {
+          apiClient.put(`/api/v1/deals/${dealId}/scenarios/${match.id}/activate`).catch((err: any) => {
+            console.warn('Failed to activate scenario in database:', err);
+          });
+        }
+      }).catch((err: any) => {
+        console.warn('Failed to fetch scenarios for activation:', err);
+      });
+    }
+  }, [selectDevelopmentPath, comparison, avgUnitSize, updateActiveScenario, emitEvent, dealId]);
 
   const loadData = useCallback(async (autoResolve = false) => {
     if (!dealId) return;
@@ -1216,7 +1237,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </span>
               </div>
               <button
-                onClick={() => { selectDevelopmentPath(null, null, null); setSelectedColKey(null); }}
+                onClick={() => {
+                  selectDevelopmentPath(null, null, null);
+                  setSelectedColKey(null);
+                  if (dealId) {
+                    apiClient.post(`/api/v1/deals/${dealId}/scenarios/deactivate-all`).catch(() => {});
+                  }
+                }}
                 className="text-[10px] text-blue-500 hover:text-blue-700 underline"
               >
                 Clear
