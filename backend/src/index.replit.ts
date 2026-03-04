@@ -95,6 +95,8 @@ import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
+import m26TaxRouter from './api/rest/m26-tax.routes';
+import m27CompsRouter from './api/rest/m27-comps.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 
 dotenv.config();
@@ -183,6 +185,8 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1', m26TaxRouter);
+app.use('/api/v1', m27CompsRouter);
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
@@ -201,6 +205,8 @@ app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1', m26TaxRouter);
+app.use('/api/v1', m27CompsRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
