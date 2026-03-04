@@ -85,6 +85,9 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
   const scenarios = useDesign3DStore((s) => s.scenarios);
   const activeScenarioId = useDesign3DStore((s) => s.activeScenarioId);
   const showScenarioOverlay = useDesign3DStore((s) => s.showScenarioOverlay);
+  const saving = useDesign3DStore((s) => s.saving);
+  const loading = useDesign3DStore((s) => s.loading);
+  const hasUnsavedChanges = state.lastUpdated > state.lastSynced;
 
   const [showReferencePanel, setShowReferencePanel] = useState(false);
   const [pinnedOverlay, setPinnedOverlay] = useState<{ url: string; name: string } | null>(null);
@@ -130,6 +133,56 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
       });
     }
   }, [state.parcelBoundary, aiImageToTerrain]);
+  
+  /**
+   * Save design to server
+   */
+  const handleSave = useCallback(async () => {
+    if (!dealId) {
+      alert('No deal ID provided - cannot save design');
+      return;
+    }
+    
+    try {
+      await useDesign3DStore.getState().saveToServer(dealId, activeScenarioId || undefined);
+      if (onSave) onSave();
+      console.log('✅ Design saved successfully');
+    } catch (error) {
+      console.error('Failed to save design:', error);
+      alert('Failed to save design. Check console for details.');
+    }
+  }, [dealId, activeScenarioId, onSave]);
+  
+  /**
+   * Load design from server
+   */
+  const handleLoad = useCallback(async () => {
+    if (!dealId) {
+      alert('No deal ID provided - cannot load design');
+      return;
+    }
+    
+    try {
+      await useDesign3DStore.getState().loadFromServer(dealId, activeScenarioId || undefined);
+      console.log('✅ Design loaded successfully');
+    } catch (error) {
+      console.error('Failed to load design:', error);
+      alert('No saved design found for this deal/scenario.');
+    }
+  }, [dealId, activeScenarioId]);
+  
+  // Auto-save on Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
   
   /**
    * AI DESIGN GENERATION HOOK (Placeholder for Phase 2 Qwen Integration)
@@ -298,11 +351,16 @@ export const Building3DEditor: React.FC<Building3DEditorProps> = ({
         onToggleMeasurements={actions.toggleMeasurements}
         onUndo={actions.undo}
         onRedo={actions.redo}
+        onSave={handleSave}
+        onLoad={handleLoad}
         canUndo={actions.canUndo}
         canRedo={actions.canRedo}
         showGrid={state.showGrid}
         showMeasurements={state.showMeasurements}
         aiLoading={aiLoading || imageLoading}
+        saving={saving}
+        loading={loading}
+        hasUnsavedChanges={hasUnsavedChanges}
       />
       
       {/* View Settings */}
@@ -596,11 +654,16 @@ interface ToolbarProps {
   onToggleMeasurements: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onSave: () => void;
+  onLoad: () => void;
   canUndo: boolean;
   canRedo: boolean;
   showGrid: boolean;
   showMeasurements: boolean;
   aiLoading: boolean;
+  saving: boolean;
+  loading: boolean;
+  hasUnsavedChanges: boolean;
 }
 
 const Toolbar: React.FC<ToolbarProps> = ({
@@ -611,14 +674,34 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onToggleMeasurements,
   onUndo,
   onRedo,
+  onSave,
+  onLoad,
   canUndo,
   canRedo,
   showGrid,
   showMeasurements,
   aiLoading,
+  saving,
+  loading,
+  hasUnsavedChanges,
 }) => {
   return (
     <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+      <ToolbarButton
+        onClick={onSave}
+        title="Save Design (Ctrl+S)"
+        disabled={saving || !hasUnsavedChanges}
+        active={hasUnsavedChanges}
+      >
+        {saving ? '💾 Saving...' : hasUnsavedChanges ? '💾 Save *' : '💾 Saved'}
+      </ToolbarButton>
+      
+      <ToolbarButton onClick={onLoad} title="Load Design" disabled={loading}>
+        {loading ? '📂 Loading...' : '📂 Load'}
+      </ToolbarButton>
+      
+      <div className="w-px h-6 bg-gray-600" />
+      
       <ToolbarButton onClick={onAddBuilding} title="Add Simple Building">
         ➕ Add
       </ToolbarButton>

@@ -17,6 +17,7 @@ import {
   Design3DSnapshot,
 } from '@/types/design/design3d.types';
 import type { DevelopmentScenario } from '@/types/design/scenarios.types';
+import { loadBuildingDesign3D, saveBuildingDesign3D } from '@/api/building-design-3d';
 
 // ============================================================================
 // Store Interface
@@ -78,6 +79,12 @@ interface Design3DStore extends Design3DState {
   reset: () => void;
   loadDesign: (state: Partial<Design3DState>) => void;
   exportState: () => Design3DState;
+  
+  // Actions - Persistence
+  saveToServer: (dealId: string, scenarioId?: string) => Promise<void>;
+  loadFromServer: (dealId: string, scenarioId?: string) => Promise<void>;
+  saving: boolean;
+  loading: boolean;
 }
 
 // ============================================================================
@@ -103,7 +110,7 @@ const initialMetrics: BuildingMetrics = {
   far: 0,
 };
 
-const initialState: Design3DState & { scenarios: DevelopmentScenario[]; activeScenarioId: string | null; showScenarioOverlay: boolean } = {
+const initialState: Design3DState & { scenarios: DevelopmentScenario[]; activeScenarioId: string | null; showScenarioOverlay: boolean; saving: boolean; loading: boolean } = {
   parcelBoundary: null,
   zoningEnvelope: null,
   buildingSections: [],
@@ -126,6 +133,8 @@ const initialState: Design3DState & { scenarios: DevelopmentScenario[]; activeSc
   scenarios: [],
   activeScenarioId: null,
   showScenarioOverlay: true,
+  saving: false,
+  loading: false,
 };
 
 // ============================================================================
@@ -428,6 +437,71 @@ export const useDesign3DStore = create<Design3DStore>()(
             lastUpdated: state.lastUpdated,
             lastSynced: state.lastSynced,
           };
+        },
+
+        // Persistence
+        saveToServer: async (dealId: string, scenarioId?: string) => {
+          const state = get();
+          set({ saving: true });
+
+          try {
+            await saveBuildingDesign3D(dealId, {
+              scenarioId,
+              buildingSections: state.buildingSections,
+              cameraState: {
+                position: state.cameraPosition,
+                target: state.cameraTarget,
+              },
+            });
+
+            set({ lastSynced: Date.now(), saving: false });
+          } catch (error) {
+            console.error('Failed to save 3D design:', error);
+            set({ saving: false });
+            throw error;
+          }
+        },
+
+        loadFromServer: async (dealId: string, scenarioId?: string) => {
+          set({ loading: true });
+
+          try {
+            const design = await loadBuildingDesign3D(dealId, scenarioId);
+
+            set({
+              buildingSections: design.building_sections,
+              cameraPosition: design.camera_state?.position || { x: 50, y: 50, z: 50 },
+              cameraTarget: design.camera_state?.target || { x: 0, y: 0, z: 0 },
+              metrics: {
+                unitCount: design.total_units,
+                totalSF: design.total_gfa,
+                residentialSF: Math.round(design.total_gfa * 0.95),
+                amenitySF: Math.round(design.total_gfa * 0.05),
+                parkingSpaces: design.total_parking_spaces,
+                height: {
+                  feet: design.building_height_ft,
+                  stories: design.stories,
+                },
+                coverage: {
+                  percentage: design.lot_coverage_percent,
+                  buildableArea: 0, // Will be recalculated
+                  usedArea: 0, // Will be recalculated
+                },
+                efficiency: design.efficiency_percent,
+                far: design.far,
+              },
+              lastUpdated: Date.now(),
+              lastSynced: Date.now(),
+              loading: false,
+            });
+
+            // Recalculate metrics to ensure consistency
+            get().recalculateMetrics();
+          } catch (error) {
+            console.error('Failed to load 3D design:', error);
+            set({ loading: false });
+            throw error;
+          }
         },
       }),
       {
