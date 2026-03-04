@@ -48,9 +48,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location and details
+        // Get deal location and details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built, property_class 
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built,
+             project_type as property_class
            FROM deals WHERE id = $1`,
           [dealId]
         );
@@ -61,7 +66,7 @@ router.get(
 
         const deal = dealResult.rows[0];
         if (!deal.latitude || !deal.longitude) {
-          throw new AppError(400, 'Deal location not set');
+          throw new AppError(400, 'Deal location not set - boundary polygon missing');
         }
 
         // Build dynamic query based on filters
@@ -177,9 +182,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal details
+        // Get deal details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -335,9 +345,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -452,9 +465,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -561,9 +577,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal details
+        // Get deal details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -697,9 +718,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
