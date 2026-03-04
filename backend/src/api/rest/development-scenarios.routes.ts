@@ -1249,6 +1249,46 @@ router.put('/deals/:dealId/scenarios/:id', async (req: Request, res: Response) =
   }
 });
 
+router.put('/deals/:dealId/scenarios/:id/sync', async (req: Request, res: Response) => {
+  try {
+    const { dealId, id } = req.params;
+    const {
+      max_units, max_gba, max_stories, parking_required, max_footprint,
+      net_leasable_sf, applied_far, binding_constraint, avg_unit_size_sf, efficiency_factor
+    } = req.body;
+
+    const result = await pool.query(
+      `UPDATE development_scenarios SET
+        max_units = COALESCE($1, max_units),
+        max_gba = COALESCE($2, max_gba),
+        max_stories = COALESCE($3, max_stories),
+        parking_required = COALESCE($4, parking_required),
+        max_footprint = COALESCE($5, max_footprint),
+        net_leasable_sf = COALESCE($6, net_leasable_sf),
+        applied_far = COALESCE($7, applied_far),
+        binding_constraint = COALESCE($8, binding_constraint),
+        avg_unit_size_sf = COALESCE($9, avg_unit_size_sf),
+        efficiency_factor = COALESCE($10, efficiency_factor),
+        calculated_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $11 AND deal_id = $12
+      RETURNING *`,
+      [max_units, max_gba, max_stories, parking_required, max_footprint,
+       net_leasable_sf, applied_far, binding_constraint, avg_unit_size_sf, efficiency_factor,
+       id, dealId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Scenario not found' });
+    }
+
+    res.json({ scenario: result.rows[0] });
+  } catch (error: any) {
+    console.error('Error syncing scenario:', error);
+    res.status(500).json({ error: error.message || 'Failed to sync scenario' });
+  }
+});
+
 router.post('/deals/:dealId/scenarios/deactivate-all', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;

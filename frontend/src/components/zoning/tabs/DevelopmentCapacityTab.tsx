@@ -315,14 +315,34 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         'Rezone': 'rezone'
       };
       const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+      const effFactor = 0.82;
 
-      apiClient.get(`/api/v1/deals/${dealId}/scenarios`).then((res) => {
+      apiClient.get(`/api/v1/deals/${dealId}/scenarios`).then(async (res) => {
         const scenarios = res.data?.scenarios || res.data || [];
-        const match = scenarios.find((s: any) => s.name === scenarioName);
+        const normalizeKey = (n: string) => n.toLowerCase().replace(/[-\s]+/g, '_').replace(/[^a-z0-9_]/g, '');
+        const match = scenarios.find((s: any) =>
+          s.name === scenarioName ||
+          normalizeKey(s.name) === normalizeKey(scenarioName) ||
+          normalizeKey(s.name).startsWith(normalizeKey(pathId))
+        );
         if (match?.id) {
-          apiClient.put(`/api/v1/deals/${dealId}/scenarios/${match.id}/activate`).catch((err: any) => {
-            console.warn('Failed to activate scenario in database:', err);
-          });
+          try {
+            await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${match.id}/activate`);
+            await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${match.id}/sync`, {
+              max_units: units,
+              max_gba: gba,
+              max_stories: stories,
+              parking_required: parking,
+              max_footprint: footprint,
+              net_leasable_sf: Math.round(gba * effFactor),
+              applied_far: rec.appliedFar || null,
+              binding_constraint: colCells.bindingConstraint || rec.bindingConstraint || null,
+              avg_unit_size_sf: avgUnitSize,
+              efficiency_factor: effFactor,
+            });
+          } catch (err: any) {
+            console.warn('Failed to activate/sync scenario:', err);
+          }
         }
       }).catch((err: any) => {
         console.warn('Failed to fetch scenarios for activation:', err);
