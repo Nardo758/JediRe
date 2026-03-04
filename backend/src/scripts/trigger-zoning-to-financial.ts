@@ -31,7 +31,7 @@ interface ZoningData {
 
 async function getZoningData(dealId: string): Promise<ZoningData | null> {
   const result = await pool.query(
-    `SELECT module_outputs->'zoning' as zoning FROM deals WHERE id = $1`,
+    `SELECT module_outputs->'zoning' as zoning FROM deals WHERE id = $1::uuid`,
     [dealId]
   );
   
@@ -47,7 +47,7 @@ async function analyzeZoningCapacity(dealId: string, zoningData: ZoningData) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM zoning_capacity WHERE deal_id = $1 LIMIT 1`,
+    `SELECT id FROM zoning_capacity WHERE deal_id = $1::uuid LIMIT 1`,
     [dealId]
   );
   
@@ -170,7 +170,7 @@ async function generateStrategy(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM strategy_analyses WHERE deal_id = $1 LIMIT 1`,
+    `SELECT id FROM strategy_analyses WHERE deal_id = $1::uuid LIMIT 1`,
     [dealId]
   );
   
@@ -184,7 +184,7 @@ async function generateStrategy(dealId: string) {
     `SELECT d.*, zc.max_density, zc.max_far, zc.max_units_by_right, zc.unit_mix
      FROM deals d
      LEFT JOIN zoning_capacity zc ON zc.deal_id = d.id
-     WHERE d.id = $1`,
+     WHERE d.id = $1::uuid`,
     [dealId]
   );
   
@@ -233,7 +233,7 @@ async function generateFinancialModel(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM deal_financial_models WHERE deal_id = $1 AND status = 'complete' LIMIT 1`,
+    `SELECT id FROM deal_financial_models WHERE deal_id = $1::uuid AND status = 'complete' LIMIT 1`,
     [dealId]
   );
   
@@ -248,7 +248,7 @@ async function generateFinancialModel(dealId: string) {
      FROM deals d
      LEFT JOIN zoning_capacity zc ON zc.deal_id = d.id
      LEFT JOIN strategy_analyses sa ON sa.deal_id = d.id
-     WHERE d.id = $1
+     WHERE d.id = $1::uuid
      ORDER BY sa.created_at DESC
      LIMIT 1`,
     [dealId]
@@ -306,7 +306,7 @@ async function generateTrafficProjections(dealId: string) {
   
   // Check if already exists
   const existing = await pool.query(
-    `SELECT id FROM traffic_projections WHERE deal_id = $1 LIMIT 1`,
+    `SELECT id FROM traffic_projections WHERE deal_id = $1::uuid::uuid LIMIT 1`,
     [dealId]
   );
   
@@ -320,7 +320,7 @@ async function generateTrafficProjections(dealId: string) {
     `SELECT d.*, fm.assumptions
      FROM deals d
      LEFT JOIN deal_financial_models fm ON fm.deal_id = d.id
-     WHERE d.id = $1
+     WHERE d.id = $1::uuid::uuid
      ORDER BY fm.created_at DESC
      LIMIT 1`,
     [dealId]
