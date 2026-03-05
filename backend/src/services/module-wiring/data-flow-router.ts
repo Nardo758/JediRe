@@ -147,6 +147,19 @@ const DATA_FLOW_CONNECTIONS: DataFlowConnection[] = [
 
   // M24 Settings outputs
   { from: 'M24', to: 'M25', dataKeys: ['user_config'], strength: 'optional', description: 'User weight overrides' },
+
+  // M26 Tax Intelligence outputs
+  { from: 'M26', to: 'M09', dataKeys: ['projected_total_tax', 'projected_tax_per_unit', 'yearly_projections'], strength: 'required', description: 'Post-acquisition tax projection → ProForma OpEx line' },
+  { from: 'M26', to: 'M08', dataKeys: ['effective_tax_rate', 'delta_pct'], strength: 'optional', description: 'Tax burden → strategy scoring' },
+  { from: 'M26', to: 'M14', dataKeys: ['delta_pct'], strength: 'optional', description: 'Tax increase risk flag (>30% delta)' },
+
+  // M27 Sale Comp Intelligence outputs
+  { from: 'M27', to: 'M09', dataKeys: ['median_implied_cap_rate', 'median_price_per_unit'], strength: 'required', description: 'Transaction-derived cap rate → ProForma exit assumptions' },
+  { from: 'M27', to: 'M05', dataKeys: ['transaction_velocity', 'median_price_per_unit'], strength: 'required', description: 'Transaction data enhances market metrics' },
+  { from: 'M27', to: 'M08', dataKeys: ['transaction_velocity'], strength: 'required', description: 'Transaction patterns as momentum signals' },
+  { from: 'M27', to: 'M14', dataKeys: ['comp_count'], strength: 'optional', description: 'Comp availability → liquidity risk' },
+  { from: 'M27', to: 'M15', dataKeys: ['comp_count'], strength: 'optional', description: 'Transaction-enhanced comp data' },
+  { from: 'M27', to: 'M12', dataKeys: ['transaction_velocity'], strength: 'optional', description: 'Exit timing from transaction patterns' },
 ];
 
 // ============================================================================

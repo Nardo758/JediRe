@@ -15,7 +15,8 @@ export type ModuleId =
   | 'M06' | 'M07' | 'M08' | 'M09' | 'M10'
   | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
   | 'M16' | 'M17' | 'M18' | 'M19' | 'M20'
-  | 'M21' | 'M22' | 'M23' | 'M24' | 'M25';
+  | 'M21' | 'M22' | 'M23' | 'M24' | 'M25'
+  | 'M26' | 'M27';
 
 export type ModuleStage =
   | 'S1: Overview'
@@ -707,6 +708,56 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
     priority: 'P0',
     uiLocation: 'Embedded in M01, M20',
     serviceFile: 'jedi-score.service.ts',
+  },
+
+  M26: {
+    id: 'M26',
+    name: 'Tax Intelligence',
+    stage: 'S3: Financial',
+    category: 'Financial',
+    purpose: 'Post-acquisition tax projection and burden analysis',
+    hasAgent: false,
+    outputs: [
+      { key: 'projected_total_tax', type: 'number', unit: '$', description: 'Annual tax post-acquisition' },
+      { key: 'projected_tax_per_unit', type: 'number', unit: '$/unit', description: 'Tax per unit' },
+      { key: 'effective_tax_rate', type: 'number', unit: '%', description: 'Tax as % of value' },
+      { key: 'delta_pct', type: 'number', unit: '%', description: 'Tax increase from current' },
+      { key: 'yearly_projections', type: 'array', description: '10-year tax projection' },
+    ],
+    feedsInto: ['M09', 'M08', 'M14'],
+    receivesFrom: [
+      { moduleId: 'M01', dataKeys: ['purchase_price', 'units', 'parcel_id'], strength: 'required' },
+    ],
+    formulas: ['F40', 'F41', 'F43'],
+    buildStatus: 'Built',
+    priority: 'P0',
+    uiLocation: 'Deal Capsule → Tax Tab (position 8)',
+    serviceFile: 'tax/taxProjection.service.ts',
+  },
+
+  M27: {
+    id: 'M27',
+    name: 'Sale Comp Intelligence',
+    stage: 'S2: Market Intel',
+    category: 'Intelligence',
+    purpose: 'Transaction-derived cap rates and market pricing intelligence',
+    hasAgent: false,
+    outputs: [
+      { key: 'median_price_per_unit', type: 'number', unit: '$/unit', description: 'Median comp price/unit' },
+      { key: 'median_implied_cap_rate', type: 'number', unit: '%', description: 'Transaction-derived cap rate' },
+      { key: 'comp_count', type: 'number', description: 'Number of comps in set' },
+      { key: 'price_range', type: 'object', description: 'Min/max price range' },
+      { key: 'transaction_velocity', type: 'number', description: 'Sales per month trend' },
+    ],
+    feedsInto: ['M09', 'M05', 'M08', 'M12', 'M14', 'M15'],
+    receivesFrom: [
+      { moduleId: 'M01', dataKeys: ['location', 'units', 'property_class'], strength: 'required' },
+    ],
+    formulas: [],
+    buildStatus: 'Built',
+    priority: 'P0',
+    uiLocation: 'Deal Capsule → Comps Tab (position 7)',
+    serviceFile: 'saleComps/compSet.service.ts',
   },
 };
 
