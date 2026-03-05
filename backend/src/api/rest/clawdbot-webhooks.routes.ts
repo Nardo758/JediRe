@@ -583,6 +583,87 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'update_property': {
+        if (!params?.propertyId && !params?.dealId) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Either propertyId or dealId is required',
+          });
+        }
+
+        let propertyId = params.propertyId;
+
+        // If dealId provided, get the first property for that deal
+        if (!propertyId && params.dealId) {
+          const dealPropResult = await pool.query(`
+            SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1
+          `, [params.dealId]);
+          
+          if (dealPropResult.rows.length === 0) {
+            return res.status(404).json({
+              error: 'Not Found',
+              message: 'No property found for this deal',
+            });
+          }
+          
+          propertyId = dealPropResult.rows[0].property_id;
+        }
+
+        const allowedUpdates = [
+          'parcel_id',
+          'lot_size_acres',
+          'land_cost',
+          'lot_size_sqft',
+          'building_sqft',
+          'year_built',
+          'current_use',
+          'property_type',
+          'zoning_code',
+        ];
+
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        for (const field of allowedUpdates) {
+          if (params[field] !== undefined) {
+            updates.push(`${field} = $${paramIndex}`);
+            values.push(params[field]);
+            paramIndex++;
+          }
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'No valid fields to update. Allowed: ' + allowedUpdates.join(', '),
+          });
+        }
+
+        updates.push('updated_at = NOW()');
+        values.push(propertyId);
+
+        const updateResult = await pool.query(`
+          UPDATE properties
+          SET ${updates.join(', ')}
+          WHERE id = $${paramIndex}
+          RETURNING *
+        `, values);
+
+        if (updateResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'Property not found',
+          });
+        }
+
+        result = {
+          message: 'Property updated successfully',
+          property: updateResult.rows[0],
+        };
+        break;
+      }
+
       default:
         return res.status(400).json({ error: 'Bad Request', message: `Unknown command: ${command}` });
     }
