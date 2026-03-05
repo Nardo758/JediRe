@@ -55,6 +55,8 @@ import { RiskManagementSection } from '../components/deal/sections/RiskManagemen
 import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
+import TaxModule from '../components/deal/sections/TaxModule';
+import CompsModule from '../components/deal/sections/CompsModule';
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
 import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
@@ -283,6 +285,12 @@ const DealDetailPage: React.FC = () => {
       icon: <LineChart size={16} />, 
       component: TrendsAnalysisSection 
     },
+    {
+      id: 'comps',
+      label: 'Sale Comps',
+      icon: <Briefcase size={16} />,
+      component: CompsModule
+    },
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
@@ -311,6 +319,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Pro Forma',
       icon: <Layers size={16} />,
       component: ProFormaTab
+    },
+    {
+      id: 'tax',
+      label: 'Tax Intelligence',
+      icon: <Calculator size={16} />,
+      component: TaxModule
     },
     {
       id: 'debt',

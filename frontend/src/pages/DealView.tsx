@@ -23,6 +23,8 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { NotesSection } from '../components/deal/sections/NotesSection';
 import { TimelineSection } from '../components/deal/sections/TimelineSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
+import TaxModule from '../components/deal/sections/TaxModule';
+import CompsModule from '../components/deal/sections/CompsModule';
 
 
 export const DealView: React.FC = () => {
@@ -241,6 +243,18 @@ export const DealView: React.FC = () => {
         return (
           <div className="p-6 text-center text-[#64748b]">
             <p className="text-sm">Exit strategy analysis has been integrated into the <strong>Debt, Equity & Exit</strong> module.</p>
+          </div>
+        );
+      case 'tax':
+        return (
+          <div className="p-6">
+            <TaxModule deal={deal} dealId={selectedDeal.id} />
+          </div>
+        );
+      case 'comps':
+        return (
+          <div className="p-6">
+            <CompsModule deal={deal} dealId={selectedDeal.id} />
           </div>
         );
       case 'context':
