@@ -114,12 +114,12 @@ router.post('/ingest/atlanta-benchmarks', requireAdminAuth, async (req: Authenti
     job.logs.push(`Existing Atlanta-area benchmarks: ${existing.rows[0].cnt}`);
 
     const deals = await query(`
-      SELECT d.id, d.name, d.address, d.city, d.state,
+      SELECT d.id, d.name, d.address, d.state,
         ds.max_units, ds.max_gba, ds.max_stories, ds.binding_constraint,
         ds.parking_required
       FROM deals d
       LEFT JOIN development_scenarios ds ON ds.deal_id = d.id AND ds.is_active = true
-      WHERE LOWER(d.city) = 'atlanta' OR LOWER(d.state) IN ('ga', 'georgia')
+      WHERE d.address ILIKE '%atlanta%' OR LOWER(d.state) IN ('ga', 'georgia')
     `);
     job.recordsTotal = deals.rows.length;
     job.logs.push(`Found ${deals.rows.length} Atlanta-area deals to process as benchmarks`);
@@ -178,7 +178,7 @@ router.post('/ingest/florida-benchmarks', requireAdminAuth, async (req: Authenti
     job.logs.push(`Existing Florida benchmarks: ${existing.rows[0].cnt}`);
 
     const deals = await query(`
-      SELECT d.id, d.name, d.address, d.city, d.state,
+      SELECT d.id, d.name, d.address, d.state,
         ds.max_units, ds.max_gba, ds.max_stories, ds.binding_constraint,
         ds.parking_required
       FROM deals d
@@ -206,11 +206,13 @@ router.post('/ingest/florida-benchmarks', requireAdminAuth, async (req: Authenti
           continue;
         }
 
+        const flAddressParts = (deal.address || '').split(',').map((s: string) => s.trim());
+        const flCounty = flAddressParts.length >= 3 ? flAddressParts[flAddressParts.length - 3] : 'Unknown';
         await query(`
           INSERT INTO benchmark_projects (county, state, project_name, project_type, unit_count, stories, entitlement_type, confidence)
           VALUES ($1, $2, $3, 'multifamily', $4, $5, $6, 0.7)
           ON CONFLICT DO NOTHING
-        `, [deal.city || 'Unknown', 'FL', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.binding_constraint || 'by_right']);
+        `, [flCounty, 'FL', deal.name, deal.max_units || 0, deal.max_stories || 0, deal.binding_constraint || 'by_right']);
 
         job.logs.push(`Added benchmark: ${deal.name}`);
         job.recordsProcessed++;
@@ -390,16 +392,20 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
       job.logs.push('Step 4/5: Mapping properties to zoning...');
       try {
         const deals = await query(
-          `SELECT d.id, d.name, d.city, d.state FROM deals d
+          `SELECT d.id, d.name, d.address, d.state FROM deals d
            LEFT JOIN property_zoning_cache pzc ON pzc.deal_id = d.id
-           WHERE pzc.deal_id IS NULL AND d.city IS NOT NULL AND d.state IS NOT NULL
+           WHERE pzc.deal_id IS NULL AND d.address IS NOT NULL
            ORDER BY d.created_at DESC LIMIT 500`
         );
         let mapped = 0;
         for (const deal of deals.rows) {
           if (job.status === 'cancelled') break;
           try {
-            const muniResult = await query(`SELECT id FROM municipalities WHERE LOWER(name) = $1 AND LOWER(state) = $2 LIMIT 1`, [deal.city.toLowerCase(), deal.state.toLowerCase()]);
+            const addressParts = (deal.address || '').split(',').map((s: string) => s.trim());
+            const cityFromAddress = addressParts.length >= 2 ? addressParts[addressParts.length - 3] || addressParts[0] : '';
+            const stateFromAddress = deal.state || (addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '');
+            if (!cityFromAddress || !stateFromAddress) continue;
+            const muniResult = await query(`SELECT id FROM municipalities WHERE LOWER(name) = $1 AND LOWER(state) = $2 LIMIT 1`, [cityFromAddress.toLowerCase(), stateFromAddress.toLowerCase()]);
             if (muniResult.rows.length === 0) continue;
             const districtResult = await query(`SELECT zoning_code FROM zoning_districts WHERE municipality_id = $1 LIMIT 1`, [muniResult.rows[0].id]);
             if (districtResult.rows.length > 0) {
@@ -818,7 +824,7 @@ router.get('/deals', requireAdminAuth, async (req: AuthenticatedRequest, res: Re
     const total = parseInt(countResult.rows[0].cnt);
 
     const dealsResult = await query(`
-      SELECT d.id, d.name, d.address, d.city, d.state, d.status, d.user_id, d.created_at, d.updated_at,
+      SELECT d.id, d.name, d.address, d.state, d.status, d.user_id, d.created_at, d.updated_at, d.project_type, d.budget, d.target_units,
         u.email as user_email,
         (SELECT count(*) FROM development_scenarios WHERE deal_id = d.id) as scenario_count,
         (SELECT count(*) FROM development_scenarios WHERE deal_id = d.id AND is_active = true) as active_scenarios
@@ -962,7 +968,7 @@ router.get('/quality/missing-zoning', requireAdminAuth, async (req: Authenticate
     const limit = parseInt(req.query.limit as string) || 50;
 
     const result = await query(`
-      SELECT d.id, d.name, d.address, d.city, d.state
+      SELECT d.id, d.name, d.address, d.state
       FROM deals d
       LEFT JOIN (
         SELECT DISTINCT deal_id FROM development_scenarios
@@ -991,7 +997,7 @@ router.get('/quality/missing-zoning', requireAdminAuth, async (req: Authenticate
 router.get('/quality/invalid-boundaries', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const noBoundary = await query(`
-      SELECT d.id, d.name, d.address, d.city, d.state
+      SELECT d.id, d.name, d.address, d.state
       FROM deals d
       LEFT JOIN property_boundaries pb ON pb.deal_id = d.id
       WHERE pb.deal_id IS NULL
