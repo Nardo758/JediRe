@@ -114,6 +114,12 @@ export interface MarketIntelligenceState {
   medianIncome: number;
   medianRent: number;
   population: number;
+  linkedZoningCode?: string;
+  linkedMaxUnits?: number;
+  linkedMaxGba?: number;
+  linkedFar?: number;
+  linkedMaxStories?: number;
+  linkedBindingConstraint?: string;
   lastUpdated: number;
 }
 
