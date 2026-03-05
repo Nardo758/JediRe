@@ -12,6 +12,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { ActionStatusPanel } from '../ActionStatusPanel';
 import { StrategyAnalysisResults } from '../StrategyAnalysisResults';
+import { PropertyDetailsForm } from '../PropertyDetailsForm';
 import {
   dealAnalysisService,
   AnalysisStatus,
@@ -206,6 +207,9 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
           )}
         </div>
       )}
+
+      {/* Property Details Form - Essential Inputs */}
+      <PropertyDetailsForm dealId={deal?.id} />
 
       {/* Analysis Status (only during loading) */}
       {!analysisComplete && (
