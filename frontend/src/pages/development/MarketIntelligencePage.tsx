@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   TrendingUp, Users, Newspaper, FileText, Building2, MapPin,
   Briefcase, Factory, ChevronDown, ChevronUp, Upload,
   AlertTriangle, CheckCircle2, XCircle, HelpCircle,
-  RefreshCw, Activity, DollarSign, Home
+  RefreshCw, Activity, DollarSign, Home, Layers, Link2
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
@@ -29,12 +29,25 @@ type TabId = typeof TABS[number]['id'];
 export const MarketIntelligencePage: React.FC = () => {
   const { dealId: paramDealId } = useParams<{ dealId: string }>();
   const dealId = paramDealId || '';
-  const { updateMarketIntelligence, emitEvent } = useDealModule();
+  const { updateMarketIntelligence, emitEvent, activeScenario, zoningProfile, lastEvent } = useDealModule();
   const [activeTab, setActiveTab] = useState<TabId>('economy');
   const [data, setData] = useState<MarketIntelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
+  const lastProcessedEventRef = useRef<number>(0);
+
+  const hasZoningContext = !!(activeScenario && (activeScenario.maxUnits || activeScenario.maxGba));
+  const zoningCode = zoningProfile?.baseDistrictCode || activeScenario?.name || null;
+
+  useEffect(() => {
+    if (!lastEvent || lastEvent.type !== 'capacity-updated') return;
+    if (lastEvent.timestamp <= lastProcessedEventRef.current) return;
+    lastProcessedEventRef.current = lastEvent.timestamp;
+    if (data) {
+      pushToContext(data);
+    }
+  }, [lastEvent]);
 
   const pushToContext = (intelData: MarketIntelData) => {
     const demographics = intelData.demographics;
@@ -57,12 +70,22 @@ export const MarketIntelligencePage: React.FC = () => {
       medianIncome: census?.medianIncome || 0,
       medianRent: census?.medianRent || 0,
       population: census?.population || 0,
+      linkedZoningCode: zoningProfile?.baseDistrictCode || undefined,
+      linkedMaxUnits: activeScenario?.maxUnits || undefined,
+      linkedMaxGba: activeScenario?.maxGba || undefined,
+      linkedFar: activeScenario?.appliedFar || undefined,
+      linkedMaxStories: activeScenario?.maxStories || undefined,
+      linkedBindingConstraint: activeScenario?.bindingConstraint || undefined,
     });
 
     emitEvent({
       source: 'MarketIntelligencePage',
       type: 'market-intelligence-updated',
-      payload: { dealId },
+      payload: {
+        dealId,
+        zoningLinked: hasZoningContext,
+        zoningCode: zoningProfile?.baseDistrictCode || null,
+      },
     });
   };
 
@@ -112,6 +135,59 @@ export const MarketIntelligencePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {hasZoningContext ? (
+        <div className="bg-indigo-50 border border-indigo-200 border-t-0 px-5 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Zoning Linked</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {zoningCode && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 border border-indigo-200 rounded text-xs font-mono font-bold text-indigo-700">
+                  <Layers size={10} />
+                  {zoningCode}
+                </span>
+              )}
+              {activeScenario?.maxUnits && (
+                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                  {activeScenario.maxUnits.toLocaleString()} units
+                </span>
+              )}
+              {activeScenario?.maxGba && (
+                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                  {activeScenario.maxGba.toLocaleString()} SF GBA
+                </span>
+              )}
+              {activeScenario?.appliedFar && (
+                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                  {activeScenario.appliedFar.toFixed(2)} FAR
+                </span>
+              )}
+              {activeScenario?.maxStories && (
+                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                  {activeScenario.maxStories} stories
+                </span>
+              )}
+              {activeScenario?.bindingConstraint && (
+                <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 rounded text-xs font-mono text-amber-700">
+                  Binding: {activeScenario.bindingConstraint}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-indigo-400">
+            <Link2 size={12} />
+            <span className="text-[10px] font-medium">from Property & Zoning</span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-stone-50 border border-stone-200 border-t-0 px-5 py-2 flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-stone-300" />
+          <span className="text-xs text-stone-400">Select a development path in Property & Zoning to contextualize market analysis</span>
+        </div>
+      )}
 
       <div className="bg-white border border-stone-200 border-t-0 rounded-b-lg">
         <div className="flex border-b border-stone-200">

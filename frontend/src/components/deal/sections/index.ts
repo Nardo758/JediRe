@@ -44,3 +44,6 @@ export { TrafficModule } from './TrafficModule';
 export { ProFormaTab } from './ProFormaTab';
 export { DebtTab } from './DebtTab';
 export { default as FinancialDashboard } from './FinancialDashboard';
+export { default as TaxModule } from './TaxModule';
+export { default as CompsModule } from './CompsModule';
+export { default as UnitMixIntelligence } from './UnitMixIntelligence';
