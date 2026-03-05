@@ -57,6 +57,7 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
+import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
 import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
@@ -236,6 +237,12 @@ const DealDetailPage: React.FC = () => {
       label: 'Market Intelligence', 
       icon: <TrendingUp size={16} />, 
       component: MarketIntelligencePage 
+    },
+    {
+      id: 'unit-mix-intelligence',
+      label: 'Unit Mix Intelligence',
+      icon: <Layers size={16} />,
+      component: UnitMixIntelligence
     },
     { 
       id: 'competition', 
