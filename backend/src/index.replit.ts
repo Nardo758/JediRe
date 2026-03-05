@@ -188,6 +188,9 @@ app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
 
+import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
+app.use('/api/v1', taxCompAnalysisRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -204,9 +207,6 @@ app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
-app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
-app.use('/api/v1', m26TaxRouter);
-app.use('/api/v1', m27CompsRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
