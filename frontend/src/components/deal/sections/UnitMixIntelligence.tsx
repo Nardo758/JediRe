@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useParams } from "react-router-dom";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Bar, Cell, LineChart, Line,
 } from "recharts";
+import { useUnitMixIntelligence } from "../../../hooks/useUnitMixIntelligence";
+import { useTradeAreaStore } from "../../../stores/tradeAreaStore";
 
 type UnitKey = "studio" | "oneBR" | "twoBR" | "threeBR";
 type SigKey = "vac" | "dom" | "conc";
@@ -143,8 +146,8 @@ const PROGRAM_SEED = {
 // ─────────────────────────────────────────────────────────
 //  CALCULATIONS
 // ─────────────────────────────────────────────────────────
-function compAvg(utKey: UnitKey) {
-  const active = COMPS.filter(c => c.units[utKey].mix > 0);
+function compAvg(utKey: UnitKey, comps: CompData[]) {
+  const active = comps.filter(c => c.units[utKey].mix > 0);
   if (!active.length) return { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
   const avg = (fn: (c: any) => number) => active.reduce((s, c) => s + fn(c), 0) / active.length;
   return {
@@ -171,12 +174,12 @@ function computeProgram(program: Program) {
 }
 
 // Inventory: per unit-type aggregate across all comps
-function computeInventory() {
-  const totalCompUnits = COMPS.reduce((s, c) => s + c.total, 0);
+function computeInventory(comps: CompData[]) {
+  const totalCompUnits = comps.reduce((s, c) => s + c.total, 0);
   return UT_META.map(ut => {
-    const active = COMPS.filter(c => c.units[ut.key].mix > 0);
-    const typeUnits = COMPS.reduce((s, c) => s + Math.round(c.total * c.units[ut.key].mix / 100), 0);
-    const vacUnits  = COMPS.reduce((s, c) => {
+    const active = comps.filter(c => c.units[ut.key].mix > 0);
+    const typeUnits = comps.reduce((s, c) => s + Math.round(c.total * c.units[ut.key].mix / 100), 0);
+    const vacUnits  = comps.reduce((s, c) => {
       const u = Math.round(c.total * c.units[ut.key].mix / 100);
       return s + Math.round(u * (c.units[ut.key].vac || 0) / 100);
     }, 0);
@@ -204,14 +207,14 @@ function computeGaps(inventory: InventoryItem[]) {
   }));
 }
 
-function buildScatter(program: Program) {
+function buildScatter(program: Program, comps: CompData[]) {
   const pts = [];
   UT_META.forEach(ut => {
     const su = program.units[ut.key];
     if (su.sf > 0 && su.rent > 0)
       pts.push({ x: su.sf, y: su.rent, name: "★ Subject", unitType: ut.label,
         color: C.subject, isSubject: true, utKey: ut.key, psf: +(su.rent/su.sf).toFixed(2) });
-    COMPS.forEach(c => {
+    comps.forEach(c => {
       const cu = c.units[ut.key];
       if (cu.sf > 0 && cu.rent > 0)
         pts.push({ x: cu.sf, y: cu.rent, name: c.name, unitType: ut.label,
@@ -355,7 +358,7 @@ function ScatterTip({ active, payload }: any) {
 // ─────────────────────────────────────────────────────────
 //  TAB 1A — DEMAND MATRIX (4 score cards)
 // ─────────────────────────────────────────────────────────
-function DemandMatrix({ inventory }: { inventory: InventoryItem[] }) {
+function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; trendData: typeof TREND_DATA }) {
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
@@ -365,9 +368,9 @@ function DemandMatrix({ inventory }: { inventory: InventoryItem[] }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {inventory.map(u => {
           const dl = demandLabel(u.demandScore);
-          const trend = TREND_DATA[u.key];
-          const vacDelta = trend[11].vac - trend[0].vac;
-          const rentDelta = trend[11].rent - trend[0].rent;
+          const trend = trendData[u.key];
+          const vacDelta = trend.length >= 12 ? trend[11].vac - trend[0].vac : 0;
+          const rentDelta = trend.length >= 12 ? trend[11].rent - trend[0].rent : 0;
           return (
             <div key={u.key} style={{ background: C.card, padding: "18px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -439,7 +442,7 @@ function DemandMatrix({ inventory }: { inventory: InventoryItem[] }) {
                 <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 3 }}>
                   12-MO VACANCY
                 </div>
-                <MiniLine data={TREND_DATA[u.key]} dataKey="vac" color={u.color} />
+                <MiniLine data={trendData[u.key]} dataKey="vac" color={u.color} />
               </div>
             </div>
           );
@@ -647,7 +650,7 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 // ─────────────────────────────────────────────────────────
 //  TAB 2 — PROGRAM EDITOR
 // ─────────────────────────────────────────────────────────
-function ProgramEditor({ program, computed, zoning, onProgramChange }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void }) {
+function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[] }) {
   const { totalSF, mixTotal, grossRevPA } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
 
@@ -658,7 +661,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange }: { program
   function applyCompAvgs() {
     const units = {};
     UT_META.forEach(ut => {
-      const avg = compAvg(ut.key);
+      const avg = compAvg(ut.key, comps);
       units[ut.key] = { mix: Math.round(avg.mix) || program.units[ut.key].mix, sf: avg.sf || program.units[ut.key].sf, rent: avg.rent || program.units[ut.key].rent };
     });
     onProgramChange({ ...program, units });
@@ -716,7 +719,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange }: { program
 
       {UT_META.map((ut, ri) => {
         const u = program.units[ut.key];
-        const avg = compAvg(ut.key);
+        const avg = compAvg(ut.key, comps);
         const count = Math.round(program.totalUnits * u.mix / 100);
         const psf = u.sf ? +(u.rent / u.sf).toFixed(2) : 0;
         const annRev = count * u.rent * 12 * 0.95;
@@ -793,7 +796,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange }: { program
 // ─────────────────────────────────────────────────────────
 //  TAB 3A — INVENTORY SNAPSHOT
 // ─────────────────────────────────────────────────────────
-function InventorySnapshot({ inventory }: { inventory: InventoryItem[] }) {
+function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; comps: CompData[] }) {
   const total = inventory.reduce((s, u) => s + u.typeUnits, 0);
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
@@ -836,7 +839,7 @@ function InventorySnapshot({ inventory }: { inventory: InventoryItem[] }) {
               textAlign: i > 1 ? "right" : "left" }}>{h}</div>
           ))}
         </div>
-        {[...COMPS].map((c, i) => (
+        {[...comps].map((c, i) => (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: "160px 48px repeat(5,1fr)",
             padding: "9px 20px", borderBottom: `1px solid ${C.border}`,
             background: i % 2 === 0 ? "transparent" : "#060f1a0a" }}>
@@ -862,9 +865,9 @@ function InventorySnapshot({ inventory }: { inventory: InventoryItem[] }) {
 // ─────────────────────────────────────────────────────────
 //  TAB 3B — PROPERTY DRILL-DOWN
 // ─────────────────────────────────────────────────────────
-function PropertyDrillDown({ selectedType, onSelect }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void }) {
+function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; comps: CompData[] }) {
   const ut = UT_META.find(u => u.key === selectedType);
-  const rows = COMPS.filter(c => c.units[selectedType].mix > 0)
+  const rows = comps.filter(c => c.units[selectedType].mix > 0)
     .sort((a, b) => a.units[selectedType].vac - b.units[selectedType].vac);
 
   return (
@@ -934,9 +937,9 @@ function PropertyDrillDown({ selectedType, onSelect }: { selectedType: UnitKey; 
 // ─────────────────────────────────────────────────────────
 //  TAB 4 — TREND DETAIL (12-month charts)
 // ─────────────────────────────────────────────────────────
-function TrendDetail({ selectedType, onSelect }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void }) {
+function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; trendData: typeof TREND_DATA }) {
   const ut = UT_META.find(u => u.key === selectedType);
-  const data = TREND_DATA[selectedType];
+  const data = trendData[selectedType];
   const metrics = [
     { key: "vac",  label: "Vacancy %",            color: C.red,    fmt: (v: number) => `${v}%`  },
     { key: "dom",  label: "Days on Market",        color: C.yellow, fmt: (v: number) => `${v}d`  },
@@ -1001,7 +1004,7 @@ function TrendDetail({ selectedType, onSelect }: { selectedType: UnitKey; onSele
 // ─────────────────────────────────────────────────────────
 //  TAB 5A — MIX MATRIX
 // ─────────────────────────────────────────────────────────
-function MixMatrix({ program }: { program: Program }) {
+function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) {
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
@@ -1028,7 +1031,7 @@ function MixMatrix({ program }: { program: Program }) {
         </div>
         {UT_META.map(ut => {
           const pct = program.units[ut.key].mix;
-          const avg = compAvg(ut.key);
+          const avg = compAvg(ut.key, comps);
           return (
             <div key={ut.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
               <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -1042,7 +1045,7 @@ function MixMatrix({ program }: { program: Program }) {
           );
         })}
       </div>
-      {COMPS.map((c, ri) => (
+      {comps.map((c, ri) => (
         <div key={c.id} style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
           padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
           background: ri % 2 === 0 ? "transparent" : "#060f1a50",
@@ -1076,7 +1079,7 @@ function MixMatrix({ program }: { program: Program }) {
         {UT_META.map(ut => (
           <div key={ut.key} style={{ textAlign: "right", color: ut.color,
             fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-            {compAvg(ut.key).mix.toFixed(1)}%
+            {compAvg(ut.key, comps).mix.toFixed(1)}%
           </div>
         ))}
       </div>
@@ -1087,8 +1090,8 @@ function MixMatrix({ program }: { program: Program }) {
 // ─────────────────────────────────────────────────────────
 //  TAB 5B — RENT × SF SCATTER
 // ─────────────────────────────────────────────────────────
-function RentSFScatter({ program, filterUT, setFilterUT }: { program: Program; filterUT: string; setFilterUT: (v: string) => void }) {
-  const all = buildScatter(program);
+function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Program; filterUT: string; setFilterUT: (v: string) => void; comps: CompData[] }) {
+  const all = buildScatter(program, comps);
   const pts = filterUT === "all" ? all : all.filter(p => p.utKey === filterUT);
 
   return (
@@ -1150,10 +1153,10 @@ function RentSFScatter({ program, filterUT, setFilterUT }: { program: Program; f
 // ─────────────────────────────────────────────────────────
 //  TAB 5C — COMP DETAIL TABLE
 // ─────────────────────────────────────────────────────────
-function CompTable({ program, utKey, setUtKey }: { program: Program; utKey: UnitKey; setUtKey: (k: UnitKey) => void }) {
+function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKey: UnitKey; setUtKey: (k: UnitKey) => void; comps: CompData[] }) {
   const ut  = UT_META.find(u => u.key === utKey) || UT_META[1];
   const su  = program.units[ut.key];
-  const avg = compAvg(ut.key);
+  const avg = compAvg(ut.key, comps);
   const gridTpl = "1fr 56px 88px 94px 68px 72px 72px 68px 90px";
 
   function PosTags({ rent }: { rent: number }) {
@@ -1224,7 +1227,7 @@ function CompTable({ program, utKey, setUtKey }: { program: Program; utKey: Unit
       </div>
 
       {/* Comp rows */}
-      {COMPS.filter(c => c.units[ut.key].mix > 0 || c.units[ut.key].sf > 0).map((c, ri) => {
+      {comps.filter(c => c.units[ut.key].mix > 0 || c.units[ut.key].sf > 0).map((c, ri) => {
         const u = c.units[ut.key];
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
         return (
@@ -1306,16 +1309,44 @@ function CompTable({ program, utKey, setUtKey }: { program: Program; utKey: Unit
 //  ROOT
 // ─────────────────────────────────────────────────────────
 export default function UnitMixIntelligence() {
-  const [zoning,    setZoning]    = useState(ZONING_SEED);
-  const [program,   setProgram]   = useState(PROGRAM_SEED);
+  const { dealId } = useParams<{ dealId: string }>();
+  const { activeTradeArea } = useTradeAreaStore();
+  const tradeAreaId = activeTradeArea?.id;
+
+  const {
+    comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
+    zoning: apiZoning, program: apiProgram, loading, error,
+    handleProgramChange: saveProgram,
+  } = useUnitMixIntelligence(dealId, tradeAreaId);
+
+  const hasApiComps = apiComps && apiComps.length > 0;
+  const hasApiTrends = apiTrends && Object.keys(apiTrends).some(k => apiTrends[k]?.length > 0);
+  const comps: CompData[] = hasApiComps ? (apiComps as CompData[]) : COMPS;
+  const trendData = hasApiTrends ? apiTrends : TREND_DATA;
+
+  const [zoning,    setZoning]    = useState<ZoningData>(ZONING_SEED);
+  const [program,   setProgram]   = useState<Program>(PROGRAM_SEED);
   const [tab,       setTab]       = useState("demand");
-  const [drillType, setDrillType] = useState("twoBR");
-  const [trendType, setTrendType] = useState("twoBR");
+  const [drillType, setDrillType] = useState<UnitKey>("twoBR");
+  const [trendType, setTrendType] = useState<UnitKey>("twoBR");
   const [filterUT,  setFilterUT]  = useState("all");
-  const [tableUT,   setTableUT]   = useState("twoBR");
+  const [tableUT,   setTableUT]   = useState<UnitKey>("twoBR");
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (loading || initializedRef.current) return;
+    initializedRef.current = true;
+    if (apiZoning) setZoning(apiZoning as ZoningData);
+    if (apiProgram && (apiProgram as any).totalUnits) setProgram(apiProgram as Program);
+  }, [loading, apiZoning, apiProgram]);
+
+  const handleProgramChange = (p: Program) => {
+    setProgram(p);
+    saveProgram(p as any);
+  };
 
   const computed   = computeProgram(program);
-  const inventory  = computeInventory();
+  const inventory  = computeInventory(comps);
   const gaps       = computeGaps(inventory);
 
   const tabs = [
@@ -1347,8 +1378,8 @@ export default function UnitMixIntelligence() {
               Unit Mix & Pricing Intelligence
             </h1>
             <p style={{ color: C.dim, fontSize: 11, margin: "2px 0 0" }}>
-              Port St. Lucie / Stuart Corridor · {COMPS.length} comps ·{" "}
-              {COMPS.reduce((s, c) => s + c.total, 0).toLocaleString()} tracked units ·
+              Trade Area · {comps.length} comps ·{" "}
+              {comps.reduce((s, c) => s + c.total, 0).toLocaleString()} tracked units ·
               Zoning: <span style={{ color: C.blue }}>{zoning.zoningCode}</span>
             </p>
           </div>
@@ -1393,7 +1424,7 @@ export default function UnitMixIntelligence() {
 
         {tab === "demand" && (
           <>
-            <DemandMatrix inventory={inventory} />
+            <DemandMatrix inventory={inventory} trendData={trendData} />
             <GapAnalysis gaps={gaps} />
           </>
         )}
@@ -1401,29 +1432,29 @@ export default function UnitMixIntelligence() {
         {tab === "program" && (
           <>
             <ZoningPanel zoning={zoning} program={program} computed={computed} onZoningChange={setZoning} />
-            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={setProgram} />
+            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps} />
           </>
         )}
 
         {tab === "inventory" && (
           <>
-            <InventorySnapshot inventory={inventory} />
-            <PropertyDrillDown selectedType={drillType} onSelect={setDrillType} />
+            <InventorySnapshot inventory={inventory} comps={comps} />
+            <PropertyDrillDown selectedType={drillType} onSelect={setDrillType} comps={comps} />
           </>
         )}
 
         {tab === "trends" && (
           <>
-            <TrendDetail selectedType={trendType} onSelect={setTrendType} />
-            <PropertyDrillDown selectedType={trendType} onSelect={setTrendType} />
+            <TrendDetail selectedType={trendType} onSelect={setTrendType} trendData={trendData} />
+            <PropertyDrillDown selectedType={trendType} onSelect={setTrendType} comps={comps} />
           </>
         )}
 
         {tab === "comps" && (
           <>
-            <MixMatrix program={program} />
-            <RentSFScatter program={program} filterUT={filterUT} setFilterUT={setFilterUT} />
-            <CompTable program={program} utKey={tableUT} setUtKey={setTableUT} />
+            <MixMatrix program={program} comps={comps} />
+            <RentSFScatter program={program} filterUT={filterUT} setFilterUT={setFilterUT} comps={comps} />
+            <CompTable program={program} utKey={tableUT} setUtKey={setTableUT} comps={comps} />
           </>
         )}
       </div>
