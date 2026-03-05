@@ -97,6 +97,7 @@ import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
+import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 
 dotenv.config();
@@ -263,6 +264,7 @@ app.use('/api/v1/correlations', requireAuth, correlationRouter);
 app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
+app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
