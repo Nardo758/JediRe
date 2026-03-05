@@ -613,12 +613,12 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           'parcel_id',
           'lot_size_acres',
           'land_cost',
-          'lot_size_sqft',
-          'building_sqft',
           'year_built',
-          'current_use',
           'property_type',
-          'zoning_code',
+          'lot_acres',
+          'total_sf',
+          'units',
+          'stories',
         ];
 
         const updates: string[] = [];
