@@ -265,6 +265,33 @@ app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
+
+app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_trends WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_submarkets WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
