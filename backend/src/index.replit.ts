@@ -97,6 +97,7 @@ import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
+import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 
 dotenv.config();
@@ -188,6 +189,9 @@ app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
 
+import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
+app.use('/api/v1', taxCompAnalysisRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -204,9 +208,6 @@ app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
-app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
-app.use('/api/v1', m26TaxRouter);
-app.use('/api/v1', m27CompsRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
@@ -262,6 +263,34 @@ app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/correlations', requireAuth, correlationRouter);
 app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
+
+app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
+
+app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_trends WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_submarkets WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));

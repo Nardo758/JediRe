@@ -77,7 +77,7 @@ router.get(
         // Distance filter (using PostGIS)
         whereConditions.push(`
           ST_DWithin(
-            ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
             ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
             $3 * 1609.34
           )
@@ -118,10 +118,10 @@ router.get(
             pr.year_built,
             pr.owner_name,
             pr.appraised_value,
-            pr.latitude,
-            pr.longitude,
+            pr.lat,
+            pr.lng,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -209,14 +209,14 @@ router.get(
             pr.units,
             pr.year_built,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               1.5 * 1609.34
             )
@@ -371,7 +371,7 @@ router.get(
             pr.year_built,
             pr.appraised_value,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -379,7 +379,7 @@ router.get(
             pr.year_built::integer >= $3
             AND pr.units >= 100
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $4 * 1609.34
             )
@@ -491,10 +491,10 @@ router.get(
             pr.units,
             pr.year_built,
             pr.appraised_value,
-            pr.latitude,
-            pr.longitude,
+            pr.lat,
+            pr.lng,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -502,7 +502,7 @@ router.get(
             pr.year_built::integer <= $3
             AND pr.units > 50
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $4 * 1609.34
             )
@@ -603,14 +603,14 @@ router.get(
             pr.units,
             pr.appraised_value,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               1.0 * 1609.34
             )
@@ -744,14 +744,14 @@ router.get(
             pr.appraised_value,
             pr.property_class,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $3 * 1609.34
             )
