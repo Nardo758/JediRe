@@ -11,7 +11,9 @@
     "m28:ingest-rates": "ts-node src/scripts/ingest-rate-data.ts",
     "m28:ingest-rates:backfill": "ts-node src/scripts/ingest-rate-data.ts backfill",
     "m28:ingest-indicators": "ts-node src/scripts/ingest-leading-indicators.ts",
-    "m28:classify-cycles": "ts-node src/scripts/classify-market-cycles.ts"
+    "m28:classify-cycles": "ts-node src/scripts/classify-market-cycles.ts",
+    "m28:seed-test-data": "psql $DATABASE_URL < src/database/seeds/m28-test-data.sql",
+    "m28:test-endpoints": "ts-node src/scripts/test-m28-endpoints.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
