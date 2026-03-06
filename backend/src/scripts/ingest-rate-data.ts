@@ -4,6 +4,9 @@
  * Run daily via cron: 0 8 * * * (8am daily)
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { getPool } from '../database/connection';
 import {
   fredApiClient,

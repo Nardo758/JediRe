@@ -189,11 +189,10 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     if (boundary && (boundary.type === 'Point' || boundary.type === 'Polygon')) {
       setImmediate(async () => {
         try {
-          try { const { m26m27Integration } = await import('../services/module-wiring/m26-m27-integration');
+          const { m26m27Integration } = await import('../../services/module-wiring/m26-m27-integration');
           await m26m27Integration.triggerCompSetOnLocationSet(row.id);
-        } catch (error) {
-          console.error('M27 auto-trigger error:', error);
-        } catch (e) { /* M26/M27 integration unavailable */ }
+        } catch (e) {
+          console.error('M27 auto-trigger error:', e);
         }
       });
     }
@@ -276,15 +275,14 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
         // Fire async (don't block response)
         setImmediate(async () => {
           try {
-            try { const { m26m27Integration } = await import('../services/module-wiring/m26-m27-integration');
+            const { m26m27Integration } = await import('../../services/module-wiring/m26-m27-integration');
             await m26m27Integration.triggerTaxProjectionOnPriceChange(
               dealId,
-        } catch (e) { /* M26/M27 integration unavailable */ }
               newPrice,
               units
             );
-          } catch (error) {
-            console.error('M26 auto-trigger error:', error);
+          } catch (e) {
+            console.error('M26 auto-trigger error:', e);
           }
         });
       }

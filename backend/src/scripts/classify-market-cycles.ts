@@ -4,6 +4,9 @@
  * Run monthly via cron: 0 10 1 * * (1st of each month at 10am)
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { getPool } from '../database/connection';
 
 const pool = getPool();

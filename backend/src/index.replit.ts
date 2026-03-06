@@ -97,6 +97,7 @@ import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
+import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 
@@ -188,6 +189,7 @@ app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
+app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
