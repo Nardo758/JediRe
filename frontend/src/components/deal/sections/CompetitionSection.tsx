@@ -52,6 +52,41 @@ interface CompetitiveThreat {
   distance: number;
 }
 
+interface RankedProperty {
+  id: string;
+  name: string;
+  address: string;
+  distance: number;
+  units: number;
+  yearBuilt: number;
+  class: string;
+  avgRent: number;
+  avgSf: number;
+  rentPerSf: number;
+  occupancy: number | null;
+  isSubject: boolean;
+  rank: number;
+  programUpdatedAt?: string;
+}
+
+interface RankingSummary {
+  totalProperties: number;
+  marketAvgRent: number;
+  hasProgram: boolean;
+  subjectRank?: number;
+  rentDelta?: number;
+  rentPremiumPct?: number;
+  percentile?: number;
+  subjectAvgRent?: number;
+  subjectAvgSf?: number;
+  subjectRentPerSf?: number;
+}
+
+interface RankingResponse {
+  rankings: RankedProperty[];
+  summary: RankingSummary;
+}
+
 interface CompetitionSectionProps {
   deal: Deal;
 }
@@ -65,6 +100,11 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
   const [comparables, setComparables] = useState<ComparableProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Competitive Ranking state
+  const [rankingData, setRankingData] = useState<RankingResponse | null>(null);
+  const [rankingLoading, setRankingLoading] = useState(true);
+  const [rankingError, setRankingError] = useState(false);
 
   // Fetch competition data from API
   useEffect(() => {
@@ -111,6 +151,33 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
 
     if (deal.id) {
       fetchCompetitionData();
+    }
+  }, [deal.id]);
+
+  useEffect(() => {
+    const fetchRankingData = async () => {
+      setRankingLoading(true);
+      setRankingError(false);
+      try {
+        const response = await fetch(`/api/v1/deals/${deal.id}/competitive-ranking`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setRankingData(data);
+          }
+        } else {
+          setRankingError(true);
+        }
+      } catch (err) {
+        console.error('Error fetching competitive ranking:', err);
+        setRankingError(true);
+      } finally {
+        setRankingLoading(false);
+      }
+    };
+
+    if (deal.id) {
+      fetchRankingData();
     }
   }, [deal.id]);
 
@@ -207,6 +274,13 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
 
       {/* Quick Stats Cards */}
       <QuickStatsGrid stats={stats} />
+
+      {/* Competitive Ranking — Program vs. Competition */}
+      <CompetitiveRankingCard
+        data={rankingData}
+        loading={rankingLoading}
+        error={rankingError}
+      />
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -593,6 +667,233 @@ const ThreatBadge: React.FC<ThreatBadgeProps> = ({ level }) => {
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[level]}`}>
       {icons[level]} {level.toUpperCase()}
     </span>
+  );
+};
+
+interface CompetitiveRankingCardProps {
+  data: RankingResponse | null;
+  loading: boolean;
+  error?: boolean;
+}
+
+const formatRelativeTime = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, loading, error }) => {
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-5 bg-stone-200 rounded w-48"></div>
+          <div className="h-32 bg-stone-100 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-6">
+        <div className="text-center py-4">
+          <div className="text-2xl mb-2">⚠️</div>
+          <h3 className="text-sm font-semibold text-stone-900 mb-1">Unable to load ranking</h3>
+          <p className="text-xs text-stone-500">Could not retrieve competitive ranking data. Try refreshing the page.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !data.summary.hasProgram) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-6 hover:border-stone-300 transition-colors">
+        <div className="text-center py-6">
+          <div className="text-3xl mb-3">📊</div>
+          <h3 className="text-sm font-semibold text-stone-900 mb-1">Program vs. Competition</h3>
+          <p className="text-xs text-stone-500 mb-4 max-w-md mx-auto">
+            Set up your Unit Mix Program to see how your property would rank against nearby competition on rent, size, and value.
+          </p>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 text-stone-600 rounded text-xs font-medium">
+            Go to Unit Mix Intelligence to create your Program
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { rankings, summary } = data;
+  const premiumColor = (summary.rentPremiumPct || 0) >= 0 ? 'text-emerald-600' : 'text-red-600';
+  const premiumSign = (summary.rentPremiumPct || 0) >= 0 ? '+' : '';
+
+  return (
+    <div className="bg-white rounded-lg border border-stone-200 p-6 hover:border-stone-300 transition-colors">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-stone-900">Your Program vs. Competition</h3>
+          <p className="text-xs text-stone-500 mt-0.5">
+            Ranked by weighted average rent across {summary.totalProperties} propert{summary.totalProperties === 1 ? 'y' : 'ies'}
+            {(() => {
+              const subject = rankings.find(r => r.isSubject);
+              return subject?.programUpdatedAt
+                ? <span className="ml-1.5 text-stone-400">· Program saved {formatRelativeTime(subject.programUpdatedAt)}</span>
+                : null;
+            })()}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {summary.subjectRank && summary.totalProperties > 1 && (
+            <div className="text-right">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider uppercase">Rank</div>
+              <div className="text-xl font-bold text-stone-900">
+                #{summary.subjectRank}
+                <span className="text-xs font-normal text-stone-400 ml-0.5">/ {summary.totalProperties}</span>
+              </div>
+            </div>
+          )}
+          {summary.percentile !== undefined && summary.totalProperties > 1 && (
+            <div className="text-right">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider uppercase">Percentile</div>
+              <div className="text-xl font-bold text-stone-900">{summary.percentile}th</div>
+            </div>
+          )}
+          {summary.rentPremiumPct !== undefined && summary.marketAvgRent > 0 && (
+            <div className="text-right">
+              <div className="text-[10px] font-mono text-stone-400 tracking-wider uppercase">vs Market</div>
+              <div className={`text-xl font-bold ${premiumColor}`}>
+                {premiumSign}{summary.rentPremiumPct}%
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-stone-200">
+              <th className="text-left py-2 pr-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase w-10">#</th>
+              <th className="text-left py-2 pr-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Property</th>
+              <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Units</th>
+              <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Avg Rent</th>
+              <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Avg SF</th>
+              <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Rent/SF</th>
+              <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Class</th>
+              <th className="text-right py-2 pl-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Dist</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rankings.map((entry) => (
+              <tr
+                key={entry.id}
+                className={`border-b border-stone-100 last:border-0 transition-colors ${
+                  entry.isSubject
+                    ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+                    : 'hover:bg-stone-50'
+                }`}
+              >
+                <td className="py-2.5 pr-3">
+                  <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                    entry.isSubject
+                      ? 'bg-blue-600 text-white'
+                      : entry.rank <= 3
+                        ? 'bg-stone-200 text-stone-700'
+                        : 'text-stone-400'
+                  }`}>
+                    {entry.rank}
+                  </span>
+                </td>
+                <td className="py-2.5 pr-3">
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <div className={`font-medium ${entry.isSubject ? 'text-blue-900' : 'text-stone-900'}`}>
+                        {entry.isSubject ? (
+                          <span className="flex items-center gap-1.5">
+                            {entry.name}
+                            <span className="px-1.5 py-0.5 bg-blue-600 text-white text-[9px] font-bold rounded tracking-wide uppercase">
+                              Your Program
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="truncate block max-w-[200px]">{entry.name}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className={`py-2.5 px-3 text-right font-medium ${entry.isSubject ? 'text-blue-900' : 'text-stone-700'}`}>
+                  {entry.units?.toLocaleString() || '—'}
+                </td>
+                <td className={`py-2.5 px-3 text-right font-semibold ${entry.isSubject ? 'text-blue-900' : 'text-stone-900'}`}>
+                  ${entry.avgRent?.toLocaleString() || '—'}
+                </td>
+                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-600'}`}>
+                  {entry.avgSf?.toLocaleString() || '—'}
+                </td>
+                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-600'}`}>
+                  ${entry.rentPerSf?.toFixed(2) || '—'}
+                </td>
+                <td className="py-2.5 px-3 text-right">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                    entry.class === 'A' ? 'bg-emerald-100 text-emerald-700' :
+                    entry.class === 'B' ? 'bg-blue-100 text-blue-700' :
+                    'bg-stone-100 text-stone-600'
+                  }`}>
+                    {entry.class}
+                  </span>
+                </td>
+                <td className={`py-2.5 pl-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-500'}`}>
+                  {entry.isSubject ? '—' : (entry.distance != null ? `${entry.distance} mi` : '—')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-stone-200 flex items-center gap-6 text-xs">
+        {summary.subjectAvgRent && (
+          <div>
+            <span className="text-stone-400 font-mono tracking-wider uppercase">Your Rent</span>
+            <span className="ml-2 font-semibold text-stone-700">${summary.subjectAvgRent.toLocaleString()}/mo</span>
+          </div>
+        )}
+        {summary.subjectRentPerSf && (
+          <div>
+            <span className="text-stone-400 font-mono tracking-wider uppercase">Your $/SF</span>
+            <span className="ml-2 font-semibold text-stone-700">${summary.subjectRentPerSf.toFixed(2)}</span>
+          </div>
+        )}
+        {summary.marketAvgRent > 0 && (
+          <div>
+            <span className="text-stone-400 font-mono tracking-wider uppercase">Market Avg</span>
+            <span className="ml-2 font-semibold text-stone-700">${summary.marketAvgRent.toLocaleString()}/mo</span>
+          </div>
+        )}
+        {summary.rentDelta !== undefined && summary.marketAvgRent > 0 && (
+          <div>
+            <span className="text-stone-400 font-mono tracking-wider uppercase">Delta</span>
+            <span className={`ml-2 font-semibold ${premiumColor}`}>
+              {premiumSign}${Math.abs(summary.rentDelta).toLocaleString()}
+            </span>
+          </div>
+        )}
+        {summary.totalProperties <= 1 && (
+          <div className="ml-auto text-stone-400 italic">
+            Add comps in Unit Mix Intelligence to see rankings
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
