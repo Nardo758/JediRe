@@ -4,6 +4,9 @@
  * Run monthly via cron: 0 9 5 * * (5th of each month at 9am)
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { getPool } from '../database/connection';
 import axios from 'axios';
 
