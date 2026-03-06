@@ -100,6 +100,7 @@ import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
+import { startM28Scheduler } from './services/m28-scheduler.service';
 
 dotenv.config();
 
@@ -376,6 +377,7 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log('='.repeat(60));
   
   try {
+    startM28Scheduler();
     emailSyncScheduler.start(15);
     console.log('Email sync scheduler started (every 15 minutes)');
   } catch (error) {
