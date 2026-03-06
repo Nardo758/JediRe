@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS m28_leading_indicators (
   source_url TEXT,
   
   created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
   
   UNIQUE (snapshot_date, category, indicator_name)
 );
@@ -237,7 +238,7 @@ INSERT INTO m28_historical_events (id, name, category, origin, date_start, date_
 ('covid_2020', 'COVID-19 Pandemic', 'external', 'global', '2020-03-01', '2020-12-31', 8,
   ARRAY['pandemic', 'lockdowns', 'fiscal_stimulus', 'qe'],
   'Global pandemic + fiscal/monetary response created RE boom',
-  '{"mf_value_change": +30, "txn_volume_change": +45, "rent_growth_accel": +8}'::jsonb),
+  '{"mf_value_change": 30, "txn_volume_change": 45, "rent_growth_accel": 8}'::jsonb),
 
 ('volcker_1979', 'Volcker Tightening', 'rate_shock', 'domestic', '1979-10-01', '1982-12-31', 9,
   ARRAY['inflation_fight', 'rate_shock', 'recession'],
@@ -247,17 +248,17 @@ INSERT INTO m28_historical_events (id, name, category, origin, date_start, date_
 ('trade_war_2018', '2018 Trade War', 'policy', 'global', '2018-03-01', '2019-12-31', 4,
   ARRAY['tariffs', 'trade_policy', 'uncertainty'],
   'US-China tariffs disrupted trade, elevated uncertainty',
-  '{"mf_value_change": +5, "txn_velocity_decline": -15, "note": "Values rose despite uncertainty due to low rates"}'::jsonb),
+  '{"mf_value_change": 5, "txn_velocity_decline": -15, "note": "Values rose despite uncertainty due to low rates"}'::jsonb),
 
 ('taper_tantrum_2013', 'Taper Tantrum', 'rate_shock', 'domestic', '2013-05-01', '2013-09-30', 5,
   ARRAY['fed_policy', 'rate_spike', 'qe_taper'],
   'Fed announced QE taper → 10Y spiked 150bps',
-  '{"mf_value_change": -8, "cap_expansion": +80, "txn_volume_decline": -25}'::jsonb),
+  '{"mf_value_change": -8, "cap_expansion": 80, "txn_volume_decline": -25}'::jsonb),
 
 ('rate_shock_2022', '2022-23 Rate Shock', 'rate_shock', 'domestic', '2022-03-01', '2023-10-31', 7,
   ARRAY['inflation', 'rate_hikes', 'qe_unwind'],
   'Fed hiked 525bps in fastest cycle ever',
-  '{"mf_value_change": -25, "txn_volume_change": -65, "cap_expansion": +150}'::jsonb)
+  '{"mf_value_change": -25, "txn_volume_change": -65, "cap_expansion": 150}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════

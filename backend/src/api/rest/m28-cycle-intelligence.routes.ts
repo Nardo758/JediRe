@@ -473,4 +473,53 @@ router.get('/deal-performance-by-phase/:marketId', requireAuth, async (req: Auth
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Test Endpoints (No Auth Required)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/v1/cycle-intelligence/test/rate-environment
+ * Test endpoint - Get current rate environment without auth
+ */
+router.get('/test/rate-environment', async (req: Request, res: Response) => {
+  try {
+    const rateEnv = await cycleIntelligenceService.getRateEnvironment();
+    
+    res.json({
+      success: true,
+      data: rateEnv,
+      note: 'This is a test endpoint. Production endpoints require authentication.',
+    });
+  } catch (error) {
+    console.error('Error fetching rate environment:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch rate environment',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/cycle-intelligence/test/leading-indicators
+ * Test endpoint - Get recent leading indicators without auth
+ */
+router.get('/test/leading-indicators', async (req: Request, res: Response) => {
+  try {
+    const indicators = await cycleIntelligenceService.getLeadingIndicators();
+    
+    res.json({
+      success: true,
+      data: indicators,
+      count: indicators.length,
+      note: 'This is a test endpoint. Production endpoints require authentication.',
+    });
+  } catch (error) {
+    console.error('Error fetching leading indicators:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch leading indicators',
+    });
+  }
+});
+
 export default router;
