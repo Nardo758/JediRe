@@ -75,6 +75,7 @@ import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
 import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
+import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -294,6 +295,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Clawdbot Webhook routes (Receive commands and queries from Clawdbot)
   app.use(`${API_PREFIX}/clawdbot`, clawdbotWebhooksRoutes);
+
+  // M28 Cycle Intelligence routes (Market cycle tracking, predictions, pattern matching)
+  app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
