@@ -17,6 +17,7 @@
     "@types/react-window": "^1.8.8",
     "drizzle-orm": "^0.45.1",
     "multer": "^2.1.0",
+    "node-cron": "^4.2.1",
     "pg": "^8.19.0",
     "react-virtualized-auto-sizer": "^2.0.2",
     "react-window": "^2.2.6",
