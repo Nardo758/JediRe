@@ -7,7 +7,11 @@
     "dev": "ts-node src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "replit": "npm install && npm run build && npm run start"
+    "replit": "npm install && npm run build && npm run start",
+    "m28:ingest-rates": "ts-node src/scripts/ingest-rate-data.ts",
+    "m28:ingest-rates:backfill": "ts-node src/scripts/ingest-rate-data.ts backfill",
+    "m28:ingest-indicators": "ts-node src/scripts/ingest-leading-indicators.ts",
+    "m28:classify-cycles": "ts-node src/scripts/classify-market-cycles.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
