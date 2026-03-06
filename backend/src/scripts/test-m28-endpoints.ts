@@ -95,7 +95,7 @@ async function testEndpoints() {
     if (patterns && patterns.length > 0) {
       console.log(`   ✅ PASS: Got ${patterns.length} pattern matches`);
       patterns.forEach(p => {
-        console.log(`      - ${p.event.name}: ${Math.round(p.similarity_pct * 100)}% similarity`);
+        console.log(`      - ${p.event.name}: ${p.similarity_pct}% similarity`);
       });
       passed++;
     } else {

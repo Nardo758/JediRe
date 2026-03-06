@@ -25,9 +25,21 @@ import {
 const pool = getPool();
 
 export class CycleIntelligenceService {
-  /**
-   * Get current cycle phase for a market
-   */
+  private safeFloat(val: any, fallback: number = 0): number {
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? fallback : parsed;
+  }
+
+  private parseSnapshot(row: any): CycleSnapshot {
+    return {
+      ...row,
+      lag_position: this.safeFloat(row.lag_position),
+      lead_position: this.safeFloat(row.lead_position),
+      divergence: this.safeFloat(row.divergence),
+      confidence: this.safeFloat(row.confidence),
+    };
+  }
+
   async getCyclePhase(marketId: string): Promise<CycleSnapshot | null> {
     const result = await pool.query(
       `SELECT * FROM m28_cycle_snapshots 
@@ -37,7 +49,7 @@ export class CycleIntelligenceService {
       [marketId]
     );
     
-    return result.rows[0] || null;
+    return result.rows[0] ? this.parseSnapshot(result.rows[0]) : null;
   }
 
   /**
@@ -54,7 +66,7 @@ export class CycleIntelligenceService {
       [marketIds]
     );
     
-    return result.rows;
+    return result.rows.map(row => this.parseSnapshot(row));
   }
 
   /**
@@ -93,7 +105,15 @@ export class CycleIntelligenceService {
        LIMIT 1`
     );
     
-    return result.rows[0] || null;
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+      ...row,
+      ffr: this.safeFloat(row.ffr),
+      t10y: this.safeFloat(row.t10y),
+      t30y_mtg: this.safeFloat(row.t30y_mtg),
+      m2_yoy: this.safeFloat(row.m2_yoy),
+    };
   }
 
   /**
@@ -251,11 +271,11 @@ export class CycleIntelligenceService {
       market_id: marketId,
       current_phase: snapshot.lag_phase,
       best_strategy: data.best_strategy,
-      expected_irr: data.avg_irr,
-      expected_em: data.avg_em,
-      expected_hold: data.avg_hold,
+      expected_irr: this.safeFloat(data.avg_irr),
+      expected_em: this.safeFloat(data.avg_em),
+      expected_hold: this.safeFloat(data.avg_hold),
       confidence: snapshot.confidence,
-      historical_sample_size: data.deal_count,
+      historical_sample_size: parseInt(data.deal_count) || 0,
       alternatives,
     };
   }
