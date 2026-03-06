@@ -41,6 +41,8 @@ import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
+import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
+import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
@@ -131,6 +133,7 @@ function AppContent() {
           <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
+          <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />
           <Route path="/deals/:id" element={<DealView />} />
           <Route path="/deals/:id/:module" element={<DealView />} />
           <Route path="/capsules" element={<DealCapsulesPage />} />
@@ -146,6 +149,10 @@ function AppContent() {
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
+          
+          {/* Demo Routes */}
+          <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
+          <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />
           
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
