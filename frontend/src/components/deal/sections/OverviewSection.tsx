@@ -299,232 +299,6 @@ const DDItem: React.FC<{ label: string; done: boolean }> = ({ label, done }) => 
   </div>
 );
 
-interface UnitMixItem {
-  type: string;
-  units: number;
-  pct: string;
-  sqft: number;
-  targetRent: number;
-  rentPsf: number;
-  color: string;
-  bg: string;
-}
-
-interface RentCompItem {
-  name: string;
-  dist: string;
-  units: number;
-  vintage: number;
-  occ: string;
-  mix: Record<string, { rent: number; sqft: number }>;
-  note: string;
-}
-
-const ProgramRankingPanel: React.FC<{
-  unitMix: UnitMixItem[];
-  rentComps: RentCompItem[];
-}> = ({ unitMix, rentComps }) => {
-  const safeRent = (v: unknown): number => {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  };
-
-  if (rentComps.length === 0 || unitMix.length === 0) {
-    return (
-      <div className="bg-white border border-stone-200 p-6 text-center">
-        <div className="text-xs text-stone-400">No comp data available to compute ranking</div>
-      </div>
-    );
-  }
-
-  const MIN_COMPS = 1;
-  const MIN_COVERAGE_PCT = 50;
-
-  const perTypeRanking = unitMix.map(u => {
-    const subjectRent = safeRent(u.targetRent);
-    const compRents = rentComps
-      .map(c => ({ name: c.name, rent: safeRent(c.mix[u.type]?.rent) }))
-      .filter(c => c.rent > 0);
-
-    const sufficient = compRents.length >= MIN_COMPS && subjectRent > 0;
-
-    if (!sufficient) {
-      return { type: u.type, color: u.color, bg: u.bg, rank: 0, total: 0, compAvg: 0, subjectRent, delta: 0, deltaPct: '0', percentile: -1, sufficient: false, entries: [] };
-    }
-
-    const allEntries = [
-      { name: 'YOUR PROGRAM', rent: subjectRent, isSubject: true },
-      ...compRents.map(c => ({ ...c, isSubject: false })),
-    ].sort((a, b) => b.rent - a.rent);
-
-    const rank = allEntries.findIndex(e => e.isSubject) + 1;
-    const total = allEntries.length;
-    const compAvg = Math.round(compRents.reduce((s, c) => s + c.rent, 0) / compRents.length);
-    const delta = subjectRent - compAvg;
-    const deltaPct = compAvg > 0 ? ((delta / compAvg) * 100).toFixed(1) : '0';
-    const percentile = total > 1 ? Math.round(((total - rank) / (total - 1)) * 100) : 100;
-
-    return { type: u.type, color: u.color, bg: u.bg, rank, total, compAvg, subjectRent, delta, deltaPct, percentile, sufficient: true, entries: allEntries };
-  });
-
-  const validSubjectRents = unitMix.filter(u => safeRent(u.targetRent) > 0);
-  const totalSubjectWeighted = validSubjectRents.reduce((s, u) => s + safeRent(u.targetRent) * u.units, 0);
-  const totalUnits = validSubjectRents.reduce((s, u) => s + u.units, 0) || 1;
-  const overallSubjectRent = Math.round(totalSubjectWeighted / totalUnits);
-
-  const coverageThreshold = Math.ceil(unitMix.length * MIN_COVERAGE_PCT / 100);
-  const compWeightedRents = rentComps.map(c => {
-    let weightedSum = 0;
-    let weightCount = 0;
-    let typesMatched = 0;
-    unitMix.forEach(u => {
-      const rent = safeRent(c.mix[u.type]?.rent);
-      if (rent > 0) {
-        weightedSum += rent * u.units;
-        weightCount += u.units;
-        typesMatched++;
-      }
-    });
-    return { name: c.name, avgRent: weightCount > 0 ? Math.round(weightedSum / weightCount) : 0, typesMatched };
-  }).filter(c => c.avgRent > 0 && c.typesMatched >= coverageThreshold);
-
-  const hasOverallData = compWeightedRents.length >= MIN_COMPS && overallSubjectRent > 0;
-
-  let overallRank = 0, overallTotal = 0, overallPercentile = -1, marketAvg = 0, overallDelta = 0, overallDeltaPct = '0';
-  if (hasOverallData) {
-    const overallAll = [
-      { name: 'YOUR PROGRAM', avgRent: overallSubjectRent, isSubject: true },
-      ...compWeightedRents.map(c => ({ ...c, isSubject: false })),
-    ].sort((a, b) => b.avgRent - a.avgRent);
-    overallRank = overallAll.findIndex(e => e.isSubject) + 1;
-    overallTotal = overallAll.length;
-    overallPercentile = overallTotal > 1 ? Math.round(((overallTotal - overallRank) / (overallTotal - 1)) * 100) : 100;
-    marketAvg = Math.round(compWeightedRents.reduce((s, c) => s + c.avgRent, 0) / compWeightedRents.length);
-    overallDelta = overallSubjectRent - marketAvg;
-    overallDeltaPct = marketAvg > 0 ? ((overallDelta / marketAvg) * 100).toFixed(1) : '0';
-  }
-
-  const positionLabel = !hasOverallData ? 'N/A' : overallPercentile >= 80 ? 'PREMIUM' : overallPercentile >= 50 ? 'COMPETITIVE' : overallPercentile >= 25 ? 'VALUE' : 'DISCOUNT';
-  const positionColor = !hasOverallData ? 'text-stone-400' : overallPercentile >= 80 ? 'text-emerald-600' : overallPercentile >= 50 ? 'text-blue-600' : overallPercentile >= 25 ? 'text-amber-600' : 'text-orange-600';
-  const positionBg = !hasOverallData ? 'bg-stone-50 border-stone-200' : overallPercentile >= 80 ? 'bg-emerald-50 border-emerald-200' : overallPercentile >= 50 ? 'bg-blue-50 border-blue-200' : overallPercentile >= 25 ? 'bg-amber-50 border-amber-200' : 'bg-orange-50 border-orange-200';
-
-  return (
-    <div className="bg-white border border-stone-200">
-      <div className="grid grid-cols-[1fr_2fr] gap-px bg-stone-200">
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">OVERALL POSITION</div>
-          {hasOverallData ? (
-            <>
-              <div className="flex items-center gap-4 mb-3">
-                <div>
-                  <div className="text-3xl font-bold font-mono text-stone-900">#{overallRank}</div>
-                  <div className="text-[10px] text-stone-400">of {overallTotal} properties</div>
-                </div>
-                <div className="flex-1">
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider border ${positionBg} ${positionColor}`}>
-                    {positionLabel} · P{overallPercentile}
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-1.5 border-t border-stone-100 pt-3">
-                <div className="flex justify-between text-xs">
-                  <span className="text-stone-500">Your Wtd Avg Rent</span>
-                  <span className="font-bold text-amber-600">${overallSubjectRent.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-stone-500">Market Avg Rent</span>
-                  <span className="font-bold text-stone-600">${marketAvg.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-stone-500">vs Market</span>
-                  <span className={`font-bold ${overallDelta >= 0 ? 'text-emerald-600' : 'text-orange-500'}`}>
-                    {overallDelta >= 0 ? '+' : ''}${overallDelta} ({overallDelta >= 0 ? '+' : ''}{overallDeltaPct}%)
-                  </span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-6">
-              <div className="text-stone-300 text-2xl mb-2">—</div>
-              <div className="text-[10px] text-stone-400 text-center">Insufficient comp coverage to compute overall rank</div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">PER UNIT-TYPE RANKING</div>
-          <div className="grid grid-cols-4 gap-3">
-            {perTypeRanking.map((r, i) => {
-              if (!r.sufficient) {
-                return (
-                  <div key={i} className="p-2.5 bg-stone-50 rounded-lg border border-stone-200 flex flex-col">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`text-[10px] font-bold ${r.color}`}>{r.type}</span>
-                      <span className="text-[9px] text-stone-300 font-mono">—</span>
-                    </div>
-                    <div className="flex-1 flex items-center justify-center">
-                      <div className="text-[9px] text-stone-400 text-center">Insufficient comp data</div>
-                    </div>
-                  </div>
-                );
-              }
-              const markerPos = r.total > 1 ? ((r.rank - 1) / (r.total - 1)) * 100 : 50;
-              const isPremium = r.delta >= 0;
-              return (
-                <div key={i} className="p-2.5 bg-stone-50 rounded-lg border border-stone-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`text-[10px] font-bold ${r.color}`}>{r.type}</span>
-                    <span className="text-sm font-bold font-mono text-stone-900">#{r.rank}<span className="text-[9px] text-stone-400 font-normal">/{r.total}</span></span>
-                  </div>
-                  <div className="relative h-2 bg-stone-200 rounded-full mb-2 overflow-visible">
-                    <div className="absolute inset-0 flex">
-                      <div className="h-full bg-emerald-200 rounded-l-full" style={{ width: '33%' }} />
-                      <div className="h-full bg-blue-200" style={{ width: '34%' }} />
-                      <div className="h-full bg-amber-200 rounded-r-full" style={{ width: '33%' }} />
-                    </div>
-                    <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-stone-900 border-2 border-white shadow-sm z-10"
-                      style={{ left: `${Math.max(4, Math.min(96, markerPos))}%`, transform: `translate(-50%, -50%)` }} />
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <div className="text-[9px] text-stone-400">Your rent</div>
-                      <div className="text-xs font-bold text-amber-600">${r.subjectRent.toLocaleString()}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[9px] text-stone-400">vs avg</div>
-                      <div className={`text-[10px] font-bold ${isPremium ? 'text-emerald-600' : 'text-orange-500'}`}>
-                        {isPremium ? '+' : ''}{r.deltaPct}%
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-4 mt-3 pt-2 border-t border-stone-100">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-1.5 rounded-sm bg-emerald-200" />
-              <span className="text-[8px] text-stone-400">Premium</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-1.5 rounded-sm bg-blue-200" />
-              <span className="text-[8px] text-stone-400">Market</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-1.5 rounded-sm bg-amber-200" />
-              <span className="text-[8px] text-stone-400">Value</span>
-            </div>
-            <div className="flex items-center gap-1.5 ml-1">
-              <div className="w-2 h-2 rounded-full bg-stone-900 border border-white" />
-              <span className="text-[8px] text-stone-400">Your position</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 interface DealHeaderProps {
   jediScore: JEDIScoreData;
   signals: SignalScore[];
@@ -1181,82 +955,113 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         </div>
       </div>
 
-      <SectionHead title="Program Competitive Position" right={`${rentComps.length} comps · Per unit-type ranking`} accentColor="border-blue-500" />
-      <ProgramRankingPanel unitMix={unitMix} rentComps={rentComps} />
+      {(() => {
+        const subjectUnitsRaw = unitMix.reduce((s, u) => s + u.units, 0);
+        const subjectTotalUnits = subjectUnitsRaw || 0;
+        const denom = Math.max(subjectUnitsRaw, 1);
+        const subjectWtdRent = Math.round(unitMix.reduce((s, u) => s + (Number.isFinite(u.targetRent) && u.targetRent > 0 ? u.targetRent : 0) * u.units, 0) / denom);
+        const subjectWtdSf = Math.round(unitMix.reduce((s, u) => s + (Number.isFinite(u.sqft) && u.sqft > 0 ? u.sqft : 0) * u.units, 0) / denom);
+        const subjectPsf = subjectWtdSf > 0 ? +(subjectWtdRent / subjectWtdSf).toFixed(2) : 0;
+        const subjectOcc = '—';
+        const subjectTraffic = Math.round((subjectTotalUnits / 290) * 11 * 52);
 
-      <SectionHead title="Unit Mix vs Top 5 Rent Comps" right="M15 Competition · Rent gap analysis" accentColor="border-emerald-500" />
-      <div className="bg-white border border-stone-200 overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-stone-50 border-b border-stone-200">
-              <th className="px-3 py-2 text-left text-[9px] font-mono text-stone-400 tracking-wider font-bold min-w-[160px]">PROPERTY</th>
-              <th className="px-3 py-2 text-left text-[9px] font-mono text-stone-400 tracking-wider font-bold w-16">DIST</th>
-              <th className="px-3 py-2 text-left text-[9px] font-mono text-stone-400 tracking-wider font-bold w-14">OCC</th>
-              {unitMix.map((u, i) => (
-                <th key={i} className="px-2 py-2 text-center min-w-[90px]">
-                  <div className={`text-[10px] font-bold ${u.color}`}>{u.type}</div>
-                  <div className="text-[8px] text-stone-400">({u.sqft} sf)</div>
-                  <div className="text-[9px] font-bold text-amber-600">${u.targetRent.toLocaleString()} <span className="text-[7px] text-stone-400">SUBJ</span></div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rentComps.map((comp, ci) => (
-              <tr key={ci} className={`border-b border-stone-100 ${ci % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`}>
-                <td className="px-3 py-2">
-                  <div className="text-xs font-semibold text-stone-800">{comp.name}</div>
-                  <div className="text-[9px] text-stone-400">{comp.units}u · {comp.vintage}</div>
-                  <div className="text-[8px] text-stone-400 mt-0.5">{comp.note}</div>
-                </td>
-                <td className="px-3 py-2 text-stone-500">{comp.dist}</td>
-                <td className="px-3 py-2">
-                  <span className={`font-bold ${parseFloat(comp.occ) >= 95 ? 'text-emerald-600' : parseFloat(comp.occ) >= 90 ? 'text-amber-600' : 'text-orange-500'}`}>{comp.occ}</span>
-                </td>
-                {unitMix.map((u, ui) => {
-                  const cm = comp.mix[u.type as keyof typeof comp.mix];
-                  const diff = cm ? cm.rent - u.targetRent : 0;
-                  const diffPct = cm ? ((diff / u.targetRent) * 100).toFixed(1) : '0';
-                  return (
-                    <td key={ui} className="px-2 py-2 text-center">
-                      {cm ? (
-                        <>
-                          <div className={`text-sm font-bold ${u.color}`}>${cm.rent.toLocaleString()}</div>
-                          <div className="text-[8px] text-stone-400">{cm.sqft} sf</div>
-                          <div className={`text-[9px] font-semibold mt-0.5 ${diff >= 0 ? 'text-emerald-600' : 'text-orange-500'}`}>
-                            {diff >= 0 ? '+' : ''}{diff} ({diff >= 0 ? '+' : ''}{diffPct}%)
+        const compRows = rentComps.map(comp => {
+          const mixEntries = Object.values(comp.mix).filter(m => m && Number.isFinite(m.rent) && m.rent > 0 && Number.isFinite(m.sqft) && m.sqft > 0);
+          const avgRent = mixEntries.length > 0 ? Math.round(mixEntries.reduce((s, m) => s + m.rent, 0) / mixEntries.length) : 0;
+          const avgSf = mixEntries.length > 0 ? Math.round(mixEntries.reduce((s, m) => s + m.sqft, 0) / mixEntries.length) : 0;
+          const psf = avgSf > 0 ? +(avgRent / avgSf).toFixed(2) : 0;
+          const estTraffic = comp.units > 0 ? Math.round((comp.units / 290) * 11 * 52) : 0;
+          return { name: comp.name, dist: comp.dist, units: comp.units, vintage: comp.vintage, occ: comp.occ, avgRent, avgSf, psf, note: comp.note, traffic: estTraffic, isSubject: false };
+        });
+
+        const subjectRow = { name: deal.name || 'Subject Property', dist: '—', units: subjectTotalUnits, vintage: 0, occ: subjectOcc, avgRent: subjectWtdRent, avgSf: subjectWtdSf, psf: subjectPsf, note: `${activePath.label} · ${unitMix.length} unit types`, traffic: subjectTraffic, isSubject: true };
+
+        const allRows = [subjectRow, ...compRows].sort((a, b) => b.psf - a.psf);
+
+        const compOnlyRows = compRows.filter(c => c.avgRent > 0);
+        const compAvgRent = compOnlyRows.length > 0 ? Math.round(compOnlyRows.reduce((s, c) => s + c.avgRent, 0) / compOnlyRows.length) : 0;
+        const compAvgSf = compOnlyRows.length > 0 ? Math.round(compOnlyRows.reduce((s, c) => s + c.avgSf, 0) / compOnlyRows.length) : 0;
+        const compAvgPsf = compAvgSf > 0 ? +(compAvgRent / compAvgSf).toFixed(2) : 0;
+        const compAvgOcc = (() => {
+          const valid = compOnlyRows.filter(c => c.occ !== '—');
+          if (valid.length === 0) return '—';
+          const avg = Math.round(valid.reduce((s, c) => s + parseFloat(c.occ), 0) / valid.length);
+          return `${avg}%`;
+        })();
+        const compAvgUnits = compOnlyRows.length > 0 ? Math.round(compOnlyRows.reduce((s, c) => s + c.units, 0) / compOnlyRows.length) : 0;
+        const compAvgTraffic = compOnlyRows.length > 0 ? Math.round(compOnlyRows.reduce((s, c) => s + c.traffic, 0) / compOnlyRows.length) : 0;
+
+        const subjectRank = allRows.findIndex(r => r.isSubject) + 1;
+
+        return (
+          <>
+            <SectionHead title="Competitive Set · Ranked by $/SF" right={`#${subjectRank} of ${allRows.length} · ${rentComps.length} comps`} accentColor="border-emerald-500" />
+            <div className="bg-white border border-stone-200 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-stone-50 border-b border-stone-200">
+                    {['#', 'PROPERTY', 'DIST', 'UNITS', 'AVG RENT', 'AVG SF', '$/SF', 'OCC', 'ANN. TRAFFIC'].map((h, i) => (
+                      <th key={i} className={`px-3 py-2 text-[9px] font-mono text-stone-400 tracking-wider font-bold ${i <= 1 ? 'text-left' : 'text-right'} ${i === 1 ? 'min-w-[160px]' : ''}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {allRows.map((row, ri) => (
+                    <tr key={ri} className={row.isSubject
+                      ? 'bg-blue-50/70 border-b border-blue-200 border-l-2 border-l-blue-500'
+                      : `border-b border-stone-100 ${ri % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`
+                    }>
+                      <td className={`px-3 py-2 font-bold font-mono ${row.isSubject ? 'text-blue-700' : 'text-stone-400'}`}>{ri + 1}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className={`text-xs font-semibold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>{row.name}</div>
+                            {row.isSubject ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[7px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded tracking-wider">SUBJECT</span>
+                                <span className="text-[8px] text-blue-500">{row.note}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-stone-400">{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
+                            )}
                           </div>
-                        </>
-                      ) : (
-                        <span className="text-stone-300">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                        </div>
+                      </td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.dist}</td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-700 font-bold' : 'text-stone-600'}`}>{row.units}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-700' : 'text-amber-600'}`}>${row.avgRent.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-600'}`}>{row.avgSf.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>${row.psf.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {row.occ === '—' ? (
+                          <span className={row.isSubject ? 'text-blue-400' : 'text-stone-300'}>—</span>
+                        ) : (
+                          <span className={`font-bold ${parseFloat(row.occ) >= 95 ? 'text-emerald-600' : parseFloat(row.occ) >= 90 ? 'text-amber-600' : 'text-orange-500'}`}>{row.occ}</span>
+                        )}
+                      </td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.traffic.toLocaleString()}</td>
+                    </tr>
+                  ))}
 
-            <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
-              <td className="px-3 py-2 text-stone-700">COMP AVERAGE RENT</td>
-              <td className="px-3 py-2" />
-              <td className="px-3 py-2" />
-              {unitMix.map((u, ui) => {
-                const rents = rentComps.map(c => c.mix[u.type as keyof typeof c.mix]?.rent).filter(Boolean) as number[];
-                const avg = Math.round(rents.reduce((a, b) => a + b, 0) / rents.length);
-                const diff = u.targetRent - avg;
-                return (
-                  <td key={ui} className="px-2 py-2 text-center">
-                    <div className={`text-sm font-bold ${u.color}`}>${avg.toLocaleString()}</div>
-                    <div className={`text-[9px] font-semibold mt-0.5 ${diff >= 0 ? 'text-emerald-600' : 'text-orange-500'}`}>
-                      Subject {diff >= 0 ? '+' : ''}{diff} vs avg
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                  <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-stone-700">COMP AVERAGE</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right text-stone-600">{compAvgUnits}</td>
+                    <td className="px-3 py-2 text-right text-amber-600">${compAvgRent.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-stone-600">{compAvgSf.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-stone-800">${compAvgPsf.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {compAvgOcc === '—' ? <span className="text-stone-300">—</span> : <span className="text-stone-600">{compAvgOcc}</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right text-stone-500">{compAvgTraffic.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        );
+      })()}
 
       <SectionHead title="Development Budget + Timeline" right={`TDC ${activePath.tdc} · 22mo build · 14mo absorption`} accentColor="border-amber-500" />
       <div className="grid grid-cols-2 gap-px bg-stone-200">
