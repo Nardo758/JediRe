@@ -1,0 +1,276 @@
+> Leon AI Assistant:
+You need to create the file in Replit first! Here's the complete SQL - copy this and save it as test-modules.sql in your Replit workspace:
+
+-- =====================================================
+-- JEDIRE MODULE DATA VALIDATION
+-- =====================================================
+-- Tests that all enriched data is present and usable by modules
+-- Run with: psql $DATABASE_URL < test-modules.sql
+-- =====================================================
+
+\echo ''
+\echo '═════════════════════════════════════════════════════════════'
+\echo '  JEDIRE MODULE DATA VALIDATION'
+\echo '═════════════════════════════════════════════════════════════'
+\echo ''
+
+-- =====================================================
+-- TEST 1: Property Data Coverage
+-- =====================================================
+
+\echo '📊 TEST 1: Property Data Coverage'
+\echo '-----------------------------------'
+
+SELECT 
+  COUNT(*) as total_deals,
+  COUNT(property_data) as deals_with_data,
+  COUNT(property_data->>'units') as deals_with_units,
+  COUNT(property_data->>'total_sqft') as deals_with_sqft,
+  COUNT(property_data->>'assessed_value') as deals_with_assessment,
+  COUNT(property_data->>'enrichment_source') as deals_enriched
+FROM deals;
+
+\echo ''
+
+-- =====================================================
+-- TEST 2: Enrichment Sources Breakdown
+-- =====================================================
+
+\echo '🔍 TEST 2: Enrichment Sources'
+\echo '-----------------------------------'
+
+SELECT 
+  property_data->>'enrichment_source' as source,
+  COUNT(*) as deal_count
+FROM deals
+WHERE property_data IS NOT NULL
+GROUP BY property_data->>'enrichment_source'
+ORDER BY deal_count DESC;
+
+\echo ''
+
+-- =====================================================
+-- TEST 3: Sample Enriched Deals (Top 5 by Assessed Value)
+-- =====================================================
+
+\echo '💰 TEST 3: Top 5 Enriched Deals'
+\echo '-----------------------------------'
+
+SELECT 
+  name as deal_name,
+  address,
+  (property_data->>'units')::int as units,
+  (property_data->>'assessed_value')::numeric / 1000000 as assessed_value_millions,
+  (property_data->>'lot_size_acres')::numeric as acres,
+  property_data->>'owner_name' as owner,
+  property_data->>'enrichment_source' as source
+FROM deals
+WHERE property_data->>'assessed_value' IS NOT NULL
+ORDER BY (property_data->>'assessed_value')::numeric DESC
+LIMIT 5;
+
+\echo ''
+
+-- =====================================================
+-- TEST 4: Zoning Data Coverage
+-- =====================================================
+
+\echo '🏙️  TEST 4: Zoning Data Coverage'
+\echo '-----------------------------------'
+
+SELECT 
+  COUNT(DISTINCT municipality) as total_municipalities,
+  COUNT(*) as total_zoning_districts
+FROM zoning_districts;
+
+\echo ''
+
+\echo 'Top 10 Cities by District Count:'
+SELECT 
+  municipality,
+  state,
+  COUNT(*) as district_count
+FROM zoning_districts
+GROUP BY municipality, state
+ORDER BY district_count DESC
+LIMIT 10;
+
+\echo ''
+
+-- =====================================================
+-- TEST 5: Deal-to-Zoning Matching
+-- =====================================================
+
+\echo '🔗 TEST 5: Deal-to-Zoning Coverage'
+\echo '-----------------------------------'
+
+WITH deal_cities AS (
+  SELECT DISTINCT
+    CASE 
+      WHEN address LIKE '%Atlanta%' THEN 'Atlanta'
+      WHEN address LIKE '%Decatur%' THEN 'Decatur'
+      WHEN address LIKE '%Marietta%' THEN 'Marietta'
+      WHEN address LIKE '%Sandy Springs%' THEN 'Sandy Springs'
+      WHEN address LIKE '%Alpharetta%' THEN 'Alpharetta'
+      WHEN address LIKE '%College Park%' THEN 'College Park'
+      WHEN address LIKE '%Miami%' THEN 'Miami'
+      WHEN address LIKE '%West Palm Beach%' THEN 'West Palm Beach'
+      ELSE 'Other'
+    END as city
+  FROM deals
+  WHERE address IS NOT NULL
+)
+SELECT 
+  dc.city,
+  COUNT(DISTINCT d.id) as deal_count,
+  COUNT(DISTINCT zd.id) as zoning_districts_available,
+  CASE 
+    WHEN COUNT(DISTINCT zd.id) > 0 THEN '✅ Has zoning data'
+    ELSE '❌ No zoning data'
+
+> Leon AI Assistant:
+END as status
+FROM deal_cities dc
+LEFT JOIN deals d ON d.address LIKE '%' || dc.city || '%'
+LEFT JOIN zoning_districts zd ON zd.municipality = dc.city
+GROUP BY dc.city
+ORDER BY deal_count DESC;
+
+\echo ''
+
+-- =====================================================
+-- TEST 6: M08 Financial Module Readiness
+-- =====================================================
+
+\echo '💵 TEST 6: M08 Financial Module (Per-Unit Metrics)'
+\echo '---------------------------------------------------'
+
+SELECT 
+  name as deal_name,
+  budget::numeric / 1000000 as budget_millions,
+  (property_data->>'units')::int as units,
+  CASE 
+    WHEN (property_data->>'units')::int > 0 
+    THEN ROUND(budget::numeric / (property_data->>'units')::int, 0)
+    ELSE NULL
+  END as price_per_unit,
+  CASE 
+    WHEN (property_data->>'assessed_value') IS NOT NULL AND (property_data->>'units')::int > 0
+    THEN ROUND((property_data->>'assessed_value')::numeric / (property_data->>'units')::int, 0)
+    ELSE NULL
+  END as assessment_per_unit,
+  CASE 
+    WHEN (property_data->>'annual_taxes') IS NOT NULL AND (property_data->>'units')::int > 0
+    THEN ROUND((property_data->>'annual_taxes')::numeric / (property_data->>'units')::int, 0)
+    ELSE NULL
+  END as tax_per_unit
+FROM deals
+WHERE property_data->>'units' IS NOT NULL
+  AND (property_data->>'units')::int > 0
+  AND budget IS NOT NULL
+ORDER BY (property_data->>'units')::int DESC
+LIMIT 5;
+
+\echo ''
+
+-- =====================================================
+-- TEST 7: M03 Development Capacity Module Readiness
+-- =====================================================
+
+\echo '🏗️  TEST 7: M03 Development Capacity Module'
+\echo '-------------------------------------------'
+
+SELECT 
+  name as deal_name,
+  (property_data->>'units')::int as current_units,
+  (property_data->>'lot_size_acres')::numeric as lot_acres,
+  CASE 
+    WHEN (property_data->>'lot_size_acres')::numeric > 0 
+    THEN ROUND((property_data->>'units')::int / (property_data->>'lot_size_acres')::numeric, 1)
+    ELSE NULL
+  END as current_density_per_acre,
+  CASE
+    WHEN (property_data->>'lot_size_acres') IS NOT NULL 
+      AND (property_data->>'units') IS NOT NULL 
+    THEN '✅ Can calculate capacity'
+    ELSE '⚠️  Missing lot size'
+  END as capacity_calc_ready
+FROM deals
+WHERE property_data->>'units' IS NOT NULL
+  AND (property_data->>'units')::int > 0
+ORDER BY (property_data->>'units')::int DESC
+LIMIT 5;
+
+\echo ''
+
+-- =====================================================
+-- TEST 8: Data Quality Issues
+-- =====================================================
+
+\echo '⚠️  TEST 8: Data Quality Issues'
+\echo '-----------------------------------'
+
+\echo 'Deals missing critical data:'
+SELECT 
+  name,
+  address,
+  CASE WHEN property_data IS NULL THEN '❌ No property_data' ELSE '✅' END as has_data,
+  CASE WHEN property_data->>'units' IS NULL THEN '❌ No units' ELSE '✅' END as has_units,
+  CASE WHEN property_data->>'enrichment_source' IS NULL THEN '❌ No source' ELSE property_data->>'enrichment_source' END as source
+FROM deals
+WHERE property_data IS NULL 
+   OR property_data->>'units' IS NULL
+ORDER BY name;
+
+\echo ''
+
+-- =====================================================
+-- SUMMARY
+-- =====================================================
+
+\echo '═════════════════════════════════════════════════════════════'
+\echo '  VALIDATION SUMMARY'
+\echo '═════════════════════════════════════════════════════════════'
+
+WITH summary AS (
+  SELECT 
+    COUNT(*) as total_deals,
+    COUNT(property_data->>'units') as deals_with_units,
+    COUNT(property_data->>'assessed_value') as deals_with_assessment,
+    COUNT(DISTINCT CASE WHEN property_data->>'lot_size_acres' IS NOT NULL THEN id END) as deals_with_lot_size
+  FROM deals
+)
+SELECT 
+  '✅ Total Deals: ' || total_deals as status FROM summary
+UNION ALL
+SELECT 
+  '✅ Deals with Units: ' || deals_with_units || ' (' || ROUND(100.0 * deals_with_units / total_deals, 1) || '%)' 
+FROM summary
+UNION ALL
+SELECT
+
+> Leon AI Assistant:
+'✅ Deals with Assessments: ' || deals_with_assessment || ' (' || ROUND(100.0 * deals_with_assessment / total_deals, 1) || '%)'
+FROM summary
+UNION ALL
+SELECT 
+  '✅ Deals with Lot Size: ' || deals_with_lot_size || ' (' || ROUND(100.0 * deals_with_lot_size / total_deals, 1) || '%)'
+FROM summary;
+
+SELECT 
+  '✅ Municipalities: ' || COUNT(DISTINCT municipality) || ' cities'
+FROM zoning_districts
+UNION ALL
+SELECT 
+  '✅ Zoning Districts: ' || COUNT(*) || ' total'
+FROM zoning_districts;
+
+\echo ''
+\echo '═════════════════════════════════════════════════════════════'
+\echo ''
+
+Then run:
+
+psql $DATABASE_URL < test-modules.sql
+
+This will show you a complete validation report of all your module data! 📊
