@@ -11,6 +11,7 @@ jedire_api = JediReAPI()
 
 async def analyze_property_zoning(
     address: str,
+    lot_size_acres: Optional[float] = None,
     deal_id: Optional[str] = None
 ) -> str:
     """
@@ -18,6 +19,7 @@ async def analyze_property_zoning(
     
     Args:
         address: Full property address
+        lot_size_acres: Lot size in acres (will be converted to sqft for analysis)
         deal_id: Optional deal ID if property exists in system
     
     Returns:
@@ -25,7 +27,8 @@ async def analyze_property_zoning(
     """
     
     try:
-        result = await jedire_api.analyze_zoning(address, deal_id)
+        lot_size_sqft = int(lot_size_acres * 43560) if lot_size_acres else None
+        result = await jedire_api.analyze_zoning(address, deal_id, lot_size_sqft)
         
         zoning = result.get('zoningDistrict', 'Unknown')
         uses = result.get('allowedUses', [])
@@ -184,6 +187,10 @@ AVAILABLE_TOOLS = [
                 "address": {
                     "type": "string",
                     "description": "Full property address including city and state"
+                },
+                "lot_size_acres": {
+                    "type": "number",
+                    "description": "Lot size in acres. Required for development capacity analysis."
                 },
                 "deal_id": {
                     "type": "string",

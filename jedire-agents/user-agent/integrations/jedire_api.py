@@ -116,7 +116,8 @@ class JediReAPI:
     async def analyze_zoning(
         self,
         property_address: str,
-        deal_id: Optional[str] = None
+        deal_id: Optional[str] = None,
+        lot_size_sqft: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Run zoning analysis on a property
@@ -124,17 +125,23 @@ class JediReAPI:
         Args:
             property_address: Full property address
             deal_id: Optional deal ID if property is in system
+            lot_size_sqft: Lot size in square feet
         
         Returns:
             Zoning regulations, development potential, unit capacity
         """
         
+        input_data: Dict[str, Any] = {
+            "address": property_address,
+        }
+        if deal_id:
+            input_data["dealId"] = deal_id
+        if lot_size_sqft:
+            input_data["lotSizeSqft"] = lot_size_sqft
+        
         task = await self.submit_analysis_task(
             task_type="zoning_analysis",
-            input_data={
-                "propertyAddress": property_address,
-                "dealId": deal_id
-            }
+            input_data=input_data
         )
         
         result = await self.wait_for_task(task['id'], timeout=90)
