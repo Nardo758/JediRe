@@ -106,6 +106,73 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
     else setLoading(false);
   }, [marketId, page, filters]);
 
+  const neighborhoodNames: Record<string, string> = {
+    'CB04': 'Downtown',
+    'CB03': 'Midtown',
+    'CB02': 'Midtown West',
+    'CB01': 'Atlantic Station',
+    'CB00': 'Centennial Hill',
+    'CB06': 'Midtown East',
+    'C305': 'Buckhead',
+    'C306': 'Buckhead South',
+    'C307': 'Collier Hills',
+    'C303': 'Lenox Park',
+    'C302': 'Chastain Park',
+    'C301': 'Paces Ferry',
+    'C204': 'Dunwoody',
+    'C205': 'Sandy Springs South',
+    'C206': 'Sandy Springs',
+    'C207': 'Roswell South',
+    'C202': 'Perimeter Center',
+    'C104': 'Alpharetta South',
+    'C105': 'Johns Creek',
+    'C106': 'Suwanee',
+    'C107': 'Duluth',
+    'C108': 'Westside Parkway',
+    'C109': 'Old Ellis',
+    'C111': 'Huntington',
+    'C112': 'Holcomb Bridge',
+    'C113': 'Holcomb Bridge West',
+    'C114': 'Holcomb Bridge East',
+    'C118': 'Chattahoochee',
+    'C101': 'Batesville',
+    'C102': 'Woodstock',
+    'C103': 'North Fulton',
+    'C001': 'Armour / Lindbergh',
+    'C004': 'Cheshire Bridge',
+    'C005': 'Piedmont Heights',
+    'C401': 'Marietta Blvd',
+    'C404': 'Huff Road',
+    'C405': 'Northside Drive',
+    'C406': 'McDaniel / Northside',
+    'C407': 'Hollowell Parkway',
+    'C408': 'Lowery Blvd',
+    'C410': 'Boone Blvd',
+    'C503': 'Ben Hill',
+    'C504': 'Campbellton',
+    'C505': 'Camp Creek',
+    'C602': 'Campbellton Road',
+    'C605': 'West End',
+    'C802': 'Old National',
+    'C807': 'Jonesboro Road',
+    'C809': 'South Fulton',
+    'C901': 'Grant Park',
+    'C902': 'East Atlanta',
+    'C903': 'Fisher Road',
+    'C904': 'New Town',
+    'C908': 'Lakewood',
+    'C910': 'Virginia-Highland South',
+    'C913': 'Hapeville',
+    'C917': 'Union City',
+    'C918': 'Summerhill',
+    'CA02': 'Old Fourth Ward North',
+    'CA03': 'Old Fourth Ward',
+    'CA04': 'Inman Park / Edgewood',
+    'CA05': 'Sweet Auburn',
+    'CA06': 'Mechanicsville',
+    'CASP': 'Home Park',
+  };
+
   const mapLiveToRow = (p: any, idx: number): PropertyRow => {
     const occValue = (93 + Math.random() * 3).toFixed(1);
     const jediValue = p.assessed_value ? Math.min(99, Math.max(50, Math.round(70 + (p.assessed_value / 1000000)))) : 75;
@@ -113,7 +180,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
     return {
       id: p.id || idx + 1,
       property: p.address ? p.address.split(',')[0] : `Property ${idx + 1}`,
-      submarket: p.neighborhood_code || '—',
+      submarket: p.submarket_name || neighborhoodNames[p.neighborhood_code] || p.neighborhood_code || '—',
       units: p.units || 0,
       year: p.year_built || 0,
       class: p.building_class || '—',
@@ -259,10 +326,11 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               onChange={(e) => updateFilter(f => ({ ...f, submarket: e.target.value }))}
             >
               <option value="">All Submarkets</option>
-              <option value="Midtown">Midtown</option>
-              <option value="Buckhead">Buckhead</option>
-              <option value="Decatur">Decatur</option>
-              <option value="Sandy Springs">Sandy Springs</option>
+              {Object.entries(neighborhoodNames)
+                .sort((a, b) => a[1].localeCompare(b[1]))
+                .map(([code, name]) => (
+                  <option key={code} value={code}>{name}</option>
+                ))}
             </select>
           </div>
           <div className="flex-1 min-w-[140px]">
