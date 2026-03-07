@@ -43,6 +43,7 @@ import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
+import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
@@ -99,6 +100,7 @@ function AppContent() {
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
+          <Route path="/properties/:id" element={<PropertyDetailsPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
