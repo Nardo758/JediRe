@@ -53,7 +53,6 @@ import {
   TrafficIntelligencePage,
   CompetitivePositionPage,
 } from './pages/MarketIntelligence';
-import MarketPropertyDetailsPage from './pages/MarketIntelligence/PropertyDetailsPage';
 import {
   CompetitiveIntelligencePage,
   PerformanceRankingsPage,
@@ -113,7 +112,7 @@ function AppContent() {
           {/* Market Intelligence */}
           <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
           <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
-          <Route path="/market-intelligence/property/:propertyId" element={<MarketPropertyDetailsPage />} />
+          <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
           <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
           <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
           <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
