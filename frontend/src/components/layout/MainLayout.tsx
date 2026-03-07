@@ -214,13 +214,6 @@ export const MainLayout: React.FC = () => {
                     onShowOnMap={handleShowOnMap}
                   />
 
-                  {/* REPORTING */}
-                  <SidebarItem
-                    icon="📡"
-                    label="Reporting"
-                    path="/demo/flywheel"
-                    isActive={isActive('/demo/flywheel')}
-                  />
                 </div>
 
                 {/* INTELLIGENCE */}

@@ -96,6 +96,7 @@ function AppContent() {
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<AssetsOwnedPage />} />
+          <Route path="/assets-owned/:propertyId/report" element={<DealFlywheelDashboard />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />

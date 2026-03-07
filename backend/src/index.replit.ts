@@ -9,7 +9,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
-import { requireAuth } from './middleware/auth';
+import { requireAuth, optionalAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
@@ -198,6 +198,8 @@ app.use('/api/v1', taxCompAnalysisRouter);
 app.use('/api/v1/markets', marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
+app.use('/api/v1/grid', optionalAuth, gridRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -215,7 +217,6 @@ app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
-app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);

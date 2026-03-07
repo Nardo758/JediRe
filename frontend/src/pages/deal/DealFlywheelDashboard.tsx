@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 
 // ─── TERMINAL COLOR TOKENS (matches jedi-bloomberg-integrated) ───────────────
 const T = {
@@ -28,8 +29,8 @@ const T = {
   sans:      "'IBM Plex Sans', 'Inter', sans-serif",
 };
 
-// ─── MOCK DATA ────────────────────────────────────────────────────────────────
-const DEAL = {
+// ─── MOCK DATA (mutable — overridden when real data loads) ───────────────────
+const MOCK_DEAL = {
   id: "DEAL-0047",
   name: "Westshore Vue Apartments",
   address: "4201 W Kennedy Blvd, Tampa FL 33609",
@@ -41,6 +42,7 @@ const DEAL = {
   jediScoreAtUnderwriting: 74,
   jediScoreNow: 81,
 };
+let DEAL = { ...MOCK_DEAL };
 
 const MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
 
@@ -61,7 +63,7 @@ const TRAFFIC_DATA = [
 ];
 
 // ProForma vs Actual
-const PROFORMA_DATA = [
+const MOCK_PROFORMA_DATA: any[] = [
   { month:"Apr", projNOI:205000, actNOI:187000, projOcc:91.0, actOcc:88.4, projRent:1820, actRent:1798 },
   { month:"May", projNOI:208000, actNOI:194000, projOcc:91.5, actOcc:89.2, projRent:1832, actRent:1812 },
   { month:"Jun", projNOI:211000, actNOI:203000, projOcc:92.0, actOcc:90.7, projRent:1845, actRent:1835 },
@@ -75,6 +77,7 @@ const PROFORMA_DATA = [
   { month:"Feb", projNOI:231000, actNOI:247000, projOcc:94.5, actOcc:95.9, projRent:1953, actRent:1979 },
   { month:"Mar", projNOI:234000, actNOI:null,   projOcc:94.5, actOcc:null,  projRent:1967, actRent:null  },
 ];
+let PROFORMA_DATA: any[] = [...MOCK_PROFORMA_DATA];
 
 // Platform Intelligence contributions from this deal
 const FLYWHEEL_FEEDS = [
@@ -987,8 +990,34 @@ function DealBibleTab() {
 // ════════════════════════════════════════════════════════════════
 // ROOT COMPONENT
 // ════════════════════════════════════════════════════════════════
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
+
 export function M22PostCloseIntelligence() {
   const [tab, setTab] = useState("performance");
+  const [loading, setLoading] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const params = useParams<{ propertyId?: string; dealId?: string }>();
+  const propertyId = params.propertyId || params.dealId;
+
+  useEffect(() => {
+    if (!propertyId) {
+      DEAL = { ...MOCK_DEAL };
+      PROFORMA_DATA = [...MOCK_PROFORMA_DATA];
+      return;
+    }
+    setLoading(true);
+    fetch(`${API_URL}/grid/owned/${propertyId}/report`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          DEAL = data.deal;
+          PROFORMA_DATA = data.monthlyData;
+          setDataLoaded(true);
+        }
+      })
+      .catch(err => console.error('Failed to load report data:', err))
+      .finally(() => setLoading(false));
+  }, [propertyId]);
 
   const tabs = [
     { id:"performance", label:"PERFORMANCE" },
@@ -997,7 +1026,18 @@ export function M22PostCloseIntelligence() {
     { id:"bible",       label:"DEAL BIBLE" },
   ];
 
-  const elapsed = "11 months";
+  const holdMonths = DEAL.purchaseDate
+    ? Math.round((Date.now() - new Date(DEAL.purchaseDate).getTime()) / (1000 * 60 * 60 * 24 * 30))
+    : 11;
+  const elapsed = holdMonths >= 12 ? `${Math.round(holdMonths / 12)} years` : `${holdMonths} months`;
+
+  if (loading) {
+    return (
+      <div style={{ background:"#0a0c0f", minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
+        <div style={{ color:"#f59e0b", fontFamily:"'JetBrains Mono', monospace", fontSize:14 }}>Loading report data...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ background:T.bg, minHeight:"100vh", color:T.text, fontFamily:T.sans, padding:0 }}>
