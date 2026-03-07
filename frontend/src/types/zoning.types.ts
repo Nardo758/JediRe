@@ -27,6 +27,26 @@ export interface BuildingEnvelope {
   construction_type: 'wood_frame' | 'podium_wood' | 'steel_concrete';
 }
 
+export interface SelectedPathData {
+  pathId: DevelopmentPath;
+  colKey: string;
+  zoningCode: string | null;
+  density: string | null;
+  far: string | null;
+  maxUnits: number;
+  maxGba: number;
+  maxStories: number;
+  parkingRequired: number;
+  bindingConstraint: string | null;
+  appliedFar: number | null;
+  risk: string | null;
+  successRate: string | null;
+  timeline: string | null;
+  aiInsight: string | null;
+  aiSummary: string | null;
+  allCellData: Record<string, string>;
+}
+
 export interface PathAnalysis {
   envelope: BuildingEnvelope;
   entitlement_cost: number;
@@ -457,6 +477,7 @@ export interface ZoningModuleState {
   // Phase 2: Development Path Selection
   development_path: DevelopmentPath | null;
   selected_envelope: BuildingEnvelope | null;
+  selected_path_data: SelectedPathData | null;
   path_target_code: string | null;
 
   setActiveTab: (tab: ZoningTabId) => void;
@@ -473,5 +494,5 @@ export interface ZoningModuleState {
   setDealTimeline: (timeline: DealTimeline | null) => void;
   setMunicipalBenchmarks: (benchmarks: MunicipalBenchmark[]) => void;
   toggleLayer: (layerId: string) => void;
-  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null) => void;
+  selectDevelopmentPath: (path: DevelopmentPath | null, envelope: BuildingEnvelope | null, pathData?: SelectedPathData | null) => void;
 }

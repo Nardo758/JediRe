@@ -95,7 +95,7 @@ const DealPageContent: React.FC<DealPageContentProps> = ({ deal, activeTab }) =>
         return <FilesSection deal={deal} />;
       
       case 'exit':
-        return <ExitSection deal={deal} />;
+        return <div className="p-6 text-center text-gray-500">See Debt, Equity & Exit module</div>;
       
       default:
         return <OverviewSection deal={deal} />;

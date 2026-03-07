@@ -48,9 +48,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location and details
+        // Get deal location and details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built, property_class 
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built,
+             project_type as property_class
            FROM deals WHERE id = $1`,
           [dealId]
         );
@@ -61,7 +66,7 @@ router.get(
 
         const deal = dealResult.rows[0];
         if (!deal.latitude || !deal.longitude) {
-          throw new AppError(400, 'Deal location not set');
+          throw new AppError(400, 'Deal location not set - boundary polygon missing');
         }
 
         // Build dynamic query based on filters
@@ -72,7 +77,7 @@ router.get(
         // Distance filter (using PostGIS)
         whereConditions.push(`
           ST_DWithin(
-            ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
             ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
             $3 * 1609.34
           )
@@ -113,10 +118,10 @@ router.get(
             pr.year_built,
             pr.owner_name,
             pr.appraised_value,
-            pr.latitude,
-            pr.longitude,
+            pr.lat,
+            pr.lng,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -177,9 +182,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal details
+        // Get deal details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -199,14 +209,14 @@ router.get(
             pr.units,
             pr.year_built,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               1.5 * 1609.34
             )
@@ -335,9 +345,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -358,7 +371,7 @@ router.get(
             pr.year_built,
             pr.appraised_value,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -366,7 +379,7 @@ router.get(
             pr.year_built::integer >= $3
             AND pr.units >= 100
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $4 * 1609.34
             )
@@ -452,9 +465,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -475,10 +491,10 @@ router.get(
             pr.units,
             pr.year_built,
             pr.appraised_value,
-            pr.latitude,
-            pr.longitude,
+            pr.lat,
+            pr.lng,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
@@ -486,7 +502,7 @@ router.get(
             pr.year_built::integer <= $3
             AND pr.units > 50
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $4 * 1609.34
             )
@@ -561,9 +577,14 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal details
+        // Get deal details (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude, units, year_built FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude,
+             target_units as units,
+             EXTRACT(YEAR FROM created_at)::text as year_built
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -582,14 +603,14 @@ router.get(
             pr.units,
             pr.appraised_value,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               1.0 * 1609.34
             )
@@ -697,9 +718,12 @@ router.get(
 
       const client = await getClient();
       try {
-        // Get deal location
+        // Get deal location (extract centroid from boundary polygon)
         const dealResult = await client.query(
-          `SELECT latitude, longitude FROM deals WHERE id = $1`,
+          `SELECT 
+             ST_Y(ST_Centroid(boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(boundary::geometry)) as longitude
+           FROM deals WHERE id = $1`,
           [dealId]
         );
 
@@ -720,14 +744,14 @@ router.get(
             pr.appraised_value,
             pr.property_class,
             ST_Distance(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography
             ) / 1609.34 as distance
           FROM property_records pr
           WHERE 
             pr.units > 0
             AND ST_DWithin(
-              ST_SetSRID(ST_MakePoint(pr.longitude, pr.latitude), 4326)::geography,
+              ST_SetSRID(ST_MakePoint(pr.lng, pr.lat), 4326)::geography,
               ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography,
               $3 * 1609.34
             )
@@ -795,6 +819,259 @@ router.get(
   }
 );
 
+/**
+ * GET /api/v1/deals/:dealId/competitive-ranking
+ * 
+ * Rank the subject property's Program against nearby competitors.
+ * Pulls the saved unit mix program from deal_unit_programs and
+ * merges it into the competitor list with a rank position.
+ */
+router.get(
+  '/:dealId/competitive-ranking',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
+      logger.info('Generating competitive ranking', {
+        dealId,
+        userId: req.user?.userId,
+      });
+
+      const client = await getClient();
+      try {
+        const dealResult = await client.query(
+          `SELECT 
+             d.id,
+             d.address,
+             d.target_units,
+             ST_Y(ST_Centroid(d.boundary::geometry)) as latitude,
+             ST_X(ST_Centroid(d.boundary::geometry)) as longitude,
+             dup.total_units as program_units,
+             dup.unit_config,
+             dup.total_net_sf,
+             dup.gross_rev_pa,
+             dup.updated_at as program_updated_at
+           FROM deals d
+           LEFT JOIN deal_unit_programs dup ON dup.deal_id = d.id
+           WHERE d.id = $1`,
+          [dealId]
+        );
+
+        if (dealResult.rows.length === 0) {
+          throw new AppError(404, 'Deal not found');
+        }
+
+        const deal = dealResult.rows[0];
+
+        if (!deal.latitude || !deal.longitude) {
+          throw new AppError(400, 'Deal location not set - boundary polygon missing');
+        }
+
+        const hasProgram = !!deal.unit_config;
+        let subjectEntry: any = null;
+
+        if (hasProgram) {
+          const unitConfig = typeof deal.unit_config === 'string'
+            ? JSON.parse(deal.unit_config)
+            : deal.unit_config;
+          const totalUnits = deal.program_units || deal.target_units || 0;
+
+          let weightedRent = 0;
+          let weightedSf = 0;
+          let totalMix = 0;
+
+          for (const [, cfg] of Object.entries(unitConfig) as [string, any][]) {
+            const mix = cfg.mix || 0;
+            weightedRent += cfg.rent * mix;
+            weightedSf += cfg.sf * mix;
+            totalMix += mix;
+          }
+
+          const avgRent = totalMix > 0 ? Math.round(weightedRent / totalMix) : 0;
+          const avgSf = totalMix > 0 ? Math.round(weightedSf / totalMix) : 0;
+
+          subjectEntry = {
+            id: deal.id,
+            name: deal.address || 'Your Program',
+            address: deal.address || '',
+            distance: 0,
+            units: totalUnits,
+            yearBuilt: new Date().getFullYear(),
+            class: 'A',
+            avgRent,
+            avgSf,
+            rentPerSf: avgSf > 0 ? parseFloat((avgRent / avgSf).toFixed(2)) : 0,
+            occupancy: null,
+            isSubject: true,
+            unitConfig,
+            totalNetSf: parseInt(deal.total_net_sf) || 0,
+            grossRevPA: parseFloat(deal.gross_rev_pa) || 0,
+            programUpdatedAt: deal.program_updated_at,
+          };
+        }
+
+        let compEntries: any[] = [];
+
+        const unitMixComps = await client.query(
+          `SELECT cp.id, cp.name, cp.class, cp.built_year, cp.total_units,
+                  cut.unit_type, cut.mix_pct, cut.avg_sf, cut.avg_rent, cut.vacancy_pct
+           FROM comp_properties cp
+           LEFT JOIN comp_unit_types cut ON cut.comp_id = cp.id
+           WHERE cp.deal_id = $1 AND cp.is_subject = false
+           ORDER BY cp.name`,
+          [dealId]
+        );
+
+        if (unitMixComps.rows.length > 0) {
+          const compMap = new Map<string, any>();
+          for (const row of unitMixComps.rows) {
+            if (!compMap.has(row.id)) {
+              compMap.set(row.id, {
+                id: row.id,
+                name: row.name || 'Unknown',
+                address: '',
+                distance: null,
+                units: row.total_units || 0,
+                yearBuilt: row.built_year || 2000,
+                class: row.class || 'B',
+                isSubject: false,
+                unitTypes: [],
+              });
+            }
+            if (row.unit_type) {
+              compMap.get(row.id).unitTypes.push({
+                mix: parseFloat(row.mix_pct) || 0,
+                sf: parseFloat(row.avg_sf) || 0,
+                rent: parseFloat(row.avg_rent) || 0,
+                vac: parseFloat(row.vacancy_pct) || 0,
+              });
+            }
+          }
+
+          for (const [, comp] of compMap) {
+            let wRent = 0, wSf = 0, totalMix = 0;
+            for (const ut of comp.unitTypes) {
+              wRent += ut.rent * ut.mix;
+              wSf += ut.sf * ut.mix;
+              totalMix += ut.mix;
+            }
+            const avgRent = totalMix > 0 ? Math.round(wRent / totalMix) : estimateRent({ year_built: comp.yearBuilt });
+            const avgSf = totalMix > 0 ? Math.round(wSf / totalMix) : estimateAvgSf(String(comp.yearBuilt), comp.units);
+            const avgVac = comp.unitTypes.length > 0
+              ? comp.unitTypes.reduce((s: number, u: any) => s + u.vac, 0) / comp.unitTypes.length
+              : null;
+
+            compEntries.push({
+              id: comp.id,
+              name: comp.name,
+              address: comp.address,
+              distance: comp.distance,
+              units: comp.units,
+              yearBuilt: comp.yearBuilt,
+              class: comp.class,
+              avgRent,
+              avgSf,
+              rentPerSf: avgSf > 0 ? parseFloat((avgRent / avgSf).toFixed(2)) : 0,
+              occupancy: avgVac !== null ? Math.round(100 - avgVac) : Math.round(estimateOccupancy(String(comp.yearBuilt))),
+              isSubject: false,
+            });
+          }
+        }
+
+        if (compEntries.length === 0) {
+          try {
+            const prResult = await client.query(
+              `SELECT pr.id, pr.address, pr.units, pr.year_built, pr.appraised_value
+               FROM property_records pr
+               WHERE pr.units > 0
+                 AND pr.city = (SELECT city FROM property_records WHERE address ILIKE '%' || $1 || '%' LIMIT 1)
+               ORDER BY pr.units DESC
+               LIMIT 20`,
+              [deal.address ? deal.address.split(',')[0].trim() : '']
+            );
+
+            compEntries = prResult.rows.map((row) => {
+              const avgRent = estimateRent(row);
+              const avgSf = estimateAvgSf(row.year_built, row.units);
+              return {
+                id: row.id,
+                name: row.address || 'Unknown',
+                address: row.address,
+                distance: null,
+                units: row.units,
+                yearBuilt: parseInt(row.year_built) || 2000,
+                class: determineClass(row.year_built, row.appraised_value, row.units),
+                avgRent,
+                avgSf,
+                rentPerSf: avgSf > 0 ? parseFloat((avgRent / avgSf).toFixed(2)) : 0,
+                occupancy: Math.round(estimateOccupancy(row.year_built)),
+                isSubject: false,
+              };
+            });
+          } catch (fallbackErr) {
+            logger.warn('Fallback property query failed', { fallbackErr });
+          }
+        }
+
+        const allEntries = subjectEntry
+          ? [subjectEntry, ...compEntries]
+          : compEntries;
+
+        allEntries.sort((a, b) => b.avgRent - a.avgRent);
+
+        const ranked = allEntries.map((entry, idx) => ({
+          ...entry,
+          rank: idx + 1,
+        }));
+
+        const subjectRanked = ranked.find(e => e.isSubject);
+        const compOnlyRents = compEntries.map(c => c.avgRent);
+        const marketAvgRent = compOnlyRents.length > 0
+          ? Math.round(compOnlyRents.reduce((s, r) => s + r, 0) / compOnlyRents.length)
+          : 0;
+
+        let summary: any = {
+          totalProperties: ranked.length,
+          marketAvgRent,
+          hasProgram,
+        };
+
+        if (subjectRanked && hasProgram) {
+          const rentDelta = subjectRanked.avgRent - marketAvgRent;
+          const rentPremiumPct = marketAvgRent > 0
+            ? parseFloat(((rentDelta / marketAvgRent) * 100).toFixed(1))
+            : 0;
+          const percentile = Math.round(
+            ((ranked.length - subjectRanked.rank) / Math.max(ranked.length - 1, 1)) * 100
+          );
+
+          summary = {
+            ...summary,
+            subjectRank: subjectRanked.rank,
+            rentDelta,
+            rentPremiumPct,
+            percentile,
+            subjectAvgRent: subjectRanked.avgRent,
+            subjectAvgSf: subjectRanked.avgSf,
+            subjectRentPerSf: subjectRanked.rentPerSf,
+          };
+        }
+
+        res.json({
+          success: true,
+          rankings: ranked,
+          summary,
+        });
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      logger.error('Error generating competitive ranking', { error, dealId: req.params.dealId });
+      next(error);
+    }
+  }
+);
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -837,6 +1114,37 @@ function estimateRent(property: any): number {
   }
 
   return Math.max(900, Math.round(rent));
+}
+
+/**
+ * Estimate average SF per unit based on vintage and size
+ */
+function estimateAvgSf(yearBuilt: string, units: number): number {
+  const year = parseInt(yearBuilt || '2000');
+  const age = new Date().getFullYear() - year;
+
+  let baseSf = 900;
+  if (age < 5) baseSf = 950;
+  else if (age < 15) baseSf = 880;
+  else baseSf = 820;
+
+  if (units > 200) baseSf -= 50;
+  else if (units < 50) baseSf += 80;
+
+  return Math.round(baseSf);
+}
+
+/**
+ * Determine property class from age and value
+ */
+function determineClass(yearBuilt: string, appraisedValue: number, units: number): string {
+  const year = parseInt(yearBuilt || '2000');
+  const age = new Date().getFullYear() - year;
+  const ppu = (appraisedValue && units) ? appraisedValue / units : 0;
+
+  if (age < 5 || ppu > 200000) return 'A';
+  if (age < 15 || ppu > 100000) return 'B';
+  return 'C';
 }
 
 /**

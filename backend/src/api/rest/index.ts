@@ -78,6 +78,7 @@ import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
 import buildingDesign3DRoutes from './building-design-3d.routes';
 import aiRenderingRoutes from './ai-rendering.routes';
 import designAssistantRoutes from './design-assistant.routes';
+import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -306,6 +307,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Design Assistant routes (LLM-powered design modifications)
   app.use(`${API_PREFIX}/design-assistant`, designAssistantRoutes);
+
+  // M28 Cycle Intelligence routes (Investment cycle timing analysis)
+  app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

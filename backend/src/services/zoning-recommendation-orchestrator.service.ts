@@ -966,9 +966,9 @@ export class ZoningRecommendationOrchestrator {
       office: 'office',
       retail: 'retail',
       industrial: 'industrial',
-      hotel: 'hotel',
-      'mixed-use': 'mixed_use',
-      mixed_use: 'mixed_use',
+      hospitality: 'hospitality',
+      'mixed-use': 'mixed-use',
+      mixed_use: 'mixed-use',
     };
     return mapping[projectType.toLowerCase()] || 'multifamily';
   }

@@ -22,6 +22,10 @@ externalPort = 80
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 5904
+externalPort = 3001
+
 [agent]
 expertMode = true
 
@@ -41,16 +45,19 @@ args = "JediRe"
 name = "JediRe"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "./start.sh"
 waitForPort = 5000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [userenv]
 
 [userenv.production]
 PORT = "5000"
 NODE_ENV = "production"
+
+[userenv.shared]
+API_KEY_ADMIN = "8acb8b8cf3704e3af9c8bb8738925d103f7cda59b14d6c99d825cf29cfa195cb"

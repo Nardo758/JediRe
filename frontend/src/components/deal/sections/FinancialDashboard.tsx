@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiClient } from '@/services/api.client';
+import { useDealModule } from '@/contexts/DealModuleContext';
 
 interface DealProps {
   deal?: any;
@@ -17,8 +18,10 @@ interface ModuleDef {
 const MODULES_DEF: ModuleDef[] = [
   { id: 'strategy', label: 'Strategy', icon: '\u2295', description: 'Strategy Arbitrage Engine (M08)', fields: ['BTS / Flip / Rental / STR scores', 'Arbitrage flag when delta >15pts', 'Recommended strategy'] },
   { id: 'traffic', label: 'Traffic', icon: '\u2197', description: 'Traffic Fusion Engine v2 (M07)', fields: ['Leasing traffic predictions', 'Digital traffic via SpyFu', 'Weekly walk-in forecast'] },
+  { id: 'marketIntelligence', label: 'Market Intel', icon: '\u25C8', description: 'Market Intelligence Engine', fields: ['Recommended unit mix', 'Demand pool & capture rate', 'Target demographic & census'] },
   { id: 'proforma', label: 'Pro Forma', icon: '$', description: 'Pro Forma Engine (M09)', fields: ['NOI projection multi-year', 'Rent roll with occupancy', 'Expense assumptions'] },
   { id: 'debt', label: 'Debt', icon: '\u25CB', description: 'Capital Structure Engine (M11)', fields: ['Loan options compared', 'DSCR & IO analysis', 'Defeasance modeling'] },
+  { id: 'exit', label: 'Exit', icon: '\u25CE', description: 'Exit Strategy & Convergence (M11+)', fields: ['Three-factor convergence score', 'Optimal exit window timing', 'Capital structure alignment'] },
 ];
 
 const METRICS = [
@@ -46,7 +49,7 @@ const TABS = [
 
 const QP = ['Which loan wins?', 'Stress: 6% exit cap', 'Break-even occupancy?', 'Build best case', 'IRR vs rent growth?', 'Raise CapEx $7K/unit'];
 
-function buildSysPrompt(model: any, ms: Record<string, string>) {
+function buildSysPrompt(model: any, ms: Record<string, string>, ctxData?: { financial?: any; market?: any; capitalStructure?: any; strategy?: any; debtTerms?: any; marketIntelligence?: any }) {
   const conn = MODULES_DEF.filter(m => ms[m.id] && ms[m.id] !== 'none').map(m => `${m.label}(${ms[m.id]})`).join(', ') || 'none';
   const acq = model?.acquisition || {};
   const rev = model?.revenue || {};
@@ -55,10 +58,26 @@ function buildSysPrompt(model: any, ms: Record<string, string>) {
   const scenarios = model?.scenarios || {};
   const base = scenarios?.base || {};
 
+  let ctxBlock = '';
+  if (ctxData) {
+    const parts: string[] = [];
+    if (ctxData.strategy?.lastUpdated) parts.push(`Strategy: ${ctxData.strategy.selectedStrategy} (arbitrage=${ctxData.strategy.arbitrageFlag})`);
+    if (ctxData.market?.lastUpdated) parts.push(`Market: occ=${fmtPct(ctxData.market.occupancy || 0)} avgRent=$${ctxData.market.avgRent || 0} rentGrowth=${fmtPct(ctxData.market.rentGrowth || 0)} supply=${ctxData.market.supplyPipeline || 0} demand=${ctxData.market.demandScore || 0}`);
+    if (ctxData.marketIntelligence?.lastUpdated) {
+      const mi = ctxData.marketIntelligence;
+      const mix = mi.recommendedMix || {};
+      parts.push(`MarketIntel: recommendedMix=[Studio ${fmtPct(mix.studio || 0)}, 1BR ${fmtPct(mix.oneBR || 0)}, 2BR ${fmtPct(mix.twoBR || 0)}, 3BR ${fmtPct(mix.threeBR || 0)}] demandPool=${mi.demandPool || 0} captureRate=${fmtPct(mi.captureRate || 0)} demographic=${mi.targetDemographic || 'N/A'} medianIncome=$${mi.medianIncome || 0} medianRent=$${mi.medianRent || 0} population=${mi.population || 0}`);
+    }
+    if (ctxData.financial?.lastUpdated) parts.push(`Financial: NOI=${fmt$(ctxData.financial.noi || 0)} IRR=${ctxData.financial.irr || 0}% EM=${ctxData.financial.equityMultiple || 0}x CoC=${ctxData.financial.cashOnCash || 0}% TDC=${fmt$(ctxData.financial.totalDevelopmentCost || 0)}`);
+    if (ctxData.capitalStructure?.lastUpdated) parts.push(`Capital: DSCR=${ctxData.capitalStructure.dscr || 0}x LTV=${fmtPct(ctxData.capitalStructure.ltv || 0)} equity=${fmt$(ctxData.capitalStructure.totalEquity || 0)} debtService=${fmt$(ctxData.capitalStructure.annualDebtService || 0)}`);
+    if (ctxData.debtTerms?.lastUpdated) parts.push(`Debt: ${ctxData.debtTerms.loanType} @ ${fmtPct(ctxData.debtTerms.interestRate || 0)} IO=${ctxData.debtTerms.ioPeriod || 0}mo amount=${fmt$(ctxData.debtTerms.loanAmount || 0)}`);
+    if (parts.length > 0) ctxBlock = `\nLIVE CONTEXT DATA:\n${parts.join('\n')}`;
+  }
+
   return `You are JEDI — elite real estate financial modeling AI embedded in JEDI RE. You can modify the live deal model.
 DEAL: ${model?.propertyName || 'Unknown'} | ${model?.meta || ''}
 CONNECTED MODULES: ${conn}
-MODEL: Purchase ${fmt$(acq.purchasePrice || 0)} | ${acq.units || 0} units | Occ ${fmtPct(rev.currentOccupancy || 0)}\u2192${fmtPct(rev.stabilizedOccupancy || 0)} | ${loan.name || 'N/A'} @ ${fmtPct(loan.rate || 0)} IO:${loan.ioYears || 0}yr | IRR Base:${base.irr || 0}% Best:${scenarios.best?.irr || 0}% Worst:${scenarios.worst?.irr || 0}%
+MODEL: Purchase ${fmt$(acq.purchasePrice || 0)} | ${acq.units || 0} units | Occ ${fmtPct(rev.currentOccupancy || 0)}\u2192${fmtPct(rev.stabilizedOccupancy || 0)} | ${loan.name || 'N/A'} @ ${fmtPct(loan.rate || 0)} IO:${loan.ioYears || 0}yr | IRR Base:${base.irr || 0}% Best:${scenarios.best?.irr || 0}% Worst:${scenarios.worst?.irr || 0}%${ctxBlock}
 To modify: respond with \`\`\`model_update\n{"description":"...","changes":{"acquisition.purchasePrice":56000000},"explanation":"..."}\`\`\`
 Speak like a senior institutional analyst — direct, data-driven, precise.`;
 }
@@ -227,6 +246,17 @@ function buildModelFromSummary(summary: any): any {
 function CompView({ model }: { model: any }) {
   const s = model.scenarios || {};
   const hasData = s.base?.irr > 0;
+
+  const exitScore = useMemo(() => {
+    const rentGrowth = (model.revenue?.rentGrowthY1 || 0.04) * 100;
+    const rate = 4.15;
+    const supply = 200;
+    const rentScore = Math.max(0, Math.min(100, (rentGrowth / 10) * 100)) * 0.40;
+    const rateScore = Math.max(0, Math.min(100, ((5.0 - rate) / 2.0) * 100)) * 0.35;
+    const supplyScore = Math.max(0, Math.min(100, ((400 - supply) / 400) * 100)) * 0.25;
+    return Math.round(Math.max(0, Math.min(100, rentScore + rateScore + supplyScore)));
+  }, [model]);
+
   if (!hasData) {
     return (
       <div className="cmp">
@@ -239,6 +269,23 @@ function CompView({ model }: { model: any }) {
       <div className="cmp-hdr">
         <div><h3>Side-by-Side Model Comparison</h3><p>3 scenarios generated from upstream data</p></div>
         <span className="bgr">Auto-calculated</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20, padding: '14px 0' }}>
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#166534', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>EXIT SCORE</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: exitScore >= 70 ? '#16a34a' : exitScore >= 50 ? '#d97706' : '#dc2626' }}>{exitScore}</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>{exitScore >= 70 ? 'Strong window' : exitScore >= 50 ? 'Fair window' : 'Weak window'}</div>
+        </div>
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#1e40af', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>Q1 26</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Low rates + low supply</div>
+        </div>
+        <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#854d0e', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>CONVERGENCE</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>3</div>
+          <div style={{ fontSize: 11, color: '#6b7280' }}>Factors aligned</div>
+        </div>
       </div>
       <table className="cmp-tbl">
         <thead>
@@ -277,6 +324,7 @@ function CompView({ model }: { model: any }) {
               <li><span>&rarr;</span><span><strong>IRR spread of {Math.abs((s.best?.irr || 0) - (s.worst?.irr || 0)).toFixed(1)}%</strong> between Best/Worst &mdash; deal is exit cap-sensitive.</span></li>
               <li><span>&rarr;</span><span><strong>Base DSCR at {(s.base?.dscr || 0).toFixed(2)}x</strong> provides {(s.base?.dscr || 0) >= 1.25 ? 'comfortable' : 'tight'} debt coverage.</span></li>
               <li><span>&rarr;</span><span><strong>Yield on Cost at {(s.base?.yoc || 0).toFixed(1)}%</strong> &mdash; {(s.base?.yoc || 0) > 6 ? 'strong value creation margin' : 'limited spread over going-in cap'}.</span></li>
+              <li><span>&rarr;</span><span><strong>Exit convergence score: {exitScore}/100</strong> &mdash; {exitScore >= 70 ? 'strong alignment of rates, supply, and rent growth for near-term exit' : 'monitor convergence factors before committing to exit timing'}.</span></li>
             </>
           )}
         </ul>
@@ -361,6 +409,10 @@ function DebtView({ model, setModel }: { model: any; setModel: React.Dispatch<Re
             <div className="lr"><span className="lk">Proceeds</span><span className="lv">{fmt$(loan.proceeds)}</span></div>
           </div>
         ))}
+      </div>
+      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 12, color: '#1e40af' }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
+        <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>&rarr; Edit in Module</div>
       </div>
       <div className="ai-call">
         <h4>&#x26A1; AI Debt Analysis</h4>
@@ -704,6 +756,14 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
           <li><span style={{ color: '#059669' }}>&rarr;</span><span>Order Phase I ESA and Property Condition Report concurrently with DD.</span></li>
         </ul>
       </div>
+      <div className="slbl">EXIT READINESS</div>
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
+          <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>Q1 2026 &ndash; Q2 2026 &mdash; all three factors converge</div>
+        </div>
+        <div style={{ fontSize: 11, color: '#6b7280' }}>View details in Debt, Equity &amp; Exit tab</div>
+      </div>
       {scenarios?.base?.irr > 0 && (
         <button onClick={fetchAnalysis} style={{
           marginTop: 16, padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e5ed',
@@ -716,7 +776,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
-.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#f0f2f5;border-radius:10px}
+.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#f8fafc;border-radius:10px}
 .fc{width:380px;min-width:320px;display:flex;flex-direction:column;background:#0c0d10;border-right:1px solid #1c1e26;flex-shrink:0;border-radius:10px 0 0 10px}
 .fc-top{padding:14px 16px 12px;border-bottom:1px solid #181a21;flex-shrink:0}
 .fc-brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
@@ -760,7 +820,7 @@ const CSS = `
 .fc-sb:disabled{background:#1c1e26;color:#272b35;cursor:not-allowed}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .mi{animation:mi .2s ease-out}
-.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f0f2f5}
+.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
 .fm-tb{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#fff;border-bottom:1px solid #e2e5ed;flex-shrink:0}
 .fm-tbl{display:flex;align-items:center;gap:8px}
 .fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#111827}
@@ -892,8 +952,9 @@ td.cwo .cv{color:#dc2626}
 
 const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const id = dealId || deal?.id;
+  const { financial: ctxFinancial, market: ctxMarket, capitalStructure: ctxCapital, strategy: ctxStrategy, debtTerms: ctxDebt, marketIntelligence: ctxMarketIntel, moduleStatus } = useDealModule();
   const [model, setModel] = useState<any>(null);
-  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none' });
+  const [ms, setMs] = useState<Record<string, string>>({ strategy: 'none', traffic: 'none', marketIntelligence: 'none', proforma: 'none', debt: 'none', exit: 'none' });
   const [expanded, setExpanded] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<any[]>([]);
   const [inp, setInp] = useState('');
@@ -902,6 +963,78 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
   const [spin, setSpin] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const ctxData = useMemo(() => ({
+    financial: ctxFinancial,
+    market: ctxMarket,
+    capitalStructure: ctxCapital,
+    strategy: ctxStrategy,
+    debtTerms: ctxDebt,
+    marketIntelligence: ctxMarketIntel,
+  }), [ctxFinancial, ctxMarket, ctxCapital, ctxStrategy, ctxDebt, ctxMarketIntel]);
+
+  useEffect(() => {
+    setMs(prev => {
+      const newMs: Record<string, string> = { ...prev };
+      for (const key of ['strategy', 'traffic', 'marketIntelligence', 'proforma', 'debt', 'exit'] as const) {
+        if (moduleStatus[key] === 'live') {
+          newMs[key] = 'live';
+        }
+      }
+      if (newMs.strategy !== prev.strategy || newMs.traffic !== prev.traffic || newMs.marketIntelligence !== prev.marketIntelligence || newMs.proforma !== prev.proforma || newMs.debt !== prev.debt || newMs.exit !== prev.exit) {
+        return newMs;
+      }
+      return prev;
+    });
+  }, [moduleStatus]);
+
+  useEffect(() => {
+    setModel(prev => {
+      if (!prev) return prev;
+      let updated = false;
+      const patch = JSON.parse(JSON.stringify(prev));
+
+      if (ctxFinancial?.lastUpdated) {
+        if (ctxFinancial.noi && ctxFinancial.noi > 0) {
+          patch.scenarios = patch.scenarios || {};
+          patch.scenarios.base = patch.scenarios.base || {};
+          patch.scenarios.base.noi = ctxFinancial.noi;
+          patch.scenarios.base.irr = ctxFinancial.irr || patch.scenarios.base.irr;
+          patch.scenarios.base.equityMultiple = ctxFinancial.equityMultiple || patch.scenarios.base.equityMultiple;
+          patch.scenarios.base.cashOnCash = ctxFinancial.cashOnCash || patch.scenarios.base.cashOnCash;
+          if (ctxFinancial.irr) {
+            patch.scenarios.best = patch.scenarios.best || {};
+            patch.scenarios.best.irr = ctxFinancial.irr * 1.15;
+            patch.scenarios.best.equityMultiple = (ctxFinancial.equityMultiple || 0) * 1.2;
+            patch.scenarios.best.noi = ctxFinancial.noi * 1.07;
+            patch.scenarios.worst = patch.scenarios.worst || {};
+            patch.scenarios.worst.irr = ctxFinancial.irr * 0.75;
+            patch.scenarios.worst.equityMultiple = (ctxFinancial.equityMultiple || 0) * 0.7;
+            patch.scenarios.worst.noi = ctxFinancial.noi * 0.9;
+          }
+          updated = true;
+        }
+      }
+
+      if (ctxMarket?.lastUpdated) {
+        patch.revenue = patch.revenue || {};
+        if (ctxMarket.occupancy > 0) { patch.revenue.currentOccupancy = ctxMarket.occupancy; updated = true; }
+        if (ctxMarket.avgRent > 0) { patch.revenue.currentAvgMarketRent = ctxMarket.avgRent; updated = true; }
+        if (ctxMarket.rentGrowth > 0) { patch.revenue.rentGrowthY1 = ctxMarket.rentGrowth; updated = true; }
+      }
+
+      if (ctxCapital?.lastUpdated) {
+        if (ctxCapital.dscr > 0) {
+          patch.scenarios = patch.scenarios || {};
+          patch.scenarios.base = patch.scenarios.base || {};
+          patch.scenarios.base.dscr = ctxCapital.dscr;
+          updated = true;
+        }
+      }
+
+      return updated ? patch : prev;
+    });
+  }, [ctxFinancial?.lastUpdated, ctxMarket?.lastUpdated, ctxCapital?.lastUpdated]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs, load]);
 
@@ -926,8 +1059,10 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
         setMs({
           strategy: moduleMap.strategy || 'none',
           traffic: moduleMap.traffic || 'none',
+          marketIntelligence: moduleMap.marketIntelligence || moduleMap['market-intelligence'] || 'none',
           proforma: moduleMap.proforma || 'none',
           debt: moduleMap.debt || 'none',
+          exit: moduleMap.exit || (moduleMap.debt && moduleMap.debt !== 'none' ? moduleMap.debt : 'none'),
         });
         const liveModules = Object.values(moduleMap).filter((s: any) => s === 'live').length;
         setMsgs([{
@@ -969,7 +1104,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
     try {
       const res = await apiClient.post(`/api/v1/financial-dashboard/${id}/chat`, {
         messages: [...msgs, um].map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text })),
-        systemPrompt: buildSysPrompt(model, ms),
+        systemPrompt: buildSysPrompt(model, ms, ctxData),
       });
       const raw = res.data?.data?.content || res.data?.data?.text || 'No response.';
       const { text: ct, update } = parseResp(raw);
@@ -981,7 +1116,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
         const r = await fetch('/api/v1/financial-model/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
-          body: JSON.stringify({ messages: hist, systemPrompt: buildSysPrompt(model, ms) }),
+          body: JSON.stringify({ messages: hist, systemPrompt: buildSysPrompt(model, ms, ctxData) }),
         });
         const d = await r.json();
         const raw = d.data?.content || d.content?.map((c: any) => c.text || '').join('') || 'Connection error.';
@@ -994,7 +1129,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
     } finally {
       setLoad(false);
     }
-  }, [inp, load, msgs, model, ms, id]);
+  }, [inp, load, msgs, model, ms, id, ctxData]);
 
   if (initialLoading) {
     return (
@@ -1065,7 +1200,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
 
           <div className="fm-hero">
             <div className="fm-hl">FINANCIAL MODULE DASHBOARD</div>
-            <div className="fm-ht">Strategy + Traffic + Pro Forma + Debt &rarr; Model Variations</div>
+            <div className="fm-ht">Strategy + Traffic + Pro Forma + Debt + Exit &rarr; Model Variations</div>
             <div className="fm-hs">Auto-builds Base, Best, Worst, and strategy-specific scenarios from all upstream modules</div>
           </div>
 

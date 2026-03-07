@@ -1,0 +1,41 @@
+~/workspace/backend$ # Stop current server (Ctrl+C if running)
+# Then restart:
+cd backend
+npm run dev
+bash: cd: backend: No such file or directory
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node src/index.ts
+
+/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:859
+    return new TSError(diagnosticText, diagnosticCodes, diagnostics);
+           ^
+TSError: ⨯ Unable to compile TypeScript:
+src/services/zoning-triangulation.service.ts:156:42 - error TS2339: Property 'VERIFICATION_COMPLETED' does not exist on type '{ readonly CORRECTION_APPLIED: "zoning.correction_applied"; readonly CORRECTION_SUBMITTED: "zoning.correction_submitted"; readonly PRECEDENT_ADDED: "zoning.precedent_added"; ... 4 more ...; readonly MATURITY_CHANGED: "zoning.maturity_changed"; }'.
+
+156     zoningEventBus.publish(ZONING_EVENTS.VERIFICATION_COMPLETED || 'verification:completed', {
+                                             ~~~~~~~~~~~~~~~~~~~~~~
+src/services/zoning-triangulation.service.ts:348:20 - error TS2339: Property 'parcel' does not exist on type '{ countyParcel: number; countyCategory: number; municode: number; } | { parcel: number; category: number; municode: number; }'.
+  Property 'parcel' does not exist on type '{ countyParcel: number; countyCategory: number; municode: number; }'.
+
+348         newWeights.parcel, newWeights.category, newWeights.municode,
+                       ~~~~~~
+src/services/zoning-triangulation.service.ts:348:39 - error TS2339: Property 'category' does not exist on type '{ countyParcel: number; countyCategory: number; municode: number; } | { parcel: number; category: number; municode: number; }'.
+  Property 'category' does not exist on type '{ countyParcel: number; countyCategory: number; municode: number; }'.
+
+348         newWeights.parcel, newWeights.category, newWeights.municode,
+                                          ~~~~~~~~
+
+    at createTSError (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:859:12)
+    at reportTSError (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:863:19)
+    at getOutput (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1077:36)
+    at Object.compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1433:41)
+    at Module.m._compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1617:30)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Object.require.extensions.<computed> [as .ts] (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Module.require (node:internal/modules/cjs/loader:1289:19) {
+  diagnosticCodes: [ 2339, 2339, 2339 ]
+}
+~/workspace/backend$ 

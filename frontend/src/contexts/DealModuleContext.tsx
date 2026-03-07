@@ -106,6 +106,36 @@ export interface DebtTermsState {
   lastUpdated: number;
 }
 
+export interface MarketIntelligenceState {
+  recommendedMix: { studio: number; oneBR: number; twoBR: number; threeBR: number };
+  demandPool: number;
+  captureRate: number;
+  targetDemographic: string;
+  medianIncome: number;
+  medianRent: number;
+  population: number;
+  linkedZoningCode?: string;
+  linkedMaxUnits?: number;
+  linkedMaxGba?: number;
+  linkedFar?: number;
+  linkedMaxStories?: number;
+  linkedBindingConstraint?: string;
+  lastUpdated: number;
+}
+
+export type ModuleStatusValue = 'live' | 'none';
+
+export interface ModuleStatus {
+  strategy: ModuleStatusValue;
+  traffic: ModuleStatusValue;
+  proforma: ModuleStatusValue;
+  debt: ModuleStatusValue;
+  exit: ModuleStatusValue;
+  marketIntelligence: ModuleStatusValue;
+  zoning: ModuleStatusValue;
+  design3d: ModuleStatusValue;
+}
+
 export type DealModuleEventType =
   | 'design-updated'
   | 'financial-updated'
@@ -120,7 +150,8 @@ export type DealModuleEventType =
   | 'capital-scenarios-compared'
   | 'strategy-selected'
   | 'risk-updated'
-  | 'debt-terms-selected';
+  | 'debt-terms-selected'
+  | 'market-intelligence-updated';
 
 export interface DealModuleEvent {
   source: string;
@@ -157,8 +188,13 @@ interface DealModuleContextValue {
   debtTerms: DebtTermsState | null;
   updateDebtTerms: (updates: Partial<DebtTermsState>) => void;
 
+  marketIntelligence: MarketIntelligenceState | null;
+  updateMarketIntelligence: (updates: Partial<MarketIntelligenceState>) => void;
+
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
+
+  moduleStatus: ModuleStatus;
 
   navigateToTab: (tabId: string) => void;
   activeTab: string;
@@ -189,6 +225,7 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [capitalStructure, setCapitalStructure] = useState<CapitalStructureState | null>(null);
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [debtTerms, setDebtTerms] = useState<DebtTermsState | null>(null);
+  const [marketIntelligence, setMarketIntelligence] = useState<MarketIntelligenceState | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
 
   const updateDesign3D = useCallback((updates: Partial<Design3DState>) => {
@@ -286,6 +323,18 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     }));
   }, []);
 
+  const updateMarketIntelligence = useCallback((updates: Partial<MarketIntelligenceState>) => {
+    setMarketIntelligence(prev => ({
+      ...(prev || {
+        recommendedMix: { studio: 0.15, oneBR: 0.45, twoBR: 0.30, threeBR: 0.10 },
+        demandPool: 0, captureRate: 0, targetDemographic: '', medianIncome: 0,
+        medianRent: 0, population: 0, lastUpdated: 0,
+      }),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
   const emitEvent = useCallback((event: Omit<DealModuleEvent, 'timestamp'>) => {
     const fullEvent: DealModuleEvent = { ...event, timestamp: Date.now() };
     setLastEvent(fullEvent);
@@ -297,6 +346,17 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const navigateToTab = useCallback((tabId: string) => {
     onTabChange(tabId);
   }, [onTabChange]);
+
+  const moduleStatus = useMemo<ModuleStatus>(() => ({
+    strategy: (strategy?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    traffic: (market?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    proforma: (financial?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    debt: ((capitalStructure?.lastUpdated ?? 0) > 0 || (debtTerms?.lastUpdated ?? 0) > 0) ? 'live' : 'none',
+    exit: (capitalStructure?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    marketIntelligence: (marketIntelligence?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+    zoning: ((zoningProfile?.lastUpdated ?? 0) > 0 || (activeScenario?.lastUpdated ?? 0) > 0) ? 'live' : 'none',
+    design3d: (design3D?.lastUpdated ?? 0) > 0 ? 'live' : 'none',
+  }), [strategy?.lastUpdated, market?.lastUpdated, financial?.lastUpdated, capitalStructure?.lastUpdated, debtTerms?.lastUpdated, marketIntelligence?.lastUpdated, zoningProfile?.lastUpdated, activeScenario?.lastUpdated, design3D?.lastUpdated]);
 
   const value = useMemo<DealModuleContextValue>(() => ({
     dealId,
@@ -317,11 +377,14 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateStrategy,
     debtTerms,
     updateDebtTerms,
+    marketIntelligence,
+    updateMarketIntelligence,
     emitEvent,
     lastEvent,
+    moduleStatus,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, emitEvent, lastEvent, navigateToTab, activeTab]);
+  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -352,8 +415,11 @@ export const useDealModule = (): DealModuleContextValue => {
       updateStrategy: () => {},
       debtTerms: null,
       updateDebtTerms: () => {},
+      marketIntelligence: null,
+      updateMarketIntelligence: () => {},
       emitEvent: () => {},
       lastEvent: null,
+      moduleStatus: { strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none', marketIntelligence: 'none', zoning: 'none', design3d: 'none' },
       navigateToTab: () => {},
       activeTab: 'overview',
     };

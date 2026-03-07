@@ -1,0 +1,74 @@
+
+1. Open Replit editor
+2. Find file: frontend/src/components/zoning/tabs/DevelopmentCapacityTab.tsx
+3. Find line ~164 where handleSelectPath is defined
+4. Add this function RIGHT BEFORE handleSelectPath:
+  const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
+    if (!dealId || !recs || recs.length === 0) return;
+    
+    console.log('🔄 Syncing recommendations to database...', recs.map(r => r.name));
+    
+    try {
+      const recNameMap: Record<string, string> = {
+        'By Right': 'by_right',
+        'Variance': 'variance',
+        'Rezone': 'rezone'
+      };
+      
+      for (const rec of recs) {
+        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+        const units = rec.maxUnits || 0;
+        const gba = rec.maxGba || 0;
+        const stories = rec.maxStories || 1;
+        const parking = rec.parkingRequired || 0;
+        const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+        
+        const scenarioData = {
+          name: scenarioName,
+          is_active: false,
+          use_mix: { residential_pct: 100 },
+          avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
+          efficiency_factor: 0.85,
+          max_gba: gba,
+          max_footprint: footprint,
+          net_leasable_sf: Math.round(gba * 0.85),
+          parking_required: parking,
+          max_stories: stories,
+          max_units: units,
+          applied_far: rec.appliedFar || null,
+          binding_constraint: rec.bindingConstraint || null
+        };
+        
+        try {
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        } catch (err: any) {
+          if (!err?.response?.data?.error?.includes('already exists')) {
+            console.warn(`Failed to create ${scenarioName} scenario:`, err);
+          }
+        }
+      }
+      
+      await loadScenarios();
+      console.log('✅ Sync complete, scenarios loaded');
+    } catch (error) {
+      console.error('Failed to sync recommendations to database:', error);
+    }
+  }, [dealId, loadScenarios]);
+
+5. Find where recommendations are loaded (search for setRecommendations(recsRes.data.recommendations)
+6. Change both occurrences from:
+setRecommendations(recsRes.data.recommendations || []);
+
+To:
+
+const recs = recsRes.data.recommendations || [];
+setRecommendations(recs);
+if (recs.length > 0) {
+  syncRecommendationsToDatabase(recs).catch(err => {
+    console.warn('Failed to sync recommendations:', err);
+  });
+}
+
+7. Save the file (Ctrl+S)
+8. Refresh browser (Ctrl+Shift+R)
+Then check console for 🔄 emoji logs!

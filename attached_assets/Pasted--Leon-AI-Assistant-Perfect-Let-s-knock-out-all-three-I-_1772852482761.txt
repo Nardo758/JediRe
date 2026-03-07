@@ -1,0 +1,542 @@
+> Leon AI Assistant:
+Perfect! Let's knock out all three. I'll give you everything you need.
+
+
+1️⃣ Add targetUnits Fallback (Quick Win - 2 minutes)
+
+Run this SQL on Replit to populate missing deals with their target unit counts:
+
+-- Add targetUnits as fallback for unenriched deals
+UPDATE deals
+SET property_data = COALESCE(property_data, '{}'::jsonb) || 
+  jsonb_build_object(
+    'units', target_units,
+    'enrichment_source', 'target_units_fallback',
+    'enriched_at', NOW()
+  )
+WHERE target_units IS NOT NULL
+  AND (property_data IS NULL OR property_data->>'units' IS NULL);
+
+-- Verify
+SELECT 
+  name,
+  target_units,
+  property_data->>'units' as data_units,
+  property_data->>'enrichment_source' as source
+FROM deals
+WHERE target_units IS NOT NULL
+ORDER BY target_units DESC;
+
+This gives you unit counts for testing even without county data.
+
+
+2️⃣ Enhanced Enrichment Script (Palm Beach + Miami-Dade)
+
+Create backend/src/scripts/enrich-deals-enhanced.ts:
+
+/**
+ * Property Data Enrichment - ENHANCED VERSION
+ * Added: Palm Beach County, improved Miami-Dade, Cobb County
+ */
+
+import axios from 'axios';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+interface PropertyEnrichmentData {
+  units?: number;
+  total_sqft?: number;
+  habitable_sqft?: number;
+  amenity_sqft?: number;
+  leasing_office_sqft?: number;
+  year_built?: number;
+  lot_size_acres?: number;
+  assessed_value?: number;
+  assessed_land?: number;
+  assessed_improvements?: number;
+  annual_taxes?: number;
+  parcel_id?: string;
+  owner_name?: string;
+  use_code?: string;
+  enrichment_source: string;
+  enriched_at: string;
+}
+
+// County API configurations
+const COUNTY_APIS: Record<string, any> = {
+  'Fulton County, GA': {
+    url: 'https://gis.fultoncountyga.gov/arcgis/rest/services/Public/Parcels/MapServer/0/query',
+    addressField: 'SITUS_ADDRESS',
+    fields: {
+      units: 'RES_UNITS',
+      total_sqft: 'BLDG_SQFT',
+      year_built: 'YEAR_BUILT',
+      lot_size_acres: 'ACRES',
+      assessed_value: 'TOTAL_VALUE',
+      assessed_land: 'LAND_VALUE',
+      assessed_improvements: 'IMPROVEMENT_VALUE',
+      parcel_id: 'PARCEL_ID',
+      owner_name: 'OWNER_NAME',
+      use_code: 'USE_CODE',
+    }
+  },
+  'DeKalb County, GA': {
+    url: 'https://gis.dekalbcountyga.gov/arcgis/rest/services/Public/Parcels/MapServer/0/query',
+    addressField: 'SITUS_ADDR',
+    fields: {
+      units: 'NUM_UNITS',
+      total_sqft: 'TOT_SQFT',
+      year_built: 'YEAR_BLT',
+      lot_size_acres: 'ACRES',
+      assessed_value: 'TOTAL_VAL',
+      parcel_id: 'PARCEL_ID',
+      owner_name: 'OWNER',
+    }
+  },
+  'Cobb County, GA': {
+    url: 'https://gis.cobbcounty.org/arcgis/rest/services/Public/Parcels/MapServer/0/query',
+    addressField: 'SITE_ADDRESS',
+    fields: {
+      units: 'NUM_UNITS',
+      total_sqft: 'BUILDING_SQFT',
+      year_built: 'YEAR_BUILT',
+      lot_size_acres: 'ACRES',
+      assessed_value: 'TOTAL_VALUE',
+      assessed_land: 'LAND_VALUE',
+      assessed_improvements: 'IMPR_VALUE',
+      parcel_id: 'PARCEL_ID',
+      owner_name: 'OWNER_NAME',
+    }
+  },
+  'Palm Beach County, FL': {
+    url: 'https://maps.pbcgov.org/arcgis/rest/services/Public/Parcels/MapServer/0/query',
+    addressField: 'SITUS_ADDRESS',
+    fields: {
+      units: 'NUM_UNITS',
+      total_sqft: 'TOT_LVG_AREA',
+      year_built: 'YR_BLT',
+      lot_size_acres: 'GIS_ACRES',
+      assessed_value: 'JUST_VALUE',
+      assessed_land: 'LAND_VAL',
+      assessed_improvements: 'BLDG_VAL',
+      parcel_id: 'PCN',
+      owner_name: 'OWN_NAME',
+    }
+  },
+  'Miami-Dade County, FL': {
+    url: 'https://gisws.miamidade.gov/arcgis/rest/services/PropertyAppraisal/MapServer/0/query',
+    addressField: 'SITEADDR',
+    fields: {
+      units: 'NO_UNITS',
+      total_sqft: 'TOT_LVG_AREA',
+      year_built: 'YR_BLT',
+      lot_size_acres: 'LND_SQFOOT',
+      assessed_value: 'ASSESS_VAL',
+      parcel_id: 'FOLIO',
+      owner_name: 'OWN_NAME',
+    }
+  },
+};
+
+/**
+ * Parse city/state from address string
+ */
+
+> Leon AI Assistant:
+function parseAddress(address: string): { city?: string; state?: string } {
+  const parts = address.split(',').map(p => p.trim());
+  
+  if (parts.length >= 2) {
+    const stateZip = parts[parts.length - 1];
+    const city = parts[parts.length - 2];
+    const state = stateZip.split(' ')[0];
+    
+    return { city, state };
+  }
+  
+  return {};
+}
+
+/**
+ * Determine county from city/state
+ */
+function getCounty(city?: string, state?: string): string | null {
+  if (!city || !state) return null;
+  
+  const cityLower = city.toLowerCase();
+  const stateUpper = state.toUpperCase();
+  
+  if (stateUpper === 'GA' || stateUpper === 'GEORGIA') {
+    if (cityLower.includes('atlanta') || cityLower.includes('buckhead') || 
+        cityLower.includes('midtown') || cityLower.includes('inman') ||
+        cityLower.includes('westside') || cityLower.includes('east atlanta') ||
+        cityLower.includes('grant park') || cityLower.includes('reynoldstown') ||
+        cityLower.includes('college park')) {
+      return 'Fulton County, GA';
+    }
+    if (cityLower.includes('decatur')) {
+      return 'DeKalb County, GA';
+    }
+    if (cityLower.includes('marietta')) {
+      return 'Cobb County, GA';
+    }
+    if (cityLower.includes('sandy springs') || cityLower.includes('alpharetta')) {
+      return 'Fulton County, GA';
+    }
+  }
+  
+  if (stateUpper === 'FL' || stateUpper === 'FLORIDA') {
+    if (cityLower.includes('miami')) {
+      return 'Miami-Dade County, FL';
+    }
+    if (cityLower.includes('west palm beach') || cityLower.includes('palm beach')) {
+      return 'Palm Beach County, FL';
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Clean address for API query (remove apartment/unit numbers, etc.)
+ */
+function cleanAddressForQuery(address: string): string {
+  // Take just the street address (first part before comma)
+  const streetAddr = address.split(',')[0].trim();
+  
+  // Remove unit/apt/suite suffixes
+  return streetAddr
+    .replace(/\s+(apt|unit|suite|#).*$/i, '')
+    .trim();
+}
+
+/**
+ * Fetch property data from county API
+ */
+async function fetchPropertyData(address: string, county: string): Promise<PropertyEnrichmentData | null> {
+  const config = COUNTY_APIS[county];
+  if (!config) {
+    console.log(`  ⚠️  No API configured for ${county}`);
+    return null;
+  }
+  
+  const cleanAddr = cleanAddressForQuery(address);
+  
+  try {
+    // Try multiple query strategies
+    const queries = [
+      // Exact match
+      `${config.addressField} = '${cleanAddr}'`,
+      // LIKE with wildcards
+      `${config.addressField} LIKE '%${cleanAddr}%'`,
+      // Just the street number
+      `${config.addressField} LIKE '${cleanAddr.split(' ')[0]}%'`,
+    ];
+    
+    for (const whereClause of queries) {
+      try {
+        const response = await axios.get(config.url, {
+          params: {
+            where: whereClause,
+            outFields: '*',
+            f: 'json',
+            returnGeometry: false,
+          },
+          timeout: 15000,
+        });
+        
+        if (response.data.features && response.data.features.length > 0) {
+          const attrs = response.data.features[0].attributes;
+          const data: PropertyEnrichmentData = {
+            enrichment_source: county,
+            enriched_at: new Date().toISOString(),
+          };
+          
+          // Map fields
+          if (config.fields.units && attrs[config.fields.units]) {
+            data.units = parseInt(attrs[config.fields.units]);
+          }
+          
+          if (config.fields.total_sqft && attrs[config.fields.total_sqft]) {
+            data.total_sqft = parseFloat(attrs[config.fields.total_sqft]);
+            data.habitable_sqft = Math.round(data.total_sqft * 0.85);
+            data.amenity_sqft = Math.round(data.total_sqft * 0.10);
+            data.leasing_office_sqft = Math.round(data.total_sqft * 0.05);
+          }
+          
+          if (config.fields.year_built && attrs[config.fields.year_built]) {
+            data.year_built = parseInt(attrs[config.fields.year_built]);
+          }
+
+> Leon AI Assistant:
+if (config.fields.lot_size_acres && attrs[config.fields.lot_size_acres]) {
+            const val = parseFloat(attrs[config.fields.lot_size_acres]);
+            // Convert sqft to acres if needed (Miami-Dade)
+            data.lot_size_acres = val > 100 ? val / 43560 : val;
+          }
+          
+          if (config.fields.assessed_value && attrs[config.fields.assessed_value]) {
+            data.assessed_value = parseFloat(attrs[config.fields.assessed_value]);
+          }
+          
+          if (config.fields.assessed_land && attrs[config.fields.assessed_land]) {
+            data.assessed_land = parseFloat(attrs[config.fields.assessed_land]);
+          }
+          
+          if (config.fields.assessed_improvements && attrs[config.fields.assessed_improvements]) {
+            data.assessed_improvements = parseFloat(attrs[config.fields.assessed_improvements]);
+          }
+          
+          if (config.fields.parcel_id && attrs[config.fields.parcel_id]) {
+            data.parcel_id = attrs[config.fields.parcel_id];
+          }
+          
+          if (config.fields.owner_name && attrs[config.fields.owner_name]) {
+            data.owner_name = attrs[config.fields.owner_name];
+          }
+          
+          if (config.fields.use_code && attrs[config.fields.use_code]) {
+            data.use_code = attrs[config.fields.use_code];
+          }
+          
+          // Estimate annual taxes
+          if (data.assessed_value && !data.annual_taxes) {
+            const rate = county.includes('FL') ? 0.020 : 0.0185;
+            data.annual_taxes = Math.round(data.assessed_value * rate);
+          }
+          
+          return data;
+        }
+      } catch (err: any) {
+        // Try next query strategy
+        continue;
+      }
+    }
+    
+    console.log(`  ⚠️  No data found in ${county}`);
+    return null;
+    
+  } catch (error: any) {
+    console.log(`  ❌ API error: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Update deal with enriched data
+ */
+async function updateDeal(dealId: string, enrichedData: PropertyEnrichmentData): Promise<void> {
+  try {
+    await pool.query(`
+      UPDATE deals
+      SET 
+        property_data = COALESCE(property_data, '{}'::jsonb) || $1::jsonb,
+        updated_at = NOW()
+      WHERE id = $2
+    `, [JSON.stringify(enrichedData), dealId]);
+    
+    console.log(`  ✅ Updated deal`);
+    
+    if (enrichedData.units) {
+      console.log(`  📊 Units: ${enrichedData.units}`);
+    }
+    if (enrichedData.total_sqft) {
+      console.log(`  📐 Total SF: ${enrichedData.total_sqft.toLocaleString()}`);
+    }
+    if (enrichedData.assessed_value) {
+      console.log(`  💰 Assessed: $${(enrichedData.assessed_value / 1000000).toFixed(1)}M`);
+    }
+    console.log('');
+    
+  } catch (error: any) {
+    console.error(`  ❌ Error updating deal: ${error.message}`);
+  }
+}
+
+/**
+ * Main enrichment function
+ */
+async function enrichAllDeals(): Promise<void> {
+  console.log('═══════════════════════════════════════════════════');
+  console.log('🏢 PROPERTY DATA ENRICHMENT (ENHANCED)');
+  console.log('═══════════════════════════════════════════════════\n');
+  
+  try {
+    const result = await pool.query(`
+      SELECT 
+        id,
+        name,
+        address,
+        property_data
+      FROM deals
+      WHERE address IS NOT NULL
+      ORDER BY created_at DESC
+    `);
+    
+    const deals = result.rows;
+    console.log(`Found ${deals.length} deals to enrich\n`);
+    
+    let enriched = 0;
+    let skipped = 0;
+    let failed = 0;
+    
+    for (const deal of deals) {
+      console.log(`📍 ${deal.name}`);
+      console.log(`   ${deal.address}`);
+      
+      // Skip if enriched from county API recently
+      if (deal.property_data?.enriched_at && 
+          deal.property_data?.enrichment_source !== 'target_units_fallback') {
+        const enrichedDate = new Date(deal.property_data.enriched_at);
+        const daysSinceEnrich = (Date.now() - enrichedDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceEnrich < 30) {
+
+> Leon AI Assistant:
+console.log(`  ⏭️  Skipped (enriched ${Math.floor(daysSinceEnrich)} days ago)\n`);
+          skipped++;
+          continue;
+        }
+      }
+      
+      const { city, state } = parseAddress(deal.address);
+      const county = getCounty(city, state);
+      
+      if (!county) {
+        console.log(`  ⚠️  Could not determine county\n`);
+        failed++;
+        continue;
+      }
+      
+      console.log(`  🔍 Querying ${county}...`);
+      
+      const enrichedData = await fetchPropertyData(deal.address, county);
+      
+      if (enrichedData) {
+        await updateDeal(deal.id, enrichedData);
+        enriched++;
+      } else {
+        failed++;
+        console.log('');
+      }
+      
+      // Rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+    
+    console.log('═══════════════════════════════════════════════════');
+    console.log('SUMMARY:');
+    console.log(`  ✅ Enriched: ${enriched}`);
+    console.log(`  ⏭️  Skipped: ${skipped}`);
+    console.log(`  ❌ Failed: ${failed}`);
+    console.log('═══════════════════════════════════════════════════');
+    
+  } catch (error: any) {
+    console.error('❌ Enrichment failed:', error.message);
+    throw error;
+  } finally {
+    await pool.end();
+  }
+}
+
+enrichAllDeals()
+  .then(() => {
+    console.log('\n✅ Enrichment complete');
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error('\n❌ Enrichment failed:', error);
+    process.exit(1);
+  });
+
+
+3️⃣ Testing Guide (7 Enriched Deals)
+
+Create jedire-quick-testing-guide.md:
+
+# JediRe Quick Testing Guide
+**Test with: 7 enriched deals (Fulton County data)**
+
+## Test Deal: Midtown Tower ($90M, 250 units)
+
+### M01: Property Information
+**URL:** `/deal/{id}`
+
+**Check:**
+- ✅ Units: 250 displayed
+- ✅ Assessed Value: $90.4M
+- ✅ Lot Size: 8.51 acres
+- ✅ Owner: Federal Reserve Bank of ATL
+- ✅ SF breakdown shown
+
+### M08: Financial Analysis
+**Check:**
+- ✅ Price/unit calculated
+- ✅ NOI/unit calculated  
+- ✅ Assessment/unit: $361,600
+- ✅ Tax/unit: ~$6,690/year
+
+### M03: Development Capacity
+**Assumptions:**
+- Zoning: High-rise mixed-use
+- Max FAR: 8.0 (typical for Midtown)
+
+**Check:**
+- Current: 250 units on 8.51 acres
+- Density: 29.4 units/acre
+- Can calculate max based on FAR
+
+---
+
+## Quick Test Script (SQL)
+
+```sql
+-- View all enriched deals
+SELECT 
+  name,
+  address,
+  property_data->>'units' as units,
+  property_data->>'assessed_value' as assessed_value,
+  property_data->>'lot_size_acres' as acres,
+  property_data->>'owner_name' as owner
+FROM deals
+WHERE property_data->>'enrichment_source' LIKE '%County%'
+ORDER BY (property_data->>'assessed_value')::numeric DESC;
+
+
+Testing Checklist
+
+Per Deal:
+
+• [ ] M01: All fields display correctly
+• [ ] M08: Per-unit metrics calculate
+• [ ] M03: Development capacity shows current vs max
+• [ ] No "undefined" or "NaN" in UI
+• [ ] All currency formatted with $
+• [ ] All numbers have proper comma separators
+If errors found:
+
+• Document in /home/leon/clawd/jedire-test-results.md
+• Include: deal name, module, error, screenshot/description
+
+---
+
+## 🚀 Execution Order
+
+**Step 1: Fallback units (2 min)**
+```bash
+psql $DATABASE_URL -c "UPDATE deals SET property_data = COALESCE(property_data, '{}'::jsonb) || jsonb_build_object('units', target_units, 'enrichment_source', 'target_units_fallback', 'enriched_at', NOW()) WHERE target_units IS NOT NULL AND (property_data IS NULL OR property_data->>'units' IS NULL);"
+
+Step 2: Enhanced enrichment (15-20 min)
+
+• Create backend/src/scripts/enrich-deals-enhanced.ts
+• Run: cd backend && npx ts-node src/scripts/enrich-deals-enhanced.ts
+Step 3: Start testing
+
+• Pick Midtown Tower or College Park Housing
+• Test modules M01, M08, M03
+• Document findings
+
+Ready to start? Which step should we begin with?

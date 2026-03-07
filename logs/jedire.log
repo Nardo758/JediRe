@@ -1,0 +1,22 @@
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-065: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.941Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-24-011: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.942Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-04-079: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.943Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-22-071: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.946Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-20-031: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.947Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-06-028: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.947Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-07-090: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.948Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-035: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.949Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-23-069: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.950Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.951Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: connect ECONNREFUSED 127.0.0.1:5432","service":"jedire-api","timestamp":"2026-03-04T15:50:50.952Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-065: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:28.855Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-24-011: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:39.657Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-04-079: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:49.664Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-22-071: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:17:59.671Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-20-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:09.683Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-06-028: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:20.558Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-07-090: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:30.561Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-035: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:40.570Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-23-069: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:51.395Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:01.408Z"}
+{"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:11.420Z"}

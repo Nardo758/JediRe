@@ -8,6 +8,7 @@ import {
 import { apiClient } from '../../../services/api.client';
 import { ZoningIntelligencePanel } from './ZoningIntelligencePanel';
 import { ZoningLearningPanel } from './ZoningLearningPanel';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 
 interface ZoningCapacitySectionProps {
   deal?: any;
@@ -121,6 +122,7 @@ const PROPERTY_TYPE_ICONS: Record<string, string> = {
 
 export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapacitySectionProps) {
   const resolvedDealId = propDealId || deal?.id;
+  const { updateZoningProfile, updateActiveScenario, emitEvent } = useDealModule();
   const [loading, setLoading] = useState(true);
   const [lookingUp, setLookingUp] = useState(false);
   const [availableDistricts, setAvailableDistricts] = useState<AvailableDistrict[]>([]);
@@ -184,6 +186,36 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     };
   }, []);
 
+  const pushZoningToContext = useCallback((zoningData: ZoningCapacityData, source: string) => {
+    updateZoningProfile({
+      baseDistrictCode: zoningData.zoning_code || zoningData.base_zoning || null,
+      municipality: deal?.city || null,
+      appliedFar: zoningData.max_far ?? null,
+      lotAreaSf: zoningData.buildable_sq_ft ?? null,
+      buildableAreaSf: zoningData.buildable_sq_ft ?? null,
+      constraintSource: source,
+    });
+  }, [updateZoningProfile, deal?.city]);
+
+  const pushScenarioToContext = useCallback((envelopeResult: EnvelopeResult, zoningData: ZoningCapacityData) => {
+    const avgUnitSize = 900;
+    const efficiencyFactor = 0.85;
+    updateActiveScenario({
+      id: resolvedDealId || '',
+      name: `${zoningData.zoning_code || 'Custom'} Envelope`,
+      maxGba: envelopeResult.maxGFA || null,
+      maxUnits: envelopeResult.maxCapacity || null,
+      netLeasableSf: envelopeResult.maxGFA ? Math.round(envelopeResult.maxGFA * efficiencyFactor) : null,
+      parkingRequired: envelopeResult.parkingRequired || null,
+      maxStories: zoningData.max_stories ?? null,
+      bindingConstraint: envelopeResult.limitingFactor || null,
+      appliedFar: zoningData.max_far ?? null,
+      avgUnitSize,
+      efficiencyFactor,
+    });
+    emitEvent({ source: 'zoning-capacity', type: 'capacity-updated', payload: { maxUnits: envelopeResult.maxCapacity, maxGba: envelopeResult.maxGFA, bindingConstraint: envelopeResult.limitingFactor } });
+  }, [updateActiveScenario, emitEvent, resolvedDealId]);
+
   const fetchData = async () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-capacity`);
@@ -193,6 +225,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         if (response.data.zoning_code) {
           setDataSource('verified');
         }
+        pushZoningToContext(response.data, 'database');
       } else {
         autoFillFromDeal();
       }
@@ -210,19 +243,21 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       const response = await apiClient.post(`/api/v1/deals/${resolvedDealId}/zoning-capacity/auto-fill`, {});
       const result = response.data;
       if (result.auto_filled && result.data) {
-        setData((prev) => ({
-          ...prev,
-          zoning_code: result.data.zoning_code || prev.zoning_code,
-          base_zoning: result.data.base_zoning || prev.base_zoning,
-          max_density: result.data.max_density ?? prev.max_density,
-          max_far: result.data.max_far ?? prev.max_far,
-          max_height_feet: result.data.max_height_feet ?? prev.max_height_feet,
-          max_stories: result.data.max_stories ?? prev.max_stories,
-          min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
-        }));
+        const merged = {
+          ...data,
+          zoning_code: result.data.zoning_code || data.zoning_code,
+          base_zoning: result.data.base_zoning || data.base_zoning,
+          max_density: result.data.max_density ?? data.max_density,
+          max_far: result.data.max_far ?? data.max_far,
+          max_height_feet: result.data.max_height_feet ?? data.max_height_feet,
+          max_stories: result.data.max_stories ?? data.max_stories,
+          min_parking_per_unit: result.data.min_parking_per_unit ?? data.min_parking_per_unit,
+        };
+        setData(merged);
         setZoningCode(result.data.zoning_code || '');
         setAutoFillSource(result.data.district_name);
         setDataSource(result.data.source === 'ai_retrieved' ? 'ai_retrieved' : 'verified');
+        pushZoningToContext(merged, result.data.source === 'ai_retrieved' ? 'ai' : 'auto-fill');
       } else if (result.available_districts) {
         setAvailableDistricts(result.available_districts);
         setShowDistrictPicker(true);
@@ -244,20 +279,22 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       });
       const result = response.data;
       if (result.auto_filled && result.data) {
-        setData((prev) => ({
-          ...prev,
+        const merged = {
+          ...data,
           zoning_code: result.data.zoning_code,
-          base_zoning: result.data.base_zoning || prev.base_zoning,
-          max_density: result.data.max_density ?? prev.max_density,
-          max_far: result.data.max_far ?? prev.max_far,
-          max_height_feet: result.data.max_height_feet ?? prev.max_height_feet,
-          max_stories: result.data.max_stories ?? prev.max_stories,
-          min_parking_per_unit: result.data.min_parking_per_unit ?? prev.min_parking_per_unit,
-        }));
+          base_zoning: result.data.base_zoning || data.base_zoning,
+          max_density: result.data.max_density ?? data.max_density,
+          max_far: result.data.max_far ?? data.max_far,
+          max_height_feet: result.data.max_height_feet ?? data.max_height_feet,
+          max_stories: result.data.max_stories ?? data.max_stories,
+          min_parking_per_unit: result.data.min_parking_per_unit ?? data.min_parking_per_unit,
+        };
+        setData(merged);
         setZoningCode(result.data.zoning_code || zc);
         setAutoFillSource(result.data.district_name);
         setDataSource(result.data.source === 'ai_retrieved' ? 'ai_retrieved' : 'verified');
         setShowDistrictPicker(false);
+        pushZoningToContext(merged, result.data.source === 'ai_retrieved' ? 'ai' : 'lookup');
       } else {
         setStatusMsg(`No matching district found for "${zc}"`);
         setTimeout(() => setStatusMsg(''), 3000);
@@ -316,12 +353,20 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       setShowAI(true);
 
       if (result.envelope) {
+        const updatedData = {
+          ...savedData,
+          max_units_by_right: result.envelope.maxCapacity,
+          limiting_factor: result.envelope.limitingFactor,
+          buildable_sq_ft: result.envelope.buildableArea,
+        };
         setData((prev) => ({
           ...prev,
           max_units_by_right: result.envelope.maxCapacity,
           limiting_factor: result.envelope.limitingFactor,
           buildable_sq_ft: result.envelope.buildableArea,
         }));
+        pushZoningToContext(updatedData, 'envelope-analysis');
+        pushScenarioToContext(result.envelope, updatedData);
       }
     } catch (error: any) {
       const msg = error.response?.data?.error || 'Failed to analyze. Make sure a property boundary is drawn first.';
