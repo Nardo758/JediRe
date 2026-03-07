@@ -17,7 +17,7 @@ import {
   Building2,
   DollarSign
 } from 'lucide-react';
-import { apiClient } from '../../services/api';
+import { apiClient } from '../../services/api.client';
 
 interface DataStatus {
   overall: {

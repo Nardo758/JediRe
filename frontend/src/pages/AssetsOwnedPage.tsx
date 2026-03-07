@@ -785,6 +785,12 @@ export function AssetsOwnedPage() {
                   </span>
                 </div>
               )}
+              <button
+                onClick={(e) => { e.stopPropagation(); navigate(`/deals/${asset.id}/flywheel`); }}
+                className="mt-2 w-full px-2 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200 transition-colors"
+              >
+                📊 View Report
+              </button>
             </div>
           </div>
         ))}
@@ -878,6 +884,12 @@ export function AssetsOwnedPage() {
                         </td>
                         <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => navigate(`/deals/${asset.dealId}/flywheel`)}
+                              className="px-2 py-1 text-[10px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200"
+                            >
+                              📊 Report
+                            </button>
                             <button
                               onClick={() => discoverComps(asset.id)}
                               disabled={isDiscovering}
