@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Building2,
   MapPin,
@@ -90,6 +90,7 @@ type TabType = 'overview' | 'financial' | 'comparables' | 'zoning' | 'market' | 
 export default function PropertyDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [property, setProperty] = useState<PropertyData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,32 @@ export default function PropertyDetailsPage() {
   useEffect(() => {
     fetchPropertyData();
   }, [id]);
+
+  const buildPropertyFromRow = (row: any): PropertyData => {
+    const addrParts = (row.address || '').split(',').map((s: string) => s.trim());
+    const stateZip = (addrParts[2] || '').split(' ');
+    const rentNum = parseFloat((row.rent || '').replace(/[^0-9.]/g, '')) || 0;
+    return {
+      id: id || row.rawPropertyId || `P-${row.id}`,
+      name: row.property || 'Unknown Property',
+      address: row.address || '',
+      city: addrParts[1] || '',
+      state: stateZip[0] || '',
+      zip: stateZip[1] || '',
+      propertyType: 'Multifamily',
+      units: row.units || 0,
+      yearBuilt: row.year || 0,
+      totalSqft: row.buildingSf || 0,
+      lotSize: row.lotAcres || row.acres || 0,
+      estimatedValue: row.appraisedValue || 0,
+      monthlyRent: rentNum,
+      occupancyRate: parseFloat(row.occ) || 0,
+      zoningCode: row.zoning || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      dataSource: row.enrichmentSource || 'Market Intelligence',
+    };
+  };
 
   const fetchPropertyData = async () => {
     try {
@@ -110,8 +137,14 @@ export default function PropertyDetailsPage() {
       const data = await response.json();
       setProperty(data);
     } catch (err) {
-      console.error('Error fetching property:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load property');
+      const stateRow = (location.state as any)?.propertyRow;
+      if (stateRow) {
+        setProperty(buildPropertyFromRow(stateRow));
+        setError(null);
+      } else {
+        console.error('Error fetching property:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load property');
+      }
     } finally {
       setLoading(false);
     }
