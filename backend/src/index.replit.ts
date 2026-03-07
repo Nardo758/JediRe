@@ -200,6 +200,9 @@ app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
 app.use('/api/v1/grid', optionalAuth, gridRouter);
 
+import agentRouter from './api/rest/agent.routes';
+app.use('/api/v1/agents', agentRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);

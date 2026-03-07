@@ -5,7 +5,7 @@
 
 import { Router, Response } from 'express';
 import { query } from '../../database/connection';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { AgentOrchestrator } from '../../agents/orchestrator';
 
@@ -16,7 +16,7 @@ const orchestrator = new AgentOrchestrator();
  * POST /api/v1/agents/tasks
  * Submit a new agent task
  */
-router.post('/tasks', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/tasks', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { taskType, inputData, priority } = req.body;
 
@@ -41,13 +41,13 @@ router.post('/tasks', requireAuth, async (req: AuthenticatedRequest, res: Respon
  * GET /api/v1/agents/tasks/:taskId
  * Get task status
  */
-router.get('/tasks/:taskId', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/tasks/:taskId', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { taskId } = req.params;
 
     const result = await query(
-      'SELECT * FROM agent_tasks WHERE id = $1',
-      [taskId]
+      'SELECT * FROM agent_tasks WHERE id = $1 AND user_id = $2',
+      [taskId, req.user!.userId]
     );
 
     if (result.rows.length === 0) {
@@ -64,7 +64,7 @@ router.get('/tasks/:taskId', requireAuth, async (req: AuthenticatedRequest, res:
  * GET /api/v1/agents/tasks
  * List user's tasks
  */
-router.get('/tasks', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/tasks', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { status, limit = 50, offset = 0 } = req.query;
 
