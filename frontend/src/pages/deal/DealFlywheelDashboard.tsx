@@ -1078,4 +1078,5 @@ export function M22PostCloseIntelligence() {
   );
 }
 
+const DealFlywheelDashboard = M22PostCloseIntelligence;
 export default DealFlywheelDashboard;
