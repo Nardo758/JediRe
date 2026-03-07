@@ -35,6 +35,8 @@ interface CountyAPIConfig {
   addressField: string;
   fields: Record<string, string>;
   taxRate: number;
+  lotSizeUnit?: 'acres' | 'sqft';
+  customMapper?: (attrs: any, data: PropertyEnrichmentData) => void;
 }
 
 const COUNTY_APIS: Record<string, CountyAPIConfig> = {
@@ -56,6 +58,85 @@ const COUNTY_APIS: Record<string, CountyAPIConfig> = {
       class_code: 'ClassCode',
     },
     taxRate: 0.0185,
+  },
+  'DeKalb County, GA': {
+    url: 'https://dcgis.dekalbcountyga.gov/hosted/rest/services/Tax_Parcels/FeatureServer/0/query',
+    addressField: 'SITEADDRESS',
+    fields: {
+      appraised_value: 'TOTAPR1',
+      parcel_id: 'PARCELID',
+      owner_name: 'OWNERNME1',
+      use_code: 'USECD',
+      class_code: 'CLASSCD',
+    },
+    taxRate: 0.0195,
+    customMapper: (attrs: any, data: PropertyEnrichmentData) => {
+      const shapeArea = parseFloat(attrs['Shape__Area']);
+      if (Number.isFinite(shapeArea) && shapeArea > 0) {
+        data.lot_size_acres = Math.round((shapeArea / 43560) * 100) / 100;
+      }
+      if (attrs['STATEDAREA']) data.total_sqft = parseFloat(attrs['STATEDAREA']) || undefined;
+      if (attrs['ZONING']) data.use_code = `${data.use_code || ''} (Zone: ${attrs['ZONING']})`.trim();
+    },
+  },
+  'Miami-Dade County, FL': {
+    url: 'https://gisweb.miamidade.gov/arcgis/rest/services/MD_LandInformation/MapServer/24/query',
+    addressField: 'TRUE_SITE_ADDR',
+    fields: {
+      units: 'UNIT_COUNT',
+      parcel_id: 'FOLIO',
+      owner_name: 'TRUE_OWNER1',
+      use_code: 'DOR_CODE_CUR',
+    },
+    taxRate: 0.0195,
+    lotSizeUnit: 'sqft',
+    customMapper: (attrs: any, data: PropertyEnrichmentData) => {
+      const lotSqft = parseFloat(attrs['LOT_SIZE']);
+      if (Number.isFinite(lotSqft) && lotSqft > 0) {
+        data.lot_size_acres = Math.round((lotSqft / 43560) * 100) / 100;
+      }
+      const heated = parseFloat(attrs['BUILDING_HEATED_AREA']);
+      if (Number.isFinite(heated) && heated > 0) data.total_sqft = heated;
+      const yrBuilt = parseInt(attrs['YEAR_BUILT']);
+      if (Number.isFinite(yrBuilt) && yrBuilt > 1800) data.year_built = yrBuilt;
+      const landVal = parseFloat(attrs['LAND_VAL_CUR']);
+      if (Number.isFinite(landVal) && landVal > 0) data.assessed_land = landVal;
+      const bldgVal = parseFloat(attrs['BUILDING_VAL_CUR']);
+      if (Number.isFinite(bldgVal) && bldgVal > 0) data.assessed_improvements = bldgVal;
+      const totalVal = parseFloat(attrs['TOTAL_VAL_CUR']);
+      if (Number.isFinite(totalVal) && totalVal > 0) data.assessed_value = totalVal;
+      if (attrs['DOR_DESC']) data.class_code = attrs['DOR_DESC'];
+      if (attrs['PRIMARY_ZONE']) data.use_code = `${data.use_code || ''} (Zone: ${attrs['PRIMARY_ZONE']})`.trim();
+    },
+  },
+  'Palm Beach County, FL': {
+    url: 'https://services.arcgis.com/B7X7NCOKKXditlwZ/arcgis/rest/services/Palm_Beach_County_Parcels/FeatureServer/0/query',
+    addressField: 'PHY_ADDR1',
+    fields: {
+      units: 'NO_RES_UNT',
+      appraised_value: 'JV',
+      assessed_land: 'LND_VAL',
+      parcel_id: 'PARCEL_ID',
+      owner_name: 'OWN_NAME',
+      use_code: 'DOR_UC',
+    },
+    taxRate: 0.0185,
+    customMapper: (attrs: any, data: PropertyEnrichmentData) => {
+      const lotSqft = parseFloat(attrs['LND_SQFOOT']);
+      if (Number.isFinite(lotSqft) && lotSqft > 0) {
+        data.lot_size_acres = Math.round((lotSqft / 43560) * 100) / 100;
+      }
+      const livingArea = parseFloat(attrs['TOT_LVG_AR']);
+      if (Number.isFinite(livingArea) && livingArea > 0) data.total_sqft = livingArea;
+      const yrBuilt = parseInt(attrs['ACT_YR_BLT']);
+      if (Number.isFinite(yrBuilt) && yrBuilt > 1800) data.year_built = yrBuilt;
+      const jv = data.appraised_value || 0;
+      const lnd = parseFloat(attrs['LND_VAL']) || 0;
+      data.appraised_land = lnd > 0 ? lnd : undefined;
+      data.appraised_improvements = (jv > 0 && lnd > 0) ? jv - lnd : undefined;
+      data.assessed_land = undefined;
+      if (attrs['IMP_QUAL']) data.class_code = attrs['IMP_QUAL'];
+    },
   },
 };
 
@@ -133,20 +214,73 @@ function getCounty(city: string, state: string): string | null {
   return null;
 }
 
+const STREET_ABBREVIATIONS: Record<string, string> = {
+  'BOULEVARD': 'BLVD', 'AVENUE': 'AVE', 'STREET': 'ST', 'DRIVE': 'DR',
+  'ROAD': 'RD', 'LANE': 'LN', 'COURT': 'CT', 'PLACE': 'PL',
+  'CIRCLE': 'CIR', 'PARKWAY': 'PKWY', 'HIGHWAY': 'HWY', 'TERRACE': 'TER',
+  'TRAIL': 'TRL', 'WAY': 'WAY', 'NORTHEAST': 'NE', 'NORTHWEST': 'NW',
+  'SOUTHEAST': 'SE', 'SOUTHWEST': 'SW', 'INDUSTRIAL': 'IND',
+  'SOUTH': 'S', 'NORTH': 'N', 'EAST': 'E', 'WEST': 'W',
+};
+
 function sanitizeForArcGis(val: string): string {
   return val.replace(/'/g, "''").replace(/[;\\%_]/g, '');
+}
+
+function abbreviateStreet(street: string): string {
+  let result = street.toUpperCase();
+  for (const [full, abbr] of Object.entries(STREET_ABBREVIATIONS)) {
+    result = result.replace(new RegExp(`\\b${full}\\b`, 'g'), abbr);
+  }
+  return result;
 }
 
 function extractStreetForSearch(address: string): string {
   const street = address.split(',')[0].trim();
   return sanitizeForArcGis(
-    street
+    abbreviateStreet(street)
       .replace(/\b(NE|NW|SE|SW|N|S|E|W)\b/gi, '')
       .replace(/\b(Suite|Ste|Apt|Unit|#)\s*\S*/gi, '')
       .replace(/\s+/g, ' ')
       .trim()
-      .toUpperCase()
   );
+}
+
+function extractStreetWithDirections(address: string): string {
+  const street = address.split(',')[0].trim();
+  return sanitizeForArcGis(
+    abbreviateStreet(street)
+      .replace(/\b(Suite|Ste|Apt|Unit|#)\s*\S*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
+function findBestMatch(features: any[], streetNum: string, addressField: string): any | null {
+  for (const feat of features) {
+    const addr = (feat.attributes?.[addressField] || '').toString().trim().toUpperCase();
+    const addrNum = addr.match(/^(\d+)/)?.[1];
+    if (addrNum === streetNum) return feat.attributes;
+  }
+  return null;
+}
+
+async function queryArcGis(config: CountyAPIConfig, searchTerm: string): Promise<any[] | null> {
+  try {
+    const response = await axios.get(config.url, {
+      params: {
+        where: `${config.addressField} LIKE '${searchTerm}'`,
+        outFields: '*',
+        resultRecordCount: 5,
+        f: 'json',
+      },
+      timeout: 15000,
+    });
+    const feats = response.data?.features;
+    return (feats && feats.length > 0) ? feats : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchPropertyData(address: string, county: string): Promise<PropertyEnrichmentData | null> {
@@ -156,48 +290,64 @@ async function fetchPropertyData(address: string, county: string): Promise<Prope
     return null;
   }
 
-  const searchAddr = extractStreetForSearch(address);
-  console.log(`  🔍 Searching: "${searchAddr}" in ${county}`);
+  const withDirs = extractStreetWithDirections(address);
+  const noDirs = extractStreetForSearch(address);
+  const parts = noDirs.split(' ').filter(Boolean);
+  const streetNum = /^\d+$/.test(parts[0] || '') ? parts[0] : null;
+  const streetName = parts.slice(streetNum ? 1 : 0, (streetNum ? 1 : 0) + 2).join(' ');
+  const justNumAndName = streetNum ? `${streetNum} ${streetName}` : streetName;
 
-  try {
-    const response = await axios.get(config.url, {
-      params: {
-        where: `${config.addressField} LIKE '%${searchAddr}%'`,
-        outFields: '*',
-        resultRecordCount: 5,
-        f: 'json',
-      },
-      timeout: 15000,
-    });
+  const rawStreet = sanitizeForArcGis(
+    address.split(',')[0].trim()
+      .replace(/\b(Suite|Ste|Apt|Unit|#)\s*\S*/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase()
+  );
+  const altNoDirs = noDirs.replace(/\bPKWY\b/, 'PKY');
 
-    if (!response.data.features || response.data.features.length === 0) {
-      const shortAddr = searchAddr.split(' ').slice(0, 3).join(' ');
-      console.log(`  ⚠  No exact match, trying shorter: "${shortAddr}"`);
+  const seen = new Set<string>();
+  const strategies: Array<{label: string; term: string}> = [];
+  const addStrategy = (label: string, term: string) => {
+    if (!seen.has(term)) { seen.add(term); strategies.push({ label, term }); }
+  };
 
-      const retry = await axios.get(config.url, {
-        params: {
-          where: `${config.addressField} LIKE '%${shortAddr}%'`,
-          outFields: '*',
-          resultRecordCount: 5,
-          f: 'json',
-        },
-        timeout: 15000,
-      });
+  addStrategy('full w/ directions', `%${withDirs}%`);
+  addStrategy('no directions', `%${noDirs}%`);
+  addStrategy('raw (unabbreviated)', `%${rawStreet}%`);
+  if (altNoDirs !== noDirs) addStrategy('alt abbreviation', `%${altNoDirs}%`);
+  if (streetNum && parts.length > 1) addStrategy('number + street', `${streetNum} ${parts[1]}%`);
+  const coreStreetWord = noDirs.split(' ').find(w => w.length > 3 && !/^\d+$/.test(w));
+  if (coreStreetWord && streetNum) addStrategy('number + core word', `${streetNum}%${coreStreetWord}%`);
+  addStrategy('short', `%${justNumAndName}%`);
 
-      if (!retry.data.features || retry.data.features.length === 0) {
-        console.log(`  ⚠  No data found in ${county}`);
-        return null;
+  const searchStrategies = strategies;
+
+  for (const strategy of searchStrategies) {
+    console.log(`  🔍 ${strategy.label}: "${strategy.term}" in ${county}`);
+    try {
+      const feats = await queryArcGis(config, strategy.term);
+      if (feats) {
+        if (!streetNum) {
+          const attrs = feats[0].attributes;
+          console.log(`  ✓  Found match (no street number to verify): "${attrs[config.addressField] || 'N/A'}"`);
+          return mapFeatureToEnrichment(attrs, config, county);
+        }
+        const matched = findBestMatch(feats, streetNum, config.addressField);
+        if (matched) {
+          console.log(`  ✓  Found match: "${matched[config.addressField] || 'N/A'}"`);
+          return mapFeatureToEnrichment(matched, config, county);
+        }
+        console.log(`  ⚠  ${feats.length} result(s) but none matched street number ${streetNum}`);
       }
-
-      return mapFeatureToEnrichment(retry.data.features[0].attributes, config, county);
+    } catch (error: any) {
+      console.log(`  ❌ API error: ${error.message}`);
+      return null;
     }
-
-    return mapFeatureToEnrichment(response.data.features[0].attributes, config, county);
-
-  } catch (error: any) {
-    console.log(`  ❌ API error: ${error.message}`);
-    return null;
   }
+
+  console.log(`  ⚠  No data found in ${county} after ${searchStrategies.length} attempts`);
+  return null;
 }
 
 function mapFeatureToEnrichment(attrs: any, config: CountyAPIConfig, county: string): PropertyEnrichmentData {
@@ -229,8 +379,13 @@ function mapFeatureToEnrichment(attrs: any, config: CountyAPIConfig, county: str
   if (config.fields.appraised_land) data.appraised_land = safeFloat(attrs[config.fields.appraised_land]);
   if (config.fields.appraised_improvements) data.appraised_improvements = safeFloat(attrs[config.fields.appraised_improvements]);
 
-  if (data.assessed_value && !data.annual_taxes) {
-    data.annual_taxes = Math.round(data.assessed_value * config.taxRate);
+  if (config.customMapper) {
+    config.customMapper(attrs, data);
+  }
+
+  const taxableVal = data.assessed_value || data.appraised_value;
+  if (taxableVal && !data.annual_taxes) {
+    data.annual_taxes = Math.round(taxableVal * config.taxRate);
   }
 
   return data;
@@ -317,7 +472,19 @@ async function enrichAllDeals(): Promise<void> {
         continue;
       }
 
-      const enrichedData = await fetchPropertyData(deal.address, county);
+      let enrichedData = await fetchPropertyData(deal.address, county);
+
+      const atlantaCrossBorder = ['atlanta', 'east point', 'college park'];
+      const cityLower = city.toLowerCase();
+      if (!enrichedData && state.toUpperCase() === 'GA' && atlantaCrossBorder.some(c => cityLower.includes(c))) {
+        if (county === 'Fulton County, GA' && COUNTY_APIS['DeKalb County, GA']) {
+          console.log(`  ↻  Trying DeKalb County (Atlanta cross-county fallback)...`);
+          enrichedData = await fetchPropertyData(deal.address, 'DeKalb County, GA');
+        } else if (county === 'DeKalb County, GA' && COUNTY_APIS['Fulton County, GA']) {
+          console.log(`  ↻  Trying Fulton County (Atlanta cross-county fallback)...`);
+          enrichedData = await fetchPropertyData(deal.address, 'Fulton County, GA');
+        }
+      }
 
       if (enrichedData) {
         const updated = await updateDeal(deal.id, enrichedData);
@@ -343,8 +510,7 @@ async function enrichAllDeals(): Promise<void> {
     console.log(`  Total:         ${deals.length}`);
     console.log('═══════════════════════════════════════════════════');
     console.log('\nSupported counties: ' + Object.keys(COUNTY_APIS).join(', '));
-    console.log('Unsupported counties hit: DeKalb GA, Cobb GA, Miami-Dade FL, Palm Beach FL');
-    console.log('(APIs offline or no property data endpoint available)');
+    console.log('Note: Cobb County GA GIS is offline — Marietta deals cannot be enriched currently.');
 
   } catch (error: any) {
     console.error('Fatal error:', error.message);
