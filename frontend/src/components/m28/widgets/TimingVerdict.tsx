@@ -47,7 +47,7 @@ export const TimingVerdict: React.FC<TimingVerdictProps> = ({ marketId }) => {
   let statusText = '';
   let actionText = '';
 
-  if (isLeading Ahead && divergence.divergence > 10) {
+  if (isLeadingAhead && divergence.divergence > 10) {
     statusColor = 'bg-green-50 border-green-300 text-green-800';
     statusIcon = '🟢';
     statusText = `Leading +${divergence.divergence.toFixed(1)}% ahead`;
