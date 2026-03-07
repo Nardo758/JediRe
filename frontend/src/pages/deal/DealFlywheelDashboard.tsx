@@ -932,7 +932,7 @@ function DealBibleTab() {
               { metric:"Equity Multiple",    underwritten:"2.4x",  current:"3.1x est",good:true },
               { metric:"Current DSCR",       underwritten:"1.22x", current:"1.54x",  good:true },
               { metric:"Debt Yield",         underwritten:"8.1%",  current:"9.8%",   good:true },
-              { metric:"Exit Cap (targeted)","5.25%",              current:"5.10% market",good:true },
+              { metric:"Exit Cap (targeted)",underwritten:"5.25%", current:"5.10% market",good:true },
               { metric:"Refi Risk",          underwritten:"LOW",   current:"LOW",    good:true },
             ].map((item, i) => (
               <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:8, alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${T.border}` }}>
