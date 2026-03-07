@@ -12,7 +12,8 @@ jedire_api = JediReAPI()
 
 async def analyze_property_zoning(
     address: str,
-    deal_id: Optional[str] = None
+    deal_id: Optional[str] = None,
+    lot_size: Optional[float] = None
 ) -> str:
     """
     Analyze zoning regulations and development potential for a property.
@@ -20,13 +21,18 @@ async def analyze_property_zoning(
     Args:
         address: Full property address
         deal_id: Optional deal ID if property exists in system
+        lot_size: Optional lot size in acres (required if deal_id not provided)
     
     Returns:
         Formatted analysis of zoning, allowed uses, and development potential
+    
+    Note:
+        ZoningAgent requires lot size to calculate development potential.
+        If not provided, analysis may be limited.
     """
     
     try:
-        result = await jedire_api.analyze_zoning(address, deal_id)
+        result = await jedire_api.analyze_zoning(address, deal_id, lot_size)
         
         # Extract key fields with safe defaults
         zoning = result.get('zoningDistrict', 'Unknown')
@@ -182,7 +188,7 @@ Financial Analysis for Deal {deal_id}:
 AVAILABLE_TOOLS = [
     {
         "name": "analyze_property_zoning",
-        "description": "Analyze zoning regulations and development potential for a property address. Use when user asks about: what can be built, zoning restrictions, unit capacity, development potential, allowed uses.",
+        "description": "Analyze zoning regulations and development potential for a property address. Use when user asks about: what can be built, zoning restrictions, unit capacity, development potential, allowed uses. NOTE: Requires lot size in acres for full analysis - extract from user message if provided, or ask user if critical.",
         "function": analyze_property_zoning,
         "parameters": {
             "type": "object",
@@ -194,6 +200,10 @@ AVAILABLE_TOOLS = [
                 "deal_id": {
                     "type": "string",
                     "description": "Optional: Deal ID if property is in the system"
+                },
+                "lot_size": {
+                    "type": "number",
+                    "description": "Optional: Lot size in acres (e.g., 2.5). Required for calculating max units and development potential. Extract from user message if mentioned (e.g., '2.5 acre lot', '100,000 sq ft' = 2.3 acres)"
                 }
             },
             "required": ["address"]
