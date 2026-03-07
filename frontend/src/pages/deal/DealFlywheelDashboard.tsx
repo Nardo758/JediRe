@@ -987,7 +987,7 @@ function DealBibleTab() {
 // ════════════════════════════════════════════════════════════════
 // ROOT COMPONENT
 // ════════════════════════════════════════════════════════════════
-export default function M22PostCloseIntelligence() {
+export function M22PostCloseIntelligence() {
   const [tab, setTab] = useState("performance");
 
   const tabs = [
