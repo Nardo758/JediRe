@@ -16,7 +16,6 @@ import {
   AIAgentSection,
   FinancialSection,
   StrategySection,
-  ExitSection,
   DueDiligenceSection,
   PropertiesSection,
   DocumentsSection,
@@ -319,7 +318,7 @@ export const DealPageEnhanced: React.FC = () => {
             </DealSection>
           </div>
 
-          {/* 9. Exit Strategy */}
+          {/* 9. Exit Strategy — now part of Debt, Equity & Exit module */}
           <div id="section-exit">
             <DealSection
               id="exit"
@@ -327,7 +326,9 @@ export const DealPageEnhanced: React.FC = () => {
               title="Exit Strategy"
               isPremium={true}
             >
-              <ExitSection deal={deal} />
+              <div className="p-6 text-center text-[#64748b]">
+                <p className="text-sm">Exit strategy analysis has been integrated into the <strong>Debt, Equity & Exit</strong> module.</p>
+              </div>
             </DealSection>
           </div>
 

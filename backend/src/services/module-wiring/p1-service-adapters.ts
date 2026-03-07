@@ -24,8 +24,9 @@ function getProFormaService() {
 function getScenarioService() {
   return require('../scenario-generation.service').scenarioGenerationService;
 }
+// Apartment market service removed - feature disabled
 function getApartmentMarketService() {
-  return require('../apartmentMarketService').default;
+  return null;
 }
 
 // ============================================================================
@@ -315,6 +316,12 @@ export async function wireCompetitionToMarket(
 ): Promise<void> {
   try {
     const apartmentService = getApartmentMarketService();
+    
+    // Apartment service disabled
+    if (!apartmentService) {
+      console.log('Apartment market service disabled - skipping competition sync');
+      return;
+    }
 
     // Fetch comparable properties
     const comps = await apartmentService.fetchPropertiesNearDeal(

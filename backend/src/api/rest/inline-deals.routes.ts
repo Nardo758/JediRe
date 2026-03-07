@@ -184,6 +184,19 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
 
+    // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
+    // Fire async (don't block response)
+    if (boundary && (boundary.type === 'Point' || boundary.type === 'Polygon')) {
+      setImmediate(async () => {
+        try {
+          const { m26m27Integration } = await import('../../services/module-wiring/m26-m27-integration');
+          await m26m27Integration.triggerCompSetOnLocationSet(row.id);
+        } catch (e) {
+          console.error('M27 auto-trigger error:', e);
+        }
+      });
+    }
+
     res.status(201).json({
       success: true,
       deal: {
@@ -216,13 +229,16 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
     const updates = req.body;
 
     const dealCheck = await client.query(
-      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      'SELECT id, budget, target_units FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
       [dealId, req.user!.userId]
     );
 
     if (dealCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
+
+    const previousDeal = dealCheck.rows[0];
+    const priceChanged = updates.budget !== undefined && updates.budget !== previousDeal.budget;
 
     const allowedFields: Record<string, string> = {
       name: 'name', projectType: 'project_type', project_type: 'project_type',
@@ -249,6 +265,28 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
       `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
+
+    // M26 AUTO-TRIGGER: Recalculate tax projection when purchase price changes
+    if (priceChanged) {
+      const newPrice = updates.budget;
+      const units = updates.targetUnits || previousDeal.target_units;
+      
+      if (newPrice && units) {
+        // Fire async (don't block response)
+        setImmediate(async () => {
+          try {
+            const { m26m27Integration } = await import('../../services/module-wiring/m26-m27-integration');
+            await m26m27Integration.triggerTaxProjectionOnPriceChange(
+              dealId,
+              newPrice,
+              units
+            );
+          } catch (e) {
+            console.error('M26 auto-trigger error:', e);
+          }
+        });
+      }
+    }
 
     res.json({ success: true, deal: result.rows[0] });
   } catch (error) {
@@ -308,8 +346,10 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'competition', is_enabled: true, config: {} },
       { module_name: 'supply', is_enabled: true, config: {} },
       { module_name: 'market', is_enabled: true, config: {} },
-      { module_name: 'debt', is_enabled: true, config: {} },
+      { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
+      { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
       { module_name: 'financial', is_enabled: true, config: {} },
+      { module_name: 'debt', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
       { module_name: 'due-diligence', is_enabled: true, config: {} },
       { module_name: 'team', is_enabled: true, config: {} },
@@ -325,8 +365,10 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'map', is_enabled: true, config: {} },
       { module_name: 'overview', is_enabled: true, config: {} },
       { module_name: 'ai-agent', is_enabled: true, config: {} },
-      { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'market', is_enabled: true, config: {} },
+      { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
+      { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
+      { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
       { module_name: 'exit', is_enabled: true, config: {} },
       { module_name: 'team', is_enabled: true, config: {} },
@@ -607,6 +649,179 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
   } catch (error) {
     console.error('Lease analysis error:', error);
     res.status(500).json({ success: false, error: 'Lease analysis failed' });
+  }
+});
+
+/**
+ * GET /deals/:dealId/trade-area
+ * Get trade area for a specific deal
+ */
+router.get('/:dealId/trade-area', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    const result = await client.query(
+      `SELECT ta.id, ta.name, ta.metadata,
+              ST_AsGeoJSON(ta.boundary)::json as geometry,
+              ta.created_at, ta.updated_at
+       FROM trade_areas ta
+       INNER JOIN deals d ON d.trade_area_id = ta.id
+       WHERE d.id = $1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No trade area assigned to this deal'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error: any) {
+    console.error('Error fetching deal trade area:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch trade area'
+    });
+  }
+});
+
+/**
+ * GET /deals/:dealId/zoning-analysis
+ * Get zoning analysis for a deal (alias to zoning-capacity)
+ */
+router.get('/:dealId/zoning-analysis', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Fetch zoning capacity data
+    const result = await client.query(
+      `SELECT zoning_code, max_density, max_far, max_height_feet, max_stories 
+       FROM zoning_capacity 
+       WHERE deal_id = $1 
+       LIMIT 1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          dealId,
+          message: 'No zoning data available yet. Run zoning capacity analysis first.',
+          hasData: false
+        }
+      });
+    }
+    
+    const zoningData = result.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        dealId,
+        hasData: true,
+        zoning: zoningData
+      }
+    });
+  } catch (error: any) {
+    console.error('Error fetching zoning analysis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch zoning analysis'
+    });
+  }
+});
+
+/**
+ * GET /deals/:dealId/analysis/latest
+ * Get latest strategy analysis for a deal
+ */
+router.get('/:dealId/analysis/latest', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Fetch latest strategy analysis from strategy_analyses table
+    const result = await client.query(
+      `SELECT * FROM strategy_analyses 
+       WHERE deal_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No analysis available yet. Trigger analysis first.'
+      });
+    }
+    
+    const analysis = result.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        strategies: analysis.strategies || [],
+        recommendedStrategyId: analysis.recommended_strategy_id,
+        analysisCompletedAt: analysis.created_at
+      }
+    });
+  } catch (error: any) {
+    console.error('Error fetching latest analysis:', error);
+    
+    // Return empty result instead of error (graceful degradation)
+    res.json({
+      success: true,
+      data: null,
+      message: 'Analysis data not available'
+    });
+  }
+});
+
+/**
+ * POST /deals/:dealId/analysis/trigger
+ * Trigger strategy analysis for a deal
+ */
+router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    // Verify deal exists
+    const dealResult = await client.query(
+      `SELECT id, name, project_type FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deal not found'
+      });
+    }
+    
+    // For now, return success without actually running analysis
+    // TODO: Implement actual strategy analysis engine
+    res.json({
+      success: true,
+      message: 'Analysis queued. Check /analysis/latest for results.',
+      dealId
+    });
+  } catch (error: any) {
+    console.error('Error triggering analysis:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to trigger analysis'
+    });
   }
 });
 

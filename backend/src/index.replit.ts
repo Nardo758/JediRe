@@ -12,7 +12,6 @@ import path from 'path';
 import { requireAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
-import { apartmentSyncScheduler } from './services/apartment-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
@@ -31,11 +30,7 @@ import dealsRouter from './api/rest/inline-deals.routes';
 import tasksRouter from './api/rest/inline-tasks.routes';
 import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
-import { createApartmentSyncRoutes } from './api/rest/inline-apartment-sync.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
-
-import { initializeApartmentLocatorIntegration } from './services/apartmentLocatorIntegration';
-import { ApartmentDataSyncService } from './services/apartmentDataSync';
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
@@ -51,10 +46,10 @@ import ddChecklistsRouter from './api/rest/dd-checklists.routes';
 import dashboardRouter from './api/rest/dashboard.routes';
 import gmailRouter from './api/rest/gmail.routes';
 import marketResearchRoutes from './api/rest/marketResearch.routes';
-import apartmentMarketRoutes from './api/rest/apartmentMarket.routes';
+import supplyRoutes from './api/rest/supply.routes';
+import demandRoutes from './api/rest/demand.routes';
 import trafficPredictionRoutes from './api/rest/trafficPrediction.routes';
 import propertyProxyRoutes from './api/rest/property-proxy.routes';
-import marketIntelRoutes from './api/rest/marketIntel.routes';
 import leasingTrafficRoutes from './api/rest/leasing-traffic.routes';
 import moduleLibrariesRouter from './api/rest/module-libraries.routes';
 import marketIntelligenceRouter from './api/rest/market-intelligence.routes';
@@ -81,7 +76,9 @@ import uploadTemplatesRouter from './api/rest/upload-templates.routes';
 import uploadRouter from './api/rest/upload.routes';
 import compQueryRouter from './api/rest/comp-query.routes';
 import proformaGeneratorRouter from './api/rest/proforma-generator.routes';
+import proformaRouter from './api/rest/proforma.routes';
 import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
+import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
 import municodeRouter from './api/rest/municode.routes';
@@ -98,7 +95,12 @@ import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
+import m26TaxRouter from './api/rest/m26-tax.routes';
+import m27CompsRouter from './api/rest/m27-comps.routes';
+import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
+import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
+import { startM28Scheduler } from './services/m28-scheduler.service';
 
 dotenv.config();
 
@@ -107,8 +109,8 @@ const isProduction = process.env.NODE_ENV === 'production';
 const httpServer = createServer(app);
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5000', 'http://0.0.0.0:5000'];
-const allowedOriginPatterns = [/\.replit\.dev$/, /\.replit\.app$/];
+  : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://localhost:4000', 'http://0.0.0.0:4000', 'http://localhost:3000'];
+const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/, /\.repl\.co(:\d+)?$/];
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
@@ -159,20 +161,19 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+
+// Admin routes MUST be registered before generic /api/v1 routes
+import dataTrackerRoutes from './api/rest/data-tracker.routes';
+app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+import adminRouter from './api/rest/admin.routes';
+app.use('/api/v1/admin', adminRouter);
+app.use('/api/v1/admin-api', adminApiKeyRouter);
+
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/inbox', inboxRouter);
 app.use('/api/v1', zoningAnalyzeRouter);
-
-initializeApartmentLocatorIntegration({
-  baseUrl: process.env.APARTMENT_LOCATOR_API_URL || 'https://apartment-locator-ai-real.replit.app',
-  timeout: 30000,
-  apiKey: process.env.APARTMENT_LOCATOR_API_KEY || process.env.API_KEY_APARTMENT_LOCATOR,
-});
-
-const apartmentSyncService = new ApartmentDataSyncService(pool);
-app.use('/api/v1/apartment-sync', createApartmentSyncRoutes(apartmentSyncService));
 
 app.use('/api/v1/f40', f40PerformanceRoutes);
 app.use('/api/v1/opportunities', opportunityEngineRoutes);
@@ -187,10 +188,12 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1', m26TaxRouter);
+app.use('/api/v1', m27CompsRouter);
+app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 
-// Data Tracker - public admin stats (no auth required)
-import dataTrackerRoutes from './api/rest/data-tracker.routes';
-app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
+app.use('/api/v1', taxCompAnalysisRouter);
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
@@ -207,7 +210,7 @@ app.use('/api/v1/deals', requireAuth, geographicContextRoutes);
 app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
-app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
@@ -215,8 +218,8 @@ app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
 app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
 app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
-app.use('/api/v1/apartment-market', requireAuth, apartmentMarketRoutes);
-app.use('/api/v1/market-intel', requireAuth, marketIntelRoutes);
+app.use('/api/v1', requireAuth, supplyRoutes);
+app.use('/api/v1', requireAuth, demandRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
 app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
@@ -263,6 +266,34 @@ app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/correlations', requireAuth, correlationRouter);
 app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
+
+app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
+
+app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_trends WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_submarkets WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
@@ -346,18 +377,11 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   console.log('='.repeat(60));
   
   try {
+    startM28Scheduler();
     emailSyncScheduler.start(15);
     console.log('Email sync scheduler started (every 15 minutes)');
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
-  }
-
-  try {
-    apartmentSyncScheduler.initialize(apartmentSyncService);
-    apartmentSyncScheduler.start();
-    console.log('Apartment data sync scheduler started (weekly: Saturday 9:00 AM EST)');
-  } catch (error) {
-    console.error('Failed to start apartment sync scheduler:', error);
   }
 });
 
@@ -369,13 +393,6 @@ process.on('SIGTERM', async () => {
     console.log('Email sync scheduler stopped');
   } catch (error) {
     console.error('Error stopping email sync scheduler:', error);
-  }
-
-  try {
-    apartmentSyncScheduler.stop();
-    console.log('Apartment sync scheduler stopped');
-  } catch (error) {
-    console.error('Error stopping apartment sync scheduler:', error);
   }
   
   await pool.end();

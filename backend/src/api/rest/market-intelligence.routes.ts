@@ -201,7 +201,9 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       }
 
       // Get user's tracked markets with coverage and vitals
-      const marketsResult = await pool.query(
+      let marketsResult;
+      try {
+        marketsResult = await pool.query(
         `SELECT 
           ump.market_id,
           ump.display_name,
@@ -273,6 +275,27 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       };
 
       res.json(response);
+      } catch (queryError: any) {
+        // If tables don't exist yet, return empty state
+        if (queryError.message?.includes('does not exist')) {
+          console.log('Market tables not yet created, returning empty state');
+          marketsResult = { rows: [] };
+        } else {
+          throw queryError;
+        }
+      }
+
+      // Fallback for empty/missing data
+      if (!marketsResult || marketsResult.rows.length === 0) {
+        return res.json({
+          active_markets_count: 0,
+          total_data_points: 0,
+          active_deals_count: 0,
+          markets: [],
+          alerts: []
+        });
+      }
+
     } catch (error) {
       console.error('Error fetching market overview:', error);
       res.status(500).json({ error: 'Failed to fetch market overview' });

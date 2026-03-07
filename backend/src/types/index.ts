@@ -30,13 +30,16 @@ export interface Property {
   longitude: number;
   zoningDistrictId?: string;
   zoningCode?: string;
+  parcelId?: string; // County assessor parcel/APN number
   lotSizeSqft?: number;
+  lotSizeAcres?: number; // Easier for development calculations
   buildingSqft?: number;
   yearBuilt?: number;
   bedrooms?: number;
   bathrooms?: number;
   currentUse?: string;
   propertyType?: 'residential' | 'commercial' | 'mixed-use' | 'vacant';
+  landCost?: number; // Land acquisition cost (user-provided)
   analyzedBy?: string;
   createdAt: Date;
   updatedAt: Date;

@@ -122,10 +122,6 @@ export const secrets = {
       huggingfaceToken: getEnv('HF_TOKEN'),
     },
 
-    // External Integrations
-    apartmentLocator: {
-      apiKey: getEnv('API_KEY_APARTMENT_LOCATOR'),
-    },
   },
 
   // ============================================
@@ -138,7 +134,6 @@ export const secrets = {
       .map(origin => origin.trim()),
     
     apiKeys: {
-      apartmentLocator: getEnv('API_KEY_APARTMENT_LOCATOR'),
     },
     
     rateLimit: {

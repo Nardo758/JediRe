@@ -34,6 +34,8 @@ export const useMarketAnalysisData = (dealId: string, radius: number = 1): Marke
     setError(null);
 
     try {
+      // NOTE: apartment-sync endpoints removed - these will return 404 and gracefully fall back to mock data
+      // TODO: Replace with alternative market data sources
       const [submarketRes, demandSignalsRes, userAnalyticsRes, snapshotRes] = await Promise.allSettled([
         apiClient.get('/api/v1/apartment-sync/submarkets', { params: { city: 'Atlanta' } }),
         apiClient.get('/api/v1/apartment-sync/demand-signals'),

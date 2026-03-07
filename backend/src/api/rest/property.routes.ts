@@ -190,6 +190,9 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
     const updates = req.body;
     const allowedFields = [
       'lot_size_sqft',
+      'lot_size_acres',
+      'parcel_id',
+      'land_cost',
       'building_sqft',
       'year_built',
       'bedrooms',

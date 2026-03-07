@@ -14,6 +14,53 @@ const router = Router();
 router.use(requireAuth);
 
 /**
+ * GET /api/v1/financial-models
+ * List all financial models
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    
+    const result = await query(
+      `SELECT 
+         fm.id, 
+         fm.deal_id, 
+         fm.name, 
+         fm.version, 
+         fm.created_at, 
+         fm.updated_at,
+         d.name as deal_name
+       FROM financial_models fm
+       LEFT JOIN deals d ON d.id = fm.deal_id
+       WHERE fm.user_id = $1
+       ORDER BY fm.updated_at DESC
+       LIMIT 50`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error: any) {
+    logger.error('Error listing financial models', { error: error.message });
+    
+    // Return empty list if table doesn't exist
+    if (error.message?.includes('does not exist')) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch financial models'
+    });
+  }
+});
+
+/**
  * POST /api/v1/financial-models
  * Create or save a financial model
  */

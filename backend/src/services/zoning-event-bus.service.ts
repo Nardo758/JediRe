@@ -42,4 +42,5 @@ export const ZONING_EVENTS = {
   ANALYSIS_COMPLETE: 'zoning.analysis_complete',
   CODE_UPDATED: 'zoning.code_updated',
   MATURITY_CHANGED: 'zoning.maturity_changed',
+  VERIFICATION_COMPLETED: 'zoning.verification_completed',
 } as const;

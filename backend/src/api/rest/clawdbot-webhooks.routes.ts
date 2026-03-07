@@ -205,10 +205,12 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           SELECT 
             dp.id,
             dp.property_id as "propertyId",
-            CONCAT_WS(', ', p.address_line1, p.address_line2) as address,
+            p.address_line1 as address,
             p.city,
             p.state_code as state,
-            p.zip_code as "zipCode"
+            p.zip as "zipCode",
+            p.lat,
+            p.lng
           FROM deal_properties dp
           LEFT JOIN properties p ON p.id = dp.property_id
           WHERE dp.deal_id = $1
@@ -395,6 +397,269 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           errors: errorsResult.rows,
           total: errorsResult.rowCount,
           timeRange: `Last ${hours} hours`,
+        };
+        break;
+      }
+
+      case 'get_zoning_profile': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const zoningResult = await pool.query(`
+          SELECT 
+            dzp.*,
+            zd.district_name,
+            zd.max_far as zd_max_far,
+            zd.max_building_height_ft as zd_max_height_ft,
+            zd.max_units_per_acre as zd_max_units_per_acre,
+            zd.min_parking_per_unit as zd_min_parking_per_unit,
+            zd.permitted_uses,
+            zd.conditional_uses
+          FROM deal_zoning_profiles dzp
+          LEFT JOIN zoning_districts zd ON zd.zoning_code = dzp.base_district_code
+          WHERE dzp.deal_id = $1
+          ORDER BY dzp.created_at DESC
+          LIMIT 1
+        `, [params.dealId]).catch((err: any) => { logger.error('Zoning profile query error:', err.message); return { rows: [] }; });
+
+        if (zoningResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'No zoning profile found for this deal. Create one first.',
+          });
+        }
+
+        result = {
+          zoningProfile: zoningResult.rows[0],
+        };
+        break;
+      }
+
+      case 'get_market_intelligence': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const miResult = await pool.query(
+          `SELECT module_outputs FROM deals WHERE id = $1`,
+          [params.dealId]
+        ).catch(() => ({ rows: [] }));
+
+        const moduleOutputs = miResult.rows[0]?.module_outputs;
+        if (!moduleOutputs || (!moduleOutputs.marketIntelligence && !moduleOutputs.market)) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'No market intelligence found for this deal. Run analysis first.',
+          });
+        }
+
+        result = {
+          marketIntelligence: moduleOutputs.marketIntelligence || moduleOutputs.market || null,
+        };
+        break;
+      }
+
+      case 'get_design': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const designResult = await pool.query(
+          `SELECT module_outputs FROM deals WHERE id = $1`,
+          [params.dealId]
+        ).catch(() => ({ rows: [] }));
+
+        const designOutputs = designResult.rows[0]?.module_outputs;
+        if (!designOutputs || !designOutputs.design3D) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'No 3D design found for this deal. Create one first.',
+          });
+        }
+
+        result = {
+          design: designOutputs.design3D,
+        };
+        break;
+      }
+
+      case 'get_proforma': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const proformaResult = await pool.query(`
+          SELECT id, deal_id, model_type, assumptions, results, status, created_at
+          FROM deal_financial_models
+          WHERE deal_id = $1 AND status = 'complete'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [params.dealId]).catch(() => ({ rows: [] }));
+
+        if (proformaResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'No completed pro forma found for this deal. Build one first.',
+          });
+        }
+
+        result = {
+          proforma: proformaResult.rows[0],
+        };
+        break;
+      }
+
+      case 'get_capital_structure': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const capResult = await pool.query(
+          `SELECT module_outputs FROM deals WHERE id = $1`,
+          [params.dealId]
+        ).catch(() => ({ rows: [] }));
+
+        const capOutputs = capResult.rows[0]?.module_outputs;
+        if (!capOutputs || !capOutputs.capitalStructure) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'No capital structure found for this deal. Create one first.',
+          });
+        }
+
+        result = {
+          capitalStructure: capOutputs.capitalStructure,
+        };
+        break;
+      }
+
+      case 'update_deal': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const allowedUpdates = ['budget', 'target_units', 'timeline_start', 'timeline_end', 'status', 'description'];
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        for (const field of allowedUpdates) {
+          if (params[field] !== undefined) {
+            updates.push(`${field} = $${paramIndex}`);
+            values.push(params[field]);
+            paramIndex++;
+          }
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'No valid fields to update. Allowed: ' + allowedUpdates.join(', '),
+          });
+        }
+
+        updates.push('updated_at = NOW()');
+        values.push(params.dealId);
+
+        const updateResult = await pool.query(`
+          UPDATE deals
+          SET ${updates.join(', ')}
+          WHERE id = $${paramIndex}
+          RETURNING *
+        `, values);
+
+        if (updateResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'Deal not found',
+          });
+        }
+
+        result = {
+          message: 'Deal updated successfully',
+          deal: updateResult.rows[0],
+        };
+        break;
+      }
+
+      case 'update_property': {
+        if (!params?.propertyId && !params?.dealId) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Either propertyId or dealId is required',
+          });
+        }
+
+        let propertyId = params.propertyId;
+
+        // If dealId provided, get the first property for that deal
+        if (!propertyId && params.dealId) {
+          const dealPropResult = await pool.query(`
+            SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1
+          `, [params.dealId]);
+          
+          if (dealPropResult.rows.length === 0) {
+            return res.status(404).json({
+              error: 'Not Found',
+              message: 'No property found for this deal',
+            });
+          }
+          
+          propertyId = dealPropResult.rows[0].property_id;
+        }
+
+        const allowedUpdates = [
+          'parcel_id',
+          'lot_size_acres',
+          'land_cost',
+          'year_built',
+          'property_type',
+          'lot_acres',
+          'total_sf',
+          'units',
+          'stories',
+        ];
+
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
+        for (const field of allowedUpdates) {
+          if (params[field] !== undefined) {
+            updates.push(`${field} = $${paramIndex}`);
+            values.push(params[field]);
+            paramIndex++;
+          }
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'No valid fields to update. Allowed: ' + allowedUpdates.join(', '),
+          });
+        }
+
+        updates.push('updated_at = NOW()');
+        values.push(propertyId);
+
+        const updateResult = await pool.query(`
+          UPDATE properties
+          SET ${updates.join(', ')}
+          WHERE id = $${paramIndex}
+          RETURNING *
+        `, values);
+
+        if (updateResult.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Not Found',
+            message: 'Property not found',
+          });
+        }
+
+        result = {
+          message: 'Property updated successfully',
+          property: updateResult.rows[0],
         };
         break;
       }

@@ -304,8 +304,8 @@ export class ZoningTriangulationService {
     const accuracySum = parcelAccuracy + categoryAccuracy + municodeAccuracy;
     const newWeights = accuracySum > 0
       ? {
-          parcel: parcelAccuracy / accuracySum,
-          category: categoryAccuracy / accuracySum,
+          countyParcel: parcelAccuracy / accuracySum,
+          countyCategory: categoryAccuracy / accuracySum,
           municode: municodeAccuracy / accuracySum,
         }
       : DEFAULT_WEIGHTS;
@@ -345,7 +345,7 @@ export class ZoningTriangulationService {
         timelineCount > 0 ? totalTimelineBias / timelineCount : 0,
         densityCount > 0 ? totalDensityBias / densityCount : 0,
         farCount > 0 ? totalFarBias / farCount : 0,
-        newWeights.parcel, newWeights.category, newWeights.municode,
+        newWeights.countyParcel, newWeights.countyCategory, newWeights.municode,
         maturityLevel, confidenceCap,
       ]
     );

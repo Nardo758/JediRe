@@ -53,6 +53,34 @@ export interface DealData {
   year_built?: number;
   lot_size_acres?: number;
   
+  // Square footage breakdown
+  total_sqft?: number;
+  habitable_sqft?: number;        // Residential unit space
+  amenity_sqft?: number;          // Gym, pool, clubhouse
+  leasing_office_sqft?: number;   // Leasing office + common areas
+  
+  // Building details
+  building_count?: number;
+  buildings?: Array<{
+    building_id?: string;
+    sqft?: number;
+    stories?: number;
+    year_built?: number;
+    use_code?: string;
+  }>;
+  
+  // Assessor data
+  assessed_value?: number;
+  assessed_land?: number;
+  assessed_improvements?: number;
+  annual_taxes?: number;
+  owner_name?: string;
+  use_code?: string;              // Land use classification code
+  
+  // Enrichment tracking
+  enrichment_source?: string;     // "Fulton County, GA"
+  enriched_at?: string;           // ISO timestamp
+  
   // Broker's claims (PRESERVED AS-IS)
   broker_rent_1br?: number;
   broker_rent_2br?: number;
@@ -113,6 +141,39 @@ export interface PlatformIntel {
     cap_rate: number;
     sale_date: string;
     distance_miles: number;
+  }>;
+  
+  // Historical tracking (for trend analysis)
+  historical_taxes?: Array<{
+    year: number;
+    assessed_value: number;
+    tax_amount: number;
+    millage_rate?: number;
+    reassessment_trigger?: 'sale' | 'construction' | 'renovation' | 'appeal' | 'scheduled' | null;
+    linked_sale_date?: string; // ISO date if triggered by sale
+    linked_construction_event?: string; // Description of construction/renovation
+    construction_completion_date?: string; // ISO date when construction completed
+  }>;
+  
+  historical_sales?: Array<{
+    sale_date: string;
+    sale_price: number;
+    price_per_unit?: number;
+    buyer?: string;
+    seller?: string;
+    sale_type?: 'arms_length' | 'distressed' | 'family_transfer' | 'other';
+  }>;
+  
+  // Construction/renovation events
+  construction_events?: Array<{
+    event_type: 'new_construction' | 'major_renovation' | 'addition' | 'conversion';
+    completion_date: string; // Certificate of Occupancy date
+    description: string;
+    cost?: number; // Construction cost
+    units_added?: number;
+    sqft_added?: number;
+    pre_construction_assessment?: number;
+    post_construction_assessment?: number;
   }>;
   
   // Property-specific intel
