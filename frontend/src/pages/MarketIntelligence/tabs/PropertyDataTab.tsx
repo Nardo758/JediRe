@@ -65,6 +65,11 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ submarket: '', minYear: '', maxYear: '', search: '', minUnits: '', maxUnits: '', minPrice: '', maxPrice: '' });
+  const [fetchAttempted, setFetchAttempted] = useState(false);
+  const updateFilter = (update: (prev: typeof filters) => typeof filters) => {
+    setFilters(update);
+    setPage(1);
+  };
   const [exportLoading, setExportLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [enriching, setEnriching] = useState(false);
@@ -89,8 +94,10 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         const data = await res.json();
         setLiveProperties(data.properties || []);
         setTotal(data.total || 0);
+        setFetchAttempted(true);
       } catch (err) {
         console.error('Failed to fetch properties:', err);
+        setFetchAttempted(true);
       } finally {
         setLoading(false);
       }
@@ -154,7 +161,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
   ];
 
   const rows = isAtlanta
-    ? (liveProperties.length > 0 ? liveProperties.map(mapLiveToRow) : atlantaRows)
+    ? (fetchAttempted ? liveProperties.map(mapLiveToRow) : atlantaRows)
     : [];
 
   const handleSort = (col: string) => {
@@ -249,7 +256,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             <select
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               value={filters.submarket}
-              onChange={(e) => setFilters(f => ({ ...f, submarket: e.target.value }))}
+              onChange={(e) => updateFilter(f => ({ ...f, submarket: e.target.value }))}
             >
               <option value="">All Submarkets</option>
               <option value="Midtown">Midtown</option>
@@ -277,14 +284,14 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 type="number"
                 placeholder="Min"
                 value={filters.minUnits}
-                onChange={(e) => setFilters(f => ({ ...f, minUnits: e.target.value }))}
+                onChange={(e) => updateFilter(f => ({ ...f, minUnits: e.target.value }))}
                 className="w-1/2 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
               <input
                 type="number"
                 placeholder="Max"
                 value={filters.maxUnits}
-                onChange={(e) => setFilters(f => ({ ...f, maxUnits: e.target.value }))}
+                onChange={(e) => updateFilter(f => ({ ...f, maxUnits: e.target.value }))}
                 className="w-1/2 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -296,14 +303,14 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 type="number"
                 placeholder="Min"
                 value={filters.minPrice}
-                onChange={(e) => setFilters(f => ({ ...f, minPrice: e.target.value }))}
+                onChange={(e) => updateFilter(f => ({ ...f, minPrice: e.target.value }))}
                 className="w-1/2 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
               <input
                 type="number"
                 placeholder="Max"
                 value={filters.maxPrice}
-                onChange={(e) => setFilters(f => ({ ...f, maxPrice: e.target.value }))}
+                onChange={(e) => updateFilter(f => ({ ...f, maxPrice: e.target.value }))}
                 className="w-1/2 rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -318,7 +325,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 type="text"
                 placeholder="Search properties..."
                 value={filters.search}
-                onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                onChange={(e) => updateFilter(f => ({ ...f, search: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </div>
@@ -407,6 +414,41 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         </div>
         <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
           <span>Showing {sortedRows.length} of {total > 0 ? total.toLocaleString() : '1,028'} properties{liveProperties.length > 0 && <span className="ml-1 text-green-600 font-medium">· Live</span>}</span>
+          {total > 50 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(1)}
+                disabled={page <= 1}
+                className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ««
+              </button>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ‹
+              </button>
+              <span className="px-2 font-medium text-gray-700">
+                Page {page} of {Math.ceil(total / 50)}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(Math.ceil(total / 50), p + 1))}
+                disabled={page >= Math.ceil(total / 50)}
+                className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ›
+              </button>
+              <button
+                onClick={() => setPage(Math.ceil(total / 50))}
+                disabled={page >= Math.ceil(total / 50)}
+                className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                »»
+              </button>
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={handleExportCSV}

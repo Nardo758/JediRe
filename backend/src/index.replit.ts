@@ -195,6 +195,9 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
+app.use('/api/v1/markets', marketIntelligenceRouter(pool));
+app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -228,8 +231,6 @@ app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
-app.use('/api/v1/markets', requireAuth, marketIntelligenceRouter(pool));
-app.use('/api/v1/markets', requireAuth, createEnhancedMarketIntelligenceRoutes(pool));
 app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
 app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
