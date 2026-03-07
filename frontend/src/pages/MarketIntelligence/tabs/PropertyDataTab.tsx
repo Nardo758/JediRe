@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { SIGNAL_GROUPS } from '../signalGroups';
 import {
   exportToCSV,
@@ -53,6 +54,7 @@ interface PropertyRow {
 }
 
 const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
+  const navigate = useNavigate();
   const isAtlanta = marketId === 'atlanta';
   const [selectedProperty, setSelectedProperty] = useState<PropertyRow | null>(null);
   const [sortCol, setSortCol] = useState<string>('property');
@@ -368,8 +370,13 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               ) : sortedRows.length > 0 ? sortedRows.map((row) => (
                 <tr
                   key={row.id}
-                  onClick={() => setSelectedProperty(selectedProperty?.id === row.id ? null : row)}
-                  className={`border-b border-gray-50 cursor-pointer transition-colors ${selectedProperty?.id === row.id ? 'bg-blue-50' : 'hover:bg-blue-50/30'}`}
+                  onClick={() => {
+                    const propertyId = row.rawPropertyId || `P-${marketId.toUpperCase()}-${String(row.id).padStart(5, '0')}`;
+                    navigate(`/market-intelligence/property/${propertyId}`, { 
+                      state: { from: 'Property Data' }
+                    });
+                  }}
+                  className="border-b border-gray-50 cursor-pointer transition-colors hover:bg-blue-50/30"
                 >
                   <td className="px-4 py-3 font-medium text-gray-900">{row.property}</td>
                   <td className="px-4 py-3 text-gray-600">{row.submarket}</td>
