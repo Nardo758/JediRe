@@ -38,6 +38,28 @@ async function main() {
         console.log(`  ${icon} ${r.metro}: ${r.properties} properties, avg rent $${r.avg_rent}`);
       });
       
+    } else if (city) {
+      const stateMap: Record<string, string> = {
+        'Atlanta': 'GA', 'Houston': 'TX', 'Dallas': 'TX', 'Austin': 'TX',
+        'San Antonio': 'TX', 'Charlotte': 'NC', 'Nashville': 'TN',
+        'Orlando': 'FL', 'Tampa': 'FL', 'Jacksonville': 'FL', 'Miami': 'FL'
+      };
+      const state = stateMap[city] || 'GA';
+      console.log(`📊 Syncing ${city}, ${state}...\n`);
+      
+      const result = await apartmentLocatorSyncService.syncCity(city, state);
+      
+      if (result.success) {
+        console.log(`\n✅ ${city} Sync Complete!\n`);
+        console.log('Stats:');
+        console.log(`  Properties Inserted: ${result.stats.properties_inserted}`);
+        console.log(`  Properties Updated: ${result.stats.properties_updated}`);
+        console.log(`  Total Properties: ${result.stats.total_properties}`);
+        console.log(`  Avg Rent: $${result.stats.market_data?.pricing?.avg_rent ?? 'N/A'}`);
+      } else {
+        console.log('\n❌ Sync Failed');
+        console.log('Error:', result.stats.error);
+      }
     } else {
       console.log('📊 Syncing Atlanta...\n');
       
@@ -50,8 +72,10 @@ async function main() {
         console.log(`  Properties Updated: ${result.stats.properties_updated}`);
         console.log(`  Total Properties: ${result.stats.total_properties}`);
         console.log(`  Rent Comps: ${result.stats.rent_comps_count}`);
-        console.log(`  Avg Rent: $${result.stats.market_data.pricing.avg_rent}`);
-        console.log(`  Occupancy: ${result.stats.market_data.occupancy.avg_occupancy}%`);
+        console.log(`  Avg Rent: $${result.stats.market_data?.pricing?.avg_rent ?? 'N/A'}`);
+        if (result.stats.market_data?.occupancy?.avg_occupancy) {
+          console.log(`  Occupancy: ${result.stats.market_data.occupancy.avg_occupancy}%`);
+        }
       } else {
         console.log('\n❌ Sync Failed');
         console.log('Error:', result.stats.error);

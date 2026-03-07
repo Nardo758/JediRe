@@ -166,15 +166,11 @@ export class ApartmentLocatorSyncService {
     }
   }
   
-  /**
-   * Sync Atlanta market data and properties
-   */
-  async syncAtlanta(): Promise<{ success: boolean; stats: any }> {
-    logger.info('Starting Atlanta sync from Apartment Locator AI...');
+  async syncCity(city: string, state: string): Promise<{ success: boolean; stats: any }> {
+    logger.info(`Starting ${city} sync from Apartment Locator AI...`);
     
     try {
-      // 1. Fetch market data
-      const marketData = await this.fetchMarketData('Atlanta', 'GA');
+      const marketData = await this.fetchMarketData(city, state);
       
       if (!marketData) {
         throw new Error('Failed to fetch market data');
@@ -185,7 +181,6 @@ export class ApartmentLocatorSyncService {
         avg_rent: marketData.pricing.avg_rent
       });
       
-      // 2. Store market snapshot
       await pool.query(`
         INSERT INTO apartment_market_snapshots (
           city, state, snapshot_date,
@@ -201,35 +196,42 @@ export class ApartmentLocatorSyncService {
           avg_rent = EXCLUDED.avg_rent,
           updated_at = NOW()
       `, [
-        'Atlanta',
-        'GA',
+        city,
+        state,
         marketData.supply.total_properties,
         marketData.supply.total_listings,
         marketData.supply.available_units,
         marketData.pricing.avg_rent,
         marketData.pricing.min_rent,
         marketData.pricing.max_rent,
-        marketData.pricing.avg_rent_by_type.studio,
-        marketData.pricing.avg_rent_by_type['1br'],
-        marketData.pricing.avg_rent_by_type['2br'],
-        marketData.pricing.avg_rent_by_type['3br']
+        marketData.pricing.avg_rent_by_type?.studio,
+        marketData.pricing.avg_rent_by_type?.['1br'],
+        marketData.pricing.avg_rent_by_type?.['2br'],
+        marketData.pricing.avg_rent_by_type?.['3br']
       ]);
       
-      // 3. Fetch rent comps
-      const rentComps = await this.fetchRentComps('Atlanta', 'GA');
+      const rentComps = await this.fetchRentComps(city, state);
       logger.info(`Fetched ${rentComps.length} rent comps`);
       
-      // 4. Fetch supply pipeline
-      const supplyProps = await this.fetchSupplyPipeline('Atlanta', 'GA');
+      const supplyProps = await this.fetchSupplyPipeline(city, state);
       logger.info(`Fetched ${supplyProps.length} supply properties`);
       
       // 5. Merge supply properties into main properties table
       let inserted = 0;
       let updated = 0;
       
+      const safeInt = (v: any): number | null => { const n = parseInt(v); return isNaN(n) ? null : n; };
+      const safeFloat = (v: any): number | null => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+
       for (const prop of supplyProps) {
         try {
-          // Check if property exists by address
+          const units = safeInt(prop.total_units);
+          const rent = safeFloat(prop.rent);
+          const beds = safeInt(prop.bedrooms);
+          const baths = safeFloat(prop.bathrooms);
+          const sqft = safeInt(prop.square_feet);
+          const avail = safeInt(prop.units_available);
+
           const existing = await pool.query(`
             SELECT id FROM properties
             WHERE LOWER(address_line1) = LOWER($1)
@@ -239,7 +241,6 @@ export class ApartmentLocatorSyncService {
           `, [prop.address, prop.city, prop.state]);
           
           if (existing.rows.length > 0) {
-            // Update existing
             await pool.query(`
               UPDATE properties SET
                 name = COALESCE($1, name),
@@ -258,26 +259,25 @@ export class ApartmentLocatorSyncService {
               WHERE id = $10
             `, [
               prop.name,
-              prop.total_units,
-              prop.rent,
-              prop.bedrooms,
-              parseFloat(prop.bathrooms),
-              prop.square_feet,
-              prop.total_units,
-              prop.units_available,
+              units,
+              rent,
+              beds,
+              baths,
+              sqft,
+              units,
+              avail,
               prop.id,
               existing.rows[0].id
             ]);
             updated++;
           } else {
-            // Insert new
             await pool.query(`
               INSERT INTO properties (
                 name, address_line1, city, state_code, zip,
                 property_type, units, rent, beds, baths, sqft,
                 current_occupancy,
                 apartment_locator_id, enrichment_source, enriched_at
-              ) VALUES ($1, $2, $3, $4, $5, 'Multifamily', $6, $7, $8, $9, $10, 
+              ) VALUES ($1, $2, $3, $4, $5, 'multi_family', $6, $7, $8, $9, $10, 
                 CASE 
                   WHEN $6 > 0 AND $11 > 0 THEN (($6 - $11)::float / $6) * 100
                   ELSE NULL
@@ -289,12 +289,12 @@ export class ApartmentLocatorSyncService {
               prop.city,
               prop.state,
               prop.zip_code,
-              prop.total_units,
-              prop.rent,
-              prop.bedrooms,
-              parseFloat(prop.bathrooms),
-              prop.square_feet,
-              prop.units_available,
+              units,
+              rent,
+              beds,
+              baths,
+              sqft,
+              avail,
               prop.id
             ]);
             inserted++;
@@ -321,17 +321,18 @@ export class ApartmentLocatorSyncService {
       };
       
     } catch (error: any) {
-      logger.error('Atlanta sync failed', { error: error.message });
+      logger.error(`${city} sync failed`, { error: error.message });
       return {
         success: false,
         stats: { error: error.message }
       };
     }
   }
+
+  async syncAtlanta(): Promise<{ success: boolean; stats: any }> {
+    return this.syncCity('Atlanta', 'GA');
+  }
   
-  /**
-   * Sync all supported metros
-   */
   async syncAllMetros(): Promise<{ success: boolean; results: any[] }> {
     const metros = [
       { city: 'Atlanta', state: 'GA' },
@@ -350,22 +351,18 @@ export class ApartmentLocatorSyncService {
     const results = [];
     
     for (const metro of metros) {
-      logger.info(`Syncing ${metro.city}, ${metro.state}...`);
-      
       try {
-        const marketData = await this.fetchMarketData(metro.city, metro.state);
-        const rentComps = await this.fetchRentComps(metro.city, metro.state);
-        const supplyProps = await this.fetchSupplyPipeline(metro.city, metro.state);
+        const cityResult = await this.syncCity(metro.city, metro.state);
         
         results.push({
           metro: `${metro.city}, ${metro.state}`,
-          success: true,
-          properties: supplyProps.length,
-          rent_comps: rentComps.length,
-          avg_rent: marketData?.pricing.avg_rent
+          success: cityResult.success,
+          properties: cityResult.stats.total_properties || 0,
+          inserted: cityResult.stats.properties_inserted || 0,
+          updated: cityResult.stats.properties_updated || 0,
+          avg_rent: cityResult.stats.market_data?.pricing?.avg_rent
         });
         
-        // Rate limiting
         await new Promise(r => setTimeout(r, 1000));
         
       } catch (error: any) {
@@ -378,7 +375,8 @@ export class ApartmentLocatorSyncService {
       }
     }
     
-    return { success: true, results };
+    const allSucceeded = results.every(r => r.success);
+    return { success: allSucceeded, results };
   }
 }
 
