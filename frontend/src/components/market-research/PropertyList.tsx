@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Building2, MapPin, DollarSign, Bed, Bath, Maximize, ExternalLink } from 'lucide-react';
 
 export interface Property {
@@ -74,10 +75,18 @@ export function PropertyList({ properties, loading, viewMode = 'grid' }: Propert
 }
 
 function PropertyCard({ property }: { property: Property }) {
+  const navigate = useNavigate();
   const rentPerSqft = property.sqft ? property.rent / property.sqft : null;
 
+  const handleClick = () => {
+    navigate(`/properties/${property.id}`);
+  };
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow">
+    <div 
+      onClick={handleClick}
+      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+    >
       {/* Image */}
       {property.imageUrl ? (
         <div className="h-48 bg-cover bg-center" style={{ backgroundImage: `url(${property.imageUrl})` }}>
@@ -160,27 +169,47 @@ function PropertyCard({ property }: { property: Property }) {
         )}
 
         {/* Actions */}
-        {property.websiteUrl && (
-          <a
-            href={property.websiteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`/properties/${property.id}`);
+            }}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
           >
             View Details
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        )}
+          </button>
+          {property.websiteUrl && (
+            <a
+              href={property.websiteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200"
+              title="Visit property website"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
 function PropertyListItem({ property }: { property: Property }) {
+  const navigate = useNavigate();
   const rentPerSqft = property.sqft ? property.rent / property.sqft : null;
 
+  const handleClick = () => {
+    navigate(`/properties/${property.id}`);
+  };
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+    <div 
+      onClick={handleClick}
+      className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
+    >
       <div className="flex gap-4">
         {/* Image */}
         {property.imageUrl ? (
