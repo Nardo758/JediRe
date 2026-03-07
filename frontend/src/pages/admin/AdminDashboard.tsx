@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Activity, Users, Building2, Map, Cog,
-  ArrowLeft, Shield,
+  ArrowLeft, Shield, Zap,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { SystemHealthSection } from './sections/SystemHealthSection';
@@ -63,6 +63,14 @@ export function AdminDashboard() {
                 <Shield className="w-5 h-5 text-blue-600" />
                 <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
               </div>
+              
+              <Link
+                to="/admin/command-center"
+                className="ml-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Zap className="w-4 h-4" />
+                Command Center
+              </Link>
             </div>
             {stats && (
               <div className="hidden md:flex items-center gap-6 text-sm">
