@@ -48,3 +48,6 @@
 {"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:01.408Z"}
 {"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:11.420Z"}
 {"environment":"development","level":"info","message":"[AtlantaIngestion] Complete. Upserted 0 records.","service":"jedire-api","timestamp":"2026-03-04T17:20:13.255Z"}
+{"environment":"development","level":"info","message":"Starting Atlanta sync from Apartment Locator AI...","service":"jedire-api","timestamp":"2026-03-07T17:37:47.252Z"}
+{"avg_rent":1455,"environment":"development","level":"info","message":"Market data fetched","service":"jedire-api","timestamp":"2026-03-07T17:37:48.385Z","total_properties":246}
+{"environment":"development","error":"Cannot read properties of undefined (reading 'avg_occupancy')","level":"error","message":"Atlanta sync failed","service":"jedire-api","timestamp":"2026-03-07T17:37:48.385Z"}

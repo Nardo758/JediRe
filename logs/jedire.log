@@ -20,3 +20,4 @@
 {"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-23-069: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:18:51.395Z"}
 {"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-031: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:01.408Z"}
 {"environment":"development","level":"error","message":"[AtlantaIngestion] Error upserting Z-21-012: Connection terminated due to connection timeout","service":"jedire-api","timestamp":"2026-03-04T17:19:11.420Z"}
+{"environment":"development","error":"Cannot read properties of undefined (reading 'avg_occupancy')","level":"error","message":"Atlanta sync failed","service":"jedire-api","timestamp":"2026-03-07T17:37:48.385Z"}
