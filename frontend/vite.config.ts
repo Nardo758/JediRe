@@ -33,11 +33,19 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          // Core React dependencies
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'map-vendor': ['mapbox-gl', 'react-map-gl'],
+          
+          // Map libraries (lazy-loaded, won't block initial load)
+          'map-vendor': ['mapbox-gl', 'react-map-gl', '@mapbox/mapbox-gl-draw'],
+          
+          // UI/State management
           'ui-vendor': ['zustand', 'axios', 'socket.io-client']
         }
       }
-    }
+    },
+    
+    // Increase chunk size warning limit (map vendor is legitimately large)
+    chunkSizeWarningLimit: 2000
   }
 })
