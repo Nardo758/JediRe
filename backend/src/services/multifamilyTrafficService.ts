@@ -139,7 +139,8 @@ export class MultifamilyTrafficService {
    * 5. Occupancy-driven urgency
    */
   async predictWeeklyLeasingTraffic(
-    property: PropertyLeasingInput
+    property: PropertyLeasingInput,
+    predictionDate?: Date
   ): Promise<LeasingPrediction> {
     try {
       // Step 1: Calculate base traffic scaled by property size
@@ -155,10 +156,10 @@ export class MultifamilyTrafficService {
       const rent_ratio = property.avg_rent / property.market_rent;
       const pricing_multiplier = this.calculatePricingMultiplier(rent_ratio);
 
-      // Step 4: Apply seasonality for current month
-      const now = new Date();
-      const current_month = now.getMonth() + 1;
-      const current_day = now.getDate();
+      // Step 4: Apply seasonality for the target date (defaults to current date)
+      const targetDate = predictionDate || new Date();
+      const current_month = targetDate.getMonth() + 1;
+      const current_day = targetDate.getDate();
       const seasonality_multiplier = BASELINE_DATA.seasonality[current_month] || 1.0;
 
       // Step 4b: Apply holiday week adjustment (overrides seasonality if in a holiday window)
@@ -321,14 +322,20 @@ export class MultifamilyTrafficService {
       let current_occupancy = startOccupancy;
       let week = 0;
 
+      const startDate = new Date();
+
       while (current_occupancy < targetOccupancy && week < 104) { // Max 2 years
         week++;
 
         // Update property occupancy for prediction
         property.occupancy = current_occupancy;
 
-        // Get prediction for this week
-        const prediction = await this.predictWeeklyLeasingTraffic(property);
+        // Calculate the future date for this week's prediction
+        const futureDate = new Date(startDate);
+        futureDate.setDate(futureDate.getDate() + (week * 7));
+
+        // Get prediction for this week using the projected date for correct seasonality
+        const prediction = await this.predictWeeklyLeasingTraffic(property, futureDate);
 
         cumulative_leases += prediction.expected_leases;
         current_occupancy = startOccupancy + (cumulative_leases / totalUnits);

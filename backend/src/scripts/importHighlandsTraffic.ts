@@ -24,8 +24,11 @@ async function importHighlandsTraffic() {
     }
 
     const excelDate = row[0];
-    const jsDate = new Date((excelDate - 25569) * 86400 * 1000);
-    const weekEnding = jsDate.toISOString().split('T')[0];
+    const daysSinceEpoch = excelDate - 25569;
+    const totalDays = Math.round(daysSinceEpoch);
+    const baseDate = new Date(Date.UTC(1970, 0, 1));
+    baseDate.setUTCDate(baseDate.getUTCDate() + totalDays);
+    const weekEnding = baseDate.toISOString().split('T')[0];
 
     const normalizeDecimalPct = (val: any): number | null => {
       if (val === null || val === undefined) return null;
