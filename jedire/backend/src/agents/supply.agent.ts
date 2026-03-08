@@ -45,12 +45,55 @@ export class SupplyAgent {
       );
 
       const trends = trendsResult.rows[0] || {};
+      const inventory = inventoryResult.rows;
+
+      // Extract metrics from inventory data
+      const latestSnapshot = inventory.length > 0 ? inventory[0] : null;
 
       return {
-        inventory: inventoryResult.rows,
-        trends,
-        opportunityScore: this.calculateOpportunityScore(trends),
         status: 'success',
+        market: `${city}, ${stateCode}`,
+        propertyType,
+        
+        // Current metrics from latest snapshot
+        activeListings: latestSnapshot?.active_listings || 0,
+        medianPrice: parseFloat(latestSnapshot?.median_price) || 0,
+        avgPrice: parseFloat(latestSnapshot?.avg_price) || 0,
+        pricePerSqft: parseFloat(latestSnapshot?.price_per_sqft) || 0,
+        avgDaysOnMarket: latestSnapshot?.avg_days_on_market || 0,
+        medianDaysOnMarket: latestSnapshot?.median_days_on_market || 0,
+        
+        // Supply metrics
+        absorptionRate: parseFloat(latestSnapshot?.absorption_rate) || 0,
+        monthsOfSupply: parseFloat(latestSnapshot?.months_of_supply) || 0,
+        vacancyRate: parseFloat(latestSnapshot?.vacancy_rate) || 0,
+        
+        // 30-day activity
+        newListings30d: latestSnapshot?.new_listings_30d || 0,
+        closedSales30d: latestSnapshot?.closed_sales_30d || 0,
+        
+        // Property details
+        avgSqft: latestSnapshot?.avg_sqft || 0,
+        avgYearBuilt: latestSnapshot?.avg_year_built || 0,
+        
+        // 90-day trends
+        trends: {
+          avgListings: parseFloat(trends.avg_listings) || 0,
+          avgPrice: parseFloat(trends.avg_price) || 0,
+          avgDaysOnMarket: parseFloat(trends.avg_dom) || 0,
+          avgAbsorption: parseFloat(trends.avg_absorption) || 0,
+        },
+        
+        // Raw inventory data for reference
+        inventory: inventory.map((item: any) => ({
+          snapshotDate: item.snapshot_date,
+          activeListings: item.active_listings,
+          medianPrice: parseFloat(item.median_price),
+          avgDaysOnMarket: item.avg_days_on_market,
+          absorptionRate: parseFloat(item.absorption_rate),
+        })),
+        
+        opportunityScore: this.calculateOpportunityScore(trends),
       };
     } catch (error: any) {
       logger.error('Supply agent execution failed:', error);

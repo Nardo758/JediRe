@@ -330,15 +330,24 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         };
 
         let dealName = 'direct-analysis';
+        let dealData: any = null;
+
+        // Fetch full deal data if dealId provided
         if (params.dealId) {
-          const dealCheck = await pool.query(
-            'SELECT id, name, address FROM deals WHERE id = $1 AND archived_at IS NULL',
+          const dealResult = await pool.query(
+            `SELECT id, name, address, city, state_code, zip_code,
+                    project_type, budget, target_units, lot_size_sqft
+             FROM deals 
+             WHERE id = $1 AND archived_at IS NULL`,
             [params.dealId]
           );
-          if (dealCheck.rows.length === 0) {
+          
+          if (dealResult.rows.length === 0) {
             return res.status(404).json({ error: 'Not Found', message: 'Deal not found' });
           }
-          dealName = dealCheck.rows[0].name;
+          
+          dealData = dealResult.rows[0];
+          dealName = dealData.name;
         }
 
         const taskTypes = analysisType === 'full'
@@ -353,10 +362,52 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           });
         }
 
-        const inputData = params.inputData || {};
         const submittedTasks: any[] = [];
 
+        // Construct agent-specific inputData
         for (const taskType of taskTypes) {
+          let inputData: any;
+
+          if (params.inputData) {
+            // Use provided inputData directly
+            inputData = params.inputData;
+          } else if (dealData) {
+            // Construct inputData from deal data based on agent type
+            switch (taskType) {
+              case 'zoning_analysis':
+                inputData = {
+                  address: dealData.address,
+                  city: dealData.city,
+                  stateCode: dealData.state_code,
+                  lotSizeSqft: dealData.lot_size_sqft || 50000, // default if not set
+                };
+                break;
+              
+              case 'supply_analysis':
+                inputData = {
+                  city: dealData.city || 'Atlanta',
+                  stateCode: dealData.state_code || 'GA',
+                  propertyType: dealData.project_type || 'multifamily',
+                };
+                break;
+              
+              case 'cashflow_analysis':
+                inputData = {
+                  purchasePrice: parseFloat(dealData.budget) || 0,
+                  monthlyRent: dealData.target_units ? (parseFloat(dealData.budget) * 0.005) : 2500, // estimate: 0.5% of purchase price
+                  downPaymentPercent: 25,
+                  interestRate: 7.5,
+                  targetUnits: dealData.target_units || 1,
+                };
+                break;
+              
+              default:
+                inputData = {};
+            }
+          } else {
+            inputData = {};
+          }
+
           const taskResult = await pool.query(
             `INSERT INTO agent_tasks (task_type, input_data, user_id, priority, status)
              VALUES ($1, $2, 'clawdbot', 1, 'pending')
