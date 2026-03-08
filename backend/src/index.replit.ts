@@ -210,6 +210,13 @@ app.use('/api/v1/agents', agentRouter);
 import chatRouter from './api/rest/chat.routes';
 app.use('/api/v1/chat', chatRouter);
 
+import { MessageRouter } from './services/chat/messageRouter';
+const messageRouter = new MessageRouter();
+app.use('/', messageRouter.createRouter());
+
+import { createStripeWebhookRouter } from './services/stripe/webhooks';
+app.use('/', createStripeWebhookRouter());
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);

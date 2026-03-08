@@ -63,8 +63,8 @@ export class SessionStore {
 
     // Create a new user for this platform contact
     const newUser = await query(
-      `INSERT INTO users (email, role, is_active, email_verified)
-       VALUES ($1, 'user', true, false)
+      `INSERT INTO users (email, role, email_verified)
+       VALUES ($1, 'investor', false)
        RETURNING id`,
       [`${platform}_${platformUserId}@chat.jedire.com`]
     );
