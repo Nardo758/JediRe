@@ -125,6 +125,25 @@ export class ZoningService {
    * Reverse geocode to get municipality
    */
   private async getMunicipality(coords: Coordinates): Promise<Municipality> {
+    // If we have a formatted address from geocoding, try to extract municipality from it
+    if (coords.formatted_address) {
+      const addressParts = coords.formatted_address.split(',').map(s => s.trim());
+      if (addressParts.length >= 2) {
+        const cityPart = addressParts[addressParts.length - 3]?.trim() || '';
+        const statePart = addressParts[addressParts.length - 2]?.trim() || '';
+        const stateMatch = statePart.match(/([A-Z]{2})/);
+        
+        if (cityPart && stateMatch) {
+          return {
+            city: cityPart,
+            county: '',
+            state: stateMatch[1],
+            formatted: `${cityPart}, ${stateMatch[1]}`,
+          };
+        }
+      }
+    }
+
     try {
       const response = await axios.get(
         'https://maps.googleapis.com/maps/api/geocode/json',
