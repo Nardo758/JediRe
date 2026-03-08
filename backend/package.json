@@ -7,7 +7,10 @@
     "dev": "ts-node --transpile-only src/index.replit.ts",
     "build": "tsc --skipLibCheck",
     "start": "node dist/index.replit.js",
-    "replit": "npm install && npm run build && npm run start"
+    "replit": "npm install && npm run build && npm run start",
+    "migrate": "ts-node src/scripts/run-migrations.ts",
+    "backfill": "ts-node src/scripts/backfill-data-library.ts",
+    "embeddings": "ts-node src/scripts/generate-embeddings.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
