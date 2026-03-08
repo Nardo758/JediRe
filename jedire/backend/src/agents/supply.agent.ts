@@ -16,7 +16,12 @@ export class SupplyAgent {
     try {
       const { city, stateCode, propertyType } = inputData;
 
-      // Get market inventory
+      // Validate input
+      if (!city || !stateCode) {
+        throw new Error('City and stateCode are required');
+      }
+
+      // Get market inventory (with type casting for safety)
       const inventoryResult = await query(
         `SELECT *
          FROM market_inventory
@@ -26,28 +31,31 @@ export class SupplyAgent {
         [city, stateCode]
       );
 
-      // Calculate trends
+      // Calculate trends (cast columns to numeric to avoid type errors)
       const trendsResult = await query(
         `SELECT 
-          AVG(active_listings) as avg_listings,
-          AVG(median_price) as avg_price,
-          AVG(avg_days_on_market) as avg_dom,
-          AVG(absorption_rate) as avg_absorption
+          AVG(CAST(active_listings AS NUMERIC)) as avg_listings,
+          AVG(CAST(median_price AS NUMERIC)) as avg_price,
+          AVG(CAST(avg_days_on_market AS NUMERIC)) as avg_dom,
+          AVG(CAST(absorption_rate AS NUMERIC)) as avg_absorption
          FROM market_inventory
          WHERE city ILIKE $1 AND state_code = $2
            AND snapshot_date >= NOW() - INTERVAL '90 days'`,
         [city, stateCode]
       );
 
+      const trends = trendsResult.rows[0] || {};
+
       return {
         inventory: inventoryResult.rows,
-        trends: trendsResult.rows[0],
-        opportunityScore: this.calculateOpportunityScore(trendsResult.rows[0]),
+        trends,
+        opportunityScore: this.calculateOpportunityScore(trends),
         status: 'success',
       };
     } catch (error: any) {
       logger.error('Supply agent execution failed:', error);
-      throw error;
+      // Return clean error message
+      throw new Error(error.message || 'Supply analysis failed');
     }
   }
 
@@ -55,9 +63,14 @@ export class SupplyAgent {
     // Simple scoring logic - can be enhanced
     let score = 50;
 
-    if (trends.avg_dom < 30) score += 20; // Low days on market is good
-    if (trends.avg_absorption > 15) score += 15; // High absorption is good
-    if (trends.avg_listings < 100) score += 15; // Low inventory is good
+    // Safely handle null/undefined values
+    const avgDom = parseFloat(trends.avg_dom) || 0;
+    const avgAbsorption = parseFloat(trends.avg_absorption) || 0;
+    const avgListings = parseFloat(trends.avg_listings) || 0;
+
+    if (avgDom > 0 && avgDom < 30) score += 20; // Low days on market is good
+    if (avgAbsorption > 15) score += 15; // High absorption is good
+    if (avgListings > 0 && avgListings < 100) score += 15; // Low inventory is good
 
     return Math.min(100, Math.max(0, score));
   }

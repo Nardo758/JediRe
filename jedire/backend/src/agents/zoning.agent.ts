@@ -22,6 +22,11 @@ export class ZoningAgent {
     try {
       const { address, propertyId, lotSizeSqft, question } = inputData;
 
+      // Validate input
+      if (!address && !propertyId) {
+        throw new Error('Either address or propertyId is required');
+      }
+
       // Lookup zoning
       let zoningInfo;
       if (address) {
@@ -46,7 +51,8 @@ export class ZoningAgent {
       };
     } catch (error: any) {
       logger.error('Zoning agent execution failed:', error);
-      throw error;
+      // Return clean error message, never the raw error object
+      throw new Error(error.message || 'Zoning analysis failed');
     }
   }
 }

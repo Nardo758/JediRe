@@ -25,6 +25,14 @@ export class CashFlowAgent {
         vacancy = 0.05,
       } = inputData;
 
+      // Validate required inputs
+      if (!purchasePrice || purchasePrice <= 0) {
+        throw new Error('Valid purchase price is required');
+      }
+      if (!monthlyRent || monthlyRent <= 0) {
+        throw new Error('Valid monthly rent is required');
+      }
+
       // Calculate mortgage payment
       const downPayment = purchasePrice * (downPaymentPercent / 100);
       const loanAmount = purchasePrice - downPayment;
@@ -73,7 +81,8 @@ export class CashFlowAgent {
       };
     } catch (error: any) {
       logger.error('Cash flow agent execution failed:', error);
-      throw error;
+      // Return clean error message
+      throw new Error(error.message || 'Cash flow analysis failed');
     }
   }
 

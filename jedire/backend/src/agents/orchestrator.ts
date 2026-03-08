@@ -156,6 +156,9 @@ export class AgentOrchestrator {
 
       const executionTime = Date.now() - startTime;
 
+      // Safely serialize result (avoid circular references)
+      const safeResult = this.safeStringify(result);
+
       // Update task with success
       await query(
         `UPDATE agent_tasks
@@ -165,7 +168,7 @@ export class AgentOrchestrator {
              execution_time_ms = $2,
              progress = 100
          WHERE id = $3`,
-        [JSON.stringify(result), executionTime, taskId]
+        [safeResult, executionTime, taskId]
       );
 
       logger.info('Task completed:', {
@@ -221,6 +224,22 @@ export class AgentOrchestrator {
         });
       }
     }
+  }
+
+  /**
+   * Safely stringify objects, handling circular references
+   */
+  private safeStringify(obj: any): string {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) {
+          return '[Circular]';
+        }
+        seen.add(value);
+      }
+      return value;
+    });
   }
 
   /**
