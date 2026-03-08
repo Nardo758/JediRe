@@ -1,4 +1,6 @@
 import { Pool } from 'pg';
+import { IntelligenceContextService } from './intelligence-context.service';
+import { logger } from '../utils/logger';
 
 export interface DataLibraryContext {
   impactFees: { description: string; amount: string; source: string }[];
@@ -18,7 +20,19 @@ export interface DataLibraryContext {
 }
 
 export class DataLibraryContextService {
-  constructor(private pool: Pool) {}
+  private intelligenceService: IntelligenceContextService | null = null;
+
+  constructor(private pool: Pool, useIntelligence: boolean = true) {
+    // Initialize intelligence service if available
+    if (useIntelligence) {
+      try {
+        this.intelligenceService = new IntelligenceContextService(pool);
+      } catch (error) {
+        logger.warn('Intelligence layer not available, falling back to keyword search');
+        this.intelligenceService = null;
+      }
+    }
+  }
 
   async getContextForDeal(params: {
     dealId: string;
@@ -52,23 +66,70 @@ export class DataLibraryContextService {
     params: { municipality: string; propertyType?: string }
   ): Promise<void> {
     try {
-      const result = await this.pool.query(
-        `SELECT file_name, city, property_type, parsed_data, tags, source_type
-         FROM data_library_files
-         WHERE parsing_status = 'complete'
-           AND (city ILIKE $1 OR city ILIKE $2)
-         ORDER BY uploaded_at DESC
-         LIMIT 20`,
-        [`%${params.municipality}%`, `%${params.municipality.split(' ')[0]}%`]
-      );
+      let documents: any[] = [];
 
-      for (const row of result.rows) {
+      // Try semantic search first (if intelligence layer available)
+      if (this.intelligenceService) {
+        try {
+          const searchQuery = `${params.municipality} ${params.propertyType || ''} cost data impact fees construction rent comps`;
+          
+          const results = await this.intelligenceService.semanticSearch({
+            query: searchQuery,
+            filters: {
+              sourceSystem: 'data_library',
+              propertyCity: params.municipality,
+              validationStatus: ['validated', 'pending'],
+            },
+            limit: 20,
+            minSimilarity: 0.6, // Lower threshold for broader results
+          });
+
+          // Convert intelligence layer results to legacy format
+          documents = results.map(doc => ({
+            file_name: doc.title,
+            city: doc.propertyCity,
+            property_type: doc.propertyType,
+            parsed_data: doc.structuredData?.csvPreview ? {
+              preview: doc.structuredData.csvPreview,
+              headers: doc.structuredData.csvHeaders,
+            } : null,
+            tags: doc.structuredData?.tags || [],
+            source_type: 'data_library',
+            _similarity: doc.similarity, // Track similarity score
+          }));
+
+          logger.debug(`Loaded ${documents.length} documents via semantic search`);
+        } catch (error: any) {
+          logger.warn('Semantic search failed, falling back to keyword search:', error.message);
+          // Fall through to keyword search below
+        }
+      }
+
+      // Fallback to keyword search if no semantic results or intelligence layer unavailable
+      if (documents.length === 0) {
+        const result = await this.pool.query(
+          `SELECT file_name, city, property_type, parsed_data, tags, source_type
+           FROM data_library_files
+           WHERE parsing_status = 'complete'
+             AND (city ILIKE $1 OR city ILIKE $2)
+           ORDER BY uploaded_at DESC
+           LIMIT 20`,
+          [`%${params.municipality}%`, `%${params.municipality.split(' ')[0]}%`]
+        );
+
+        documents = result.rows;
+        logger.debug(`Loaded ${documents.length} documents via keyword search`);
+      }
+
+      // Extract cost data from documents
+      for (const row of documents) {
         const parsed = row.parsed_data;
         if (!parsed || !parsed.preview) continue;
 
         const tags = Array.isArray(row.tags) ? row.tags.map((t: any) => String(t).toLowerCase()) : [];
         const fileName = (row.file_name || '').toLowerCase();
 
+        // Classify document type and extract data
         if (tags.includes('impact_fees') || tags.includes('fees') || fileName.includes('impact') || fileName.includes('fee')) {
           this.extractCostRows(parsed.preview, parsed.headers, ctx.impactFees, row.file_name);
         }
@@ -80,7 +141,7 @@ export class DataLibraryContextService {
         }
       }
     } catch (err: any) {
-      console.log('[DataLibraryContext] Error loading files:', err.message);
+      logger.error('[DataLibraryContext] Error loading files:', err);
     }
   }
 
