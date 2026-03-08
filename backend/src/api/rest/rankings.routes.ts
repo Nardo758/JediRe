@@ -33,6 +33,10 @@ function deriveSubmarket(address: string, neighborhoodCode: string | null): stri
   if (addr.includes('SANDY SPRINGS') || addr.includes('ROSWELL RD') || addr.includes('HAMMOND')) return 'Sandy Springs';
   if (addr.includes('VININGS') || addr.includes('COBB')) return 'Vinings';
   if (addr.includes('BROOKHAVEN') || addr.includes('DRESDEN') || addr.includes('ASHFORD')) return 'Brookhaven';
+  if (addr.includes('DULUTH') || addr.includes('SATELLITE') || addr.includes('SUWANEE') || addr.includes('LAWRENCEVILLE') || addr.includes('GWINNETT')) return 'Gwinnett';
+  if (addr.includes('ALPHARETTA') || addr.includes('JOHNS CREEK') || addr.includes('MILTON')) return 'North Fulton';
+  if (addr.includes('MARIETTA') || addr.includes('KENNESAW') || addr.includes('SMYRNA')) return 'Cobb County';
+  if (addr.includes('COLLEGE PARK') || addr.includes('EAST POINT') || addr.includes('HAPEVILLE')) return 'South Atlanta';
   const code = neighborhoodCode || '';
   if (code.startsWith('01') || code.startsWith('02')) return 'Downtown';
   if (code.startsWith('03') || code.startsWith('04')) return 'Midtown';
@@ -274,8 +278,8 @@ router.get('/owned/:marketId', async (req: Request, res: Response) => {
   try {
     const { marketId } = req.params;
     const pool = getPool();
+    const userId = (req as any).user?.userId;
 
-    // Get all multifamily properties for ranking
     const allProps = await pool.query(`
       SELECT 
         id, parcel_id, address, owner_name, units, year_built,
@@ -288,7 +292,6 @@ router.get('/owned/:marketId', async (req: Request, res: Response) => {
       LIMIT 200
     `);
 
-    // Compute PCS scores for all properties
     const allRanked = allProps.rows.map((row: any) => {
       const yearBuilt = parseInt(row.year_built) || 1990;
       const pcs = computePCS(row);
@@ -301,13 +304,101 @@ router.get('/owned/:marketId', async (req: Request, res: Response) => {
         units: row.units || 0,
         yearBuilt,
         pcsScore: pcs.score,
+        source: 'property_record' as string,
+        dealId: null as string | null,
+        dealName: null as string | null,
       };
     });
 
-    // Sort and rank by PCS score
+    let userDeals: any[] = [];
+    if (userId) {
+      const dealResult = await pool.query(`
+        SELECT 
+          d.id as deal_id, d.name, COALESCE(d.property_address, d.address) as address,
+          d.target_units as units, d.property_data,
+          dma.occupancy_rate, dma.noi, dma.avg_effective_rent
+        FROM deals d
+        LEFT JOIN LATERAL (
+          SELECT dma2.occupancy_rate, dma2.noi, dma2.avg_effective_rent
+          FROM deal_monthly_actuals dma2
+          INNER JOIN deal_properties dp ON dp.property_id = dma2.property_id
+          WHERE dp.deal_id = d.id
+          ORDER BY dma2.report_month DESC LIMIT 1
+        ) dma ON true
+        WHERE d.user_id = $1
+          AND d.deal_category = 'portfolio'
+          AND d.status = 'closed_won'
+          AND d.archived_at IS NULL
+      `, [userId]);
+      userDeals = dealResult.rows;
+    }
+
+    const ownedAddresses = new Set<string>();
+    for (const deal of userDeals) {
+      const dealAddr = (deal.address || '').toLowerCase().trim();
+      ownedAddresses.add(dealAddr);
+
+      const matchIdx = allRanked.findIndex(p => 
+        (p.address || '').toLowerCase().trim() === dealAddr
+      );
+
+      if (matchIdx >= 0) {
+        allRanked[matchIdx].source = 'deal';
+        allRanked[matchIdx].dealId = deal.deal_id;
+        allRanked[matchIdx].dealName = deal.name;
+        if (deal.occupancy_rate) {
+          const occBonus = Math.max(0, (parseFloat(deal.occupancy_rate) * 100 - 90) * 0.5);
+          allRanked[matchIdx].pcsScore = Math.min(98, allRanked[matchIdx].pcsScore + Math.round(occBonus));
+        }
+      } else {
+        const propData = deal.property_data || {};
+        const yearBuilt = parseInt(propData.year_built) || 2020;
+        const units = parseInt(deal.units) || 0;
+        const synthRow = {
+          units,
+          year_built: String(yearBuilt),
+          assessed_value: 0,
+          total_assessed_value: 0,
+          building_sqft: units * 900,
+          class_code: yearBuilt >= 2015 ? 'C5' : 'C4',
+          neighborhood_code: null,
+        };
+        const pcs = computePCS(synthRow);
+        if (deal.occupancy_rate) {
+          const occBonus = Math.max(0, (parseFloat(deal.occupancy_rate) * 100 - 90) * 0.5);
+          pcs.score = Math.min(98, pcs.score + Math.round(occBonus));
+        }
+        const submarket = deriveSubmarket(deal.address || '', null);
+        allRanked.push({
+          id: deal.deal_id,
+          address: deal.address,
+          submarket,
+          units,
+          yearBuilt,
+          pcsScore: pcs.score,
+          source: 'deal',
+          dealId: deal.deal_id,
+          dealName: deal.name,
+        });
+      }
+    }
+
+    if (userId) {
+      const prDeals = await pool.query(`
+        SELECT COALESCE(d.property_address, d.address) as address
+        FROM deals d
+        WHERE d.user_id = $1
+          AND d.status = 'closed_won'
+          AND d.archived_at IS NULL
+          AND d.deal_category != 'portfolio'
+      `, [userId]);
+      for (const row of prDeals.rows) {
+        ownedAddresses.add((row.address || '').toLowerCase().trim());
+      }
+    }
+
     allRanked.sort((a, b) => b.pcsScore - a.pcsScore);
-    
-    // Create submarket rankings
+
     const submarketRankings = new Map<string, any[]>();
     allRanked.forEach(prop => {
       if (!submarketRankings.has(prop.submarket)) {
@@ -316,56 +407,51 @@ router.get('/owned/:marketId', async (req: Request, res: Response) => {
       submarketRankings.get(prop.submarket)!.push(prop);
     });
 
-    // Assign ranks within each submarket
-    submarketRankings.forEach(props => {
-      props.forEach((p, idx) => {
-        (p as any).submarketRank = idx + 1;
-        (p as any).totalInSubmarket = props.length;
+    const ownedAssets = allRanked
+      .filter(p => {
+        if (p.source === 'deal') return true;
+        const addr = (p.address || '').toLowerCase().trim();
+        return ownedAddresses.has(addr);
+      })
+      .map(prop => {
+        const yearBuilt = prop.yearBuilt;
+        const classType = yearBuilt >= 2015 ? 'Class A' : yearBuilt >= 2000 ? 'Class B' : 'Class C';
+        const name = prop.dealName || (prop.address || '').split(',')[0].trim()
+          .split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+        const submarketProps = submarketRankings.get(prop.submarket) || [];
+        const submarketRank = submarketProps.findIndex((p: any) => p.id === prop.id) + 1 || 1;
+        const totalInSubmarket = submarketProps.length;
+
+        const monthlyPcs = Array.from({ length: 12 }, (_, i) => {
+          const variance = Math.sin((i + prop.units) / 3) * 5;
+          return Math.max(20, Math.min(98, Math.round(prop.pcsScore - (12 - i) * 0.5 + variance)));
+        });
+
+        const movement = (prop.units * 13 + yearBuilt * 7) % 11 - 5;
+        const trajectory = movement > 1 ? 'improving' : movement < -1 ? 'declining' : 'stable';
+        const targetRank = Math.max(1, submarketRank - 2);
+        const targetLine = prop.pcsScore + (submarketRank - targetRank) * 4;
+
+        return {
+          id: prop.id,
+          dealId: prop.dealId || prop.id,
+          name,
+          submarket: prop.submarket,
+          pcsScore: prop.pcsScore,
+          rank: submarketRank,
+          totalInSubmarket,
+          movement,
+          trajectory,
+          targetRank,
+          gapToTarget: submarketRank - targetRank,
+          monthlyPcs,
+          targetLine: Math.min(98, targetLine),
+          classType,
+          units: prop.units,
+          source: prop.source,
+        };
       });
-    });
-
-    // Select top properties to return as "owned" (for demo, take a sample)
-    const ownedAssets = allRanked.slice(2, 8).map(prop => {
-      const yearBuilt = prop.yearBuilt;
-      const classType = yearBuilt >= 2015 ? 'Class A' : yearBuilt >= 2000 ? 'Class B' : 'Class C';
-      const addrParts = (prop.address || '').split(',')[0].trim();
-      const name = addrParts.split(' ').map((w: string) => 
-        w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-      ).join(' ');
-
-      const submarketProps = submarketRankings.get(prop.submarket) || [];
-      const submarketRank = submarketProps.findIndex(p => p.id === prop.id) + 1;
-      const totalInSubmarket = submarketProps.length;
-
-      // Generate 12-month trend
-      const monthlyPcs = Array.from({ length: 12 }, (_, i) => {
-        const variance = Math.sin((i + prop.units) / 3) * 5;
-        return Math.max(20, Math.min(98, Math.round(prop.pcsScore - (12 - i) * 0.5 + variance)));
-      });
-
-      const movement = (prop.units * 13 + yearBuilt * 7) % 11 - 5;
-      const trajectory = movement > 1 ? 'improving' : movement < -1 ? 'declining' : 'stable';
-      const targetRank = Math.max(1, submarketRank - 2);
-      const targetLine = prop.pcsScore + (submarketRank - targetRank) * 4;
-
-      return {
-        id: prop.id,
-        dealId: prop.id,
-        name,
-        submarket: prop.submarket,
-        pcsScore: prop.pcsScore,
-        rank: submarketRank,
-        totalInSubmarket,
-        movement,
-        trajectory,
-        targetRank,
-        gapToTarget: submarketRank - targetRank,
-        monthlyPcs,
-        targetLine: Math.min(98, targetLine),
-        classType,
-        units: prop.units,
-      };
-    });
 
     res.json({
       success: true,

@@ -201,6 +201,7 @@ app.use('/api/v1/markets', marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
 app.use('/api/v1/grid', optionalAuth, gridRouter);
+app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
 app.use('/api/v1/portfolio', portfolioRouter);
 
 import agentRouter from './api/rest/agent.routes';
@@ -276,7 +277,6 @@ app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/correlations', requireAuth, correlationRouter);
-app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
