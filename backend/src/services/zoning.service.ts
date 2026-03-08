@@ -256,7 +256,17 @@ export class ZoningService {
       }
 
       if (lotSize === 0) {
-        throw new AppError(400, 'Lot size required for analysis');
+        // Estimate lot size if we have building sqft (rough estimate)
+        if (property?.building_sqft && property.building_sqft > 0) {
+          // Estimate: assume 30% lot coverage as typical
+          lotSize = Math.round(property.building_sqft / 0.3);
+          logger.warn(`Estimated lot size from building sqft: ${lotSize}`, { 
+            propertyId: input.propertyId,
+            buildingSqft: property.building_sqft 
+          });
+        } else {
+          throw new AppError(400, 'Lot size required for analysis. Please provide lotSizeSqft or ensure property has lot_size_sqft or building_sqft data.');
+        }
       }
 
       // Placeholder analysis result

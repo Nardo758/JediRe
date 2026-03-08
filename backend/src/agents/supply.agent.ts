@@ -22,9 +22,9 @@ export class SupplyAgent {
           round(avg(units)::numeric) as avg_units,
           count(CASE WHEN units > 0 THEN 1 END) as properties_with_units,
           round(avg(CASE WHEN building_sqft > 0 THEN building_sqft END)::numeric) as avg_building_sqft,
-          round(avg(CASE WHEN year_built ~ '^[0-9]+$' AND year_built::int > 0 THEN year_built::int END)::numeric) as avg_year_built,
-          min(year_built::int) FILTER (WHERE year_built ~ '^[0-9]+$' AND year_built::int > 1900) as oldest_built,
-          max(year_built::int) FILTER (WHERE year_built ~ '^[0-9]+$' AND year_built::int > 1900) as newest_built,
+          round(avg(CASE WHEN year_built ~ '^[0-9]+$' THEN CASE WHEN year_built::int > 0 THEN year_built::int END END)::numeric) as avg_year_built,
+          min(CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END) FILTER (WHERE year_built ~ '^[0-9]+$' AND CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END > 1900) as oldest_built,
+          max(CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END) FILTER (WHERE year_built ~ '^[0-9]+$' AND CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END > 1900) as newest_built,
           round(avg(CASE WHEN assessed_value > 0 THEN assessed_value END)::numeric) as avg_assessed_value
         FROM property_records
         WHERE city ILIKE $1 AND state ILIKE $2`,
