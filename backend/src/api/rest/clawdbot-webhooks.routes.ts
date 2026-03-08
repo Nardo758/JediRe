@@ -305,37 +305,250 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
       }
 
       case 'run_analysis': {
-        if (!params?.dealId) {
-          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        if (!params?.dealId && !params?.inputData) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId or inputData parameter is required' });
         }
 
         const analysisType = params.analysisType || 'full';
+        const typeMap: Record<string, string> = {
+          zoning: 'zoning_analysis',
+          supply: 'supply_analysis',
+          cashflow: 'cashflow_analysis',
+        };
 
-        const dealCheck = await pool.query(
-          'SELECT id, name FROM deals WHERE id = $1 AND archived_at IS NULL',
-          [params.dealId]
-        );
+        let dealName = 'direct-analysis';
+        let dealData: any = null;
 
-        if (dealCheck.rows.length === 0) {
-          return res.status(404).json({
-            error: 'Not Found',
-            message: 'Deal not found',
+        if (params.dealId) {
+          const dealCheck = await pool.query(
+            `SELECT id, name, COALESCE(property_address, address) as address,
+                    city, state_code, lot_size_sqft,
+                    project_type, budget, target_units, property_data
+             FROM deals WHERE id = $1 AND archived_at IS NULL`,
+            [params.dealId]
+          );
+
+          if (dealCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Not Found', message: 'Deal not found' });
+          }
+
+          dealData = dealCheck.rows[0];
+          dealName = dealData.name;
+
+          if (!dealData.city || !dealData.state_code) {
+            const addrParts = (dealData.address || '').split(',').map((p: string) => p.trim()).filter(Boolean);
+            const stateNames: Record<string, string> = {
+              'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+              'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+              'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+              'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+              'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+              'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+              'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+              'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+              'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+              'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY',
+            };
+            for (let i = addrParts.length - 1; i >= 1; i--) {
+              const part = addrParts[i];
+              const stateZipMatch = part.match(/^([A-Za-z\s]+?)\s*(\d{5})?$/);
+              if (!stateZipMatch) continue;
+              const rawState = stateZipMatch[1].trim();
+              const code = rawState.length === 2 ? rawState.toUpperCase() : stateNames[rawState.toLowerCase()];
+              if (code && code.length === 2) {
+                dealData.state_code = dealData.state_code || code;
+                dealData.city = dealData.city || addrParts[i - 1] || '';
+                break;
+              }
+            }
+          }
+
+          if (!dealData.lot_size_sqft) {
+            const propData = dealData.property_data || {};
+            const lotAcres = parseFloat(propData.lot_size_acres);
+            dealData.lot_size_sqft = !isNaN(lotAcres) ? Math.round(lotAcres * 43560) : (parseInt(propData.total_sqft) || 50000);
+          }
+        }
+
+        const taskTypes = analysisType === 'full'
+          ? ['zoning_analysis', 'supply_analysis', 'cashflow_analysis']
+          : [typeMap[analysisType] || analysisType];
+
+        const validTypes = ['zoning_analysis', 'supply_analysis', 'cashflow_analysis'];
+        const invalidType = taskTypes.find(t => !validTypes.includes(t));
+        if (invalidType) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: `Unknown analysis type: ${analysisType}. Valid types: zoning, supply, cashflow, full`,
           });
         }
 
-        logger.info('Analysis requested for deal:', {
+        const submittedTasks: any[] = [];
+
+        for (const taskType of taskTypes) {
+          let inputData: any;
+
+          if (params.inputData) {
+            inputData = params.inputData;
+          } else if (dealData) {
+            switch (taskType) {
+              case 'zoning_analysis':
+                inputData = {
+                  address: dealData.address,
+                  city: dealData.city,
+                  stateCode: dealData.state_code,
+                  lotSizeSqft: dealData.lot_size_sqft,
+                };
+                break;
+              case 'supply_analysis':
+                inputData = {
+                  city: dealData.city || 'Atlanta',
+                  stateCode: dealData.state_code || 'GA',
+                  propertyType: dealData.project_type || 'multifamily',
+                };
+                break;
+              case 'cashflow_analysis':
+                inputData = {
+                  purchasePrice: parseFloat(dealData.budget) || 0,
+                  monthlyRent: dealData.target_units ? (parseFloat(dealData.budget) * 0.005) : 2500,
+                  downPaymentPercent: 25,
+                  interestRate: 7.5,
+                  targetUnits: dealData.target_units || 1,
+                };
+                break;
+              default:
+                inputData = {};
+            }
+          } else {
+            inputData = {};
+          }
+
+          const taskResult = await pool.query(
+            `INSERT INTO agent_tasks (task_type, input_data, user_id, priority, status)
+             VALUES ($1, $2, 'clawdbot', 1, 'pending')
+             RETURNING id, task_type, status, created_at`,
+            [taskType, JSON.stringify(inputData)]
+          );
+          submittedTasks.push(taskResult.rows[0]);
+        }
+
+        logger.info('Analysis submitted via Clawdbot:', {
           dealId: params.dealId,
-          dealName: dealCheck.rows[0].name,
+          dealName,
           analysisType,
+          taskIds: submittedTasks.map((t: any) => t.id),
         });
 
         result = {
-          message: 'Analysis triggered successfully',
+          message: `${submittedTasks.length} analysis task(s) submitted successfully`,
           dealId: params.dealId,
-          dealName: dealCheck.rows[0].name,
+          dealName,
           analysisType,
-          status: 'queued',
-          note: 'Analysis will be processed asynchronously. Check deal tasks for updates.',
+          tasks: submittedTasks.map((t: any) => ({
+            taskId: t.id,
+            taskType: t.task_type,
+            status: t.status,
+          })),
+          note: 'Use get_agent_task command with taskId to poll for results.',
+        };
+        break;
+      }
+
+      case 'get_agent_task': {
+        if (!params?.taskId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'taskId parameter is required' });
+        }
+
+        const agentTaskResult = await pool.query(
+          `SELECT id, task_type, status, input_data, output_data,
+                  priority, retry_count, max_retries, error_message,
+                  execution_time_ms, progress, created_at, started_at, completed_at
+           FROM agent_tasks WHERE id = $1`,
+          [params.taskId]
+        );
+
+        if (agentTaskResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Not Found', message: 'Agent task not found' });
+        }
+
+        const agentTask = agentTaskResult.rows[0];
+        const taskData = {
+          taskId: agentTask.id,
+          taskType: agentTask.task_type,
+          status: agentTask.status,
+          inputData: agentTask.input_data,
+          outputData: agentTask.output_data,
+          priority: agentTask.priority,
+          retryCount: agentTask.retry_count,
+          maxRetries: agentTask.max_retries,
+          errorMessage: agentTask.error_message,
+          executionTimeMs: agentTask.execution_time_ms,
+          progress: agentTask.progress,
+          createdAt: agentTask.created_at,
+          startedAt: agentTask.started_at,
+          completedAt: agentTask.completed_at,
+        };
+        result = { task: taskData, ...taskData };
+        break;
+      }
+
+      case 'get_agent_tasks': {
+        const atLimit = Math.min(params?.limit || 20, 100);
+        const atOffset = params?.offset || 0;
+        const statusFilter = params?.status;
+        const typeFilter = params?.taskType;
+
+        let atQuery = `SELECT id, task_type, status, priority, retry_count,
+                              execution_time_ms, progress, error_message,
+                              created_at, started_at, completed_at
+                       FROM agent_tasks WHERE 1=1`;
+        const atParams: any[] = [];
+        let paramIdx = 1;
+
+        if (statusFilter) {
+          atQuery += ` AND status = $${paramIdx++}`;
+          atParams.push(statusFilter);
+        }
+        if (typeFilter) {
+          atQuery += ` AND task_type = $${paramIdx++}`;
+          atParams.push(typeFilter);
+        }
+
+        atQuery += ` ORDER BY created_at DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+        atParams.push(atLimit, atOffset);
+
+        const agentTasksResult = await pool.query(atQuery, atParams);
+
+        let countSql = 'SELECT COUNT(*) FROM agent_tasks WHERE 1=1';
+        const countParams: any[] = [];
+        let countIdx = 1;
+        if (statusFilter) {
+          countSql += ` AND status = $${countIdx++}`;
+          countParams.push(statusFilter);
+        }
+        if (typeFilter) {
+          countSql += ` AND task_type = $${countIdx++}`;
+          countParams.push(typeFilter);
+        }
+        const countQuery = await pool.query(countSql, countParams);
+
+        result = {
+          tasks: agentTasksResult.rows.map((t: any) => ({
+            taskId: t.id,
+            taskType: t.task_type,
+            status: t.status,
+            priority: t.priority,
+            retryCount: t.retry_count,
+            executionTimeMs: t.execution_time_ms,
+            progress: t.progress,
+            errorMessage: t.error_message,
+            createdAt: t.created_at,
+            startedAt: t.started_at,
+            completedAt: t.completed_at,
+          })),
+          total: parseInt(countQuery.rows[0].count),
+          limit: atLimit,
+          offset: atOffset,
         };
         break;
       }
@@ -362,9 +575,20 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           FROM deal_tasks
         `);
 
+        const agentTasksStats = await pool.query(`
+          SELECT
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE status = 'pending') as pending,
+            COUNT(*) FILTER (WHERE status = 'processing') as processing,
+            COUNT(*) FILTER (WHERE status = 'completed') as completed,
+            COUNT(*) FILTER (WHERE status = 'failed') as failed
+          FROM agent_tasks
+        `);
+
         result = {
           deals: statsResult.rows[0],
           tasks: sysTasksResult.rows[0],
+          agentTasks: agentTasksStats.rows[0],
           timestamp: new Date().toISOString(),
         };
         break;
@@ -505,6 +729,48 @@ router.post('/query', validateWebhook, async (req: ClawdbotWebhookRequest, res: 
             exitValue: summary.exitValue,
             cashOnCash: summary.cashOnCash?.[0],
           } : null,
+        };
+        break;
+      }
+
+      case 'agent_stats': {
+        const byStatusResult = await pool.query(`
+          SELECT status, COUNT(*)::int as count
+          FROM agent_tasks GROUP BY status ORDER BY count DESC
+        `).catch(() => ({ rows: [] }));
+
+        const byTypeResult = await pool.query(`
+          SELECT task_type,
+                 COUNT(*)::int as total,
+                 COUNT(*) FILTER (WHERE status = 'completed')::int as completed,
+                 COUNT(*) FILTER (WHERE status = 'failed')::int as failed,
+                 ROUND(AVG(execution_time_ms) FILTER (WHERE status = 'completed'))::int as avg_execution_ms
+          FROM agent_tasks GROUP BY task_type ORDER BY total DESC
+        `).catch(() => ({ rows: [] }));
+
+        const recentResult = await pool.query(`
+          SELECT id, task_type, status, execution_time_ms, error_message, created_at, completed_at
+          FROM agent_tasks ORDER BY created_at DESC LIMIT 10
+        `).catch(() => ({ rows: [] }));
+
+        result = {
+          byStatus: byStatusResult.rows.reduce((acc: any, r: any) => { acc[r.status] = r.count; return acc; }, {}),
+          byType: byTypeResult.rows.map((r: any) => ({
+            taskType: r.task_type,
+            total: r.total,
+            completed: r.completed,
+            failed: r.failed,
+            avgExecutionMs: r.avg_execution_ms,
+          })),
+          recentTasks: recentResult.rows.map((t: any) => ({
+            taskId: t.id,
+            taskType: t.task_type,
+            status: t.status,
+            executionTimeMs: t.execution_time_ms,
+            errorMessage: t.error_message,
+            createdAt: t.created_at,
+            completedAt: t.completed_at,
+          })),
         };
         break;
       }
