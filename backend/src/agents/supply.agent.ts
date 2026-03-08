@@ -1,164 +1,119 @@
 /**
  * Supply Agent
- * Analyzes market inventory and supply trends using property_records and apartment_market_snapshots
+ * Analyzes market inventory and supply trends
  */
 
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 
 export class SupplyAgent {
+  /**
+   * Execute supply analysis task
+   */
   async execute(inputData: any, userId: string): Promise<any> {
     logger.info('Supply agent executing...', { inputData });
 
     try {
-      const { city, stateCode, propertyType, marketArea } = inputData;
-      const searchCity = city || marketArea || 'Atlanta';
-      const searchState = stateCode || 'GA';
+      const { city, stateCode, propertyType } = inputData;
 
-      const propertyStats = await query(
-        `SELECT 
-          count(*) as total_properties,
-          coalesce(sum(units), 0) as total_units,
-          round(avg(units)::numeric) as avg_units,
-          count(CASE WHEN units > 0 THEN 1 END) as properties_with_units,
-          round(avg(CASE WHEN building_sqft > 0 THEN building_sqft END)::numeric) as avg_building_sqft,
-          round(avg(CASE WHEN year_built ~ '^[0-9]+$' THEN CASE WHEN year_built::int > 0 THEN year_built::int END END)::numeric) as avg_year_built,
-          min(CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END) FILTER (WHERE year_built ~ '^[0-9]+$' AND CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END > 1900) as oldest_built,
-          max(CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END) FILTER (WHERE year_built ~ '^[0-9]+$' AND CASE WHEN year_built ~ '^[0-9]+$' THEN year_built::int END > 1900) as newest_built,
-          round(avg(CASE WHEN assessed_value > 0 THEN assessed_value END)::numeric) as avg_assessed_value
-        FROM property_records
-        WHERE city ILIKE $1 AND state ILIKE $2`,
-        [searchCity, searchState]
+      // Validate input
+      if (!city || !stateCode) {
+        throw new Error('City and stateCode are required');
+      }
+
+      // Get market inventory (with type casting for safety)
+      const inventoryResult = await query(
+        `SELECT *
+         FROM market_inventory
+         WHERE city ILIKE $1 AND state_code = $2
+           AND snapshot_date >= NOW() - INTERVAL '30 days'
+         ORDER BY snapshot_date DESC`,
+        [city, stateCode]
       );
 
-      const marketSnapshot = await query(
+      // Calculate trends (cast columns to numeric to avoid type errors)
+      const trendsResult = await query(
         `SELECT 
-          total_properties, total_units, avg_occupancy,
-          class_a_count, class_b_count, class_c_count,
-          avg_rent_studio, avg_rent_1br, avg_rent_2br, avg_rent_3br,
-          rent_growth_90d, rent_growth_180d,
-          concession_rate, avg_concession_value,
-          avg_days_to_lease, monthly_absorption_rate,
-          supply_pressure, market_grade, snapshot_date,
-          avg_rent, total_listings, available_units
-        FROM apartment_market_snapshots
-        WHERE city ILIKE $1 AND state ILIKE $2
-        ORDER BY snapshot_date DESC
-        LIMIT 1`,
-        [searchCity, searchState]
+          AVG(CAST(active_listings AS NUMERIC)) as avg_listings,
+          AVG(CAST(median_price AS NUMERIC)) as avg_price,
+          AVG(CAST(avg_days_on_market AS NUMERIC)) as avg_dom,
+          AVG(CAST(absorption_rate AS NUMERIC)) as avg_absorption
+         FROM market_inventory
+         WHERE city ILIKE $1 AND state_code = $2
+           AND snapshot_date >= NOW() - INTERVAL '90 days'`,
+        [city, stateCode]
       );
 
-      const unitDistribution = await query(
-        `SELECT 
-          CASE 
-            WHEN units <= 50 THEN 'Small (1-50)'
-            WHEN units <= 150 THEN 'Mid-size (51-150)'
-            WHEN units <= 300 THEN 'Large (151-300)'
-            ELSE 'Institutional (300+)'
-          END as size_category,
-          count(*) as property_count,
-          sum(units) as total_units
-        FROM property_records
-        WHERE city ILIKE $1 AND state ILIKE $2 AND units > 0
-        GROUP BY 1
-        ORDER BY min(units)`,
-        [searchCity, searchState]
-      );
+      const trends = trendsResult.rows[0] || {};
+      const inventory = inventoryResult.rows;
 
-      const stats = propertyStats.rows[0] || {};
-      const snapshot = marketSnapshot.rows[0] || {};
-      const distribution = unitDistribution.rows;
-
-      const sf = (v: any) => this.safeFloat(v);
-      const si = (v: any) => { const n = sf(v); return n !== null ? Math.round(n) : null; };
-
-      const occ = sf(snapshot.avg_occupancy);
-      const vacancyRate = occ !== null ? (100 - occ) : null;
-      const avgRent = sf(snapshot.avg_rent) ?? sf(snapshot.avg_rent_2br);
+      // Extract metrics from inventory data
+      const latestSnapshot = inventory.length > 0 ? inventory[0] : null;
 
       return {
         status: 'success',
-        market: `${searchCity}, ${searchState}`,
-        propertyType: propertyType || 'multifamily',
-
-        totalProperties: si(stats.total_properties) || 0,
-        totalUnits: si(stats.total_units) || 0,
-        avgUnitsPerProperty: si(stats.avg_units) || 0,
-        avgBuildingSqft: si(stats.avg_building_sqft) || 0,
-        avgYearBuilt: si(stats.avg_year_built) || 0,
-        oldestBuilt: si(stats.oldest_built),
-        newestBuilt: si(stats.newest_built),
-        avgAssessedValue: si(stats.avg_assessed_value) || 0,
-
-        vacantUnits: si(snapshot.available_units),
-        vacancyRate,
-        avgRent,
-        avgRentStudio: sf(snapshot.avg_rent_studio),
-        avgRent1br: sf(snapshot.avg_rent_1br),
-        avgRent2br: sf(snapshot.avg_rent_2br),
-        avgRent3br: sf(snapshot.avg_rent_3br),
-        rentGrowth90d: sf(snapshot.rent_growth_90d),
-        rentGrowth180d: sf(snapshot.rent_growth_180d),
-        monthlyAbsorption: sf(snapshot.monthly_absorption_rate),
-        avgDaysToLease: si(snapshot.avg_days_to_lease),
-        concessionRate: sf(snapshot.concession_rate),
-        supplyPressure: snapshot.supply_pressure,
-        marketGrade: snapshot.market_grade,
-        classBreakdown: {
-          classA: si(snapshot.class_a_count),
-          classB: si(snapshot.class_b_count),
-          classC: si(snapshot.class_c_count),
+        market: `${city}, ${stateCode}`,
+        propertyType,
+        
+        // Current metrics from latest snapshot
+        activeListings: latestSnapshot?.active_listings || 0,
+        medianPrice: parseFloat(latestSnapshot?.median_price) || 0,
+        avgPrice: parseFloat(latestSnapshot?.avg_price) || 0,
+        pricePerSqft: parseFloat(latestSnapshot?.price_per_sqft) || 0,
+        avgDaysOnMarket: latestSnapshot?.avg_days_on_market || 0,
+        medianDaysOnMarket: latestSnapshot?.median_days_on_market || 0,
+        
+        // Supply metrics
+        absorptionRate: parseFloat(latestSnapshot?.absorption_rate) || 0,
+        monthsOfSupply: parseFloat(latestSnapshot?.months_of_supply) || 0,
+        vacancyRate: parseFloat(latestSnapshot?.vacancy_rate) || 0,
+        
+        // 30-day activity
+        newListings30d: latestSnapshot?.new_listings_30d || 0,
+        closedSales30d: latestSnapshot?.closed_sales_30d || 0,
+        
+        // Property details
+        avgSqft: latestSnapshot?.avg_sqft || 0,
+        avgYearBuilt: latestSnapshot?.avg_year_built || 0,
+        
+        // 90-day trends
+        trends: {
+          avgListings: parseFloat(trends.avg_listings) || 0,
+          avgPrice: parseFloat(trends.avg_price) || 0,
+          avgDaysOnMarket: parseFloat(trends.avg_dom) || 0,
+          avgAbsorption: parseFloat(trends.avg_absorption) || 0,
         },
-
-        unitDistribution: distribution.map((d: any) => ({
-          category: d.size_category,
-          count: parseInt(d.property_count),
-          units: parseInt(d.total_units),
+        
+        // Raw inventory data for reference
+        inventory: inventory.map((item: any) => ({
+          snapshotDate: item.snapshot_date,
+          activeListings: item.active_listings,
+          medianPrice: parseFloat(item.median_price),
+          avgDaysOnMarket: item.avg_days_on_market,
+          absorptionRate: parseFloat(item.absorption_rate),
         })),
-
-        opportunityScore: this.calculateOpportunityScore(stats, snapshot),
+        
+        opportunityScore: this.calculateOpportunityScore(trends),
       };
     } catch (error: any) {
       logger.error('Supply agent execution failed:', error);
-      throw error;
+      // Return clean error message
+      throw new Error(error.message || 'Supply analysis failed');
     }
   }
 
-  private safeFloat(val: any): number | null {
-    if (val === null || val === undefined) return null;
-    const n = parseFloat(String(val));
-    return isNaN(n) ? null : n;
-  }
-
-  private calculateOpportunityScore(stats: any, snapshot: any): number {
+  private calculateOpportunityScore(trends: any): number {
+    // Simple scoring logic - can be enhanced
     let score = 50;
 
-    const occ = this.safeFloat(snapshot.avg_occupancy);
-    if (occ !== null) {
-      const vacancy = 100 - occ;
-      if (vacancy < 5) score += 15;
-      else if (vacancy < 8) score += 10;
-      else if (vacancy > 12) score -= 10;
-    }
+    // Safely handle null/undefined values
+    const avgDom = parseFloat(trends.avg_dom) || 0;
+    const avgAbsorption = parseFloat(trends.avg_absorption) || 0;
+    const avgListings = parseFloat(trends.avg_listings) || 0;
 
-    const absorption = this.safeFloat(snapshot.monthly_absorption_rate);
-    if (absorption !== null) {
-      if (absorption > 20) score += 15;
-      else if (absorption > 10) score += 10;
-    }
-
-    const dom = this.safeFloat(snapshot.avg_days_to_lease);
-    if (dom !== null) {
-      if (dom < 30) score += 10;
-      else if (dom > 60) score -= 10;
-    }
-
-    const rentGrowth = this.safeFloat(snapshot.rent_growth_90d);
-    if (rentGrowth !== null) {
-      if (rentGrowth > 5) score += 10;
-      else if (rentGrowth > 2) score += 5;
-      else if (rentGrowth < 0) score -= 10;
-    }
+    if (avgDom > 0 && avgDom < 30) score += 20; // Low days on market is good
+    if (avgAbsorption > 15) score += 15; // High absorption is good
+    if (avgListings > 0 && avgListings < 100) score += 15; // Low inventory is good
 
     return Math.min(100, Math.max(0, score));
   }
