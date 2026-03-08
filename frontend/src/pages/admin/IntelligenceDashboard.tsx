@@ -160,7 +160,7 @@ export function IntelligenceDashboard() {
             icon={<CheckCircle className="w-5 h-5" />}
             label="Validated"
             value={stats.documents.validated.toLocaleString()}
-            sublabel={`${Math.round((stats.documents.validated / stats.documents.total) * 100)}% of total`}
+            sublabel={`${stats.documents.total > 0 ? Math.round((stats.documents.validated / stats.documents.total) * 100) : 0}% of total`}
             color="green"
           />
           <StatCard
@@ -355,7 +355,7 @@ export function IntelligenceDashboard() {
                   <div className="flex items-center gap-2">
                     <span className="text-gray-600">{type.count}</span>
                     <span className="text-xs text-gray-500">
-                      ({Math.round((type.withEmbeddings / type.count) * 100)}% embedded)
+                      ({type.count > 0 ? Math.round((type.withEmbeddings / type.count) * 100) : 0}% embedded)
                     </span>
                   </div>
                 </div>

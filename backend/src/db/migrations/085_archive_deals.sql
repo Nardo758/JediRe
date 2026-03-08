@@ -114,7 +114,9 @@ CREATE TABLE archive_statistics (
   total_storage_mb NUMERIC(10, 2),
   compressed_storage_mb NUMERIC(10, 2),
   
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(archived_deal_id)
 );
 
 -- ───────────────────────────────────────────────────────────────
@@ -227,24 +229,50 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION update_archive_statistics()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Update document count
-  UPDATE archived_deals
-  SET documents_archived = (
-    SELECT COUNT(*) 
-    FROM unified_documents 
+  -- Update stats for the new archived deal
+  IF NEW.archived_deal_id IS NOT NULL THEN
+    UPDATE archived_deals
+    SET documents_archived = (
+      SELECT COUNT(*) 
+      FROM unified_documents 
+      WHERE archived_deal_id = NEW.archived_deal_id
+    )
+    WHERE id = NEW.archived_deal_id;
+    
+    INSERT INTO archive_statistics (archived_deal_id, documents_by_category, total_embeddings)
+    SELECT 
+      NEW.archived_deal_id,
+      count_archived_deal_documents(NEW.archived_deal_id),
+      COUNT(content_embedding)
+    FROM unified_documents
     WHERE archived_deal_id = NEW.archived_deal_id
-  )
-  WHERE id = NEW.archived_deal_id;
-  
-  -- Update archive statistics
-  INSERT INTO archive_statistics (archived_deal_id, documents_by_category, total_embeddings)
-  SELECT 
-    NEW.archived_deal_id,
-    count_archived_deal_documents(NEW.archived_deal_id),
-    COUNT(content_embedding)
-  FROM unified_documents
-  WHERE archived_deal_id = NEW.archived_deal_id
-  ON CONFLICT DO NOTHING;
+    ON CONFLICT (archived_deal_id) DO UPDATE SET
+      documents_by_category = EXCLUDED.documents_by_category,
+      total_embeddings = EXCLUDED.total_embeddings;
+  END IF;
+
+  -- Recalculate stats for the old archived deal when document is moved or unarchived
+  IF TG_OP = 'UPDATE' 
+    AND OLD.archived_deal_id IS NOT NULL 
+    AND OLD.archived_deal_id IS DISTINCT FROM NEW.archived_deal_id THEN
+    UPDATE archived_deals
+    SET documents_archived = (
+      SELECT COUNT(*) 
+      FROM unified_documents 
+      WHERE archived_deal_id = OLD.archived_deal_id
+    )
+    WHERE id = OLD.archived_deal_id;
+    
+    UPDATE archive_statistics
+    SET 
+      documents_by_category = count_archived_deal_documents(OLD.archived_deal_id),
+      total_embeddings = (
+        SELECT COUNT(content_embedding) 
+        FROM unified_documents 
+        WHERE archived_deal_id = OLD.archived_deal_id
+      )
+    WHERE archived_deal_id = OLD.archived_deal_id;
+  END IF;
   
   RETURN NEW;
 END;
@@ -253,7 +281,8 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trigger_update_archive_stats
   AFTER INSERT OR UPDATE ON unified_documents
   FOR EACH ROW
-  WHEN (NEW.archived_deal_id IS NOT NULL)
+  WHEN (NEW.archived_deal_id IS NOT NULL 
+    OR (OLD IS NOT NULL AND OLD.archived_deal_id IS NOT NULL))
   EXECUTE FUNCTION update_archive_statistics();
 
 COMMENT ON TABLE archived_deals IS 'Closed or passed deals with outcome data for historical intelligence';

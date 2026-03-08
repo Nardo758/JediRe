@@ -41,7 +41,7 @@ export class DocumentRouterService {
   /**
    * Auto-categorize a document based on content and filename
    */
-  async autoCatego rizeDocument(doc: {
+  async autoCategorizeDocument(doc: {
     title: string;
     documentType: string;
     contentText?: string;
