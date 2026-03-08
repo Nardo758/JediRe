@@ -81,6 +81,7 @@ import designAssistantRoutes from './design-assistant.routes';
 import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
+import fixHighlandsRoute from './fix-highlands.route';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
