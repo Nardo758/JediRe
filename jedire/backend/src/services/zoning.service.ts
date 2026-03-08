@@ -166,7 +166,43 @@ export class ZoningService {
         };
       }
     } catch (error) {
-      logger.error('Reverse geocoding failed:', error);
+      logger.warn('Google reverse geocoding failed, trying Mapbox...', error);
+    }
+
+    // Fallback to Mapbox reverse geocoding
+    try {
+      const response = await axios.get(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${coords.lng},${coords.lat}.json`,
+        {
+          params: {
+            access_token: process.env.MAPBOX_ACCESS_TOKEN,
+            types: 'place,region',
+          },
+        }
+      );
+
+      if (response.data.features && response.data.features.length > 0) {
+        const features = response.data.features;
+        
+        // Extract place (city) and region (state)
+        const placeFeature = features.find((f: any) => f.place_type.includes('place'));
+        const regionFeature = features.find((f: any) => f.place_type.includes('region'));
+        
+        const city = placeFeature?.text || '';
+        const state = regionFeature?.properties?.short_code?.replace('US-', '') || '';
+        const county = ''; // Mapbox doesn't reliably provide county data
+
+        if (city && state) {
+          return {
+            city,
+            county,
+            state,
+            formatted: `${city}, ${state}`,
+          };
+        }
+      }
+    } catch (error) {
+      logger.error('Mapbox reverse geocoding failed:', error);
     }
 
     throw new AppError(404, 'Could not determine municipality');
