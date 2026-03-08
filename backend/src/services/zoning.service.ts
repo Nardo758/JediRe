@@ -59,8 +59,12 @@ export class ZoningService {
         zoningDistrict: district,
         confidence: coords.confidence || 'high',
       };
-    } catch (error) {
-      logger.error('Zoning lookup failed:', error);
+    } catch (error: any) {
+      logger.error('Zoning lookup failed:', {
+        message: error.message,
+        code: error.code,
+        status: error.status
+      });
       throw error;
     }
   }
@@ -90,8 +94,11 @@ export class ZoningService {
           confidence: 'high',
         };
       }
-    } catch (error) {
-      logger.warn('Google geocoding failed, trying Mapbox...', error);
+    } catch (error: any) {
+      logger.warn('Google geocoding failed, trying Mapbox...', { 
+        message: error.message,
+        code: error.code 
+      });
     }
 
     // Fallback to Mapbox Geocoding API
@@ -114,8 +121,11 @@ export class ZoningService {
           confidence: 'medium',
         };
       }
-    } catch (error) {
-      logger.error('Mapbox geocoding failed:', error);
+    } catch (error: any) {
+      logger.error('Mapbox geocoding failed:', {
+        message: error.message,
+        code: error.code
+      });
     }
 
     throw new AppError(404, 'Geocoding failed for address: ' + address);
@@ -298,8 +308,12 @@ export class ZoningService {
       }
 
       return analysis;
-    } catch (error) {
-      logger.error('Property analysis failed:', error);
+    } catch (error: any) {
+      logger.error('Property analysis failed:', {
+        message: error.message,
+        code: error.code,
+        status: error.status
+      });
       throw error;
     }
   }
