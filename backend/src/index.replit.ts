@@ -34,6 +34,7 @@ import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes'
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import intelligenceRouter from './api/rest/intelligence.routes';
 import geographicContextRoutes from './api/rest/geographic-context.routes';
 import isochroneRoutes from './api/rest/isochrone.routes';
 import trafficAiRoutes from './api/rest/traffic-ai.routes';
@@ -213,6 +214,7 @@ app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
 app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
 app.use('/api/v1/gmail', requireAuth, gmailRouter);
 app.use('/api/v1/news', requireAuth, newsRouter);
+app.use('/api/v1/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
 app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
 app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);

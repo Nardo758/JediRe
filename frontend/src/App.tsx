@@ -116,6 +116,13 @@ function AppContent() {
           <Route path="/admin/command-center" element={<CommandCenterPage />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
+          <Route path="/admin/intelligence" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              {React.createElement(
+                React.lazy(() => import('./pages/admin/IntelligenceDashboard').then(m => ({ default: m.IntelligenceDashboard })))
+              )}
+            </Suspense>
+          } />
           
           {/* Market Research Redirects */}
           <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
