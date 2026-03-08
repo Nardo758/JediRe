@@ -14,27 +14,9 @@ class JediReAPI:
     def __init__(self):
         self.base_url = os.getenv("JEDIRE_API_URL", "http://localhost:3000")
         self.api_key = os.getenv("JEDIRE_API_KEY")
-        self._client: Optional[httpx.AsyncClient] = None
         
         if not self.api_key:
             print("⚠️  JEDIRE_API_KEY not set - agent integration disabled")
-    
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers={
-                    "x-api-key": self.api_key or "",
-                    "Content-Type": "application/json"
-                },
-                timeout=30.0
-            )
-        return self._client
-    
-    async def close(self):
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
     
     async def submit_analysis_task(
         self,
@@ -57,19 +39,26 @@ class JediReAPI:
         if not self.api_key:
             raise ValueError("JEDIRE_API_KEY not configured")
         
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
         payload = {
             "taskType": task_type,
             "inputData": input_data,
             "priority": 1
         }
         
-        client = await self._get_client()
-        response = await client.post(
-            "/api/v1/agents/tasks",
-            json=payload
-        )
-        response.raise_for_status()
-        return response.json()
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.base_url}/api/v1/agents/tasks",
+                headers=headers,
+                json=payload,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
     
     async def get_task_status(self, task_id: str) -> Dict[str, Any]:
         """Get task status and results"""
@@ -77,12 +66,16 @@ class JediReAPI:
         if not self.api_key:
             raise ValueError("JEDIRE_API_KEY not configured")
         
-        client = await self._get_client()
-        response = await client.get(
-            f"/api/v1/agents/tasks/{task_id}"
-        )
-        response.raise_for_status()
-        return response.json()
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/api/v1/agents/tasks/{task_id}",
+                headers=headers,
+                timeout=10.0
+            )
+            response.raise_for_status()
+            return response.json()
     
     async def wait_for_task(
         self,
@@ -108,16 +101,19 @@ class JediReAPI:
                 error = task.get('error', 'Unknown error')
                 raise Exception(f"Task failed: {error}")
             
+            # Still running, wait and poll again
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
         
         raise TimeoutError(f"Task {task_id} did not complete within {timeout}s")
     
+    # Convenience methods for each agent
+    
     async def analyze_zoning(
         self,
         property_address: str,
         deal_id: Optional[str] = None,
-        lot_size_sqft: Optional[int] = None
+        lot_size: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Run zoning analysis on a property
@@ -125,25 +121,28 @@ class JediReAPI:
         Args:
             property_address: Full property address
             deal_id: Optional deal ID if property is in system
-            lot_size_sqft: Lot size in square feet
+            lot_size: Optional lot size in acres (required for full analysis)
         
         Returns:
             Zoning regulations, development potential, unit capacity
         """
         
-        input_data: Dict[str, Any] = {
-            "address": property_address,
+        input_data = {
+            "propertyAddress": property_address
         }
+        
         if deal_id:
             input_data["dealId"] = deal_id
-        if lot_size_sqft:
-            input_data["lotSizeSqft"] = lot_size_sqft
+        
+        if lot_size:
+            input_data["lotSize"] = lot_size
         
         task = await self.submit_analysis_task(
             task_type="zoning_analysis",
             input_data=input_data
         )
         
+        # Wait for completion
         result = await self.wait_for_task(task['id'], timeout=90)
         return result.get('outputData', {})
     

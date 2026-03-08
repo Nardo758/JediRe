@@ -6,30 +6,35 @@ Functions that the AI can call to run platform analysis
 from typing import Dict, Any, Optional
 from .jedire_api import JediReAPI
 
+# Global API client
 jedire_api = JediReAPI()
 
 
 async def analyze_property_zoning(
     address: str,
-    lot_size_acres: Optional[float] = None,
-    deal_id: Optional[str] = None
+    deal_id: Optional[str] = None,
+    lot_size: Optional[float] = None
 ) -> str:
     """
     Analyze zoning regulations and development potential for a property.
     
     Args:
         address: Full property address
-        lot_size_acres: Lot size in acres (will be converted to sqft for analysis)
         deal_id: Optional deal ID if property exists in system
+        lot_size: Optional lot size in acres (required if deal_id not provided)
     
     Returns:
         Formatted analysis of zoning, allowed uses, and development potential
+    
+    Note:
+        ZoningAgent requires lot size to calculate development potential.
+        If not provided, analysis may be limited.
     """
     
     try:
-        lot_size_sqft = int(lot_size_acres * 43560) if lot_size_acres else None
-        result = await jedire_api.analyze_zoning(address, deal_id, lot_size_sqft)
+        result = await jedire_api.analyze_zoning(address, deal_id, lot_size)
         
+        # Extract key fields with safe defaults
         zoning = result.get('zoningDistrict', 'Unknown')
         uses = result.get('allowedUses', [])
         max_units = result.get('maxUnits', 'N/A')
@@ -38,6 +43,7 @@ async def analyze_property_zoning(
         parking = result.get('parkingRequired', 'N/A')
         regulations = result.get('keyRegulations', [])
         
+        # Format for natural language response
         summary = f"""
 Zoning Analysis for {address}:
 
@@ -79,6 +85,7 @@ async def analyze_market_supply(
     try:
         result = await jedire_api.analyze_supply(market, property_type)
         
+        # Extract metrics
         total_units = result.get('totalUnits', 'N/A')
         vacant = result.get('vacantUnits', 'N/A')
         vacancy_rate = result.get('vacancyRate', 'N/A')
@@ -131,6 +138,7 @@ async def analyze_deal_financials(
     try:
         result = await jedire_api.analyze_cashflow(deal_id, assumptions)
         
+        # Extract financial metrics
         purchase = result.get('purchasePrice', 0)
         units = result.get('units', 'N/A')
         price_per_unit = result.get('pricePerUnit', 0)
@@ -176,10 +184,11 @@ Financial Analysis for Deal {deal_id}:
         return f"Error analyzing deal financials: {str(e)}"
 
 
+# Tool registry for AI function calling
 AVAILABLE_TOOLS = [
     {
         "name": "analyze_property_zoning",
-        "description": "Analyze zoning regulations and development potential for a property address. Use when user asks about: what can be built, zoning restrictions, unit capacity, development potential, allowed uses.",
+        "description": "Analyze zoning regulations and development potential for a property address. Use when user asks about: what can be built, zoning restrictions, unit capacity, development potential, allowed uses. NOTE: Requires lot size in acres for full analysis - extract from user message if provided, or ask user if critical.",
         "function": analyze_property_zoning,
         "parameters": {
             "type": "object",
@@ -188,13 +197,13 @@ AVAILABLE_TOOLS = [
                     "type": "string",
                     "description": "Full property address including city and state"
                 },
-                "lot_size_acres": {
-                    "type": "number",
-                    "description": "Lot size in acres. Required for development capacity analysis."
-                },
                 "deal_id": {
                     "type": "string",
                     "description": "Optional: Deal ID if property is in the system"
+                },
+                "lot_size": {
+                    "type": "number",
+                    "description": "Optional: Lot size in acres (e.g., 2.5). Required for calculating max units and development potential. Extract from user message if mentioned (e.g., '2.5 acre lot', '100,000 sq ft' = 2.3 acres)"
                 }
             },
             "required": ["address"]
