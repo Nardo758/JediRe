@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
 import PropertyTypesSettings from './settings/PropertyTypesSettings';
+import { IntelligenceSettings } from './settings/IntelligenceSettings';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence';
 
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
@@ -69,6 +70,16 @@ export function SettingsPage() {
             }`}
           >
             Property Types & Strategies
+          </button>
+          <button 
+            onClick={() => setActiveTab('intelligence')}
+            className={`w-full text-left px-4 py-3 rounded-lg ${
+              activeTab === 'intelligence' 
+                ? 'bg-blue-50 text-blue-700 font-medium' 
+                : 'text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Intelligence & Data
           </button>
           <button 
             onClick={() => setActiveTab('integrations')}
@@ -168,6 +179,10 @@ export function SettingsPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-200px)]">
               <PropertyTypesSettings />
             </div>
+          )}
+
+          {activeTab === 'intelligence' && (
+            <IntelligenceSettings />
           )}
         </div>
       </div>

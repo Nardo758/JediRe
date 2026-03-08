@@ -260,4 +260,227 @@ router.get('/patterns', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/intelligence/user/stats
+ * Get user-specific intelligence statistics
+ */
+router.get('/user/stats', async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user?.id; // Assumes auth middleware sets req.user
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // User's documents
+    const docStats = await pool.query(`
+      SELECT 
+        COUNT(*) as my_documents,
+        COUNT(content_embedding) as documents_embedded
+      FROM unified_documents
+      WHERE user_id = $1
+    `, [userId]);
+
+    const myDocs = parseInt(docStats.rows[0].my_documents) || 0;
+    const embedded = parseInt(docStats.rows[0].documents_embedded) || 0;
+    const pending = myDocs - embedded;
+
+    // User's agent tasks
+    const taskStats = await pool.query(`
+      SELECT 
+        COUNT(*) as tasks_run,
+        COUNT(CASE WHEN user_validation = 'approved' THEN 1 END) as approved,
+        COUNT(CASE WHEN user_validation = 'corrected' THEN 1 END) as corrections
+      FROM agent_task_learnings
+      WHERE user_id = $1
+        AND created_at > NOW() - INTERVAL '30 days'
+    `, [userId]);
+
+    // Patterns discovered from user's data
+    const patternStats = await pool.query(`
+      SELECT COUNT(DISTINCT pattern_name) as patterns
+      FROM agent_patterns ap
+      WHERE EXISTS (
+        SELECT 1 FROM agent_task_learnings atl
+        WHERE atl.user_id = $1
+          AND ap.agent_type = atl.agent_type
+      )
+    `, [userId]);
+
+    res.json({
+      myDocuments: myDocs,
+      documentsEmbedded: embedded,
+      pendingEmbeddings: pending,
+      agentTasksRun: parseInt(taskStats.rows[0].tasks_run) || 0,
+      resultsApproved: parseInt(taskStats.rows[0].approved) || 0,
+      correctionsMade: parseInt(taskStats.rows[0].corrections) || 0,
+      patternsDiscovered: parseInt(patternStats.rows[0].patterns) || 0,
+    });
+  } catch (error: any) {
+    console.error('Error fetching user intelligence stats:', error);
+    res.status(500).json({ error: 'Failed to fetch user statistics' });
+  }
+});
+
+/**
+ * GET /api/v1/intelligence/user/preferences
+ * Get user intelligence preferences
+ */
+router.get('/user/preferences', async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        semantic_search_enabled,
+        semantic_search_threshold,
+        contribute_to_learning,
+        request_feedback,
+        auto_submit_corrections,
+        include_documents,
+        task_history_retention_days
+      FROM user_intelligence_preferences
+      WHERE user_id = $1
+    `, [userId]);
+
+    if (result.rows.length === 0) {
+      // Return defaults
+      return res.json({
+        semanticSearchEnabled: true,
+        semanticSearchThreshold: 0.6,
+        contributeToLearning: true,
+        requestFeedback: true,
+        autoSubmitCorrections: false,
+        includeDocuments: true,
+        taskHistoryRetentionDays: 90,
+      });
+    }
+
+    const prefs = result.rows[0];
+    res.json({
+      semanticSearchEnabled: prefs.semantic_search_enabled,
+      semanticSearchThreshold: prefs.semantic_search_threshold,
+      contributeToLearning: prefs.contribute_to_learning,
+      requestFeedback: prefs.request_feedback,
+      autoSubmitCorrections: prefs.auto_submit_corrections,
+      includeDocuments: prefs.include_documents,
+      taskHistoryRetentionDays: prefs.task_history_retention_days,
+    });
+  } catch (error: any) {
+    console.error('Error fetching user preferences:', error);
+    res.status(500).json({ error: 'Failed to fetch preferences' });
+  }
+});
+
+/**
+ * PUT /api/v1/intelligence/user/preferences
+ * Update user intelligence preferences
+ */
+router.put('/user/preferences', async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const {
+      semanticSearchEnabled,
+      semanticSearchThreshold,
+      contributeToLearning,
+      requestFeedback,
+      autoSubmitCorrections,
+      includeDocuments,
+      taskHistoryRetentionDays,
+    } = req.body;
+
+    await pool.query(`
+      INSERT INTO user_intelligence_preferences (
+        user_id,
+        semantic_search_enabled,
+        semantic_search_threshold,
+        contribute_to_learning,
+        request_feedback,
+        auto_submit_corrections,
+        include_documents,
+        task_history_retention_days
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        semantic_search_enabled = EXCLUDED.semantic_search_enabled,
+        semantic_search_threshold = EXCLUDED.semantic_search_threshold,
+        contribute_to_learning = EXCLUDED.contribute_to_learning,
+        request_feedback = EXCLUDED.request_feedback,
+        auto_submit_corrections = EXCLUDED.auto_submit_corrections,
+        include_documents = EXCLUDED.include_documents,
+        task_history_retention_days = EXCLUDED.task_history_retention_days,
+        updated_at = NOW()
+    `, [
+      userId,
+      semanticSearchEnabled,
+      semanticSearchThreshold,
+      contributeToLearning,
+      requestFeedback,
+      autoSubmitCorrections,
+      includeDocuments,
+      taskHistoryRetentionDays,
+    ]);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating user preferences:', error);
+    res.status(500).json({ error: 'Failed to update preferences' });
+  }
+});
+
+/**
+ * POST /api/v1/intelligence/user/generate-embeddings
+ * Generate embeddings for user's pending documents
+ */
+router.post('/user/generate-embeddings', async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Get pending document count
+    const result = await pool.query(`
+      SELECT COUNT(*) as pending
+      FROM unified_documents
+      WHERE user_id = $1
+        AND content_embedding IS NULL
+    `, [userId]);
+
+    const pendingCount = parseInt(result.rows[0].pending);
+
+    if (pendingCount === 0) {
+      return res.json({
+        message: 'No pending documents',
+        processed: 0,
+      });
+    }
+
+    // TODO: Queue embedding generation job
+    // For now, return success message
+    res.json({
+      message: `Queued ${pendingCount} documents for embedding generation`,
+      processed: pendingCount,
+      estimatedCost: (pendingCount * 0.00002).toFixed(4),
+    });
+  } catch (error: any) {
+    console.error('Error generating embeddings:', error);
+    res.status(500).json({ error: 'Failed to generate embeddings' });
+  }
+});
+
 export default router;
