@@ -315,9 +315,10 @@ export function AssetsOwnedPage() {
 
   const handleRowClick = (row: OwnedAsset) => {
     const dealId = (row as any).deal_id;
+    const source = (row as any).source;
     setSelectedAsset(row.id);
-    if (dealId) {
-      navigate(`/deals/${dealId}`);
+    if (source === 'deal' || dealId) {
+      navigate(`/assets-owned/${dealId || row.id}/property`);
     } else {
       navigate(`/deals/${row.id}`);
     }

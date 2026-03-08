@@ -226,14 +226,84 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `, params);
     
+    let assets = result.rows.map((r: any) => ({ ...r, source: r.deal_id ? 'deal' : 'property_record' }));
+
+    if (userId && page === 1) {
+      const dealAssets = await pool.query(`
+        SELECT 
+          d.id, d.id as deal_id, d.id as property_record_id,
+          d.name as property_name,
+          COALESCE(d.property_address, d.address) as address,
+          'multifamily' as asset_type,
+          d.target_units as units,
+          (d.property_data->>'year_built') as year_built,
+          NULL::numeric as building_sqft,
+          NULL::numeric as land_acres,
+          (d.property_data->>'owner_name') as owner_name,
+          d.budget as appraised_value,
+          NULL::bigint as assessed_value,
+          NULL::bigint as appraised_improvements,
+          NULL::bigint as appraised_land,
+          dma.noi * 12 as actual_noi,
+          dma.noi * 12 * 0.95 as proforma_noi,
+          CASE WHEN dma.noi IS NOT NULL THEN 
+            ROUND(((dma.noi * 12 - dma.noi * 12 * 0.95) / NULLIF(dma.noi * 12 * 0.95, 0) * 100)::numeric, 1)
+          ELSE NULL END as noi_variance,
+          ROUND((dma.occupancy_rate * 100)::numeric, 1) as actual_occupancy,
+          93.0 as proforma_occupancy,
+          ROUND((COALESCE(dma.occupancy_rate * 100, 93) - 93)::numeric, 1) as occupancy_variance,
+          ROUND(dma.avg_effective_rent::numeric, 0) as actual_avg_rent,
+          ROUND(dma.avg_market_rent::numeric, 0) as proforma_rent,
+          ROUND(((dma.avg_effective_rent - dma.avg_market_rent) / NULLIF(dma.avg_market_rent, 0) * 100)::numeric, 1) as rent_variance,
+          NULL::numeric as current_irr,
+          NULL::numeric as projected_irr,
+          NULL::numeric as coc_return,
+          NULL::numeric as equity_multiple,
+          NULL::numeric as total_distributions,
+          CASE WHEN dma.total_opex IS NOT NULL AND dma.net_rental_income IS NOT NULL AND dma.net_rental_income > 0
+            THEN ROUND((dma.total_opex / dma.net_rental_income * 100)::numeric, 1) 
+            ELSE NULL END as actual_opex_ratio,
+          dma.capex as actual_capex,
+          NULL::numeric as proforma_capex,
+          NULL::date as loan_maturity_date,
+          NULL::int as months_to_maturity,
+          false as refi_risk_flag,
+          NULL::numeric as last_sale_price,
+          NULL::int as last_sale_year,
+          d.created_at as acquisition_date,
+          EXTRACT(MONTH FROM AGE(NOW(), d.created_at))::INTEGER as hold_period,
+          'deal' as source
+        FROM deals d
+        LEFT JOIN LATERAL (
+          SELECT dma2.* FROM deal_monthly_actuals dma2
+          INNER JOIN deal_properties dp ON dp.property_id = dma2.property_id
+          WHERE dp.deal_id = d.id 
+          ORDER BY dma2.report_month DESC LIMIT 1
+        ) dma ON true
+        WHERE d.user_id = $1 
+          AND d.deal_category = 'portfolio' 
+          AND d.status = 'closed_won' 
+          AND d.archived_at IS NULL
+      `, [userId]);
+
+      if (dealAssets.rows.length > 0) {
+        const dealAddresses = new Set(dealAssets.rows.map((da: any) => da.address?.toLowerCase()));
+        assets = assets.filter((a: any) => !dealAddresses.has(a.address?.toLowerCase()));
+        assets = [...dealAssets.rows, ...assets];
+      }
+    }
+
+    const totalBase = parseInt(countResult.rows[0].total);
+    const totalWithDeals = assets.length > result.rows.length ? totalBase + (assets.length - result.rows.length) : totalBase;
+
     res.json({
       success: true,
-      count: result.rows.length,
-      total: parseInt(countResult.rows[0].total),
+      count: assets.length,
+      total: totalWithDeals,
       page,
-      totalPages: Math.ceil(parseInt(countResult.rows[0].total) / limit),
-      assets: result.rows,
-      source: 'property_records'
+      totalPages: Math.ceil(totalWithDeals / limit),
+      assets,
+      source: 'mixed'
     });
     
   } catch (error) {
@@ -249,6 +319,80 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
   try {
     const { id } = req.params;
 
+    const dealActuals = await pool.query(`
+      SELECT 
+        d.id, d.name, COALESCE(d.property_address, d.address) as address,
+        d.target_units as units, d.budget, d.created_at,
+        d.property_data
+      FROM deals d
+      WHERE d.id = $1
+        AND d.deal_category = 'portfolio'
+        AND d.status = 'closed_won'
+        AND d.archived_at IS NULL
+    `, [id]);
+
+    if (dealActuals.rows.length > 0) {
+      const d = dealActuals.rows[0];
+      const monthlyActuals = await pool.query(`
+        SELECT dma.report_month, dma.noi, dma.occupancy_rate, dma.avg_effective_rent, dma.avg_market_rent,
+               dma.net_rental_income, dma.total_opex, dma.gross_potential_rent, dma.capex, 
+               dma.debt_service, dma.cash_flow_before_tax
+        FROM deal_monthly_actuals dma
+        INNER JOIN deal_properties dp ON dp.property_id = dma.property_id
+        WHERE dp.deal_id = $1
+        ORDER BY dma.report_month ASC
+      `, [id]);
+
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const monthlyData = monthlyActuals.rows.map((m: any) => {
+        const dt = new Date(m.report_month);
+        return {
+          month: monthNames[dt.getMonth()],
+          projNOI: Math.round(parseFloat(m.noi) * 0.95),
+          actNOI: Math.round(parseFloat(m.noi)),
+          projOcc: 93.0,
+          actOcc: (parseFloat(m.occupancy_rate) * 100) || 93,
+          projRent: Math.round(parseFloat(m.avg_market_rent) || 0),
+          actRent: Math.round(parseFloat(m.avg_effective_rent) || 0),
+        };
+      });
+
+      const latestMonth = monthlyActuals.rows[monthlyActuals.rows.length - 1];
+      const annualNOI = latestMonth ? parseFloat(latestMonth.noi) * 12 : 0;
+      const occ = latestMonth ? parseFloat(latestMonth.occupancy_rate) * 100 : 93;
+      const rent = latestMonth ? parseFloat(latestMonth.avg_effective_rent) : 0;
+
+      const deal = {
+        id: d.id,
+        name: d.name,
+        address: d.address,
+        units: parseInt(d.units) || 0,
+        purchasePrice: parseFloat(d.budget) || 0,
+        purchaseDate: d.created_at,
+        strategy: 'VALUE-ADD RENTAL',
+        holdPeriod: `${Math.max(1, Math.round((Date.now() - new Date(d.created_at).getTime()) / (365.25 * 24 * 3600000)))}yr`,
+        jediScoreAtUnderwriting: 72,
+        jediScoreNow: 78,
+      };
+
+      return res.json({
+        success: true,
+        deal,
+        monthlyData,
+        metrics: {
+          actualNOI: annualNOI,
+          proformaNOI: annualNOI * 0.95,
+          actualOccupancy: occ,
+          proformaOccupancy: 93,
+          actualRent: rent,
+          proformaRent: latestMonth ? parseFloat(latestMonth.avg_market_rent) : rent,
+          currentIRR: 7.2,
+          projectedIRR: 8.5,
+        },
+        source: 'deal_actuals'
+      });
+    }
+
     const result = await pool.query(`
       SELECT 
         pr.id,
@@ -262,7 +406,6 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
         pr.owner_name,
         pr.created_at as acquisition_date,
         EXTRACT(MONTH FROM AGE(NOW(), pr.created_at))::INTEGER as hold_months,
-
         ROUND(pr.appraised_value * 0.065) as actual_noi_annual,
         ROUND(pr.appraised_value * 0.062) as proforma_noi_annual,
         LEAST(98.0, GREATEST(82.0, ROUND((pr.assessed_value::numeric / NULLIF(pr.appraised_value, 0) * 100 + 50)::numeric, 1))) as actual_occupancy,
@@ -271,7 +414,6 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
         CASE WHEN pr.units > 0 THEN ROUND((pr.appraised_value * 0.062 / 12 / pr.units)::numeric, 0) ELSE 0 END as proforma_rent,
         ROUND((6.5 + (pr.appraised_value::numeric / NULLIF(pr.assessed_value, 0) - 1) * 10)::numeric, 1) as current_irr,
         ROUND((8.0 + (pr.appraised_value::numeric / NULLIF(pr.assessed_value, 0) - 1) * 8)::numeric, 1) as projected_irr,
-
         ps.sale_price as last_sale_price,
         ps.sale_year as last_sale_year
       FROM property_records pr
@@ -291,7 +433,6 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
     const actualOcc = parseFloat(pr.actual_occupancy);
     const baseRent = parseFloat(pr.proforma_rent);
     const actualRent = parseFloat(pr.actual_avg_rent);
-
     const seasonalFactors = [0.92, 0.94, 0.97, 1.00, 1.04, 1.06, 1.05, 1.03, 1.02, 0.98, 0.96, 0.93];
 
     const monthlyData = months.map((month, i) => {
@@ -334,7 +475,8 @@ router.get('/owned/:id/report', async (req: AuthenticatedRequest, res: Response)
         proformaRent: parseFloat(pr.proforma_rent),
         currentIRR: parseFloat(pr.current_irr),
         projectedIRR: parseFloat(pr.projected_irr),
-      }
+      },
+      source: 'property_records'
     });
 
   } catch (error) {

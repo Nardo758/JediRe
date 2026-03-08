@@ -92,6 +92,7 @@ import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
+import portfolioRouter from './api/rest/portfolio.routes';
 import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
@@ -200,6 +201,7 @@ app.use('/api/v1/markets', marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
 app.use('/api/v1/grid', optionalAuth, gridRouter);
+app.use('/api/v1/portfolio', portfolioRouter);
 
 import agentRouter from './api/rest/agent.routes';
 app.use('/api/v1/agents', agentRouter);

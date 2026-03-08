@@ -46,6 +46,7 @@ import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
+import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
 import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
 import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
@@ -107,6 +108,7 @@ function AppContent() {
               <AssetsOwnedPage />
             </Suspense>
           } />
+          <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
