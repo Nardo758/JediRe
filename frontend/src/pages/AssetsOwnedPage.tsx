@@ -314,8 +314,13 @@ export function AssetsOwnedPage() {
   };
 
   const handleRowClick = (row: OwnedAsset) => {
+    const dealId = (row as any).deal_id;
     setSelectedAsset(row.id);
-    navigate(`/deals/${row.id}`);
+    if (dealId) {
+      navigate(`/deals/${dealId}`);
+    } else {
+      navigate(`/deals/${row.id}`);
+    }
   };
 
   const formatCurrency = (value: any) =>
@@ -1102,6 +1107,13 @@ export function AssetsOwnedPage() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <span className="text-xs text-gray-500">{assets.length} assets</span>
+            <button
+              onClick={() => navigate('/deals/create', { state: { dealCategory: 'portfolio' } })}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <span>+</span>
+              <span>Add Asset</span>
+            </button>
           </div>
         </div>
 

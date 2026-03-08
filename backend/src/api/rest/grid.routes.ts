@@ -152,11 +152,21 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
       params
     );
 
+    let dealJoinClause = '';
+    if (userId) {
+      params.push(userId);
+      const userIdParamIdx = params.length;
+      dealJoinClause = `LEFT JOIN deals d_link ON (d_link.address = pr.address OR d_link.property_address = pr.address)
+        AND d_link.user_id = $${userIdParamIdx} AND d_link.status = 'closed_won' AND d_link.archived_at IS NULL`;
+    }
     params.push(limit, offset);
+
     const result = await pool.query(`
       SELECT 
         pr.id,
-        pr.address as property_name,
+        pr.id as property_record_id,
+        ${userId ? 'd_link.id as deal_id,' : 'NULL as deal_id,'}
+        ${userId ? "COALESCE(d_link.name, pr.address)" : "pr.address"} as property_name,
         CONCAT(pr.address, ', ', COALESCE(pr.city, 'Atlanta'), ', ', pr.state) as address,
         LOWER(COALESCE(pr.property_type, 'Multifamily')) as asset_type,
         pr.units,
@@ -210,6 +220,7 @@ router.get('/owned', async (req: AuthenticatedRequest, res: Response) => {
         
       FROM property_records pr
       LEFT JOIN property_sales ps ON ps.parcel_id = pr.parcel_id AND ps.is_current = true
+      ${dealJoinClause}
       WHERE ${whereClause}
       ORDER BY ${orderCol} ${sortDir}
       LIMIT $${params.length - 1} OFFSET $${params.length}

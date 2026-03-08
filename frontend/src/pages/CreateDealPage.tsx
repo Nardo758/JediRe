@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
@@ -36,10 +36,12 @@ const STEPS = {
 
 export const CreateDealPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { createDeal, isLoading } = useDealStore();
 
+  const locationState = location.state as { dealCategory?: DealCategory } | null;
   const [currentStep, setCurrentStep] = useState<number>(STEPS.DETAILS_ADDRESS);
-  const [dealCategory, setDealCategory] = useState<DealCategory | null>(null);
+  const [dealCategory, setDealCategory] = useState<DealCategory | null>(locationState?.dealCategory || null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
