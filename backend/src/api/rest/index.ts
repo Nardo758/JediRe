@@ -81,7 +81,6 @@ import designAssistantRoutes from './design-assistant.routes';
 import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
-import fixHighlandsRoute from './fix-highlands.route';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -247,9 +246,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Command Center routes (Admin data sync orchestration)
   app.use(`${API_PREFIX}/command-center`, commandCenterRoutes);
-
-  // Fix Highlands route (temporary admin fix)
-  app.use(`${API_PREFIX}/admin`, fixHighlandsRoute);
 
   // Neighboring Properties routes (AI-enhanced assemblage analysis)
   app.use(`${API_PREFIX}/properties`, neighboringPropertiesRoutes);
