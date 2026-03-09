@@ -1,5 +1,3 @@
-import twilio from 'twilio';
-
 let connectionSettings: any;
 
 async function getCredentials() {
@@ -37,12 +35,83 @@ async function getCredentials() {
 
 export async function getTwilioClient() {
   const { accountSid, apiKey, apiKeySecret } = await getCredentials();
-  return twilio(apiKey, apiKeySecret, {
-    accountSid: accountSid
-  });
+
+  if (accountSid.startsWith('AC')) {
+    const twilio = (await import('twilio')).default;
+    return twilio(apiKey, apiKeySecret, { accountSid });
+  }
+
+  return new TwilioRestClient(apiKey, apiKeySecret, accountSid);
 }
 
 export async function getTwilioFromPhoneNumber() {
   const { phoneNumber } = await getCredentials();
   return phoneNumber;
+}
+
+export async function getTwilioAccountSid() {
+  const { accountSid } = await getCredentials();
+  return accountSid;
+}
+
+class TwilioRestClient {
+  private authHeader: string;
+  private accountSid: string;
+
+  constructor(apiKey: string, apiKeySecret: string, accountSid: string) {
+    this.authHeader = 'Basic ' + Buffer.from(apiKey + ':' + apiKeySecret).toString('base64');
+    this.accountSid = accountSid;
+  }
+
+  get conversations() {
+    return {
+      v1: {
+        conversations: (conversationSid: string) => ({
+          messages: {
+            create: async (params: { body: string }) => {
+              const url = `https://conversations.twilio.com/v1/Conversations/${conversationSid}/Messages`;
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Authorization': this.authHeader,
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ Body: params.body }).toString(),
+              });
+              if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(`Twilio API error ${response.status}: ${error.message || response.statusText}`);
+              }
+              return response.json();
+            },
+          },
+        }),
+      },
+    };
+  }
+
+  get messages() {
+    return {
+      create: async (params: { body: string; to: string; from: string }) => {
+        const url = `https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': this.authHeader,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            Body: params.body,
+            To: params.to,
+            From: params.from,
+          }).toString(),
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(`Twilio API error ${response.status}: ${error.message || response.statusText}`);
+        }
+        return response.json();
+      },
+    };
+  }
 }

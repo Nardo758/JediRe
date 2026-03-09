@@ -67,16 +67,30 @@ export class MessageRouter {
 
       const response = await this.processMessage(message);
 
-      // Reply through Twilio Conversations API using Replit connector
+      // Reply through Twilio using Replit connector
       try {
-        const { getTwilioClient } = await import('../twilio/twilioClient');
+        const { getTwilioClient, getTwilioFromPhoneNumber } = await import('../twilio/twilioClient');
         const client = await getTwilioClient();
+        const fromNumber = await getTwilioFromPhoneNumber();
 
-        await client.conversations.v1
-          .conversations(ConversationSid)
-          .messages.create({ body: response.text });
-      } catch (twilioErr) {
-        logger.warn('Twilio reply failed (connector may not be configured)', { error: twilioErr });
+        if (ConversationSid) {
+          await client.conversations.v1
+            .conversations(ConversationSid)
+            .messages.create({ body: response.text });
+        } else if (Author && fromNumber) {
+          const to = Author.replace('whatsapp:', '').replace('messenger:', '');
+          await client.messages.create({
+            body: response.text,
+            to,
+            from: fromNumber,
+          });
+        }
+      } catch (twilioErr: any) {
+        logger.warn('Twilio reply failed', {
+          message: twilioErr?.message || 'unknown',
+          code: twilioErr?.code,
+          status: twilioErr?.status,
+        });
       }
 
       res.sendStatus(200);
