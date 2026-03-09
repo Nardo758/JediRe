@@ -267,7 +267,7 @@ router.get('/patterns', async (req, res) => {
 router.get('/user/stats', async (req, res) => {
   try {
     const pool = getPool();
-    const userId = req.user?.id; // Assumes auth middleware sets req.user
+    const userId = req.user?.userId; // Assumes auth middleware sets req.user
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -330,7 +330,7 @@ router.get('/user/stats', async (req, res) => {
 router.get('/user/preferences', async (req, res) => {
   try {
     const pool = getPool();
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -385,7 +385,7 @@ router.get('/user/preferences', async (req, res) => {
 router.put('/user/preferences', async (req, res) => {
   try {
     const pool = getPool();
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -447,7 +447,7 @@ router.put('/user/preferences', async (req, res) => {
 router.post('/user/generate-embeddings', async (req, res) => {
   try {
     const pool = getPool();
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
