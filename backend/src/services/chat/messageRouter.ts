@@ -67,17 +67,16 @@ export class MessageRouter {
 
       const response = await this.processMessage(message);
 
-      // Reply through Twilio Conversations API
-      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) {
-        const twilio = (await import('twilio')).default;
-        const client = twilio(
-          process.env.TWILIO_ACCOUNT_SID,
-          process.env.TWILIO_AUTH_TOKEN
-        );
+      // Reply through Twilio Conversations API using Replit connector
+      try {
+        const { getTwilioClient } = await import('../twilio/twilioClient');
+        const client = await getTwilioClient();
 
         await client.conversations.v1
           .conversations(ConversationSid)
           .messages.create({ body: response.text });
+      } catch (twilioErr) {
+        logger.warn('Twilio reply failed (connector may not be configured)', { error: twilioErr });
       }
 
       res.sendStatus(200);

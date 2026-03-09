@@ -153,6 +153,27 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
+// Stripe webhook MUST be before express.json() for raw body signature verification
+import { WebhookHandlers } from './services/stripe/webhookHandlers';
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) {
+      return res.status(400).json({ error: 'Missing stripe-signature' });
+    }
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error('Stripe webhook error:', error.message);
+      res.status(400).json({ error: 'Webhook processing error' });
+    }
+  }
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -213,9 +234,6 @@ app.use('/api/v1/chat', chatRouter);
 import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
 app.use('/', messageRouter.createRouter());
-
-import { createStripeWebhookRouter } from './services/stripe/webhooks';
-app.use('/', createStripeWebhookRouter());
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
@@ -384,7 +402,40 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 setupUnhandledRejectionHandler();
 setupUncaughtExceptionHandler();
 
-httpServer.listen(Number(PORT), '0.0.0.0', () => {
+async function initStripe() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.warn('[Stripe] DATABASE_URL not set, skipping Stripe init');
+    return;
+  }
+
+  try {
+    const { runMigrations } = await import('stripe-replit-sync');
+    console.log('[Stripe] Running schema migrations...');
+    await runMigrations({ databaseUrl });
+    console.log('[Stripe] Schema ready');
+
+    const { getStripeSync } = await import('./services/stripe/stripeClient');
+    const stripeSync = await getStripeSync();
+
+    const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN;
+    if (domain) {
+      const webhookUrl = `https://${domain}/api/stripe/webhook`;
+      const result = await stripeSync.findOrCreateManagedWebhook(webhookUrl);
+      console.log(`[Stripe] Webhook configured: ${result?.webhook?.url || webhookUrl}`);
+    } else {
+      console.warn('[Stripe] No domain found, skipping webhook registration');
+    }
+
+    stripeSync.syncBackfill()
+      .then(() => console.log('[Stripe] Data sync complete'))
+      .catch((err: any) => console.error('[Stripe] Backfill error:', err.message));
+  } catch (error: any) {
+    console.error('[Stripe] Init failed:', error.message);
+  }
+}
+
+httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
@@ -402,6 +453,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
+
+  await initStripe();
 });
 
 process.on('SIGTERM', async () => {
