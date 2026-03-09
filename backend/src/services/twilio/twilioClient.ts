@@ -25,8 +25,15 @@ async function getCredentials() {
   if (!connectionSettings || (!connectionSettings.settings.account_sid || !connectionSettings.settings.api_key || !connectionSettings.settings.api_key_secret)) {
     throw new Error('Twilio not connected');
   }
+  const connectorSid = connectionSettings.settings.account_sid;
+  const realAccountSid = process.env.TWILIO_ACCOUNT_SID || connectorSid;
+
+  if (!realAccountSid.startsWith('AC')) {
+    console.warn('[Twilio] Warning: Account SID does not start with AC (' + realAccountSid.substring(0, 4) + '...). Outbound messages may fail. Set TWILIO_ACCOUNT_SID env var to your real Account SID.');
+  }
+
   return {
-    accountSid: connectionSettings.settings.account_sid,
+    accountSid: realAccountSid,
     apiKey: connectionSettings.settings.api_key,
     apiKeySecret: connectionSettings.settings.api_key_secret,
     phoneNumber: connectionSettings.settings.phone_number

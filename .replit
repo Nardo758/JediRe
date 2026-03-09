@@ -65,3 +65,4 @@ API_KEY_ADMIN = "8acb8b8cf3704e3af9c8bb8738925d103f7cda59b14d6c99d825cf29cfa195c
 APARTMENT_LOCATOR_API_URL = "https://apartment-locator-ai-real.replit.app"
 JEDIRE_AGENT_API_KEY = "jre_agent_f3605def93ab3e626fe5775ae13951c208d143a32311f436"
 JEDIRE_API_URL = "http://localhost:4000"
+TWILIO_ACCOUNT_SID = "AC2c120588ee8f90890c5f1a62cd75c6d8"
