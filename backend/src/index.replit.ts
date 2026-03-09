@@ -22,6 +22,8 @@ import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.ro
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
+import settingsAiRouter from './api/rest/settings-ai.routes';
+import billingRouter from './api/rest/billing.routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -198,6 +200,7 @@ app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/inbox', inboxRouter);
 app.use('/api/v1', zoningAnalyzeRouter);
 
+app.use('/api/v1/billing', billingRouter);
 app.use('/api/v1/f40', f40PerformanceRoutes);
 app.use('/api/v1/opportunities', opportunityEngineRoutes);
 
@@ -264,6 +267,7 @@ app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
 app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
 app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
 app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);

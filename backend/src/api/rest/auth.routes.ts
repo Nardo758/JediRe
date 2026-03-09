@@ -232,9 +232,13 @@ router.post('/logout', requireAuth, async (req: AuthenticatedRequest, res: Respo
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const result = await query(
-      `SELECT id, email, first_name, last_name, avatar_url, role, 
-              email_verified, created_at, last_login_at
-       FROM users WHERE id = $1`,
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.avatar_url, u.role, 
+              u.email_verified, u.created_at, u.last_login_at, u.phone,
+              COALESCE(ucb.subscription_tier, 'scout') as subscription_tier,
+              u.notification_preferences
+       FROM users u
+       LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
+       WHERE u.id = $1`,
       [req.user!.userId]
     );
 
@@ -251,9 +255,80 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Response, 
       lastName: user.last_name,
       avatarUrl: user.avatar_url,
       role: user.role,
+      phone: user.phone || '',
+      tier: user.subscription_tier,
       emailVerified: user.email_verified,
       createdAt: user.created_at,
       lastLoginAt: user.last_login_at,
+      notificationPreferences: user.notification_preferences || {},
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/v1/auth/profile
+ * Update current user profile
+ */
+router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const userId = req.user!.userId;
+    const { firstName, lastName, phone, notificationPreferences } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [userId];
+    let paramCount = 1;
+
+    if (firstName !== undefined) {
+      paramCount++;
+      updates.push(`first_name = $${paramCount}`);
+      values.push(firstName);
+    }
+
+    if (lastName !== undefined) {
+      paramCount++;
+      updates.push(`last_name = $${paramCount}`);
+      values.push(lastName);
+    }
+
+    if (phone !== undefined) {
+      paramCount++;
+      updates.push(`phone = $${paramCount}`);
+      values.push(phone);
+    }
+
+    if (notificationPreferences !== undefined) {
+      paramCount++;
+      updates.push(`notification_preferences = $${paramCount}`);
+      values.push(JSON.stringify(notificationPreferences));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const result = await query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $1
+       RETURNING id, email, first_name, last_name, phone, notification_preferences`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      throw new AppError(404, 'User not found');
+    }
+
+    const user = result.rows[0];
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        phone: user.phone || '',
+        notificationPreferences: user.notification_preferences || {},
+      },
     });
   } catch (error) {
     next(error);

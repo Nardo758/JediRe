@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Check, X, ChevronDown, ChevronUp, Building2, Menu, Plus } from 'lucide-react';
+import { Check, X, ChevronDown, ChevronUp, Building2, Menu, Plus, Loader2 } from 'lucide-react';
+import { apiClient } from '../services/api.client';
 
 interface PricingTier {
   name: string;
@@ -11,6 +12,7 @@ interface PricingTier {
   highlighted?: boolean;
   cta: string;
   ctaAction: 'trial' | 'contact';
+  backendTier?: string;
 }
 
 interface Module {
@@ -42,6 +44,7 @@ const pricingTiers: PricingTier[] = [
     ],
     cta: 'Try Free',
     ctaAction: 'trial',
+    backendTier: 'scout',
   },
   {
     name: 'Flipper Bundle',
@@ -58,6 +61,7 @@ const pricingTiers: PricingTier[] = [
     ],
     cta: 'Try Free',
     ctaAction: 'trial',
+    backendTier: 'operator',
   },
   {
     name: 'Investor Bundle',
@@ -74,6 +78,7 @@ const pricingTiers: PricingTier[] = [
     ],
     cta: 'Try Free',
     ctaAction: 'trial',
+    backendTier: 'principal',
   },
   {
     name: 'Enterprise',
@@ -152,6 +157,44 @@ export default function PricingPage() {
   const [isAnnual, setIsAnnual] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [loadingTier, setLoadingTier] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  const handleTierSelect = async (tier: PricingTier) => {
+    if (tier.ctaAction === 'contact') {
+      window.location.href = 'mailto:sales@jedire.com?subject=Enterprise%20Plan%20Inquiry';
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      navigate('/auth');
+      return;
+    }
+
+    if (!tier.backendTier) return;
+
+    setLoadingTier(tier.backendTier);
+    setCheckoutError(null);
+
+    try {
+      const response = await apiClient.post('/api/v1/billing/create-checkout-session', {
+        tier: tier.backendTier,
+        billingCycle: isAnnual ? 'annual' : 'monthly',
+      });
+
+      if (response.data.success && response.data.sessionUrl) {
+        window.location.href = response.data.sessionUrl;
+      } else {
+        setCheckoutError('Failed to create checkout session. Please try again.');
+      }
+    } catch (err: any) {
+      const message = err.response?.data?.error || 'Something went wrong. Please try again.';
+      setCheckoutError(message);
+    } finally {
+      setLoadingTier(null);
+    }
+  };
 
   const formatPrice = (monthly: number | null, annual: number | null) => {
     if (monthly === null) return 'Custom';
@@ -307,21 +350,29 @@ export default function PricingPage() {
                 </ul>
 
                 <button
-                  onClick={() => navigate('/auth')}
-                  className={`w-full py-3 rounded-lg font-medium transition-colors ${
+                  onClick={() => handleTierSelect(tier)}
+                  disabled={loadingTier === tier.backendTier}
+                  className={`w-full py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
                     tier.highlighted
                       ? 'bg-white text-blue-600 hover:bg-gray-100'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
+                  } ${loadingTier === tier.backendTier ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
+                  {loadingTier === tier.backendTier && <Loader2 className="w-4 h-4 animate-spin" />}
                   {tier.cta}
                 </button>
               </div>
             ))}
           </div>
 
+          {checkoutError && (
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+              <p className="text-red-700 text-sm">{checkoutError}</p>
+            </div>
+          )}
+
           <p className="text-center text-gray-500 mt-8">
-            💡 All plans include 30-day free trial • No credit card required
+            All plans include 30-day free trial
           </p>
         </div>
       </section>

@@ -110,9 +110,9 @@ export class JediAIService {
       tools?: Anthropic.Tool[];
     }
   ): Promise<Anthropic.Message> {
-    // 1. Resolve model from user tier + agent
+    // 1. Resolve model from user tier + agent, with user preference override
     const tier = await this.getUserTier(context.userId);
-    const model = MODEL_ROUTING[tier][context.agentId];
+    const model = await this.resolveModel(context.userId, tier, context.agentId);
 
     // 2. Check + deduct credits
     const creditCost = this.getCreditCost(context.operationType, model);
@@ -150,7 +150,7 @@ export class JediAIService {
     messages: Anthropic.MessageParam[]
   ): AsyncGenerator<string> {
     const tier = await this.getUserTier(context.userId);
-    const model = MODEL_ROUTING[tier][context.agentId];
+    const model = await this.resolveModel(context.userId, tier, context.agentId);
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 
@@ -208,7 +208,7 @@ export class JediAIService {
     agentId: AgentId
   ): Promise<string> {
     const tier = await this.getUserTier(userId);
-    return MODEL_ROUTING[tier][agentId];
+    return this.resolveModel(userId, tier, agentId);
   }
 
   /**
@@ -227,6 +227,40 @@ export class JediAIService {
   }
 
   // ── Private Methods ────────────────────────────────────────────
+
+  private static readonly PREFERENCE_MODEL_MAP: Record<string, string> = {
+    fast: 'claude-haiku-4-5-20251001',
+    balanced: 'claude-sonnet-4-20250514',
+    powerful: 'claude-opus-4-20250514',
+  };
+
+  private async resolveModel(
+    userId: string,
+    tier: SubscriptionTier,
+    agentId: AgentId
+  ): Promise<string> {
+    try {
+      const result = await query(
+        `SELECT llm_preference FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+
+      if (result.rows.length > 0) {
+        const pref = result.rows[0].llm_preference;
+        if (pref && pref !== 'auto') {
+          if (pref === 'powerful' && !['principal', 'institutional'].includes(tier)) {
+            logger.warn('User preference "powerful" not allowed for tier, falling back to tier default', { userId, tier });
+          } else if (JediAIService.PREFERENCE_MODEL_MAP[pref]) {
+            return JediAIService.PREFERENCE_MODEL_MAP[pref];
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to resolve LLM preference, using tier default', { userId, error });
+    }
+
+    return MODEL_ROUTING[tier][agentId];
+  }
 
   private async checkAndDeductCredits(
     userId: string,
