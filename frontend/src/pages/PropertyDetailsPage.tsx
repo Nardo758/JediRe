@@ -27,6 +27,8 @@ const globalCSS = `
 @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+@keyframes scanline{0%{top:-100%}100%{top:100%}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 *{scrollbar-width:thin;scrollbar-color:#2A3348 #0A0E17;box-sizing:border-box}
 *::-webkit-scrollbar{width:5px;height:5px}
 *::-webkit-scrollbar-track{background:#0A0E17}
@@ -59,13 +61,11 @@ interface PropertyData {
   avgUnitSF?: number;
   parking?: { total: number; ratio: number; type: string };
   amenities?: string[];
-  // Ownership
   owner?: string;
   ownerType?: string;
   acquisitionDate?: string;
   acquisitionPrice?: number;
   lastSalePrice?: number;
-  // Tax
   justValue?: number;
   assessedValue?: number;
   taxableValue?: number;
@@ -73,7 +73,6 @@ interface PropertyData {
   annualTax?: number;
   homesteadExempt?: boolean;
   assessmentCap?: string;
-  // Performance
   occupancyRate?: number;
   avgEffectiveRent?: number;
   avgMarketRent?: number;
@@ -82,37 +81,29 @@ interface PropertyData {
   noi?: number;
   capRate?: number;
   expenseRatio?: number;
-  // Market
   submarketVacancy?: number;
   submarketRentGrowth?: number;
   submarketAbsorption?: number;
   walkScore?: number;
   transitScore?: number;
   bikeScore?: number;
-  // Zoning
   zoningCode?: string;
   zoningDescription?: string;
   maxDensity?: string;
   maxHeight?: string;
   far?: number;
   zoningSource?: string;
-  // Pipeline
   inPipeline?: boolean;
   dealId?: string | null;
-  // Photos
   photos?: { id: number; label: string; url?: string; aspect?: string; color: string }[];
-  // Comps
   rentComps?: { name: string; units: number; rent: number; dist: string; class: string; occ: number }[];
   saleComps?: { name: string; units: number; ppu: number; capRate: number; date: string; dist: string }[];
-  // History
   ownershipHistory?: { date: string; buyer: string; price: number; ppu: number }[];
   taxHistory?: { year: number; justValue: number; assessed: number; tax: number }[];
-  // Financial (from old interface)
   askingPrice?: number;
   estimatedValue?: number;
   monthlyRent?: number;
   annualIncome?: number;
-  // Metadata
   createdAt?: string;
   updatedAt?: string;
   dataSource?: string;
@@ -175,6 +166,18 @@ const MiniBar = ({ value, max, color = T.text.cyan, width = 60 }: { value: numbe
   </div>
 );
 
+const MiniSparkline = ({ data, color = T.text.green, width = 60, height = 16 }: { data: number[]; color?: string; width?: number; height?: number }) => {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * height}`).join(" ");
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.2} />
+    </svg>
+  );
+};
+
 const ScoreRing = ({ score, size = 72, strokeWidth = 5 }: { score: number; size?: number; strokeWidth?: number }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -231,10 +234,25 @@ const PhotoGallery = ({ photos }: { photos: PropertyData["photos"] }) => {
         position: "relative", overflow: "hidden",
       }}>
         <div style={{ position: "absolute", inset: 0, opacity: 0.08, background: `repeating-linear-gradient(0deg,transparent,transparent 19px,${T.text.secondary} 19px,${T.text.secondary} 20px),repeating-linear-gradient(90deg,transparent,transparent 19px,${T.text.secondary} 19px,${T.text.secondary} 20px)` }} />
+        <div style={{ position: "absolute", inset: 0, background: `linear-gradient(135deg, ${photo.color || "#1a2744"}00 0%, ${photo.color || "#1a2744"} 50%, ${photo.color || "#1a2744"}aa 100%)` }} />
         <svg width={isLarge ? 120 : 40} height={isLarge ? 80 : 28} viewBox="0 0 120 80" style={{ opacity: 0.3, position: "relative", zIndex: 1 }}>
           <rect x="10" y="20" width="30" height="60" fill={T.text.secondary} />
+          <rect x="15" y="25" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="27" y="25" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="15" y="38" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="27" y="38" width="8" height="8" fill={photo.color || "#1a2744"} />
           <rect x="45" y="10" width="35" height="70" fill={T.text.secondary} />
+          <rect x="50" y="15" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="62" y="15" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="50" y="28" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="62" y="28" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="50" y="41" width="8" height="8" fill={photo.color || "#1a2744"} />
+          <rect x="62" y="41" width="8" height="8" fill={photo.color || "#1a2744"} />
           <rect x="85" y="30" width="25" height="50" fill={T.text.secondary} />
+          <rect x="90" y="35" width="6" height="6" fill={photo.color || "#1a2744"} />
+          <rect x="100" y="35" width="6" height="6" fill={photo.color || "#1a2744"} />
+          <rect x="90" y="46" width="6" height="6" fill={photo.color || "#1a2744"} />
+          <rect x="100" y="46" width="6" height="6" fill={photo.color || "#1a2744"} />
         </svg>
         {isLarge && <span style={{ fontSize: 10, fontFamily: T.font.mono, color: `${T.text.secondary}80`, marginTop: 8, position: "relative", zIndex: 1 }}>{photo.label}</span>}
         <div style={{ position: "absolute", top: 4, left: 4, fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, background: "#00000088", padding: "1px 4px", borderRadius: 1, zIndex: 2 }}>
@@ -266,14 +284,14 @@ const PhotoGallery = ({ photos }: { photos: PropertyData["photos"] }) => {
         )}
       </div>
       <div style={{ display: "flex", gap: 2, padding: 2, background: T.bg.terminal, overflowX: "auto" }}>
-        {items.map((p, i) => (
-          <div key={p.id} onClick={() => setActiveIdx(i)} style={{
+        {items.map((ph, i) => (
+          <div key={ph.id} onClick={() => setActiveIdx(i)} style={{
             width: 52, height: 36, flexShrink: 0, cursor: "pointer",
             border: i === activeIdx ? `1px solid ${T.text.amber}` : `1px solid ${T.border.subtle}`,
             borderRadius: 1, overflow: "hidden", opacity: i === activeIdx ? 1 : 0.6,
             transition: "opacity 0.15s, border-color 0.15s",
           }}>
-            <PhotoPlaceholder photo={p} size="small" />
+            <PhotoPlaceholder photo={ph} size="small" />
           </div>
         ))}
       </div>
@@ -282,6 +300,14 @@ const PhotoGallery = ({ photos }: { photos: PropertyData["photos"] }) => {
           <div style={{ width: "80%", maxWidth: 900, height: "70%", position: "relative" }} onClick={(e) => e.stopPropagation()}>
             <PhotoPlaceholder photo={active} size="large" />
             <div onClick={() => setLightbox(false)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "#000000cc", borderRadius: 2, cursor: "pointer", color: T.text.white, fontSize: 14, fontFamily: T.font.mono }}>×</div>
+            <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 4 }}>
+              {items.map((_, i) => (
+                <div key={i} onClick={() => setActiveIdx(i)} style={{
+                  width: 8, height: 8, borderRadius: "50%", cursor: "pointer",
+                  background: i === activeIdx ? T.text.amber : T.text.muted,
+                }} />
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -311,7 +337,6 @@ export default function PropertyDetailsPage() {
     { key: "MARKET", label: "MARKET", hotkey: "F6" },
   ];
 
-  // ── Data fetching ──────────────────────────────────────────
   const buildPropertyFromRow = (row: any): PropertyData => {
     const addrParts = (row.address || "").split(",").map((s: string) => s.trim());
     const stateZip = (addrParts[2] || "").split(" ");
@@ -347,6 +372,40 @@ export default function PropertyDetailsPage() {
       saleComps: row.saleComps || [],
       ownershipHistory: row.ownershipHistory || [],
       taxHistory: row.taxHistory || [],
+      owner: row.owner || "",
+      ownerType: row.ownerType || "",
+      acquisitionDate: row.acquisitionDate || "",
+      acquisitionPrice: row.acquisitionPrice || 0,
+      lastSalePrice: row.lastSalePrice || 0,
+      justValue: row.justValue || row.justValue2025 || row.appraisedValue || 0,
+      assessedValue: row.assessedValue || row.assessedValue2025 || 0,
+      taxableValue: row.taxableValue || row.taxableValue2025 || 0,
+      millageRate: row.millageRate || 0,
+      annualTax: row.annualTax || row.annualTax2025 || 0,
+      homesteadExempt: row.homesteadExempt || false,
+      assessmentCap: row.assessmentCap || "",
+      avgMarketRent: row.avgMarketRent || 0,
+      rentPerSF: row.rentPerSF || 0,
+      concessions: row.concessions || "",
+      expenseRatio: row.expenseRatio || 0,
+      submarketVacancy: row.submarketVacancy || 0,
+      submarketRentGrowth: row.submarketRentGrowth || 0,
+      submarketAbsorption: row.submarketAbsorption || 0,
+      walkScore: row.walkScore || 0,
+      transitScore: row.transitScore || 0,
+      bikeScore: row.bikeScore || 0,
+      maxDensity: row.maxDensity || "",
+      maxHeight: row.maxHeight || "",
+      far: row.far || 0,
+      zoningSource: row.zoningSource || "",
+      inPipeline: row.inPipeline || false,
+      dealId: row.dealId || null,
+      subtype: row.subtype || "",
+      stories: row.stories || 0,
+      lotSizeSF: row.lotSizeSF || 0,
+      avgUnitSF: row.avgUnitSF || 0,
+      parking: row.parking || undefined,
+      market: row.market || "",
       dataSource: row.enrichmentSource || row.dataSource || "Market Intelligence",
     };
   };
@@ -375,7 +434,6 @@ export default function PropertyDetailsPage() {
     fetchProperty();
   }, [id]);
 
-  // ── Keyboard navigation ────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const idx = parseInt(e.key.replace("F", "")) - 1;
@@ -386,7 +444,6 @@ export default function PropertyDetailsPage() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // ── Loading state ──────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ width: "100%", height: "100vh", background: T.bg.terminal, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -416,8 +473,6 @@ export default function PropertyDetailsPage() {
   }
 
   const p = property;
-
-  // ── Derived values ─────────────────────────────────────────
   const units = p.units || 1;
   const occRate = p.occupancyRate || 0;
   const effRent = p.avgEffectiveRent || p.monthlyRent || 0;
@@ -425,15 +480,13 @@ export default function PropertyDetailsPage() {
   const noiVal = p.noi || 0;
   const capVal = p.capRate || 0;
   const expRatio = p.expenseRatio || 0;
-  const jediScore = 82; // Will be computed by JEDI engine when deal is created
+  const jediScore = 82;
 
   // ─── OVERVIEW TAB ──────────────────────────────────────────
   const OverviewTab = () => (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
-      {/* LEFT COLUMN */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <PhotoGallery photos={p.photos} />
-        {/* Property Vitals */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="PROPERTY VITALS" icon="◈" borderColor={T.text.cyan} />
           <DataRow label="Type" value={p.propertyType || "—"} sub={p.subtype ? `· ${p.subtype}` : ""} />
@@ -446,7 +499,6 @@ export default function PropertyDetailsPage() {
           {p.avgUnitSF && <DataRow label="Avg Unit SF" value={p.avgUnitSF} sub="SF" />}
           {p.parking && <DataRow label="Parking" value={`${p.parking.total} spaces`} sub={`${p.parking.ratio}:1 · ${p.parking.type}`} />}
         </div>
-        {/* Amenities */}
         {p.amenities && p.amenities.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="AMENITIES" icon="◆" borderColor={T.text.purple} />
@@ -455,7 +507,6 @@ export default function PropertyDetailsPage() {
             </div>
           </div>
         )}
-        {/* Ownership */}
         {p.owner && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="OWNERSHIP" icon="◇" borderColor={T.text.orange} />
@@ -466,9 +517,7 @@ export default function PropertyDetailsPage() {
           </div>
         )}
       </div>
-      {/* RIGHT COLUMN */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Performance Snapshot */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="PERFORMANCE SNAPSHOT" icon="▲" borderColor={T.text.green}
             action={<Badge color={T.text.green}>LIVE</Badge>} />
@@ -497,7 +546,6 @@ export default function PropertyDetailsPage() {
             </div>
           )}
         </div>
-        {/* Market Position */}
         {(effRent > 0 || occRate > 0) && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="MARKET POSITION" subtitle={p.submarket ? `vs ${p.submarket} Submarket` : ""} icon="◉" borderColor={T.text.amber} />
@@ -512,7 +560,17 @@ export default function PropertyDetailsPage() {
                 </Badge>
               </div>
             )}
-            {/* Walkability Scores */}
+            {occRate > 0 && (p.submarketVacancy || 0) > 0 && (
+              <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}08`, gap: 8 }}>
+                <span style={{ fontSize: 8, fontFamily: T.font.label, color: T.text.secondary, width: 80 }}>Vacancy</span>
+                <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary, width: 50 }}>{pct(100 - occRate)}</span>
+                <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>vs</span>
+                <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary, width: 50 }}>{pct(p.submarketVacancy!)}</span>
+                <Badge color={(100 - occRate) < p.submarketVacancy! ? T.text.green : T.text.red}>
+                  {pct(Math.abs(100 - occRate - p.submarketVacancy!))} {(100 - occRate) < p.submarketVacancy! ? "BELOW" : "ABOVE"}
+                </Badge>
+              </div>
+            )}
             {(p.walkScore || p.transitScore || p.bikeScore) && (
               <div style={{ display: "flex", padding: "6px 10px", gap: 12 }}>
                 {[
@@ -530,7 +588,6 @@ export default function PropertyDetailsPage() {
             )}
           </div>
         )}
-        {/* Rent Comps Preview */}
         {p.rentComps && p.rentComps.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="RENT COMPS" subtitle={`${p.rentComps.length} properties`} icon="≡" borderColor={T.text.cyan}
@@ -553,7 +610,6 @@ export default function PropertyDetailsPage() {
             </div>
           </div>
         )}
-        {/* Zoning Quick-Read */}
         {p.zoningCode && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="ZONING" icon="▦" borderColor={T.text.purple}
@@ -613,9 +669,16 @@ export default function PropertyDetailsPage() {
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2, padding: "10px", textAlign: "center" }}>
             <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 8, letterSpacing: "0.1em" }}>PLATFORM INTELLIGENCE</div>
             <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.amber, lineHeight: 1.6, padding: "0 8px" }}>
-              Deeper financial modeling requires a <strong>Deal Capsule</strong>. Create a deal to unlock the 3-Layer ProForma Engine, capital structure analysis, and AI-adjusted assumptions.
+              Deeper financial modeling requires a <strong>Deal Capsule</strong>. Create a deal to unlock the 3-Layer ProForma Engine (M09), capital structure analysis (M11), and AI-adjusted assumptions.
             </div>
-            <div onClick={() => setShowCreateDeal(true)} style={{ margin: "10px auto 4px", padding: "6px 16px", background: `${T.text.amber}20`, border: `1px solid ${T.text.amber}60`, borderRadius: 2, cursor: "pointer", fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber, letterSpacing: "0.05em", display: "inline-block" }}>
+            <div
+              onClick={() => setShowCreateDeal(true)}
+              style={{
+                margin: "10px auto 4px", padding: "6px 16px", background: `${T.text.amber}20`,
+                border: `1px solid ${T.text.amber}60`, borderRadius: 2, cursor: "pointer",
+                fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber,
+                letterSpacing: "0.05em", display: "inline-block",
+              }}>
               CREATE DEAL →
             </div>
           </div>
@@ -625,88 +688,103 @@ export default function PropertyDetailsPage() {
   };
 
   // ─── COMPS TAB ─────────────────────────────────────────────
-  const CompsTab = () => (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
-      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-        <SectionHeader title="RENT COMPS" subtitle="Trade Area" icon="≡" borderColor={T.text.cyan} />
-        <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-            {["PROPERTY","UNITS","RENT","OCC","CLASS","DIST"].map(h => (
-              <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+  const CompsTab = () => {
+    const avgRentComp = p.rentComps && p.rentComps.length > 0
+      ? Math.round(p.rentComps.reduce((s, c) => s + c.rent, 0) / p.rentComps.length)
+      : 0;
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="RENT COMPS" subtitle="M05 · Trade Area" icon="≡" borderColor={T.text.cyan} />
+          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+              {["PROPERTY","UNITS","RENT","OCC","CLASS","DIST"].map(h => (
+                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08` }}>
+              <span style={{ color: T.text.amber, fontWeight: 700 }}>SUBJECT</span>
+              <span style={{ color: T.text.amber }}>{units}</span>
+              <span style={{ color: T.text.amber, fontWeight: 700 }}>${effRent.toLocaleString()}</span>
+              <span style={{ color: T.text.amber }}>{occRate ? pct(occRate) : "—"}</span>
+              <span style={{ color: T.text.amber }}>{p.class || "—"}</span>
+              <span style={{ color: T.text.amber }}>—</span>
+            </div>
+            {(p.rentComps || []).map((c, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+                <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
+                <span style={{ color: T.text.secondary }}>{c.units}</span>
+                <span style={{ color: c.rent > effRent ? T.text.green : T.text.red, fontWeight: 600 }}>${c.rent.toLocaleString()}</span>
+                <span style={{ color: T.text.secondary }}>{pct(c.occ)}</span>
+                <span style={{ color: T.text.secondary }}>{c.class}</span>
+                <span style={{ color: T.text.muted }}>{c.dist}</span>
+              </div>
             ))}
+            {avgRentComp > 0 && (
+              <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
+                <span style={{ color: T.text.muted, fontSize: 7 }}>AVG:</span>
+                <span style={{ color: T.text.secondary, marginLeft: 4 }}>${avgRentComp.toLocaleString()}/mo</span>
+                <span style={{ color: T.text.muted, marginLeft: 8, fontSize: 7 }}>Subject is </span>
+                <span style={{ color: effRent < avgRentComp ? T.text.red : T.text.green, fontWeight: 600 }}>
+                  {pct(Math.abs((effRent / avgRentComp - 1) * 100))}
+                  {effRent < avgRentComp ? " below" : " above"} avg
+                </span>
+              </div>
+            )}
           </div>
-          {/* Subject row */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08` }}>
-            <span style={{ color: T.text.amber, fontWeight: 700 }}>SUBJECT</span>
-            <span style={{ color: T.text.amber }}>{units}</span>
-            <span style={{ color: T.text.amber, fontWeight: 700 }}>{effRent > 0 ? `$${effRent.toLocaleString()}` : "—"}</span>
-            <span style={{ color: T.text.amber }}>{occRate ? pct(occRate) : "—"}</span>
-            <span style={{ color: T.text.amber }}>{p.class || "—"}</span>
-            <span style={{ color: T.text.amber }}>—</span>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="SALE COMPS" subtitle="M05 · Recent Transactions" icon="$" borderColor={T.text.green} />
+          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 42px 50px 40px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+              {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST"].map(h => (
+                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+              ))}
+            </div>
+            {p.lastSalePrice && (
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 42px 50px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08` }}>
+                <span style={{ color: T.text.amber, fontWeight: 700 }}>SUBJECT</span>
+                <span style={{ color: T.text.amber }}>{units}</span>
+                <span style={{ color: T.text.amber, fontWeight: 700 }}>${Math.round(p.lastSalePrice / units).toLocaleString()}</span>
+                <span style={{ color: T.text.amber }}>{capVal ? pct(capVal) : "—"}</span>
+                <span style={{ color: T.text.amber }}>{p.acquisitionDate ? p.acquisitionDate.substring(0, 7) : "—"}</span>
+                <span style={{ color: T.text.amber }}>—</span>
+              </div>
+            )}
+            {(p.saleComps || []).map((c, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 42px 50px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+                <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
+                <span style={{ color: T.text.secondary }}>{c.units}</span>
+                <span style={{ color: T.text.green, fontWeight: 600 }}>${c.ppu.toLocaleString()}</span>
+                <span style={{ color: T.text.cyan }}>{pct(c.capRate)}</span>
+                <span style={{ color: T.text.secondary }}>{c.date}</span>
+                <span style={{ color: T.text.muted }}>{c.dist}</span>
+              </div>
+            ))}
+            {(p.saleComps || []).length === 0 && !p.lastSalePrice && (
+              <div style={{ padding: "16px 8px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No sale comps available</div>
+            )}
           </div>
-          {(p.rentComps || []).map((c, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
-              <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
-              <span style={{ color: T.text.secondary }}>{c.units}</span>
-              <span style={{ color: c.rent > effRent ? T.text.green : T.text.red, fontWeight: 600 }}>${c.rent.toLocaleString()}</span>
-              <span style={{ color: T.text.secondary }}>{pct(c.occ)}</span>
-              <span style={{ color: T.text.secondary }}>{c.class}</span>
-              <span style={{ color: T.text.muted }}>{c.dist}</span>
-            </div>
-          ))}
-          {(p.rentComps || []).length > 0 && (
-            <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
-              <span style={{ color: T.text.muted, fontSize: 7 }}>AVG:</span>
-              <span style={{ color: T.text.secondary, marginLeft: 4 }}>
-                ${Math.round(p.rentComps!.reduce((s, c) => s + c.rent, 0) / p.rentComps!.length).toLocaleString()}/mo
-              </span>
-            </div>
-          )}
-          {(p.rentComps || []).length === 0 && (
-            <div style={{ padding: "12px 8px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No rent comps available</div>
-          )}
         </div>
       </div>
-      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-        <SectionHeader title="SALE COMPS" subtitle="Recent Transactions" icon="◈" borderColor={T.text.green} />
-        <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-            {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST"].map(h => (
-              <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
-            ))}
-          </div>
-          {(p.saleComps || []).map((c, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 48px 48px 44px", padding: "5px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
-              <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
-              <span style={{ color: T.text.secondary }}>{c.units}</span>
-              <span style={{ color: T.text.green, fontWeight: 600 }}>${c.ppu.toLocaleString()}</span>
-              <span style={{ color: T.text.cyan }}>{pct(c.capRate)}</span>
-              <span style={{ color: T.text.secondary }}>{c.date}</span>
-              <span style={{ color: T.text.muted }}>{c.dist}</span>
-            </div>
-          ))}
-          {(p.saleComps || []).length === 0 && (
-            <div style={{ padding: "12px 8px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No sale comps available</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ─── TAX & TITLE TAB ──────────────────────────────────────
   const TaxTab = () => (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="CURRENT TAX ASSESSMENT" subtitle={p.county ? `${p.county} County` : ""} icon="$" borderColor={T.text.orange} />
-          {p.justValue && <DataRow label="Just (Market) Value" value={fmtFull(p.justValue)} color={T.text.primary} />}
-          {p.assessedValue && <DataRow label="Assessed Value" value={fmtFull(p.assessedValue)} />}
-          {p.taxableValue && <DataRow label="Taxable Value" value={fmtFull(p.taxableValue)} color={T.text.amber} />}
-          {p.millageRate && <DataRow label="Millage Rate" value={`${p.millageRate}`} sub="mills" />}
-          {p.annualTax && <DataRow label="Annual Tax" value={fmtFull(p.annualTax)} color={T.text.red} />}
-          {p.annualTax && <DataRow label="Tax / Unit" value={fmtFull(Math.round(p.annualTax / units))} sub="/yr" />}
+          <SectionHeader title="CURRENT TAX ASSESSMENT" subtitle={p.county ? `M26 · ${p.county} County` : "M26"} icon="$" borderColor={T.text.orange} />
+          {p.justValue != null && p.justValue > 0 ? <DataRow label="Just (Market) Value" value={fmtFull(p.justValue)} color={T.text.primary} /> : null}
+          {p.assessedValue != null && p.assessedValue > 0 ? <DataRow label="Assessed Value" value={fmtFull(p.assessedValue)} /> : null}
+          {p.taxableValue != null && p.taxableValue > 0 ? <DataRow label="Taxable Value" value={fmtFull(p.taxableValue)} color={T.text.amber} /> : null}
+          {p.millageRate != null && p.millageRate > 0 ? <DataRow label="Millage Rate" value={`${p.millageRate}`} sub="mills" /> : null}
+          {p.annualTax != null && p.annualTax > 0 ? <DataRow label="Annual Tax" value={fmtFull(p.annualTax)} color={T.text.red} /> : null}
+          {p.annualTax != null && p.annualTax > 0 ? <DataRow label="Tax / Unit" value={fmtFull(Math.round(p.annualTax / units))} sub="/yr" /> : null}
           <div style={{ height: 1, background: T.border.medium, margin: "2px 10px" }} />
-          {p.homesteadExempt !== undefined && <DataRow label="Homestead Exempt" value={p.homesteadExempt ? "YES" : "NO"} color={T.text.red} />}
+          <DataRow label="Homestead Exempt" value={p.homesteadExempt ? "YES" : "NO"} color={p.homesteadExempt ? T.text.green : T.text.red} />
           {p.assessmentCap && <DataRow label="Assessment Cap" value={p.assessmentCap} color={T.text.amber} />}
           {p.justValue && p.millageRate && p.annualTax && (
             <div style={{ padding: "4px 10px", background: `${T.text.red}08`, borderTop: `1px solid ${T.text.red}20` }}>
@@ -716,15 +794,14 @@ export default function PropertyDetailsPage() {
             </div>
           )}
           {!p.justValue && !p.annualTax && (
-            <div style={{ padding: "12px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>Tax data not available</div>
+            <div style={{ padding: "16px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No tax data available for this property</div>
           )}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* Tax History */}
         {p.taxHistory && p.taxHistory.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-            <SectionHeader title="TAX HISTORY" subtitle="5-Year" icon="◊" borderColor={T.text.cyan} />
+            <SectionHeader title="TAX HISTORY" subtitle={`${p.taxHistory.length}-Year`} icon="◊" borderColor={T.text.cyan} />
             <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
               <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr 1fr", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
                 {["YEAR","JUST VALUE","ASSESSED","TAX"].map(h => (
@@ -751,9 +828,14 @@ export default function PropertyDetailsPage() {
                 );
               })}
             </div>
+            <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${T.border.subtle}` }}>
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>JUST VALUE TREND</span>
+              <MiniSparkline data={p.taxHistory.slice().reverse().map(t => t.justValue)} color={T.text.cyan} width={80} height={14} />
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>TAX TREND</span>
+              <MiniSparkline data={p.taxHistory.slice().reverse().map(t => t.tax)} color={T.text.amber} width={80} height={14} />
+            </div>
           </div>
         )}
-        {/* Ownership Chain */}
         {p.ownershipHistory && p.ownershipHistory.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="OWNERSHIP CHAIN" icon="◇" borderColor={T.text.purple} />
@@ -771,6 +853,11 @@ export default function PropertyDetailsPage() {
             ))}
           </div>
         )}
+        {(!p.taxHistory || p.taxHistory.length === 0) && (!p.ownershipHistory || p.ownershipHistory.length === 0) && (
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2, padding: "24px 10px", textAlign: "center" }}>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>No tax history or ownership data available</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -778,37 +865,44 @@ export default function PropertyDetailsPage() {
   // ─── ZONING TAB ────────────────────────────────────────────
   const ZoningTab = () => {
     const lotAc = p.lotSizeAc || 0;
-    const lotSF = p.lotSizeSF || lotAc * 43560;
-    const maxDensityNum = parseFloat(p.maxDensity || "0");
-    const maxUnitsByDensity = lotAc > 0 && maxDensityNum > 0 ? Math.floor(lotAc * maxDensityNum) : 0;
+    const lotSF = p.lotSizeSF || 0;
     const farVal = p.far || 0;
-    const maxSFByFAR = lotSF > 0 && farVal > 0 ? Math.floor(lotSF * farVal) : 0;
+    const densityNum = p.maxDensity ? parseInt(p.maxDensity) : 0;
+    const maxUnitsByDensity = densityNum && lotAc ? Math.floor(lotAc * densityNum) : 0;
+    const maxSFByFAR = farVal && lotSF ? Math.floor(lotSF * farVal) : 0;
+    const parkingRatio = p.parking?.ratio || 0;
+    const parkingRequired = parkingRatio > 0 ? Math.ceil(units * parkingRatio) : 0;
+    const parkingSurplus = p.parking ? p.parking.total - parkingRequired : 0;
+    const maxUnitsByParking = parkingRatio > 0 ? Math.floor(p.parking!.total / parkingRatio) : 0;
 
     return (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="ZONING DESIGNATION" subtitle="Verified" icon="▦" borderColor={T.text.purple} />
-          <div style={{ padding: "10px", textAlign: "center", borderBottom: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 28, fontFamily: T.font.mono, fontWeight: 800, color: T.text.amber }}>{p.zoningCode || "—"}</div>
-            <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{p.zoningDescription || ""}</div>
-          </div>
-          {p.maxDensity && <DataRow label="Max Density" value={p.maxDensity} color={T.text.cyan} />}
-          {p.maxHeight && <DataRow label="Max Height" value={p.maxHeight} color={T.text.cyan} />}
-          {farVal > 0 && <DataRow label="Floor Area Ratio" value={farVal.toFixed(1)} color={T.text.cyan} />}
-          {lotAc > 0 && <DataRow label="Lot Size" value={`${lotAc} ac`} />}
-          <div style={{ height: 1, background: T.border.medium, margin: "2px 10px" }} />
-          {maxUnitsByDensity > 0 && <DataRow label="Max Units by Density" value={maxUnitsByDensity} sub={`@ ${p.maxDensity}`} color={T.text.green} />}
-          {maxSFByFAR > 0 && <DataRow label="Max SF by FAR" value={`${maxSFByFAR.toLocaleString()} SF`} sub={`@ FAR ${farVal}`} color={T.text.green} />}
-          <DataRow label="Current Units" value={units} />
-          {maxUnitsByDensity > 0 && <DataRow label="Density Headroom" value={`+${maxUnitsByDensity - units} units`} color={T.text.amber} />}
-          {p.zoningSource && <div style={{ padding: "4px 10px" }}><span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource}</span></div>}
+          <SectionHeader title="ZONING DESIGNATION" subtitle="M02 · Verified" icon="▦" borderColor={T.text.purple} />
+          {p.zoningCode ? (
+            <>
+              <div style={{ padding: "10px", textAlign: "center", borderBottom: `1px solid ${T.border.subtle}` }}>
+                <div style={{ fontSize: 28, fontFamily: T.font.mono, fontWeight: 800, color: T.text.amber }}>{p.zoningCode}</div>
+                <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{p.zoningDescription}</div>
+              </div>
+              {p.maxDensity && <DataRow label="Max Density" value={p.maxDensity} color={T.text.cyan} />}
+              {p.maxHeight && <DataRow label="Max Height" value={p.maxHeight} color={T.text.cyan} />}
+              {farVal > 0 && <DataRow label="Floor Area Ratio" value={farVal.toFixed(1)} color={T.text.cyan} />}
+              {lotAc > 0 && <DataRow label="Lot Size" value={`${lotAc} ac`} />}
+              <div style={{ height: 1, background: T.border.medium, margin: "2px 10px" }} />
+              {maxUnitsByDensity > 0 && <DataRow label="Max Units by Density" value={maxUnitsByDensity} sub={`@ ${p.maxDensity}`} color={T.text.green} />}
+              {maxSFByFAR > 0 && <DataRow label="Max SF by FAR" value={`${maxSFByFAR.toLocaleString()} SF`} sub={`@ FAR ${farVal}`} color={T.text.green} />}
+              <DataRow label="Current Units" value={units} />
+              {maxUnitsByDensity > units && <DataRow label="Density Headroom" value={`+${maxUnitsByDensity - units} units`} color={T.text.amber} />}
+              {p.zoningSource && <div style={{ padding: "4px 10px" }}><span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource} · {p.city}, {p.state}</span></div>}
+            </>
+          ) : (
+            <div style={{ padding: "24px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No zoning data available</div>
+          )}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="SETBACKS & CONSTRAINTS" icon="◫" borderColor={T.text.orange} />
-            <DataRow label="Front Setback" value="25 ft" />
-            <DataRow label="Side Setback" value="10 ft" />
-            <DataRow label="Rear Setback" value="20 ft" />
             <DataRow label="Flood Zone" value="X (Minimal)" color={T.text.green} />
             <DataRow label="Wetlands" value="None identified" color={T.text.green} />
             <DataRow label="Historic Overlay" value="No" color={T.text.green} />
@@ -816,11 +910,11 @@ export default function PropertyDetailsPage() {
           {p.parking && (
             <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
               <SectionHeader title="PARKING ANALYSIS" subtitle="Often the binding constraint" icon="P" borderColor={T.text.red} />
-              <DataRow label="Required Ratio" value={`${p.parking.ratio}:1`} sub="per unit" />
+              <DataRow label="Required Ratio" value={`${parkingRatio}:1`} sub="per unit" />
               <DataRow label="Current Spaces" value={p.parking.total} />
-              <DataRow label="Required @ Current" value={Math.ceil(units * p.parking.ratio)} />
-              <DataRow label="Surplus / (Deficit)" value={`${p.parking.total - Math.ceil(units * p.parking.ratio)}`} color={p.parking.total >= Math.ceil(units * p.parking.ratio) ? T.text.green : T.text.red} />
-              <DataRow label="Max Units by Parking" value={Math.floor(p.parking.total / p.parking.ratio)} color={T.text.amber} sub="if parking-constrained" />
+              <DataRow label="Required @ Current" value={parkingRequired} />
+              <DataRow label="Surplus / (Deficit)" value={`${parkingSurplus}`} color={parkingSurplus >= 0 ? T.text.green : T.text.red} />
+              <DataRow label="Max Units by Parking" value={maxUnitsByParking} color={T.text.amber} sub="if parking-constrained" />
             </div>
           )}
         </div>
@@ -833,27 +927,27 @@ export default function PropertyDetailsPage() {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="SUBMARKET VITALS" subtitle={p.submarket ? `${p.submarket} · ${p.market || ""}` : ""} icon="◉" borderColor={T.text.amber} />
-          {p.submarketVacancy !== undefined && <DataRow label="Vacancy Rate" value={pct(p.submarketVacancy)} color={p.submarketVacancy < 7 ? T.text.green : p.submarketVacancy < 10 ? T.text.amber : T.text.red} />}
-          {p.submarketRentGrowth !== undefined && <DataRow label="Rent Growth (YoY)" value={`+${pct(p.submarketRentGrowth)}`} color={T.text.green} />}
-          {p.submarketAbsorption !== undefined && <DataRow label="Annual Absorption" value={`${p.submarketAbsorption.toLocaleString()} units`} />}
+          <SectionHeader title="SUBMARKET VITALS" subtitle={`${p.submarket || ""} · ${p.market || ""}`} icon="◉" borderColor={T.text.amber} />
+          {p.submarketVacancy != null ? <DataRow label="Vacancy Rate" value={pct(p.submarketVacancy)} color={p.submarketVacancy < 7 ? T.text.green : p.submarketVacancy < 10 ? T.text.amber : T.text.red} /> : null}
+          {p.submarketRentGrowth != null ? <DataRow label="Rent Growth (YoY)" value={`+${pct(p.submarketRentGrowth)}`} color={T.text.green} /> : null}
+          {p.submarketAbsorption != null ? <DataRow label="Weekly Absorption" value={`${p.submarketAbsorption.toLocaleString()} units`} /> : null}
           {mktRent > 0 && <DataRow label="Avg Effective Rent" value={`$${mktRent.toLocaleString()}`} sub="/mo" />}
-          {!p.submarketVacancy && !p.submarketRentGrowth && (
-            <div style={{ padding: "12px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>Submarket data not yet available</div>
+          {p.submarketVacancy == null && p.submarketRentGrowth == null && mktRent <= 0 && (
+            <div style={{ padding: "16px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No submarket data available</div>
           )}
         </div>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="LOCATION SCORES" icon="★" borderColor={T.text.cyan} />
           {[
-            { label: "Walk Score", value: p.walkScore || 0, desc: (p.walkScore || 0) >= 70 ? "Very Walkable" : (p.walkScore || 0) >= 50 ? "Somewhat Walkable" : "Car-Dependent" },
-            { label: "Transit Score", value: p.transitScore || 0, desc: (p.transitScore || 0) >= 70 ? "Excellent Transit" : (p.transitScore || 0) >= 50 ? "Some Transit" : "Minimal Transit" },
-            { label: "Bike Score", value: p.bikeScore || 0, desc: (p.bikeScore || 0) >= 70 ? "Very Bikeable" : (p.bikeScore || 0) >= 50 ? "Bikeable" : "Minimal Biking" },
+            { label: "Walk Score", value: p.walkScore || 0, desc: (p.walkScore || 0) >= 90 ? "Walker's Paradise" : (p.walkScore || 0) >= 70 ? "Very Walkable" : (p.walkScore || 0) >= 50 ? "Somewhat Walkable" : "Car-Dependent" },
+            { label: "Transit Score", value: p.transitScore || 0, desc: (p.transitScore || 0) >= 70 ? "Excellent Transit" : (p.transitScore || 0) >= 50 ? "Good Transit" : (p.transitScore || 0) >= 25 ? "Some Transit" : "Minimal Transit" },
+            { label: "Bike Score", value: p.bikeScore || 0, desc: (p.bikeScore || 0) >= 70 ? "Very Bikeable" : (p.bikeScore || 0) >= 50 ? "Bikeable" : "Bike Unfriendly" },
           ].map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}08`, gap: 8 }}>
               <span style={{ fontSize: 8, fontFamily: T.font.label, color: T.text.secondary, width: 70 }}>{s.label}</span>
               <MiniBar value={s.value} max={100} color={s.value >= 70 ? T.text.green : s.value >= 50 ? T.text.amber : T.text.red} width={80} />
-              <span style={{ fontSize: 11, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary, width: 24, textAlign: "right" }}>{s.value || "—"}</span>
-              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>{s.value > 0 ? s.desc : ""}</span>
+              <span style={{ fontSize: 11, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary, width: 24, textAlign: "right" }}>{s.value}</span>
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>{s.desc}</span>
             </div>
           ))}
         </div>
@@ -863,10 +957,10 @@ export default function PropertyDetailsPage() {
           <SectionHeader title="SUPPLY PIPELINE" subtitle="Within Trade Area" icon="▼" borderColor={T.text.red} />
           <DataRow label="Under Construction" value="—" color={T.text.orange} />
           <DataRow label="Pipeline-to-Stock" value="—" />
-          <DataRow label="Threat Level" value="—" />
-          <div style={{ padding: "8px 10px", textAlign: "center" }}>
-            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.amber }}>
-              Create a Deal Capsule to unlock pipeline intelligence
+          <DataRow label="Threat Level" value="—" color={T.text.muted} />
+          <div style={{ padding: "4px 10px", background: `${T.text.cyan}08` }}>
+            <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
+              Supply pipeline data populates when a Deal Capsule is created with M28 market intelligence.
             </div>
           </div>
         </div>
@@ -876,9 +970,10 @@ export default function PropertyDetailsPage() {
           <DataRow label="Avg HH Income" value="—" />
           <DataRow label="Renter Pct" value="—" />
           <DataRow label="Employment Growth" value="—" />
-          <div style={{ padding: "8px 10px", textAlign: "center" }}>
-            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.amber }}>
-              Demographics available in Deal Capsule
+          <DataRow label="Demand Score" value="—" sub="/ 100" />
+          <div style={{ padding: "4px 10px", background: `${T.text.cyan}08` }}>
+            <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
+              Demand driver data populates from Census, BLS, and JEDI intelligence when available.
             </div>
           </div>
         </div>
@@ -886,7 +981,7 @@ export default function PropertyDetailsPage() {
     </div>
   );
 
-  // ─── TAB ROUTER ────────────────────────────────────────────
+  // ─── TAB CONTENT ROUTER ────────────────────────────────────
   const renderTab = () => {
     switch (activeTab) {
       case "OVERVIEW": return <OverviewTab />;
@@ -948,7 +1043,7 @@ export default function PropertyDetailsPage() {
     <div style={{ width: "100%", height: "100vh", background: T.bg.terminal, fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{globalCSS}</style>
 
-      {/* TOP BAR — Property Identity */}
+      {/* TOP BAR */}
       <div style={{
         display: "flex", alignItems: "center", padding: "6px 12px", gap: 10,
         background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`,
@@ -1016,7 +1111,7 @@ export default function PropertyDetailsPage() {
         ))}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>
-          ID: {p.id}{p.dataSource ? ` · Sources: ${p.dataSource}` : ""}
+          ID: {p.id} · {p.dataSource || "Market Intelligence"}
         </span>
       </div>
 
@@ -1034,18 +1129,17 @@ export default function PropertyDetailsPage() {
         <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>
           <span>PROPERTY DETAILS</span>
           <span>·</span>
-          <span>{p.county ? `${p.county} County` : p.city}{p.state ? `, ${p.state}` : ""}</span>
+          <span>{p.county ? `${p.county} County` : ""}{p.state ? `, ${p.state}` : ""}</span>
         </div>
         <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono }}>
           <span style={{ color: T.text.muted }}>F1–F6 Navigate</span>
           <span style={{ color: T.text.muted }}>·</span>
-          <span style={{ color: T.text.muted }}>/ Command</span>
+          <span style={{ color: T.text.muted }}>/  Command</span>
           <span style={{ color: T.text.muted }}>·</span>
           <span style={{ color: T.text.green }}>JEDI RE v2.1</span>
         </div>
       </div>
 
-      {/* Create Deal Modal */}
       {showCreateDeal && <CreateDealModal />}
     </div>
   );
