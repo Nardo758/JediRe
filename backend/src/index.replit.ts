@@ -96,6 +96,7 @@ import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.ro
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
 import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
+import financialModelRoutes from './api/rest/financial-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
@@ -216,6 +217,8 @@ app.use('/api/v1/deals', dealMarketIntelligenceRoutes);
 app.use('/api/v1/deals', dealCompSetsRoutes);
 app.use('/api/v1/deals', requireAuth, dealPhotosRoutes);
 app.use('/api/v1/deals', requireAuth, dealContextRoutes);
+app.use('/api/v1/deals', requireAuth, financialModelRoutes);
+app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
