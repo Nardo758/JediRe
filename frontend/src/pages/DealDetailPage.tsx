@@ -76,11 +76,22 @@ const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }>
   rezone: { label: 'Full Rezone', color: 'bg-red-100 text-red-700' },
 };
 
+function normalizePath(raw: string): DevelopmentPath | null {
+  const lower = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  if (lower.startsWith('by_right')) return 'by_right';
+  if (lower.startsWith('overlay') || lower.includes('bonus')) return 'overlay_bonus';
+  if (lower.startsWith('variance')) return 'variance';
+  if (lower.startsWith('rezone')) return 'rezone';
+  if ((DEV_PATH_CONFIG as Record<string, unknown>)[raw]) return raw as DevelopmentPath;
+  return null;
+}
+
 function DevPathBadge() {
   const { development_path } = useZoningModuleStore();
   if (!development_path) return null;
-  const cfg = DEV_PATH_CONFIG[development_path];
-  if (!cfg) return null;
+  const key = normalizePath(development_path);
+  if (!key) return null;
+  const cfg = DEV_PATH_CONFIG[key];
   return (
     <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
       {cfg.label}
