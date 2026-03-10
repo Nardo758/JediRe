@@ -7,7 +7,7 @@ const CapsuleDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      navigate(`/deals/${id}/detail?tab=collision-analysis`, { replace: true });
+      navigate(`/deals/${id}/detail?tab=overview`, { replace: true });
     } else {
       navigate('/deals', { replace: true });
     }
@@ -15,7 +15,7 @@ const CapsuleDetailPage: React.FC = () => {
 
   return (
     <div className="flex items-center justify-center h-64">
-      <div className="text-stone-500">Redirecting to Collision Analysis...</div>
+      <div className="text-stone-500">Opening Deal Capsule...</div>
     </div>
   );
 };
