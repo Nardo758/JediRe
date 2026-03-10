@@ -19,6 +19,15 @@ export const formatFull = (n: number): string => {
 };
 
 /**
+ * Format number as currency ($1,500,000)
+ * Alias for formatFull for backward compatibility
+ */
+export const formatCurrency = (n: number): string => {
+  if (n == null || isNaN(n)) return '$0';
+  return `$${n.toLocaleString()}`;
+};
+
+/**
  * Format number as percentage (5.2%)
  */
 export const formatPercent = (n: number): string => {

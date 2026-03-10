@@ -265,6 +265,79 @@ function calculateMockCapRate(budget?: number, units?: number): number | undefin
   return 4.2;
 }
 
+const getAuthHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('auth_token');
+  return token
+    ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    : { 'Content-Type': 'application/json' };
+};
+
+export const api = {
+  async get(path: string) {
+    const res = await fetch(`${API_BASE_URL}/api/v1${path}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return { data: await res.json() };
+  },
+  async post(path: string, body?: any) {
+    const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return { data: await res.json() };
+  },
+  async put(path: string, body?: any) {
+    const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return { data: await res.json() };
+  },
+  async delete(path: string) {
+    const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return { data: await res.json() };
+  },
+};
+
+export const authAPI = {
+  async login(email: string, password: string) {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error('Login failed');
+    return res.json();
+  },
+  async register(email: string, password: string, name: string) {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (!res.ok) throw new Error('Registration failed');
+    return res.json();
+  },
+  async me() {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('Not authenticated');
+    return res.json();
+  },
+  async logout() {
+    await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+  },
+};
+
 export default {
   fetchDeals,
   fetchDealById,

@@ -1,0 +1,96 @@
+~/.../jedire/frontend$ cd ~/workspace
+git fetch origin
+git checkout terminal-ui-bugfixes
+
+cd jedire/frontend
+pkill -f "vite.*5173"
+npm install
+npm run dev -- --port 5173
+remote: Enumerating objects: 109, done.
+remote: Counting objects: 100% (80/80), done.
+remote: Compressing objects: 100% (43/43), done.
+remote: Total 61 (delta 33), reused 46 (delta 18), pack-reused 0 (from 0)
+Unpacking objects: 100% (61/61), 216.76 KiB | 5.56 MiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * [new branch]        terminal-ui-bugfixes -> origin/terminal-ui-bugfixes
+Updating files: 100% (129/129), done.
+branch 'terminal-ui-bugfixes' set up to track 'origin/terminal-ui-bugfixes'.
+Switched to a new branch 'terminal-ui-bugfixes'
+
+up to date, audited 811 packages in 3s
+
+198 packages are looking for funding
+  run `npm fund` for details
+
+12 vulnerabilities (3 moderate, 9 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+> jedire-frontend@1.0.0 dev
+> vite --port 5173
+
+
+
+
+  VITE v5.4.21  ready in 181 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://172.31.82.162:5173/
+  ➜  press h + enter to show help
+Error:   Failed to scan for dependencies from entries:
+  /home/runner/workspace/jedire/frontend/index.html
+
+  ✘ [ERROR] No matching export in "src/pages/DealsPage.tsx" for import "DealsPage"
+
+    src/App.tsx:9:9:
+      9 │ import { DealsPage } from './pages/DealsPage';
+        ╵          ~~~~~~~~~
+
+
+✘ [ERROR] No matching export in "src/services/api.ts" for import "api"
+
+    src/components/deal/DealContextTracker.tsx:6:9:
+      6 │ import { api } from '../../services/api';
+        ╵          ~~~
+
+
+✘ [ERROR] No matching export in "src/services/api.ts" for import "authAPI"
+
+    src/hooks/useAuth.ts:2:9:
+      2 │ import { authAPI } from '@/services/api';
+        ╵          ~~~~~~~
+
+
+✘ [ERROR] No matching export in "src/components/ui/terminal/index.ts" for import "formatCurrency"
+
+    src/pages/DealsPage.tsx:20:2:
+      20 │   formatCurrency,
+         ╵   ~~~~~~~~~~~~~~
+
+
+✘ [ERROR] No matching export in "src/services/api.ts" for import "api"
+
+    src/stores/tradeAreaStore.ts:3:9:
+      3 │ import { api } from '../services/api';
+        ╵          ~~~
+
+
+    at failureErrorWithLog (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:1472:15)
+    at /home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:945:25
+    at runOnEndCallbacks (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:1315:45)
+    at buildResponseToResult (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:943:7)
+    at /home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:955:9
+    at new Promise (<anonymous>)
+    at requestCallbacks.on-end (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:954:54)
+    at handleRequest (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:647:17)
+    at handleIncomingPacket (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:672:7)
+    at Socket.readFromStdout (/home/runner/workspace/jedire/frontend/node_modules/esbuild/lib/main.js:600:7)

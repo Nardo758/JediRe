@@ -40,7 +40,8 @@ interface Deal {
   pendingTasks: number;
 }
 
-export default function DealsPage() {
+export function DealsPage() {}
+export default function DealsPageComponent() {
   const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
