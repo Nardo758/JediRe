@@ -1137,6 +1137,25 @@ router.post('/deals/:dealId/scenarios', async (req: Request, res: Response) => {
         max_gba, max_footprint, net_leasable_sf, parking_required, open_space_sf,
         max_stories, max_units, applied_far, binding_constraint, flags, target_district_id, target_district_code, calculated_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
+      ON CONFLICT (deal_id, name) DO UPDATE SET
+        is_active = EXCLUDED.is_active,
+        use_mix = EXCLUDED.use_mix,
+        avg_unit_size_sf = EXCLUDED.avg_unit_size_sf,
+        efficiency_factor = EXCLUDED.efficiency_factor,
+        max_gba = EXCLUDED.max_gba,
+        max_footprint = EXCLUDED.max_footprint,
+        net_leasable_sf = EXCLUDED.net_leasable_sf,
+        parking_required = EXCLUDED.parking_required,
+        open_space_sf = EXCLUDED.open_space_sf,
+        max_stories = EXCLUDED.max_stories,
+        max_units = EXCLUDED.max_units,
+        applied_far = EXCLUDED.applied_far,
+        binding_constraint = EXCLUDED.binding_constraint,
+        flags = EXCLUDED.flags,
+        target_district_id = EXCLUDED.target_district_id,
+        target_district_code = EXCLUDED.target_district_code,
+        calculated_at = NOW(),
+        updated_at = NOW()
       RETURNING *`,
       [
         dealId, name, is_active, JSON.stringify(use_mix), avg_unit_size_sf, efficiency_factor,

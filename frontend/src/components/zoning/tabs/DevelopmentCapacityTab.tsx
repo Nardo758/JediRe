@@ -212,13 +212,25 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     if (!dealId || !recs || recs.length === 0) return;
     
     try {
+      const existingRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+      const existingNames = new Set(
+        (existingRes.data.scenarios || []).map((s: any) => s.name.toLowerCase())
+      );
+
       const recNameMap: Record<string, string> = {
         'By Right': 'by_right',
         'Variance': 'variance',
         'Rezone': 'rezone'
       };
       
-      for (const rec of recs) {
+      const newRecs = recs.filter(rec => {
+        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+        return !existingNames.has(scenarioName);
+      });
+
+      if (newRecs.length === 0) return;
+
+      for (const rec of newRecs) {
         const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
         const units = rec.maxUnits || 0;
         const gba = rec.maxGba || 0;
@@ -245,9 +257,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         try {
           await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
         } catch (err: any) {
-          if (!err?.response?.data?.error?.includes('already exists')) {
-            console.warn(`Failed to create ${scenarioName} scenario:`, err);
-          }
+          console.warn(`Failed to create ${scenarioName} scenario:`, err);
         }
       }
       
