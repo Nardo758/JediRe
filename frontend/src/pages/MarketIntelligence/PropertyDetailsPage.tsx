@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ZoningTabContent } from "../../components/MarketIntelligence/ZoningTabContent";
 import { CompsTabContent } from "../../components/MarketIntelligence/CompsTabContent";
+import { MarketTabContent } from "../../components/MarketIntelligence/MarketTabContent";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — PROPERTY DETAILS PAGE
@@ -481,7 +482,20 @@ export default function PropertyDetailsPage() {
             </div>
           )
         )}
-        {activeTab === "MARKET" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>MARKET TAB</div>}
+        {activeTab === "MARKET" && (
+          property.dealId ? (
+            <MarketTabContent dealId={property.dealId} />
+          ) : (
+            <div style={{ padding: 40, textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 12 }}>
+                Market intelligence available after creating a deal
+              </div>
+              <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
+                Click "CREATE DEAL" to enable market analysis
+              </div>
+            </div>
+          )
+        )}
       </div>
 
       {/* Create Deal Modal */}
