@@ -63,21 +63,21 @@ function generateFallbackFindings(): FindingsData {
         id: 'market-1', type: 'market', priority: 'urgent',
         title: 'Midtown rents up 12.3% in last quarter',
         description: 'Submarket rents increased from $1,850 to $2,078. Strong demand driven by new corporate relocations.',
-        timestamp: yesterday.toISOString(), link: '/capsules',
+        timestamp: yesterday.toISOString(), link: '/deals',
         metadata: { metric: 'rent', change: 12.3 }
       },
       {
         id: 'market-2', type: 'market', priority: 'important',
         title: 'Buckhead occupancy dropped to 88.5%',
         description: 'Down 4.2% from last quarter. New supply entering market - consider pricing adjustments.',
-        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
+        timestamp: twoDaysAgo.toISOString(), link: '/deals',
         metadata: { metric: 'occupancy', change: -4.2 }
       },
       {
         id: 'market-3', type: 'market', priority: 'info',
         title: 'West Midtown absorption rate accelerating',
         description: 'New units leasing 15% faster than 6-month average. Strong market momentum.',
-        timestamp: threeDaysAgo.toISOString(), link: '/capsules',
+        timestamp: threeDaysAgo.toISOString(), link: '/deals',
         metadata: { metric: 'absorption', change: 15.0 }
       }
     ],
@@ -86,28 +86,28 @@ function generateFallbackFindings(): FindingsData {
         id: 'insight-1', type: 'insight', priority: 'urgent',
         title: 'Strong opportunity: Midtown Tower',
         description: 'JEDI Score 87/100 - STRONG_OPPORTUNITY. Excellent location metrics, favorable market timing. Consider moving to full research.',
-        timestamp: yesterday.toISOString(), link: '/capsules',
+        timestamp: yesterday.toISOString(), link: '/deals',
         metadata: { jediScore: 87, verdict: 'STRONG_OPPORTUNITY', recommendationCount: 3 }
       },
       {
         id: 'insight-2', type: 'insight', priority: 'important',
         title: 'Good opportunity: College Park Workforce Housing',
         description: 'JEDI Score 74/100 - OPPORTUNITY. Strong demand fundamentals, moderate competition. Review for pipeline inclusion.',
-        timestamp: yesterday.toISOString(), link: '/capsules',
+        timestamp: yesterday.toISOString(), link: '/deals',
         metadata: { jediScore: 74, verdict: 'OPPORTUNITY', recommendationCount: 2 }
       },
       {
         id: 'insight-3', type: 'insight', priority: 'info',
         title: 'Optimization suggestions available',
         description: '4 recommendations to improve deal performance: rent optimization, expense reduction, capital improvements, refinancing timing.',
-        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
+        timestamp: twoDaysAgo.toISOString(), link: '/deals',
         metadata: { recommendationCount: 4 }
       },
       {
         id: 'insight-4', type: 'insight', priority: 'urgent',
         title: 'Risk alert: Alpharetta Retail Center',
         description: 'JEDI Score 42/100. Market fundamentals weakening, increased vacancy risk. Review immediately.',
-        timestamp: threeDaysAgo.toISOString(), link: '/capsules',
+        timestamp: threeDaysAgo.toISOString(), link: '/deals',
         metadata: { jediScore: 42, verdict: 'CAUTION', recommendationCount: 1 }
       }
     ],
@@ -116,21 +116,21 @@ function generateFallbackFindings(): FindingsData {
         id: 'action-1', type: 'action', priority: 'urgent',
         title: 'Stale deal needs review',
         description: 'Deal has been inactive for 14+ days. Review status and next steps.',
-        timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(), link: '/capsules',
+        timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(), link: '/deals',
         metadata: { state: 'TRIAGE', daysInactive: 15 }
       },
       {
         id: 'action-2', type: 'action', priority: 'important',
         title: 'Decision needed: College Park Workforce Housing',
         description: 'Triage complete. Review JEDI Score and decide: proceed to research, save as market note, or archive.',
-        timestamp: yesterday.toISOString(), link: '/capsules',
+        timestamp: yesterday.toISOString(), link: '/deals',
         metadata: { state: 'TRIAGE', needsDecision: true }
       },
       {
         id: 'action-3', type: 'action', priority: 'info',
         title: 'LOI expiring in 5 days',
         description: 'Midtown Tower LOI expires Feb 14. Finalize terms or request extension.',
-        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
+        timestamp: twoDaysAgo.toISOString(), link: '/deals',
         metadata: { state: 'UNDERWRITING', deadline: 'Feb 14, 2026' }
       }
     ]
@@ -467,9 +467,9 @@ export const KeyFindingsSection: React.FC = () => {
                 <button
                   onClick={() => {
                     if (activeTab === 'news') navigate('/news-intel');
-                    else if (activeTab === 'market') navigate('/capsules');
-                    else if (activeTab === 'insights') navigate('/capsules');
-                    else if (activeTab === 'actions') navigate('/capsules');
+                    else if (activeTab === 'market') navigate('/deals');
+                    else if (activeTab === 'insights') navigate('/deals');
+                    else if (activeTab === 'actions') navigate('/deals');
                   }}
                   className="text-sm text-sky-600 hover:text-sky-700 font-medium"
                 >

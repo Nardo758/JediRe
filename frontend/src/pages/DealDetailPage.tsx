@@ -57,6 +57,7 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
+import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
@@ -349,6 +350,12 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 4: DUE DILIGENCE - Verify & validate
   const dueDiligenceTabs: Tab[] = [
+    {
+      id: 'collision-analysis',
+      label: 'Collision Analysis',
+      icon: <Zap size={16} />,
+      component: CollisionAnalysisSection
+    },
     { 
       id: 'due-diligence', 
       label: 'DD Checklist', 

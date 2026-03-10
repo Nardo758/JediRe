@@ -176,7 +176,7 @@ function generateMockFindings(): {
         title: 'Midtown rents up 12.3% in last quarter',
         description: 'Submarket rents increased from $1,850 to $2,078. Strong demand driven by new corporate relocations.',
         timestamp: yesterday.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           metric: 'rent',
           change: 12.3
@@ -189,7 +189,7 @@ function generateMockFindings(): {
         title: 'Buckhead occupancy dropped to 88.5%',
         description: 'Down 4.2% from last quarter. New supply entering market - consider pricing adjustments.',
         timestamp: twoDaysAgo.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           metric: 'occupancy',
           change: -4.2
@@ -202,7 +202,7 @@ function generateMockFindings(): {
         title: 'West Midtown absorption rate accelerating',
         description: 'New units leasing 15% faster than 6-month average. Strong market momentum.',
         timestamp: threeDaysAgo.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           metric: 'absorption',
           change: 15.0
@@ -217,7 +217,7 @@ function generateMockFindings(): {
         title: '🎯 Strong opportunity: Midtown Tower',
         description: 'JEDI Score 87/100 - STRONG_OPPORTUNITY. Excellent location metrics, favorable market timing. Consider moving to full research.',
         timestamp: yesterday.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           jediScore: 87,
           verdict: 'STRONG_OPPORTUNITY',
@@ -231,7 +231,7 @@ function generateMockFindings(): {
         title: '💡 Good opportunity: College Park Workforce Housing',
         description: 'JEDI Score 74/100 - OPPORTUNITY. Strong demand fundamentals, moderate competition. Review for pipeline inclusion.',
         timestamp: yesterday.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           jediScore: 74,
           verdict: 'OPPORTUNITY',
@@ -245,7 +245,7 @@ function generateMockFindings(): {
         title: '📊 Optimization suggestions available',
         description: '4 recommendations to improve deal performance: rent optimization, expense reduction, capital improvements, refinancing timing.',
         timestamp: twoDaysAgo.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           recommendationCount: 4
         }
@@ -257,7 +257,7 @@ function generateMockFindings(): {
         title: '⚠️ Risk alert: Alpharetta Retail Center',
         description: 'JEDI Score 42/100. Market fundamentals weakening, increased vacancy risk. Review immediately.',
         timestamp: threeDaysAgo.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           jediScore: 42,
           verdict: 'CAUTION',
@@ -273,7 +273,7 @@ function generateMockFindings(): {
         title: 'No recent updates: hhninjnj',
         description: 'Deal has been inactive for 14+ days. Review status and next steps.',
         timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           state: 'TRIAGE',
           daysInactive: 15
@@ -286,7 +286,7 @@ function generateMockFindings(): {
         title: 'Decision needed: College Park Workforce Housing',
         description: 'Triage complete. Review JEDI Score and decide: proceed to research, save as market note, or archive.',
         timestamp: yesterday.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           state: 'TRIAGE',
           needsDecision: true
@@ -299,7 +299,7 @@ function generateMockFindings(): {
         title: 'LOI expiring in 5 days',
         description: 'Midtown Tower LOI expires Feb 14. Finalize terms or request extension.',
         timestamp: twoDaysAgo.toISOString(),
-        link: '/capsules',
+        link: '/deals',
         metadata: {
           state: 'UNDERWRITING',
           deadline: 'Feb 14, 2026'
@@ -437,7 +437,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           title: `${row.metric_type} ${direction} ${Math.abs(row.change_pct).toFixed(1)}% in ${row.deal_name}`,
           description: `Market ${row.metric_type} changed from $${row.previous_value} to $${row.current_value} near ${row.city}`,
           timestamp: row.updated_at,
-          link: `/capsules/${row.deal_id}`,
+          link: `/deals/${row.deal_id}/detail?tab=collision-analysis`,
           metadata: {
             dealId: row.deal_id,
             dealName: row.deal_name,
@@ -527,7 +527,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           title: title,
           description: description,
           timestamp: row.created_at,
-          link: `/capsules/${row.deal_id}`,
+          link: `/deals/${row.deal_id}/detail?tab=collision-analysis`,
           metadata: {
             dealId: row.deal_id,
             jediScore: score,
@@ -590,7 +590,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
             title: title,
             description: description,
             timestamp: row.updated_at,
-            link: `/capsules/${row.id}`,
+            link: `/deals/${row.id}/detail?tab=collision-analysis`,
             metadata: {
               state: row.state,
             },
