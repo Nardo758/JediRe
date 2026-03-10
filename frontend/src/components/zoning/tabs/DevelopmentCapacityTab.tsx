@@ -164,63 +164,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
 
-  const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
-    if (!dealId || !recs || recs.length === 0) return;
-    
-    console.log('🔄 Syncing recommendations to database...', recs.map(r => r.name));
-    
-    try {
-      // Map recommendation names to scenario names
-      const recNameMap: Record<string, string> = {
-        'By Right': 'by_right',
-        'Variance': 'variance',
-        'Rezone': 'rezone'
-      };
-      
-      // Create scenarios from recommendations
-      for (const rec of recs) {
-        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
-        const units = rec.maxUnits || 0;
-        const gba = rec.maxGba || 0;
-        const stories = rec.maxStories || 1;
-        const parking = rec.parkingRequired || 0;
-        const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
-        
-        const scenarioData = {
-          name: scenarioName,
-          is_active: false, // Don't activate yet
-          use_mix: { residential_pct: 100 },
-          avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
-          efficiency_factor: 0.85,
-          max_gba: gba,
-          max_footprint: footprint,
-          net_leasable_sf: Math.round(gba * 0.85),
-          parking_required: parking,
-          max_stories: stories,
-          max_units: units,
-          applied_far: rec.appliedFar || null,
-          binding_constraint: rec.bindingConstraint || null
-        };
-        
-        // Try to create (will fail silently if exists)
-        try {
-          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
-        } catch (err: any) {
-          // Ignore if already exists
-          if (!err?.response?.data?.error?.includes('already exists')) {
-            console.warn(`Failed to create ${scenarioName} scenario:`, err);
-          }
-        }
-      }
-      
-      // After syncing, load scenarios to get active state
-      await loadScenarios();
-      console.log('✅ Sync complete, scenarios loaded');
-    } catch (error) {
-      console.error('Failed to sync recommendations to database:', error);
-    }
-  }, [dealId, loadScenarios]);
-
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
     
@@ -264,6 +207,55 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       setActiveScenario(null);
     }
   }, [dealId, selectDevelopmentPath]);
+
+  const syncRecommendationsToDatabase = useCallback(async (recs: any[]) => {
+    if (!dealId || !recs || recs.length === 0) return;
+    
+    try {
+      const recNameMap: Record<string, string> = {
+        'By Right': 'by_right',
+        'Variance': 'variance',
+        'Rezone': 'rezone'
+      };
+      
+      for (const rec of recs) {
+        const scenarioName = recNameMap[rec.name] || rec.name.toLowerCase().replace(/\s+/g, '_');
+        const units = rec.maxUnits || 0;
+        const gba = rec.maxGba || 0;
+        const stories = rec.maxStories || 1;
+        const parking = rec.parkingRequired || 0;
+        const footprint = stories > 0 ? Math.round(gba / stories / 0.82) : 0;
+        
+        const scenarioData = {
+          name: scenarioName,
+          is_active: false,
+          use_mix: { residential_pct: 100 },
+          avg_unit_size_sf: Math.round(gba / Math.max(units, 1)),
+          efficiency_factor: 0.85,
+          max_gba: gba,
+          max_footprint: footprint,
+          net_leasable_sf: Math.round(gba * 0.85),
+          parking_required: parking,
+          max_stories: stories,
+          max_units: units,
+          applied_far: rec.appliedFar || null,
+          binding_constraint: rec.bindingConstraint || null
+        };
+        
+        try {
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        } catch (err: any) {
+          if (!err?.response?.data?.error?.includes('already exists')) {
+            console.warn(`Failed to create ${scenarioName} scenario:`, err);
+          }
+        }
+      }
+      
+      await loadScenarios();
+    } catch (error) {
+      console.error('Failed to sync recommendations to database:', error);
+    }
+  }, [dealId, loadScenarios]);
 
   const handleSelectPath = useCallback(async (colKey: string, rec: any) => {
     if (!dealId) return;
