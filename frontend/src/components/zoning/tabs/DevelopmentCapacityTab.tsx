@@ -143,7 +143,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [resolving, setResolving] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [comparison, setComparison] = useState<any>(null);
-  const [loadingRecs, setLoadingRecs] = useState(true);
+  const [loadingRecs, setLoadingRecs] = useState(false);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
   const [enrichment, setEnrichment] = useState<EnvelopeEnrichment | null>(null);
   const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
