@@ -10,7 +10,7 @@
  */
 
 import { shallow } from 'zustand/shallow';
-import { useDealStore } from '../stores/dealStore';
+import { useFinancialModelStore } from '../stores/financialModelStore';
 import type { UnitMixRow, DevelopmentPath } from '../stores/dealContext.types';
 
 /**
@@ -20,7 +20,7 @@ import type { UnitMixRow, DevelopmentPath } from '../stores/dealContext.types';
  * plus functions to make changes that trigger cascade.
  */
 export function useUnitMix() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       unitMix: state.context?.resolvedUnitMix || [],
@@ -47,7 +47,7 @@ export function useUnitMix() {
  * Selecting a path triggers the keystone cascade.
  */
 export function useDevelopmentPaths() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       paths: state.context?.development?.paths || [],
@@ -76,7 +76,7 @@ export function useDevelopmentPaths() {
  * Subscribe to this to react when unit mix or strategy changes.
  */
 export function useFinancial() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       assumptions: state.context?.financial?.assumptions,
@@ -101,7 +101,7 @@ export function useFinancial() {
  * Returns strategy analysis, scores, recommendations.
  */
 export function useStrategy() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       strategies: state.context?.strategy?.strategies || [],
@@ -126,7 +126,7 @@ export function useStrategy() {
  * Returns basic property info, location, existing conditions.
  */
 export function usePropertyDetails() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       dealId: state.context?.dealId,
@@ -161,7 +161,7 @@ export function usePropertyDetails() {
  * Returns overall score and breakdown by signal.
  */
 export function useJEDIScore() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       // Data
       score: state.context?.scores?.jedi,
@@ -184,7 +184,7 @@ export function useJEDIScore() {
  * or are building a dashboard that displays everything.
  */
 export function useDealContextFull() {
-  return useDealStore(
+  return useFinancialModelStore(
     (state) => ({
       context: state.context,
       isLoading: state.isLoading,

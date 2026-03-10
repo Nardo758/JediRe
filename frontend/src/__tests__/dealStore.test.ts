@@ -5,7 +5,7 @@
  */
 
 import { renderHook, act } from '@testing-library/react';
-import { useDealStore } from '../stores/dealStore';
+import { useFinancialModelStore as useDealStore } from '../stores/financialModelStore';
 import type { DevelopmentPath, UnitMixRow } from '../stores/dealContext.types';
 
 // Mock fetch for API calls
