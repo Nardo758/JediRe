@@ -63,21 +63,21 @@ function generateFallbackFindings(): FindingsData {
         id: 'market-1', type: 'market', priority: 'urgent',
         title: 'Midtown rents up 12.3% in last quarter',
         description: 'Submarket rents increased from $1,850 to $2,078. Strong demand driven by new corporate relocations.',
-        timestamp: yesterday.toISOString(), link: '/market-data',
+        timestamp: yesterday.toISOString(), link: '/capsules',
         metadata: { metric: 'rent', change: 12.3 }
       },
       {
         id: 'market-2', type: 'market', priority: 'important',
         title: 'Buckhead occupancy dropped to 88.5%',
         description: 'Down 4.2% from last quarter. New supply entering market - consider pricing adjustments.',
-        timestamp: twoDaysAgo.toISOString(), link: '/market-data',
+        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
         metadata: { metric: 'occupancy', change: -4.2 }
       },
       {
         id: 'market-3', type: 'market', priority: 'info',
         title: 'West Midtown absorption rate accelerating',
         description: 'New units leasing 15% faster than 6-month average. Strong market momentum.',
-        timestamp: threeDaysAgo.toISOString(), link: '/market-data',
+        timestamp: threeDaysAgo.toISOString(), link: '/capsules',
         metadata: { metric: 'absorption', change: 15.0 }
       }
     ],
@@ -86,28 +86,28 @@ function generateFallbackFindings(): FindingsData {
         id: 'insight-1', type: 'insight', priority: 'urgent',
         title: 'Strong opportunity: Midtown Tower',
         description: 'JEDI Score 87/100 - STRONG_OPPORTUNITY. Excellent location metrics, favorable market timing. Consider moving to full research.',
-        timestamp: yesterday.toISOString(), link: '/deals',
+        timestamp: yesterday.toISOString(), link: '/capsules',
         metadata: { jediScore: 87, verdict: 'STRONG_OPPORTUNITY', recommendationCount: 3 }
       },
       {
         id: 'insight-2', type: 'insight', priority: 'important',
         title: 'Good opportunity: College Park Workforce Housing',
         description: 'JEDI Score 74/100 - OPPORTUNITY. Strong demand fundamentals, moderate competition. Review for pipeline inclusion.',
-        timestamp: yesterday.toISOString(), link: '/deals',
+        timestamp: yesterday.toISOString(), link: '/capsules',
         metadata: { jediScore: 74, verdict: 'OPPORTUNITY', recommendationCount: 2 }
       },
       {
         id: 'insight-3', type: 'insight', priority: 'info',
         title: 'Optimization suggestions available',
         description: '4 recommendations to improve deal performance: rent optimization, expense reduction, capital improvements, refinancing timing.',
-        timestamp: twoDaysAgo.toISOString(), link: '/deals',
+        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
         metadata: { recommendationCount: 4 }
       },
       {
         id: 'insight-4', type: 'insight', priority: 'urgent',
         title: 'Risk alert: Alpharetta Retail Center',
         description: 'JEDI Score 42/100. Market fundamentals weakening, increased vacancy risk. Review immediately.',
-        timestamp: threeDaysAgo.toISOString(), link: '/deals',
+        timestamp: threeDaysAgo.toISOString(), link: '/capsules',
         metadata: { jediScore: 42, verdict: 'CAUTION', recommendationCount: 1 }
       }
     ],
@@ -116,21 +116,21 @@ function generateFallbackFindings(): FindingsData {
         id: 'action-1', type: 'action', priority: 'urgent',
         title: 'Stale deal needs review',
         description: 'Deal has been inactive for 14+ days. Review status and next steps.',
-        timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(), link: '/deals',
+        timestamp: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000).toISOString(), link: '/capsules',
         metadata: { state: 'TRIAGE', daysInactive: 15 }
       },
       {
         id: 'action-2', type: 'action', priority: 'important',
         title: 'Decision needed: College Park Workforce Housing',
         description: 'Triage complete. Review JEDI Score and decide: proceed to research, save as market note, or archive.',
-        timestamp: yesterday.toISOString(), link: '/deals',
+        timestamp: yesterday.toISOString(), link: '/capsules',
         metadata: { state: 'TRIAGE', needsDecision: true }
       },
       {
         id: 'action-3', type: 'action', priority: 'info',
         title: 'LOI expiring in 5 days',
         description: 'Midtown Tower LOI expires Feb 14. Finalize terms or request extension.',
-        timestamp: twoDaysAgo.toISOString(), link: '/deals',
+        timestamp: twoDaysAgo.toISOString(), link: '/capsules',
         metadata: { state: 'UNDERWRITING', deadline: 'Feb 14, 2026' }
       }
     ]
@@ -164,29 +164,31 @@ const CATEGORY_CONFIG = {
   },
 };
 
-const PRIORITY_STYLES = {
-  urgent: {
-    bg: 'bg-red-50',
-    border: 'border-red-200',
-    dot: 'bg-red-500',
-    text: 'text-red-900',
-    badge: 'bg-red-100 text-red-800',
-  },
-  important: {
-    bg: 'bg-orange-50',
-    border: 'border-orange-200',
-    dot: 'bg-orange-500',
-    text: 'text-orange-900',
-    badge: 'bg-orange-100 text-orange-800',
-  },
-  info: {
-    bg: 'bg-blue-50',
-    border: 'border-blue-200',
-    dot: 'bg-blue-500',
-    text: 'text-blue-900',
-    badge: 'bg-blue-100 text-blue-800',
-  },
+const PRIORITY_ACCENT = {
+  urgent: { border: 'border-l-red-500', dot: 'bg-red-500', label: 'Urgent', labelClass: 'text-red-700 bg-red-50' },
+  important: { border: 'border-l-amber-500', dot: 'bg-amber-500', label: 'Important', labelClass: 'text-amber-700 bg-amber-50' },
+  info: { border: 'border-l-sky-500', dot: 'bg-sky-500', label: 'Info', labelClass: 'text-sky-700 bg-sky-50' },
 };
+
+const TYPE_ICON: Record<string, string> = {
+  news: '📰',
+  market: '📊',
+  insight: '🤖',
+  action: '⚡',
+};
+
+function getScoreColor(score: number): string {
+  if (score >= 80) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+  if (score >= 60) return 'text-sky-700 bg-sky-50 border-sky-200';
+  if (score >= 40) return 'text-amber-700 bg-amber-50 border-amber-200';
+  return 'text-red-700 bg-red-50 border-red-200';
+}
+
+function getChangeIndicator(change: number): { icon: string; color: string } {
+  if (change > 0) return { icon: '▲', color: 'text-emerald-600' };
+  if (change < 0) return { icon: '▼', color: 'text-red-600' };
+  return { icon: '—', color: 'text-gray-500' };
+}
 
 export const KeyFindingsSection: React.FC = () => {
   const navigate = useNavigate();
@@ -345,98 +347,131 @@ export const KeyFindingsSection: React.FC = () => {
       </div>
 
       {/* Findings List */}
-      <div className="divide-y divide-gray-100">
+      <div className="p-4 space-y-3">
         {activeFindings.length === 0 ? (
-          <div className="px-6 py-12 text-center">
+          <div className="py-12 text-center">
             <div className="text-5xl mb-3">{CATEGORY_CONFIG[activeTab].icon}</div>
             <p className="text-gray-500">{CATEGORY_CONFIG[activeTab].emptyMessage}</p>
           </div>
         ) : (
           <>
             {activeFindings.map((finding) => {
-              const styles = PRIORITY_STYLES[finding.priority];
-              
+              const accent = PRIORITY_ACCENT[finding.priority];
+              const meta = finding.metadata || {};
+              const hasScore = typeof meta.jediScore === 'number';
+              const hasChange = typeof meta.change === 'number';
+              const changeInfo = hasChange ? getChangeIndicator(meta.change) : null;
+
               return (
                 <button
                   key={finding.id}
                   onClick={() => handleFindingClick(finding)}
                   className={`
-                    w-full px-6 py-4 text-left transition-all hover:shadow-sm
-                    ${styles.bg} hover:${styles.bg} border-l-4 ${styles.border}
+                    w-full text-left rounded-lg border border-stone-200 bg-white
+                    border-l-4 ${accent.border}
+                    hover:border-stone-300 hover:shadow-md transition-all duration-150
+                    group
                   `}
                 >
-                  <div className="flex items-start gap-3">
-                    {/* Priority Dot */}
-                    <div className={`w-2 h-2 rounded-full ${styles.dot} mt-2 flex-shrink-0`} />
-                    
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3 mb-1">
-                        <h3 className={`font-semibold ${styles.text} text-sm`}>
-                          {finding.title}
-                        </h3>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
-                          {getTimeSince(finding.timestamp)}
-                        </span>
-                      </div>
-                      
-                      <p className="text-sm text-gray-700 mb-2">
-                        {finding.description}
-                      </p>
-                      
-                      {/* Metadata badges */}
-                      {finding.metadata && (
-                        <div className="flex flex-wrap gap-2">
-                          {finding.metadata.category && (
-                            <span className={`text-xs px-2 py-1 rounded ${styles.badge}`}>
-                              {finding.metadata.category}
+                  <div className="p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="text-lg mt-0.5 flex-shrink-0">{TYPE_ICON[finding.type] || '📋'}</span>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="font-semibold text-stone-900 text-sm leading-snug">
+                            {finding.title}
+                          </h3>
+                          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${accent.labelClass}`}>
+                            {accent.label}
+                          </span>
+                        </div>
+
+                        <p className="text-sm text-stone-600 leading-relaxed mb-2.5">
+                          {finding.description}
+                        </p>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {hasScore && (
+                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md border ${getScoreColor(meta.jediScore)}`}>
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                              JEDI {meta.jediScore}
                             </span>
                           )}
-                          {finding.metadata.affectedDeals > 0 && (
-                            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
-                              {finding.metadata.affectedDeals} deal{finding.metadata.affectedDeals !== 1 ? 's' : ''}
+
+                          {hasChange && changeInfo && (
+                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-md bg-stone-50 border border-stone-200 ${changeInfo.color}`}>
+                              {changeInfo.icon} {Math.abs(meta.change).toFixed(1)}%
                             </span>
                           )}
-                          {finding.metadata.pendingTasks > 0 && (
-                            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
-                              {finding.metadata.pendingTasks} task{finding.metadata.pendingTasks !== 1 ? 's' : ''}
+
+                          {meta.verdict && (
+                            <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-1 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                              {meta.verdict.replace(/_/g, ' ')}
+                            </span>
+                          )}
+
+                          {meta.category && (
+                            <span className="text-xs px-2 py-1 rounded-md bg-stone-100 text-stone-700">
+                              {meta.category}
+                            </span>
+                          )}
+
+                          {meta.affectedDeals > 0 && (
+                            <span className="text-xs px-2 py-1 rounded-md bg-stone-100 text-stone-600">
+                              {meta.affectedDeals} deal{meta.affectedDeals !== 1 ? 's' : ''}
+                            </span>
+                          )}
+
+                          {meta.location && (
+                            <span className="text-xs px-2 py-1 rounded-md bg-stone-50 text-stone-500 border border-stone-200">
+                              📍 {meta.location}
+                            </span>
+                          )}
+
+                          {meta.state && (
+                            <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-1 rounded-md bg-stone-100 text-stone-600">
+                              {meta.state}
+                            </span>
+                          )}
+
+                          {meta.recommendationCount > 0 && (
+                            <span className="text-xs px-2 py-1 rounded-md bg-sky-50 text-sky-700 border border-sky-200">
+                              {meta.recommendationCount} rec{meta.recommendationCount !== 1 ? 's' : ''}
                             </span>
                           )}
                         </div>
-                      )}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        <span className="text-[11px] text-stone-400 whitespace-nowrap">
+                          {getTimeSince(finding.timestamp)}
+                        </span>
+                        <svg
+                          className="w-4 h-4 text-stone-300 group-hover:text-stone-500 transition-colors"
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
                     </div>
-                    
-                    {/* Arrow */}
-                    <svg 
-                      className="w-5 h-5 text-gray-400 flex-shrink-0 mt-1" 
-                      fill="none" 
-                      viewBox="0 0 24 24" 
-                      stroke="currentColor"
-                    >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
-                        d="M9 5l7 7-7 7" 
-                      />
-                    </svg>
                   </div>
                 </button>
               );
             })}
-            
-            {/* View All button */}
+
             {activeFindings.length >= 5 && (
-              <div className="px-6 py-3 bg-gray-50">
+              <div className="pt-1 text-center">
                 <button
                   onClick={() => {
-                    // Navigate to dedicated page for this category
                     if (activeTab === 'news') navigate('/news-intel');
-                    else if (activeTab === 'market') navigate('/market-data');
-                    else if (activeTab === 'insights') navigate('/insights');
-                    else if (activeTab === 'actions') navigate('/deals');
+                    else if (activeTab === 'market') navigate('/capsules');
+                    else if (activeTab === 'insights') navigate('/capsules');
+                    else if (activeTab === 'actions') navigate('/capsules');
                   }}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-sm text-sky-600 hover:text-sky-700 font-medium"
                 >
                   View All {CATEGORY_CONFIG[activeTab].label} →
                 </button>
