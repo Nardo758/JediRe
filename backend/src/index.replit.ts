@@ -102,6 +102,8 @@ import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
+import dealValidationRoutes from './api/rest/deal-validation.routes';
+import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -219,6 +221,12 @@ app.use('/api/v1/deals', requireAuth, dealPhotosRoutes);
 app.use('/api/v1/deals', requireAuth, dealContextRoutes);
 app.use('/api/v1/deals', requireAuth, financialModelRoutes);
 app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
+
+// Phase 10: Cross-Module Validation
+app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
+
+// Phase 11: Unit Mix Propagation
+app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
