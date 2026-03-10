@@ -134,7 +134,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingConstraint, setEditingConstraint] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
