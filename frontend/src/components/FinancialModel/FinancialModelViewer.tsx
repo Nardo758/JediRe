@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import SummaryTab from './SummaryTab';
-import ProjectionsTab from './ProjectionsTab';
-import AssumptionsTab from './AssumptionsTab';
 
 const T = {
   bg: { terminal:"#0A0E17",panel:"#0F1319",header:"#1A1F2E",active:"#252D40" },
@@ -27,7 +25,7 @@ export default function FinancialModelViewer() {
   const fetchModel = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/deals/${dealId}/financial-model`, {
+      const response = await fetch(`/api/v1/financial-models/${dealId}/claude-output`, {
         credentials: 'include',
       });
 
@@ -42,8 +40,12 @@ export default function FinancialModelViewer() {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      setModel(data);
+      const result = await response.json();
+      if (result.success && result.data) {
+        setModel(result.data);
+      } else {
+        throw new Error('Invalid response format');
+      }
     } catch (err: any) {
       console.error('Error fetching financial model:', err);
       setError(err.message);
@@ -52,21 +54,26 @@ export default function FinancialModelViewer() {
     }
   };
 
-  const handleCompute = async () => {
+  const handleCompute = async (forceRecompute = false) => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/deals/${dealId}/financial-model/compute`, {
+      const response = await fetch(`/api/v1/financial-models/${dealId}/compute-claude`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ forceRecompute }),
       });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      setModel(data);
+      const result = await response.json();
+      if (result.success && result.data) {
+        setModel(result.data.model);
+      } else {
+        throw new Error(result.error || 'Failed to compute model');
+      }
     } catch (err: any) {
       console.error('Error computing model:', err);
       setError(err.message);
@@ -183,11 +190,11 @@ export default function FinancialModelViewer() {
             color: T.text.muted,
             marginTop: 2,
           }}>
-            {model.modelType?.toUpperCase()} • Computed {new Date(model.computedAt).toLocaleString()}
+            {model.model_type?.toUpperCase() || 'ACQUISITION'} • Computed {model.computed_at ? new Date(model.computed_at).toLocaleString() : 'N/A'}
           </div>
         </div>
         <button
-          onClick={handleCompute}
+          onClick={() => handleCompute(true)}
           style={{
             padding: "6px 12px",
             background: T.bg.active,
@@ -237,12 +244,12 @@ export default function FinancialModelViewer() {
 
       {/* Tab Content */}
       <div style={{ padding: "20px", maxWidth: "1600px", margin: "0 auto" }}>
-        {activeTab === 'summary' && <SummaryTab output={model.output} />}
-        {activeTab === 'projections' && <ProjectionsTab output={model.output} />}
+        {activeTab === 'summary' && <SummaryTab output={model.claude_output || model.results} modelType={model.model_type} />}
+        {activeTab === 'projections' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>PROJECTIONS TAB (TODO)</div>}
         {activeTab === 'debt' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>DEBT TAB (TODO)</div>}
         {activeTab === 'waterfall' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>WATERFALL TAB (TODO)</div>}
         {activeTab === 'sensitivity' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>SENSITIVITY TAB (TODO)</div>}
-        {activeTab === 'assumptions' && <AssumptionsTab dealId={dealId!} />}
+        {activeTab === 'assumptions' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>ASSUMPTIONS TAB (TODO)</div>}
       </div>
     </div>
   );

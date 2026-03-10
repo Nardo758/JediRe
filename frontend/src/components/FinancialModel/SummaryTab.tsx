@@ -7,9 +7,10 @@ const T = {
 
 interface SummaryTabProps {
   output: any;
+  modelType?: string;
 }
 
-export default function SummaryTab({ output }: SummaryTabProps) {
+export default function SummaryTab({ output, modelType }: SummaryTabProps) {
   if (!output || !output.summaryMetrics) {
     return <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>No summary data available</div>;
   }
