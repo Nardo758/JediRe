@@ -291,7 +291,7 @@ function validateRedevelopmentSpecific(
 /**
  * Quick validation helper (returns true/false only, no details).
  */
-export function isValid Model(output: FinancialOutput): boolean {
+export function isValidModel(output: FinancialOutput): boolean {
   const result = validateModelOutput(output);
   return result.valid;
 }
