@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import SummaryTab from './SummaryTab';
+import ProjectionsTab from './ProjectionsTab';
+import DebtTab from './DebtTab';
+import WaterfallTab from './WaterfallTab';
+import SensitivityTab from './SensitivityTab';
+import AssumptionsTab from './AssumptionsTab';
 
 const T = {
   bg: { terminal:"#0A0E17",panel:"#0F1319",header:"#1A1F2E",active:"#252D40" },
@@ -245,11 +250,11 @@ export default function FinancialModelViewer() {
       {/* Tab Content */}
       <div style={{ padding: "20px", maxWidth: "1600px", margin: "0 auto" }}>
         {activeTab === 'summary' && <SummaryTab output={model.claude_output || model.results} modelType={model.model_type} />}
-        {activeTab === 'projections' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>PROJECTIONS TAB (TODO)</div>}
-        {activeTab === 'debt' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>DEBT TAB (TODO)</div>}
-        {activeTab === 'waterfall' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>WATERFALL TAB (TODO)</div>}
-        {activeTab === 'sensitivity' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>SENSITIVITY TAB (TODO)</div>}
-        {activeTab === 'assumptions' && <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>ASSUMPTIONS TAB (TODO)</div>}
+        {activeTab === 'projections' && <ProjectionsTab output={model.claude_output || model.results} modelType={model.model_type} />}
+        {activeTab === 'debt' && <DebtTab output={model.claude_output || model.results} modelType={model.model_type} />}
+        {activeTab === 'waterfall' && <WaterfallTab output={model.claude_output || model.results} modelType={model.model_type} />}
+        {activeTab === 'sensitivity' && <SensitivityTab output={model.claude_output || model.results} modelType={model.model_type} />}
+        {activeTab === 'assumptions' && <AssumptionsTab dealId={dealId!} output={model.claude_output || model.results} modelType={model.model_type} />}
       </div>
     </div>
   );

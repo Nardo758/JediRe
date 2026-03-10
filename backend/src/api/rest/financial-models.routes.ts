@@ -518,6 +518,122 @@ router.get('/:dealId/claude-output', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/v1/financial-models/:dealId/assumptions
+ * NEW: Get assembled assumptions with source attribution
+ */
+router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { dealId } = req.params;
+
+    // Verify user has access to this deal
+    const dealCheck = await query(
+      'SELECT * FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deal not found or access denied'
+      });
+    }
+
+    const deal = dealCheck.rows[0];
+
+    // Import services
+    const { inferModelType } = await import('../../services/model-type-inference.service');
+    const { assembleAssumptions } = await import('../../services/assumption-assembly.service');
+
+    // Infer model type
+    const modelType = inferModelType(deal);
+
+    // Assemble assumptions
+    const assumptions = await assembleAssumptions(dealId, userId, modelType);
+
+    logger.info('Assumptions fetched:', { dealId, modelType });
+
+    res.json({
+      success: true,
+      data: assumptions,
+      metadata: {
+        modelType,
+        dealId
+      }
+    });
+
+  } catch (error: any) {
+    logger.error('Error fetching assumptions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch assumptions'
+    });
+  }
+});
+
+/**
+ * PATCH /api/v1/financial-models/:dealId/assumptions
+ * NEW: Update specific assumptions (user overrides)
+ */
+router.patch('/:dealId/assumptions', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { dealId } = req.params;
+    const updates = req.body;
+
+    // Verify user has access to this deal
+    const dealCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Deal not found or access denied'
+      });
+    }
+
+    // Log to assumption_history table
+    for (const [key, value] of Object.entries(updates)) {
+      await query(
+        `INSERT INTO assumption_history 
+         (deal_id, assumption_key, value, source, changed_by)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [dealId, key, JSON.stringify(value), 'user', userId]
+      );
+    }
+
+    // Invalidate cache (financial model will need recomputation)
+    await query(
+      `UPDATE financial_models 
+       SET updated_at = NOW()
+       WHERE deal_id = $1 AND user_id = $2`,
+      [dealId, userId]
+    );
+
+    logger.info('Assumptions updated:', {
+      userId,
+      dealId,
+      updateCount: Object.keys(updates).length
+    });
+
+    res.json({
+      success: true,
+      message: 'Assumptions updated successfully',
+      updated: Object.keys(updates).length
+    });
+
+  } catch (error: any) {
+    logger.error('Error updating assumptions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update assumptions'
+    });
+  }
+});
+
+/**
  * POST /api/v1/financial-models/:dealId/validate
  * NEW: Validate existing financial model output
  */
