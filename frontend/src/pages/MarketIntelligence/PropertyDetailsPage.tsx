@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { ZoningTabContent } from "../../components/MarketIntelligence/ZoningTabContent";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — PROPERTY DETAILS PAGE
@@ -452,7 +453,20 @@ export default function PropertyDetailsPage() {
         {activeTab === "FINANCIALS" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>FINANCIALS TAB</div>}
         {activeTab === "COMPS" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>COMPS TAB</div>}
         {activeTab === "TAX" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>TAX & TITLE TAB</div>}
-        {activeTab === "ZONING" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>ZONING TAB</div>}
+        {activeTab === "ZONING" && (
+          property.dealId ? (
+            <ZoningTabContent dealId={property.dealId} />
+          ) : (
+            <div style={{ padding: 40, textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 12 }}>
+                Zoning data available after creating a deal
+              </div>
+              <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
+                Click "CREATE DEAL" to enable zoning analysis
+              </div>
+            </div>
+          )
+        )}
         {activeTab === "MARKET" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>MARKET TAB</div>}
       </div>
 
