@@ -208,6 +208,9 @@ export function mapDealToProperty(deal: Deal): any {
   const addressParts = deal.address.split(',').map(s => s.trim());
   const stateZip = (addressParts[2] || '').split(' ').filter(Boolean);
   
+  // Enhanced calculations with market intelligence
+  const propertyMetrics = calculatePropertyMetrics(deal.projectType, units, budget);
+  
   return {
     id: deal.id,
     name: deal.name,
@@ -216,27 +219,136 @@ export function mapDealToProperty(deal: Deal): any {
     state: stateZip[0] || '',
     zip: stateZip[1] || '',
     
-    // Basic Info
+    // Basic Info (some estimated based on market data)
     propertyType: formatPropertyType(deal.projectType),
     units,
+    yearBuilt: estimateYearBuilt(deal.state), // Estimated based on deal stage
+    totalSqft: propertyMetrics.totalSqft, // Calculated from units * avg unit size
+    lotSize: propertyMetrics.lotAcres, // Calculated from units / density
     
-    // Financial
-    askingPrice: budget,
-    estimatedValue: budget ? budget * 1.1 : undefined, // Mock 10% markup
-    capRate: calculateMockCapRate(budget, units),
-    occupancyRate: 95, // Mock data - would come from real source
+    // Financial (mix of real and calculated)
+    askingPrice: budget, // REAL from API
+    estimatedValue: budget ? budget * 1.05 : undefined, // 5% over budget (conservative)
+    monthlyRent: propertyMetrics.avgRentPerUnit * units, // Calculated
+    annualIncome: propertyMetrics.annualIncome, // Calculated
+    noi: propertyMetrics.noi, // Calculated
+    capRate: propertyMetrics.capRate, // Calculated from NOI / budget
+    occupancyRate: propertyMetrics.occupancyRate, // Market average
     
     // Metadata
     createdAt: deal.createdAt,
     updatedAt: deal.updatedAt,
-    dataSource: 'JediRe Platform API',
+    dataSource: 'JediRe Platform API (Enhanced with Market Estimates)',
+    dataQuality: {
+      real: ['id', 'name', 'address', 'budget', 'units', 'projectType'],
+      calculated: ['noi', 'capRate', 'monthlyRent', 'annualIncome'],
+      estimated: ['yearBuilt', 'totalSqft', 'lotSize', 'occupancyRate'],
+    },
     
-    // Status
+    // Status (REAL from API)
     status: deal.status,
     state: deal.state,
     tier: deal.tier,
     dealCategory: deal.dealCategory,
   };
+}
+
+/**
+ * Calculate property metrics based on market intelligence
+ * Uses industry standards and market data for missing fields
+ */
+function calculatePropertyMetrics(propertyType: string, units: number, budget?: number) {
+  // Average unit sizes by property type (sq ft)
+  const avgUnitSizes: Record<string, number> = {
+    'multifamily': 900,
+    'residential': 1200,
+    'townhome': 1400,
+    'senior_living': 750,
+    'mixed_use': 950,
+  };
+  
+  // Average density (units per acre)
+  const avgDensity: Record<string, number> = {
+    'multifamily': 30, // Mid-rise
+    'residential': 8,
+    'townhome': 12,
+    'senior_living': 25,
+    'mixed_use': 35,
+  };
+  
+  // Average rent per unit per month (national averages, adjust by market)
+  const avgRentPerUnit: Record<string, number> = {
+    'multifamily': 1850,
+    'residential': 2200,
+    'townhome': 2400,
+    'senior_living': 3500,
+    'mixed_use': 2000,
+  };
+  
+  // Occupancy rates by type
+  const avgOccupancy: Record<string, number> = {
+    'multifamily': 95.0,
+    'residential': 96.5,
+    'townhome': 94.0,
+    'senior_living': 92.0,
+    'mixed_use': 93.0,
+  };
+  
+  // Operating expense ratios (% of gross income)
+  const opexRatio: Record<string, number> = {
+    'multifamily': 0.45, // 45% of gross income
+    'residential': 0.40,
+    'townhome': 0.42,
+    'senior_living': 0.55, // Higher due to services
+    'mixed_use': 0.48,
+  };
+  
+  const unitSize = avgUnitSizes[propertyType] || 900;
+  const density = avgDensity[propertyType] || 30;
+  const rentPerUnit = avgRentPerUnit[propertyType] || 1850;
+  const occupancyRate = avgOccupancy[propertyType] || 95.0;
+  const opex = opexRatio[propertyType] || 0.45;
+  
+  // Calculations
+  const totalSqft = units * unitSize;
+  const lotAcres = units / density;
+  const grossMonthlyIncome = rentPerUnit * units * (occupancyRate / 100);
+  const annualIncome = grossMonthlyIncome * 12;
+  const operatingExpenses = annualIncome * opex;
+  const noi = annualIncome - operatingExpenses;
+  const capRate = budget ? (noi / budget) * 100 : 5.0; // Default 5% if no budget
+  
+  return {
+    totalSqft,
+    lotAcres: parseFloat(lotAcres.toFixed(2)),
+    avgRentPerUnit: rentPerUnit,
+    annualIncome: Math.round(annualIncome),
+    operatingExpenses: Math.round(operatingExpenses),
+    noi: Math.round(noi),
+    capRate: parseFloat(capRate.toFixed(2)),
+    occupancyRate,
+  };
+}
+
+/**
+ * Estimate year built based on deal stage
+ * New development = future year, existing = recent year
+ */
+function estimateYearBuilt(dealState: string): number {
+  const currentYear = new Date().getFullYear();
+  
+  // If in early stages, assume new development (future completion)
+  if (['SIGNAL_INTAKE', 'INTELLIGENCE_ASSEMBLY', 'TRIAGE'].includes(dealState)) {
+    return currentYear + 2; // 2 years from now
+  }
+  
+  // If in underwriting/packaging, assume near-term
+  if (['UNDERWRITING', 'DEAL_PACKAGING'].includes(dealState)) {
+    return currentYear + 1;
+  }
+  
+  // Post-close, assume recently built
+  return currentYear;
 }
 
 function formatPropertyType(type: string): string {
@@ -251,18 +363,6 @@ function formatPropertyType(type: string): string {
     'senior_living': 'Senior Living',
   };
   return types[type] || type;
-}
-
-function calculateMockCapRate(budget?: number, units?: number): number | undefined {
-  if (!budget || !units) return undefined;
-  
-  // Mock cap rate calculation based on property size
-  const pricePerUnit = budget / units;
-  
-  if (pricePerUnit < 100000) return 6.5;
-  if (pricePerUnit < 200000) return 5.5;
-  if (pricePerUnit < 300000) return 4.8;
-  return 4.2;
 }
 
 const getAuthHeaders = (): Record<string, string> => {

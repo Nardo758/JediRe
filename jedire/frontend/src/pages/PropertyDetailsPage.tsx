@@ -770,6 +770,67 @@ function OverviewTab({ property }: { property: PropertyData }) {
         </div>
       )}
 
+      {/* Data Quality Indicator */}
+      {property.dataQuality && (
+        <div style={{ 
+          background: T.bg.panel,
+          border: `1px solid ${T.border.default}`,
+          borderRadius: 4,
+          padding: 12
+        }}>
+          <div style={{
+            fontFamily: T.font.mono,
+            fontSize: 10,
+            color: T.text.secondary,
+            marginBottom: 8,
+            letterSpacing: 1
+          }}>
+            DATA QUALITY BREAKDOWN
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <Badge color={T.text.green}>
+                {property.dataQuality.real?.length || 0} REAL
+              </Badge>
+              <div style={{
+                fontFamily: T.font.mono,
+                fontSize: 9,
+                color: T.text.dim,
+                marginTop: 4
+              }}>
+                From API
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <Badge color={T.text.blue}>
+                {property.dataQuality.calculated?.length || 0} CALCULATED
+              </Badge>
+              <div style={{
+                fontFamily: T.font.mono,
+                fontSize: 9,
+                color: T.text.dim,
+                marginTop: 4
+              }}>
+                Market-based
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <Badge color={T.text.orange}>
+                {property.dataQuality.estimated?.length || 0} ESTIMATED
+              </Badge>
+              <div style={{
+                fontFamily: T.font.mono,
+                fontSize: 9,
+                color: T.text.dim,
+                marginTop: 4
+              }}>
+                Industry avg
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Data Source */}
       <div style={{
         fontFamily: T.font.mono,
