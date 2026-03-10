@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../api/client';
 
 interface PowerRankingsTabProps {
@@ -74,6 +75,7 @@ function componentBarColor(score: number): string {
 }
 
 const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
+  const navigate = useNavigate();
   const [classFilter, setClassFilter] = useState<string>('All');
   const [vintageFilter, setVintageFilter] = useState<string>('All');
   const [sizeFilter, setSizeFilter] = useState<string>('All');
@@ -402,12 +404,39 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                               <span>Submarket: <strong className="text-gray-700">{property.submarket}</strong></span>
                               {property.owner && <span>Owner: <strong className="text-gray-700">{property.owner}</strong></span>}
                             </div>
-                            <button
-                              onClick={e => { e.stopPropagation(); setExpandedRow(null); }}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                            >
-                              Close
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const propertyId = `P-${marketId.toUpperCase()}-${String(property.id).padStart(5, '0')}`;
+                                  navigate(`/market-intelligence/property/${propertyId}`, {
+                                    state: {
+                                      from: 'Power Rankings',
+                                      propertyRow: {
+                                        id: property.id,
+                                        property: property.name,
+                                        address: property.address || '',
+                                        submarket: property.submarket,
+                                        units: property.units,
+                                        year: property.yearBuilt,
+                                        class: property.class,
+                                        owner: property.owner || '',
+                                        jedi: property.pcsScore,
+                                      },
+                                    },
+                                  });
+                                }}
+                                className="text-xs text-amber-600 hover:text-amber-800 font-bold px-3 py-1 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200 transition-colors"
+                              >
+                                VIEW PROPERTY →
+                              </button>
+                              <button
+                                onClick={e => { e.stopPropagation(); setExpandedRow(null); }}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                Close
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </td>

@@ -448,7 +448,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   onClick={() => {
                     const propertyId = row.rawPropertyId || `P-${marketId.toUpperCase()}-${String(row.id).padStart(5, '0')}`;
                     navigate(`/market-intelligence/property/${propertyId}`, { 
-                      state: { from: 'Property Data', propertyRow: row }
+                      state: { from: 'Property Data', propertyRow: row, siblingRows: sortedRows }
                     });
                   }}
                   className="border-b border-gray-50 cursor-pointer transition-colors hover:bg-blue-50/30"

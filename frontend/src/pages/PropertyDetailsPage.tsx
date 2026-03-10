@@ -10,6 +10,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { getPropertyPhotos, type PropertyPhoto } from "../services/google-places.service";
 
 // ═══════════════════════════════════════════════════════════════
 // THEME TOKENS
@@ -211,7 +212,9 @@ const PhotoGallery = ({ photos }: { photos: PropertyData["photos"] }) => {
     { id: 3, label: "Interior", color: "#2a1a3a" },
     { id: 4, label: "Aerial", color: "#3a2a1a" },
   ];
-  const active = items[activeIdx];
+  useEffect(() => { setActiveIdx(0); }, [photos]);
+  const safeIdx = Math.min(activeIdx, items.length - 1);
+  const active = items[safeIdx] || items[0];
 
   const PhotoPlaceholder = ({ photo, size = "large" }: { photo: any; size?: string }) => {
     const isLarge = size === "large";
@@ -327,6 +330,7 @@ export default function PropertyDetailsPage() {
   const [property, setProperty] = useState<PropertyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<PropertyPhoto[]>([]);
 
   const TABS = [
     { key: "OVERVIEW", label: "OVERVIEW", hotkey: "F1" },
@@ -337,10 +341,56 @@ export default function PropertyDetailsPage() {
     { key: "MARKET", label: "MARKET", hotkey: "F6" },
   ];
 
-  const buildPropertyFromRow = (row: any): PropertyData => {
+  const parseCurrency = (val: any): number => {
+    if (typeof val === "number") return val;
+    if (!val || typeof val !== "string") return 0;
+    const cleaned = val.replace(/[^0-9.KMB]/gi, "");
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) return 0;
+    const upper = val.toUpperCase();
+    if (upper.includes("B")) return num * 1_000_000_000;
+    if (upper.includes("M")) return num * 1_000_000;
+    if (upper.includes("K")) return num * 1_000;
+    return num;
+  };
+
+  const getDefaultAmenities = (propClass: string): string[] => {
+    const cls = (propClass || "").toUpperCase();
+    if (cls.startsWith("A")) return ["Pool", "Fitness Center", "Business Center", "Package Lockers", "Dog Park", "EV Charging", "Rooftop Lounge", "Controlled Access"];
+    if (cls.startsWith("B")) return ["Pool", "Fitness Center", "Laundry Facility", "Covered Parking", "Dog Park", "Playground"];
+    return ["Laundry Facility", "Covered Parking", "On-Site Management"];
+  };
+
+  const buildRentCompsFromSiblings = (currentRow: any, siblingRows: any[]): PropertyData["rentComps"] => {
+    if (!siblingRows || siblingRows.length === 0) return [];
+    return siblingRows
+      .filter((r: any) => r.id !== currentRow.id)
+      .slice(0, 5)
+      .map((r: any) => ({
+        name: r.property || "Unknown",
+        units: r.units || 0,
+        rent: parseCurrency(r.rent) || parseCurrency(r.askingRent),
+        dist: r.submarket === currentRow.submarket ? "Same sub" : "Adj sub",
+        class: r.class || "—",
+        occ: parseFloat((r.occ || "0").replace("%", "")) || 0,
+      }));
+  };
+
+  const buildPropertyFromRow = (row: any, siblingRows?: any[]): PropertyData => {
     const addrParts = (row.address || "").split(",").map((s: string) => s.trim());
     const stateZip = (addrParts[2] || "").split(" ");
-    const rentNum = parseFloat((row.rent || "").replace(/[^0-9.]/g, "")) || 0;
+    const rentNum = parseCurrency(row.rent) || parseCurrency(row.askingRent);
+    const mktRentNum = parseCurrency(row.marketRent);
+    const purchaseNum = parseCurrency(row.purchasePrice);
+    const assessedLand = row.assessedLand || 0;
+    const assessedImprovements = row.assessedImprovements || 0;
+    const totalAssessed = assessedLand + assessedImprovements;
+    const appraisedVal = row.appraisedValue || 0;
+    const concessionsNum = parseCurrency(row.concessions);
+    const zoningCap = row.zoningCapacity || "";
+    const densityMatch = zoningCap.match(/(\d+)\s*units?\s*\/?\s*acre/i);
+    const propClass = row.class || row.buildingClass || "";
+
     return {
       id: id || row.rawPropertyId || `P-${row.id}`,
       name: row.property || "Unknown Property",
@@ -351,60 +401,60 @@ export default function PropertyDetailsPage() {
       county: row.county || "",
       submarket: row.submarket || "",
       propertyType: row.propertyType || "MULTIFAMILY",
-      class: row.class || row.buildingClass || "",
+      class: propClass,
       units: row.units || 0,
       yearBuilt: row.year || row.yearBuilt || 0,
       buildingSF: row.buildingSf || row.totalSqft || 0,
       lotSizeAc: row.lotAcres || row.acres || row.lotSize || 0,
-      estimatedValue: row.appraisedValue || row.estimatedValue || 0,
+      stories: row.stories || 0,
+      lotSizeSF: row.lotSizeSF || 0,
+      avgUnitSF: row.avgUnitSF || (row.buildingSf && row.units ? Math.round(row.buildingSf / row.units) : 0),
+      parking: row.parking || undefined,
+      estimatedValue: appraisedVal || row.estimatedValue || 0,
       monthlyRent: rentNum || row.monthlyRent || 0,
       avgEffectiveRent: rentNum || row.avgEffectiveRent || 0,
-      occupancyRate: parseFloat(row.occ) || row.occupancyRate || 0,
+      avgMarketRent: mktRentNum || row.avgMarketRent || 0,
+      rentPerSF: row.rentPerSF || (rentNum && row.buildingSf && row.units ? parseFloat((rentNum / (row.buildingSf / row.units)).toFixed(2)) : 0),
+      occupancyRate: parseFloat(String(row.occ || "0").replace("%", "")) || row.occupancyRate || 0,
+      concessions: concessionsNum > 0 ? `$${concessionsNum}/unit` : (row.concessions || ""),
       zoningCode: row.zoning || row.zoningCode || "",
-      zoningDescription: row.zoningDescription || "",
+      zoningDescription: row.zoningDescription || zoningCap,
+      maxDensity: densityMatch ? `${densityMatch[1]} DU/ac` : (row.maxDensity || ""),
+      maxHeight: row.maxHeight || "",
+      far: row.far || 0,
+      zoningSource: row.zoningSource || "",
       capRate: row.capRate || 0,
       noi: row.noi || 0,
+      expenseRatio: row.expenseRatio || 0,
       askingPrice: row.askingPrice || 0,
       annualIncome: row.annualIncome || 0,
-      amenities: row.amenities || [],
-      photos: row.photos || [],
-      rentComps: row.rentComps || [],
-      saleComps: row.saleComps || [],
-      ownershipHistory: row.ownershipHistory || [],
-      taxHistory: row.taxHistory || [],
-      owner: row.owner || "",
-      ownerType: row.ownerType || "",
-      acquisitionDate: row.acquisitionDate || "",
-      acquisitionPrice: row.acquisitionPrice || 0,
-      lastSalePrice: row.lastSalePrice || 0,
-      justValue: row.justValue || row.justValue2025 || row.appraisedValue || 0,
-      assessedValue: row.assessedValue || row.assessedValue2025 || 0,
-      taxableValue: row.taxableValue || row.taxableValue2025 || 0,
+      owner: row.owner || row.ownerName || "",
+      ownerType: row.ownerType || "LLC / Entity",
+      acquisitionDate: row.purchaseDate || row.acquisitionDate || "",
+      acquisitionPrice: purchaseNum || row.acquisitionPrice || 0,
+      lastSalePrice: purchaseNum || row.lastSalePrice || 0,
+      justValue: row.justValue || row.justValue2025 || appraisedVal || 0,
+      assessedValue: row.assessedValue || row.assessedValue2025 || totalAssessed || 0,
+      taxableValue: row.taxableValue || row.taxableValue2025 || totalAssessed || 0,
       millageRate: row.millageRate || 0,
       annualTax: row.annualTax || row.annualTax2025 || 0,
       homesteadExempt: row.homesteadExempt || false,
-      assessmentCap: row.assessmentCap || "",
-      avgMarketRent: row.avgMarketRent || 0,
-      rentPerSF: row.rentPerSF || 0,
-      concessions: row.concessions || "",
-      expenseRatio: row.expenseRatio || 0,
+      assessmentCap: row.assessmentCap || "10% Non-Homestead",
+      amenities: row.amenities && row.amenities.length > 0 ? row.amenities : getDefaultAmenities(propClass),
+      photos: row.photos || [],
+      rentComps: row.rentComps && row.rentComps.length > 0 ? row.rentComps : buildRentCompsFromSiblings(row, siblingRows || []),
+      saleComps: row.saleComps || [],
+      ownershipHistory: row.ownershipHistory || [],
+      taxHistory: row.taxHistory || [],
       submarketVacancy: row.submarketVacancy || 0,
       submarketRentGrowth: row.submarketRentGrowth || 0,
       submarketAbsorption: row.submarketAbsorption || 0,
       walkScore: row.walkScore || 0,
       transitScore: row.transitScore || 0,
       bikeScore: row.bikeScore || 0,
-      maxDensity: row.maxDensity || "",
-      maxHeight: row.maxHeight || "",
-      far: row.far || 0,
-      zoningSource: row.zoningSource || "",
       inPipeline: row.inPipeline || false,
       dealId: row.dealId || null,
       subtype: row.subtype || "",
-      stories: row.stories || 0,
-      lotSizeSF: row.lotSizeSF || 0,
-      avgUnitSF: row.avgUnitSF || 0,
-      parking: row.parking || undefined,
       market: row.market || "",
       dataSource: row.enrichmentSource || row.dataSource || "Market Intelligence",
     };
@@ -421,8 +471,9 @@ export default function PropertyDetailsPage() {
         setProperty(data);
       } catch (err) {
         const stateRow = (location.state as any)?.propertyRow;
+        const siblingRows = (location.state as any)?.siblingRows;
         if (stateRow) {
-          setProperty(buildPropertyFromRow(stateRow));
+          setProperty(buildPropertyFromRow(stateRow, siblingRows));
           setError(null);
         } else {
           setError(err instanceof Error ? err.message : "Failed to load property");
@@ -433,6 +484,26 @@ export default function PropertyDetailsPage() {
     };
     fetchProperty();
   }, [id]);
+
+  useEffect(() => {
+    if (!property) return;
+    setPhotoUrls([]);
+    const loadPhotos = async () => {
+      try {
+        const photos = await getPropertyPhotos({
+          photos: (property.photos as any[])?.filter((ph: any) => ph.url),
+          address: property.address,
+          city: property.city,
+          state: property.state,
+          zip: property.zip,
+        });
+        setPhotoUrls(photos);
+      } catch (e) {
+        console.warn("Failed to load photos:", e);
+      }
+    };
+    loadPhotos();
+  }, [property?.id]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -486,7 +557,9 @@ export default function PropertyDetailsPage() {
   const OverviewTab = () => (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <PhotoGallery photos={p.photos} />
+        <PhotoGallery photos={photoUrls.length > 0
+          ? photoUrls.map((ph, i) => ({ id: i + 1, label: ph.label, url: ph.url || undefined, color: ph.color || "#1a2744", source: ph.source }))
+          : p.photos} />
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="PROPERTY VITALS" icon="◈" borderColor={T.text.cyan} />
           <DataRow label="Type" value={p.propertyType || "—"} sub={p.subtype ? `· ${p.subtype}` : ""} />
@@ -513,7 +586,12 @@ export default function PropertyDetailsPage() {
             <DataRow label="Current Owner" value={p.owner} mono={false} />
             {p.ownerType && <DataRow label="Owner Type" value={p.ownerType} />}
             {p.acquisitionDate && <DataRow label="Acquired" value={p.acquisitionDate} sub={p.acquisitionPrice ? fmtFull(p.acquisitionPrice) : ""} />}
-            {p.acquisitionDate && <DataRow label="Hold Period" value={`${new Date().getFullYear() - parseInt(p.acquisitionDate)}yr`} color={T.text.amber} />}
+            {p.acquisitionDate && (() => {
+              const d = new Date(p.acquisitionDate);
+              const yr = !isNaN(d.getTime()) ? d.getFullYear() : parseInt(p.acquisitionDate);
+              const hold = !isNaN(yr) ? new Date().getFullYear() - yr : 0;
+              return hold > 0 ? <DataRow label="Hold Period" value={`${hold}yr`} color={T.text.amber} /> : null;
+            })()}
           </div>
         )}
       </div>
