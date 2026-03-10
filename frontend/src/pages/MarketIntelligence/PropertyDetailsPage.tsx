@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { ZoningTabContent } from "../../components/MarketIntelligence/ZoningTabContent";
+import { CompsTabContent } from "../../components/MarketIntelligence/CompsTabContent";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — PROPERTY DETAILS PAGE
@@ -451,7 +452,20 @@ export default function PropertyDetailsPage() {
           </div>
         )}
         {activeTab === "FINANCIALS" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>FINANCIALS TAB</div>}
-        {activeTab === "COMPS" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>COMPS TAB</div>}
+        {activeTab === "COMPS" && (
+          property.dealId ? (
+            <CompsTabContent dealId={property.dealId} />
+          ) : (
+            <div style={{ padding: 40, textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 12 }}>
+                Comparables data available after creating a deal
+              </div>
+              <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
+                Click "CREATE DEAL" to enable comp discovery
+              </div>
+            </div>
+          )
+        )}
         {activeTab === "TAX" && <div style={{ padding: 40, textAlign: "center", color: T.text.muted }}>TAX & TITLE TAB</div>}
         {activeTab === "ZONING" && (
           property.dealId ? (
