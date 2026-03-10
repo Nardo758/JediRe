@@ -33,6 +33,10 @@ import {
 // Import API Service
 import { fetchDealById, mapDealToProperty } from '@/services/api';
 
+// Import Analysis Components
+import { RunAnalysisButton } from '@/components/deal/RunAnalysisButton';
+import { TaskStatusDisplay } from '@/components/deal/TaskStatusDisplay';
+
 interface PropertyData {
   id: string;
   name: string;
@@ -433,8 +437,73 @@ function OverviewTab({ property }: { property: PropertyData }) {
   const rentTrend = [2100, 2150, 2200, 2180, 2250, 2300, 2350, 2400, 2420, 2450];
   const occTrend = [92, 93, 94, 93, 95, 94, 96, 95, 97, 96];
 
+  // Task management state
+  const [activeTasks, setActiveTasks] = useState<Array<{ taskId: string; taskType: string }>>([]);
+
+  const handleTaskCreated = (taskId: string, taskType: string) => {
+    console.log('[OverviewTab] Task created:', { taskId, taskType });
+    setActiveTasks(prev => [...prev, { taskId, taskType }]);
+  };
+
+  const handleTaskComplete = (taskId: string, result: any) => {
+    console.log('[OverviewTab] Task completed:', { taskId, result });
+    setActiveTasks(prev => prev.filter(t => t.taskId !== taskId));
+    // TODO: Refresh property data to show new analysis results
+  };
+
+  const handleTaskError = (taskId: string, error: string) => {
+    console.error('[OverviewTab] Task failed:', { taskId, error });
+    setActiveTasks(prev => prev.filter(t => t.taskId !== taskId));
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Run Analysis Button */}
+      <div style={{
+        background: T.bg.panel,
+        border: `1px solid ${T.border.default}`,
+        borderRadius: 4,
+        padding: 16,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }}>
+        <div>
+          <div style={{
+            fontFamily: T.font.mono,
+            fontSize: 13,
+            fontWeight: 700,
+            color: T.text.primary,
+            marginBottom: 4,
+            letterSpacing: 0.5
+          }}>
+            AUTOMATED ANALYSIS
+          </div>
+          <div style={{
+            fontFamily: T.font.mono,
+            fontSize: 11,
+            color: T.text.secondary
+          }}>
+            Run AI-powered zoning, supply, or cashflow analysis
+          </div>
+        </div>
+        <RunAnalysisButton 
+          dealId={property.id} 
+          onTaskCreated={handleTaskCreated}
+        />
+      </div>
+
+      {/* Active Tasks Display */}
+      {activeTasks.map(task => (
+        <TaskStatusDisplay
+          key={task.taskId}
+          taskId={task.taskId}
+          taskType={task.taskType}
+          onComplete={(result) => handleTaskComplete(task.taskId, result)}
+          onError={(error) => handleTaskError(task.taskId, error)}
+        />
+      ))}
+
       {/* Photo Gallery */}
       {property.photos && property.photos.length > 0 && (
         <div style={{ 
