@@ -80,6 +80,7 @@ function DevPathBadge() {
   const { development_path } = useZoningModuleStore();
   if (!development_path) return null;
   const cfg = DEV_PATH_CONFIG[development_path];
+  if (!cfg) return null;
   return (
     <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
       {cfg.label}
