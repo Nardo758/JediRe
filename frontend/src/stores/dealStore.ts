@@ -36,6 +36,12 @@ import {
 // ---------------------------------------------------------------------------
 
 interface DealStoreActions {
+  // ─── DEAL LIST (Dashboard) ────────────────────────────────
+  deals: any[];
+  isLoading: boolean;
+  error: string | null;
+  fetchDeals: () => Promise<void>;
+
   // ─── LIFECYCLE ────────────────────────────────────────────
   /** Hydrate entire deal context from backend */
   fetchDealContext: (dealId: string) => Promise<void>;
@@ -332,6 +338,24 @@ export const useDealStore = create<DealStore>()(
   subscribeWithSelector((set, get) => ({
     // Spread initial state
     ...INITIAL_CONTEXT,
+
+    // ─── DEAL LIST (Dashboard) ────────────────────────────────
+    deals: [],
+    isLoading: false,
+    error: null,
+    fetchDeals: async () => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await fetch('/api/v1/deals');
+        if (!response.ok) throw new Error(`Failed to fetch deals: ${response.status}`);
+        const data = await response.json();
+        const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
+        set({ deals: dealsList, isLoading: false });
+      } catch (error: any) {
+        console.error('[dealStore] Failed to fetch deals:', error);
+        set({ error: error.message, isLoading: false });
+      }
+    },
 
     // ─── LIFECYCLE ────────────────────────────────────────────
 
