@@ -115,7 +115,7 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
 router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const radiusMiles = parseFloat(req.query.radiusMiles as string) || 3;
+    const radiusMiles = Math.min(Math.max(parseFloat(req.query.radiusMiles as string) || 3, 0.5), 50);
 
     const result = await discoverTieredComps(dealId, radiusMiles);
 
@@ -130,6 +130,12 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
     });
   } catch (error: any) {
     logger.error('Tiered comp discovery failed', { error: error.message });
+    if (error.message === 'Deal not found') {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    if (error.message === 'Deal has no boundary for comp discovery') {
+      return res.status(422).json({ success: false, error: 'Deal has no geocoded boundary — cannot discover comps' });
+    }
     res.status(500).json({ success: false, error: 'Tiered comp discovery failed' });
   }
 });
@@ -142,6 +148,11 @@ router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: Authenticat
 
     if (!address) {
       return res.status(400).json({ success: false, error: 'Address is required' });
+    }
+
+    const validTiers = ['trade_area', 'submarket', 'msa'];
+    if (geographic_tier && !validTiers.includes(geographic_tier)) {
+      return res.status(400).json({ success: false, error: 'Invalid geographic_tier. Must be trade_area, submarket, or msa' });
     }
 
     const result = await pool.query(`
@@ -184,11 +195,15 @@ router.delete('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticate
     const pool = getPool();
     const { dealId, compId } = req.params;
 
-    await pool.query(`
+    const result = await pool.query(`
       UPDATE deal_comp_sets 
       SET status = 'removed', updated_at = NOW()
       WHERE id = $1 AND deal_id = $2
     `, [compId, dealId]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, error: 'Comp not found in this deal' });
+    }
 
     res.json({ success: true });
   } catch (error: any) {

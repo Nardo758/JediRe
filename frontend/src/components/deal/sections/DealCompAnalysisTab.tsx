@@ -280,8 +280,10 @@ const DealCompAnalysisTab: React.FC = () => {
         }
         return updated;
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to toggle comp set:', err);
+      setError(`Failed to ${comp.in_comp_set ? 'remove from' : 'add to'} comp set: ${err?.message || 'Unknown error'}`);
+      setTimeout(() => setError(null), 4000);
     } finally {
       setTogglingAddress(null);
     }

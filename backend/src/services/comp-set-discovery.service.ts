@@ -206,7 +206,14 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   }
 
   if (tradeArea.length < 5) {
-    const countyResult = await pool.query(`
+    const dealCountyResult = await pool.query(`
+      SELECT pr.county FROM property_records pr
+      WHERE pr.city ILIKE $1 AND pr.county IS NOT NULL
+      LIMIT 1
+    `, [dealCity || '%']);
+    const dealCounty = dealCountyResult.rows[0]?.county || null;
+
+    const countyResult = dealCounty ? await pool.query(`
       SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
              pr.stories, pr.class_code, pr.building_sqft,
              pr.lat::float as lat, pr.lng::float as lng,
@@ -214,14 +221,10 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
       FROM property_records pr
       WHERE pr.units >= 20
         AND pr.address != $1
-        AND pr.county = (
-          SELECT pr2.county FROM property_records pr2
-          WHERE pr2.units >= 20
-          LIMIT 1
-        )
+        AND pr.county = $3
       ORDER BY ABS(pr.units - COALESCE($2, 200)) ASC
       LIMIT 25
-    `, [dealAddress, dealUnits]);
+    `, [dealAddress, dealUnits, dealCounty]) : { rows: [] };
 
     for (const c of countyResult.rows) {
       if (!tradeAreaAddresses.has(c.address.toLowerCase())) {
@@ -242,7 +245,10 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   if (submarketResult.rows.length > 0) {
     const subId = submarketResult.rows[0].submarket_id;
     const subComps = await pool.query(`
-      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+      SELECT COALESCE(pr.address, p.address_line1) as address,
+             pr.city,
+             COALESCE(pr.units, p.units, 0) as units,
+             pr.year_built::int as year_built,
              pr.stories, pr.class_code, pr.building_sqft,
              p.lat, p.lng,
              ST_Distance(
@@ -263,12 +269,8 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
     `, [deal.lng, deal.lat, dealAddress, subId]);
 
     submarketComps = subComps.rows
-      .filter((c: any) => !tradeAreaAddresses.has((c.address || c.address_line1 || '').toLowerCase()))
-      .map((c: any) => mapToTieredComp({
-        ...c,
-        address: c.address || c.address_line1 || 'Unknown',
-        units: c.units || 0,
-      }, 'submarket', radiusMiles * 3));
+      .filter((c: any) => !tradeAreaAddresses.has((c.address || '').toLowerCase()))
+      .map((c: any) => mapToTieredComp(c, 'submarket', radiusMiles * 3));
   }
 
   let msaComps: TieredComp[] = [];
@@ -286,14 +288,32 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
     const remainingComps = await pool.query(`
       SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
              pr.stories, pr.class_code, pr.building_sqft,
-             pr.lat::float as lat, pr.lng::float as lng,
-             NULL::float as distance_miles
+             COALESCE(p.lat, pr.lat::float) as lat,
+             COALESCE(p.lng, pr.lng::float) as lng,
+             CASE WHEN COALESCE(p.lat, pr.lat) IS NOT NULL THEN
+               ST_Distance(
+                 ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                 ST_SetSRID(ST_MakePoint(
+                   COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)
+                 ), 4326)::geography
+               ) / 1609.34
+             ELSE NULL END as distance_miles
       FROM property_records pr
+      LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
       WHERE pr.units >= 20
-        AND pr.address != $1
-      ORDER BY ABS(pr.units - COALESCE($2, 200)) ASC
+        AND pr.address != $3
+        AND (
+          (COALESCE(p.lat, pr.lat) IS NOT NULL AND ST_Contains(
+            (SELECT geometry FROM msas WHERE id = $4),
+            ST_SetSRID(ST_MakePoint(COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)), 4326)
+          ))
+          OR (COALESCE(p.lat, pr.lat) IS NULL AND pr.state = (
+            SELECT SUBSTRING(m.name FROM ',\\s*(\\w+)$') FROM msas m WHERE m.id = $4
+          ))
+        )
+      ORDER BY ABS(pr.units - COALESCE($5, 200)) ASC
       LIMIT 100
-    `, [dealAddress, dealUnits]);
+    `, [deal.lng, deal.lat, dealAddress, msaId, dealUnits]);
 
     msaComps = remainingComps.rows
       .filter((c: any) => !allExcluded.has(c.address.toLowerCase()))

@@ -57,3 +57,7 @@ NODE_ENV = "production"
 
 [userenv.shared]
 API_KEY_ADMIN = "8acb8b8cf3704e3af9c8bb8738925d103f7cda59b14d6c99d825cf29cfa195cb"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
