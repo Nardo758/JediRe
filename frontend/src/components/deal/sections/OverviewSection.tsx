@@ -671,13 +671,13 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   // Building configuration from Dev Capacity Builder + 3D Module
   const buildingConfig = {
     // From activeScenario (Development Capacity Builder)
-    label: activeScenario?.name || zoningStore.selected_path_data?.name || design3D?.buildingType || 'Selected Configuration',
+    label: activeScenario?.name || zoningStore.selected_path_data?.name || 'Selected Configuration',
     units: activeScenario?.maxUnits || design3D?.totalUnits || maxUnits,
-    floors: activeScenario?.stories || design3D?.floors || zoningStore.selected_path_data?.stories || 6,
-    height: activeScenario?.buildingHeight ? `${activeScenario.buildingHeight} ft` : design3D?.height ? `${design3D.height} ft` : '63 ft',
-    parking: activeScenario?.parkingType || design3D?.parkingType || 'Tuck-under + surface',
+    floors: activeScenario?.maxStories || design3D?.floors || zoningStore.selected_path_data?.maxStories || 6,
+    height: activeScenario?.maxStories ? `${Math.round(activeScenario.maxStories * 11)} ft` : design3D?.floors ? `${Math.round(design3D.floors * 11)} ft` : '63 ft',
+    parking: activeScenario?.parkingRequired ? `${activeScenario.parkingRequired} spaces` : 'TBD',
     parkingSpaces: activeScenario?.parkingRequired || design3D?.parkingSpaces || Math.round(maxUnits * 1.5),
-    constructionType: activeScenario?.constructionType || design3D?.constructionType || 'Wood frame over podium',
+    constructionType: activeScenario?.maxStories && activeScenario.maxStories <= 4 ? 'Wood frame' : activeScenario?.maxStories && activeScenario.maxStories <= 6 ? 'Wood over podium' : 'Concrete',
     // Financial metrics
     tdc: financial?.totalDevelopmentCost 
       ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` 
@@ -836,7 +836,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <KVCard label="Entitlement ETA" value="8-10 mo" valueColor="text-amber-600" note="72% confidence" compact />
         <KVCard label="Target IRR (BTS)" value={buildingConfig.btsIrr} valueColor="text-emerald-600" note={`${buildingConfig.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
         <KVCard label="TDC / Unit" value={buildingConfig.tdcUnit} note={`${buildingConfig.units} planned units`} compact />
-        <KVCard label="Land Cost" value={landCost} valueColor="text-stone-900" compact />
+        <KVCard label="Zoning" value={zoningProfile?.baseDistrictCode || '—'} valueColor="text-stone-700" compact />
       </div>
 
       <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accentColor="border-amber-500" />
