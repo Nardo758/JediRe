@@ -167,7 +167,7 @@ export class DealsService {
         d.budget,
         d.address,
         ST_AsGeoJSON(d.boundary)::json AS boundary,
-        ST_Area(d.boundary::geography) / 4046.86 AS acres,
+        COALESCE(d.acres, ST_Area(d.boundary::geography) / 4046.86) AS acres,
         d.created_at,
         d.updated_at,
         d.state,
@@ -219,7 +219,8 @@ export class DealsService {
       `SELECT 
         d.*,
         ST_AsGeoJSON(d.boundary)::json AS boundary,
-        ST_Area(d.boundary::geography) / 4046.86 AS acres,
+        COALESCE(d.acres, ST_Area(d.boundary::geography) / 4046.86) AS acres,
+        ST_Area(d.boundary::geography) / 4046.86 AS boundary_acres,
         ST_AsGeoJSON(ST_Centroid(d.boundary))::json AS center,
         dp.stage AS pipeline_stage,
         dp.days_in_stage,
