@@ -1,4 +1,14 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import {
+  CanonicalDealData,
+  CanonicalSiteData,
+  CanonicalDealInputs,
+  createEmptySiteData,
+  createEmptyDealInputs,
+  parseDealInputs,
+  parseZoningToSiteData,
+  computeCanonicalData,
+} from './canonicalDealData';
 
 export interface Design3DState {
   totalUnits: number;
@@ -172,6 +182,13 @@ interface DealModuleContextValue {
   dealId: string | null;
   deal: any;
 
+  // Canonical data - single source of truth for all modules
+  canonicalData: CanonicalDealData | null;
+  siteData: CanonicalSiteData | null;      // Shortcut to canonicalData.siteData
+  dealInputs: CanonicalDealInputs | null;  // Shortcut to canonicalData.dealInputs
+  updateSiteData: (updates: Partial<CanonicalSiteData>) => void;
+  refreshCanonicalData: () => void;
+
   design3D: Design3DState | null;
   updateDesign3D: (updates: Partial<Design3DState>) => void;
 
@@ -235,6 +252,61 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [debtTerms, setDebtTerms] = useState<DebtTermsState | null>(null);
   const [marketIntelligence, setMarketIntelligence] = useState<MarketIntelligenceState | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
+
+  // Canonical data state
+  const [siteData, setSiteData] = useState<CanonicalSiteData | null>(null);
+  const [dealInputs, setDealInputs] = useState<CanonicalDealInputs | null>(null);
+
+  // Initialize canonical data from deal and zoning when they change
+  useEffect(() => {
+    if (deal) {
+      // Parse deal creation inputs
+      const inputs = parseDealInputs(deal);
+      setDealInputs(inputs);
+      
+      // Parse site data from deal properties and any available zoning
+      const site = parseZoningToSiteData(
+        deal.zoningProfile || deal.zoning,
+        deal.properties?.[0] || deal
+      );
+      setSiteData(site);
+    }
+  }, [deal]);
+
+  // Update site data when zoning profile changes (from zoning module)
+  useEffect(() => {
+    if (zoningProfile) {
+      setSiteData(prev => ({
+        ...(prev || createEmptySiteData()),
+        ...parseZoningToSiteData(zoningProfile),
+        lastUpdated: Date.now(),
+      }));
+    }
+  }, [zoningProfile]);
+
+  // Compute merged canonical data
+  const canonicalData = useMemo<CanonicalDealData | null>(() => {
+    if (!siteData || !dealInputs) return null;
+    return computeCanonicalData(siteData, dealInputs);
+  }, [siteData, dealInputs]);
+
+  const updateSiteData = useCallback((updates: Partial<CanonicalSiteData>) => {
+    setSiteData(prev => ({
+      ...(prev || createEmptySiteData()),
+      ...updates,
+      lastUpdated: Date.now(),
+    }));
+  }, []);
+
+  const refreshCanonicalData = useCallback(() => {
+    if (deal) {
+      setDealInputs(parseDealInputs(deal));
+      setSiteData(parseZoningToSiteData(
+        deal.zoningProfile || deal.zoning,
+        deal.properties?.[0] || deal
+      ));
+    }
+  }, [deal]);
 
   const updateDesign3D = useCallback((updates: Partial<Design3DState>) => {
     setDesign3D(prev => ({
@@ -372,6 +444,13 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const value = useMemo<DealModuleContextValue>(() => ({
     dealId,
     deal,
+    // Canonical data
+    canonicalData,
+    siteData,
+    dealInputs,
+    updateSiteData,
+    refreshCanonicalData,
+    // Module states
     design3D,
     updateDesign3D,
     financial,
@@ -395,7 +474,7 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     moduleStatus,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
+  }), [dealId, deal, canonicalData, siteData, dealInputs, updateSiteData, refreshCanonicalData, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -410,6 +489,13 @@ export const useDealModule = (): DealModuleContextValue => {
     return {
       dealId: null,
       deal: null,
+      // Canonical data
+      canonicalData: null,
+      siteData: null,
+      dealInputs: null,
+      updateSiteData: () => {},
+      refreshCanonicalData: () => {},
+      // Module states
       design3D: null,
       updateDesign3D: () => {},
       financial: null,
@@ -437,5 +523,8 @@ export const useDealModule = (): DealModuleContextValue => {
   }
   return context;
 };
+
+// Re-export canonical data types for convenience
+export type { CanonicalDealData, CanonicalSiteData, CanonicalDealInputs } from './canonicalDealData';
 
 export default DealModuleContext;

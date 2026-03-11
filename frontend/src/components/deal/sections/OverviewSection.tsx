@@ -65,7 +65,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   onStrategySelected,
   onTabChange,
 }) => {
-  const { capitalStructure, strategy: strategyCtx, financial, market, design3D, activeScenario, zoningProfile } = useDealModule();
+  const { capitalStructure, strategy: strategyCtx, financial, market, design3D, activeScenario, zoningProfile, siteData, dealInputs, canonicalData } = useDealModule();
 
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>({
     phase: 'initializing',
@@ -662,9 +662,9 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   const zoningFar = activeScenario?.appliedFar || zoningProfile?.appliedFar || zoningStore.selected_path_data?.appliedFar || null;
 
   const maxUnits = zoningMaxUnits || deal.targetUnits || 186;
-  // Skip acres if value looks like a coordinate (> 100 acres suspicious for urban parcels)
-  const rawAcres = deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
-  const lotSize = (rawAcres && rawAcres < 100) ? `${rawAcres.toFixed(2)} ac` : '—';
+  // Use canonical site data for lot size (from municipal API)
+  const lotSizeAcres = siteData?.lotSizeAcres ?? canonicalData?.computed?.lotSizeAcres;
+  const lotSize = lotSizeAcres ? `${lotSizeAcres.toFixed(2)} ac` : '—';
   const landCost = financial?.landCost
     ? `$${(financial.landCost / 1_000_000).toFixed(1)}M`
     : deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : '—';

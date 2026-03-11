@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Pencil, Check, X, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { useDealModule } from '../../contexts/DealModuleContext';
 
 interface PropertyDetailsFormProps {
   dealId: string;
@@ -22,6 +23,9 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   propertyId,
   onSave,
 }) => {
+  // Get canonical site data from context (single source of truth)
+  const { siteData, dealInputs } = useDealModule();
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,14 +48,28 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
   useEffect(() => {
     loadPropertyData();
-  }, [dealId, propertyId, dealProp]);
+  }, [dealId, propertyId, dealProp, siteData, dealInputs]);
 
   const loadPropertyData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // If deal object was passed directly, use it
+      // Priority 1: Use canonical site data from context (from municipal API)
+      if (siteData && siteData.source !== 'pending') {
+        const data: PropertyDetails = {
+          parcelId: siteData.parcelId || '',
+          lotSizeAcres: siteData.lotSizeAcres ?? undefined,
+          landCost: dealInputs?.landCost ?? dealInputs?.purchasePrice ?? undefined,
+          zoningCode: siteData.zoningCode || '',
+        };
+        setFormData(data);
+        setSavedData(data);
+        setLoading(false);
+        return;
+      }
+
+      // Priority 2: If deal object was passed directly, use it
       if (dealProp && !propertyId) {
         const deal = dealProp;
         const property = deal.properties?.[0];
