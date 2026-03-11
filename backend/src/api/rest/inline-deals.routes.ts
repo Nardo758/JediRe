@@ -76,8 +76,14 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
           WHEN d.boundary IS NOT NULL THEN 
             ST_Area(d.boundary::geography) / 4046.86
           ELSE 0
-        END) as acres
+        END) as acres,
+        p_linked.parcel_id as "linkedParcelId",
+        p_linked.zoning_code as "linkedZoningCode",
+        p_linked.lot_size_acres as "linkedLotSizeAcres",
+        p_linked.land_cost as "linkedLandCost"
       FROM deals d
+      LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
+      LEFT JOIN properties p_linked ON p_linked.id = dp_link.property_id
       WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
     `, [req.params.id, req.user!.userId]);
 
@@ -114,6 +120,10 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         property_data: row.property_data || null,
         zoningProfile: row.zoning_profile || null,
         purchasePrice: parseFloat(row.purchase_price) || null,
+        parcelId: row.linkedParcelId || null,
+        zoningCode: row.linkedZoningCode || null,
+        lotSizeAcres: parseFloat(row.linkedLotSizeAcres) || null,
+        landCost: parseFloat(row.linkedLandCost) || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }

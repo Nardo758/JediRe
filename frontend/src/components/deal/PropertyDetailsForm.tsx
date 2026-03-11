@@ -72,16 +72,17 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       // Priority 2: If deal object was passed directly, use it
       if (dealProp && !propertyId) {
         const deal = dealProp;
+        const pd = deal.property_data || {};
         const property = deal.properties?.[0];
         
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.property_data?.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
-          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
-          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
+          landCost: property?.land_cost ?? pd.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || pd.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);
@@ -101,19 +102,20 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         setSavedData(data);
       } else if (dealId) {
         const response = await apiClient.get(`/api/v1/deals/${dealId}`);
-        const deal = response.data;
+        const body = response.data;
+        const deal = body?.deal || body?.data || body;
+        const pd = deal.property_data || {};
         
-        // Try properties array first, then fall back to deal-level fields
         const property = deal.properties?.[0];
         
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.property_data?.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
-          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
-          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
+          landCost: property?.land_cost ?? pd.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || pd.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);
