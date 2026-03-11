@@ -369,10 +369,10 @@ Provide the development standards, permitted uses, conditional uses, and setback
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'ai_retrieved')`,
           [
             request.municipalityId || null,
-            request.municipality,
+            (request.municipality || '').substring(0, 255),
             request.state,
-            request.districtCode,
-            request.districtName || parsed.description || request.districtCode,
+            (request.districtCode || '').substring(0, 50),
+            (request.districtName || parsed.description || request.districtCode || '').substring(0, 255),
             parsed.permitted_uses || [],
             parsed.conditional_uses || [],
             parsed.prohibited_uses || [],

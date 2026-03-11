@@ -47,9 +47,20 @@ export const dealAnalysisService = {
   ): (() => void) => {
     let stopped = false;
     let pollCount = 0;
+    const MAX_POLLS = 60;
 
     const poll = async () => {
       if (stopped) return;
+
+      if (pollCount >= MAX_POLLS) {
+        onStatusUpdate({
+          phase: 'error',
+          progress: 0,
+          message: 'Analysis timed out — please try again',
+        });
+        stopped = true;
+        return;
+      }
 
       try {
         const results = await dealAnalysisService.getLatestAnalysis(dealId);
