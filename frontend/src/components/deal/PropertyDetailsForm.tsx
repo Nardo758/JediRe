@@ -55,11 +55,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       if (dealProp && !propertyId) {
         const deal = dealProp;
         const property = deal.properties?.[0];
+        
+        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
+        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
+        
         const data: PropertyDetails = {
           parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
-          lotSizeAcres: property?.lot_size_acres ?? deal.lot_size_acres ?? deal.acres ?? deal.lotSizeAcres,
+          lotSizeAcres,
           landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || '',
+          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);
@@ -83,11 +88,16 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         
         // Try properties array first, then fall back to deal-level fields
         const property = deal.properties?.[0];
+        
+        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
+        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
+        
         const data: PropertyDetails = {
           parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
-          lotSizeAcres: property?.lot_size_acres ?? deal.lot_size_acres ?? deal.acres ?? deal.lotSizeAcres,
+          lotSizeAcres,
           landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || '',
+          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);

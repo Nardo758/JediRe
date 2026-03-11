@@ -662,7 +662,9 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   const zoningFar = activeScenario?.appliedFar || zoningProfile?.appliedFar || zoningStore.selected_path_data?.appliedFar || null;
 
   const maxUnits = zoningMaxUnits || deal.targetUnits || 186;
-  const lotSize = deal.acres ? `${deal.acres} ac` : '—';
+  // Skip acres if value looks like a coordinate (> 100 acres suspicious for urban parcels)
+  const rawAcres = deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+  const lotSize = (rawAcres && rawAcres < 100) ? `${rawAcres.toFixed(2)} ac` : '—';
   const landCost = financial?.landCost
     ? `$${(financial.landCost / 1_000_000).toFixed(1)}M`
     : deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : '—';
