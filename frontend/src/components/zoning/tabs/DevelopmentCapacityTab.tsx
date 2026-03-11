@@ -141,6 +141,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [changingAssetType, setChangingAssetType] = useState(false);
   const [profileExists, setProfileExists] = useState(true);
   const [resolving, setResolving] = useState(false);
+  const [editingZoningCode, setEditingZoningCode] = useState(false);
+  const [newZoningCode, setNewZoningCode] = useState('');
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [comparison, setComparison] = useState<any>(null);
   const [loadingRecs, setLoadingRecs] = useState(false);
@@ -518,6 +520,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   };
 
+  const handleSaveZoningCode = async () => {
+    const code = newZoningCode.trim().toUpperCase();
+    if (!dealId || !code) return;
+    setResolving(true);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
+        zoning_code: code,
+        municipality: profile?.municipality || '',
+        state: profile?.state || '',
+        confirmed_at: new Date().toISOString(),
+      });
+      await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`);
+      setEditingZoningCode(false);
+      setNewZoningCode('');
+      await loadData(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to update zoning code');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const handleChangeAssetType = async (newType: string) => {
     if (!dealId) return;
     try {
@@ -683,9 +707,56 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>
-          <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
-          {profile.municipality && <span className="text-gray-400">({profile.municipality})</span>}
-          {municodeUrl && <MunicodeLink url={municodeUrl} />}
+          {editingZoningCode ? (
+            <>
+              <input
+                type="text"
+                value={newZoningCode}
+                onChange={(e) => setNewZoningCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveZoningCode();
+                  if (e.key === 'Escape') { setEditingZoningCode(false); setNewZoningCode(''); }
+                }}
+                placeholder={profile.base_district_code || 'e.g. MRC-3'}
+                autoFocus
+                className="w-28 px-2 py-0.5 border border-blue-400 rounded text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleSaveZoningCode}
+                disabled={!newZoningCode.trim() || resolving}
+                className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                title="Save"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setEditingZoningCode(false); setNewZoningCode(''); }}
+                className="text-gray-400 hover:text-gray-600"
+                title="Cancel"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
+              {profile.municipality && <span className="text-gray-400">({profile.municipality})</span>}
+              {municodeUrl && <MunicodeLink url={municodeUrl} />}
+              <button
+                onClick={() => { setEditingZoningCode(true); setNewZoningCode(profile.base_district_code || ''); }}
+                className="text-blue-500 hover:text-blue-700"
+                title="Change zoning code"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
         <div className="w-px h-5 bg-gray-200" />
         <div className="flex items-center gap-2">
