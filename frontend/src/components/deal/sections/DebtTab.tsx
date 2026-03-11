@@ -123,7 +123,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const stack = liveStack || defaultCapitalStack;
 
   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
-    baseNOI: financial?.noi || 3000000,
+    baseNOI: financial?.noi || 0,
     equityInvested: capitalStructure?.totalEquity || stack?.metrics?.totalEquity || 8000000,
     loanBalance: capitalStructure?.loanBalance?.[0] ?? stack?.metrics?.totalDebt ?? 19200000,
     dealStatus: dealStatus || 'pipeline',
@@ -148,7 +148,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
           strategy: selectedStrategy,
           layers: defaultCapitalStack.layers,
           uses: defaultCapitalStack.uses,
-          noi: financial?.noi || 3000000,
+          noi: financial?.noi || 0,
           propertyValue: defaultCapitalStack.uses.acquisitionPrice,
         });
         if (res.data?.stack) {
@@ -508,7 +508,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       const res = await apiClient.post(`${API_BASE}/optimal-strategy`, {
         propertyType: deal.propertyType || 'multifamily',
         propertyValue: defaultCapitalStack.uses.acquisitionPrice,
-        noi: financial?.noi || 3000000,
+        noi: financial?.noi || 0,
         holdPeriod: template.holdPeriod,
         strategy: selectedStrategy,
         loanAmount: totalDebt,

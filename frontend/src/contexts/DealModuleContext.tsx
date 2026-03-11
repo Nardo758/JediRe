@@ -20,6 +20,14 @@ export interface FinancialState {
   irr: number;
   equityMultiple: number;
   cashOnCash: number;
+  purchasePrice: number;
+  totalUnits: number;
+  goingInCapRate: number;
+  exitCapRate: number;
+  stabilizedOccupancy: number;
+  dscr: number;
+  debtService: number;
+  yieldOnCost: number;
   lastUpdated: number;
 }
 
@@ -243,7 +251,10 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     setFinancial(prev => ({
       ...(prev || {
         totalDevelopmentCost: 0, landCost: 0, hardCosts: 0, softCosts: 0,
-        noi: 0, irr: 0, equityMultiple: 0, cashOnCash: 0, lastUpdated: 0,
+        noi: 0, irr: 0, equityMultiple: 0, cashOnCash: 0,
+        purchasePrice: 0, totalUnits: 0, goingInCapRate: 0, exitCapRate: 0,
+        stabilizedOccupancy: 0, dscr: 0, debtService: 0, yieldOnCost: 0,
+        lastUpdated: 0,
       }),
       ...updates,
       lastUpdated: Date.now(),

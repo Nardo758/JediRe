@@ -128,16 +128,16 @@ function buildModelFromSummary(summary: any): any {
   const marketContext = summary?.marketContext || {};
   const capitalStructure = summary?.capitalOptions || summary?.capitalStructure || {};
 
-  const budget = deal.budget || deal.deal_data?.budget || 15000000;
-  const units = deal.target_units || deal.deal_data?.target_units || 200;
+  const budget = deal.budget || deal.deal_data?.budget || deal.purchasePrice || deal.purchase_price || 0;
+  const units = deal.target_units || deal.deal_data?.target_units || deal.units || deal.targetUnits || 0;
   const city = deal.city || '';
   const state = deal.state || '';
 
   const assumptions = latestModel?.assumptions || {};
   const results = latestModel?.results || {};
 
-  const avgRent = marketContext?.avg_rent || assumptions?.revenue?.rentGrowth?.[0] ? undefined : 1800;
-  const monthlyRent = (assumptions?.dealInfo?.totalUnits || units) * (avgRent || assumptions?.unitMix?.[0]?.marketRent || 1970);
+  const avgRent = marketContext?.avg_rent || assumptions?.unitMix?.[0]?.marketRent || 0;
+  const monthlyRent = (assumptions?.dealInfo?.totalUnits || units) * (avgRent || 0);
 
   const holdYears = strategy?.hold_period || assumptions?.holdPeriod || 7;
   const exitCap = strategy?.exit_cap || assumptions?.disposition?.exitCapRate || 0.055;
@@ -217,8 +217,8 @@ function buildModelFromSummary(summary: any): any {
     },
     revenue: {
       currentMonthlyRent: monthlyRent,
-      currentAvgRentOccupied: avgRent || 1970,
-      currentAvgMarketRent: marketContext?.avg_rent || (avgRent ? avgRent * 1.05 : 2076),
+      currentAvgRentOccupied: avgRent || 0,
+      currentAvgMarketRent: marketContext?.avg_rent || (avgRent ? avgRent * 1.05 : 0),
       currentOccupancy: marketContext?.occupancy_rate || 0.93,
       stabilizedOccupancy: 0.95,
       rentGrowthY1: marketContext?.rent_growth || 0.04,
