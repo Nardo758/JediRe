@@ -98,9 +98,11 @@ export class ZoningInterpretationCache {
     codes: string[],
     municipality: string,
     state: string,
+    metricsFingerprint?: string,
   ): Promise<CachedAIAnalysis | null> {
     try {
-      const codeSetKey = this.buildCodeSetKey(codes);
+      const baseKey = this.buildCodeSetKey(codes);
+      const codeSetKey = metricsFingerprint ? `${baseKey}#${metricsFingerprint}` : baseKey;
       const result = await this.pool.query(
         `SELECT insights, summary, extra_rows
          FROM zoning_ai_analysis_cache
@@ -128,9 +130,11 @@ export class ZoningInterpretationCache {
     municipality: string,
     state: string,
     analysis: CachedAIAnalysis,
+    metricsFingerprint?: string,
   ): Promise<void> {
     try {
-      const codeSetKey = this.buildCodeSetKey(codes);
+      const baseKey = this.buildCodeSetKey(codes);
+      const codeSetKey = metricsFingerprint ? `${baseKey}#${metricsFingerprint}` : baseKey;
       await this.pool.query(
         `INSERT INTO zoning_ai_analysis_cache
            (code_set_key, municipality, state, insights, summary, extra_rows, resolved_at, expires_at)

@@ -836,12 +836,17 @@ export class EntitlementComparisonEngine {
     const mun = subject.municipality || '';
     const st = subject.state || 'GA';
 
-    const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st);
+    const byRightPath = paths.find(p => p.key === 'byRight');
+    const metricsFingerprint = byRightPath
+      ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
+      : '';
+
+    const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
-      console.log(`[Cache] HIT AI analysis: ${codes.join(',')}`);
+      console.log(`[Cache] HIT AI analysis: ${codes.join(',')} fp=${metricsFingerprint}`);
       return cachedAnalysis;
     }
-    console.log(`[Cache] MISS AI analysis: ${codes.join(',')}`);
+    console.log(`[Cache] MISS AI analysis: ${codes.join(',')} fp=${metricsFingerprint}`);
 
     const pathSummaries = paths.map(p => ({
       key: p.key,
@@ -912,7 +917,7 @@ For extraRows, only add rows where you have specific information about the codes
     };
 
     if (codes.length > 0) {
-      await this.cache.setAIAnalysis(codes, mun, st, result);
+      await this.cache.setAIAnalysis(codes, mun, st, result, metricsFingerprint);
     }
 
     return result;
