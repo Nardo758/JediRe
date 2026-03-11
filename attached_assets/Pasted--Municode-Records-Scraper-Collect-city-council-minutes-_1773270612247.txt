@@ -1,0 +1,105 @@
+ Municode Records Scraper
+Collect city council minutes, agendas, resolutions, and ordinances from Municode for any US municipality in structured format. Perfect for legal teams, compliance officers, researchers, and journalists who need to monitor local government decisions, track regulatory changes, download government records as CSV, and build searchable archives of public records without manual work.
+
+The Municode Records Scraper collects municipal meeting minutes, agendas, resolutions, and ordinances from Municode library.municode.com. Up to 1 million records per run with advanced filtering by state, municipality, document type, and year.
+
+✨ What Does It Do
+📅 Meeting Date - Track when each meeting or action occurred for decision timeline analysis
+📝 Document Title - Find relevant records quickly by understanding what each contains
+📊 Document Type - Filter between minutes, agendas, resolutions, and ordinances
+🏛️ Municipality Name - Organize records by jurisdiction for city-specific policy tracking
+🌍 State Information - Segment data by state for multi-state compliance monitoring
+🔗 PDF URL - Access the original document directly from Municode
+📋 Original File Name - Reference exact filenames from the government system
+💾 Ancestry Path - Understand the folder hierarchy and document organization structure
+🔧 Input
+Max Items - Number of records to collect (free users: up to 100, paid users: up to 1 million)
+State Abbreviation - Filter by US state abbreviation like TX, CA, or NY (leave blank to search all states)
+Municipality Name - Filter by city or town name with partial match support
+Municipality ID - Target a specific municipality by its exact Municode ID
+City - Filter municipalities by city name
+Document Type - Select what to collect: minutes, agendas, resolutions, ordinances, or all types
+Start Year - Only include documents from this year forward
+End Year - Only include documents up to this year
+Product ID - Filter by specific Municode product when a municipality has multiple collections
+Example input configuration:
+
+{
+  "stateAbbr": "tx",
+  "municipalityName": "Austin",
+  "documentType": "minutes",
+  "startYear": 2023,
+  "endYear": 2025,
+  "maxItems": 500
+}
+
+📊 Output
+Each record includes up to 16 data fields. Download as JSON, CSV, or Excel.
+
+📋 Document ID	📅 Meeting Date	📝 Document Title
+📊 Document Type	🏛️ Municipality Name	🌍 City
+🗺️ State Abbreviation	📍 Full State Name	📎 Original File Name
+🔗 PDF URL	📌 Access Link	📅 Year
+🎯 Product Name	📂 Ancestry Path	🕐 Scraped At
+💎 Why Choose the Municode Records Scraper?
+Feature	Our Actor	Similar Scrapers
+Filter by specific city and state	✔️	❌
+Support for minutes, agendas, resolutions, and ordinances	✔️	Partial
+Advanced year range filtering (startYear/endYear)	✔️	❌
+Access to complete ancestry path and document structure	✔️	❌
+Handles municipalities with multiple product catalogs	✔️	❌
+Up to 1 million records per paid run	✔️	❌
+Free tier: 100 results included	✔️	❌
+Direct access to official PDF URLs	✔️	✔️
+Built specifically for Municode library	✔️	❌
+No coding or setup required	✔️	✔️
+Monitor compliance across all US states	✔️	❌
+📋 How to Use
+No technical skills required. Follow these simple steps:
+
+Sign Up: Create a free account with $5 credit
+Find the Tool: Search for "Municode Records Scraper" in the Apify Store and configure your input
+Run It: Click "Start" and watch your results appear
+That's it. No coding, no setup, no complicated configuration. Now you can export your data in CSV, Excel, or JSON format.
+
+🎯 Business Use Cases
+📊 Compliance Officer - Monitor city council resolutions across multiple states to track new regulations and ensure internal policies stay aligned with recent municipal ordinances before audits
+🔬 Legal Researcher - Collect meeting minutes from 2019 onward for a specific municipality to build searchable archives and identify precedent for zoning disputes
+📣 Journalist - Gather agendas and minutes for county planning departments to track development approvals, contracts, and public comment topics for investigations
+❓ FAQ
+🔍 How does this actor work? It collects municipal records including minutes, agendas, resolutions, and ordinances directly from Municode. It then organizes and cleans the data so you get a structured, ready-to-use dataset.
+
+📊 How accurate is the data? The data comes directly from the official Municode library, which is the source of truth for municipal government records. If a document exists in Municode, you will get it.
+
+📅 Can I schedule this to run automatically? Yes. Once you create a task, you can use the Apify scheduler to run it daily, weekly, or monthly. Integrate with Slack, email, or tools like Make and Zapier for automated notifications.
+
+⚖️ Is it legal to collect this data? Yes. All Municode records are public documents and legally available for collection. You are responsible for complying with local laws and Municode's terms of service when using the data.
+
+🛡️ Will Municode block me? Unlikely. The scraper is designed to work reliably with Municode and respects rate limits. We recommend using residential proxies for large-scale collection to avoid any delays. Paid Apify plans include proxy support.
+
+⚡ How long does a run take? It depends on how much data you request. Collecting 100 records typically takes 30 seconds to 2 minutes. Collecting thousands of records can take 5-15 minutes depending on the number of municipalities and document types selected.
+
+⚠️ Are there any limits? Free users can collect up to 100 results per run. Paid users can collect up to 1,000,000 results per run.
+
+🔗 Integrate Municode Records Scraper with any app
+Make - Automate workflows
+Zapier - Connect 5000+ apps
+GitHub - Version control integration
+Slack - Get notifications
+Airbyte - Data pipelines
+Google Drive - Export to spreadsheets
+💡 More ParseForge Actors
+Emma Municipal Bonds Scraper - Scrape municipal bond data from EMMA including CUSIP, coupon rates, yields, and credit ratings
+Cook County Assessor's Property Scraper - Get Cook County property information including valuations, sales history, and home features
+Address Normalizer - Fix and normalize addresses in bulk using AI for clean, reliable data
+Browse our complete collection of data extraction tools for more.
+
+🚀 Ready to Start?
+Create a free account with $5 credit and collect your first 100 results for free. No coding, no setup.
+
+🆘 Need Help?
+Check the FAQ section above for common questions
+Visit the Apify support page for documentation and tutorials
+Contact us to request a new scraper, propose a custom project, or report an issue at Tally contact form
+⚠️ Disclaimer
+This Actor is an independent tool and is not affiliated with, endorsed by, or sponsored by Municode or any of its subsidiaries. All trademarks mentioned are the property of their respective owners.
