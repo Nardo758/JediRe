@@ -1,6 +1,57 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Pool } from 'pg';
 
+// ============================================================================
+// ZoningOutput — canonical typed slice written to dealStore.zoningOutput
+// ============================================================================
+// This mirrors the frontend ZoningOutput interface in types/zoning.types.ts.
+// Keep both in sync when adding fields.
+// ============================================================================
+
+export type AllowedUseType = 'residential' | 'mixed_use' | 'commercial';
+
+export interface ZoningOutput {
+  /** e.g. "MRC-3" */
+  designation: string;
+  /** Municode or official municipal code URL */
+  municodeSourceUrl: string | null;
+
+  maxDensityUnitsPerAcre: number | null;
+  maxHeightFt: number | null;
+  maxHeightStories: number | null;
+  maxFAR: number | null;
+
+  setbacks: {
+    frontFt: number | null;
+    sideFt: number | null;
+    rearFt: number | null;
+  };
+
+  /** Required spaces per residential unit */
+  parkingSpacesPerUnit: number | null;
+  /** Additional guest parking ratio per unit */
+  parkingGuestRatio: number | null;
+
+  /** parcel_area_acres × maxDensityUnitsPerAcre — null when inputs missing */
+  byRightUnitCapacity: number | null;
+  /** Variance / entitlement upside — null when not modelled */
+  variancePotentialUnits: number | null;
+
+  allowedUseTypes: AllowedUseType[];
+
+  regulatoryRiskFlags: {
+    overlayDistricts: string[];
+    historicDesignation: boolean;
+    /** FEMA / local flood zone (e.g. "AE") or null */
+    floodZone: string | null;
+    otherFlags: string[];
+  };
+
+  analyzedAt: string;
+  confidence: 'high' | 'medium' | 'low';
+  reasoning: string;
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
@@ -39,6 +90,107 @@ export interface ZoningAgentResult {
   confidence: string;
   reasoning: string;
   error?: string;
+  /**
+   * Canonical typed output ready to be written to dealStore.zoningOutput.
+   * Null when success is false.
+   */
+  zoningOutput: ZoningOutput | null;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: derive AllowedUseType[] from raw permitted/conditional use strings
+// ---------------------------------------------------------------------------
+
+function deriveAllowedUseTypes(
+  permittedUses: string[],
+  conditionalUses: string[],
+  category: string,
+): AllowedUseType[] {
+  const all = [...permittedUses, ...conditionalUses].map((u) => u.toLowerCase());
+  const types = new Set<AllowedUseType>();
+
+  const residentialKeywords = ['residential', 'multifamily', 'single_family', 'apartment', 'dwelling', 'housing'];
+  const commercialKeywords = ['retail', 'office', 'commercial', 'restaurant', 'hotel', 'industrial', 'warehouse'];
+  const mixedKeywords = ['mixed_use', 'mixed-use', 'live_work'];
+
+  for (const u of all) {
+    if (residentialKeywords.some((k) => u.includes(k))) types.add('residential');
+    if (commercialKeywords.some((k) => u.includes(k))) types.add('commercial');
+    if (mixedKeywords.some((k) => u.includes(k))) types.add('mixed_use');
+  }
+
+  // Fall back to category hint
+  if (types.size === 0) {
+    if (category === 'residential') types.add('residential');
+    else if (category === 'commercial') types.add('commercial');
+    else if (category === 'mixed_use') { types.add('residential'); types.add('commercial'); types.add('mixed_use'); }
+  }
+
+  return Array.from(types);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: build a ZoningOutput from a district data block + request context
+// ---------------------------------------------------------------------------
+
+function buildZoningOutput(
+  district: NonNullable<ZoningAgentResult['district']>,
+  request: ZoningAgentRequest,
+  confidence: string,
+  reasoning: string,
+  parcelAreaAcres?: number,
+): ZoningOutput {
+  const density = district.max_density_per_acre;
+  const byRightUnits =
+    density != null && parcelAreaAcres != null
+      ? Math.floor(parcelAreaAcres * density)
+      : null;
+
+  // Simple 20 % variance uplift when by-right capacity is known
+  const variancePotentialUnits = byRightUnits != null ? Math.floor(byRightUnits * 1.2) : null;
+
+  const allowedUseTypes = deriveAllowedUseTypes(
+    district.permitted_uses,
+    district.conditional_uses,
+    district.category,
+  );
+
+  return {
+    designation: request.districtCode,
+    municodeSourceUrl: null, // populated by caller when Municode URL is known
+
+    maxDensityUnitsPerAcre: density,
+    maxHeightFt: district.max_building_height_ft,
+    maxHeightStories: district.max_stories,
+    maxFAR: district.max_far,
+
+    setbacks: {
+      frontFt: district.min_front_setback_ft,
+      sideFt: district.min_side_setback_ft,
+      rearFt: district.min_rear_setback_ft,
+    },
+
+    parkingSpacesPerUnit: district.parking_per_unit,
+    parkingGuestRatio: null, // not in raw district data; caller may override
+
+    byRightUnitCapacity: byRightUnits,
+    variancePotentialUnits,
+
+    allowedUseTypes,
+
+    regulatoryRiskFlags: {
+      overlayDistricts: [],   // populated downstream when overlay data is available
+      historicDesignation: false,
+      floodZone: null,
+      otherFlags: [],
+    },
+
+    analyzedAt: new Date().toISOString(),
+    confidence: (['high', 'medium', 'low'].includes(confidence)
+      ? confidence
+      : 'medium') as ZoningOutput['confidence'],
+    reasoning,
+  };
 }
 
 const ZONING_AGENT_PROMPT = `You are a zoning code research specialist for US municipalities. Given a zoning district code and municipality, provide the zoning regulations for that district.
@@ -81,7 +233,11 @@ export class ZoningAgentService {
     this.pool = pool;
   }
 
-  async retrieveZoningData(request: ZoningAgentRequest): Promise<ZoningAgentResult> {
+  async retrieveZoningData(
+    request: ZoningAgentRequest,
+    /** Optional: parcel gross area in acres — enables byRightUnitCapacity computation */
+    parcelAreaAcres?: number,
+  ): Promise<ZoningAgentResult> {
     try {
       const existingResult = await this.pool.query(
         `SELECT * FROM zoning_districts 
@@ -99,29 +255,31 @@ export class ZoningAgentService {
                               existing.max_building_height_ft != null;
 
         if (hasDetailData) {
+          const dbDistrict = {
+            permitted_uses: existing.permitted_uses || [],
+            conditional_uses: existing.conditional_uses || [],
+            prohibited_uses: existing.prohibited_uses || [],
+            max_density_per_acre: existing.max_density_per_acre ?? existing.max_units_per_acre,
+            max_far: existing.max_far ? parseFloat(existing.max_far) : null,
+            max_building_height_ft: existing.max_building_height_ft ?? existing.max_height_feet,
+            max_stories: existing.max_stories,
+            min_front_setback_ft: existing.min_front_setback_ft ?? existing.setback_front_ft,
+            min_side_setback_ft: existing.min_side_setback_ft ?? existing.setback_side_ft,
+            min_rear_setback_ft: existing.min_rear_setback_ft ?? existing.setback_rear_ft,
+            max_lot_coverage: existing.max_lot_coverage ? parseFloat(existing.max_lot_coverage) : null,
+            min_lot_size_sqft: existing.min_lot_size_sqft,
+            parking_per_unit: existing.parking_per_unit ? parseFloat(existing.parking_per_unit) : null,
+            parking_per_1000_sqft: existing.parking_per_1000_sqft ? parseFloat(existing.parking_per_1000_sqft) : null,
+            description: existing.description || existing.district_name || '',
+            category: existing.category || 'unknown',
+          };
           return {
             success: true,
             source: 'database',
-            district: {
-              permitted_uses: existing.permitted_uses || [],
-              conditional_uses: existing.conditional_uses || [],
-              prohibited_uses: existing.prohibited_uses || [],
-              max_density_per_acre: existing.max_density_per_acre ?? existing.max_units_per_acre,
-              max_far: existing.max_far ? parseFloat(existing.max_far) : null,
-              max_building_height_ft: existing.max_building_height_ft ?? existing.max_height_feet,
-              max_stories: existing.max_stories,
-              min_front_setback_ft: existing.min_front_setback_ft ?? existing.setback_front_ft,
-              min_side_setback_ft: existing.min_side_setback_ft ?? existing.setback_side_ft,
-              min_rear_setback_ft: existing.min_rear_setback_ft ?? existing.setback_rear_ft,
-              max_lot_coverage: existing.max_lot_coverage ? parseFloat(existing.max_lot_coverage) : null,
-              min_lot_size_sqft: existing.min_lot_size_sqft,
-              parking_per_unit: existing.parking_per_unit ? parseFloat(existing.parking_per_unit) : null,
-              parking_per_1000_sqft: existing.parking_per_1000_sqft ? parseFloat(existing.parking_per_1000_sqft) : null,
-              description: existing.description || existing.district_name || '',
-              category: existing.category || 'unknown',
-            },
+            district: dbDistrict,
             confidence: 'high',
             reasoning: 'Data retrieved from municipal zoning database',
+            zoningOutput: buildZoningOutput(dbDistrict, request, 'high', 'Data retrieved from municipal zoning database', parcelAreaAcres),
           };
         }
       }
@@ -150,6 +308,7 @@ Provide the development standards, permitted uses, conditional uses, and setback
           confidence: 'low',
           reasoning: 'Failed to parse AI response',
           error: 'Invalid JSON response from AI',
+          zoningOutput: null,
         };
       }
 
@@ -234,29 +393,33 @@ Provide the development standards, permitted uses, conditional uses, and setback
         );
       }
 
+      const aiDistrict = {
+        permitted_uses: parsed.permitted_uses || [],
+        conditional_uses: parsed.conditional_uses || [],
+        prohibited_uses: parsed.prohibited_uses || [],
+        max_density_per_acre: parsed.max_density_per_acre,
+        max_far: parsed.max_far,
+        max_building_height_ft: parsed.max_building_height_ft,
+        max_stories: parsed.max_stories,
+        min_front_setback_ft: parsed.min_front_setback_ft,
+        min_side_setback_ft: parsed.min_side_setback_ft,
+        min_rear_setback_ft: parsed.min_rear_setback_ft,
+        max_lot_coverage: parsed.max_lot_coverage,
+        min_lot_size_sqft: parsed.min_lot_size_sqft,
+        parking_per_unit: parsed.parking_per_unit,
+        parking_per_1000_sqft: parsed.parking_per_1000_sqft,
+        description: parsed.description || '',
+        category: parsed.category || 'unknown',
+      };
+      const aiConfidence = parsed.confidence || 'medium';
+      const aiReasoning = parsed.reasoning || 'Data retrieved via AI analysis of municipal zoning codes';
       return {
         success: true,
         source: 'ai_retrieved',
-        district: {
-          permitted_uses: parsed.permitted_uses || [],
-          conditional_uses: parsed.conditional_uses || [],
-          prohibited_uses: parsed.prohibited_uses || [],
-          max_density_per_acre: parsed.max_density_per_acre,
-          max_far: parsed.max_far,
-          max_building_height_ft: parsed.max_building_height_ft,
-          max_stories: parsed.max_stories,
-          min_front_setback_ft: parsed.min_front_setback_ft,
-          min_side_setback_ft: parsed.min_side_setback_ft,
-          min_rear_setback_ft: parsed.min_rear_setback_ft,
-          max_lot_coverage: parsed.max_lot_coverage,
-          min_lot_size_sqft: parsed.min_lot_size_sqft,
-          parking_per_unit: parsed.parking_per_unit,
-          parking_per_1000_sqft: parsed.parking_per_1000_sqft,
-          description: parsed.description || '',
-          category: parsed.category || 'unknown',
-        },
-        confidence: parsed.confidence || 'medium',
-        reasoning: parsed.reasoning || 'Data retrieved via AI analysis of municipal zoning codes',
+        district: aiDistrict,
+        confidence: aiConfidence,
+        reasoning: aiReasoning,
+        zoningOutput: buildZoningOutput(aiDistrict, request, aiConfidence, aiReasoning, parcelAreaAcres),
       };
     } catch (error: any) {
       console.error('Zoning agent error:', error);
@@ -267,6 +430,7 @@ Provide the development standards, permitted uses, conditional uses, and setback
         confidence: 'low',
         reasoning: 'AI retrieval failed',
         error: error.message || 'Unknown error',
+        zoningOutput: null,
       };
     }
   }

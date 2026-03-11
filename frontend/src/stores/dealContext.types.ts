@@ -465,6 +465,16 @@ export interface DealContext {
   /** Zoning constraints — always present, drives dev capacity */
   zoning: ZoningContext;
 
+  /**
+   * Zoning Agent typed output — written by the Zoning Agent when analysis
+   * completes. All downstream modules (DevelopmentCapacity, ProForma, 3D,
+   * Strategy, Risk) should read from here rather than from raw agent results.
+   *
+   * Import the ZoningOutput type from types/zoning.types.ts.
+   * Null until the Zoning Agent has run for this deal.
+   */
+  zoningOutput: import('../types/zoning.types').ZoningOutput | null;
+
   // ─── MODE-SPECIFIC: DEVELOPMENT ───────────────────────────
 
   /**
