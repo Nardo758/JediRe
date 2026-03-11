@@ -399,7 +399,27 @@ export class ZoningProfileService {
       'SELECT * FROM deal_zoning_profiles WHERE deal_id = $1',
       [dealId]
     );
-    return result.rows[0] || null;
+    const stored: ZoningProfile | null = result.rows[0] || null;
+
+    // Staleness check: if deal_zoning_confirmations holds a different zoning
+    // code than the cached profile (e.g. user confirmed MRC-2-C after profile
+    // was resolved with R-4), re-resolve so Dev Capacity is always in sync.
+    if (stored) {
+      try {
+        const confirmResult = await this.pool.query(
+          'SELECT zoning_code FROM deal_zoning_confirmations WHERE deal_id = $1',
+          [dealId]
+        );
+        const confirmedCode: string | null = confirmResult.rows[0]?.zoning_code ?? null;
+        if (confirmedCode && confirmedCode !== stored.base_district_code) {
+          return this.resolveProfile(dealId);
+        }
+      } catch {
+        // Non-fatal: return cached profile if staleness check fails
+      }
+    }
+
+    return stored;
   }
 
   async updateOverrides(dealId: string, overrides: Record<string, any>): Promise<ZoningProfile> {
