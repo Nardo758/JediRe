@@ -258,28 +258,57 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   }, [onStrategySelected]);
 
   useEffect(() => {
-    if (!strategyResults?.strategies?.length) return;
-    const strategies = strategyResults.strategies;
-    const recId = strategyResults.recommendedStrategyId;
-    const recommended = strategies.find(s => s.id === recId) || strategies[0];
-    const sorted = [...strategies].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-    const secondBest = sorted.find(s => s.id !== recommended.id);
-    const gap = secondBest ? Math.round(recommended.confidence - secondBest.confidence) : 0;
+    if (!strategyResults) return;
 
-    setStrategyVerdict({
-      recommended: recommended.id,
-      recommendedLabel: recommended.name,
-      score: Math.round(recommended.confidence),
-      secondBest: secondBest?.id || '',
-      secondBestLabel: secondBest?.name || '',
-      secondBestScore: secondBest ? Math.round(secondBest.confidence) : 0,
-      arbitrageGap: gap,
-      isArbitrage: gap >= 10,
-      roiEstimate: recommended.projectedROI ? `${recommended.projectedROI.toFixed(1)}%` : '—',
-      roiLabel: 'Projected ROI',
-      insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
-    });
-  }, [strategyResults]);
+    if (strategyResults.strategies?.length) {
+      const strategies = strategyResults.strategies;
+      const recId = strategyResults.recommendedStrategyId;
+      const recommended = strategies.find(s => s.id === recId) || strategies[0];
+      const sorted = [...strategies].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+      const secondBest = sorted.find(s => s.id !== recommended.id);
+      const gap = secondBest ? Math.round(recommended.confidence - secondBest.confidence) : 0;
+
+      setStrategyVerdict({
+        recommended: recommended.id,
+        recommendedLabel: recommended.name,
+        score: Math.round(recommended.confidence),
+        secondBest: secondBest?.id || '',
+        secondBestLabel: secondBest?.name || '',
+        secondBestScore: secondBest ? Math.round(secondBest.confidence) : 0,
+        arbitrageGap: gap,
+        isArbitrage: gap >= 10,
+        roiEstimate: recommended.projectedROI ? `${recommended.projectedROI.toFixed(1)}%` : '—',
+        roiLabel: 'Projected ROI',
+        insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
+      });
+    } else if (deal) {
+      const strategyType = deal.strategyType || deal.strategy || 'value_add';
+      const strategyLabels: Record<string, string> = {
+        'value_add': 'Value-Add',
+        'core': 'Core',
+        'core_plus': 'Core Plus',
+        'opportunistic': 'Opportunistic',
+        'development': 'Ground-Up Development',
+        'ground_up': 'Ground-Up Development',
+        'stabilized': 'Stabilized Hold',
+        'distressed': 'Distressed / Turnaround',
+      };
+      const label = strategyLabels[strategyType] || strategyType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      setStrategyVerdict({
+        recommended: strategyType,
+        recommendedLabel: label,
+        score: 0,
+        secondBest: '',
+        secondBestLabel: '',
+        secondBestScore: 0,
+        arbitrageGap: 0,
+        isArbitrage: false,
+        roiEstimate: '—',
+        roiLabel: 'Projected ROI',
+        insight: `Based on deal classification. Run full strategy analysis for detailed scoring.`,
+      });
+    }
+  }, [strategyResults, deal]);
 
   useEffect(() => {
     if (dataSource !== 'live' || !signals.length) return;
@@ -528,11 +557,15 @@ const DealHeader: React.FC<DealHeaderProps> = ({
           <>
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-lg font-bold text-stone-900">{strategyVerdict.recommendedLabel}</span>
-            <span className="text-sm font-mono text-amber-600">{strategyVerdict.score}</span>
+            {strategyVerdict.score > 0 && <span className="text-sm font-mono text-amber-600">{strategyVerdict.score}</span>}
           </div>
+          {strategyVerdict.secondBestLabel ? (
           <div className="text-xs text-stone-500 mb-2">
             vs {strategyVerdict.secondBestLabel}: {strategyVerdict.secondBestScore}
           </div>
+          ) : (
+          <div className="text-xs text-stone-400 mb-2">{strategyVerdict.insight}</div>
+          )}
 
           {strategyVerdict.isArbitrage && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
