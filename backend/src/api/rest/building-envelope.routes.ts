@@ -13,7 +13,7 @@ router.post('/deals/:dealId/building-envelope', async (req: Request, res: Respon
     const { propertyType = 'multifamily', revenueAssumptions, includeHBU = false, includeAI = false } = req.body;
 
     const boundaryResult = await pool.query(
-      'SELECT coordinates, metrics FROM property_boundaries WHERE deal_id = $1',
+      'SELECT centroid, parcel_area_sf, buildable_area_sf, boundary_geojson FROM property_boundaries WHERE deal_id = $1',
       [dealId]
     );
 
@@ -22,11 +22,8 @@ router.post('/deals/:dealId/building-envelope', async (req: Request, res: Respon
     let lotDimensions = req.body.lotDimensions;
 
     if (boundaryResult.rows.length > 0) {
-      const metrics = boundaryResult.rows[0].metrics || {};
-      landArea = landArea || metrics.area || 0;
-      if (metrics.frontage && metrics.depth) {
-        lotDimensions = lotDimensions || { frontage: metrics.frontage, depth: metrics.depth };
-      }
+      const row = boundaryResult.rows[0];
+      landArea = landArea || row.parcel_area_sf || 0;
     }
 
     const zoningResult = await pool.query(

@@ -265,10 +265,10 @@ router.get('/validation/errors', async (req, res) => {
     const result = await pool.query(`
       SELECT 
         vr.*,
-        p.property_name,
-        p.address
+        COALESCE(p.name, '') AS property_name,
+        COALESCE(p.address_line1, '') AS address
       FROM validation_results vr
-      JOIN properties p ON vr.property_id = p.id
+      JOIN properties p ON vr.property_id = p.id::text
       WHERE vr.percentage_error >= $1
       AND vr.is_outlier = FALSE
       ORDER BY vr.created_at DESC

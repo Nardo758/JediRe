@@ -23,7 +23,7 @@ router.post('/deals/:dealId/notes', async (req: Request, res: Response) => {
     const pool = getPool();
     const { dealId } = req.params;
     const { title, content, content_html, tags, category, pinned } = req.body;
-    const userId = (req as any).user?.id || 'system';
+    const userId = (req as any).user?.userId || (req as any).user?.id;
     const userName = (req as any).user?.name || 'System User';
     const result = await pool.query(
       `INSERT INTO deal_notes (deal_id, author_id, author_name, title, content, content_html, tags, category, pinned)
@@ -83,13 +83,14 @@ router.post('/deals/:dealId/activity', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const { dealId } = req.params;
-    const { activity_type, module_name, title, description, changes } = req.body;
-    const userId = (req as any).user?.id || 'system';
+    const { action_type, activity_type, module_name, title, description, changes } = req.body;
+    const userId = (req as any).user?.userId || (req as any).user?.id;
     const userName = (req as any).user?.name || 'System User';
+    const actionType = action_type || activity_type || 'update';
     const result = await pool.query(
-      `INSERT INTO deal_activity (deal_id, activity_type, module_name, user_id, user_name, title, description, changes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [dealId, activity_type, module_name, userId, userName, title, description, changes ? JSON.stringify(changes) : null]
+      `INSERT INTO deal_activity (deal_id, action_type, entity_type, user_id, description, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [dealId, actionType, module_name || 'general', userId, description || title, changes ? JSON.stringify(changes) : null]
     );
     res.json(result.rows[0]);
   } catch (err: any) {

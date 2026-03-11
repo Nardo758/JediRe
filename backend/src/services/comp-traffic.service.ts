@@ -135,7 +135,7 @@ export class CompTrafficService {
         COALESCE(tcs.data_sources, '[]'::jsonb) AS data_sources,
         (tcs.property_id = $${paramIdx}) AS is_subject
       FROM traffic_comp_snapshots tcs
-      LEFT JOIN properties p ON p.id = tcs.property_id
+      LEFT JOIN properties p ON p.id::text = tcs.property_id
       LEFT JOIN property_website_analytics pwa ON pwa.property_id = tcs.property_id
         AND pwa.period_end = (SELECT MAX(period_end) FROM property_website_analytics WHERE property_id = tcs.property_id)
       LEFT JOIN property_visibility pv ON pv.property_id = tcs.property_id
@@ -360,7 +360,7 @@ export class CompTrafficService {
          FROM property_ga_connections pgc
          INNER JOIN traffic_comp_snapshots tcs
            ON tcs.property_id = pgc.property_id AND tcs.trade_area_id = $1
-         LEFT JOIN properties p ON p.id = pgc.property_id
+         LEFT JOIN properties p ON p.id::text = pgc.property_id
          LEFT JOIN property_website_analytics pwa
            ON pwa.property_id = pgc.property_id
            AND pwa.is_comp_proxy = false
