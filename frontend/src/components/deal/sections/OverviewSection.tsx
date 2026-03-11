@@ -659,7 +659,7 @@ interface DevOverviewProps {
 }
 
 const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile }) => {
-  const { siteData, canonicalData } = useDealModule();
+  const { siteData, canonicalData, assumptions, computedReturns } = useDealModule();
   const zoningStore = useZoningModuleStore();
   const { comps: unitMixComps, program: unitMixProgram, zoning: unitMixZoning, loading: unitMixLoading } = useUnitMixIntelligence(deal?.id, deal?.tradeAreaId);
 
