@@ -739,21 +739,37 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
         }
       }
 
-      if (projects.length === 0) {
-        const codePrefix = currentCode.replace(/-\d+$/, '').replace(/-[A-Z]$/, '');
-        if (codePrefix !== currentCode) {
-          const prefixResult = await pool.query(
-            `SELECT ${benchmarkFields}
+      const codePrefix = currentCode.replace(/-\d+[A-Z]?$/, '').replace(/-[A-Z]$/, '');
+      if (codePrefix !== currentCode) {
+        const exactAddresses = new Set(projects.map((p: any) => (p.address || '').toUpperCase()));
+        const prefixQuery = state
+          ? `SELECT ${benchmarkFields}
              FROM benchmark_projects
-             WHERE zoning_to LIKE $1 AND density_achieved IS NOT NULL AND density_achieved > 0
-             AND density_achieved < 500 AND land_acres > 0.01
-             ${state ? 'AND UPPER(state) = UPPER($2)' : ''}
+             WHERE zoning_to LIKE $1 AND zoning_to != $2
+               AND density_achieved IS NOT NULL AND density_achieved > 0
+               AND density_achieved < 500 AND land_acres > 0.01
+               AND UPPER(state) = UPPER($3)
              ORDER BY density_achieved DESC
-             LIMIT 20`,
-            state ? [`${codePrefix}%`, state] : [`${codePrefix}%`]
-          );
-          projects = prefixResult.rows;
-          searchScope = projects.length > 0 ? 'state' : null;
+             LIMIT 20`
+          : `SELECT ${benchmarkFields}
+             FROM benchmark_projects
+             WHERE zoning_to LIKE $1 AND zoning_to != $2
+               AND density_achieved IS NOT NULL AND density_achieved > 0
+               AND density_achieved < 500 AND land_acres > 0.01
+             ORDER BY density_achieved DESC
+             LIMIT 20`;
+        const prefixResult = await pool.query(
+          prefixQuery,
+          state ? [`${codePrefix}%`, currentCode, state] : [`${codePrefix}%`, currentCode]
+        );
+        const newFamilyProjects = prefixResult.rows.filter(
+          (p: any) => !exactAddresses.has((p.address || '').toUpperCase())
+        );
+        if (projects.length === 0 && newFamilyProjects.length > 0) {
+          projects = newFamilyProjects;
+          searchScope = 'state';
+        } else if (newFamilyProjects.length > 0) {
+          projects = [...projects, ...newFamilyProjects];
         }
       }
     }
@@ -918,7 +934,14 @@ router.get('/deals/:dealId/density-benchmarks', async (req: Request, res: Respon
       totalEntitlementDays: p.total_entitlement_days ? parseInt(p.total_entitlement_days) : null,
       docketNumber: p.docket_number || null,
       ordinanceUrl: p.ordinance_url || null,
-      sourceUrl: p.source_url || null,
+      sourceUrl: (() => {
+        const url: string | null = p.source_url || null;
+        if (!url) return null;
+        // Suppress raw ArcGIS REST service endpoint URLs (not user-facing pages)
+        if (/\/rest\/services\//i.test(url) && /\/MapServer\/\d+$/i.test(url)) return null;
+        if (/\/arcgis\/rest\//i.test(url)) return null;
+        return url;
+      })(),
       matchType,
       similarityScore: computeSimilarity(p),
     });

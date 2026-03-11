@@ -376,10 +376,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         if (profileData.profile?.base_district_code && profileData.profile?.municipality) {
           try {
             const municipalityId = `${(profileData.profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profileData.profile.state || 'ga').toLowerCase()}`;
-            const municodeRes = await apiClient.get('/api/v1/municode/resolve', {
-              params: { municipality: municipalityId, section: profileData.profile.base_district_code },
-            });
-            if (municodeRes.data?.url) setMunicodeUrl(municodeRes.data.url);
+            const municodeRes = await apiClient.get(`/api/v1/municode/district/${municipalityId}/${encodeURIComponent(profileData.profile.base_district_code)}`);
+            if (municodeRes.data?.municodeUrl) setMunicodeUrl(municodeRes.data.municodeUrl);
           } catch {}
         }
       }
