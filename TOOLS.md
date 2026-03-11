@@ -34,7 +34,7 @@ Authorization: Bearer 69295404e382acd00de4facdaa053fd20ae0a1cf15dc63c0b8a55cffc0
 2. **Commands:**
    ```bash
    POST /api/v1/clawdbot/command
-   Body: {"command": "get_deals|get_deal|run_analysis|system_stats|recent_errors"}
+   Body: {"command": "<command_name>", "params": { ... }}
    ```
 
 3. **Queries:**
@@ -43,12 +43,22 @@ Authorization: Bearer 69295404e382acd00de4facdaa053fd20ae0a1cf15dc63c0b8a55cffc0
    Body: {"query": "status|deals_count|recent_errors"}
    ```
 
+**Commands Reference:**
+
+| Command | Params | Example |
+|---------|--------|---------|
+| `get_deals` | _(none)_ | `{"command": "get_deals"}` |
+| `get_deal` | `{"dealId": "..."}` | `{"command": "get_deal", "params": {"dealId": "e044db04-..."}}` |
+| `run_analysis` | `{"dealId": "..."}` | `{"command": "run_analysis", "params": {"dealId": "e044db04-..."}}` |
+| `system_stats` | _(none)_ | `{"command": "system_stats"}` |
+| `recent_errors` | _(none)_ | `{"command": "recent_errors"}` |
+
 **Example Usage:**
 ```bash
 curl -X POST https://381d5707-51e5-4d3d-b340-02537a082e98-00-2gk8jsdbkwoy5.worf.replit.dev/api/v1/clawdbot/command \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer 69295404e382acd00de4facdaa053fd20ae0a1cf15dc63c0b8a55cffc0e088b6" \
-  -d '{"command": "get_deals"}'
+  -d '{"command": "get_deal", "params": {"dealId": "e044db04-439b-4442-82df-b36a840f2fd8"}}'
 ```
 
 **Key Deals:**
@@ -56,10 +66,6 @@ curl -X POST https://381d5707-51e5-4d3d-b340-02537a082e98-00-2gk8jsdbkwoy5.worf.
   - Address: 1950 Piedmont Circle NE, Atlanta, GA 30324
   - Multifamily with parking structure
   - 3D design requirements documented in: `/home/leon/clawd/jedire-3d-design-requirements.md`
-
-**Known Issues:**
-- `get_deal` command has SQL error (missing column `p.address_line2`)
-- Use `get_deals` + filter by name instead
 
 ---
 

@@ -114,7 +114,7 @@ export class CompSetService {
     }
 
     if (vintage_range) {
-      filters.push(`t.year_built >= $7 AND t.year_built <= $8`);
+      filters.push(`t.year_built::integer >= $7 AND t.year_built::integer <= $8`);
     }
 
     // 4. Spatial query for comps within radius

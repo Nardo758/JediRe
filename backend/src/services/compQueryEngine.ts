@@ -94,8 +94,8 @@ function buildParameterizedWhere(params: CompSearchParams, startIdx: number = 1)
   if (params.productType) { conditions.push(`product_type = $${idx++}`); values.push(params.productType); }
   if (params.minUnits != null) { conditions.push(`total_units >= $${idx++}`); values.push(params.minUnits); }
   if (params.maxUnits != null) { conditions.push(`total_units <= $${idx++}`); values.push(params.maxUnits); }
-  if (params.minYearBuilt != null) { conditions.push(`year_built >= $${idx++}`); values.push(params.minYearBuilt); }
-  if (params.maxYearBuilt != null) { conditions.push(`year_built <= $${idx++}`); values.push(params.maxYearBuilt); }
+  if (params.minYearBuilt != null) { conditions.push(`year_built::integer >= $${idx++}`); values.push(params.minYearBuilt); }
+  if (params.maxYearBuilt != null) { conditions.push(`year_built::integer <= $${idx++}`); values.push(params.maxYearBuilt); }
   if (params.minRent != null) { conditions.push(`t12_avg_rent >= $${idx++}`); values.push(params.minRent); }
   if (params.maxRent != null) { conditions.push(`t12_avg_rent <= $${idx++}`); values.push(params.maxRent); }
   if (params.minOccupancy != null) { conditions.push(`t12_avg_occupancy >= $${idx++}`); values.push(params.minOccupancy); }

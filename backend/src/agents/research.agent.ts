@@ -203,10 +203,9 @@ export class ResearchAgent {
 
     // Query existing zoning data from our database
     const result = await query(
-      `SELECT zd.*, zr.*
+      `SELECT zd.*
        FROM properties p
        JOIN zoning_districts zd ON zd.id = p.zoning_district_id
-       LEFT JOIN zoning_rules zr ON zr.district_id = zd.id
        WHERE p.address_line1 ILIKE $1
        LIMIT 1`,
       [`%${address.split(',')[0].trim()}%`]

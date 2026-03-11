@@ -110,7 +110,10 @@ class ClawdbotWebhook {
     }
 
     try {
-      const payloadString = JSON.stringify(payload);
+      const payloadString = JSON.stringify(payload, (key, value) => {
+        if (key === 'request' || key === 'response' || key === 'req' || key === 'res' || key === 'socket' || key === 'agent') return undefined;
+        return value;
+      });
       const signature = this.generateSignature(payloadString);
       
       const headers: Record<string, string> = {

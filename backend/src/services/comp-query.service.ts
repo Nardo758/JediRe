@@ -96,13 +96,13 @@ class CompQueryService {
     }
 
     if (params.yearBuiltMin) {
-      conditions.push(`year_built >= $${paramIdx}`);
+      conditions.push(`year_built::integer >= $${paramIdx}`);
       queryParams.push(safeNum(params.yearBuiltMin));
       paramIdx++;
     }
 
     if (params.yearBuiltMax) {
-      conditions.push(`year_built <= $${paramIdx}`);
+      conditions.push(`year_built::integer <= $${paramIdx}`);
       queryParams.push(safeNum(params.yearBuiltMax));
       paramIdx++;
     }
