@@ -206,11 +206,29 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   }
 
   if (tradeArea.length < 5) {
+    const stateAbbrevMap: Record<string, string> = {
+      'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA','Colorado':'CO',
+      'Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA','Hawaii':'HI','Idaho':'ID',
+      'Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS','Kentucky':'KY','Louisiana':'LA',
+      'Maine':'ME','Maryland':'MD','Massachusetts':'MA','Michigan':'MI','Minnesota':'MN','Mississippi':'MS',
+      'Missouri':'MO','Montana':'MT','Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ',
+      'New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK',
+      'Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',
+      'Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT','Virginia':'VA','Washington':'WA',
+      'West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY',
+    };
+    const stateAbbrMatch = dealAddress.match(/,\s*(\w{2})\s+\d{5}/)?.[1]?.toUpperCase();
+    const stateFullMatch = dealAddress.match(/,\s*([A-Za-z\s]+?)\s+\d{5}/)?.[1]?.trim();
+    const dealState = stateAbbrMatch && stateAbbrMatch.length === 2 ? stateAbbrMatch
+      : stateFullMatch ? (stateAbbrevMap[stateFullMatch] || stateFullMatch.substring(0, 2).toUpperCase())
+      : null;
+
     const dealCountyResult = await pool.query(`
       SELECT pr.county FROM property_records pr
-      WHERE pr.city ILIKE $1 AND pr.county IS NOT NULL
+      WHERE (pr.city ILIKE $1 OR pr.state = $2) AND pr.county IS NOT NULL AND pr.units >= 20
+      ORDER BY CASE WHEN pr.city ILIKE $1 THEN 0 ELSE 1 END
       LIMIT 1
-    `, [dealCity || '%']);
+    `, [dealCity || '__NONE__', dealState || '__NONE__']);
     const dealCounty = dealCountyResult.rows[0]?.county || null;
 
     const countyResult = dealCounty ? await pool.query(`
