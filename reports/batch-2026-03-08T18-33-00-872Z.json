@@ -1,0 +1,52 @@
+[
+  {
+    "dealId": "eaabeb9f-830e-44f9-a923-56679ad0329d",
+    "dealName": "Highlands at Satellite",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "ab17f229-8b9e-4628-8126-76729ef1e2ee",
+    "dealName": "Inman Park Multifamily",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "6d6861b9-0e5f-4076-bfcb-3a859e8cdee8",
+    "dealName": "Westside Retail Center",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",
+    "dealName": "Sandy Springs Office Park",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "5191737b-79f5-4b8d-b1c0-9c33c919edda",
+    "dealName": "Downtown Office Conversion",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "e044db04-439b-4442-82df-b36a840f2fd8",
+    "dealName": "Atlanta Development ",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "2dd18810-6c97-4812-9406-99e58fbdb652",
+    "dealName": "Josh's deal ",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "4f6115a8-499f-426b-a3f0-b1c988cf8d02",
+    "dealName": "East Atlanta Village Townhomes",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "5ef5c201-afbb-4c43-9d7b-9c160fb34d18",
+    "dealName": "Grant Park Adaptive Reuse",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  },
+  {
+    "dealId": "fcaa546f-f082-432d-85b5-eb496ebd435b",
+    "dealName": "Decatur Station Mixed-Use",
+    "error": "Cannot read properties of undefined (reading 'task')"
+  }
+]

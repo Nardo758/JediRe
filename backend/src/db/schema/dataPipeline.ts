@@ -304,6 +304,30 @@ export const proformaSnapshotsRelations = relations(proformaSnapshots, ({ one })
   }),
 }));
 
+export const dealLeaseTransactions = pgTable('deal_lease_transactions', {
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  dealId: uuid('deal_id').notNull(),
+  unitNumber: varchar('unit_number', { length: 20 }),
+  unitType: varchar('unit_type', { length: 30 }),
+  sqft: integer('sqft'),
+  leaseType: varchar('lease_type', { length: 20 }).notNull(),
+  leaseStart: date('lease_start'),
+  marketRent: numeric('market_rent', { precision: 10, scale: 2 }),
+  priorRent: numeric('prior_rent', { precision: 10, scale: 2 }),
+  newRent: numeric('new_rent', { precision: 10, scale: 2 }),
+  rentChangeDollar: numeric('rent_change_dollar', { precision: 10, scale: 2 }),
+  rentChangePct: numeric('rent_change_pct', { precision: 7, scale: 4 }),
+  lossToLease: numeric('loss_to_lease', { precision: 10, scale: 2 }),
+  lossToLeasePct: numeric('loss_to_lease_pct', { precision: 7, scale: 4 }),
+  rentPsf: numeric('rent_psf', { precision: 7, scale: 2 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  dealIdx: index('idx_lease_tx_deal').on(table.dealId),
+  leaseStartIdx: index('idx_lease_tx_start').on(table.leaseStart),
+  unitTypeIdx: index('idx_lease_tx_unit_type').on(table.unitType),
+  typeIdx: index('idx_lease_tx_type').on(table.leaseType),
+}));
+
 export type Msa = typeof msas.$inferSelect;
 export type NewMsa = typeof msas.$inferInsert;
 export type Submarket = typeof submarkets.$inferSelect;
@@ -319,3 +343,5 @@ export type ProformaTemplate = typeof proformaTemplates.$inferSelect;
 export type NewProformaTemplate = typeof proformaTemplates.$inferInsert;
 export type ProformaSnapshot = typeof proformaSnapshots.$inferSelect;
 export type NewProformaSnapshot = typeof proformaSnapshots.$inferInsert;
+export type DealLeaseTransaction = typeof dealLeaseTransactions.$inferSelect;
+export type NewDealLeaseTransaction = typeof dealLeaseTransactions.$inferInsert;

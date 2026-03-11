@@ -213,6 +213,7 @@ export const MainLayout: React.FC = () => {
                     }}
                     onShowOnMap={handleShowOnMap}
                   />
+
                 </div>
 
                 {/* INTELLIGENCE */}

@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
-import { MapPage } from './pages/MapPage';
+import { PageLoadingFallback } from './components/fallbacks/PageLoadingFallback';
 import { Dashboard } from './pages/Dashboard';
 import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
@@ -11,7 +11,6 @@ import { DealView } from './pages/DealView';
 import { DealPage } from './pages/DealPage';
 import { DealPageEnhanced } from './pages/DealPageEnhanced';
 import { CreateDealPage } from './pages/CreateDealPage';
-import { Design3DPage } from './pages/Design3DPage.updated';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
 import { NewsIntelligencePage } from './pages/NewsIntelligencePage';
@@ -20,8 +19,12 @@ import { ReportsPage } from './pages/ReportsPage';
 import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { AssetsOwnedPage } from './pages/AssetsOwnedPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+
+// Lazy-load map-heavy components to reduce initial bundle size
+const MapPage = lazy(() => import('./pages/MapPage').then(m => ({ default: m.MapPage })));
+const Design3DPage = lazy(() => import('./pages/Design3DPage.updated').then(m => ({ default: m.Design3DPage })));
+const AssetsOwnedPage = lazy(() => import('./pages/AssetsOwnedPage').then(m => ({ default: m.AssetsOwnedPage })));
 import { ModulesPage } from './pages/settings/ModulesPage';
 import { ModuleLibrariesPage } from './pages/settings/ModuleLibrariesPage';
 import { ModuleLibraryDetailPage } from './pages/settings/ModuleLibraryDetailPage';
@@ -43,6 +46,7 @@ import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
+import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
 import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
 import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
@@ -79,7 +83,11 @@ function AppContent() {
         
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/map" element={<MapPage />} />
+          <Route path="/map" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <MapPage />
+            </Suspense>
+          } />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
           <Route path="/dashboard/email" element={<EmailPage />} />
@@ -95,7 +103,12 @@ function AppContent() {
           <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/news" element={<NewsPage />} />
-          <Route path="/assets-owned" element={<AssetsOwnedPage />} />
+          <Route path="/assets-owned" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <AssetsOwnedPage />
+            </Suspense>
+          } />
+          <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
@@ -105,6 +118,13 @@ function AppContent() {
           <Route path="/admin/command-center" element={<CommandCenterPage />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
+          <Route path="/admin/intelligence" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              {React.createElement(
+                React.lazy(() => import('./pages/admin/IntelligenceDashboard').then(m => ({ default: m.IntelligenceDashboard })))
+              )}
+            </Suspense>
+          } />
           
           {/* Market Research Redirects */}
           <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
@@ -130,7 +150,11 @@ function AppContent() {
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
-          <Route path="/deals/:dealId/design" element={<Design3DPage />} />
+          <Route path="/deals/:dealId/design" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <Design3DPage />
+            </Suspense>
+          } />
           <Route path="/deals/kanban" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/grid" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />

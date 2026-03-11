@@ -1,0 +1,350 @@
+# Florida City-Level GIS Zoning Connectors
+## JEDI RE — Zoning Agent Integration Reference
+
+**Date:** February 26, 2026  
+**Status:** Research complete — 10 of 14 cities have public ArcGIS REST endpoints for zoning data
+
+---
+
+## Summary
+
+Out of 14 FL cities that were seeded but lacked dedicated zoning endpoints, **10 have publicly accessible ArcGIS REST services** that can be integrated using your existing ArcGIS connector pattern. The remaining 4 either lack public REST endpoints or require alternative approaches.
+
+| Status | Count | Cities |
+|--------|-------|--------|
+| ✅ Direct ArcGIS REST endpoint found | 10 | Miami, Hollywood, Tampa, St. Petersburg, Hialeah, West Palm Beach, Coral Gables, Cape Coral, Miami Beach, Boca Raton |
+| ⚠️ County fallback + Municode | 3 | Orlando, Pompano Beach, Clearwater |
+| ⏸️ Already covered by county | 1 | Lakeland (Polk County verified) |
+
+---
+
+## ✅ TIER 1 — Direct City Zoning Endpoints (Ready to Integrate)
+
+### 1. City of Miami — Miami 21 Zoning
+**Priority: CRITICAL** — Highest deal volume in FL
+
+| Field | Value |
+|-------|-------|
+| **Server** | `gis.miami.gov` (also `gis.miamigov.com`) |
+| **Zoning Endpoint** | `https://gis.miami.gov/gis/rest/services/Zoning/ZoningMiami21/MapServer` |
+| **Primary Zoning Layer** | Layer 5 — "Primary Zoning - Miami 21" |
+| **Legacy Zoning Layer** | Layer 4 — "11000 Primary Zoning - Not Valid" (pre-Miami 21) |
+| **TOD Areas Layer** | Layer 6 — "Transit Oriented Development Areas - Miami 21" |
+| **Key Fields** | `M21_ZONE`, `Map_Code`, `Transect`, `Transect_Desc`, `Bldg_Height`, `Intensity`, `FLR`, `Enact` |
+| **MaxRecordCount** | 2,000 (Layer 5: 1,000) |
+| **Query Formats** | JSON, geoJSON, PBF |
+| **Spatial Reference** | 2881 (NAD83 FL East) |
+| **Copyright** | City of Miami, Planning Department © 2020 |
+
+**Integration Notes:**
+- Miami 21 is a form-based code using transect zones (T1–T6, CI, CS, D, etc.)
+- The `Transect` and `Bldg_Height` fields map directly to your Dev Capacity calculations
+- `FLR` field = Floor Lot Ratio, critical for density analysis
+- Legacy layer (11000) uses `PZONE` field for pre-2010 zoning lookups
+- Open Data hub: `datahub-miamigis.opendata.arcgis.com`
+
+---
+
+### 2. City of Hollywood
+**Priority: HIGH** — Active development corridor, Broward County
+
+| Field | Value |
+|-------|-------|
+| **FeatureServer** | `https://maps.hollywoodfl.org/arcgis/rest/services/ZONING/FeatureServer` |
+| **MapServer** | `https://maps.hollywoodfl.org/arcgis/rest/services/Planning/Zoning/MapServer` |
+| **Zoning Layer (FS)** | Layer 0 — `gishw.DBO.Zoning_Hollywood` |
+| **Zoning Layer (MS)** | Layer 5 — Zoning |
+| **Key Field** | `Zoning` |
+| **MaxRecordCount** | 2,000 |
+| **Query Formats** | JSON, geoJSON, PBF |
+| **Spatial Reference** | 4326 (WGS84) on FeatureServer; 2881 on MapServer |
+
+**Integration Notes:**
+- FeatureServer is preferred (supports direct queries, WGS84 native)
+- City also uses Gridics platform for public-facing zoning lookups
+- MapServer has additional planning layers beyond just zoning
+
+---
+
+### 3. City of Tampa
+**Priority: HIGH** — Already have Hillsborough County; this adds city-level precision
+
+| Field | Value |
+|-------|-------|
+| **Primary Endpoint** | `https://arcgis.tampagov.net/arcgis/rest/services/OpenData/Planning/MapServer/28` |
+| **TPC Zoning** | `https://gis.tpcmaps.org/arcgis/rest/services/Rezoning/Zoning/MapServer/1` |
+| **Layer Name** | "Zoning District" (ID: 28) / "TA Zoning" (ID: 1) |
+| **Key Field** | `ZONING` |
+| **MaxRecordCount** | 1,000–2,000 |
+| **Query Formats** | JSON, geoJSON, PBF |
+| **Spatial Reference** | 102100/3857 (Web Mercator) |
+
+**Integration Notes:**
+- Tampa GeoHub: `city-tampa.opendata.arcgis.com`
+- ArcGIS server root: `arcgis.tampagov.net/arcgis/rest/services/` — extensive folder structure with OpenData, Boundary, Neighborhoods, etc.
+- TPC (Tampa Planning Commission) endpoint has rezoning data as well
+
+---
+
+### 4. City of St. Petersburg
+**Priority: HIGH** — Pinellas County complement
+
+| Field | Value |
+|-------|-------|
+| **FeatureServer** | `https://services.arcgis.com/lQySeXwbBg53XWDi/ArcGIS/rest/services/zoning_districts/FeatureServer` |
+| **MaxRecordCount** | 2,000 |
+| **Query Formats** | JSON |
+| **GeoHub** | `geohub-csp.opendata.arcgis.com` |
+
+**Integration Notes:**
+- Hosted on ArcGIS Online (services.arcgis.com), not a city-owned server
+- Stable public endpoint, standard ArcGIS REST connector works
+- GeoHub has additional datasets for future land use, overlays
+
+---
+
+### 5. City of Hialeah
+**Priority: MEDIUM** — Dense Miami-Dade municipality
+
+| Field | Value |
+|-------|-------|
+| **Zoning MapServer** | `https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning/MapServer` |
+| **Zoning Layers** | `https://hgis.hialeahfl.gov/arcgis/rest/services/Community_Development/Zoning_Layers/MapServer` |
+| **Server Root** | `https://hgis.hialeahfl.gov/arcgis/rest/services/` |
+| **Other Folders** | EnerGov, BaseMaps, Transit, Environmental, Aerials |
+
+**Integration Notes:**
+- `Zoning_Layers` MapServer has sub-layers including NBD (Neighborhood Business District) at Layer 5
+- Server also hosts EnerGov/Properties for permit data
+- Older ArcGIS version — verify JSON query support on each layer
+
+---
+
+### 6. City of West Palm Beach
+**Priority: MEDIUM** — Palm Beach County complement
+
+| Field | Value |
+|-------|-------|
+| **Server Root** | `https://wpbgisportal.wpb.org/server/rest/services/` |
+| **Parcels (with zoning)** | `https://wpbgisportal.wpb.org/server/rest/services/Parcel/Parcels_New/FeatureServer` |
+| **Planning Folder** | `https://wpbgisportal.wpb.org/server/rest/services/Planning/` |
+| **Open Data Portal** | `gisportal-wpbgis.opendata.arcgis.com` |
+| **Zoning Dataset** | "Zoning" and "Zoning Districts" available on Open Data Portal |
+| **MaxRecordCount** | 2,000 |
+| **Spatial Reference** | 2881 (NAD83 FL East) |
+
+**Integration Notes:**
+- Parcel FeatureServer includes zoning classification fields from Palm Beach County
+- Planning folder likely has dedicated zoning MapServer (explore directory)
+- Open Data Portal has both "Zoning" and "Zoning Districts" as separate datasets with GeoService API links
+
+---
+
+### 7. City of Coral Gables
+**Priority: MEDIUM** — High-value market in Miami-Dade
+
+| Field | Value |
+|-------|-------|
+| **Zoning Dataset** | `https://cg-hubdev-cggis.opendata.arcgis.com/datasets/cgzoning` |
+| **Zoning View** | `https://cg-hubdev-cggis.opendata.arcgis.com/datasets/zoning-view` |
+| **Smart City Hub** | `coral-gables-smart-city-hub-2-cggis.hub.arcgis.com` |
+| **Planning Hub** | `coral-gables-planning-cggis.hub.arcgis.com` |
+| **GIS Server** | `cggisw.coralgables.com` |
+
+**Integration Notes:**
+- Zoning data available through ArcGIS Online Hub with GeoService API endpoints
+- Access the underlying FeatureServer URL from the Hub dataset page's API tab
+- City also publishes to Gridics platform: `map.gridics.com/us/fl/coral-gables`
+- Very active Smart City program — data likely well-maintained
+
+---
+
+### 8. City of Cape Coral
+**Priority: MEDIUM** — Lee County complement
+
+| Field | Value |
+|-------|-------|
+| **IMS MapServer** | `https://capeims.capecoral.gov/arcgis/rest/services/IMS/City_of_Cape_Coral_IMS_AGOL/MapServer` |
+| **Open Data Portal** | Available via city website |
+
+**Integration Notes:**
+- Multi-layer MapServer includes zoning among many city layers
+- Need to identify the specific layer ID for zoning within the IMS service
+- Lee County data (already verified) provides fallback
+- City uses ESRI ArcGIS enterprise with replicated geodatabase
+
+---
+
+### 9. City of Miami Beach
+**Priority: MEDIUM** — High-value barrier island market
+
+| Field | Value |
+|-------|-------|
+| **Parcels MapServer** | `https://gis.miamibeachfl.gov/public/rest/services/gc/gc_ParcelsROW/MapServer` |
+| **Server Root** | `https://gis.miamibeachfl.gov/public/rest/services/` |
+| **Parcel Layer** | Layer 0 — Parcels |
+| **MaxRecordCount** | Not confirmed |
+| **Spatial Reference** | 102658/2236 (FL East) |
+
+**Integration Notes:**
+- Parcels layer confirmed accessible; parcel data may include zoning field
+- Server has `gc/` folder with multiple services — explore for dedicated zoning layer
+- EnerGov integration exists (gc_ParcelsROW is an EnerGov query map)
+- Recommend exploring full service directory: `/public/rest/services/gc/`
+- Fallback: Miami-Dade County zoning layer covers Miami Beach parcels
+
+---
+
+### 10. City of Boca Raton
+**Priority: MEDIUM** — Palm Beach County complement
+
+| Field | Value |
+|-------|-------|
+| **ArcGIS SQL Server** | `https://bocagis.ci.boca-raton.fl.us/arcgissql/rest/services/` |
+| **ArcGIS Portal** | `https://bocagis.ci.boca-raton.fl.us/arcgis/rest/services/` |
+| **Legacy Server** | `https://bocagis.ci.boca-raton.fl.us/gisweb/rest/services/` |
+| **Development App** | `https://bocagis.ci.boca-raton.fl.us/boca/development/` |
+| **Zoning Lookup App** | `https://bocagis.ci.boca-raton.fl.us/bocagis/apps/InformationLookup/` |
+
+**Integration Notes:**
+- Has three separate ArcGIS server instances (arcgissql, arcgis, gisweb)
+- Zoning data exists (powers their Information Lookup app) but specific REST layer not indexed in search
+- Recommend querying each server's service directory to find the zoning-specific MapServer/FeatureServer
+- Known folders: Municipal_Services, WaterSewer, Hosted
+- Fallback: Palm Beach County endpoint already verified
+
+---
+
+## ⚠️ TIER 2 — County Fallback + Municode Required
+
+### 11. City of Orlando
+**County:** Orange County (already verified — `ocgis4.ocfl.net`, Layer 66 = Zoning Outlines)
+
+| Field | Value |
+|-------|-------|
+| **Open Data Hub** | `orlando-open-data-orl.hub.arcgis.com` |
+| **GIS Server** | `gis.orlando.gov` |
+| **Data Portal** | `data.cityoforlando.net` (Socrata) |
+| **Zoning Maps** | PDF only at `gis.orlando.gov/PDF_Docs/PlanningMaps/ZoningMapSeries/` |
+
+**Integration Notes:**
+- No confirmed REST FeatureServer for city zoning found
+- Orange County Layer 66 covers Orlando parcels at the county level
+- ArcGIS Hub may have zoning data as a hosted feature layer (check Hub search)
+- Socrata data portal has permit data but unclear on zoning geometry
+- **Recommendation:** Use Orange County connector; add Municode for Orlando city-specific code interpretation
+
+---
+
+### 12. City of Pompano Beach
+**County:** Broward County (verified — Fort Lauderdale endpoint available)
+
+| Field | Value |
+|-------|-------|
+| **GIS Page** | `pompanobeachfl.gov/government/engineering/geographic-information-systems` |
+| **Zoning Map** | ArcGIS Online WebMap (ID: `80bf3f775fc04c2a81759dd53af01ceb`) — 2022 Unofficial |
+
+**Integration Notes:**
+- No dedicated ArcGIS REST endpoint found for city zoning
+- Zoning map is an ArcGIS Online WebMap, which may have an underlying FeatureServer
+- **To extract:** Try `https://www.arcgis.com/sharing/rest/content/items/80bf3f775fc04c2a81759dd53af01ceb?f=json` to find the service URL
+- **Recommendation:** Use Broward County / Fort Lauderdale connector; add Municode for Pompano-specific codes
+
+---
+
+### 13. City of Clearwater
+**County:** Pinellas County (verified — `egis.pinellas.gov`)
+
+| Field | Value |
+|-------|-------|
+| **ArcGIS Item** | `arcgis.com/home/item.html?id=856740e69fa94bc3916f46bc9a01b254` (Zoning layer) |
+| **County Coverage** | Pinellas County endpoint includes Clearwater municipality zoning |
+
+**Integration Notes:**
+- ArcGIS Online item exists for Clearwater zoning — extract FeatureServer URL from item metadata
+- Pinellas County connector already covers Clearwater at the county level
+- **Recommendation:** Use Pinellas County connector which includes per-municipality layers
+
+---
+
+### 14. City of Lakeland
+**County:** Polk County (verified — `gis.polk-county.net`)
+
+**Integration Notes:**
+- Polk County connector covers Lakeland
+- No city-specific endpoint search performed (low priority)
+- Polk County Layer 9 = Future Land Use 2030, covers Lakeland parcels
+
+---
+
+## Integration Priority Matrix
+
+| Priority | City | Approach | Estimated Effort |
+|----------|------|----------|-----------------|
+| 🔴 P0 | Miami | New city connector — Miami 21 MapServer | 2–3 hours |
+| 🔴 P0 | Tampa | New city connector — OpenData/Planning MapServer | 1–2 hours |
+| 🟠 P1 | Hollywood | New city connector — ZONING FeatureServer | 1–2 hours |
+| 🟠 P1 | St. Petersburg | New city connector — ArcGIS Online FeatureServer | 1 hour |
+| 🟠 P1 | West Palm Beach | New city connector — Planning services | 1–2 hours |
+| 🟡 P2 | Hialeah | New city connector — Community_Development MapServer | 1–2 hours |
+| 🟡 P2 | Coral Gables | New city connector — Hub dataset FeatureServer | 1–2 hours |
+| 🟡 P2 | Miami Beach | Explore gc/ folder for zoning layer | 1 hour (investigation) |
+| 🟡 P2 | Boca Raton | Explore 3 server instances for zoning layer | 1 hour (investigation) |
+| 🟡 P2 | Cape Coral | Identify zoning layer in IMS MapServer | 1 hour (investigation) |
+| 🟢 P3 | Orlando | County fallback (Orange County Layer 66) | Already done |
+| 🟢 P3 | Pompano Beach | County fallback (Broward) + extract WebMap service | Already done |
+| 🟢 P3 | Clearwater | County fallback (Pinellas) | Already done |
+| 🟢 P3 | Lakeland | County fallback (Polk County Layer 9) | Already done |
+
+---
+
+## Additional Data Sources Discovered
+
+### Miami-Dade County — County-Level Zoning (covers all MDC municipalities)
+- **Endpoint:** `https://gisweb.miamidade.gov/arcgis/rest/services/LandManagement/MD_Zoning/MapServer/1`
+- **Query Pattern:** `?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
+- **Update Frequency:** Weekly (Saturday)
+- **Use Case:** Fallback for any Miami-Dade municipality without a city-specific connector
+- **ETL Reference:** Uses `ogr2ogr` for direct GeoJSON download
+
+### ArcGIS Online Services (services.arcgis.com)
+- **MDC Hub:** `services.arcgis.com/8Pc9XBTAsYuxx9Ny/ArcGIS/rest/services/`
+- **St. Pete:** `services.arcgis.com/lQySeXwbBg53XWDi/ArcGIS/rest/services/`
+- **Note:** These are hosted on Esri's cloud infrastructure and are generally very stable
+
+---
+
+## Connector Pattern
+
+All endpoints use standard ArcGIS REST API patterns. Your existing connector handles:
+
+```
+GET {baseUrl}/{layerId}/query?
+  where=1=1
+  &outFields=*
+  &geometry={bbox}
+  &geometryType=esriGeometryEnvelope
+  &inSR=4326
+  &spatialRel=esriSpatialRelIntersects
+  &outSR=4326
+  &f=geojson
+  &resultRecordCount={maxRecords}
+```
+
+**Key variations to handle:**
+- Some servers use `MaxRecordCount: 1000` vs `2000` — implement pagination with `resultOffset`
+- Spatial references vary (2881, 4326, 3857) — always request `outSR=4326` for normalization
+- FeatureServer vs MapServer — prefer FeatureServer when both exist (supports editing/querying)
+- Some older servers may not support `geoJSON` format — fall back to `json` and convert
+
+---
+
+## Updated Platform Totals (After Integration)
+
+| Metric | Before | After (Projected) |
+|--------|--------|-------------------|
+| FL Counties Verified | 8 | 8 (no change) |
+| FL Cities with Direct Endpoints | 0 | 10 |
+| FL Cities with County Fallback | 14 | 4 |
+| Total FL Zoning Districts | 449 | ~800+ (estimated) |
+| Coverage of FL Deal Volume | ~60% | ~90%+ |

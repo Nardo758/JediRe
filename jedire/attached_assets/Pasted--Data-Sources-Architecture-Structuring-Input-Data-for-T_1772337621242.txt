@@ -1,0 +1,1571 @@
+# Data Sources Architecture
+## Structuring Input Data for Traffic Prediction Engine
+
+**Version:** 1.0  
+**Last Updated:** February 18, 2026  
+**Purpose:** Define how to organize, store, and maintain all data sources feeding the traffic prediction system
+
+---
+
+## Table of Contents
+
+1. [Data Sources Overview](#data-sources-overview)
+2. [Data Layer Architecture](#data-layer-architecture)
+3. [Property-Level Data](#property-level-data)
+4. [Market/Submarket Data](#marketsubmarket-data)
+5. [Infrastructure & Transportation Data](#infrastructure--transportation-data)
+6. [Demographic & Economic Data](#demographic--economic-data)
+7. [Third-Party API Integrations](#third-party-api-integrations)
+8. [Data Refresh Strategy](#data-refresh-strategy)
+9. [Data Quality & Validation](#data-quality--validation)
+10. [Database Schemas](#database-schemas)
+11. [ETL Pipelines](#etl-pipelines)
+
+---
+
+## Data Sources Overview
+
+### The Data Pyramid
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         TRAFFIC PREDICTION OUTPUT                       │
+│         (2,847 weekly walk-ins)                         │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────┐
+│         PREDICTION ENGINE                                │
+│  • Physical traffic calculation                         │
+│  • Market demand translation                            │
+│  • Supply-demand adjustments                            │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────┐
+│         DATA INTEGRATION LAYER                          │
+│  • Joins multiple data sources                          │
+│  • Calculates derived metrics                           │
+│  • Caches computed values                               │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────┐
+│         RAW DATA SOURCES                                │
+│                                                          │
+│  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ Property Data   │  │ Market Data     │             │
+│  │ • ADT           │  │ • Demand signals│             │
+│  │ • Frontage      │  │ • Growth rates  │             │
+│  │ • Location      │  │ • Supply/demand │             │
+│  └─────────────────┘  └─────────────────┘             │
+│                                                          │
+│  ┌─────────────────┐  ┌─────────────────┐             │
+│  │ Demographics    │  │ Infrastructure  │             │
+│  │ • Population    │  │ • Transit       │             │
+│  │ • Employment    │  │ • Roads         │             │
+│  │ • Income        │  │ • Parking       │             │
+│  └─────────────────┘  └─────────────────┘             │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Data Source Categories
+
+**1. PROPERTY-SPECIFIC DATA**
+- Physical attributes (frontage, setback, corner status)
+- Location data (lat/lng, address)
+- Property type and use
+- Size and configuration
+
+**2. LOCATION-BASED DATA**
+- Traffic counts (ADT)
+- Transit proximity
+- Pedestrian infrastructure
+- Parking availability
+
+**3. MARKET DATA**
+- Supply-demand ratios
+- Retail/office demand forecasts
+- Growth rates
+- Competition density
+
+**4. DEMOGRAPHIC DATA**
+- Population by distance rings
+- Employment density
+- Income levels
+- Daytime vs nighttime population
+
+**5. CONTEXTUAL DATA**
+- Weather patterns
+- Special events
+- Seasonal factors
+- Local market conditions
+
+---
+
+## Data Layer Architecture
+
+### Three-Tier Structure
+
+```sql
+-- TIER 1: RAW DATA (Source Systems)
+-- Never modified, append-only, versioned
+
+CREATE SCHEMA raw_data;
+
+-- TIER 2: CURATED DATA (Cleaned, validated, enriched)
+-- Business logic applied, ready for analytics
+
+CREATE SCHEMA curated_data;
+
+-- TIER 3: ANALYTICS DATA (Aggregated, denormalized)
+-- Optimized for queries, pre-calculated metrics
+
+CREATE SCHEMA analytics_data;
+```
+
+### Data Flow
+
+```
+External APIs → raw_data.* → ETL Process → curated_data.* → Analytics Engine → analytics_data.*
+                    ↓                              ↓                              ↓
+            Audit Logs                    Data Quality Checks           Prediction Engine
+```
+
+---
+
+## Property-Level Data
+
+### Core Property Table
+
+```sql
+-- curated_data.properties
+CREATE TABLE curated_data.properties (
+    -- Identity
+    property_id VARCHAR(50) PRIMARY KEY,
+    external_id VARCHAR(100),  -- CoStar ID, Zillow ID, etc.
+    address VARCHAR(255) NOT NULL,
+    city VARCHAR(100),
+    state VARCHAR(2),
+    zip_code VARCHAR(10),
+    county VARCHAR(100),
+    
+    -- Spatial
+    latitude DECIMAL(10, 8) NOT NULL,
+    longitude DECIMAL(11, 8) NOT NULL,
+    geom GEOMETRY(POINT, 4326),  -- PostGIS
+    
+    -- Property Characteristics
+    property_type VARCHAR(50),  -- retail, office, multifamily, mixed_use
+    property_subtype VARCHAR(50),
+    year_built INT,
+    total_sq_ft INT,
+    retail_sq_ft INT,
+    office_sq_ft INT,
+    residential_units INT,
+    
+    -- Physical Attributes (Critical for Traffic)
+    frontage_feet DECIMAL(8, 2),
+    setback_feet DECIMAL(8, 2),
+    is_corner BOOLEAN DEFAULT FALSE,
+    corner_type VARCHAR(20),  -- '2-way', '3-way', '4-way'
+    stories INT,
+    parking_spaces INT,
+    parking_type VARCHAR(50),  -- 'surface', 'garage', 'street', 'mixed'
+    
+    -- Visibility Factors
+    signage_visibility_score INT,  -- 0-100
+    entrance_prominence_score INT,  -- 0-100
+    street_visibility_score INT,   -- 0-100
+    
+    -- Market Context
+    submarket_id VARCHAR(50),
+    msa_id VARCHAR(20),
+    trade_area_id VARCHAR(50),
+    
+    -- Ownership/Status
+    owner_name VARCHAR(255),
+    owner_type VARCHAR(50),
+    occupancy_status VARCHAR(20),
+    
+    -- Metadata
+    data_source VARCHAR(100),
+    data_quality_score DECIMAL(3, 2),  -- 0.00 to 1.00
+    last_verified_date DATE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    
+    -- Indexes
+    CONSTRAINT valid_coordinates CHECK (
+        latitude BETWEEN -90 AND 90 AND
+        longitude BETWEEN -180 AND 180
+    )
+);
+
+-- Spatial index for proximity queries
+CREATE INDEX idx_properties_geom ON curated_data.properties USING GIST(geom);
+
+-- Standard indexes
+CREATE INDEX idx_properties_submarket ON curated_data.properties(submarket_id);
+CREATE INDEX idx_properties_type ON curated_data.properties(property_type);
+CREATE INDEX idx_properties_location ON curated_data.properties(city, state, zip_code);
+```
+
+### Property Attributes Extension
+
+```sql
+-- For attributes that change frequently or are optional
+CREATE TABLE curated_data.property_attributes (
+    id SERIAL PRIMARY KEY,
+    property_id VARCHAR(50) REFERENCES curated_data.properties(property_id),
+    attribute_name VARCHAR(100) NOT NULL,
+    attribute_value TEXT,
+    attribute_type VARCHAR(20),  -- 'string', 'number', 'boolean', 'date'
+    effective_date DATE,
+    expires_date DATE,
+    data_source VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(property_id, attribute_name, effective_date)
+);
+
+CREATE INDEX idx_property_attributes_lookup ON curated_data.property_attributes(property_id, attribute_name);
+
+-- Examples of stored attributes:
+-- attribute_name: 'renovation_start_date', attribute_value: '2026-03-01'
+-- attribute_name: 'tenant_mix', attribute_value: '{"retail": 0.6, "food": 0.4}'
+-- attribute_name: 'anchor_tenant', attribute_value: 'Whole Foods'
+```
+
+---
+
+## Market/Submarket Data
+
+### Submarket Definitions
+
+```sql
+-- curated_data.submarkets
+CREATE TABLE curated_data.submarkets (
+    submarket_id VARCHAR(50) PRIMARY KEY,
+    submarket_name VARCHAR(255) NOT NULL,
+    msa_id VARCHAR(20) NOT NULL,
+    msa_name VARCHAR(100),
+    
+    -- Spatial boundary
+    boundary GEOMETRY(MULTIPOLYGON, 4326),
+    center_point GEOMETRY(POINT, 4326),
+    
+    -- Classification
+    submarket_type VARCHAR(50),  -- 'downtown', 'suburban', 'urban_core', 'edge_city'
+    walkability_score INT,  -- 0-100
+    transit_access_score INT,  -- 0-100
+    
+    -- Market characteristics
+    primary_use VARCHAR(50),  -- 'retail', 'office', 'residential', 'mixed'
+    market_tier VARCHAR(20),  -- 'primary', 'secondary', 'tertiary'
+    
+    -- Metadata
+    data_source VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_submarkets_boundary ON curated_data.submarkets USING GIST(boundary);
+CREATE INDEX idx_submarkets_msa ON curated_data.submarkets(msa_id);
+```
+
+### Market Demand Data (from Market Research Engine)
+
+```sql
+-- curated_data.market_demand
+CREATE TABLE curated_data.market_demand (
+    id SERIAL PRIMARY KEY,
+    submarket_id VARCHAR(50) REFERENCES curated_data.submarkets(submarket_id),
+    as_of_date DATE NOT NULL,
+    
+    -- Demand Signals
+    retail_demand_sf INT,  -- Square feet of retail demand
+    office_demand_sf INT,
+    apartment_demand_units INT,
+    restaurant_demand_count INT,
+    
+    -- Growth Rates (annualized)
+    population_growth_rate DECIMAL(5, 4),  -- 0.0340 = 3.4%
+    employment_growth_rate DECIMAL(5, 4),
+    income_growth_rate DECIMAL(5, 4),
+    foot_traffic_growth_rate DECIMAL(5, 4),
+    
+    -- Market Dynamics
+    foot_traffic_index INT,  -- Relative to MSA baseline of 100
+    supply_demand_ratio DECIMAL(5, 2),  -- >1.0 = undersupplied
+    retail_vacancy_rate DECIMAL(5, 4),
+    office_vacancy_rate DECIMAL(5, 4),
+    
+    -- Pricing
+    avg_retail_rent_psf DECIMAL(8, 2),
+    avg_office_rent_psf DECIMAL(8, 2),
+    avg_apartment_rent INT,
+    
+    -- Quality Metrics
+    confidence_score DECIMAL(3, 2),  -- 0.00 to 1.00
+    data_source VARCHAR(100),
+    model_version VARCHAR(20),
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(submarket_id, as_of_date)
+);
+
+CREATE INDEX idx_market_demand_submarket_date ON curated_data.market_demand(submarket_id, as_of_date DESC);
+```
+
+### Competition Density
+
+```sql
+-- Pre-calculated for performance
+CREATE TABLE analytics_data.property_competition (
+    property_id VARCHAR(50) PRIMARY KEY,
+    as_of_date DATE NOT NULL,
+    
+    -- Competitor counts by distance
+    competitors_500m INT,
+    competitors_1km INT,
+    competitors_2km INT,
+    
+    -- By type
+    retail_competitors_500m INT,
+    restaurant_competitors_500m INT,
+    anchor_competitors_1km INT,
+    
+    -- Competitive intensity score
+    competition_score INT,  -- 0-100, higher = more competitive
+    
+    -- Nearest competitor distance
+    nearest_competitor_id VARCHAR(50),
+    nearest_competitor_distance_m INT,
+    
+    calculated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## Infrastructure & Transportation Data
+
+### Traffic Counts (ADT)
+
+```sql
+-- raw_data.adt_counts
+-- Source: State DOT databases
+CREATE TABLE raw_data.adt_counts (
+    id SERIAL PRIMARY KEY,
+    
+    -- Source identification
+    source_system VARCHAR(50),  -- 'texas_dot', 'caltrans', etc.
+    station_id VARCHAR(100),
+    route_id VARCHAR(50),
+    
+    -- Location
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    geom GEOMETRY(POINT, 4326),
+    road_name VARCHAR(255),
+    city VARCHAR(100),
+    county VARCHAR(100),
+    
+    -- Traffic data
+    adt INT,  -- Average Daily Traffic
+    measurement_year INT,
+    directional_split VARCHAR(20),  -- 'balanced', 'northbound_heavy', etc.
+    northbound_adt INT,
+    southbound_adt INT,
+    eastbound_adt INT,
+    westbound_adt INT,
+    
+    -- Road characteristics
+    road_classification VARCHAR(50),  -- 'arterial', 'collector', 'local'
+    number_of_lanes INT,
+    functional_class VARCHAR(50),
+    
+    -- Metadata
+    data_source_url TEXT,
+    ingested_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_adt_geom ON raw_data.adt_counts USING GIST(geom);
+CREATE INDEX idx_adt_year ON raw_data.adt_counts(measurement_year);
+
+-- curated_data.property_traffic_context
+-- Nearest ADT stations for each property (pre-calculated)
+CREATE TABLE curated_data.property_traffic_context (
+    property_id VARCHAR(50) PRIMARY KEY,
+    
+    -- Primary road (closest)
+    primary_adt_station_id VARCHAR(100),
+    primary_adt INT,
+    primary_adt_distance_m INT,
+    primary_road_name VARCHAR(255),
+    primary_road_classification VARCHAR(50),
+    
+    -- Secondary road (if corner property)
+    secondary_adt_station_id VARCHAR(100),
+    secondary_adt INT,
+    secondary_adt_distance_m INT,
+    secondary_road_name VARCHAR(255),
+    
+    -- Metadata
+    last_updated DATE,
+    adt_measurement_year INT
+);
+```
+
+### Transit Infrastructure
+
+```sql
+-- curated_data.transit_stations
+CREATE TABLE curated_data.transit_stations (
+    station_id VARCHAR(100) PRIMARY KEY,
+    station_name VARCHAR(255),
+    
+    -- Location
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    geom GEOMETRY(POINT, 4326),
+    address VARCHAR(255),
+    
+    -- Transit type
+    transit_type VARCHAR(50),  -- 'metro', 'bus', 'light_rail', 'commuter_rail'
+    lines_served TEXT[],  -- Array of line names
+    
+    -- Ridership
+    avg_daily_boardings INT,
+    avg_weekday_boardings INT,
+    avg_weekend_boardings INT,
+    ridership_year INT,
+    
+    -- Access
+    parking_spaces INT,
+    bike_parking BOOLEAN,
+    kiss_and_ride BOOLEAN,
+    
+    -- Metadata
+    operator VARCHAR(100),
+    data_source VARCHAR(100),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_transit_geom ON curated_data.transit_stations USING GIST(geom);
+
+-- Pre-calculated property-to-transit proximity
+CREATE TABLE analytics_data.property_transit_access (
+    property_id VARCHAR(50) PRIMARY KEY,
+    
+    -- Nearest station
+    nearest_station_id VARCHAR(100),
+    nearest_station_name VARCHAR(255),
+    distance_meters INT,
+    walking_time_minutes INT,
+    
+    -- Station details
+    station_type VARCHAR(50),
+    daily_ridership INT,
+    
+    -- Stations within walking distance
+    stations_within_800m INT,  -- Half mile
+    stations_within_1600m INT,  -- One mile
+    
+    -- Transit access score
+    transit_score INT,  -- 0-100
+    
+    calculated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Pedestrian Infrastructure
+
+```sql
+-- curated_data.sidewalk_quality
+-- Source: City GIS, OpenStreetMap, manual surveys
+CREATE TABLE curated_data.sidewalk_quality (
+    id SERIAL PRIMARY KEY,
+    
+    -- Location (street segment)
+    street_name VARCHAR(255),
+    from_cross_street VARCHAR(255),
+    to_cross_street VARCHAR(255),
+    geom GEOMETRY(LINESTRING, 4326),
+    
+    -- Sidewalk attributes
+    sidewalk_width_feet DECIMAL(5, 2),
+    sidewalk_condition VARCHAR(20),  -- 'excellent', 'good', 'fair', 'poor'
+    ada_compliant BOOLEAN,
+    street_trees BOOLEAN,
+    street_furniture BOOLEAN,
+    lighting_quality VARCHAR(20),
+    
+    -- Quality score
+    pedestrian_score INT,  -- 0-100
+    
+    -- Metadata
+    survey_date DATE,
+    data_source VARCHAR(100)
+);
+
+CREATE INDEX idx_sidewalk_geom ON curated_data.sidewalk_quality USING GIST(geom);
+
+-- Aggregate to property level
+CREATE TABLE analytics_data.property_pedestrian_context (
+    property_id VARCHAR(50) PRIMARY KEY,
+    
+    -- Sidewalk on property's street(s)
+    primary_sidewalk_score INT,
+    secondary_sidewalk_score INT,  -- If corner
+    
+    -- Neighborhood walkability
+    walkability_score INT,  -- 0-100
+    bike_score INT,
+    
+    -- Infrastructure within walking distance
+    crosswalks_within_200m INT,
+    traffic_signals_within_200m INT,
+    
+    calculated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## Demographic & Economic Data
+
+### Population Data
+
+```sql
+-- raw_data.census_blocks
+-- Source: US Census Bureau
+CREATE TABLE raw_data.census_blocks (
+    geoid VARCHAR(15) PRIMARY KEY,  -- Census block GEOID
+    
+    -- Geography
+    geom GEOMETRY(MULTIPOLYGON, 4326),
+    state_fips VARCHAR(2),
+    county_fips VARCHAR(3),
+    tract VARCHAR(6),
+    block_group VARCHAR(1),
+    block VARCHAR(4),
+    
+    -- Population (from most recent Census/ACS)
+    total_population INT,
+    population_density_per_sq_mi DECIMAL(10, 2),
+    households INT,
+    avg_household_size DECIMAL(4, 2),
+    
+    -- Age distribution
+    population_under_18 INT,
+    population_18_to_34 INT,
+    population_35_to_54 INT,
+    population_55_to_64 INT,
+    population_65_plus INT,
+    
+    -- Income
+    median_household_income INT,
+    per_capita_income INT,
+    
+    -- Housing
+    total_housing_units INT,
+    occupied_housing_units INT,
+    owner_occupied_units INT,
+    renter_occupied_units INT,
+    
+    -- Data vintage
+    census_year INT,
+    data_source VARCHAR(100),
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_census_geom ON raw_data.census_blocks USING GIST(geom);
+```
+
+### Employment Data
+
+```sql
+-- raw_data.employment_establishments
+-- Source: Census LEHD, CoStar employment data
+CREATE TABLE raw_data.employment_establishments (
+    establishment_id VARCHAR(100) PRIMARY KEY,
+    
+    -- Location
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    geom GEOMETRY(POINT, 4326),
+    address VARCHAR(255),
+    
+    -- Business info
+    business_name VARCHAR(255),
+    naics_code VARCHAR(6),
+    naics_description VARCHAR(255),
+    industry_sector VARCHAR(100),
+    
+    -- Employment
+    employee_count INT,
+    employee_count_range VARCHAR(20),  -- '10-49', '50-99', etc.
+    
+    -- Data vintage
+    year INT,
+    data_source VARCHAR(100),
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_employment_geom ON raw_data.employment_establishments USING GIST(geom);
+```
+
+### Pre-Calculated Demographic Rings
+
+```sql
+-- analytics_data.property_demographics
+-- Demographic summary at various distances from each property
+CREATE TABLE analytics_data.property_demographics (
+    property_id VARCHAR(50),
+    ring_distance_meters INT,  -- 400, 800, 1600 (quarter, half, one mile)
+    
+    -- Population
+    total_population INT,
+    population_density_per_sq_mi DECIMAL(10, 2),
+    households INT,
+    
+    -- Age distribution percentages
+    pct_under_18 DECIMAL(5, 2),
+    pct_18_to_34 DECIMAL(5, 2),
+    pct_35_to_54 DECIMAL(5, 2),
+    pct_55_plus DECIMAL(5, 2),
+    
+    -- Income
+    median_household_income INT,
+    avg_household_income INT,
+    
+    -- Housing
+    residential_units INT,
+    owner_occupied_pct DECIMAL(5, 2),
+    
+    -- Employment
+    employment_count INT,
+    employment_density_per_sq_mi DECIMAL(10, 2),
+    
+    -- Daytime population (residents + workers)
+    daytime_population INT,
+    
+    calculated_at TIMESTAMP DEFAULT NOW(),
+    
+    PRIMARY KEY (property_id, ring_distance_meters)
+);
+
+CREATE INDEX idx_property_demo_property ON analytics_data.property_demographics(property_id);
+```
+
+---
+
+## Third-Party API Integrations
+
+### Integration Configuration
+
+```sql
+-- curated_data.api_integrations
+CREATE TABLE curated_data.api_integrations (
+    integration_id VARCHAR(50) PRIMARY KEY,
+    provider_name VARCHAR(100) NOT NULL,
+    api_name VARCHAR(100),
+    
+    -- Credentials (encrypted)
+    api_key_encrypted TEXT,
+    api_secret_encrypted TEXT,
+    oauth_token_encrypted TEXT,
+    
+    -- Rate limits
+    requests_per_minute INT,
+    requests_per_day INT,
+    requests_per_month INT,
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    last_successful_call TIMESTAMP,
+    last_error TIMESTAMP,
+    last_error_message TEXT,
+    
+    -- Metadata
+    integration_type VARCHAR(50),  -- 'traffic', 'demographics', 'market_data'
+    cost_per_request DECIMAL(10, 4),
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Key Third-Party Sources
+
+#### 1. CoStar API Integration
+
+```python
+# costar_integration.py
+
+class CoStarClient:
+    """
+    Integration with CoStar API for property and market data
+    """
+    
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.costar.com/v1"
+    
+    def get_property_data(self, address):
+        """
+        Fetch property details from CoStar
+        """
+        endpoint = f"{self.base_url}/properties/search"
+        
+        response = requests.post(endpoint, json={
+            "address": address,
+            "fields": [
+                "property_id",
+                "building_class",
+                "year_built",
+                "total_building_size",
+                "number_of_floors",
+                "parking_ratio",
+                "tenant_names",
+                "market_rent_psf",
+                "submarket"
+            ]
+        }, headers={
+            "Authorization": f"Bearer {self.api_key}"
+        })
+        
+        return response.json()
+    
+    def get_submarket_data(self, submarket_id):
+        """
+        Fetch market statistics
+        """
+        endpoint = f"{self.base_url}/submarkets/{submarket_id}"
+        
+        response = requests.get(endpoint, headers={
+            "Authorization": f"Bearer {self.api_key}"
+        })
+        
+        return response.json()
+
+# Storage schema for CoStar data
+CREATE TABLE raw_data.costar_properties (
+    costar_property_id VARCHAR(100) PRIMARY KEY,
+    raw_json JSONB,
+    ingested_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### 2. Census API Integration
+
+```python
+# census_integration.py
+
+class CensusClient:
+    """
+    Integration with US Census Bureau API
+    """
+    
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.census.gov/data"
+    
+    def get_acs_data(self, geography, variables, year=2022):
+        """
+        Fetch American Community Survey data
+        
+        Args:
+            geography: 'block group:*' or specific FIPS
+            variables: List of ACS variable codes
+            year: Data year
+        """
+        endpoint = f"{self.base_url}/{year}/acs/acs5"
+        
+        params = {
+            "get": ",".join(variables),
+            "for": geography,
+            "key": self.api_key
+        }
+        
+        response = requests.get(endpoint, params=params)
+        return response.json()
+    
+    # Common variable groups
+    POPULATION_VARS = ["B01003_001E"]  # Total population
+    INCOME_VARS = ["B19013_001E"]      # Median household income
+    HOUSING_VARS = ["B25001_001E", "B25002_002E"]  # Total units, occupied
+```
+
+#### 3. Traffic Data Sources
+
+```python
+# traffic_data_integration.py
+
+class TrafficDataClient:
+    """
+    Aggregate traffic data from multiple sources
+    """
+    
+    def __init__(self):
+        self.sources = {
+            'texas_dot': TexasDOTClient(),
+            'california_dot': CalTransClient(),
+            'streetlight': StreetLightDataClient(),
+            # Add more as needed
+        }
+    
+    def get_adt_near_location(self, lat, lng, radius_miles=0.5):
+        """
+        Find nearest ADT measurement point
+        """
+        results = []
+        
+        for source_name, client in self.sources.items():
+            try:
+                data = client.get_nearby_counts(lat, lng, radius_miles)
+                results.extend(data)
+            except Exception as e:
+                logger.error(f"Error fetching from {source_name}: {e}")
+        
+        # Return nearest measurement
+        if results:
+            results.sort(key=lambda x: x['distance'])
+            return results[0]
+        
+        return None
+
+# Storage for aggregated traffic data
+CREATE TABLE curated_data.traffic_counts_aggregated (
+    id SERIAL PRIMARY KEY,
+    
+    -- Location
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    geom GEOMETRY(POINT, 4326),
+    road_name VARCHAR(255),
+    
+    -- Best available ADT
+    adt INT,
+    adt_confidence VARCHAR(20),  -- 'measured', 'modeled', 'estimated'
+    measurement_year INT,
+    
+    -- Source priority (prefer measured > modeled > estimated)
+    data_source VARCHAR(100),
+    source_priority INT,
+    
+    -- Temporal validity
+    effective_date DATE,
+    expires_date DATE,
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## Data Refresh Strategy
+
+### Refresh Frequencies by Source Type
+
+```sql
+-- curated_data.data_refresh_schedule
+CREATE TABLE curated_data.data_refresh_schedule (
+    source_name VARCHAR(100) PRIMARY KEY,
+    source_type VARCHAR(50),
+    
+    -- Refresh schedule
+    refresh_frequency VARCHAR(20),  -- 'realtime', 'daily', 'weekly', 'monthly', 'quarterly', 'annually'
+    refresh_day_of_week INT,  -- 1-7 for weekly
+    refresh_day_of_month INT,  -- 1-31 for monthly
+    refresh_time TIME,  -- Preferred time of day
+    
+    -- Last refresh
+    last_refresh_start TIMESTAMP,
+    last_refresh_end TIMESTAMP,
+    last_refresh_status VARCHAR(20),  -- 'success', 'partial', 'failed'
+    last_refresh_records_updated INT,
+    
+    -- Next refresh
+    next_refresh_scheduled TIMESTAMP,
+    
+    -- SLA
+    max_age_days INT,  -- Maximum acceptable data age
+    is_critical BOOLEAN,  -- Critical for operations
+    
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Recommended Refresh Schedule
+
+| Data Source | Frequency | Rationale |
+|-------------|-----------|-----------|
+| **Traffic predictions** | Daily | Core product, needs to be current |
+| **Market demand data** | Weekly | From Market Research Engine |
+| **Property attributes** | Real-time | As changes occur |
+| **ADT counts** | Annually | DOT updates once per year |
+| **Census demographics** | Annually | Census releases yearly |
+| **Employment data** | Quarterly | LEHD updates quarterly |
+| **Transit ridership** | Monthly | Transit agencies report monthly |
+| **Market rent data** | Monthly | CoStar/market data providers |
+| **Competition analysis** | Weekly | As new properties added |
+| **Weather data** | Daily | For contextualizing actual traffic |
+
+### ETL Job Definitions
+
+```python
+# etl_jobs_config.py
+
+ETL_JOBS = {
+    'refresh_adt_data': {
+        'schedule': 'yearly',
+        'sources': ['texas_dot', 'california_dot'],
+        'target_table': 'raw_data.adt_counts',
+        'transformation': 'normalize_adt_format',
+        'priority': 'medium',
+        'estimated_duration_minutes': 180
+    },
+    
+    'refresh_census_demographics': {
+        'schedule': 'yearly',
+        'sources': ['census_api'],
+        'target_table': 'raw_data.census_blocks',
+        'transformation': 'parse_census_response',
+        'priority': 'medium',
+        'estimated_duration_minutes': 240
+    },
+    
+    'calculate_property_demographics': {
+        'schedule': 'weekly',
+        'sources': ['curated_data.properties', 'raw_data.census_blocks'],
+        'target_table': 'analytics_data.property_demographics',
+        'transformation': 'spatial_aggregation',
+        'priority': 'high',
+        'estimated_duration_minutes': 60
+    },
+    
+    'refresh_market_demand': {
+        'schedule': 'weekly',
+        'sources': ['market_research_engine'],
+        'target_table': 'curated_data.market_demand',
+        'transformation': 'validate_demand_signals',
+        'priority': 'critical',
+        'estimated_duration_minutes': 30
+    },
+    
+    'update_property_traffic_context': {
+        'schedule': 'monthly',
+        'sources': ['curated_data.properties', 'raw_data.adt_counts'],
+        'target_table': 'curated_data.property_traffic_context',
+        'transformation': 'nearest_adt_lookup',
+        'priority': 'high',
+        'estimated_duration_minutes': 45
+    }
+}
+```
+
+---
+
+## Data Quality & Validation
+
+### Data Quality Metrics
+
+```sql
+-- curated_data.data_quality_metrics
+CREATE TABLE curated_data.data_quality_metrics (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(100) NOT NULL,
+    metric_date DATE NOT NULL,
+    
+    -- Completeness
+    total_records INT,
+    records_with_nulls INT,
+    completeness_score DECIMAL(5, 2),  -- Percentage
+    
+    -- Accuracy
+    records_validated INT,
+    records_passed_validation INT,
+    accuracy_score DECIMAL(5, 2),
+    
+    -- Freshness
+    oldest_record_age_days INT,
+    avg_record_age_days INT,
+    freshness_score DECIMAL(5, 2),
+    
+    -- Consistency
+    duplicate_records INT,
+    inconsistent_records INT,
+    consistency_score DECIMAL(5, 2),
+    
+    -- Overall quality
+    overall_quality_score DECIMAL(5, 2),
+    quality_tier VARCHAR(20),  -- 'excellent', 'good', 'acceptable', 'poor'
+    
+    created_at TIMESTAMP DEFAULT NOW(),
+    
+    UNIQUE(table_name, metric_date)
+);
+```
+
+### Validation Rules
+
+```python
+# data_validation.py
+
+class DataValidator:
+    """
+    Validates data quality across all tables
+    """
+    
+    def validate_property_data(self, property_id):
+        """
+        Validate a property record has all required data
+        """
+        property_data = db.query_one(
+            "SELECT * FROM curated_data.properties WHERE property_id = %s",
+            (property_id,)
+        )
+        
+        issues = []
+        
+        # Required fields
+        if not property_data['latitude'] or not property_data['longitude']:
+            issues.append('Missing coordinates')
+        
+        if not property_data['submarket_id']:
+            issues.append('Missing submarket assignment')
+        
+        # Traffic prediction critical fields
+        if not property_data.get('frontage_feet'):
+            issues.append('Missing frontage measurement')
+        
+        # Check for associated data
+        adt_context = db.query_one(
+            "SELECT * FROM curated_data.property_traffic_context WHERE property_id = %s",
+            (property_id,)
+        )
+        
+        if not adt_context:
+            issues.append('No ADT context calculated')
+        
+        demographics = db.query_one(
+            "SELECT * FROM analytics_data.property_demographics WHERE property_id = %s",
+            (property_id,)
+        )
+        
+        if not demographics:
+            issues.append('No demographic data calculated')
+        
+        # Calculate data quality score
+        total_checks = 10  # Total validation checks
+        passed_checks = total_checks - len(issues)
+        quality_score = passed_checks / total_checks
+        
+        return {
+            'property_id': property_id,
+            'is_valid': len(issues) == 0,
+            'issues': issues,
+            'quality_score': quality_score,
+            'can_predict_traffic': quality_score >= 0.7  # Need 70%+ data quality
+        }
+    
+    def validate_market_data(self, submarket_id, as_of_date):
+        """
+        Validate market demand data
+        """
+        market_data = db.query_one("""
+            SELECT * FROM curated_data.market_demand
+            WHERE submarket_id = %s
+            AND as_of_date = %s
+        """, (submarket_id, as_of_date))
+        
+        if not market_data:
+            return {
+                'is_valid': False,
+                'issues': ['No market data found']
+            }
+        
+        issues = []
+        
+        # Check for reasonable values
+        if market_data['supply_demand_ratio'] < 0.1 or market_data['supply_demand_ratio'] > 10:
+            issues.append(f"Supply-demand ratio seems unrealistic: {market_data['supply_demand_ratio']}")
+        
+        if market_data['foot_traffic_index'] < 10 or market_data['foot_traffic_index'] > 300:
+            issues.append(f"Foot traffic index out of expected range: {market_data['foot_traffic_index']}")
+        
+        if market_data['confidence_score'] < 0.5:
+            issues.append(f"Low confidence in market data: {market_data['confidence_score']}")
+        
+        return {
+            'is_valid': len(issues) == 0,
+            'issues': issues,
+            'confidence_score': market_data['confidence_score']
+        }
+```
+
+### Data Quality Dashboard
+
+```sql
+-- View for monitoring data quality
+CREATE VIEW analytics_data.data_quality_dashboard AS
+SELECT 
+    'Properties' as dataset,
+    COUNT(*) as total_records,
+    COUNT(*) FILTER (WHERE latitude IS NOT NULL AND longitude IS NOT NULL) as with_coordinates,
+    COUNT(*) FILTER (WHERE frontage_feet IS NOT NULL) as with_frontage,
+    COUNT(*) FILTER (WHERE submarket_id IS NOT NULL) as with_submarket,
+    ROUND(AVG(data_quality_score), 2) as avg_quality_score
+FROM curated_data.properties
+
+UNION ALL
+
+SELECT 
+    'Property Traffic Context',
+    COUNT(*),
+    COUNT(*) FILTER (WHERE primary_adt IS NOT NULL),
+    COUNT(*) FILTER (WHERE primary_adt > 0),
+    COUNT(*) FILTER (WHERE last_updated > NOW() - INTERVAL '90 days'),
+    NULL
+FROM curated_data.property_traffic_context
+
+UNION ALL
+
+SELECT 
+    'Market Demand',
+    COUNT(*),
+    COUNT(*) FILTER (WHERE foot_traffic_index IS NOT NULL),
+    COUNT(*) FILTER (WHERE supply_demand_ratio IS NOT NULL),
+    COUNT(*) FILTER (WHERE as_of_date > NOW() - INTERVAL '30 days'),
+    ROUND(AVG(confidence_score), 2)
+FROM curated_data.market_demand;
+```
+
+---
+
+## Database Schemas
+
+### Complete Schema Setup
+
+```sql
+-- ===== CREATE SCHEMAS =====
+
+CREATE SCHEMA IF NOT EXISTS raw_data;
+CREATE SCHEMA IF NOT EXISTS curated_data;
+CREATE SCHEMA IF NOT EXISTS analytics_data;
+
+-- Enable PostGIS for spatial operations
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS postgis_topology;
+
+-- ===== RAW DATA TABLES =====
+
+-- Already covered above:
+-- raw_data.adt_counts
+-- raw_data.census_blocks
+-- raw_data.employment_establishments
+-- raw_data.costar_properties
+
+-- ===== CURATED DATA TABLES =====
+
+-- Already covered above:
+-- curated_data.properties
+-- curated_data.property_attributes
+-- curated_data.submarkets
+-- curated_data.market_demand
+-- curated_data.transit_stations
+-- curated_data.sidewalk_quality
+-- curated_data.property_traffic_context
+-- curated_data.api_integrations
+-- curated_data.data_refresh_schedule
+-- curated_data.data_quality_metrics
+
+-- ===== ANALYTICS DATA TABLES =====
+
+-- Already covered above:
+-- analytics_data.property_competition
+-- analytics_data.property_transit_access
+-- analytics_data.property_pedestrian_context
+-- analytics_data.property_demographics
+
+-- ===== MATERIALIZED VIEWS FOR PERFORMANCE =====
+
+-- Property enrichment (joins multiple sources)
+CREATE MATERIALIZED VIEW analytics_data.properties_enriched AS
+SELECT 
+    p.*,
+    
+    -- Traffic context
+    ptc.primary_adt,
+    ptc.primary_road_classification,
+    
+    -- Transit access
+    pta.transit_score,
+    pta.nearest_station_name,
+    pta.distance_meters as transit_distance_m,
+    
+    -- Demographics (400m ring)
+    pd400.total_population as pop_400m,
+    pd400.households as households_400m,
+    pd400.employment_count as employment_400m,
+    pd400.median_household_income as median_income_400m,
+    
+    -- Demographics (800m ring)
+    pd800.total_population as pop_800m,
+    pd800.employment_count as employment_800m,
+    
+    -- Competition
+    pc.competitors_500m,
+    pc.competition_score,
+    
+    -- Market context
+    md.foot_traffic_index,
+    md.supply_demand_ratio,
+    md.confidence_score as market_confidence
+    
+FROM curated_data.properties p
+LEFT JOIN curated_data.property_traffic_context ptc ON p.property_id = ptc.property_id
+LEFT JOIN analytics_data.property_transit_access pta ON p.property_id = pta.property_id
+LEFT JOIN analytics_data.property_demographics pd400 ON p.property_id = pd400.property_id AND pd400.ring_distance_meters = 400
+LEFT JOIN analytics_data.property_demographics pd800 ON p.property_id = pd800.property_id AND pd800.ring_distance_meters = 800
+LEFT JOIN analytics_data.property_competition pc ON p.property_id = pc.property_id
+LEFT JOIN curated_data.market_demand md ON p.submarket_id = md.submarket_id 
+    AND md.as_of_date = (SELECT MAX(as_of_date) FROM curated_data.market_demand WHERE submarket_id = p.submarket_id);
+
+-- Refresh weekly
+CREATE UNIQUE INDEX idx_properties_enriched_id ON analytics_data.properties_enriched(property_id);
+```
+
+---
+
+## ETL Pipelines
+
+### Master ETL Orchestrator
+
+```python
+# etl_orchestrator.py
+
+from datetime import datetime
+import logging
+from typing import Dict, List
+from database import db
+
+logger = logging.getLogger(__name__)
+
+class ETLOrchestrator:
+    """
+    Manages all ETL jobs and data refresh operations
+    """
+    
+    def __init__(self):
+        self.jobs = self.load_job_definitions()
+    
+    def load_job_definitions(self):
+        """Load ETL job configs from database or config file"""
+        # In production, load from curated_data.data_refresh_schedule
+        return ETL_JOBS
+    
+    def run_scheduled_jobs(self):
+        """
+        Run all jobs that are due based on schedule
+        """
+        now = datetime.now()
+        
+        for job_name, job_config in self.jobs.items():
+            if self.is_job_due(job_name, now):
+                logger.info(f"Starting job: {job_name}")
+                self.run_job(job_name, job_config)
+    
+    def is_job_due(self, job_name, now):
+        """Check if job should run based on schedule"""
+        
+        # Get last run time from database
+        last_run = db.query_one("""
+            SELECT last_refresh_end, next_refresh_scheduled
+            FROM curated_data.data_refresh_schedule
+            WHERE source_name = %s
+        """, (job_name,))
+        
+        if not last_run:
+            return True  # Never run before
+        
+        if now >= last_run['next_refresh_scheduled']:
+            return True
+        
+        return False
+    
+    def run_job(self, job_name, job_config):
+        """Execute a single ETL job"""
+        
+        start_time = datetime.now()
+        
+        try:
+            # Log job start
+            db.execute("""
+                UPDATE curated_data.data_refresh_schedule
+                SET last_refresh_start = %s,
+                    last_refresh_status = 'running'
+                WHERE source_name = %s
+            """, (start_time, job_name))
+            
+            # Get the transformation function
+            transform_func = getattr(self, job_config['transformation'])
+            
+            # Run transformation
+            records_updated = transform_func(job_config)
+            
+            # Log success
+            end_time = datetime.now()
+            db.execute("""
+                UPDATE curated_data.data_refresh_schedule
+                SET last_refresh_end = %s,
+                    last_refresh_status = 'success',
+                    last_refresh_records_updated = %s,
+                    next_refresh_scheduled = %s
+                WHERE source_name = %s
+            """, (
+                end_time, 
+                records_updated, 
+                self.calculate_next_run(job_config['schedule'], end_time),
+                job_name
+            ))
+            
+            logger.info(f"Job {job_name} completed successfully. {records_updated} records updated.")
+            
+        except Exception as e:
+            # Log failure
+            db.execute("""
+                UPDATE curated_data.data_refresh_schedule
+                SET last_refresh_status = 'failed',
+                    last_error = NOW(),
+                    last_error_message = %s
+                WHERE source_name = %s
+            """, (str(e), job_name))
+            
+            logger.error(f"Job {job_name} failed: {str(e)}")
+            raise
+    
+    def spatial_aggregation(self, job_config):
+        """
+        Calculate demographics within rings around properties
+        """
+        logger.info("Starting spatial aggregation for property demographics")
+        
+        properties = db.query("SELECT property_id, geom FROM curated_data.properties")
+        
+        records_updated = 0
+        
+        for property_data in properties:
+            property_id = property_data['property_id']
+            
+            # Calculate for each ring distance
+            for distance_m in [400, 800, 1600]:
+                demographics = self.calculate_ring_demographics(
+                    property_data['geom'],
+                    distance_m
+                )
+                
+                # Upsert to analytics table
+                db.execute("""
+                    INSERT INTO analytics_data.property_demographics (
+                        property_id, ring_distance_meters,
+                        total_population, households, employment_count,
+                        median_household_income, residential_units,
+                        daytime_population, calculated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (property_id, ring_distance_meters)
+                    DO UPDATE SET
+                        total_population = EXCLUDED.total_population,
+                        households = EXCLUDED.households,
+                        employment_count = EXCLUDED.employment_count,
+                        median_household_income = EXCLUDED.median_household_income,
+                        residential_units = EXCLUDED.residential_units,
+                        daytime_population = EXCLUDED.daytime_population,
+                        calculated_at = NOW()
+                """, (
+                    property_id, distance_m,
+                    demographics['population'],
+                    demographics['households'],
+                    demographics['employment'],
+                    demographics['median_income'],
+                    demographics['residential_units'],
+                    demographics['daytime_population']
+                ))
+                
+                records_updated += 1
+        
+        return records_updated
+    
+    def calculate_ring_demographics(self, property_geom, distance_m):
+        """
+        Query census blocks and employment within distance ring
+        """
+        # Create buffer around property
+        result = db.query_one("""
+            WITH property_buffer AS (
+                SELECT ST_Buffer(%s::geography, %s)::geometry as buffer_geom
+            )
+            SELECT 
+                SUM(cb.total_population) as population,
+                SUM(cb.households) as households,
+                AVG(cb.median_household_income) as median_income,
+                SUM(cb.total_housing_units) as residential_units,
+                COUNT(DISTINCT ee.establishment_id) as employment_count
+            FROM property_buffer pb
+            LEFT JOIN raw_data.census_blocks cb 
+                ON ST_Intersects(cb.geom, pb.buffer_geom)
+            LEFT JOIN raw_data.employment_establishments ee
+                ON ST_Within(ee.geom, pb.buffer_geom)
+        """, (property_geom, distance_m))
+        
+        # Calculate daytime population (residents + workers)
+        daytime = (result['population'] or 0) + (result['employment_count'] or 0)
+        
+        return {
+            'population': result['population'] or 0,
+            'households': result['households'] or 0,
+            'median_income': int(result['median_income']) if result['median_income'] else None,
+            'residential_units': result['residential_units'] or 0,
+            'employment': result['employment_count'] or 0,
+            'daytime_population': daytime
+        }
+    
+    def nearest_adt_lookup(self, job_config):
+        """
+        Find nearest ADT measurement for each property
+        """
+        logger.info("Updating property traffic context with nearest ADT")
+        
+        result = db.execute("""
+            INSERT INTO curated_data.property_traffic_context (
+                property_id,
+                primary_adt_station_id,
+                primary_adt,
+                primary_adt_distance_m,
+                primary_road_name,
+                primary_road_classification,
+                last_updated,
+                adt_measurement_year
+            )
+            SELECT DISTINCT ON (p.property_id)
+                p.property_id,
+                adt.station_id,
+                adt.adt,
+                ST_Distance(p.geom::geography, adt.geom::geography) as distance_m,
+                adt.road_name,
+                adt.road_classification,
+                CURRENT_DATE,
+                adt.measurement_year
+            FROM curated_data.properties p
+            CROSS JOIN LATERAL (
+                SELECT *
+                FROM raw_data.adt_counts
+                WHERE ST_DWithin(p.geom::geography, geom::geography, 800)  -- Within 800m
+                ORDER BY p.geom <-> geom  -- Nearest first
+                LIMIT 1
+            ) adt
+            ON CONFLICT (property_id) DO UPDATE SET
+                primary_adt_station_id = EXCLUDED.primary_adt_station_id,
+                primary_adt = EXCLUDED.primary_adt,
+                primary_adt_distance_m = EXCLUDED.primary_adt_distance_m,
+                primary_road_name = EXCLUDED.primary_road_name,
+                primary_road_classification = EXCLUDED.primary_road_classification,
+                last_updated = EXCLUDED.last_updated,
+                adt_measurement_year = EXCLUDED.adt_measurement_year
+        """)
+        
+        return result.rowcount
+    
+    def calculate_next_run(self, frequency, last_run):
+        """Calculate next scheduled run based on frequency"""
+        from datetime import timedelta
+        
+        if frequency == 'daily':
+            return last_run + timedelta(days=1)
+        elif frequency == 'weekly':
+            return last_run + timedelta(weeks=1)
+        elif frequency == 'monthly':
+            return last_run + timedelta(days=30)
+        elif frequency == 'quarterly':
+            return last_run + timedelta(days=90)
+        elif frequency == 'yearly':
+            return last_run + timedelta(days=365)
+        else:
+            return last_run + timedelta(days=1)  # Default to daily
+
+
+# Run orchestrator
+if __name__ == '__main__':
+    orchestrator = ETLOrchestrator()
+    orchestrator.run_scheduled_jobs()
+```
+
+---
+
+## Summary
+
+### Data Source Hierarchy
+
+```
+Level 1: EXTERNAL SOURCES
+├── State DOT databases (ADT)
+├── US Census Bureau (demographics)
+├── CoStar API (property/market data)
+├── Transit agencies (ridership)
+└── OpenStreetMap (infrastructure)
+
+Level 2: RAW DATA LAYER
+├── raw_data.adt_counts
+├── raw_data.census_blocks
+├── raw_data.employment_establishments
+└── raw_data.costar_properties
+
+Level 3: CURATED DATA LAYER
+├── curated_data.properties (master property table)
+├── curated_data.market_demand (from Market Research Engine)
+├── curated_data.property_traffic_context
+└── curated_data.transit_stations
+
+Level 4: ANALYTICS LAYER
+├── analytics_data.property_demographics
+├── analytics_data.property_competition
+├── analytics_data.properties_enriched
+└── analytics_data.property_transit_access
+
+Level 5: PREDICTION ENGINE
+└── Uses all above layers to predict traffic
+```
+
+### Critical Success Factors
+
+1. **Start with minimum viable data**
+   - Properties table with coordinates and basic attributes
+   - Nearest ADT measurements
+   - Basic demographics
+   - Market demand from your existing engine
+
+2. **Build incrementally**
+   - Don't try to get all data sources at once
+   - Start with free/public data (DOT, Census)
+   - Add paid APIs as you validate value
+
+3. **Maintain data quality**
+   - Run validation checks on every ingest
+   - Monitor freshness and completeness
+   - Flag properties with insufficient data
+
+4. **Automate refresh**
+   - Set up ETL jobs to keep data current
+   - Critical data refreshes weekly
+   - Static data (ADT) refreshes yearly
+
+5. **Pre-calculate everything possible**
+   - Demographics by distance rings
+   - Nearest ADT/transit/competition
+   - Store in analytics tables for speed
+
+This structure gives you a production-grade foundation that can scale as you add more data sources and properties.

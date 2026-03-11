@@ -112,11 +112,26 @@ export function requireApiKey(
     return;
   }
 
-  const validKeys = [
-    process.env.API_KEY_APARTMENT_LOCATOR,
-  ].filter(Boolean);
+  const keyIdentities: Record<string, { userId: string; email: string; role: string }> = {};
 
-  if (!validKeys.includes(apiKey)) {
+  if (process.env.API_KEY_APARTMENT_LOCATOR) {
+    keyIdentities[process.env.API_KEY_APARTMENT_LOCATOR] = {
+      userId: 'api-key-apartment-locator',
+      email: 'apartment-locator-ai@system',
+      role: 'api_client',
+    };
+  }
+
+  if (process.env.JEDIRE_AGENT_API_KEY) {
+    keyIdentities[process.env.JEDIRE_AGENT_API_KEY] = {
+      userId: 'jedire-user-agent',
+      email: 'user-agent@jedire.system',
+      role: 'agent_client',
+    };
+  }
+
+  const identity = keyIdentities[apiKey];
+  if (!identity) {
     res.status(403).json({
       error: 'Forbidden',
       message: 'Invalid API key',
@@ -124,13 +139,24 @@ export function requireApiKey(
     return;
   }
 
-  req.user = {
-    userId: 'api-key-apartment-locator',
-    email: 'apartment-locator-ai@system',
-    role: 'api_client',
-  };
-
+  req.user = identity;
   next();
+}
+
+/**
+ * Accept either JWT auth or API key auth
+ */
+export async function requireAuthOrApiKey(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const apiKey = req.headers['x-api-key'] as string;
+  if (apiKey) {
+    return requireApiKey(req, res, next);
+  }
+
+  return requireAuth(req, res, next);
 }
 
 export const authenticateToken = requireAuth;

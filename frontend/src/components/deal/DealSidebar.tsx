@@ -20,6 +20,7 @@ const moduleIcons: Record<string, string> = {
   files: '📁',
   exit: '🚪',
   context: '🧭',
+  'post-close': '📡',
 };
 
 const moduleLabels: Record<string, string> = {
@@ -40,6 +41,7 @@ const moduleLabels: Record<string, string> = {
   files: 'Files',
   exit: 'Exit Analysis',
   context: 'Context',
+  'post-close': 'Post-Close Intel',
 };
 
 const PIPELINE_MODULES = [
@@ -49,7 +51,7 @@ const PIPELINE_MODULES = [
 ];
 
 const ASSET_MODULES = [
-  'overview', 'ai-agent', 'financial', 'market', 'competition', 'strategy',
+  'overview', 'post-close', 'ai-agent', 'financial', 'market', 'competition', 'strategy',
   'exit', 'team', 'documents', 'timeline', 'notes', 'files', 'context'
 ];
 
@@ -67,6 +69,7 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   const visibleModules = isPortfolio ? ASSET_MODULES : PIPELINE_MODULES;
 
   const isModuleEnabled = (moduleName: string) => {
+    if (moduleName === 'post-close') return true;
     const module = modules.find(m =>
       m.moduleName === moduleName ||
       m.module_name === moduleName

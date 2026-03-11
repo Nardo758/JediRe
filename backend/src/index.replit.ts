@@ -9,7 +9,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
-import { requireAuth } from './middleware/auth';
+import { requireAuth, optionalAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
@@ -22,6 +22,8 @@ import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.ro
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
+import settingsAiRouter from './api/rest/settings-ai.routes';
+import billingRouter from './api/rest/billing.routes';
 
 import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
@@ -34,6 +36,7 @@ import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes'
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
+import intelligenceRouter from './api/rest/intelligence.routes';
 import geographicContextRoutes from './api/rest/geographic-context.routes';
 import isochroneRoutes from './api/rest/isochrone.routes';
 import trafficAiRoutes from './api/rest/traffic-ai.routes';
@@ -91,6 +94,7 @@ import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
+import portfolioRouter from './api/rest/portfolio.routes';
 import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
 import dealCompSetsRoutes from './api/rest/deal-comp-sets.routes';
@@ -156,6 +160,27 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
+// Stripe webhook MUST be before express.json() for raw body signature verification
+import { WebhookHandlers } from './services/stripe/webhookHandlers';
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    const signature = req.headers['stripe-signature'];
+    if (!signature) {
+      return res.status(400).json({ error: 'Missing stripe-signature' });
+    }
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      console.error('Stripe webhook error:', error.message);
+      res.status(400).json({ error: 'Webhook processing error' });
+    }
+  }
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -180,6 +205,7 @@ app.use('/api/v1/tasks', tasksRouter);
 app.use('/api/v1/inbox', inboxRouter);
 app.use('/api/v1', zoningAnalyzeRouter);
 
+app.use('/api/v1/billing', billingRouter);
 app.use('/api/v1/f40', f40PerformanceRoutes);
 app.use('/api/v1/opportunities', opportunityEngineRoutes);
 
@@ -203,6 +229,20 @@ app.use('/api/v1', taxCompAnalysisRouter);
 app.use('/api/v1/markets', marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
+app.use('/api/v1/grid', optionalAuth, gridRouter);
+app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
+app.use('/api/v1/portfolio', portfolioRouter);
+
+import agentRouter from './api/rest/agent.routes';
+app.use('/api/v1/agents', agentRouter);
+
+import chatRouter from './api/rest/chat.routes';
+app.use('/api/v1/chat', chatRouter);
+
+import { MessageRouter } from './services/chat/messageRouter';
+const messageRouter = new MessageRouter();
+app.use('/', messageRouter.createRouter());
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -210,6 +250,7 @@ app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
 app.use('/api/v1/dashboard', requireAuth, dashboardRouter);
 app.use('/api/v1/gmail', requireAuth, gmailRouter);
 app.use('/api/v1/news', requireAuth, newsRouter);
+app.use('/api/v1/intelligence', requireAuth, intelligenceRouter);
 app.use('/api/v1/trade-areas', requireAuth, tradeAreasRoutes);
 app.use('/api/v1/isochrone', requireAuth, isochroneRoutes);
 app.use('/api/v1/traffic-ai', requireAuth, trafficAiRoutes);
@@ -230,7 +271,6 @@ app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
-app.use('/api/v1/grid', requireAuth, gridRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
@@ -242,6 +282,7 @@ app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
 app.use('/api/v1', requireAuth, propertyProxyRoutes);
 app.use('/api/v1/leasing-traffic', requireAuth, leasingTrafficRoutes);
 app.use('/api/v1/preferences', requireAuth, preferencesRouter);
+app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
 app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
@@ -280,7 +321,6 @@ app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
 app.use('/api/v1/correlations', requireAuth, correlationRouter);
-app.use('/api/v1/rankings', requireAuth, rankingsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
@@ -381,7 +421,40 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 setupUnhandledRejectionHandler();
 setupUncaughtExceptionHandler();
 
-httpServer.listen(Number(PORT), '0.0.0.0', () => {
+async function initStripe() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.warn('[Stripe] DATABASE_URL not set, skipping Stripe init');
+    return;
+  }
+
+  try {
+    const { runMigrations } = await import('stripe-replit-sync');
+    console.log('[Stripe] Running schema migrations...');
+    await runMigrations({ databaseUrl });
+    console.log('[Stripe] Schema ready');
+
+    const { getStripeSync } = await import('./services/stripe/stripeClient');
+    const stripeSync = await getStripeSync();
+
+    const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN;
+    if (domain) {
+      const webhookUrl = `https://${domain}/api/stripe/webhook`;
+      const result = await stripeSync.findOrCreateManagedWebhook(webhookUrl);
+      console.log(`[Stripe] Webhook configured: ${result?.webhook?.url || webhookUrl}`);
+    } else {
+      console.warn('[Stripe] No domain found, skipping webhook registration');
+    }
+
+    stripeSync.syncBackfill()
+      .then(() => console.log('[Stripe] Data sync complete'))
+      .catch((err: any) => console.error('[Stripe] Backfill error:', err.message));
+  } catch (error: any) {
+    console.error('[Stripe] Init failed:', error.message);
+  }
+}
+
+httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
@@ -399,6 +472,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
+
+  await initStripe();
 });
 
 process.on('SIGTERM', async () => {

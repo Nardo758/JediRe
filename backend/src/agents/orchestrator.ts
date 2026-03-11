@@ -3,11 +3,12 @@
  * Manages task queue and agent execution
  */
 
-import { query, transaction } from '../database/connection';
+import { query, transaction, getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { ZoningAgent } from './zoning.agent';
 import { SupplyAgent } from './supply.agent';
 import { CashFlowAgent } from './cashflow.agent';
+import { IntelligenceContextService } from '../services/intelligence-context.service';
 
 interface TaskInput {
   taskType: string;
@@ -27,12 +28,16 @@ interface Task {
 export class AgentOrchestrator {
   private isProcessing = false;
   private agents: Map<string, any> = new Map();
+  private intelligenceService: IntelligenceContextService;
 
   constructor() {
     // Register agents
     this.agents.set('zoning_analysis', new ZoningAgent());
     this.agents.set('supply_analysis', new SupplyAgent());
     this.agents.set('cashflow_analysis', new CashFlowAgent());
+
+    // Initialize intelligence service
+    this.intelligenceService = new IntelligenceContextService(getPool());
 
     // Start processing loop
     this.startProcessingLoop();
@@ -174,6 +179,11 @@ export class AgentOrchestrator {
         executionTime: `${executionTime}ms`,
       });
 
+      // Log agent learning (async, don't block)
+      this.logAgentLearning(task, result, executionTime).catch(err => {
+        logger.warn('Failed to log agent learning:', err);
+      });
+
     } catch (error: any) {
       logger.error('Task execution failed:', {
         taskId,
@@ -249,5 +259,51 @@ export class AgentOrchestrator {
     );
 
     return result.rows.length > 0;
+  }
+
+  /**
+   * Log agent learning to intelligence layer
+   */
+  private async logAgentLearning(
+    task: any,
+    outputResult: any,
+    executionTimeMs: number
+  ): Promise<void> {
+    try {
+      // Extract output confidence if available
+      const outputConfidence = outputResult?.confidence || outputResult?.confidenceScore;
+
+      // Determine data sources used (can be enhanced later)
+      const dataSources = ['agent_tasks'];
+      
+      // If task has deal_id in input, it used deal data
+      if (task.input_data?.dealId) {
+        dataSources.push('deal_capsules');
+      }
+
+      await this.intelligenceService.logAgentLearning({
+        agentType: task.task_type,
+        taskId: task.id,
+        dealCapsuleId: task.input_data?.dealId,
+        contextDocuments: [], // Will be populated when agents query unified_documents
+        inputParams: task.input_data || {},
+        outputResult: outputResult || {},
+        outputConfidence,
+        executionTimeMs,
+        dataSourcesUsed: dataSources,
+        userId: task.user_id,
+      });
+
+      logger.debug('Agent learning logged:', {
+        taskId: task.id,
+        agentType: task.task_type,
+      });
+    } catch (error: any) {
+      logger.error('Failed to log agent learning:', {
+        taskId: task.id,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 }

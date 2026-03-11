@@ -26,6 +26,7 @@ import { FilesSection } from '../components/deal/sections/FilesSection';
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
+import DealFlywheelDashboard from './deal/DealFlywheelDashboard';
 
 
 export const DealView: React.FC = () => {
@@ -266,6 +267,8 @@ export const DealView: React.FC = () => {
         );
       case 'context':
         return <DealContextTracker dealId={selectedDeal.id} />;
+      case 'post-close':
+        return <DealFlywheelDashboard />;
       default:
         return <div className="p-6">Module not found</div>;
     }

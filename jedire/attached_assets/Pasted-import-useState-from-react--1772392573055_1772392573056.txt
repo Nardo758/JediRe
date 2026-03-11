@@ -1,0 +1,831 @@
+import { useState } from "react";
+
+// ────────────────────────────────────────────────────────────
+// THE MAPPING: 7 Systems → Frontend Pages
+// ────────────────────────────────────────────────────────────
+
+const INTEGRATION_MAP = {
+  summary: {
+    new_pages: 3,
+    existing_pages_modified: 5,
+    new_sections_in_existing: 14,
+    new_standalone_components: 8,
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // EXISTING PAGES THAT GET NEW SECTIONS
+  // ═══════════════════════════════════════════════════════════
+  existing_pages: [
+    {
+      page: "Market Intelligence",
+      route: "/market-intelligence",
+      status: "exists",
+      current_sub_pages: ["Overview", "Market Data", "Supply & Demand", "Submarkets", "Trends", "Deals", "Compare Markets", "Active Owners", "Future Supply"],
+      changes: [
+        {
+          type: "NEW TAB",
+          name: "Power Rankings",
+          insert_position: "After 'Submarkets' tab (becomes tab 5 of 10)",
+          route: "/market-intelligence/rankings",
+          systems: ["S1"],
+          items_addressed: [1, 2],
+          description: "The submarket Power Rankings table. Every tracked property ranked 1-N with PCS score, movement arrows, sparkline trends. Filterable by vantage group (class × vintage × size). This is the primary home for Items 1 & 2.",
+          components: [
+            "RankingsTable — sortable DataGrid with PCS score, rank, movement, sparkline",
+            "VantageGroupFilter — dropdowns: Class (A/B/C), Vintage (decade), Size (unit range)",
+            "RankMovementBadge — ↑3 green, ↓2 red, — gray",
+            "PCSBreakdownDrawer — click any row → slide-out showing 5-component score breakdown",
+          ],
+          data_needs: "performanceCompositeScore service (NEW) → feeds from M07 TPI, M05 rent data, apartments.com scraper, Google Places API",
+          effort: "L",
+          priority: "P1",
+        },
+        {
+          type: "NEW TAB",
+          name: "Acquisition Targets",
+          insert_position: "After 'Power Rankings' tab (becomes tab 6 of 10)",
+          route: "/market-intelligence/acquisition-targets",
+          systems: ["S2"],
+          items_addressed: [3, 4],
+          description: "Auto-generated list of acquisition targets derived from underperformer detection. Shows: property name, current rank, expected rank, performance gap, owner entity, estimated debt maturity, management company, and a 'Target Score'. This is the deal-sourcing page.",
+          components: [
+            "AcquisitionTargetGrid — ranked list with Target Score, gap analysis, owner info",
+            "OwnershipIntelCard — expandable card showing entity chain, related LLCs, portfolio map",
+            "DebtMaturityTimeline — visual timeline of estimated maturities for all targets",
+            "TripleTriggerBadge — flags properties hitting all 3: underperformance + hold stress + debt maturity",
+            "ManagementCompanyRanking — sortable list ranking management cos by avg PCS of their portfolio",
+          ],
+          data_needs: "acquisitionIntelligence service (NEW) → county property records API, UCC filing search, SOS entity lookup (sunbiz.org scraper)",
+          effort: "XL",
+          priority: "P2",
+        },
+        {
+          type: "ENHANCE EXISTING TAB",
+          name: "Active Owners (existing tab 8)",
+          insert_position: "Already exists — enhance with ownership intelligence",
+          route: "/market-intelligence/active-owners",
+          systems: ["S2"],
+          items_addressed: [4],
+          description: "Currently a placeholder. Becomes the ownership intelligence hub: portfolio maps per owner, management company performance rankings, debt maturity calendar, entity relationship graphs. Ties directly to Acquisition Targets tab.",
+          components: [
+            "OwnerPortfolioMap — map showing all properties owned by selected entity",
+            "EntityRelationshipGraph — visual graph linking LLCs through shared registered agents",
+            "DebtMaturityCalendar — month-by-month view of estimated maturities across submarket",
+            "ManagementPerformanceTable — management companies ranked by avg PCS",
+          ],
+          data_needs: "Extends acquisitionIntelligence service + county records + SOS data",
+          effort: "L",
+          priority: "P2",
+        },
+        {
+          type: "ENHANCE EXISTING TAB",
+          name: "Trends (existing tab 5)",
+          insert_position: "Already exists — add correlation widgets",
+          route: "/market-intelligence/trends",
+          systems: ["S4"],
+          items_addressed: [11],
+          description: "Currently shows mock trend data. Add the Rent-Traffic-Wage correlation charts. Three time-series lines overlaid with correlation coefficient displayed. Divergence alerts highlighted. This is where Item 11 (compare rent growth to traffic/wage growth) lives.",
+          components: [
+            "RentTrafficWageChart — 3-line time series with correlation r-value display",
+            "DivergenceAlertBanner — when rent outpaces wages by 1.5x for 3+ quarters, banner warns",
+            "AffordabilityCeilingGauge — rent as % of median household income, with threshold line",
+            "RentRunwayIndicator — when wages > rents, shows the gap as 'runway' for rent growth",
+          ],
+          data_needs: "M05 rent data + M07 traffic trends + BLS QCEW wage data (quarterly API pull)",
+          effort: "M",
+          priority: "P1",
+        },
+        {
+          type: "NEW TAB",
+          name: "Business Clusters",
+          insert_position: "After 'Trends' (becomes new tab within Trends, or standalone)",
+          route: "/market-intelligence/business-clusters",
+          systems: ["S4"],
+          items_addressed: [13],
+          description: "Business formation intelligence. Map showing spatial clusters of new entity formations color-coded by NAICS industry. Formation velocity charts. Emerging employment center detection. This is where Item 13 lives.",
+          components: [
+            "ClusterMap — Mapbox layer showing business formation density heatmap by NAICS",
+            "FormationVelocityChart — bar chart of monthly formations by industry",
+            "EmergingCenterAlert — when cluster exceeds 2 SD above baseline, highlight on map",
+            "IndustryMixShiftChart — stacked area chart showing industry composition changing over time",
+          ],
+          data_needs: "Census BFS API + sunbiz.org entity scraper + SBA lending data",
+          effort: "L",
+          priority: "P3",
+        },
+        {
+          type: "ENHANCE EXISTING TAB",
+          name: "Deals Tab (existing tab 6)",
+          insert_position: "Already exists — add T-04 quadrant coloring + target flags",
+          route: "/market-intelligence/deals",
+          systems: ["S1", "S2"],
+          items_addressed: [2, 3],
+          description: "The existing Deals tab shows available deals in the market. Enhance with: PCS rank column, T-04 quadrant badge (Hidden Gem / Winner / Hype / Dead), Target Score for acquisition targets, and vantage group filter. This is where the rankings become ACTIONABLE on specific deals.",
+          components: [
+            "Enhanced DataGrid columns: PCS Rank, T-04 Quadrant Badge, Target Score, Owner",
+            "QuadrantFilterChips — filter by Hidden Gem, Validated Winner, etc.",
+            "Inline TargetScoreTooltip — hover to see why this property is flagged as a target",
+          ],
+          data_needs: "Pulls from performanceCompositeScore + acquisitionIntelligence services",
+          effort: "M",
+          priority: "P1",
+        },
+      ],
+    },
+
+    {
+      page: "Deal Page (Enhanced)",
+      route: "/deals/:id/enhanced",
+      status: "exists",
+      current_sections: ["Overview", "Map", "Market Intel", "Debt", "Strategy", "Financial", "Supply", "Risk", "DD", "Documents", "Notes", "Timeline"],
+      changes: [
+        {
+          type: "NEW SECTION",
+          name: "Traffic Intelligence Section",
+          insert_position: "After Supply, before Strategy Arbitrage",
+          systems: ["S1", "S4"],
+          items_addressed: [1, 10],
+          description: "The deal-level traffic intelligence view. Shows this property's T-02 Physical Score, T-03 Digital Score, T-04 Quadrant classification, T-07 Trajectory, and weekly walk-in prediction. Also shows the PCS rank within its submarket and vantage group. Google Reviews sentiment analysis lives here.",
+          components: [
+            "TrafficScoreCard — T-02/T-03 gauges with T-04 quadrant badge",
+            "WalkInPredictionChart — hourly/daily walk-in curve from T-01",
+            "TrajectoryArrow — T-07 trend with confidence band",
+            "GoogleReviewsSentiment — NLP-classified sentiment by category (maintenance, management, amenities, etc.)",
+            "ReviewTrendChart — sentiment score over time with management transition detection",
+            "SubmarketRankPosition — 'This property ranks #X of Y in [submarket]' with bar showing position",
+          ],
+          data_needs: "M07 traffic engine outputs + Google Places API reviews + NLP classification service",
+          effort: "L",
+          priority: "P1",
+        },
+        {
+          type: "NEW SECTION",
+          name: "Competitive Position Section",
+          insert_position: "After Traffic Intelligence, before Strategy Arbitrage",
+          systems: ["S3"],
+          items_addressed: [5],
+          description: "The dual comp analysis for THIS deal. Two tabs: 'Trade Area Comps' (local competition) and 'Like-Kind Comps' (cross-market benchmarks). Shows rent positioning, amenity gaps, operational benchmarks, and pattern alerts (amenity arms race, vintage cascade).",
+          components: [
+            "DualCompTabs — tab switcher between Trade Area and Like-Kind views",
+            "TradeAreaCompGrid — table of local comps with rent, occupancy, traffic share, amenity set",
+            "LikeKindBenchmark — national benchmarks for this property's vantage group",
+            "AmenityGapMatrix — what this property has vs what comps have, with rent lift estimates",
+            "RentPositionScatter — scatter plot: X=rent/unit, Y=traffic position, with subject highlighted",
+            "PatternAlertCards — 'Amenity Arms Race', 'Vintage Cascade', etc. if detected for this trade area",
+          ],
+          data_needs: "M05 apartments.com data + M15 competition analysis + like-kind matching service (NEW)",
+          effort: "XL",
+          priority: "P1",
+        },
+        {
+          type: "NEW SECTION",
+          name: "Rank-Me Positioning Tool",
+          insert_position: "After Strategy Arbitrage, before Financial",
+          systems: ["S5"],
+          items_addressed: [7, 8],
+          description: "The 'I want to be ranked 2nd' tool. User selects a target rank. System shows gap by PCS component. Prescribes specific improvements with costs. Links directly to ProForma to model the financial impact. This is the BRIDGE between competitive intelligence and financial modeling.",
+          components: [
+            "TargetRankSelector — slider or dropdown to select desired rank (1 to N)",
+            "GapWaterfall — waterfall chart showing gap breakdown: Traffic (-3), Revenue (-5), Ops (-4), Asset (-6)",
+            "PrescriptiveActionList — for each gap component, specific actions with cost + timeline + ROI estimate",
+            "RankImpactProForma — mini ProForma showing how achieving target rank changes IRR/NOI/exit value",
+            "ProgressTracker — (post-acquisition) monthly PCS vs target trajectory with deviation alerts",
+          ],
+          data_needs: "performanceCompositeScore + gap analysis engine (NEW) + M09 ProForma integration",
+          effort: "XL",
+          priority: "P2",
+        },
+        {
+          type: "ENHANCE EXISTING SECTION",
+          name: "Strategy Arbitrage Section (enhance with traffic gates)",
+          insert_position: "Already planned as P0 rebuild",
+          systems: ["S1"],
+          items_addressed: [1],
+          description: "The existing Strategy Arbitrage rebuild (already P0) now gets traffic qualification gates. Before showing strategy scores, each strategy is validated against traffic thresholds. Strategies that fail traffic gates show a warning badge. T-04 quadrant classification influences strategy weighting.",
+          components: [
+            "TrafficGateBadge — per strategy: ✓ Qualified, ⚠️ Marginal, ✗ Disqualified",
+            "T04QuadrantInfluencer — shows how the quadrant classification shifts strategy weights",
+          ],
+          data_needs: "M07 traffic thresholds + T-04 quadrant → M08 strategy arbitrage weighting",
+          effort: "M (incremental on top of existing P0 rebuild)",
+          priority: "P0 (ships with Strategy Arbitrage rebuild)",
+        },
+      ],
+    },
+
+    {
+      page: "Dashboard",
+      route: "/dashboard",
+      status: "exists",
+      current_elements: ["Mapbox map", "Deal cards sidebar", "Drawing tools"],
+      changes: [
+        {
+          type: "NEW WIDGET",
+          name: "Opportunity Alert Feed",
+          insert_position: "Right sidebar or bottom panel — alongside existing deal cards",
+          systems: ["S6"],
+          items_addressed: [9],
+          description: "A real-time feed of opportunity alerts ranked by TOS × urgency. Shows the top 5-10 alerts with type badge (🎯 Acquisition Window, 🔥 Market Surge, ⚡ Competitive Shift, etc.), one-line summary, and urgency indicator. Click → expands to full alert with strategy recommendation. This is the PUSH intelligence layer on the dashboard.",
+          components: [
+            "AlertFeed — scrollable list of OpportunityAlertCard components",
+            "OpportunityAlertCard — type badge, property/market name, summary, urgency pill, strategy tag",
+            "AlertDetailDrawer — full alert with all intelligence context + recommended action + 'Underwrite This' CTA",
+            "AlertFilterChips — filter by type (Acquisition, Surge, Shift, Pattern, Distress) and urgency (High/Mod/Low)",
+          ],
+          data_needs: "opportunityAlertService (NEW) → aggregates signals from all 7 systems",
+          effort: "L",
+          priority: "P2",
+        },
+        {
+          type: "ENHANCE EXISTING",
+          name: "Map Intelligence Layers",
+          insert_position: "Map layer toggle panel (partially built)",
+          systems: ["S1", "S2", "S4"],
+          items_addressed: [2, 3, 13],
+          description: "Add new toggleable map layers: (a) Property bubbles colored by PCS rank tier (green top 25%, yellow mid 50%, red bottom 25%), (b) Acquisition target pins with Triple Trigger glow effect, (c) Business formation cluster heatmap, (d) Market lifecycle phase shading by submarket polygon. Each layer toggleable independently.",
+          components: [
+            "PCSRankLayer — circle markers sized by units, colored by PCS tier",
+            "AcquisitionTargetLayer — star markers with glow for Triple Trigger targets",
+            "BusinessClusterHeatmap — density heatmap from sunbiz formation data",
+            "LifecyclePhaseOverlay — submarket polygons shaded by Emergence/Acceleration/Maturation/Contraction",
+            "LayerTogglePanel — checkbox list to show/hide each layer (extend existing partial implementation)",
+          ],
+          data_needs: "performanceCompositeScore + acquisitionIntelligence + Census BFS + market lifecycle phase",
+          effort: "L",
+          priority: "P2",
+        },
+      ],
+    },
+
+    {
+      page: "Assets Owned (Portfolio)",
+      route: "/assets-owned",
+      status: "exists",
+      current_elements: ["Grid view with performance/documents/grid tabs", "Three-panel layout", "All mock data"],
+      changes: [
+        {
+          type: "NEW TAB",
+          name: "Performance & Rankings",
+          insert_position: "First tab (replaces or precedes current 'Performance' tab)",
+          systems: ["S1", "S5"],
+          items_addressed: [1, 7, 8],
+          description: "Your owned assets ranked against their submarkets. Each asset shows: PCS rank, movement, trajectory, and the gap to target rank. The 'Rank-Me' tool is accessible per asset — 'This asset is currently #8, I want it at #3, what should I do?' Monthly PCS tracking with actual vs projected rank trajectory.",
+          components: [
+            "OwnedAssetRankingTable — your assets with PCS rank in their respective submarkets",
+            "RankTrajectoryChart — 12-month PCS trend per asset vs target line",
+            "PortfolioAggregateScore — weighted avg PCS across portfolio",
+            "AssetActionPriority — which asset has the biggest gap to target → prioritize that one",
+            "RankMeQuickAccess — button per asset → opens Rank-Me tool prefilled for that property",
+          ],
+          data_needs: "performanceCompositeScore (filtered to owned assets) + rank-me gap analysis",
+          effort: "L",
+          priority: "P1",
+        },
+        {
+          type: "NEW TAB",
+          name: "Competitive Monitor",
+          insert_position: "After Performance & Rankings",
+          systems: ["S3", "S4"],
+          items_addressed: [5, 10],
+          description: "Ongoing competitive intelligence for your owned assets. Trade area comp tracking (who's gaining, who's losing share), Google review sentiment monitoring for your properties AND competitors, amenity gap alerts, and competitive displacement warnings. This is DEFENSIVE intelligence — protecting your portfolio position.",
+          components: [
+            "CompetitiveShareChart — your property's traffic share over time vs top 3 competitors",
+            "ReviewSentimentDashboard — your Google rating + sentiment vs trade area avg, with trend",
+            "CompetitorMovementAlerts — 'Competitor X just renovated 40% of units and raised rents $150'",
+            "AmenityGapTracker — running list of amenities your comps are adding that you don't have",
+          ],
+          data_needs: "M07 competitive share + Google Places API + apartments.com monitoring",
+          effort: "L",
+          priority: "P2",
+        },
+      ],
+    },
+
+    {
+      page: "Pipeline Grid / Deal List",
+      route: "/deals (pipeline view)",
+      status: "exists",
+      current_elements: ["DataGrid with deal cards", "Stage columns", "Basic property info"],
+      changes: [
+        {
+          type: "ENHANCE EXISTING",
+          name: "Add Intelligence Columns",
+          insert_position: "New columns in existing DataGrid",
+          systems: ["S1", "S2"],
+          items_addressed: [2, 3],
+          description: "Add columns to the deal pipeline grid: JEDI Score (already planned), PCS Rank, T-04 Quadrant, Target Score, and Strategy Recommendation. These columns make the pipeline grid an intelligence-driven sorting tool instead of just a list of properties.",
+          components: [
+            "PCSRankColumn — shows rank with movement badge",
+            "QuadrantBadge — Hidden Gem 💎 / Winner ✅ / Hype ⚠️ / Dead 🔴",
+            "TargetScoreColumn — for non-owned deals, shows acquisition target score",
+            "QuickFilterRow — filter pipeline by: quadrant, rank tier, strategy recommendation",
+          ],
+          data_needs: "performanceCompositeScore + T-04 from M07 + acquisitionIntelligence",
+          effort: "M",
+          priority: "P1",
+        },
+      ],
+    },
+  ],
+
+  // ═══════════════════════════════════════════════════════════
+  // GENUINELY NEW PAGES
+  // ═══════════════════════════════════════════════════════════
+  new_pages: [
+    {
+      page: "Opportunity Center",
+      route: "/opportunities",
+      systems: ["S6", "S2", "S4"],
+      items_addressed: [3, 4, 9],
+      is_new: true,
+      description: "The central intelligence hub for deal sourcing. This is where the platform PUSHES opportunities to the user instead of the user hunting for deals. Shows opportunity alerts, acquisition targets, market surge notifications, distress signals, and pattern anomalies — all in one feed with filtering. Think of it as the 'For You' page of real estate intelligence.",
+      why_new_page: "The Dashboard shows your existing deals. This page shows deals you DON'T own yet — opportunities the platform has detected. It's a fundamentally different user intent: 'show me what I should be looking at' vs 'show me my portfolio status.'",
+      layout: "Three-panel: (Left) Filter sidebar with alert types, markets, urgency. (Center) Alert feed in reverse-chron. (Right) Detail panel for selected alert with map, ownership profile, and 'Underwrite This Deal' CTA.",
+      tabs: [
+        { name: "Alert Feed", description: "All opportunity alerts ranked by TOS × urgency. Infinite scroll with real-time updates." },
+        { name: "Acquisition Watchlist", description: "Properties the user has starred from the alert feed or Acquisition Targets tab. Tracked with ongoing monitoring for debt maturity, ownership changes, and performance shifts." },
+        { name: "Market Radar", description: "Lifecycle phase map of all tracked submarkets. Click a submarket → see its phase, trajectory, and any active alerts. Bird's-eye view of where opportunities are concentrating." },
+      ],
+      key_components: [
+        "OpportunityAlertFeed — main feed with OpportunityAlertCard components",
+        "AlertDetailPanel — full intelligence context for selected alert",
+        "WatchlistManager — star/unstar properties, set custom alert thresholds",
+        "MarketRadarMap — Mapbox with submarket polygons colored by lifecycle phase + alert pins",
+        "UnderwriteCTA — 'Add to Pipeline' button that creates a new Deal Capsule pre-populated with alert data",
+      ],
+      data_needs: "opportunityAlertService + acquisitionIntelligence + market lifecycle phase + all alert trigger services",
+      effort: "XL",
+      priority: "P2",
+    },
+    {
+      page: "Pattern Intelligence",
+      route: "/patterns",
+      systems: ["S4"],
+      items_addressed: [6, 10, 11, 13],
+      is_new: true,
+      description: "The platform's analytical brain made visible. Shows cross-module pattern detections: rent-traffic-wage correlations, Google review intelligence dashboards, business formation cluster analysis, and any anomalies detected across data streams. This is the 'show your work' page for the Pattern Recognition Engine.",
+      why_new_page: "Individual pattern outputs are embedded in existing pages (Trends tab gets correlation charts, Deal page gets review analysis). But the PATTERN ENGINE ITSELF needs a home — where users can see ALL detected patterns across all markets, explore correlations the system has found, and discover insights they didn't specifically ask for. This is the serendipity page.",
+      layout: "Dashboard-style with cards/widgets. Top: 'Detected Patterns' feed showing the most recent and highest-confidence patterns across all markets. Below: four quadrant panels for each pattern category.",
+      tabs: [
+        { name: "Detected Patterns", description: "Unified feed of all patterns detected across all tracked markets. Filterable by type (correlation, anomaly, divergence, cluster) and market." },
+        { name: "Review Intelligence", description: "Google review analysis across all tracked properties. Sentiment heatmap by submarket. Management transition signals. Amenity demand extraction. (Item 10)" },
+        { name: "Correlation Lab", description: "Interactive exploration of rent-traffic-wage-occupancy relationships. User can select variables, timeframes, and geographies to explore correlations. (Item 11)" },
+        { name: "Business Formation", description: "Business cluster intelligence. Map + charts of new entity formations by industry and geography. Emerging employment center detection. (Item 13)" },
+      ],
+      key_components: [
+        "PatternFeed — list of PatternDetectionCard components with confidence scores",
+        "ReviewHeatmap — Mapbox layer showing Google rating average by submarket",
+        "CorrelationExplorer — interactive chart builder with variable selection",
+        "ClusterMap — business formation spatial clustering visualization",
+        "PatternToAlertLink — when a pattern exceeds confidence threshold, auto-generates an opportunity alert",
+      ],
+      data_needs: "patternRecognitionEngine service (NEW) → consumes from M07, M05, Google Places API, Census BFS, BLS QCEW",
+      effort: "XL",
+      priority: "P3",
+    },
+    {
+      page: "Underwriting Archive",
+      route: "/archive",
+      systems: ["S7"],
+      items_addressed: [12, 14],
+      is_new: true,
+      description: "Every deal ever underwritten on the platform, preserved as a searchable intelligence archive. Shows deal snapshots frozen at underwriting time, the assumptions used, the strategy selected, and (where available) the outcome. Over time becomes the platform's proprietary benchmark dataset. Also surfaces property records intelligence — supply signals from plats/permits/COs, distress signals from foreclosures/liens, and market timing signals from transaction velocity.",
+      why_new_page: "This data doesn't belong on any existing page. The Pipeline shows ACTIVE deals. The Archive preserves ALL deals (including lost bids, passed deals, and expired leads) because the data has analytical value even when the deal is dead. It's also the natural home for property records intelligence since that data is market-level, not deal-specific.",
+      layout: "Top: search and filter bar. Main: DataGrid of archived deals sortable by date, submarket, strategy, TOS score, outcome. Right panel: selected deal detail with frozen snapshot. Bottom section: Property Records Intelligence widgets.",
+      tabs: [
+        { name: "Deal Archive", description: "Searchable grid of all underwritten deals. Columns: property, date, strategy selected, TOS at underwriting, asking price, outcome (won/lost/passed), actual IRR (if owned). (Item 12)" },
+        { name: "Assumption Benchmarks", description: "Aggregated analytics from archived deals: average rent growth assumption vs actual, average cap rate vs actual, strategy recommendation accuracy. Shows 'what the market taught us.' (Item 12)" },
+        { name: "Property Records", description: "Market-level property records intelligence: new plat recordings, foreclosure filings, code enforcement activity, transaction velocity, 1031 exchange flows. By submarket. (Item 14)" },
+        { name: "Supply Signals", description: "Property-records-derived supply intelligence: impact fee payments, utility connections, CO filings, demolition permits, land sale $/unit trends. Feeds into M04 Supply Pipeline. (Item 14)" },
+      ],
+      key_components: [
+        "ArchiveGrid — DataGrid with frozen deal snapshots",
+        "SnapshotViewer — read-only Deal Capsule showing all data as of underwriting date",
+        "BenchmarkDashboard — assumption accuracy charts, bid-to-win analysis, strategy outcome tracking",
+        "PropertyRecordsWidget — by submarket, shows foreclosure/lien/plat/permit activity",
+        "SupplySignalFeed — new CO filings, impact fees, utility connections → auto-feeds M04",
+        "OutcomeTracker — for won deals, compares underwritten projections to actual performance",
+      ],
+      data_needs: "deal snapshot archiver (NEW background job) + county property records APIs + M04 supply pipeline integration",
+      effort: "L (archive) + XL (records intelligence)",
+      priority: "P2 (archive) / P3 (records intelligence)",
+    },
+  ],
+};
+
+// ────────────────────────────────────────────────────────────
+// ITEM-TO-PAGE CROSS-REFERENCE
+// ────────────────────────────────────────────────────────────
+const ITEM_MAPPING = [
+  {
+    item: 1,
+    label: "Track performance of each property",
+    primary_home: "Market Intelligence → Power Rankings tab (NEW)",
+    also_appears: [
+      "Deal Page → Traffic Intelligence section (per-deal PCS view)",
+      "Assets Owned → Performance & Rankings tab (owned assets only)",
+      "Pipeline Grid → PCS Rank column",
+    ],
+    backend_service: "performanceCompositeScore.service.ts (NEW)",
+    db_table: "property_performance_scores (NEW) — stores monthly PCS snapshots",
+  },
+  {
+    item: 2,
+    label: "Rank them based on performance",
+    primary_home: "Market Intelligence → Power Rankings tab (NEW)",
+    also_appears: [
+      "Market Intelligence → Deals tab (rank column added)",
+      "Pipeline Grid → PCS Rank column",
+      "Dashboard → Map layer (bubble color by rank tier)",
+    ],
+    backend_service: "performanceCompositeScore.service.ts → rankProperties()",
+    db_table: "property_performance_scores.rank, .submarket_rank",
+  },
+  {
+    item: 3,
+    label: "Make acquisition targets from underperformers in top vantage groups",
+    primary_home: "Market Intelligence → Acquisition Targets tab (NEW)",
+    also_appears: [
+      "Opportunity Center → Alert Feed (acquisition window alerts) (NEW PAGE)",
+      "Dashboard → Map layer (target pins with Triple Trigger glow)",
+      "Market Intelligence → Deals tab (Target Score column)",
+    ],
+    backend_service: "acquisitionIntelligence.service.ts (NEW)",
+    db_table: "acquisition_targets (NEW) — stores target score, gap analysis, vantage group match",
+  },
+  {
+    item: 4,
+    label: "Find owner, manager, debt maturity",
+    primary_home: "Market Intelligence → Active Owners tab (ENHANCED) + Acquisition Targets tab",
+    also_appears: [
+      "Opportunity Center → Alert Detail panel (ownership profile) (NEW PAGE)",
+      "Deal Page → new Ownership Intelligence card in overview",
+    ],
+    backend_service: "ownershipIntelligence.service.ts (NEW)",
+    db_table: "property_ownership (NEW) — owner entity, purchase date/price, est. debt maturity, management_co",
+  },
+  {
+    item: 5,
+    label: "Dual comp analysis: trade area + like-kind",
+    primary_home: "Deal Page → Competitive Position section (NEW SECTION)",
+    also_appears: [
+      "Assets Owned → Competitive Monitor tab (NEW TAB — ongoing monitoring for owned assets)",
+    ],
+    backend_service: "dualCompAnalysis.service.ts (NEW) — tradeAreaComps() + likeKindComps()",
+    db_table: "comp_sets (NEW) — stores trade area comp set + like-kind comp set per property",
+  },
+  {
+    item: 6,
+    label: "General pattern recognition module",
+    primary_home: "Pattern Intelligence page (NEW PAGE)",
+    also_appears: [
+      "Opportunity Center → Pattern Anomaly alerts",
+      "Dashboard → Alert Feed widget (pattern-triggered alerts)",
+    ],
+    backend_service: "patternRecognitionEngine.service.ts (NEW) — runs as background job, cross-references all modules",
+    db_table: "detected_patterns (NEW) — type, confidence, affected_geography, affected_properties, timestamp",
+  },
+  {
+    item: 7,
+    label: "Project where a new deal will rank",
+    primary_home: "Deal Page → Rank-Me Positioning Tool (NEW SECTION)",
+    also_appears: [
+      "Deal creation flow — at underwriting stage, auto-calculate projected rank",
+    ],
+    backend_service: "rankProjection.service.ts (NEW) — extends performanceCompositeScore",
+    db_table: "rank_projections (NEW) — deal_id, target_rank, projected_rank, gap_breakdown, renovation_scope",
+  },
+  {
+    item: 8,
+    label: "User says 'I want to be ranked 2nd, what do I do?'",
+    primary_home: "Deal Page → Rank-Me Positioning Tool (NEW SECTION)",
+    also_appears: [
+      "Assets Owned → Performance tab → Rank-Me quick access per asset",
+    ],
+    backend_service: "rankProjection.service.ts → reverseEngineerGap(targetRank)",
+    db_table: "rank_projections + prescriptive_actions (NEW) — action, cost, timeline, projected_impact",
+  },
+  {
+    item: 9,
+    label: "Alerts on opportunities + strategy recommendations",
+    primary_home: "Opportunity Center page (NEW PAGE)",
+    also_appears: [
+      "Dashboard → Opportunity Alert Feed widget",
+      "Email digest (weekly)",
+      "Push notifications (high urgency only)",
+    ],
+    backend_service: "opportunityAlertService.ts (NEW) — background job aggregating triggers from all systems",
+    db_table: "opportunity_alerts (NEW) — type, trigger_data, confidence, urgency, strategy_rec, delivery_status",
+  },
+  {
+    item: 10,
+    label: "Read Google reviews for insights",
+    primary_home: "Deal Page → Traffic Intelligence section (review sentiment per property)",
+    also_appears: [
+      "Pattern Intelligence → Review Intelligence tab (market-wide analysis) (NEW PAGE)",
+      "Assets Owned → Competitive Monitor tab (your reviews vs competitors)",
+      "Market Intelligence → Power Rankings (Ops Quality component uses review data)",
+    ],
+    backend_service: "googleReviewIntelligence.service.ts (NEW) — pulls + NLP classifies reviews",
+    db_table: "property_reviews (NEW) — review text, rating, date, nlp_categories, sentiment_scores",
+  },
+  {
+    item: 11,
+    label: "Compare rent growth to traffic/wage growth",
+    primary_home: "Market Intelligence → Trends tab (ENHANCED with correlation charts)",
+    also_appears: [
+      "Pattern Intelligence → Correlation Lab tab (interactive exploration) (NEW PAGE)",
+      "Opportunity Center → Pattern Anomaly alerts (when divergence detected)",
+    ],
+    backend_service: "correlationEngine.service.ts (NEW) — runs monthly, computes rolling correlations",
+    db_table: "market_correlations (NEW) — submarket, var1, var2, r_value, period, divergence_flag",
+  },
+  {
+    item: 12,
+    label: "Save copies of all deals underwritten",
+    primary_home: "Underwriting Archive page (NEW PAGE)",
+    also_appears: [
+      "Deal Page → auto-snapshot on stage transitions (e.g., 'LOI Submitted' triggers archive snapshot)",
+      "Pattern Intelligence → Assumption Benchmarks (aggregated from archive)",
+    ],
+    backend_service: "underwritingArchive.service.ts (NEW) — snapshot creator + benchmark aggregator",
+    db_table: "deal_snapshots (NEW) — frozen copy of deal_capsule data at point in time + assumptions used",
+  },
+  {
+    item: 13,
+    label: "Business formation information, clusters",
+    primary_home: "Market Intelligence → Business Clusters tab (NEW TAB) OR Pattern Intelligence → Business Formation tab",
+    also_appears: [
+      "Dashboard → Map layer (cluster heatmap)",
+      "Deal Page → Market Intel section (cluster proximity badge)",
+    ],
+    backend_service: "businessFormationIntelligence.service.ts (NEW) — Census BFS + sunbiz scraper",
+    db_table: "business_formations (NEW) — entity_name, naics, filing_date, lat/lng, county",
+  },
+  {
+    item: 14,
+    label: "Derive intelligence from property records",
+    primary_home: "Underwriting Archive → Property Records + Supply Signals tabs (NEW PAGE)",
+    also_appears: [
+      "Market Intelligence → Future Supply tab (records-derived supply signals)",
+      "Market Intelligence → Active Owners tab (ownership chain from records)",
+      "Opportunity Center → Distress Signal alerts (foreclosures, liens)",
+    ],
+    backend_service: "propertyRecordsIntelligence.service.ts (NEW) — county records ETL + signal extraction",
+    db_table: "property_records_events (NEW) — event_type (plat/CO/foreclosure/lien/sale), parcel_id, date, details",
+  },
+];
+
+
+// ────────────────────────────────────────────────────────────
+// NEW BACKEND SERVICES REQUIRED
+// ────────────────────────────────────────────────────────────
+const BACKEND_SERVICES = [
+  { name: "performanceCompositeScore.service.ts", system: "S1", priority: "P1", effort: "L", dependencies: ["M07 traffic (TPI)", "M05 market data", "Google Places API", "apartments.com data"] },
+  { name: "acquisitionIntelligence.service.ts", system: "S2", priority: "P2", effort: "XL", dependencies: ["performanceCompositeScore", "county records API", "sunbiz.org scraper", "UCC filing search"] },
+  { name: "ownershipIntelligence.service.ts", system: "S2", priority: "P2", effort: "L", dependencies: ["county property appraiser", "SOS entity lookup", "CMBS data (premium)"] },
+  { name: "dualCompAnalysis.service.ts", system: "S3", priority: "P1", effort: "L", dependencies: ["M05 apartments.com", "M15 competition", "performanceCompositeScore"] },
+  { name: "patternRecognitionEngine.service.ts", system: "S4", priority: "P2", effort: "XL", dependencies: ["all other services — this is the aggregator"] },
+  { name: "googleReviewIntelligence.service.ts", system: "S4", priority: "P1", effort: "M", dependencies: ["Google Places API", "NLP classification (OpenAI or local)"] },
+  { name: "correlationEngine.service.ts", system: "S4", priority: "P1", effort: "M", dependencies: ["M05 rent data", "M07 traffic data", "BLS QCEW"] },
+  { name: "businessFormationIntelligence.service.ts", system: "S4", priority: "P3", effort: "L", dependencies: ["Census BFS API", "sunbiz.org scraper", "SBA data"] },
+  { name: "rankProjection.service.ts", system: "S5", priority: "P2", effort: "L", dependencies: ["performanceCompositeScore", "M09 ProForma"] },
+  { name: "opportunityAlertService.service.ts", system: "S6", priority: "P2", effort: "L", dependencies: ["all detection services — aggregates triggers into alerts"] },
+  { name: "underwritingArchive.service.ts", system: "S7", priority: "P2", effort: "M", dependencies: ["Deal Capsule (M01)", "snapshot mechanism"] },
+  { name: "propertyRecordsIntelligence.service.ts", system: "S7", priority: "P3", effort: "XL", dependencies: ["county records APIs", "M04 supply pipeline"] },
+];
+
+
+// ────────────────────────────────────────────────────────────
+// RENDERING
+// ────────────────────────────────────────────────────────────
+function Pill({ children, color = "#64748b" }) {
+  return <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 5, color, background: `${color}12`, border: `1px solid ${color}20`, letterSpacing: "0.04em" }}>{children}</span>;
+}
+
+function Divider({ label, color = "#475569" }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "40px 0 18px" }}>
+      <div style={{ height: 1, flex: 1, background: `linear-gradient(to right, ${color}40, transparent)` }} />
+      <span style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: "0.12em", whiteSpace: "nowrap" }}>{label}</span>
+      <div style={{ height: 1, flex: 1, background: `linear-gradient(to left, ${color}40, transparent)` }} />
+    </div>
+  );
+}
+
+export default function FrontendIntegrationMap() {
+  const [activeView, setActiveView] = useState("pages");
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: "#050810", color: "#e2e8f0",
+      fontFamily: "'DM Sans', -apple-system, sans-serif", padding: "36px 24px",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+      `}</style>
+
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        {/* HEADER */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", letterSpacing: "0.14em", marginBottom: 6 }}>
+            CI ENGINE · FRONTEND INTEGRATION MAP · v1
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em", marginBottom: 8 }}>
+            Where Does Everything Live?
+          </h1>
+          <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.7, maxWidth: 800 }}>
+            14 capabilities → 3 new pages + 5 existing pages enhanced with 14 new sections/tabs.
+            Most intelligence embeds into pages users already visit. New pages only where the user intent is fundamentally different.
+          </p>
+        </div>
+
+        {/* SUMMARY STATS */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 32 }}>
+          {[
+            { label: "New Pages", value: "3", color: "#22c55e", detail: "Opportunity Center, Pattern Intelligence, Underwriting Archive" },
+            { label: "Existing Pages Modified", value: "5", color: "#3b82f6", detail: "Market Intel, Deal Page, Dashboard, Assets Owned, Pipeline Grid" },
+            { label: "New Sections/Tabs", value: "14", color: "#f59e0b", detail: "Across existing pages" },
+            { label: "New Backend Services", value: "12", color: "#ef4444", detail: "New .service.ts files" },
+          ].map((stat, i) => (
+            <div key={i} style={{
+              background: `${stat.color}06`, border: `1px solid ${stat.color}20`,
+              borderRadius: 10, padding: 14, textAlign: "center",
+            }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: stat.color, fontFamily: "'JetBrains Mono', monospace" }}>{stat.value}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc", marginBottom: 4 }}>{stat.label}</div>
+              <div style={{ fontSize: 9, color: "#64748b", lineHeight: 1.4 }}>{stat.detail}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* VIEW TOGGLE */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
+          {[
+            { id: "pages", label: "By Page (Where)" },
+            { id: "items", label: "By Item (What)" },
+            { id: "services", label: "Backend Services" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveView(tab.id)}
+              style={{
+                background: activeView === tab.id ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.02)",
+                border: `1px solid ${activeView === tab.id ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.06)"}`,
+                borderRadius: 8, padding: "8px 16px", cursor: "pointer",
+                fontSize: 12, fontWeight: 600, color: activeView === tab.id ? "#3b82f6" : "#64748b",
+              }}
+            >{tab.label}</button>
+          ))}
+        </div>
+
+        {/* VIEW: BY PAGE */}
+        {activeView === "pages" && (
+          <div>
+            {/* Existing pages */}
+            <Divider label="EXISTING PAGES — NEW SECTIONS & ENHANCEMENTS" color="#3b82f6" />
+            {INTEGRATION_MAP.existing_pages.map((page) => (
+              <div key={page.page} style={{ marginBottom: 24 }}>
+                <div style={{
+                  background: "rgba(59,130,246,0.04)", border: "1px solid rgba(59,130,246,0.12)",
+                  borderRadius: 10, padding: 14, marginBottom: 8,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#3b82f6" }}>{page.page}</span>
+                    <span style={{ fontSize: 10, color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{page.route}</span>
+                    <Pill color="#3b82f6">{page.changes.length} changes</Pill>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, paddingLeft: 12 }}>
+                  {page.changes.map((change, j) => (
+                    <div key={j} style={{
+                      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                      borderRadius: 8, padding: 14,
+                      borderLeft: `3px solid ${change.type.includes("NEW") ? "#22c55e" : "#f59e0b"}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                        <Pill color={change.type.includes("NEW") ? "#22c55e" : "#f59e0b"}>{change.type}</Pill>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc" }}>{change.name}</span>
+                        {change.systems.map((s) => <Pill key={s} color="#8b5cf6">{s}</Pill>)}
+                        <Pill color="#64748b">Items {change.items_addressed.join(", ")}</Pill>
+                        <Pill color="#ef4444">{change.effort}</Pill>
+                        <Pill color="#06b6d4">{change.priority}</Pill>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginBottom: 8 }}>{change.description}</div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>
+                        <strong style={{ color: "#64748b" }}>Components:</strong> {change.components.join(" · ")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* New pages */}
+            <Divider label="GENUINELY NEW PAGES" color="#22c55e" />
+            {INTEGRATION_MAP.new_pages.map((page) => (
+              <div key={page.page} style={{
+                background: "rgba(34,197,94,0.04)", border: "1px solid rgba(34,197,94,0.15)",
+                borderRadius: 12, padding: 18, marginBottom: 16,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <Pill color="#22c55e">NEW PAGE</Pill>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#22c55e" }}>{page.page}</span>
+                  <span style={{ fontSize: 10, color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{page.route}</span>
+                  {page.systems.map((s) => <Pill key={s} color="#8b5cf6">{s}</Pill>)}
+                  <Pill color="#64748b">Items {page.items_addressed.join(", ")}</Pill>
+                  <Pill color="#ef4444">{page.effort}</Pill>
+                  <Pill color="#06b6d4">{page.priority}</Pill>
+                </div>
+                <div style={{ fontSize: 12, color: "#cbd5e1", lineHeight: 1.7, marginBottom: 10 }}>{page.description}</div>
+                <div style={{
+                  fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginBottom: 10,
+                  background: "rgba(0,0,0,0.25)", borderRadius: 6, padding: 10,
+                  borderLeft: "3px solid rgba(34,197,94,0.3)",
+                }}>
+                  <strong style={{ color: "#22c55e" }}>Why a new page?</strong> {page.why_new_page}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {page.tabs.map((tab, j) => (
+                    <div key={j} style={{ background: "rgba(0,0,0,0.2)", borderRadius: 6, padding: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc", marginBottom: 3 }}>{tab.name}</div>
+                      <div style={{ fontSize: 10, color: "#64748b", lineHeight: 1.5 }}>{tab.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* VIEW: BY ITEM */}
+        {activeView === "items" && (
+          <div style={{ display: "grid", gap: 8 }}>
+            {ITEM_MAPPING.map((item) => (
+              <div key={item.item} style={{
+                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 10, padding: 14,
+                display: "grid", gridTemplateColumns: "36px 1fr", gap: 12,
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, background: "rgba(59,130,246,0.1)",
+                  border: "1px solid rgba(59,130,246,0.25)", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, fontWeight: 800, color: "#3b82f6", fontFamily: "'JetBrains Mono', monospace",
+                }}>{item.item}</div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc", marginBottom: 4 }}>{item.label}</div>
+                  <div style={{ fontSize: 11, marginBottom: 6 }}>
+                    <strong style={{ color: "#22c55e" }}>Primary:</strong> <span style={{ color: "#cbd5e1" }}>{item.primary_home}</span>
+                  </div>
+                  <div style={{ marginBottom: 6 }}>
+                    {item.also_appears.map((loc, j) => (
+                      <div key={j} style={{ fontSize: 10, color: "#64748b", paddingLeft: 8, borderLeft: "2px solid rgba(255,255,255,0.06)", marginBottom: 3, lineHeight: 1.4 }}>
+                        {loc}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <Pill color="#f59e0b">{item.backend_service}</Pill>
+                    <Pill color="#8b5cf6">{item.db_table}</Pill>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* VIEW: BACKEND SERVICES */}
+        {activeView === "services" && (
+          <div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {BACKEND_SERVICES.map((svc, i) => (
+                <div key={i} style={{
+                  background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: 8, padding: 12,
+                  display: "grid", gridTemplateColumns: "280px 50px 50px 50px 1fr", gap: 12, alignItems: "center",
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#f8fafc", fontFamily: "'JetBrains Mono', monospace" }}>{svc.name}</span>
+                  <Pill color="#8b5cf6">{svc.system}</Pill>
+                  <Pill color="#06b6d4">{svc.priority}</Pill>
+                  <Pill color="#ef4444">{svc.effort}</Pill>
+                  <div style={{ fontSize: 9, color: "#64748b" }}>
+                    Deps: {svc.dependencies.join(", ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* FOOTER */}
+        <div style={{ textAlign: "center", padding: "24px 0", marginTop: 32, borderTop: "1px solid rgba(255,255,255,0.04)", fontSize: 9, color: "#1e293b" }}>
+          JEDI RE · CI Engine Frontend Integration Map · 3 New Pages + 5 Existing Pages Modified + 12 New Backend Services
+        </div>
+      </div>
+    </div>
+  );
+}

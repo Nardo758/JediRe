@@ -28,110 +28,7 @@ interface RankedAsset {
   units: number;
 }
 
-const MOCK_RANKED_ASSETS: RankedAsset[] = [
-  {
-    id: 'ra-1',
-    dealId: 'c7a7338a-b520-4f76-b15b-5be1b9400fec',
-    name: 'The Residences at Midtown',
-    submarket: 'Midtown Atlanta',
-    pcsScore: 82,
-    rank: 3,
-    totalInSubmarket: 18,
-    movement: 2,
-    trajectory: 'improving',
-    targetRank: 1,
-    gapToTarget: 2,
-    monthlyPcs: [71, 73, 74, 76, 77, 78, 79, 78, 80, 80, 81, 82],
-    targetLine: 88,
-    classType: 'Class A',
-    units: 320,
-  },
-  {
-    id: 'ra-2',
-    dealId: '5d738adc-c4fe-42e9-986b-112e5fb550a8',
-    name: 'Peachtree Commons',
-    submarket: 'Buckhead',
-    pcsScore: 74,
-    rank: 7,
-    totalInSubmarket: 22,
-    movement: -1,
-    trajectory: 'declining',
-    targetRank: 5,
-    gapToTarget: 2,
-    monthlyPcs: [78, 78, 77, 76, 76, 75, 75, 74, 75, 74, 74, 74],
-    targetLine: 80,
-    classType: 'Class B',
-    units: 248,
-  },
-  {
-    id: 'ra-3',
-    dealId: 'ab17f229-8b9e-4628-8126-76729ef1e2ee',
-    name: 'Highlands Park Lofts',
-    submarket: 'Virginia Highland',
-    pcsScore: 89,
-    rank: 1,
-    totalInSubmarket: 12,
-    movement: 0,
-    trajectory: 'stable',
-    targetRank: 1,
-    gapToTarget: 0,
-    monthlyPcs: [87, 87, 88, 88, 88, 89, 88, 89, 89, 89, 89, 89],
-    targetLine: 88,
-    classType: 'Class A',
-    units: 186,
-  },
-  {
-    id: 'ra-4',
-    dealId: 'fcaa546f-f082-432d-85b5-eb496ebd435b',
-    name: 'Decatur Station',
-    submarket: 'Decatur',
-    pcsScore: 67,
-    rank: 5,
-    totalInSubmarket: 9,
-    movement: -2,
-    trajectory: 'declining',
-    targetRank: 3,
-    gapToTarget: 2,
-    monthlyPcs: [72, 71, 71, 70, 69, 69, 68, 68, 67, 67, 67, 67],
-    targetLine: 75,
-    classType: 'Class B',
-    units: 156,
-  },
-  {
-    id: 'ra-5',
-    dealId: '1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d',
-    name: 'Atlantic Station Living',
-    submarket: 'West Midtown',
-    pcsScore: 78,
-    rank: 4,
-    totalInSubmarket: 15,
-    movement: 3,
-    trajectory: 'improving',
-    targetRank: 2,
-    gapToTarget: 2,
-    monthlyPcs: [68, 69, 70, 72, 73, 74, 74, 75, 76, 77, 77, 78],
-    targetLine: 83,
-    classType: 'Class A',
-    units: 290,
-  },
-  {
-    id: 'ra-6',
-    dealId: '4f6115a8-499f-426b-a3f0-b1c988cf8d02',
-    name: 'Riverside Flats',
-    submarket: 'Vinings',
-    pcsScore: 71,
-    rank: 6,
-    totalInSubmarket: 11,
-    movement: 1,
-    trajectory: 'improving',
-    targetRank: 4,
-    gapToTarget: 2,
-    monthlyPcs: [65, 66, 66, 67, 68, 68, 69, 69, 70, 70, 71, 71],
-    targetLine: 77,
-    classType: 'Class B',
-    units: 204,
-  },
-];
+const MOCK_RANKED_ASSETS: RankedAsset[] = [];
 
 interface CompSetEntry {
   id: string;
@@ -257,8 +154,9 @@ export function AssetsOwnedPage() {
   const loadRankings = async () => {
     try {
       setRankingsLoading(true);
-      const response: any = await apiClient.get('/rankings/owned/atlanta');
-      const data = response?.data || response;
+      const response: any = await apiClient.get(`${API_URL}/rankings/owned/atlanta`);
+      const body = response?.data || response;
+      const data = body?.data || body;
       if (data?.rankedAssets && data.rankedAssets.length > 0) {
         setRankedAssets(data.rankedAssets);
         setRankingsLive(data.source === 'live');
@@ -314,8 +212,14 @@ export function AssetsOwnedPage() {
   };
 
   const handleRowClick = (row: OwnedAsset) => {
+    const dealId = (row as any).deal_id;
+    const source = (row as any).source;
     setSelectedAsset(row.id);
-    navigate(`/deals/${row.id}`);
+    if (source === 'deal' || dealId) {
+      navigate(`/assets-owned/${dealId || row.id}/property`);
+    } else {
+      navigate(`/deals/${row.id}`);
+    }
   };
 
   const formatCurrency = (value: any) =>
@@ -785,6 +689,12 @@ export function AssetsOwnedPage() {
                   </span>
                 </div>
               )}
+              <button
+                onClick={(e) => { e.stopPropagation(); navigate(`/assets-owned/${asset.id}/report`); }}
+                className="mt-2 w-full px-2 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200 transition-colors"
+              >
+                📊 View Report
+              </button>
             </div>
           </div>
         ))}
@@ -878,6 +788,12 @@ export function AssetsOwnedPage() {
                         </td>
                         <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => navigate(`/assets-owned/${asset.id}/report`)}
+                              className="px-2 py-1 text-[10px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-200"
+                            >
+                              📊 Report
+                            </button>
                             <button
                               onClick={() => discoverComps(asset.id)}
                               disabled={isDiscovering}
@@ -1090,6 +1006,13 @@ export function AssetsOwnedPage() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <span className="text-xs text-gray-500">{assets.length} assets</span>
+            <button
+              onClick={() => navigate('/deals/create', { state: { dealCategory: 'portfolio' } })}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <span>+</span>
+              <span>Add Asset</span>
+            </button>
           </div>
         </div>
 

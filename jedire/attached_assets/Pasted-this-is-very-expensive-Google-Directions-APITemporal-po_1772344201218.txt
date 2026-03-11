@@ -1,0 +1,44 @@
+this is very expensive Google Directions APITemporal polling~$64/mo per propertyYes
+
+12:47 AM
+
+Excavated cheaper alternatives to expensive API polling
+Excavated cheaper alternatives to expensive API polling
+
+
+
+
+Yeah that's way too much. Here's the thing — you don't actually need real-time polling per property. You need the temporal distribution curve, and there are much cheaper ways to get it.
+
+
+Excavated free DOT resources to eliminate recurring costs
+Excavated free DOT resources to eliminate recurring costs
+
+
+
+
+Here's the fix — you don't need to poll Google at all for ongoing temporal curves. The DOT already publishes exactly what you need for free.
+
+The key insight: The K-factor is the proportion of annual average daily traffic occurring in an hour 
+Wikipedia
+, and every state DOT publishes these from their continuous count stations along with D-factors (directional split) and hourly distribution curves broken out by road functional class. K-Factor typically ranges from 7% to 12% depending on whether a facility is in an urban, suburban, or rural area. 
+Isarsoft
+
+Florida DOT publishes these for every continuous count station in the state. That means the temporal distribution curve — the exact thing you were going to spend $64/mo per property polling Google for — is already computed, validated, and free.
+
+Here's the revised cost model:
+
+Layer 2 Replacement — DOT Hourly Factors (FREE)
+
+Instead of polling Google Routes every 15 minutes, you pull FDOT's published hourly volume factors by road functional class. An urban arterial in South Florida has a known hourly distribution: roughly 8% of daily traffic hits during AM peak (7-8am), 9% during PM peak (5-6pm), and it tapers overnight. These curves are based on years of continuous count station data — way more reliable than 30 days of Google polling.
+
+When you actually need Google (one-time, ~$5)
+
+The only time Google adds value is if a specific road segment doesn't have a nearby continuous count station AND you need property-level precision beyond the road-class template. In that case, you poll for one week (~$15), build the curve, and never poll again. That curve is stable — road traffic patterns for a given segment don't materially change month to month unless there's a road closure or new development.
+
+Revised Three-Layer Cost
+
+Layer 1: DOT AADT → $0 (public data)
+Layer 2: DOT K-factors + hourly distribution → $0 (public data), with optional one-time Google calibration at ~$5-15 per road segment
+Layer 3: SpyFu + pytrends → $89/mo + $0
+Total: $89/mo flat instead of $89 + $64/property/mo. For 10 properties that's $89 vs $729. Massive difference.

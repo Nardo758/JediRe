@@ -661,28 +661,8 @@ interface DevOverviewProps {
 
 const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile }) => {
   const [selectedPathId, setSelectedPathId] = useState('P1');
-  const [unitMixStatus, setUnitMixStatus] = useState<any>(null);
 
   const zoningStore = useZoningModuleStore();
-  
-  // Fetch unit mix status (Phase 11)
-  useEffect(() => {
-    if (!deal?.id) return;
-    
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch(`/api/v1/deals/${deal.id}/unit-mix/status`);
-        if (response.ok) {
-          const data = await response.json();
-          setUnitMixStatus(data.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch unit mix status:', error);
-      }
-    };
-    
-    fetchStatus();
-  }, [deal?.id]);
   const { comps: unitMixComps, program: unitMixProgram, zoning: unitMixZoning, loading: unitMixLoading } = useUnitMixIntelligence(deal?.id, deal?.tradeAreaId);
 
   const zoningMaxUnits = activeScenario?.maxUnits || unitMixZoning?.maxUnits || zoningStore.selected_path_data?.maxUnits || null;
@@ -970,28 +950,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-4 py-2.5 bg-stone-50 border-y border-stone-200 border-l-[3px] border-cyan-500">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-mono text-stone-500 tracking-widest font-bold uppercase">Unit Mix Program</span>
-          {unitMixStatus?.hasUnitMix && (
-            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-wide ${
-              unitMixStatus.source === 'manual' 
-                ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                : unitMixStatus.source === 'intelligence'
-                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                unitMixStatus.source === 'manual' ? 'bg-blue-500' 
-                : unitMixStatus.source === 'intelligence' ? 'bg-purple-500' 
-                : 'bg-emerald-500'
-              }`} />
-              FROM {unitMixStatus.source.toUpperCase()}
-            </span>
-          )}
-        </div>
-        <span className="text-[10px] text-stone-400">{activePath.units} units · Based on {activePath.label}</span>
-      </div>
+      <SectionHead title="Unit Mix Program" right={`${activePath.units} units · Based on ${activePath.label}`} accentColor="border-cyan-500" />
       <div className="bg-white border border-stone-200">
         <div className="flex border-b border-stone-200">
           {unitMix.map((u, i) => (

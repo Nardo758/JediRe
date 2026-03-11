@@ -1,0 +1,78 @@
+{
+  "name": "jedire",
+  "version": "1.0.0",
+  "description": "JediRe real estate intelligence platform integration",
+  "api": {
+    "baseUrl": "${JEDIRE_API_URL:https://api.jedire.com}",
+    "apiKey": "${JEDIRE_API_KEY}",
+    "timeout": 30000,
+    "retries": 3
+  },
+  "webhooks": {
+    "enabled": true,
+    "secret": "${JEDIRE_WEBHOOK_SECRET}",
+    "endpoints": {
+      "errors": "/webhooks/jedire/errors",
+      "alerts": "/webhooks/jedire/alerts"
+    }
+  },
+  "autoContext": {
+    "enabled": "${JEDIRE_AUTO_CONTEXT:true}",
+    "patterns": [
+      "DEAL-\\d+",
+      "#\\d{4,6}"
+    ],
+    "maxCacheAge": 3600,
+    "preloadData": true
+  },
+  "monitoring": {
+    "enabled": true,
+    "schedule": "*/15 * * * *",
+    "checkErrors": true,
+    "notifyOnError": true,
+    "errorThreshold": 5
+  },
+  "notifications": {
+    "urgentErrors": true,
+    "dailySummary": false,
+    "dealUpdates": false
+  },
+  "formatting": {
+    "currency": "USD",
+    "dateFormat": "YYYY-MM-DD",
+    "percentDecimals": 2,
+    "compactNumbers": true
+  },
+  "commands": [
+    {
+      "name": "deal",
+      "description": "Fetch and display deal information",
+      "usage": "/deal <id>",
+      "handler": "handleDealCommand"
+    },
+    {
+      "name": "property",
+      "description": "Search and display property data",
+      "usage": "/property <address>",
+      "handler": "handlePropertyCommand"
+    },
+    {
+      "name": "analyze",
+      "description": "Run analysis on a deal",
+      "usage": "/analyze <dealId> <type>",
+      "handler": "handleAnalyzeCommand"
+    },
+    {
+      "name": "rankings",
+      "description": "Display market rankings",
+      "usage": "/rankings <market>",
+      "handler": "handleRankingsCommand"
+    }
+  ],
+  "analysisTypes": [
+    "cashflow",
+    "sensitivity",
+    "market",
+    "risk"
+  ]
+}
