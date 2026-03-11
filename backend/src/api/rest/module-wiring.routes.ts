@@ -674,7 +674,8 @@ router.post('/wiring/capital-structure/pipeline', async (req: Request, res: Resp
     await wireCapitalStructurePipeline(dealId, params);
     res.json({ status: 'Capital structure pipeline complete', dealId });
   } catch (error: any) {
-    res.status(500).json({ error: 'Capital structure pipeline failed', detail: error.message });
+    const statusCode = error.message?.includes('Missing required') ? 400 : 500;
+    res.status(statusCode).json({ error: 'Capital structure pipeline failed', detail: error.message });
   }
 });
 

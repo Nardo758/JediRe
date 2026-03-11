@@ -467,7 +467,7 @@ KEY METRICS:
 - Yield on Cost: ${((summary.yieldOnCost || 0) * 100).toFixed(2)}%
 - Exit Value: $${(summary.exitValue || 0).toLocaleString()}
 - DSCR Range: ${(summary.dscr || []).map((d: number) => d.toFixed(2)).join(', ') || 'N/A'}
-- Debt Yield: ${(summary.debtYield || []).map((d: number) => ((d || 0) * 100).toFixed(2) + '%').join(', ') || 'N/A'}
+- Debt Yield: ${(Array.isArray(summary.debtYield) ? summary.debtYield : []).map((d: number) => ((d || 0) * 100).toFixed(2) + '%').join(', ') || 'N/A'}
 
 ACQUISITION:
 - Purchase Price: $${(assumptions.acquisition?.purchasePrice || 0).toLocaleString()}

@@ -349,11 +349,11 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
     const { validateModelOutput } = await import('../../services/model-validator.service');
 
     // Step 1: Infer model type
-    const modelType = modelTypeOverride || inferModelType(deal);
+    const modelType = modelTypeOverride || await inferModelType(dealId);
     logger.info('Model type inferred:', { dealId, modelType });
 
     // Step 2: Assemble assumptions from all sources
-    const assumptions = await assembleAssumptions(dealId, userId, modelType);
+    const assumptions = await assembleAssumptions(dealId, modelType);
     logger.info('Assumptions assembled:', { dealId, modelType, sourceCount: Object.keys(assumptions).length });
 
     // Step 3: Compute with Claude
@@ -365,9 +365,9 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
     );
 
     // Step 4: Validate output
-    const validation = validateModelOutput(modelType, claudeOutput);
+    const validation = validateModelOutput(claudeOutput);
     
-    if (!validation.isValid) {
+    if (!validation.valid) {
       logger.warn('Claude output validation failed:', { 
         dealId, 
         modelType, 
@@ -437,7 +437,7 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
       dealId,
       modelId: modelRecord.id,
       modelType,
-      validationStatus: validation.isValid ? 'valid' : 'invalid'
+      validationStatus: validation.valid ? 'valid' : 'invalid'
     });
 
     res.json({
@@ -458,7 +458,8 @@ router.post('/:dealId/compute-claude', async (req: Request, res: Response) => {
       error: error.message,
       stack: error.stack 
     });
-    res.status(500).json({
+    const statusCode = error.message?.includes('not found') || error.message?.includes('not selected') || error.message?.includes('No development') || error.message?.includes('API key') ? 400 : 500;
+    res.status(statusCode).json({
       success: false,
       error: error.message || 'Failed to compute financial model'
     });
@@ -546,10 +547,10 @@ router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
     const { assembleAssumptions } = await import('../../services/assumption-assembly.service');
 
     // Infer model type
-    const modelType = inferModelType(deal);
+    const modelType = await inferModelType(dealId);
 
     // Assemble assumptions
-    const assumptions = await assembleAssumptions(dealId, userId, modelType);
+    const assumptions = await assembleAssumptions(dealId, modelType);
 
     logger.info('Assumptions fetched:', { dealId, modelType });
 
@@ -564,7 +565,8 @@ router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     logger.error('Error fetching assumptions:', error);
-    res.status(500).json({
+    const statusCode = error.message?.includes('not found') || error.message?.includes('not selected') || error.message?.includes('No development') ? 400 : 500;
+    res.status(statusCode).json({
       success: false,
       error: error.message || 'Failed to fetch assumptions'
     });
@@ -598,9 +600,9 @@ router.patch('/:dealId/assumptions', async (req: Request, res: Response) => {
     for (const [key, value] of Object.entries(updates)) {
       await query(
         `INSERT INTO assumption_history 
-         (deal_id, assumption_key, value, source, changed_by)
+         (deal_id, user_id, assumption_key, new_value, changed_by)
          VALUES ($1, $2, $3, $4, $5)`,
-        [dealId, key, JSON.stringify(value), 'user', userId]
+        [dealId, userId, key, JSON.stringify(value), userId]
       );
     }
 
@@ -687,7 +689,7 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
     const modelType = model.model_type || 'acquisition'; // Default to acquisition if not set
     const output = model.claude_output || model.results;
 
-    const validation = validateModelOutput(modelType, output);
+    const validation = validateModelOutput(output || {});
 
     // Update validation in database
     await query(
@@ -699,9 +701,9 @@ router.post('/:dealId/validate', async (req: Request, res: Response) => {
       userId,
       dealId,
       modelId: model.id,
-      isValid: validation.isValid,
-      errorCount: validation.errors.length,
-      warningCount: validation.warnings.length
+      isValid: validation.valid,
+      errorCount: (validation.errors || []).length,
+      requiresReview: validation.requiresReview
     });
 
     res.json({

@@ -799,7 +799,7 @@ export class ProFormaAdjustmentService {
   
   private async getFormula(formulaName: string): Promise<AdjustmentFormula | null> {
     const result = await query(
-      `SELECT * FROM adjustment_formulas WHERE formula_name = $1 AND active = true`,
+      `SELECT * FROM adjustment_formulas WHERE formula_name = $1 AND is_active = true`,
       [formulaName]
     );
     

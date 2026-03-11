@@ -41,6 +41,10 @@ router.get('/:dealId/export/excel', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'No completed model found. Build a model first.' });
     }
 
+    if (!model.results?.annualCashFlow || !Array.isArray(model.results.annualCashFlow)) {
+      return res.status(400).json({ error: 'Model results incomplete — no annual cash flow data available for export' });
+    }
+
     const filepath = await excelExportService.generateWorkbook(dealId, model.assumptions, model.results);
 
     const fs = await import('fs');
@@ -62,7 +66,7 @@ router.get('/:dealId/export/excel', async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('Excel export error:', error.message);
+    console.error('Excel export error:', error.message, error.stack);
     return res.status(500).json({ error: error.message });
   }
 });

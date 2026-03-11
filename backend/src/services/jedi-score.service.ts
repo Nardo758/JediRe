@@ -234,7 +234,8 @@ export class JEDIScoreService {
        JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
        JOIN trade_areas ta ON ta.id = taei.trade_area_id
        JOIN properties p ON p.id = ta.property_id
-       WHERE p.deal_id = $1
+       JOIN deal_properties dp_link ON dp_link.property_id = p.id
+       WHERE dp_link.deal_id = $1
          AND ne.event_category = 'development'
          AND ne.event_type LIKE '%permit%'
          AND ne.published_at > NOW() - INTERVAL '12 months'`,
@@ -283,7 +284,8 @@ export class JEDIScoreService {
        JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
        JOIN trade_areas ta ON ta.id = taei.trade_area_id
        JOIN properties p ON p.id = ta.property_id
-       WHERE p.deal_id = $1
+       JOIN deal_properties dp_link ON dp_link.property_id = p.id
+       WHERE dp_link.deal_id = $1
          AND ne.event_category = 'transactions'
          AND ne.published_at > NOW() - INTERVAL '6 months'`,
       [dealId]
@@ -341,7 +343,8 @@ export class JEDIScoreService {
        JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
        JOIN trade_areas ta ON ta.id = taei.trade_area_id
        JOIN properties p ON p.id = ta.property_id
-       WHERE p.deal_id = $1
+       JOIN deal_properties dp_link ON dp_link.property_id = p.id
+       WHERE dp_link.deal_id = $1
          AND ne.event_category = 'amenities'
          AND ne.published_at > NOW() - INTERVAL '24 months'`,
       [dealId]
@@ -414,7 +417,8 @@ export class JEDIScoreService {
        JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
        JOIN trade_areas ta ON ta.id = taei.trade_area_id
        JOIN properties p ON p.id = ta.property_id
-       WHERE p.deal_id = $1
+       JOIN deal_properties dp_link ON dp_link.property_id = p.id
+       WHERE dp_link.deal_id = $1
          AND ne.event_category IN ('employment', 'development', 'amenities')
          AND ne.published_at > NOW() - INTERVAL '12 months'
          AND taei.impact_score >= 30
@@ -639,7 +643,8 @@ export class JEDIScoreService {
        JOIN trade_area_event_impacts taei ON taei.event_id = ne.id
        JOIN trade_areas ta ON ta.id = taei.trade_area_id
        JOIN properties p ON p.id = ta.property_id
-       WHERE p.deal_id = $1
+       JOIN deal_properties dp_link ON dp_link.property_id = p.id
+       WHERE dp_link.deal_id = $1
          AND taei.impact_score >= 30
        ORDER BY taei.impact_score DESC, ne.published_at DESC
        LIMIT $2`,
@@ -700,7 +705,8 @@ export class JEDIScoreService {
     const result = await query(
       `SELECT d.*, d.city as city, p.id as property_id, ta.id as trade_area_id
        FROM deals d
-       LEFT JOIN properties p ON p.deal_id = d.id
+       LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
+       LEFT JOIN properties p ON p.id = dp_link.property_id
        LEFT JOIN trade_areas ta ON ta.property_id = p.id
        WHERE d.id = $1
        LIMIT 1`,

@@ -378,6 +378,10 @@ export async function wireCapitalStructurePipeline(
   try {
     logger.info('[CapStructure Pipeline] Starting full pipeline', { dealId, strategy: params.strategy });
 
+    if (!params.strategy || !params.layers || !params.noi || !params.propertyValue) {
+      throw new Error('Missing required fields: strategy, layers, noi, propertyValue');
+    }
+
     // Step 1: Capital Stack
     await wireCapitalStack(
       dealId,

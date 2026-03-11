@@ -65,16 +65,17 @@ export class TaxCompAnalysisService {
    * Perform tax comp analysis for a deal
    */
   async analyzeTaxComps(deal_id: string): Promise<TaxCompAnalysisResult> {
-    // 1. Get subject property tax data
+    // 1. Get subject property tax data (join deals→properties via address)
     const subjectResult = await pool.query(`
       SELECT 
-        ptr.total_tax_amount,
+        ptr.tax_amount AS total_tax_amount,
         ptr.assessed_value,
         p.units,
         ptr.tax_year
-      FROM properties p
+      FROM deals d
+      JOIN properties p ON p.address_line1 = d.address OR p.address_line1 = d.property_address
       LEFT JOIN property_tax_records ptr ON ptr.property_id = p.id
-      WHERE p.deal_id = $1::uuid
+      WHERE d.id = $1::uuid
       ORDER BY ptr.tax_year DESC NULLS LAST
       LIMIT 1
     `, [deal_id]);
@@ -126,11 +127,11 @@ export class TaxCompAnalysisService {
       const taxResult = await pool.query(`
         SELECT 
           ptr.tax_year,
-          ptr.total_tax_amount,
+          ptr.tax_amount AS total_tax_amount,
           ptr.assessed_value,
           p.units
         FROM recorded_transactions rt
-        LEFT JOIN properties p ON p.transaction_id = rt.id
+        LEFT JOIN properties p ON p.address_line1 = rt.property_address
         LEFT JOIN property_tax_records ptr ON ptr.property_id = p.id
         WHERE rt.id = $1::uuid
         ORDER BY ptr.tax_year DESC NULLS LAST

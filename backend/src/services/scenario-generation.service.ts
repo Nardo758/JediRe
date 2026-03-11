@@ -475,7 +475,9 @@ export class ScenarioGenerationService {
       : 'No identified risk events';
 
     // Build assumption narrative from template
-    const assumptionNarrative = template.assumptionNarrativeTemplate
+    const narrativeTemplate = template.assumptionNarrativeTemplate || 
+      'Demand catalysts: {demand_catalysts}. Supply pipeline: {supply_units} units. {risk_statement}';
+    const assumptionNarrative = narrativeTemplate
       .replace('{demand_catalysts}', demandCatalysts)
       .replace('{supply_units}', supplyUnits.toString())
       .replace('{risk_statement}', riskStatement);
@@ -494,21 +496,27 @@ export class ScenarioGenerationService {
     // Try to get from proforma_assumptions table
     const result = await query(
       `SELECT 
-        (rent_growth->>'baseline')::decimal as rent_growth,
-        (vacancy->>'baseline')::decimal as vacancy,
-        (opex_growth->>'baseline')::decimal as opex_growth,
-        (exit_cap->>'baseline')::decimal as exit_cap,
-        (absorption->>'baseline')::integer as absorption
+        rent_growth_baseline as "rentGrowth",
+        vacancy_baseline as vacancy,
+        opex_growth_baseline as "opexGrowth",
+        exit_cap_baseline as "exitCap",
+        absorption_baseline::integer as absorption
        FROM proforma_assumptions
        WHERE deal_id = $1`,
       [dealId]
     );
 
     if (result.rows.length > 0) {
-      return result.rows[0];
+      const row = result.rows[0];
+      return {
+        rentGrowth: parseFloat(row.rentGrowth) || 0.03,
+        vacancy: parseFloat(row.vacancy) || 0.05,
+        opexGrowth: parseFloat(row.opexGrowth) || 0.025,
+        exitCap: parseFloat(row.exitCap) || 0.06,
+        absorption: parseInt(row.absorption) || 12,
+      };
     }
 
-    // Fallback: use market defaults based on strategy
     return {
       rentGrowth: 0.03,
       vacancy: 0.05,
@@ -524,21 +532,25 @@ export class ScenarioGenerationService {
   private async getRelevantEvents(tradeAreaId: string): Promise<EventInput[]> {
     const events: EventInput[] = [];
 
-    // Get demand events
+    // Get demand events scoped to the trade area's MSA via municipality match
     const demandResult = await query(
       `SELECT 
         dp.id,
-        dp.event_summary as summary,
-        dp.employee_count as impact_magnitude,
-        dp.demand_direction,
-        det.category,
-        dp.event_date,
-        dp.projected_delivery_date as projected_impact_date
+        COALESCE(det.category, 'general') as category,
+        dp.units_projected as impact_magnitude,
+        dp.quarter,
+        dp.quarter_end as projected_impact_date
        FROM demand_projections dp
-       JOIN demand_event_types det ON det.id = dp.event_type_id
-       WHERE dp.trade_area_id = $1
-         AND dp.projected_delivery_date > NOW()
-       ORDER BY dp.employee_count DESC NULLS LAST`,
+       JOIN demand_events de ON de.id = dp.demand_event_id
+       LEFT JOIN demand_event_types det ON det.id = de.demand_event_type_id
+       WHERE dp.quarter_end > NOW()
+         AND de.msa_id IN (
+           SELECT m.id FROM msas m
+           JOIN trade_areas ta ON ta.id = $1
+           WHERE m.name ILIKE '%' || ta.municipality || '%'
+         )
+       ORDER BY dp.units_projected DESC NULLS LAST
+       LIMIT 50`,
       [tradeAreaId]
     );
 
@@ -546,28 +558,27 @@ export class ScenarioGenerationService {
       events.push({
         id: row.id,
         type: 'demand',
-        eventType: row.demand_direction === 'positive' ? 'demand_positive' : 'demand_negative',
-        category: row.category,
-        summary: row.summary,
-        eventDate: row.event_date,
+        eventType: (row.impact_magnitude || 0) >= 0 ? 'demand_positive' : 'demand_negative',
+        category: row.category || 'general',
+        summary: `${row.category || 'demand'} - ${row.impact_magnitude || 0} units projected`,
+        eventDate: row.quarter || new Date().toISOString(),
         projectedImpactDate: row.projected_impact_date,
-        impactMagnitude: row.impact_magnitude,
+        impactMagnitude: row.impact_magnitude || 0,
       });
     }
 
-    // Get supply events
+    // Get supply events from aggregate supply_pipeline
     const supplyResult = await query(
       `SELECT 
         sp.id,
-        CONCAT(sp.project_name, ' - ', sp.units, ' units') as summary,
-        sp.units as impact_magnitude,
-        sp.category,
-        sp.announcement_date as event_date,
-        sp.projected_delivery as projected_impact_date
+        sp.total_pipeline_units as impact_magnitude,
+        sp.construction_units,
+        sp.permitted_units,
+        sp.supply_pressure_score,
+        sp.updated_at as event_date
        FROM supply_pipeline sp
        WHERE sp.trade_area_id = $1
-         AND sp.projected_delivery > NOW()
-       ORDER BY sp.units DESC`,
+       ORDER BY sp.total_pipeline_units DESC NULLS LAST`,
       [tradeAreaId]
     );
 
@@ -575,27 +586,32 @@ export class ScenarioGenerationService {
       events.push({
         id: row.id,
         type: 'supply',
-        eventType: 'supply_positive', // New supply is typically a negative for existing properties
-        category: row.category || 'new_construction',
-        summary: row.summary,
-        eventDate: row.event_date,
-        projectedImpactDate: row.projected_impact_date,
-        impactMagnitude: row.impact_magnitude,
+        eventType: 'supply_positive',
+        category: 'new_construction',
+        summary: `Pipeline: ${row.impact_magnitude || 0} total units (${row.construction_units || 0} under construction, ${row.permitted_units || 0} permitted)`,
+        eventDate: row.event_date || new Date().toISOString(),
+        projectedImpactDate: row.event_date || new Date().toISOString(),
+        impactMagnitude: row.impact_magnitude || 0,
       });
     }
 
-    // Get risk events from risk scoring
+    // Get risk events from risk escalations (linked via deal → property → trade area)
     const riskResult = await query(
       `SELECT 
         re.id,
-        re.event_type,
+        re.escalation_type,
         re.description as summary,
-        re.probability,
-        re.identified_date as event_date
+        re.severity,
+        re.triggered_at as event_date
        FROM risk_escalations re
-       WHERE re.trade_area_id = $1
-         AND re.is_active = TRUE
-       ORDER BY re.probability DESC`,
+       WHERE re.deal_id IN (
+         SELECT dp.deal_id FROM deal_properties dp
+         JOIN properties p ON p.id = dp.property_id
+         JOIN trade_areas ta ON ta.property_id = p.id
+         WHERE ta.id = $1
+       )
+         AND re.status = 'open'
+       ORDER BY re.triggered_at DESC`,
       [tradeAreaId]
     );
 
@@ -604,10 +620,10 @@ export class ScenarioGenerationService {
         id: row.id,
         type: 'risk',
         eventType: 'risk',
-        category: row.event_type,
-        summary: row.summary,
-        eventDate: row.event_date,
-        probability: row.probability,
+        category: row.escalation_type || 'general',
+        summary: row.summary || `${row.escalation_type} risk escalation`,
+        eventDate: row.event_date || new Date().toISOString(),
+        probability: row.severity === 'high' ? 0.8 : row.severity === 'medium' ? 0.5 : 0.3,
       });
     }
 

@@ -225,8 +225,8 @@ export class ExcelExportService {
     addCFRow('LEVERED CASH FLOW', r.annualCashFlow.map(y => y.leveredCashFlow));
 
     data.push([]);
-    data.push(['DSCR', '', '', ...(r.summary.dscr || r.annualCashFlow.map(y => y.debtService > 0 ? +(y.noi / y.debtService).toFixed(2) : 0))]);
-    data.push(['Debt Yield', '', '', ...(r.summary.debtYield || r.annualCashFlow.map(y => r.debtMetrics.loanAmount > 0 ? +(y.noi / r.debtMetrics.loanAmount).toFixed(4) : 0))]);
+    data.push(['DSCR', '', '', ...(Array.isArray(r.summary?.dscr) ? r.summary.dscr : (r.annualCashFlow || []).map((y: any) => y.debtService > 0 ? +(y.noi / y.debtService).toFixed(2) : 0))]);
+    data.push(['Debt Yield', '', '', ...(Array.isArray(r.summary.debtYield) ? r.summary.debtYield : r.annualCashFlow.map(y => r.debtMetrics?.loanAmount > 0 ? +(y.noi / r.debtMetrics.loanAmount).toFixed(4) : 0))]);
 
     const ws = XLSX.utils.aoa_to_sheet(data);
     this.applyColumnWidths(ws, [30, 12, 12, ...Array(years).fill(15)]);
@@ -363,7 +363,7 @@ export class ExcelExportService {
     data.push([]);
     data.push(['Year', 'LP Distribution', 'GP Distribution', 'GP Promote', 'Total Distribution']);
 
-    for (const w of r.waterfallDistributions || []) {
+    for (const w of (Array.isArray(r.waterfallDistributions) ? r.waterfallDistributions : [])) {
       data.push([w.year, Math.round(w.lpDistribution), Math.round(w.gpDistribution), Math.round(w.gpPromote), Math.round(w.totalDistribution)]);
     }
 
