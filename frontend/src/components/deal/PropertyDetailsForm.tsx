@@ -90,7 +90,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       }
 
       if (propertyId) {
-        const response = await apiClient.get(`/properties/${propertyId}`);
+        const response = await apiClient.get(`/api/v1/properties/${propertyId}`);
         const data: PropertyDetails = {
           parcelId: response.data.parcel_id || '',
           lotSizeAcres: response.data.lot_size_acres,
@@ -100,7 +100,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         setFormData(data);
         setSavedData(data);
       } else if (dealId) {
-        const response = await apiClient.get(`/deals/${dealId}`);
+        const response = await apiClient.get(`/api/v1/deals/${dealId}`);
         const deal = response.data;
         
         // Try properties array first, then fall back to deal-level fields
@@ -132,7 +132,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     setSuccess(false);
 
     try {
-      await apiClient.post('/clawdbot/command', {
+      await apiClient.post('/api/v1/clawdbot/command', {
         command: 'update_property',
         params: {
           dealId,
