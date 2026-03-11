@@ -131,6 +131,24 @@ export interface WaitlistProperty {
   demandNote: string;
 }
 
+export interface TieredCompProperty {
+  address: string;
+  name: string;
+  units: number;
+  year_built: number | null;
+  stories: number | null;
+  class_code: string | null;
+  distance_miles: number | null;
+  match_score: number;
+  avg_rent: number | null;
+  occupancy: number | null;
+  lat: number | null;
+  lng: number | null;
+  in_comp_set: boolean;
+  comp_set_id: string | null;
+  geographic_tier: 'trade_area' | 'submarket' | 'msa';
+}
+
 export interface CompetitionFilters {
   sameVintage?: boolean;
   similarSize?: boolean;
@@ -700,6 +718,53 @@ Your development's 9-point advantage score indicates strong differentiation pote
       }
       return comp;
     });
+  }
+
+  async discoverTieredComps(dealId: string, radiusMiles: number = 3): Promise<{
+    success: boolean;
+    trade_area: TieredCompProperty[];
+    submarket: TieredCompProperty[];
+    msa: TieredCompProperty[];
+    deal: { name: string; address: string; lat: number; lng: number; units: number | null };
+    totals: { trade_area: number; submarket: number; msa: number };
+  }> {
+    const response = await api.get(`/deals/${dealId}/comp-set/discover-tiered`, {
+      params: { radiusMiles },
+    });
+    return response.data;
+  }
+
+  async getCompSet(dealId: string): Promise<{ success: boolean; comps: any[]; total: number }> {
+    const response = await api.get(`/deals/${dealId}/comp-set`);
+    return response.data;
+  }
+
+  async addToCompSet(dealId: string, comp: {
+    address: string;
+    name: string;
+    units?: number;
+    year_built?: number | null;
+    stories?: number | null;
+    class_code?: string | null;
+    distance_miles?: number | null;
+    match_score?: number;
+    geographic_tier?: string;
+  }): Promise<{ success: boolean; comp: any }> {
+    const response = await api.post(`/deals/${dealId}/comp-set/add-to-set`, comp);
+    return response.data;
+  }
+
+  async removeFromCompSet(dealId: string, compId: string): Promise<{ success: boolean }> {
+    const response = await api.delete(`/deals/${dealId}/comp-set/${compId}`);
+    return response.data;
+  }
+
+  async resetCompSet(dealId: string, radiusMiles: number = 3): Promise<{ success: boolean; comps: any[]; total: number }> {
+    const response = await api.post(`/deals/${dealId}/comp-set/discover`, {
+      radiusMiles,
+      maxComps: 8,
+    });
+    return response.data;
   }
 
   async exportAnalysis(dealId: string): Promise<Blob> {

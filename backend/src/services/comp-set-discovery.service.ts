@@ -69,6 +69,256 @@ function computeMatchScore(
   return { score: Math.round(score * 100) / 100, factors };
 }
 
+export interface TieredComp {
+  id?: string;
+  address: string;
+  name: string;
+  units: number;
+  year_built: number | null;
+  stories: number | null;
+  class_code: string | null;
+  distance_miles: number | null;
+  match_score: number;
+  avg_rent: number | null;
+  occupancy: number | null;
+  lat: number | null;
+  lng: number | null;
+  in_comp_set: boolean;
+  comp_set_id: string | null;
+  geographic_tier: 'trade_area' | 'submarket' | 'msa';
+}
+
+export interface TieredDiscoveryResult {
+  trade_area: TieredComp[];
+  submarket: TieredComp[];
+  msa: TieredComp[];
+  deal: {
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+    units: number | null;
+  };
+}
+
+export async function discoverTieredComps(dealId: string, radiusMiles: number = 3): Promise<TieredDiscoveryResult> {
+  const pool = getPool();
+
+  const dealResult = await pool.query(`
+    SELECT 
+      d.id, d.name, d.address, d.trade_area_id, d.target_units,
+      ST_Y(ST_Centroid(d.boundary)) as lat,
+      ST_X(ST_Centroid(d.boundary)) as lng,
+      d.deal_data
+    FROM deals d
+    WHERE d.id = $1
+  `, [dealId]);
+
+  if (dealResult.rows.length === 0) {
+    throw new Error('Deal not found');
+  }
+
+  const deal = dealResult.rows[0];
+  if (!deal.lat || !deal.lng) {
+    throw new Error('Deal has no boundary for comp discovery');
+  }
+
+  const dealUnits = deal.target_units || null;
+  const dealData = deal.deal_data || {};
+  const dealContext = {
+    units: dealUnits,
+    year_built: dealData.year_built || null,
+    stories: dealData.stories || null,
+    class_code: dealData.class_code || null,
+  };
+
+  const existingComps = await pool.query(`
+    SELECT id, comp_property_address, status FROM deal_comp_sets
+    WHERE deal_id = $1
+  `, [dealId]);
+  const activeCompAddresses = new Map<string, string>();
+  for (const row of existingComps.rows) {
+    if (row.status === 'active') {
+      activeCompAddresses.set(row.comp_property_address.toLowerCase(), row.id);
+    }
+  }
+
+  const dealAddress = deal.address || '';
+  const dealCity = dealAddress.match(/,\s*([^,]+),\s*\w/)?.[1]?.trim() || '';
+
+  function mapToTieredComp(c: any, tier: 'trade_area' | 'submarket' | 'msa', maxDist: number): TieredComp {
+    const { score } = computeMatchScore(c, dealContext, maxDist);
+    const addrLower = (c.address || '').toLowerCase();
+    return {
+      address: c.address,
+      name: c.city ? `${c.address}, ${c.city}` : c.address,
+      units: c.units,
+      year_built: c.year_built,
+      stories: c.stories,
+      class_code: c.class_code,
+      distance_miles: c.distance_miles ? Math.round(c.distance_miles * 100) / 100 : null,
+      match_score: score,
+      avg_rent: null,
+      occupancy: null,
+      lat: c.lat || null,
+      lng: c.lng || null,
+      in_comp_set: activeCompAddresses.has(addrLower),
+      comp_set_id: activeCompAddresses.get(addrLower) || null,
+      geographic_tier: tier,
+    };
+  }
+
+  const tradeAreaAddresses = new Set<string>();
+  let tradeArea: TieredComp[] = [];
+
+  const geoTradeArea = await pool.query(`
+    SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+           pr.stories, pr.class_code, pr.building_sqft,
+           COALESCE(p.lat, pr.lat::float) as lat,
+           COALESCE(p.lng, pr.lng::float) as lng,
+           CASE WHEN COALESCE(p.lat, pr.lat) IS NOT NULL THEN
+             ST_Distance(
+               ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+               ST_SetSRID(ST_MakePoint(
+                 COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)
+               ), 4326)::geography
+             ) / 1609.34
+           ELSE NULL END as distance_miles
+    FROM property_records pr
+    LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
+    WHERE pr.units >= 20
+      AND pr.address != $3
+      AND COALESCE(p.lat, pr.lat) IS NOT NULL
+      AND ST_DWithin(
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)), 4326)::geography,
+        $4 * 1609.34
+      )
+    ORDER BY distance_miles ASC NULLS LAST
+    LIMIT 50
+  `, [deal.lng, deal.lat, dealAddress, radiusMiles]);
+
+  if (geoTradeArea.rows.length > 0) {
+    tradeArea = geoTradeArea.rows.map((c: any) => {
+      tradeAreaAddresses.add(c.address.toLowerCase());
+      return mapToTieredComp(c, 'trade_area', radiusMiles);
+    });
+  }
+
+  if (tradeArea.length < 5) {
+    const countyResult = await pool.query(`
+      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+             pr.stories, pr.class_code, pr.building_sqft,
+             pr.lat::float as lat, pr.lng::float as lng,
+             NULL::float as distance_miles
+      FROM property_records pr
+      WHERE pr.units >= 20
+        AND pr.address != $1
+        AND pr.county = (
+          SELECT pr2.county FROM property_records pr2
+          WHERE pr2.units >= 20
+          LIMIT 1
+        )
+      ORDER BY ABS(pr.units - COALESCE($2, 200)) ASC
+      LIMIT 25
+    `, [dealAddress, dealUnits]);
+
+    for (const c of countyResult.rows) {
+      if (!tradeAreaAddresses.has(c.address.toLowerCase())) {
+        tradeAreaAddresses.add(c.address.toLowerCase());
+        tradeArea.push(mapToTieredComp(c, 'trade_area', radiusMiles));
+      }
+    }
+  }
+
+  let submarketComps: TieredComp[] = [];
+  const submarketResult = await pool.query(`
+    SELECT s.id as submarket_id, s.name as submarket_name
+    FROM submarkets s
+    WHERE ST_Contains(s.geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+    LIMIT 1
+  `, [deal.lng, deal.lat]);
+
+  if (submarketResult.rows.length > 0) {
+    const subId = submarketResult.rows[0].submarket_id;
+    const subComps = await pool.query(`
+      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+             pr.stories, pr.class_code, pr.building_sqft,
+             p.lat, p.lng,
+             ST_Distance(
+               ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+               ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)::geography
+             ) / 1609.34 as distance_miles
+      FROM properties p
+      LEFT JOIN property_records pr ON LOWER(p.address_line1) = LOWER(pr.address)
+      WHERE p.lat IS NOT NULL AND p.lng IS NOT NULL
+        AND COALESCE(pr.units, p.units, 0) >= 20
+        AND COALESCE(pr.address, p.address_line1, '') != $3
+        AND ST_Contains(
+          (SELECT geometry FROM submarkets WHERE id = $4),
+          ST_SetSRID(ST_MakePoint(p.lng, p.lat), 4326)
+        )
+      ORDER BY distance_miles ASC NULLS LAST
+      LIMIT 30
+    `, [deal.lng, deal.lat, dealAddress, subId]);
+
+    submarketComps = subComps.rows
+      .filter((c: any) => !tradeAreaAddresses.has((c.address || c.address_line1 || '').toLowerCase()))
+      .map((c: any) => mapToTieredComp({
+        ...c,
+        address: c.address || c.address_line1 || 'Unknown',
+        units: c.units || 0,
+      }, 'submarket', radiusMiles * 3));
+  }
+
+  let msaComps: TieredComp[] = [];
+  const msaResult = await pool.query(`
+    SELECT m.id as msa_id, m.name as msa_name
+    FROM msas m
+    WHERE ST_Contains(m.geometry, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+    LIMIT 1
+  `, [deal.lng, deal.lat]);
+
+  if (msaResult.rows.length > 0) {
+    const msaId = msaResult.rows[0].msa_id;
+    const allExcluded = new Set([...tradeAreaAddresses, ...submarketComps.map(c => c.address.toLowerCase())]);
+
+    const remainingComps = await pool.query(`
+      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+             pr.stories, pr.class_code, pr.building_sqft,
+             pr.lat::float as lat, pr.lng::float as lng,
+             NULL::float as distance_miles
+      FROM property_records pr
+      WHERE pr.units >= 20
+        AND pr.address != $1
+      ORDER BY ABS(pr.units - COALESCE($2, 200)) ASC
+      LIMIT 100
+    `, [dealAddress, dealUnits]);
+
+    msaComps = remainingComps.rows
+      .filter((c: any) => !allExcluded.has(c.address.toLowerCase()))
+      .slice(0, 30)
+      .map((c: any) => mapToTieredComp(c, 'msa', radiusMiles * 10));
+  }
+
+  tradeArea.sort((a, b) => b.match_score - a.match_score);
+  submarketComps.sort((a, b) => b.match_score - a.match_score);
+  msaComps.sort((a, b) => b.match_score - a.match_score);
+
+  return {
+    trade_area: tradeArea,
+    submarket: submarketComps,
+    msa: msaComps,
+    deal: {
+      name: deal.name,
+      address: deal.address,
+      lat: deal.lat,
+      lng: deal.lng,
+      units: dealUnits,
+    },
+  };
+}
+
 export async function autoDiscoverComps(dealId: string, options: DiscoveryOptions = {}): Promise<number> {
   const { radiusMiles = 3, maxComps = 15, useTradeArea = true } = options;
   const pool = getPool();

@@ -29,9 +29,9 @@ function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
   const signalDefs = [
     { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-50', moduleLink: 'demand' },
     { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-50', moduleLink: 'supply' },
-    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-50', moduleLink: 'market' },
-    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-50', moduleLink: 'market' },
-    { id: 'risk', name: 'Risk', color: 'bg-stone-500', bgColor: 'bg-stone-50', moduleLink: 'risk' },
+    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-50', moduleLink: 'market-intelligence' },
+    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-50', moduleLink: 'market-intelligence' },
+    { id: 'risk', name: 'Risk', color: 'bg-stone-500', bgColor: 'bg-stone-50', moduleLink: 'risk-management' },
   ];
 
   return signalDefs.map(def => {
@@ -635,7 +635,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
             )}
           </div>
           <button className="text-[10px] font-medium text-stone-500 hover:text-stone-700 flex-shrink-0 ml-4"
-            onClick={() => navigateToTab('risk')}>
+            onClick={() => navigateToTab('risk-management')}>
             Risk Dashboard &rarr;
           </button>
         </div>
@@ -799,7 +799,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           ) : (
             <div className="text-center py-4">
               <p className="text-xs text-stone-400 mb-1">No checklist items added yet</p>
-              <button onClick={() => navigateToTab('dd-checklist')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium">
+              <button onClick={() => navigateToTab('due-diligence')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium">
                 Add DD Items &rarr;
               </button>
             </div>
@@ -809,11 +809,11 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
-            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market' },
+            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market-intelligence' },
             { key: 'F4', label: 'SUPPLY PIPELINE', hint: 'Pipeline · Threat level · Capacity', tab: 'supply' },
             { key: 'F6', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
-            { key: 'F7', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'capital-structure' },
-            { key: 'F8', label: 'RISK ASSESSMENT', hint: 'Monte Carlo · Insurance · Supply', tab: 'risk' },
+            { key: 'F7', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'debt' },
+            { key: 'F8', label: 'RISK ASSESSMENT', hint: 'Monte Carlo · Insurance · Supply', tab: 'risk-management' },
             { key: 'F9', label: 'SALE COMPS', hint: 'Transaction intelligence', tab: 'comps' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
@@ -1099,7 +1099,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         title="Building Configuration" 
         right={
           <button 
-            onClick={() => navigateToTab('design')} 
+            onClick={() => navigateToTab('3d-design')} 
             className="text-[10px] text-violet-600 hover:text-violet-700 font-medium"
           >
             Edit in 3D Design →
@@ -1124,7 +1124,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             </span>
           ) : (
             <button 
-              onClick={() => navigateToTab('design')}
+              onClick={() => navigateToTab('3d-design')}
               className="text-[10px] font-medium text-amber-600 hover:text-amber-700"
             >
               Configure 3D Design →
@@ -1226,7 +1226,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <div className="text-center py-6">
           <p className="text-xs text-stone-400 mb-1">No unit mix data available</p>
           <p className="text-[10px] text-stone-300 mb-2">Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
-          <button onClick={() => navigateToTab('unit-mix')} className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium">
+          <button onClick={() => navigateToTab('unit-mix-intelligence')} className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium">
             Configure Unit Mix &rarr;
           </button>
         </div>
@@ -1277,8 +1277,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               <SectionHead title="Competitive Set" right="No comps" accentColor="border-emerald-500" />
               <div className="bg-white border border-stone-200 text-center py-6">
                 <p className="text-xs text-stone-400 mb-1">No rent comps data available</p>
-                <p className="text-[10px] text-stone-300 mb-2">Comps are sourced from the Unit Mix Intelligence module</p>
-                <button onClick={() => navigateToTab('unit-mix')} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium">
+                <p className="text-[10px] text-stone-300 mb-2">Build your competitive set from Trade Area, Submarket, and MSA comps</p>
+                <button onClick={() => navigateToTab('competition')} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium">
                   Analyze Rent Comps &rarr;
                 </button>
               </div>

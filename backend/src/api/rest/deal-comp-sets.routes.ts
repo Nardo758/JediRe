@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
-import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
+import { autoDiscoverComps, discoverTieredComps } from '../../services/comp-set-discovery.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -109,6 +109,73 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
   } catch (error: any) {
     logger.error('Failed to add comp', { error: error.message });
     res.status(500).json({ success: false, error: 'Failed to add comp' });
+  }
+});
+
+router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const radiusMiles = parseFloat(req.query.radiusMiles as string) || 3;
+
+    const result = await discoverTieredComps(dealId, radiusMiles);
+
+    res.json({
+      success: true,
+      ...result,
+      totals: {
+        trade_area: result.trade_area.length,
+        submarket: result.submarket.length,
+        msa: result.msa.length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Tiered comp discovery failed', { error: error.message });
+    res.status(500).json({ success: false, error: 'Tiered comp discovery failed' });
+  }
+});
+
+router.post('/:dealId/comp-set/add-to-set', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const { dealId } = req.params;
+    const { address, name, units, year_built, stories, class_code, distance_miles, match_score, geographic_tier } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ success: false, error: 'Address is required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO deal_comp_sets (
+        deal_id, comp_property_address, comp_name, source, status,
+        units, year_built, stories, class_code,
+        distance_miles, match_score, geographic_tier
+      ) VALUES ($1, $2, $3, 'manual', 'active', $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
+        status = 'active',
+        comp_name = COALESCE(EXCLUDED.comp_name, deal_comp_sets.comp_name),
+        units = COALESCE(EXCLUDED.units, deal_comp_sets.units),
+        year_built = COALESCE(EXCLUDED.year_built, deal_comp_sets.year_built),
+        stories = COALESCE(EXCLUDED.stories, deal_comp_sets.stories),
+        class_code = COALESCE(EXCLUDED.class_code, deal_comp_sets.class_code),
+        distance_miles = COALESCE(EXCLUDED.distance_miles, deal_comp_sets.distance_miles),
+        match_score = COALESCE(EXCLUDED.match_score, deal_comp_sets.match_score),
+        geographic_tier = COALESCE(EXCLUDED.geographic_tier, deal_comp_sets.geographic_tier),
+        source = 'manual',
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      dealId, address, name || address,
+      units || null, year_built || null, stories || null, class_code || null,
+      distance_miles || null, match_score || null, geographic_tier || 'trade_area'
+    ]);
+
+    res.status(201).json({
+      success: true,
+      comp: result.rows[0],
+    });
+  } catch (error: any) {
+    logger.error('Failed to add comp to set', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to add comp to set' });
   }
 });
 
