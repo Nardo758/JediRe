@@ -102,6 +102,8 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [nearbyProjectsExpanded, setNearbyProjectsExpanded] = useState(false);
+  const [zoningDiscrepancy, setZoningDiscrepancy] = useState<{ liveCode: string; liveName: string; sourceUrl?: string } | null>(null);
+  const [discrepancyUpdating, setDiscrepancyUpdating] = useState(false);
   const fetchNearbyEntitlements = useCallback(async () => {
     if (!dealId) return;
     setNearbyLoading(true);
@@ -158,6 +160,34 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
               if (confirmedCode) {
                 fetchDistrictDetails(confirmedCode, confirmedMunicipality || undefined);
                 fetchNearbyEntitlements();
+              }
+              // Background GIS discrepancy check — compare live parcel data against confirmed code
+              if (res.data?.centroid) {
+                const c = res.data.centroid;
+                let clng: number | null = null, clat: number | null = null;
+                if (typeof c === 'object' && c !== null && 'x' in c && 'y' in c) {
+                  clng = parseFloat(c.x); clat = parseFloat(c.y);
+                } else if (typeof c === 'string') {
+                  const m = c.match(/\(([^,]+),([^)]+)\)/);
+                  if (m) { clng = parseFloat(m[1]); clat = parseFloat(m[2]); }
+                } else if (Array.isArray(c) && c.length >= 2) {
+                  clng = parseFloat(c[0]); clat = parseFloat(c[1]);
+                }
+                if (clng !== null && clat !== null && !isNaN(clng) && !isNaN(clat)) {
+                  apiClient.get('/api/v1/zoning/parcel-lookup', {
+                    params: { lat: clat, lng: clng, address: deal?.address || '' },
+                    timeout: 12000,
+                  }).then(parcelRes => {
+                    const liveCode = parcelRes.data?.zoningCode;
+                    if (liveCode && liveCode.toUpperCase() !== confirmedCode.toUpperCase()) {
+                      setZoningDiscrepancy({
+                        liveCode,
+                        liveName: parcelRes.data.zoningName || liveCode,
+                        sourceUrl: parcelRes.data.sourceUrl || undefined,
+                      });
+                    }
+                  }).catch(() => {});
+                }
               }
             } else {
               // Boundary exists but zoning not confirmed — fetch zoning options
@@ -400,6 +430,50 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       setError(err.response?.data?.error || 'Failed to save zoning confirmation');
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleUpdateToGisCode = async () => {
+    if (!zoningDiscrepancy || !dealId) return;
+    setDiscrepancyUpdating(true);
+    try {
+      const boundaryRes = await apiClient.get(`/api/v1/deals/${dealId}/boundary`);
+      const boundary = boundaryRes.data;
+      const municipality = detectedZoning?.municipality || locationInfo?.city || '';
+      const state = detectedZoning?.state || locationInfo?.state || '';
+      try {
+        await apiClient.post('/api/v1/zoning-intelligence/analyze', {
+          dealId,
+          zoningCode: zoningDiscrepancy.liveCode,
+          municipality,
+          state,
+          landAreaSf: boundary.parcel_area_sf || (boundary.parcel_area || 0) * 43560,
+          dealType: deal?.strategy || deal?.dealType || 'BTS',
+          boundaryId: boundary.id,
+          setbacks: boundary.setbacks,
+        });
+      } catch {}
+      await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
+        zoning_code: zoningDiscrepancy.liveCode,
+        municipality,
+        state,
+        confirmed_at: new Date().toISOString(),
+      });
+      await apiClient.post(`/api/v1/deals/${dealId}/zoning-profile/resolve`).catch(() => {});
+      setDetectedZoning(prev => prev ? {
+        ...prev,
+        code: zoningDiscrepancy.liveCode,
+        name: zoningDiscrepancy.liveName,
+      } : null);
+      setZoningDiscrepancy(null);
+      fetchDistrictDetails(zoningDiscrepancy.liveCode, municipality || undefined);
+      if (onComplete) {
+        onComplete({ code: zoningDiscrepancy.liveCode, confirmed: true, municipality, state });
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to update zoning confirmation');
+    } finally {
+      setDiscrepancyUpdating(false);
     }
   };
 
@@ -673,6 +747,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                     setZoningConfirmed(false);
                     setDetectedZoning(null);
                     setZoningExpanded(true);
+                    setZoningDiscrepancy(null);
                     setError(null);
                     fetchZoningFromBoundary();
                   }}
@@ -681,6 +756,53 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                   <RefreshCw className="w-3 h-3" />
                   Change Zoning
                 </button>
+              </div>
+            )}
+
+            {/* GIS discrepancy warning — shown when live city GIS disagrees with confirmed code */}
+            {zoningDiscrepancy && zoningConfirmed && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-900">City GIS Mismatch Detected</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      {detectedZoning?.municipality || 'City'}'s official zoning map shows this parcel as{' '}
+                      <span className="font-bold">{zoningDiscrepancy.liveCode}</span>{' '}
+                      ({zoningDiscrepancy.liveName}), but your confirmation says{' '}
+                      <span className="font-bold">{detectedZoning?.code}</span>.
+                      {zoningDiscrepancy.sourceUrl && (
+                        <a
+                          href={zoningDiscrepancy.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-1 text-amber-600 underline hover:text-amber-800"
+                        >
+                          View GIS source <ExternalLink className="w-2.5 h-2.5 inline" />
+                        </a>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => setZoningDiscrepancy(null)}
+                      className="text-[10px] text-amber-600 hover:text-amber-800 border border-amber-300 rounded px-2 py-1 bg-white hover:bg-amber-50 transition-colors"
+                    >
+                      Keep {detectedZoning?.code}
+                    </button>
+                    <button
+                      onClick={handleUpdateToGisCode}
+                      disabled={discrepancyUpdating}
+                      className="flex items-center gap-1 text-[10px] font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded px-2.5 py-1 transition-colors"
+                    >
+                      {discrepancyUpdating ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> Updating...</>
+                      ) : (
+                        <>Update to {zoningDiscrepancy.liveCode}</>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
