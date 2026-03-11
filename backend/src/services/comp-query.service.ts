@@ -169,7 +169,7 @@ class CompQueryService {
       : '12';
 
     const vintageScoreExpr = (params.yearBuiltMin || params.yearBuiltMax)
-      ? `GREATEST(0, 15 - ABS(COALESCE(year_built, 2000) - $${targetYearIdx}) * 0.5)`
+      ? `GREATEST(0, 15 - ABS(COALESCE(NULLIF(year_built,'')::integer, 2000) - $${targetYearIdx}) * 0.5)`
       : '7';
 
     const scaleScoreExpr = (params.minUnits || params.maxUnits)

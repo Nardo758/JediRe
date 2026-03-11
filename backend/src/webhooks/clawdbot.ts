@@ -125,9 +125,9 @@ class ClawdbotWebhook {
         headers['X-Webhook-Signature'] = signature;
       }
       
-      await axios.post(this.webhookUrl, payload, {
+      await axios.post(this.webhookUrl, payloadString, {
         headers,
-        timeout: 5000, // 5 second timeout
+        timeout: 5000,
       });
       
       logger.debug(`Clawdbot webhook sent: ${payload.event}`);
