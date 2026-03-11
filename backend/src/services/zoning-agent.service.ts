@@ -366,7 +366,26 @@ Provide the development standards, permitted uses, conditional uses, and setback
             min_front_setback_ft, min_side_setback_ft, min_rear_setback_ft,
             max_lot_coverage, min_lot_size_sqft, parking_per_unit, parking_per_1000_sqft,
             description, category, source
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'ai_retrieved')`,
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'ai_retrieved')
+          ON CONFLICT (municipality, state, district_code) DO UPDATE SET
+            district_name        = COALESCE(EXCLUDED.district_name, zoning_districts.district_name),
+            permitted_uses       = COALESCE(EXCLUDED.permitted_uses, zoning_districts.permitted_uses),
+            conditional_uses     = COALESCE(EXCLUDED.conditional_uses, zoning_districts.conditional_uses),
+            prohibited_uses      = COALESCE(EXCLUDED.prohibited_uses, zoning_districts.prohibited_uses),
+            max_density_per_acre = COALESCE(EXCLUDED.max_density_per_acre, zoning_districts.max_density_per_acre),
+            max_far              = COALESCE(EXCLUDED.max_far, zoning_districts.max_far),
+            max_building_height_ft = COALESCE(EXCLUDED.max_building_height_ft, zoning_districts.max_building_height_ft),
+            max_stories          = COALESCE(EXCLUDED.max_stories, zoning_districts.max_stories),
+            min_front_setback_ft = COALESCE(EXCLUDED.min_front_setback_ft, zoning_districts.min_front_setback_ft),
+            min_side_setback_ft  = COALESCE(EXCLUDED.min_side_setback_ft, zoning_districts.min_side_setback_ft),
+            min_rear_setback_ft  = COALESCE(EXCLUDED.min_rear_setback_ft, zoning_districts.min_rear_setback_ft),
+            max_lot_coverage     = COALESCE(EXCLUDED.max_lot_coverage, zoning_districts.max_lot_coverage),
+            min_lot_size_sqft    = COALESCE(EXCLUDED.min_lot_size_sqft, zoning_districts.min_lot_size_sqft),
+            parking_per_unit     = COALESCE(EXCLUDED.parking_per_unit, zoning_districts.parking_per_unit),
+            parking_per_1000_sqft = COALESCE(EXCLUDED.parking_per_1000_sqft, zoning_districts.parking_per_1000_sqft),
+            description          = COALESCE(EXCLUDED.description, zoning_districts.description),
+            category             = COALESCE(EXCLUDED.category, zoning_districts.category),
+            updated_at           = NOW()`,
           [
             request.municipalityId || null,
             (request.municipality || '').substring(0, 255),

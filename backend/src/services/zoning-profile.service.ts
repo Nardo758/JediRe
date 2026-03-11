@@ -399,7 +399,23 @@ export class ZoningProfileService {
       'SELECT * FROM deal_zoning_profiles WHERE deal_id = $1',
       [dealId]
     );
-    return result.rows[0] || null;
+    const stored: ZoningProfile | null = result.rows[0] || null;
+
+    if (stored) {
+      try {
+        const confirmResult = await this.pool.query(
+          'SELECT zoning_code FROM deal_zoning_confirmations WHERE deal_id = $1',
+          [dealId]
+        );
+        const confirmedCode: string | null = confirmResult.rows[0]?.zoning_code ?? null;
+        if (confirmedCode && confirmedCode !== stored.base_district_code) {
+          return this.resolveProfile(dealId);
+        }
+      } catch {
+      }
+    }
+
+    return stored;
   }
 
   async updateOverrides(dealId: string, overrides: Record<string, any>): Promise<ZoningProfile> {
