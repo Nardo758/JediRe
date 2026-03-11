@@ -12,10 +12,6 @@ import {
 } from '@/services/dealAnalysis.service';
 import { apiClient } from '@/services/api.client';
 import {
-  jediScore as mockJediScore,
-  signalScores as mockSignalScores,
-  strategyVerdict as mockStrategyVerdict,
-  topRiskAlert as mockRiskAlert,
   type JEDIScoreData,
   type SignalScore,
   type StrategyVerdictData,
@@ -78,10 +74,14 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   });
   const [strategyResults, setStrategyResults] = useState<StrategyResults | null>(null);
   const [analysisComplete, setAnalysisComplete] = useState(false);
-  const [jediScoreData, setJediScoreData] = useState<JEDIScoreData>(mockJediScore);
-  const [signals, setSignals] = useState<SignalScore[]>(mockSignalScores);
-  const [strategyVerdict, setStrategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
-  const [riskAlert, setRiskAlert] = useState<RiskAlertData>(mockRiskAlert);
+  const [jediScoreData, setJediScoreData] = useState<JEDIScoreData | null>(null);
+  const [signals, setSignals] = useState<SignalScore[]>([]);
+  const [strategyVerdict, setStrategyVerdict] = useState<StrategyVerdictData | null>(null);
+  const [riskAlert, setRiskAlert] = useState<RiskAlertData | null>(null);
+  const [entitlements, setEntitlements] = useState<any[]>([]);
+  const [capitalStackData, setCapitalStackData] = useState<any>(null);
+  const [marketCapRate, setMarketCapRate] = useState<number | null>(null);
+  const [entitlementBenchmarks, setEntitlementBenchmarks] = useState<any>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'loading' | 'live' | 'sample'>('loading');
   const [viewMode, setViewMode] = useState<'existing' | 'development'>('existing');
@@ -104,8 +104,94 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const runAnalysis = async () => { stopPolling = await startAnalysis(); };
     runAnalysis();
     loadJediScore();
+    loadEntitlements();
+    loadCapitalStack();
+    loadMarketData();
+    loadEntitlementBenchmarks();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
+
+  const loadEntitlements = async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/entitlements/deal/${deal.id}`);
+      if (res.data?.data && Array.isArray(res.data.data)) {
+        setEntitlements(res.data.data);
+      } else if (Array.isArray(res.data)) {
+        setEntitlements(res.data);
+      }
+    } catch (err) {
+      console.warn('Could not load entitlements:', err);
+    }
+  };
+
+  const loadCapitalStack = async () => {
+    if (!deal?.id) return;
+    const strategy = deal.strategyType || deal.strategy || 'value_add';
+    const totalCost = deal.purchasePrice || deal.budget || 0;
+    const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
+    if (!totalCost) return;
+    try {
+      const res = await apiClient.post(`/api/v1/capital-structure/stack`, {
+        dealId: deal.id,
+        strategy,
+        layers: [
+          { type: 'senior_debt', amount: totalCost * 0.65 },
+          { type: 'equity', amount: totalCost * 0.35 },
+        ],
+        uses: { acquisition: totalCost },
+        noi,
+      });
+      if (res.data?.data) {
+        setCapitalStackData(res.data.data);
+      } else if (res.data?.stack || res.data?.layers) {
+        setCapitalStackData(res.data);
+      }
+    } catch (err) {
+      console.warn('Could not load capital stack:', err);
+    }
+  };
+
+  const loadMarketData = async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${deal.id}/geographic-context`);
+      const geo = res.data?.data || res.data;
+      if (geo?.submarket?.avgCapRate) {
+        setMarketCapRate(geo.submarket.avgCapRate);
+      } else if (geo?.msa?.avgCapRate) {
+        setMarketCapRate(geo.msa.avgCapRate);
+      }
+    } catch (err) {
+      console.warn('Could not load market data:', err);
+    }
+  };
+
+  const loadEntitlementBenchmarks = async () => {
+    const county = deal?.county || deal?.tradeArea?.county || '';
+    const state = deal?.state || deal?.tradeArea?.state || '';
+    if (!county || !state) return;
+    try {
+      const res = await apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, {
+        params: { county, state },
+      });
+      const summaries = res.data?.summaries || [];
+      if (summaries.length > 0) {
+        const primary = summaries[0];
+        setEntitlementBenchmarks({
+          p50: primary.medianMonths,
+          p75: primary.p75Months,
+          p25: primary.p25Months,
+          p90: primary.p90Months,
+          municipality: res.data?.county || county,
+          sampleSize: primary.sampleSize,
+          dataSource: primary.dataSource,
+        });
+      }
+    } catch (err) {
+      console.warn('Could not load entitlement benchmarks:', err);
+    }
+  };
 
   const loadJediScore = async () => {
     if (!deal?.id) return;
@@ -133,11 +219,11 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         }
         setDataSource('live');
       } else {
-        setDataSource('sample');
+        setDataSource('live');
       }
     } catch (err) {
-      console.warn('Could not load JEDI score, using sample data:', err);
-      setDataSource('sample');
+      console.warn('Could not load JEDI score:', err);
+      setDataSource('live');
     } finally {
       setScoreLoading(false);
     }
@@ -284,8 +370,8 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
       )}
 
       {viewMode === 'existing'
-        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} />
-        : <DevOverview deal={deal} navigateToTab={navigateToTab} financial={financial} design3D={design3D} activeScenario={activeScenario} zoningProfile={zoningProfile} />
+        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} />
+        : <DevOverview deal={deal} navigateToTab={navigateToTab} financial={financial} design3D={design3D} activeScenario={activeScenario} zoningProfile={zoningProfile} entitlements={entitlements} entitlementBenchmarks={entitlementBenchmarks} />
       }
     </div>
   );
@@ -347,10 +433,10 @@ const DDItem: React.FC<{ label: string; done: boolean }> = ({ label, done }) => 
 );
 
 interface DealHeaderProps {
-  jediScore: JEDIScoreData;
+  jediScore: JEDIScoreData | null;
   signals: SignalScore[];
-  strategyVerdict: StrategyVerdictData;
-  riskAlert: RiskAlertData;
+  strategyVerdict: StrategyVerdictData | null;
+  riskAlert: RiskAlertData | null;
   deal: any;
   navigateToTab: (tab: string) => void;
   capitalStructure?: any;
@@ -367,6 +453,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
     <div className="space-y-0">
       <div className="grid grid-cols-3 gap-4">
         <div className="col-span-2 bg-stone-900 rounded-xl p-5 text-white">
+          {jediScore ? (
           <div className="flex items-start gap-5">
             <JEDIScoreGauge score={jediScore.score} />
             <div className="flex-1 min-w-0">
@@ -386,6 +473,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
                 Confidence: {jediScore.confidenceLabel} ({jediScore.confidence}%)
               </p>
 
+              {signals.length > 0 ? (
               <div className="mb-3">
                 <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
                 <div className="space-y-1.5">
@@ -415,12 +503,29 @@ const DealHeader: React.FC<DealHeaderProps> = ({
                   })}
                 </div>
               </div>
+              ) : (
+              <div className="mb-3">
+                <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
+                <p className="text-xs text-stone-500">Signal breakdown not yet available. Run analysis to populate.</p>
+              </div>
+              )}
             </div>
           </div>
+          ) : (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-stone-500 mb-2">—</div>
+              <div className="text-[10px] font-mono text-stone-500 tracking-wider">JEDI SCORE</div>
+              <p className="text-xs text-stone-400 mt-2">Score will populate after analysis completes</p>
+            </div>
+          </div>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-stone-200 p-4 flex flex-col">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-2">STRATEGY VERDICT</div>
+          {strategyVerdict ? (
+          <>
           <div className="flex items-baseline gap-2 mb-1">
             <span className="text-lg font-bold text-stone-900">{strategyVerdict.recommendedLabel}</span>
             <span className="text-sm font-mono text-amber-600">{strategyVerdict.score}</span>
@@ -449,6 +554,16 @@ const DealHeader: React.FC<DealHeaderProps> = ({
               Compare All &rarr;
             </button>
           </div>
+          </>
+          ) : (
+          <div className="flex-1 flex flex-col items-center justify-center py-4">
+            <p className="text-xs text-stone-400 mb-2">Analysis in progress...</p>
+            <button className="text-amber-600 hover:text-amber-700 font-medium text-[10px]"
+              onClick={() => navigateToTab('strategy')}>
+              View Strategy Tab &rarr;
+            </button>
+          </div>
+          )}
 
           {ddTotal > 0 && (
             <div className="mt-3 pt-2 border-t border-stone-100">
@@ -465,7 +580,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
         </div>
       </div>
 
-      {riskAlert.show && (
+      {riskAlert?.show && (
         <div className={`mt-4 rounded-lg border px-4 py-3 flex items-center justify-between ${
           riskAlert.severity === 'high' ? 'bg-red-50 border-red-200' :
           riskAlert.severity === 'medium' ? 'bg-amber-50 border-amber-200' :
@@ -502,9 +617,11 @@ interface ExistingOverviewProps {
   capitalStructure?: any;
   financial?: any;
   market?: any;
+  capitalStackData?: any;
+  marketCapRate?: number | null;
 }
 
-const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market }) => {
+const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market, capitalStackData, marketCapRate }) => {
   const price = deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : deal.budget ? `$${(deal.budget / 1_000_000).toFixed(1)}M` : '—';
   const units = deal.units || deal.targetUnits || 0;
   const ppu = units > 0 && deal.purchasePrice ? `$${Math.round(deal.purchasePrice / units).toLocaleString()}` : '—';
@@ -575,11 +692,20 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
               {noiValue !== '—' ? 'Platform adjustments applied to broker underwriting' : 'Upload an OM to see NOI adjustments'}
             </div>
           </div>
-          {[
-            { l: 'Going-In Cap Rate', v: capRate, c: 'text-amber-600' },
-            { l: 'Market Cap Rate', v: '—', c: 'text-stone-600' },
-            { l: 'Implied Value at Mkt Cap', v: '—', c: 'text-emerald-600', note: 'vs ask' },
-          ].map((r, i) => (
+          {(() => {
+            const mktCap = typeof marketCapRate === 'number' && !isNaN(marketCapRate) ? `${marketCapRate.toFixed(1)}%` : '—';
+            const impliedVal = marketCapRate && financial?.noi 
+              ? `$${(financial.noi / (marketCapRate / 100) / 1_000_000).toFixed(1)}M` 
+              : '—';
+            const impliedVsAsk = marketCapRate && financial?.noi && deal.purchasePrice
+              ? `${(((financial.noi / (marketCapRate / 100)) / deal.purchasePrice - 1) * 100).toFixed(1)}% vs ask`
+              : undefined;
+            return [
+              { l: 'Going-In Cap Rate', v: capRate, c: 'text-amber-600' },
+              { l: 'Market Cap Rate', v: mktCap, c: 'text-stone-600' },
+              { l: 'Implied Value at Mkt Cap', v: impliedVal, c: 'text-emerald-600', note: impliedVsAsk },
+            ];
+          })().map((r, i) => (
             <div key={i} className="flex justify-between items-start py-1.5 border-b border-stone-100 last:border-0">
               <span className="text-xs text-stone-600">{r.l}</span>
               <div className="text-right">
@@ -593,11 +719,32 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
 
       <SectionHead title="Capital Structure" right="M11 · Exit target" accentColor="border-violet-500" />
       <div className="grid grid-cols-3 gap-px bg-stone-200">
-        {[
-          { tier: 'Senior Debt', c: 'border-blue-400', tc: 'text-blue-600', amt: capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—', ltc: capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—', rate: capitalStructure?.debtYield ? `${capitalStructure.debtYield}%` : '—' },
-          { tier: 'Mezzanine', c: 'border-cyan-400', tc: 'text-cyan-600', amt: '—', ltc: '—', rate: '—' },
-          { tier: 'Equity', c: 'border-emerald-400', tc: 'text-emerald-600', amt: capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—', ltc: capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—', rate: '—' },
-        ].map((t, i) => (
+        {(() => {
+          const stack = capitalStackData?.stack || capitalStackData?.layers || [];
+          const senior = stack.find?.((l: any) => l.type === 'senior_debt' || l.name?.toLowerCase().includes('senior'));
+          const mezz = stack.find?.((l: any) => l.type === 'mezzanine' || l.name?.toLowerCase().includes('mezz'));
+          const equity = stack.find?.((l: any) => l.type === 'equity' || l.name?.toLowerCase().includes('equity'));
+          return [
+            { 
+              tier: 'Senior Debt', c: 'border-blue-400', tc: 'text-blue-600', 
+              amt: senior?.amount ? `$${(senior.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: senior?.ltc ? `${senior.ltc}%` : capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—', 
+              rate: senior?.rate ? `${senior.rate}%` : capitalStructure?.interestRate ? `${capitalStructure.interestRate}%` : '—' 
+            },
+            { 
+              tier: 'Mezzanine', c: 'border-cyan-400', tc: 'text-cyan-600', 
+              amt: mezz?.amount ? `$${(mezz.amount / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: mezz?.ltc ? `${mezz.ltc}%` : '—', 
+              rate: mezz?.rate ? `${mezz.rate}%` : '—' 
+            },
+            { 
+              tier: 'Equity', c: 'border-emerald-400', tc: 'text-emerald-600', 
+              amt: equity?.amount ? `$${(equity.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: equity?.ltc ? `${equity.ltc}%` : capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—', 
+              rate: equity?.targetReturn ? `${equity.targetReturn}%` : '—' 
+            },
+          ];
+        })().map((t, i) => (
           <div key={i} className={`bg-white p-4 border-t-2 ${t.c}`}>
             <div className={`text-[10px] font-bold tracking-wider mb-2 ${t.tc}`}>
               {t.tier} <span className="text-stone-400 font-normal">({t.ltc} LTC)</span>
@@ -612,16 +759,18 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
       <div className="grid grid-cols-2 gap-px bg-stone-200">
         <div className="bg-white p-4">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">DD CHECKLIST</div>
-          {(deal?.stateData?.ddItems || [
-            { l: 'Phase I Environmental', done: false },
-            { l: 'Structural Inspection', done: false },
-            { l: 'Lease Audit', done: false },
-            { l: 'Insurance Binder', done: false },
-            { l: 'Zoning Confirmation Letter', done: false },
-            { l: 'Debt Term Sheet', done: false },
-          ]).map((item: any, i: number) => (
-            <DDItem key={i} label={item.l} done={item.done} />
-          ))}
+          {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0 ? (
+            deal.stateData.ddItems.map((item: any, i: number) => (
+              <DDItem key={i} label={item.l} done={item.done} />
+            ))
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-xs text-stone-400 mb-1">No checklist items added yet</p>
+              <button onClick={() => navigateToTab('dd-checklist')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium">
+                Add DD Items &rarr;
+              </button>
+            </div>
+          )}
         </div>
         <div className="bg-white p-4">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">MODULE ACCESS</div>
@@ -656,9 +805,11 @@ interface DevOverviewProps {
   design3D?: any;
   activeScenario?: any;
   zoningProfile?: any;
+  entitlements?: any[];
+  entitlementBenchmarks?: any;
 }
 
-const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile }) => {
+const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile, entitlements = [], entitlementBenchmarks }) => {
   const { siteData, canonicalData, assumptions, computedReturns } = useDealModule();
   const zoningStore = useZoningModuleStore();
   const { comps: unitMixComps, program: unitMixProgram, zoning: unitMixZoning, loading: unitMixLoading } = useUnitMixIntelligence(deal?.id, deal?.tradeAreaId);
@@ -666,13 +817,13 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   const zoningMaxUnits = activeScenario?.maxUnits || unitMixZoning?.maxUnits || zoningStore.selected_path_data?.maxUnits || null;
   const zoningFar = activeScenario?.appliedFar || zoningProfile?.appliedFar || zoningStore.selected_path_data?.appliedFar || null;
 
-  const maxUnits = zoningMaxUnits || deal.targetUnits || 186;
+  const maxUnits = zoningMaxUnits || deal.targetUnits || 0;
   const lotSizeAcres = siteData?.lotSizeAcres ?? canonicalData?.computed?.lotSizeAcres;
   const lotSize = lotSizeAcres ? `${lotSizeAcres.toFixed(2)} ac` : '—';
   const landCost = financial?.landCost
     ? `$${(financial.landCost / 1_000_000).toFixed(1)}M`
     : deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : '—';
-  const farValue = zoningFar ? zoningFar.toFixed(1) : '2.0';
+  const farValue = zoningFar ? zoningFar.toFixed(1) : '—';
 
   // Building configuration from Dev Capacity Builder + 3D Module + API Assumptions
   const buildingConfig = {
@@ -783,12 +934,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
       }
     }
 
-    return [
-      { type: 'Studio', units: Math.round(buildingConfig.units * 0.10), pct: '10%', sqft: 548, targetRent: 1595, rentPsf: 2.91, ...colors.studio },
-      { type: '1 BR', units: Math.round(buildingConfig.units * 0.40), pct: '40%', sqft: 768, targetRent: 1875, rentPsf: 2.44, ...colors.oneBR },
-      { type: '2 BR', units: Math.round(buildingConfig.units * 0.40), pct: '40%', sqft: 1082, targetRent: 2295, rentPsf: 2.12, ...colors.twoBR },
-      { type: '3 BR', units: Math.round(buildingConfig.units * 0.10), pct: '10%', sqft: 1344, targetRent: 2695, rentPsf: 2.01, ...colors.threeBR },
-    ];
+    return [];
   })();
 
   const totalUnitCount = unitMix.reduce((a, u) => a + u.units, 0) || 1;
@@ -797,7 +943,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   const avgRent = Math.round(totalRevMo / totalUnitCount);
   const avgPsf = (unitMix.reduce((a, u) => a + u.rentPsf * u.units, 0) / totalUnitCount).toFixed(2);
 
-  const storeEntitlements = zoningStore.entitlements || [];
+  const allEntitlements = entitlements.length > 0 ? entitlements : (zoningStore.entitlements || []);
+  const hasEntitlements = allEntitlements.length > 0;
   const entitlementSteps = (() => {
     const steps = [
       { n: 'Pre-Application', key: 'pre_application' },
@@ -806,8 +953,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
       { n: 'Public Hearing', key: 'hearing' },
       { n: 'Approved', key: 'approved' },
     ];
-    if (storeEntitlements.length > 0) {
-      const latestStatus = storeEntitlements[0]?.status || 'pre_application';
+    if (hasEntitlements) {
+      const latestStatus = allEntitlements[0]?.status || 'pre_application';
       const statusOrder = ['pre_application', 'submitted', 'under_review', 'hearing', 'approved'];
       const activeIdx = statusOrder.indexOf(latestStatus);
       return steps.map((s, i) => ({
@@ -816,23 +963,27 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         active: i === activeIdx && latestStatus !== 'approved',
       }));
     }
-    return [
-      { n: 'Pre-Application', done: true, active: false },
-      { n: 'Application Filed', done: false, active: true },
-      { n: 'Staff Review', done: false, active: false },
-      { n: 'Public Hearing', done: false, active: false },
-      { n: 'Approved', done: false, active: false },
-    ];
+    return steps.map((s) => ({
+      n: s.n,
+      done: false,
+      active: false,
+    }));
   })();
 
-  const timeline = [
-    { phase: 'LOI / Contract', start: 0, dur: 2, status: 'active' },
-    { phase: 'Entitlement', start: 2, dur: 9, status: 'pending' },
-    { phase: 'Permits + GMP', start: 11, dur: 3, status: 'pending' },
-    { phase: 'Construction', start: 14, dur: 22, status: 'pending' },
-    { phase: 'Absorption / Sale', start: 36, dur: 14, status: 'pending' },
-  ];
-  const TOTAL_MO = 50;
+  const entitlementDur = entitlementBenchmarks?.p50 || 0;
+  const constructionDur = assumptions?.constructionMonths || deal.strategyDefaults?.assumptions?.constructionMonths || 0;
+  const permitDur = entitlementDur > 0 ? Math.max(2, Math.round(entitlementDur * 0.3)) : 0;
+  const absorptionDur = assumptions?.absorptionMonths || deal.strategyDefaults?.assumptions?.absorptionMonths || 0;
+  const hasTimelineData = entitlementDur > 0 || constructionDur > 0;
+
+  const timeline = hasTimelineData ? [
+    { phase: 'LOI / Contract', start: 0, dur: 2, status: hasEntitlements ? 'done' as const : 'active' as const },
+    { phase: 'Entitlement', start: 2, dur: entitlementDur, status: 'pending' as const },
+    { phase: 'Permits + GMP', start: 2 + entitlementDur, dur: permitDur, status: 'pending' as const },
+    { phase: 'Construction', start: 2 + entitlementDur + permitDur, dur: constructionDur, status: 'pending' as const },
+    { phase: 'Absorption / Sale', start: 2 + entitlementDur + permitDur + constructionDur, dur: absorptionDur, status: 'pending' as const },
+  ] : [];
+  const TOTAL_MO = hasTimelineData ? timeline[timeline.length - 1].start + timeline[timeline.length - 1].dur : 1;
 
   const rentComps = (() => {
     if (unitMixComps && unitMixComps.length > 0) {
@@ -854,13 +1005,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         };
       });
     }
-    return [
-      { name: 'Comp A — Nearest', dist: '0.4mi', units: 232, vintage: 2021, occ: '96%', mix: { Studio: { rent: 1565, sqft: 540 }, '1 BR': { rent: 1845, sqft: 760 }, '2 BR': { rent: 2250, sqft: 1070 }, '3 BR': { rent: 2640, sqft: 1330 } }, note: 'Lease-up stabilized 11mo' },
-      { name: 'Comp B — 1mi radius', dist: '1.2mi', units: 288, vintage: 2022, occ: '94%', mix: { Studio: { rent: 1580, sqft: 552 }, '1 BR': { rent: 1860, sqft: 775 }, '2 BR': { rent: 2275, sqft: 1095 }, '3 BR': { rent: 2670, sqft: 1355 } }, note: '2BR demand strongest' },
-      { name: 'Comp C — 2mi radius', dist: '2.1mi', units: 196, vintage: 2020, occ: '97%', mix: { Studio: { rent: 1490, sqft: 530 }, '1 BR': { rent: 1780, sqft: 745 }, '2 BR': { rent: 2190, sqft: 1055 }, '3 BR': { rent: 2580, sqft: 1310 } }, note: 'Fully leased. Waitlisted' },
-      { name: 'Comp D — 3mi radius', dist: '3.4mi', units: 340, vintage: 2019, occ: '93%', mix: { Studio: { rent: 1450, sqft: 515 }, '1 BR': { rent: 1720, sqft: 730 }, '2 BR': { rent: 2120, sqft: 1035 }, '3 BR': { rent: 2490, sqft: 1285 } }, note: 'Older vintage' },
-      { name: 'Comp E — Newest', dist: '4.1mi', units: 174, vintage: 2023, occ: '89%', mix: { Studio: { rent: 1640, sqft: 565 }, '1 BR': { rent: 1920, sqft: 790 }, '2 BR': { rent: 2340, sqft: 1110 }, '3 BR': { rent: 2750, sqft: 1370 } }, note: 'Sets market ceiling' },
-    ];
+    return [];
   })();
 
   return (
@@ -871,9 +1016,9 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         accentColor="border-cyan-500"
       />
       <div className="grid grid-cols-6 gap-px bg-stone-200">
-        <KVCard label="Max Units (Zoned)" value={`${maxUnits}u`} valueColor="text-cyan-600" note={`${lotSize}`} compact />
-        <KVCard label="FAR" value={farValue} note={`Parking: ${activeScenario?.parkingRequired ? (activeScenario.parkingRequired / maxUnits).toFixed(1) : '1.5'} / unit`} compact />
-        <KVCard label="Entitlement ETA" value="8-10 mo" valueColor="text-amber-600" note="72% confidence" compact />
+        <KVCard label="Max Units (Zoned)" value={maxUnits > 0 ? `${maxUnits}u` : '—'} valueColor="text-cyan-600" note={`${lotSize}`} compact />
+        <KVCard label="FAR" value={farValue} note={maxUnits > 0 && activeScenario?.parkingRequired ? `Parking: ${(activeScenario.parkingRequired / maxUnits).toFixed(1)} / unit` : undefined} compact />
+        <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-600" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
         <KVCard label="Target IRR (BTS)" value={buildingConfig.btsIrr} valueColor="text-emerald-600" note={`${buildingConfig.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
         <KVCard label="TDC / Unit" value={buildingConfig.tdcUnit} note={`${buildingConfig.units} planned units`} compact />
         <KVCard label="Zoning" value={zoningProfile?.baseDistrictCode || '—'} valueColor="text-stone-700" compact />
@@ -881,6 +1026,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
       <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accentColor="border-amber-500" />
       <div className="bg-white p-5">
+        {hasEntitlements ? (
         <div className="flex items-center relative">
           <div className="absolute top-3 left-[10%] right-[10%] h-0.5 bg-stone-200 z-0" />
           {entitlementSteps.map((step, i) => {
@@ -896,6 +1042,24 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             );
           })}
         </div>
+        ) : (
+        <div className="text-center py-3">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            {entitlementSteps.map((step, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full border-2 border-stone-200 bg-stone-50 flex items-center justify-center">
+                  <span className="text-xs font-bold text-stone-300">{i + 1}</span>
+                </div>
+                <div className="text-[9px] mt-1 text-stone-300 font-medium">{step.n}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-stone-400 mt-2">No entitlements filed yet</p>
+          <button onClick={() => navigateToTab('zoning')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium mt-1">
+            Start Entitlement Process &rarr;
+          </button>
+        </div>
+        )}
       </div>
 
       <SectionHead 
@@ -971,8 +1135,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         )}
       </div>
 
-      <SectionHead title="Unit Mix Program" right={`${buildingConfig.units} units · Based on ${buildingConfig.label}`} accentColor="border-cyan-500" />
+      <SectionHead title="Unit Mix Program" right={unitMix.length > 0 ? `${buildingConfig.units} units · Based on ${buildingConfig.label}` : 'No data yet'} accentColor="border-cyan-500" />
       <div className="bg-white border border-stone-200">
+        {unitMix.length > 0 ? (
+        <>
         <div className="flex border-b border-stone-200">
           {unitMix.map((u, i) => (
             <div key={i} className="flex-1 py-2 px-3 text-center border-r border-stone-200 last:border-r-0" style={{ flex: parseInt(u.pct) }}>
@@ -1022,6 +1188,16 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             </tbody>
           </table>
         </div>
+        </>
+        ) : (
+        <div className="text-center py-6">
+          <p className="text-xs text-stone-400 mb-1">No unit mix data available</p>
+          <p className="text-[10px] text-stone-300 mb-2">Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
+          <button onClick={() => navigateToTab('unit-mix')} className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium">
+            Configure Unit Mix &rarr;
+          </button>
+        </div>
+        )}
       </div>
 
       {(() => {
@@ -1061,6 +1237,21 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         const compAvgTraffic = compOnlyRows.length > 0 ? Math.round(compOnlyRows.reduce((s, c) => s + c.traffic, 0) / compOnlyRows.length) : 0;
 
         const subjectRank = allRows.findIndex(r => r.isSubject) + 1;
+
+        if (rentComps.length === 0 && unitMix.length === 0) {
+          return (
+            <>
+              <SectionHead title="Competitive Set" right="No comps" accentColor="border-emerald-500" />
+              <div className="bg-white border border-stone-200 text-center py-6">
+                <p className="text-xs text-stone-400 mb-1">No rent comps data available</p>
+                <p className="text-[10px] text-stone-300 mb-2">Comps are sourced from the Unit Mix Intelligence module</p>
+                <button onClick={() => navigateToTab('unit-mix')} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium">
+                  Analyze Rent Comps &rarr;
+                </button>
+              </div>
+            </>
+          );
+        }
 
         return (
           <>
@@ -1132,7 +1323,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         );
       })()}
 
-      <SectionHead title="Development Budget + Timeline" right={`TDC ${buildingConfig.tdc} · 22mo build · 14mo absorption`} accentColor="border-amber-500" />
+      <SectionHead title="Development Budget + Timeline" right={hasTimelineData ? `TDC ${buildingConfig.tdc} · ${constructionDur}mo build · ${absorptionDur}mo absorption` : `TDC ${buildingConfig.tdc}`} accentColor="border-amber-500" />
       <div className="grid grid-cols-2 gap-px bg-stone-200">
         <div className="bg-white p-4">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">BUDGET STACK</div>
@@ -1149,10 +1340,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               { l: 'Soft Costs', v: `$${(softAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((softAmt / tdc) * 100), c: 'bg-cyan-500' },
               { l: 'Contingency (8%)', v: `$${(contingency / 1_000_000).toFixed(1)}M`, pct: 8, c: 'bg-orange-500' },
             ] : [
-              { l: 'Land / Acquisition', v: landCost, pct: 10, c: 'bg-violet-500' },
-              { l: 'Hard Costs', v: '$28.4M', pct: 70, c: 'bg-amber-500' },
-              { l: 'Soft Costs', v: '$4.6M', pct: 11, c: 'bg-cyan-500' },
-              { l: 'Contingency (10%)', v: '$3.3M', pct: 8, c: 'bg-orange-500' },
+              { l: 'Land / Acquisition', v: landCost !== '—' ? landCost : '—', pct: 25, c: 'bg-violet-500' },
+              { l: 'Hard Costs', v: '—', pct: 25, c: 'bg-amber-500' },
+              { l: 'Soft Costs', v: '—', pct: 25, c: 'bg-cyan-500' },
+              { l: 'Contingency', v: '—', pct: 25, c: 'bg-orange-500' },
             ];
             return items;
           })().map((r, i) => (
@@ -1172,38 +1363,45 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               {financial?.totalDevelopmentCost ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` : buildingConfig.tdc}
             </span>
           </div>
-          <div className="text-[10px] text-stone-400 mt-1">{buildingConfig.tdcUnit}/unit · 22mo construction</div>
+          <div className="text-[10px] text-stone-400 mt-1">{buildingConfig.tdcUnit}/unit{constructionDur > 0 ? ` · ${constructionDur}mo construction` : ''}</div>
         </div>
 
         <div className="bg-white p-4">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">DEVELOPMENT TIMELINE</div>
-          {timeline.map((ph, i) => {
+          {hasTimelineData ? timeline.map((ph, i) => {
             const left = (ph.start / TOTAL_MO) * 100;
             const width = (ph.dur / TOTAL_MO) * 100;
-            const barColor = ph.status === 'active' ? 'bg-amber-500' : 'bg-stone-300';
-            const textColor = ph.status === 'active' ? 'text-amber-600' : 'text-stone-400';
+            const barColor = ph.status === 'done' ? 'bg-emerald-500' : ph.status === 'active' ? 'bg-amber-500' : 'bg-stone-300';
+            const textColor = ph.status === 'done' ? 'text-emerald-600' : ph.status === 'active' ? 'text-amber-600' : 'text-stone-400';
             return (
               <div key={i} className="flex items-center gap-3 mb-2">
                 <span className="text-[10px] text-stone-600 w-28 text-right flex-shrink-0">{ph.phase}</span>
                 <div className="flex-1 h-5 bg-stone-100 relative rounded overflow-hidden">
                   <div className={`absolute h-full ${barColor} opacity-30 rounded`}
                     style={{ left: `${left}%`, width: `${width}%` }} />
-                  <div className={`absolute h-full border-l-2 ${ph.status === 'active' ? 'border-amber-500' : 'border-stone-300'} flex items-center pl-1.5`}
+                  <div className={`absolute h-full border-l-2 ${ph.status === 'done' ? 'border-emerald-500' : ph.status === 'active' ? 'border-amber-500' : 'border-stone-300'} flex items-center pl-1.5`}
                     style={{ left: `${left}%`, width: `${width}%` }}>
                     <span className={`text-[8px] font-bold ${textColor}`}>{ph.dur}mo</span>
                   </div>
                 </div>
                 <span className={`text-[8px] font-bold w-12 text-right ${textColor}`}>
-                  {ph.status === 'active' ? 'ACTIVE' : ''}
+                  {ph.status === 'done' ? '✓' : ph.status === 'active' ? 'ACTIVE' : ''}
                 </span>
               </div>
             );
-          })}
+          }) : (
+            <div className="text-center py-4">
+              <p className="text-xs text-stone-400 mb-1">Timeline data not available</p>
+              <p className="text-[10px] text-stone-300">Add entitlement benchmarks and deal assumptions to generate timeline</p>
+            </div>
+          )}
+          {hasTimelineData && (
           <div className="flex gap-0 mt-3 border-t border-stone-100 pt-2 pl-[124px] pr-12">
-            {[0, 6, 12, 18, 24, 30, 36, 42, 48].map(m => (
+            {[0, 6, 12, 18, 24, 30, 36, 42, 48].filter(m => m <= TOTAL_MO + 6).map(m => (
               <div key={m} className="flex-1 text-[8px] text-stone-400 font-mono">M{m}</div>
             ))}
           </div>
+          )}
         </div>
       </div>
 
