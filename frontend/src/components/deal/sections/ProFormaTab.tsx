@@ -136,30 +136,28 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 
   const [dealName, setDealName] = useState(deal?.name || 'Untitled Deal');
   const [totalUnitsManual, setTotalUnitsManual] = useState<number | null>(null);
-  const [netRentableSF, setNetRentableSF] = useState(180000);
-  const [vintage, setVintage] = useState(2020);
-  const [address, setAddress] = useState(deal?.address || '');
-  const [city, setCity] = useState(deal?.city || '');
-  const [state, setState] = useState(deal?.state || '');
+  const [netRentableSF, setNetRentableSF] = useState(deal?.netRentableSF || deal?.total_sqft || deal?.deal_data?.total_sqft || 0);
+  const [vintage, setVintage] = useState(deal?.yearBuilt || deal?.year_built || deal?.deal_data?.year_built || 0);
+  const [address, setAddress] = useState(deal?.address || deal?.property_address || '');
+  const [city, setCity] = useState(deal?.city || deal?.deal_data?.city || '');
+  const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
 
   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
-    { floorPlan: 'Studio', unitSize: 550, beds: 0, units: 30, occupied: 28, vacant: 2, marketRent: 1350, inPlaceRent: 1300 },
-    { floorPlan: '1BR/1BA', unitSize: 750, beds: 1, units: 80, occupied: 75, vacant: 5, marketRent: 1550, inPlaceRent: 1480 },
-    { floorPlan: '2BR/2BA', unitSize: 1050, beds: 2, units: 70, occupied: 65, vacant: 5, marketRent: 1900, inPlaceRent: 1820 },
-    { floorPlan: '3BR/2BA', unitSize: 1350, beds: 3, units: 20, occupied: 18, vacant: 2, marketRent: 2400, inPlaceRent: 2300 },
+    { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
+    { floorPlan: '2BR/2BA', unitSize: 0, beds: 2, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
   ]);
 
   const totalUnits = totalUnitsManual ?? unitMix.reduce((s, u) => s + u.units, 0);
   const setTotalUnits = (v: number) => setTotalUnitsManual(v);
 
-  const [purchasePrice, setPurchasePrice] = useState(30000000);
-  const [capRate, setCapRate] = useState(0.05);
+  const [purchasePrice, setPurchasePrice] = useState(deal?.purchasePrice || deal?.purchase_price || deal?.budget || deal?.deal_data?.asking_price || 0);
+  const [capRate, setCapRate] = useState(deal?.capRate ? deal.capRate / 100 : deal?.deal_data?.broker_cap_rate ? deal.deal_data.broker_cap_rate / 100 : 0);
   const [closingCosts, setClosingCosts] = useState<Record<string, number>>({
-    'Misc/Broker': 50000,
-    'Transfer Tax': 75000,
-    'Escrows': 100000,
-    'Rate Cap': 150000,
-    'Legal/Title': 125000,
+    'Misc/Broker': 0,
+    'Transfer Tax': 0,
+    'Escrows': 0,
+    'Rate Cap': 0,
+    'Legal/Title': 0,
   });
   const [exitCapRate, setExitCapRate] = useState(0.055);
   const [sellingCosts, setSellingCosts] = useState(0.02);
@@ -173,17 +171,24 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 
   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
 
-  const [loanAmount, setLoanAmount] = useState(21000000);
+  const [loanAmount, setLoanAmount] = useState(deal?.loanAmount || deal?.loan_amount || 0);
   const [loanType, setLoanType] = useState('Fixed');
-  const [interestRate, setInterestRate] = useState(0.055);
+  const [interestRate, setInterestRate] = useState(0);
   const [spread, setSpread] = useState(0);
   const [loanTerm, setLoanTerm] = useState(10);
   const [amortization, setAmortization] = useState(30);
-  const [ioPeriod, setIoPeriod] = useState(24);
+  const [ioPeriod, setIoPeriod] = useState(0);
   const [originationFee, setOriginationFee] = useState(0.01);
   const [rateCapCost, setRateCapCost] = useState(0);
   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
   const [debtSource, setDebtSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    const dealUnits = deal?.units || deal?.targetUnits || deal?.target_units || deal?.deal_data?.units || 0;
+    if (dealUnits > 0 && totalUnitsManual === null) {
+      setTotalUnitsManual(dealUnits);
+    }
+  }, [deal]);
 
   useEffect(() => {
     if (debtTerms && debtTerms.source && debtTerms.lastUpdated > lastAppliedTimestamp.current) {
@@ -445,12 +450,29 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           landCost: summary.landCost ?? (modelType === 'development' ? landCost : 0),
           hardCosts: summary.hardCosts ?? hardCostsVal,
           softCosts: summary.softCosts ?? softCostsVal,
-          noi: summary.noi ?? summary.year1NOI ?? 0,
+          noi: summary.noi ?? summary.year1NOI ?? summary.noiYear1 ?? 0,
           irr: summary.irr ?? 0,
           equityMultiple: summary.equityMultiple ?? 0,
-          cashOnCash: summary.cashOnCash ?? 0,
+          cashOnCash: Array.isArray(summary.cashOnCash) ? summary.cashOnCash[0] : (summary.cashOnCash ?? 0),
+          purchasePrice,
+          totalUnits,
+          goingInCapRate: capRate,
+          exitCapRate,
+          stabilizedOccupancy,
+          dscr: Array.isArray(summary.dscr) ? summary.dscr[0] : (summary.dscr ?? 0),
+          debtService: summary.debtService ?? summary.annualDebtService ?? 0,
+          yieldOnCost: summary.yieldOnCost ?? 0,
         });
-        emitEvent({ source: 'ProFormaTab', type: 'financial-updated', payload: { dealId: id } });
+        emitEvent({ source: 'ProFormaTab', type: 'financial-updated', payload: {
+          dealId: id,
+          noi: summary.noi ?? summary.year1NOI ?? summary.noiYear1 ?? 0,
+          purchasePrice,
+          capRate,
+          exitCapRate,
+          stabilizedOccupancy,
+          totalUnits,
+          dscr: Array.isArray(summary.dscr) ? summary.dscr[0] : (summary.dscr ?? 0),
+        } });
       }
     } catch (err: any) {
       console.error('Model build failed:', err);

@@ -1,12 +1,12 @@
 run = "bash run.sh"
 entrypoint = "run.sh"
-modules = ["nodejs-20", "python-3.12", "bash", "web", "postgresql-16"]
+modules = ["nodejs-20", "python-3.11", "postgresql-16"]
 
 [nix]
-channel = "stable-25_05"
+channel = "stable-24_05"
 
 [deployment]
-run = ["node", "backend/dist/index.replit.js"]
+run = ["bash", "-c", "cd backend && PORT=5000 NODE_ENV=production node dist/index.replit.js"]
 deploymentTarget = "autoscale"
 build = ["bash", "build.sh"]
 
@@ -22,6 +22,7 @@ externalPort = 80
 localPort = 5000
 externalPort = 80
 
+<<<<<<< HEAD
 [[ports]]
 localPort = 5173
 externalPort = 5173
@@ -30,9 +31,10 @@ externalPort = 5173
 localPort = 5904
 externalPort = 3001
 
+=======
+>>>>>>> financial-model-full-implementation
 [agent]
 expertMode = true
-integrations = ["stripe:1.0.0", "twilio:1.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -50,23 +52,10 @@ args = "JediRe"
 name = "JediRe"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "./start.sh"
 waitForPort = 5000
 
-[userenv]
-
-[userenv.production]
-PORT = "5000"
-NODE_ENV = "production"
-
-[userenv.shared]
-API_KEY_ADMIN = "8acb8b8cf3704e3af9c8bb8738925d103f7cda59b14d6c99d825cf29cfa195cb"
-APARTMENT_LOCATOR_API_URL = "https://apartment-locator-ai-real.replit.app"
-JEDIRE_AGENT_API_KEY = "jre_agent_f3605def93ab3e626fe5775ae13951c208d143a32311f436"
-JEDIRE_API_URL = "http://localhost:4000"
-TWILIO_ACCOUNT_SID = "AC2c120588ee8f90890c5f1a62cd75c6d8"
+[workflows.workflow.metadata]
+outputType = "webview"

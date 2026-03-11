@@ -176,7 +176,7 @@ function generateMockFindings(): {
         title: 'Midtown rents up 12.3% in last quarter',
         description: 'Submarket rents increased from $1,850 to $2,078. Strong demand driven by new corporate relocations.',
         timestamp: yesterday.toISOString(),
-        link: '/market-data',
+        link: '/deals',
         metadata: {
           metric: 'rent',
           change: 12.3
@@ -189,7 +189,7 @@ function generateMockFindings(): {
         title: 'Buckhead occupancy dropped to 88.5%',
         description: 'Down 4.2% from last quarter. New supply entering market - consider pricing adjustments.',
         timestamp: twoDaysAgo.toISOString(),
-        link: '/market-data',
+        link: '/deals',
         metadata: {
           metric: 'occupancy',
           change: -4.2
@@ -202,7 +202,7 @@ function generateMockFindings(): {
         title: 'West Midtown absorption rate accelerating',
         description: 'New units leasing 15% faster than 6-month average. Strong market momentum.',
         timestamp: threeDaysAgo.toISOString(),
-        link: '/market-data',
+        link: '/deals',
         metadata: {
           metric: 'absorption',
           change: 15.0
@@ -437,7 +437,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           title: `${row.metric_type} ${direction} ${Math.abs(row.change_pct).toFixed(1)}% in ${row.deal_name}`,
           description: `Market ${row.metric_type} changed from $${row.previous_value} to $${row.current_value} near ${row.city}`,
           timestamp: row.updated_at,
-          link: `/deals/${row.deal_id}?tab=market`,
+          link: `/deals/${row.deal_id}/detail?tab=collision-analysis`,
           metadata: {
             dealId: row.deal_id,
             dealName: row.deal_name,
@@ -527,7 +527,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
           title: title,
           description: description,
           timestamp: row.created_at,
-          link: `/deals/${row.deal_id}?tab=analysis`,
+          link: `/deals/${row.deal_id}/detail?tab=collision-analysis`,
           metadata: {
             dealId: row.deal_id,
             jediScore: score,
@@ -590,7 +590,7 @@ router.get('/findings', authMiddleware.requireAuth, async (req: Request, res: Re
             title: title,
             description: description,
             timestamp: row.updated_at,
-            link: `/deals/${row.id}`,
+            link: `/deals/${row.id}/detail?tab=collision-analysis`,
             metadata: {
               state: row.state,
             },

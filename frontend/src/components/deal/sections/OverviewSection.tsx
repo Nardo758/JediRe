@@ -76,8 +76,8 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [jediScoreData, setJediScoreData] = useState<JEDIScoreData>(mockJediScore);
   const [signals, setSignals] = useState<SignalScore[]>(mockSignalScores);
-  const [strategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
-  const [riskAlert] = useState<RiskAlertData>(mockRiskAlert);
+  const [strategyVerdict, setStrategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
+  const [riskAlert, setRiskAlert] = useState<RiskAlertData>(mockRiskAlert);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'loading' | 'live' | 'sample'>('loading');
   const [viewMode, setViewMode] = useState<'existing' | 'development'>('existing');
@@ -163,6 +163,54 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const handleStrategySelection = useCallback((strategyId: string) => {
     onStrategySelected?.(strategyId);
   }, [onStrategySelected]);
+
+  useEffect(() => {
+    if (!strategyResults?.strategies?.length) return;
+    const strategies = strategyResults.strategies;
+    const recId = strategyResults.recommendedStrategyId;
+    const recommended = strategies.find(s => s.id === recId) || strategies[0];
+    const sorted = [...strategies].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+    const secondBest = sorted.find(s => s.id !== recommended.id);
+    const gap = secondBest ? Math.round(recommended.confidence - secondBest.confidence) : 0;
+
+    setStrategyVerdict({
+      recommended: recommended.id,
+      recommendedLabel: recommended.name,
+      score: Math.round(recommended.confidence),
+      secondBest: secondBest?.id || '',
+      secondBestLabel: secondBest?.name || '',
+      secondBestScore: secondBest ? Math.round(secondBest.confidence) : 0,
+      arbitrageGap: gap,
+      isArbitrage: gap >= 10,
+      roiEstimate: recommended.projectedROI ? `${recommended.projectedROI.toFixed(1)}%` : '—',
+      roiLabel: 'Projected ROI',
+      insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
+    });
+  }, [strategyResults]);
+
+  useEffect(() => {
+    if (dataSource !== 'live' || !signals.length) return;
+    const worstSignal = [...signals].sort((a, b) => a.score - b.score)[0];
+    if (!worstSignal) return;
+
+    const score = worstSignal.score;
+    const severity: 'low' | 'medium' | 'high' = score < 40 ? 'high' : score < 60 ? 'medium' : 'low';
+
+    setRiskAlert({
+      show: score < 70,
+      category: worstSignal.name,
+      score: Math.round(score),
+      maxScore: 100,
+      detail: worstSignal.description,
+      mitigationAvailable: severity !== 'high',
+      mitigationText: severity === 'medium'
+        ? `${worstSignal.name} signal at ${Math.round(score)}/100 — monitor closely.`
+        : severity === 'high'
+        ? `Critical: ${worstSignal.name} signal below threshold.`
+        : '',
+      severity,
+    });
+  }, [signals, dataSource]);
 
   const navigateToTab = useCallback((tabId: string) => {
     onTabChange?.(tabId);

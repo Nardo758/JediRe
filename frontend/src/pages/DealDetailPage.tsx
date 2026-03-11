@@ -57,6 +57,7 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
+import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
 import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
@@ -75,10 +76,22 @@ const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }>
   rezone: { label: 'Full Rezone', color: 'bg-red-100 text-red-700' },
 };
 
+function normalizePath(raw: string): DevelopmentPath | null {
+  const lower = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  if (lower.startsWith('by_right')) return 'by_right';
+  if (lower.startsWith('overlay') || lower.includes('bonus')) return 'overlay_bonus';
+  if (lower.startsWith('variance')) return 'variance';
+  if (lower.startsWith('rezone')) return 'rezone';
+  if ((DEV_PATH_CONFIG as Record<string, unknown>)[raw]) return raw as DevelopmentPath;
+  return null;
+}
+
 function DevPathBadge() {
   const { development_path } = useZoningModuleStore();
   if (!development_path) return null;
-  const cfg = DEV_PATH_CONFIG[development_path];
+  const key = normalizePath(development_path);
+  if (!key) return null;
+  const cfg = DEV_PATH_CONFIG[key];
   return (
     <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
       {cfg.label}
@@ -349,6 +362,12 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 4: DUE DILIGENCE - Verify & validate
   const dueDiligenceTabs: Tab[] = [
+    {
+      id: 'collision-analysis',
+      label: 'Collision Analysis',
+      icon: <Zap size={16} />,
+      component: CollisionAnalysisSection
+    },
     { 
       id: 'due-diligence', 
       label: 'DD Checklist', 
@@ -470,7 +489,7 @@ const DealDetailPage: React.FC = () => {
           onClick={() => navigate('/deals')}
           className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
         >
-          Back to Deals
+          Back to Deal Capsules
         </button>
       </div>
     );
@@ -490,6 +509,7 @@ const DealDetailPage: React.FC = () => {
               </button>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded flex-shrink-0">Deal Capsule</span>
                   <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
                   <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
                     {deal.project_type || deal.property_type || 'multifamily'}
@@ -563,7 +583,7 @@ const DealDetailPage: React.FC = () => {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search modules..."
+                  placeholder="Search capsule modules..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -648,8 +668,8 @@ const DealDetailPage: React.FC = () => {
 
             <div className="mt-auto p-3 border-t border-slate-200">
               <div className="text-[10px] text-slate-400 text-center space-y-0.5">
-                <p>Press 1-6 for quick access</p>
-                <p className="text-slate-300">6 stages | {allTabs.length} modules</p>
+                <p>Press 1-6 for quick stage access</p>
+                <p className="text-slate-300">Deal Capsule | {allTabs.length} modules</p>
               </div>
             </div>
           </aside>

@@ -288,7 +288,7 @@ export const Dashboard: React.FC = () => {
       m.getCanvas().style.cursor = '';
     });
 
-    if (deals.length > 0) {
+    if (Array.isArray(deals) && deals.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       let hasValidBounds = false;
       deals.forEach(deal => {
@@ -331,7 +331,7 @@ export const Dashboard: React.FC = () => {
             <div className="text-2xl font-bold text-gray-900">
               ${(pipelineValue / 1000000).toFixed(1)}M
             </div>
-            <div className="text-xs text-gray-500 mt-1">{deals.length} deals</div>
+            <div className="text-xs text-gray-500 mt-1">{Array.isArray(deals) ? deals.length : 0} deals</div>
           </div>
           
           <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">

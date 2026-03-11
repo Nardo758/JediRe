@@ -8,9 +8,13 @@
  * Hotkeys: F1–F6 for tab navigation, Esc to close modals
  */
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { getPropertyPhotos, type PropertyPhoto } from "../services/google-places.service";
+import { ZoningTabContent } from "../components/MarketIntelligence/ZoningTabContent";
+import { CompsTabContent } from "../components/MarketIntelligence/CompsTabContent";
+import { MarketTabContent } from "../components/MarketIntelligence/MarketTabContent";
+import { PhotosManager } from "../components/MarketIntelligence/PhotosManager";
 
 // ═══════════════════════════════════════════════════════════════
 // THEME TOKENS
@@ -1064,10 +1068,10 @@ export default function PropertyDetailsPage() {
     switch (activeTab) {
       case "OVERVIEW": return <OverviewTab />;
       case "FINANCIALS": return <FinancialsTab />;
-      case "COMPS": return <CompsTab />;
+      case "COMPS": return p.dealId ? <CompsTabContent dealId={p.dealId} /> : <CompsTab />;
       case "TAX": return <TaxTab />;
-      case "ZONING": return <ZoningTab />;
-      case "MARKET": return <MarketTab />;
+      case "ZONING": return p.dealId ? <ZoningTabContent dealId={p.dealId} /> : <ZoningTab />;
+      case "MARKET": return p.dealId ? <MarketTabContent dealId={p.dealId} /> : <MarketTab />;
       default: return <OverviewTab />;
     }
   };

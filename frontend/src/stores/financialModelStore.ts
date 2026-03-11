@@ -36,46 +36,11 @@ import {
 // ---------------------------------------------------------------------------
 
 interface DealStoreActions {
-  // ─── DEAL LIST (Dashboard) ────────────────────────────────
-  deals: any[];
-  isLoading: boolean;
-  error: string | null;
-  fetchDeals: () => Promise<void>;
-
   // ─── LIFECYCLE ────────────────────────────────────────────
   /** Hydrate entire deal context from backend */
   fetchDealContext: (dealId: string) => Promise<void>;
   /** Clear store (on navigate away from deal) */
   clearDeal: () => void;
-
-  // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────
-  /**
-   * Apply unit mix to all modules (Financial Model, 3D Design, etc.)
-   * Called when:
-   * - Development path selected
-   * - Unit Mix Intelligence runs
-   * - User manually sets unit mix
-   */
-  applyUnitMixToAllModules: () => Promise<{ success: boolean; modulesUpdated: string[] }>;
-  
-  /**
-   * Set manual unit mix override and propagate
-   */
-  setManualUnitMix: (unitMix: {
-    studio?: { count: number; avgSF?: number };
-    oneBR?: { count: number; avgSF?: number };
-    twoBR?: { count: number; avgSF?: number };
-    threeBR?: { count: number; avgSF?: number };
-  }) => Promise<{ success: boolean }>;
-  
-  /**
-   * Get current unit mix status
-   */
-  getUnitMixStatus: () => Promise<{
-    hasUnitMix: boolean;
-    source: string | null;
-    appliedAt: string | null;
-  }>;
 
   // ─── THE KEYSTONE: DEVELOPMENT PATH SELECTION ─────────────
   /**
@@ -83,7 +48,6 @@ interface DealStoreActions {
    *
    * Cascade:
    *   1. Sets selectedDevelopmentPathId
-   *   2. Propagates unit mix to all modules automatically
    *   2. Recomputes resolvedUnitMix from new path's program + existing overrides
    *   3. Recomputes totalUnits
    *   4. Marks financial/strategy/scores as stale (triggers recomputation)
@@ -334,28 +298,10 @@ function markDownstreamStale(
 
 type DealStore = DealContext & DealStoreActions;
 
-export const useDealStore = create<DealStore>()(
+export const useFinancialModelStore = create<DealStore>()(
   subscribeWithSelector((set, get) => ({
     // Spread initial state
     ...INITIAL_CONTEXT,
-
-    // ─── DEAL LIST (Dashboard) ────────────────────────────────
-    deals: [],
-    isLoading: false,
-    error: null,
-    fetchDeals: async () => {
-      set({ isLoading: true, error: null });
-      try {
-        const response = await fetch('/api/v1/deals');
-        if (!response.ok) throw new Error(`Failed to fetch deals: ${response.status}`);
-        const data = await response.json();
-        const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
-        set({ deals: dealsList, isLoading: false });
-      } catch (error: any) {
-        console.error('[dealStore] Failed to fetch deals:', error);
-        set({ error: error.message, isLoading: false });
-      }
-    },
 
     // ─── LIFECYCLE ────────────────────────────────────────────
 
@@ -383,94 +329,6 @@ export const useDealStore = create<DealStore>()(
 
     clearDeal: () => {
       set(INITIAL_CONTEXT);
-    },
-
-    // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────
-
-    applyUnitMixToAllModules: async () => {
-      const state = get();
-      const dealId = state.identity.id;
-
-      if (!dealId) {
-        console.warn('[dealStore] No deal ID for unit mix propagation');
-        return { success: false, modulesUpdated: [] };
-      }
-
-      try {
-        const response = await fetch(`/api/v1/deals/${dealId}/unit-mix/apply`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: 'path' }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Unit mix propagation failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return {
-          success: data.success,
-          modulesUpdated: data.data?.result?.modulesUpdated || [],
-        };
-      } catch (error) {
-        console.error('[dealStore] applyUnitMixToAllModules failed:', error);
-        return { success: false, modulesUpdated: [] };
-      }
-    },
-
-    setManualUnitMix: async (unitMix) => {
-      const state = get();
-      const dealId = state.identity.id;
-
-      if (!dealId) {
-        console.warn('[dealStore] No deal ID for manual unit mix');
-        return { success: false };
-      }
-
-      try {
-        const response = await fetch(`/api/v1/deals/${dealId}/unit-mix/set`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ unitMix }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Set manual unit mix failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        // Refresh deal context to get updated unit mix
-        await get().fetchDealContext(dealId);
-
-        return { success: data.success };
-      } catch (error) {
-        console.error('[dealStore] setManualUnitMix failed:', error);
-        return { success: false };
-      }
-    },
-
-    getUnitMixStatus: async () => {
-      const state = get();
-      const dealId = state.identity.id;
-
-      if (!dealId) {
-        return { hasUnitMix: false, source: null, appliedAt: null };
-      }
-
-      try {
-        const response = await fetch(`/api/v1/deals/${dealId}/unit-mix/status`);
-        
-        if (!response.ok) {
-          throw new Error(`Get unit mix status failed: ${response.status}`);
-        }
-
-        const data = await response.json();
-        return data.data || { hasUnitMix: false, source: null, appliedAt: null };
-      } catch (error) {
-        console.error('[dealStore] getUnitMixStatus failed:', error);
-        return { hasUnitMix: false, source: null, appliedAt: null };
-      }
     },
 
     // ─── THE KEYSTONE: DEVELOPMENT PATH SELECTION ─────────────
@@ -508,18 +366,7 @@ export const useDealStore = create<DealStore>()(
         hydrationStatus,
       });
 
-      // Step 4: Propagate unit mix to ALL modules (Phase 11)
-      // This ensures Financial Model, 3D Design, Dev Capacity all use same unit mix
-      console.log('[dealStore] Propagating unit mix to all modules after path selection');
-      get().applyUnitMixToAllModules().then((result) => {
-        if (result.success) {
-          console.log('[dealStore] Unit mix applied to:', result.modulesUpdated);
-        } else {
-          console.warn('[dealStore] Unit mix propagation had errors');
-        }
-      });
-
-      // Step 5: Trigger async downstream recomputation
+      // Step 4: Trigger async downstream recomputation
       // This calls backend to rerun ProForma, Strategy, JEDI Score
       // with the new unit mix and construction parameters
       get()._triggerDownstreamRecompute(pathId);
@@ -530,7 +377,7 @@ export const useDealStore = create<DealStore>()(
      * Debounced to avoid rapid-fire during exploration.
      */
     _triggerDownstreamRecompute: debounce(async (pathId: string) => {
-      const state = useDealStore.getState();
+      const state = useFinancialModelStore.getState();
       const path = state.developmentPaths.find((p) => p.id === pathId);
       if (!path) return;
 
@@ -557,7 +404,7 @@ export const useDealStore = create<DealStore>()(
         const result = await response.json();
 
         // Apply recomputed downstream values
-        useDealStore.setState({
+        useFinancialModelStore.setState({
           financial: result.financial ?? state.financial,
           strategy: result.strategy ?? state.strategy,
           scores: result.scores ?? state.scores,
@@ -798,7 +645,7 @@ const debouncedPersistOverrides = debounce(
 
 /** M01 Deal Overview — reads summary data */
 export const useDealOverview = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     identity: s.identity,
     scores: s.scores,
     strategy: s.strategy,
@@ -810,7 +657,7 @@ export const useDealOverview = () =>
 
 /** M-PIE Unit Mix Intelligence — reads/writes unit mix */
 export const useUnitMixIntelligence = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     mode: s.identity.mode,
     resolvedUnitMix: s.resolvedUnitMix,
     baseUnitMix: s.getBaseUnitMix(),
@@ -827,7 +674,7 @@ export const useUnitMixIntelligence = () =>
 
 /** M03 Dev Capacity — manages development paths */
 export const useDevCapacity = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     zoning: s.zoning,
     site: s.site,
     developmentPaths: s.developmentPaths,
@@ -840,7 +687,7 @@ export const useDevCapacity = () =>
 
 /** M08 Strategy Arbitrage — reads scores, unit mix, zoning */
 export const useStrategyArbitrage = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     strategy: s.strategy,
     scores: s.scores,
     resolvedUnitMix: s.resolvedUnitMix,
@@ -854,7 +701,7 @@ export const useStrategyArbitrage = () =>
 
 /** M09 ProForma — reads unit mix, assumptions, capital */
 export const useProForma = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     resolvedUnitMix: s.resolvedUnitMix,
     totalUnits: s.totalUnits,
     financial: s.financial,
@@ -867,7 +714,7 @@ export const useProForma = () =>
 
 /** Any module that just needs to know the deal mode and unit count */
 export const useDealBasics = () =>
-  useDealStore((s) => ({
+  useFinancialModelStore((s) => ({
     id: s.identity.id,
     name: s.identity.name,
     mode: s.identity.mode,
