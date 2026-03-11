@@ -9,6 +9,7 @@ import {
   parseZoningToSiteData,
   computeCanonicalData,
 } from './canonicalDealData';
+import { useDealAssumptions, DealAssumptions, ComputedReturns, DealFullContext } from '../hooks/useDealAssumptions';
 
 export interface Design3DState {
   totalUnits: number;
@@ -189,6 +190,14 @@ interface DealModuleContextValue {
   updateSiteData: (updates: Partial<CanonicalSiteData>) => void;
   refreshCanonicalData: () => void;
 
+  // Deal assumptions from API (underwriting inputs)
+  assumptions: DealAssumptions | null;
+  computedReturns: ComputedReturns | null;
+  fullContext: DealFullContext | null;
+  updateAssumptions: (updates: Partial<DealAssumptions>) => Promise<any>;
+  computeReturnsFromApi: () => Promise<any>;
+  assumptionsLoading: boolean;
+
   design3D: Design3DState | null;
   updateDesign3D: (updates: Partial<Design3DState>) => void;
 
@@ -290,13 +299,47 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     return computeCanonicalData(siteData, dealInputs);
   }, [siteData, dealInputs]);
 
-  const updateSiteData = useCallback((updates: Partial<CanonicalSiteData>) => {
+  const updateSiteDataLocal = useCallback((updates: Partial<CanonicalSiteData>) => {
     setSiteData(prev => ({
       ...(prev || createEmptySiteData()),
       ...updates,
       lastUpdated: Date.now(),
     }));
   }, []);
+
+  // Deal assumptions from API
+  const {
+    assumptions,
+    computedReturns,
+    fullContext,
+    loading: assumptionsLoading,
+    updateAssumptions,
+    computeReturns: computeReturnsFromApi,
+  } = useDealAssumptions(dealId);
+
+  // Sync assumptions to financial state when computed
+  useEffect(() => {
+    if (computedReturns) {
+      setFinancial(prev => ({
+        ...(prev || {
+          totalDevelopmentCost: 0, landCost: 0, hardCosts: 0, softCosts: 0,
+          noi: 0, irr: 0, equityMultiple: 0, cashOnCash: 0,
+          purchasePrice: 0, totalUnits: 0, goingInCapRate: 0, exitCapRate: 0,
+          stabilizedOccupancy: 0, dscr: 0, debtService: 0, yieldOnCost: 0,
+          lastUpdated: 0,
+        }),
+        totalDevelopmentCost: computedReturns.tdc,
+        noi: computedReturns.noiStabilized,
+        irr: computedReturns.irrLevered * 100,
+        equityMultiple: computedReturns.equityMultiple,
+        cashOnCash: computedReturns.cashOnCashYr1 * 100,
+        yieldOnCost: computedReturns.yieldOnCost * 100,
+        dscr: computedReturns.dscr,
+        debtService: computedReturns.annualDebtService,
+        lastUpdated: Date.now(),
+      }));
+    }
+  }, [computedReturns]);
 
   const refreshCanonicalData = useCallback(() => {
     if (deal) {
@@ -448,8 +491,15 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     canonicalData,
     siteData,
     dealInputs,
-    updateSiteData,
+    updateSiteData: updateSiteDataLocal,
     refreshCanonicalData,
+    // Deal assumptions from API
+    assumptions,
+    computedReturns,
+    fullContext,
+    updateAssumptions,
+    computeReturnsFromApi,
+    assumptionsLoading,
     // Module states
     design3D,
     updateDesign3D,
@@ -474,7 +524,7 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     moduleStatus,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, canonicalData, siteData, dealInputs, updateSiteData, refreshCanonicalData, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
+  }), [dealId, deal, canonicalData, siteData, dealInputs, updateSiteDataLocal, refreshCanonicalData, assumptions, computedReturns, fullContext, updateAssumptions, computeReturnsFromApi, assumptionsLoading, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -495,6 +545,13 @@ export const useDealModule = (): DealModuleContextValue => {
       dealInputs: null,
       updateSiteData: () => {},
       refreshCanonicalData: () => {},
+      // Deal assumptions from API
+      assumptions: null,
+      computedReturns: null,
+      fullContext: null,
+      updateAssumptions: async () => {},
+      computeReturnsFromApi: async () => {},
+      assumptionsLoading: false,
       // Module states
       design3D: null,
       updateDesign3D: () => {},

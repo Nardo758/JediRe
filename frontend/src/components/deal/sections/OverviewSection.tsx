@@ -65,7 +65,11 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   onStrategySelected,
   onTabChange,
 }) => {
-  const { capitalStructure, strategy: strategyCtx, financial, market, design3D, activeScenario, zoningProfile, siteData, dealInputs, canonicalData } = useDealModule();
+  const { 
+    capitalStructure, strategy: strategyCtx, financial, market, design3D, 
+    activeScenario, zoningProfile, siteData, dealInputs, canonicalData,
+    assumptions, computedReturns, fullContext, assumptionsLoading 
+  } = useDealModule();
 
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus>({
     phase: 'initializing',
@@ -670,30 +674,64 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     : deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : '—';
   const farValue = zoningFar ? zoningFar.toFixed(1) : '2.0';
 
-  // Building configuration from Dev Capacity Builder + 3D Module
+  // Building configuration from Dev Capacity Builder + 3D Module + API Assumptions
   const buildingConfig = {
-    // From activeScenario (Development Capacity Builder)
+    // From activeScenario (Development Capacity Builder) or API assumptions
     label: activeScenario?.name || zoningStore.selected_path_data?.name || 'Selected Configuration',
-    units: activeScenario?.maxUnits || design3D?.totalUnits || maxUnits,
-    floors: activeScenario?.maxStories || design3D?.floors || zoningStore.selected_path_data?.maxStories || 6,
-    height: activeScenario?.maxStories ? `${Math.round(activeScenario.maxStories * 11)} ft` : design3D?.floors ? `${Math.round(design3D.floors * 11)} ft` : '63 ft',
+    units: assumptions?.totalUnits || activeScenario?.maxUnits || design3D?.totalUnits || maxUnits,
+    floors: assumptions?.stories || activeScenario?.maxStories || design3D?.floors || zoningStore.selected_path_data?.maxStories || 6,
+    height: assumptions?.stories ? `${Math.round(assumptions.stories * 11)} ft` : activeScenario?.maxStories ? `${Math.round(activeScenario.maxStories * 11)} ft` : design3D?.floors ? `${Math.round(design3D.floors * 11)} ft` : '63 ft',
     parking: activeScenario?.parkingRequired ? `${activeScenario.parkingRequired} spaces` : 'TBD',
     parkingSpaces: activeScenario?.parkingRequired || design3D?.parkingSpaces || Math.round(maxUnits * 1.5),
-    constructionType: activeScenario?.maxStories && activeScenario.maxStories <= 4 ? 'Wood frame' : activeScenario?.maxStories && activeScenario.maxStories <= 6 ? 'Wood over podium' : 'Concrete',
-    // Financial metrics
-    tdc: financial?.totalDevelopmentCost 
-      ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` 
-      : `$${(40500000 / 1_000_000).toFixed(1)}M`,
-    tdcUnit: financial?.totalDevelopmentCost && maxUnits
-      ? `$${Math.round(financial.totalDevelopmentCost / maxUnits).toLocaleString()}`
-      : `$${Math.round(40500000 / maxUnits).toLocaleString()}`,
-    btsIrr: financial?.btsIrr ? `${financial.btsIrr.toFixed(1)}%` : '—',
-    btsEm: financial?.btsEquityMultiple ? `${financial.btsEquityMultiple.toFixed(1)}x` : '—',
-    yoc: financial?.yieldOnCost ? `${financial.yieldOnCost.toFixed(1)}%` : '—',
+    constructionType: assumptions?.constructionType || (activeScenario?.maxStories && activeScenario.maxStories <= 4 ? 'Wood frame' : activeScenario?.maxStories && activeScenario.maxStories <= 6 ? 'Wood over podium' : 'Concrete'),
+    // Financial metrics - prefer API computed returns
+    tdc: computedReturns?.tdc 
+      ? `$${(computedReturns.tdc / 1_000_000).toFixed(1)}M` 
+      : assumptions?.tdc 
+        ? `$${(assumptions.tdc / 1_000_000).toFixed(1)}M`
+        : financial?.totalDevelopmentCost 
+          ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` 
+          : '—',
+    tdcUnit: computedReturns?.tdcPerUnit 
+      ? `$${Math.round(computedReturns.tdcPerUnit).toLocaleString()}`
+      : assumptions?.tdcPerUnit
+        ? `$${Math.round(assumptions.tdcPerUnit).toLocaleString()}`
+        : financial?.totalDevelopmentCost && maxUnits
+          ? `$${Math.round(financial.totalDevelopmentCost / maxUnits).toLocaleString()}`
+          : '—',
+    btsIrr: computedReturns?.irrLevered 
+      ? `${(computedReturns.irrLevered * 100).toFixed(1)}%` 
+      : assumptions?.irrLevered 
+        ? `${(assumptions.irrLevered * 100).toFixed(1)}%`
+        : financial?.irr 
+          ? `${financial.irr.toFixed(1)}%` 
+          : '—',
+    btsEm: computedReturns?.equityMultiple 
+      ? `${computedReturns.equityMultiple.toFixed(2)}x` 
+      : assumptions?.equityMultiple 
+        ? `${assumptions.equityMultiple.toFixed(2)}x`
+        : financial?.equityMultiple 
+          ? `${financial.equityMultiple.toFixed(2)}x` 
+          : '—',
+    yoc: computedReturns?.yieldOnCost 
+      ? `${(computedReturns.yieldOnCost * 100).toFixed(1)}%` 
+      : assumptions?.yieldOnCost 
+        ? `${(assumptions.yieldOnCost * 100).toFixed(1)}%`
+        : financial?.yieldOnCost 
+          ? `${financial.yieldOnCost.toFixed(1)}%` 
+          : '—',
     // 3D Design recommendations
     design3DStatus: design3D ? 'configured' : 'pending',
-    grossSqft: design3D?.grossSqft || activeScenario?.grossSqft || null,
-    efficiency: design3D?.efficiency || activeScenario?.efficiency || null,
+    grossSqft: assumptions?.grossSf || design3D?.grossSqft || activeScenario?.grossSqft || null,
+    efficiency: assumptions?.efficiency || design3D?.efficiency || activeScenario?.efficiency || null,
+    // Land cost from assumptions
+    landCost: assumptions?.landCost 
+      ? `$${(assumptions.landCost / 1_000_000).toFixed(1)}M`
+      : landCost,
+    // Rent from assumptions
+    avgRent: assumptions?.avgRentPerUnit 
+      ? `$${assumptions.avgRentPerUnit.toLocaleString()}/mo`
+      : '—',
   };
 
   const unitMix = (() => {
