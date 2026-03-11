@@ -151,6 +151,11 @@ interface DealStoreActions {
   updateRisk: (updates: Partial<DealContext['risk']>) => void;
   /** Update zoning context */
   updateZoning: (updates: Partial<DealContext['zoning']>) => void;
+  /**
+   * Write the canonical ZoningOutput produced by the Zoning Agent.
+   * Called once agent analysis completes; all downstream modules read from here.
+   */
+  updateZoningOutput: (output: DealContext['zoningOutput']) => void;
 
   // ─── DEAL STAGE ───────────────────────────────────────────
   /** Advance deal to next stage */
@@ -182,6 +187,7 @@ const EMPTY_HYDRATION: DealContext['hydrationStatus'] = {
 };
 
 const INITIAL_CONTEXT: DealContext = {
+  zoningOutput: null,
   identity: {
     id: '',
     name: '',
@@ -726,6 +732,7 @@ export const useDealStore = create<DealStore>()(
     updateScores: (updates) => set((s) => ({ scores: { ...s.scores, ...updates } })),
     updateRisk: (updates) => set((s) => ({ risk: { ...s.risk, ...updates } })),
     updateZoning: (updates) => set((s) => ({ zoning: { ...s.zoning, ...updates } })),
+    updateZoningOutput: (output) => set({ zoningOutput: output }),
 
     // ─── STAGE MANAGEMENT ───────────────────────────────────
 
@@ -829,6 +836,7 @@ export const useUnitMixIntelligence = () =>
 export const useDevCapacity = () =>
   useDealStore((s) => ({
     zoning: s.zoning,
+    zoningOutput: s.zoningOutput,
     site: s.site,
     developmentPaths: s.developmentPaths,
     selectedPathId: s.selectedDevelopmentPathId,
@@ -836,6 +844,7 @@ export const useDevCapacity = () =>
     addPath: s.addDevelopmentPath,
     removePath: s.removeDevelopmentPath,
     updatePath: s.updateDevelopmentPath,
+    updateZoningOutput: s.updateZoningOutput,
   }));
 
 /** M08 Strategy Arbitrage — reads scores, unit mix, zoning */

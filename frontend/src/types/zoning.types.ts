@@ -1,3 +1,77 @@
+// ============================================================================
+// ZoningOutput — canonical typed output written by the Zoning Agent
+// ============================================================================
+// This is the single interface that all downstream modules (DevelopmentCapacity,
+// ProForma, 3D Design, Strategy, Risk) read from dealStore.zoningOutput.
+// The Zoning Agent writes here when analysis completes.
+// ============================================================================
+
+export type AllowedUseType = 'residential' | 'mixed_use' | 'commercial';
+
+export interface ZoningOutput {
+  // ─── Confirmed designation ─────────────────────────────────────────────────
+  /** e.g. "MRC-3", "RM-24", "B-2" */
+  designation: string;
+  /** Municode or official municipal code URL for this district */
+  municodeSourceUrl: string | null;
+
+  // ─── Bulk / envelope standards ─────────────────────────────────────────────
+  /** Maximum residential density (dwelling units per gross acre) */
+  maxDensityUnitsPerAcre: number | null;
+  /** Maximum building height in feet */
+  maxHeightFt: number | null;
+  /** Maximum building height in stories */
+  maxHeightStories: number | null;
+  /** Maximum Floor Area Ratio */
+  maxFAR: number | null;
+
+  // ─── Setbacks (all in feet) ─────────────────────────────────────────────────
+  setbacks: {
+    frontFt: number | null;
+    sideFt: number | null;
+    rearFt: number | null;
+  };
+
+  // ─── Parking ───────────────────────────────────────────────────────────────
+  /** Required spaces per residential unit (e.g. 1.5) */
+  parkingSpacesPerUnit: number | null;
+  /** Additional guest parking ratio per unit (e.g. 0.25) */
+  parkingGuestRatio: number | null;
+
+  // ─── Computed capacity ─────────────────────────────────────────────────────
+  /** By-right unit count: parcel_area_acres × maxDensityUnitsPerAcre */
+  byRightUnitCapacity: number | null;
+  /**
+   * Variance / entitlement unit capacity.
+   * Typically 20-30 % above by-right via density bonus or variance.
+   * Null when no variance path has been modelled.
+   */
+  variancePotentialUnits: number | null;
+
+  // ─── Allowed use types ─────────────────────────────────────────────────────
+  allowedUseTypes: AllowedUseType[];
+
+  // ─── Regulatory risk flags ─────────────────────────────────────────────────
+  regulatoryRiskFlags: {
+    /** Named overlay districts that modify base standards */
+    overlayDistricts: string[];
+    /** Historic district / landmark designation */
+    historicDesignation: boolean;
+    /** FEMA / local flood zone designation (e.g. "AE", "X", null) */
+    floodZone: string | null;
+    /** Any other risk flag strings (e.g. "Coastal High-Hazard", "Airport Overlay") */
+    otherFlags: string[];
+  };
+
+  // ─── Provenance ────────────────────────────────────────────────────────────
+  /** ISO timestamp when the Zoning Agent last wrote this output */
+  analyzedAt: string;
+  /** Confidence level from the agent: high / medium / low */
+  confidence: 'high' | 'medium' | 'low';
+  /** Agent reasoning / source summary */
+  reasoning: string;
+}
+
 export type EntitlementStatus = 'pre_application' | 'submitted' | 'under_review' | 'hearing' | 'approved' | 'denied' | 'withdrawn';
 export type EntitlementType = 'rezone' | 'variance' | 'cup' | 'site_plan' | 'annexation' | 'lot_split' | 'sap' | 'other';
 export type RiskLevel = 'low' | 'medium' | 'high';
