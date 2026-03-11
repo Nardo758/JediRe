@@ -86,35 +86,13 @@ CREATE TABLE IF NOT EXISTS deal_contacts (
 CREATE TABLE IF NOT EXISTS deal_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
-  
-  -- File Details
-  filename VARCHAR(500) NOT NULL,
-  original_filename VARCHAR(500) NOT NULL,
-  file_size BIGINT NOT NULL, -- bytes
-  mime_type VARCHAR(100),
+  file_name VARCHAR(255) NOT NULL,
+  file_type VARCHAR(50) NOT NULL,
   file_url TEXT NOT NULL,
-  
-  -- Organization
-  category VARCHAR(100), -- due-diligence, financial, legal, plans, photos
-  tags TEXT[],
-  description TEXT,
-  
-  -- Version Control
-  version INTEGER DEFAULT 1,
-  parent_document_id UUID REFERENCES deal_documents(id),
-  
-  -- Uploader
-  uploaded_by_id UUID,
-  uploaded_by_name VARCHAR(255),
-  
-  -- Access Control
-  is_public BOOLEAN DEFAULT FALSE,
-  share_url TEXT,
-  share_expires_at TIMESTAMP,
-  
-  -- Metadata
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
+  file_size BIGINT,
+  uploaded_by UUID NOT NULL REFERENCES users(id),
+  uploaded_at TIMESTAMP DEFAULT NOW(),
+  metadata JSONB DEFAULT '{}',
   deleted_at TIMESTAMP
 );
 

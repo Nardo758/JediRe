@@ -161,7 +161,7 @@ router.get('/deals/:dealId/documents', async (req: Request, res: Response) => {
     const pool = getPool();
     const { dealId } = req.params;
     const result = await pool.query(
-      `SELECT * FROM deal_documents WHERE deal_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`,
+      `SELECT * FROM deal_documents WHERE deal_id = $1 AND deleted_at IS NULL ORDER BY uploaded_at DESC`,
       [dealId]
     );
     res.json(result.rows);
@@ -174,13 +174,15 @@ router.post('/deals/:dealId/documents', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const { dealId } = req.params;
-    const { filename, original_filename, file_size, mime_type, file_url, category, tags, description } = req.body;
-    const userId = (req as any).user?.id || 'system';
-    const userName = (req as any).user?.name || 'System User';
+    const { file_name, file_type, file_url, file_size, metadata } = req.body;
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (!userId || !file_name || !file_type || !file_url) {
+      return res.status(400).json({ error: 'file_name, file_type, file_url, and authenticated user are required' });
+    }
     const result = await pool.query(
-      `INSERT INTO deal_documents (deal_id, filename, original_filename, file_size, mime_type, file_url, category, tags, description, uploaded_by_id, uploaded_by_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [dealId, filename, original_filename, file_size || 0, mime_type, file_url, category, tags || [], description, userId, userName]
+      `INSERT INTO deal_documents (deal_id, file_name, file_type, file_url, file_size, uploaded_by, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [dealId, file_name, file_type, file_url, file_size || 0, userId, metadata || {}]
     );
     res.json(result.rows[0]);
   } catch (err: any) {

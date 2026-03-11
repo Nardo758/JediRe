@@ -72,7 +72,7 @@ class CompQueryService {
     }
 
     if (params.propertyType) {
-      conditions.push(`property_type = $${paramIdx}`);
+      conditions.push(`property_type = $${paramIdx}::property_type`);
       queryParams.push(params.propertyType);
       paramIdx++;
     }
@@ -119,11 +119,13 @@ class CompQueryService {
       paramIdx++;
     }
 
-    const latIdx = paramIdx;
-    const lngIdx = paramIdx + 1;
-    const maxDistIdx = paramIdx + 2;
-    queryParams.push(latParam, lngParam, maxDistParam);
-    paramIdx += 3;
+    let latIdx = paramIdx;
+    let lngIdx = paramIdx + 1;
+    let maxDistIdx = paramIdx + 2;
+    if (hasGeo) {
+      queryParams.push(latParam, lngParam, maxDistParam);
+      paramIdx += 3;
+    }
 
     const distExpr = hasGeo
       ? `(3959 * acos(LEAST(1.0, GREATEST(-1.0,
@@ -138,43 +140,40 @@ class CompQueryService {
       conditions.push(`${distExpr} <= $${maxDistIdx}`);
     }
 
-    const propTypeScoreIdx = paramIdx;
-    queryParams.push(params.propertyType || '');
-    paramIdx++;
+    let typeScoreExpr = '20';
+    if (params.propertyType) {
+      const propTypeScoreIdx = paramIdx;
+      queryParams.push(params.propertyType);
+      paramIdx++;
+      typeScoreExpr = `CASE WHEN property_type = $${propTypeScoreIdx}::property_type THEN 40 ELSE 0 END`;
+    }
 
-    const targetYear = (params.yearBuiltMin || params.yearBuiltMax)
-      ? Math.round(((params.yearBuiltMin || params.yearBuiltMax!) + (params.yearBuiltMax || params.yearBuiltMin!)) / 2)
-      : 2000;
-    const targetYearIdx = paramIdx;
-    queryParams.push(targetYear);
-    paramIdx++;
+    let geoScoreExpr = '12';
+    if (hasGeo) {
+      geoScoreExpr = `GREATEST(0, 25 - (${distExpr} / GREATEST($${maxDistIdx}, 0.01)) * 25)`;
+    }
 
-    const targetUnits = (params.minUnits || params.maxUnits)
-      ? Math.round(((params.minUnits || params.maxUnits!) + (params.maxUnits || params.minUnits!)) / 2)
-      : 100;
-    const targetUnitsIdx = paramIdx;
-    queryParams.push(Math.max(targetUnits, 1));
-    paramIdx++;
+    let vintageScoreExpr = '7';
+    if (params.yearBuiltMin || params.yearBuiltMax) {
+      const targetYear = Math.round(((params.yearBuiltMin || params.yearBuiltMax!) + (params.yearBuiltMax || params.yearBuiltMin!)) / 2);
+      const targetYearIdx = paramIdx;
+      queryParams.push(targetYear);
+      paramIdx++;
+      vintageScoreExpr = `GREATEST(0, 15 - ABS(COALESCE(NULLIF(year_built,'')::integer, 2000) - $${targetYearIdx}) * 0.5)`;
+    }
+
+    let scaleScoreExpr = '5';
+    if (params.minUnits || params.maxUnits) {
+      const targetUnits = Math.round(((params.minUnits || params.maxUnits!) + (params.maxUnits || params.minUnits!)) / 2);
+      const targetUnitsIdx = paramIdx;
+      queryParams.push(Math.max(targetUnits, 1));
+      paramIdx++;
+      scaleScoreExpr = `GREATEST(0, 10 - ABS(COALESCE(total_units, 0) - $${targetUnitsIdx})::NUMERIC / $${targetUnitsIdx} * 10)`;
+    }
 
     const limitIdx = paramIdx;
     queryParams.push(safeLimit);
     paramIdx++;
-
-    const typeScoreExpr = params.propertyType
-      ? `CASE WHEN property_type = $${propTypeScoreIdx} THEN 40 ELSE 0 END`
-      : '20';
-
-    const geoScoreExpr = hasGeo
-      ? `GREATEST(0, 25 - (${distExpr} / GREATEST($${maxDistIdx}, 0.01)) * 25)`
-      : '12';
-
-    const vintageScoreExpr = (params.yearBuiltMin || params.yearBuiltMax)
-      ? `GREATEST(0, 15 - ABS(COALESCE(NULLIF(year_built,'')::integer, 2000) - $${targetYearIdx}) * 0.5)`
-      : '7';
-
-    const scaleScoreExpr = (params.minUnits || params.maxUnits)
-      ? `GREATEST(0, 10 - ABS(COALESCE(total_units, 0) - $${targetUnitsIdx})::NUMERIC / $${targetUnitsIdx} * 10)`
-      : '5';
 
     const scoreExpr = `${typeScoreExpr} + ${geoScoreExpr} + ${vintageScoreExpr} + ${scaleScoreExpr} + LEAST(10, months_of_data)`;
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
