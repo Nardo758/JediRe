@@ -132,16 +132,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     setSuccess(false);
 
     try {
-      await apiClient.post('/api/v1/clawdbot/command', {
-        command: 'update_property',
-        params: {
-          dealId,
-          propertyId,
-          parcel_id: formData.parcelId,
-          lot_size_acres: formData.lotSizeAcres,
-          land_cost: formData.landCost,
-          zoning_code: formData.zoningCode,
-        },
+      await apiClient.patch(`/api/v1/deals/${dealId}/property`, {
+        parcel_id: formData.parcelId,
+        lot_size_acres: formData.lotSizeAcres,
+        land_cost: formData.landCost,
+        zoning_code: formData.zoningCode,
       });
 
       setSavedData({ ...formData });

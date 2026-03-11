@@ -298,6 +298,108 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
   }
 });
 
+router.patch('/:id/property', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const dealId = req.params.id;
+
+    const dealCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const propResult = await pool.query(
+      'SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1',
+      [dealId]
+    );
+
+    const allowedFields = ['parcel_id', 'lot_size_acres', 'land_cost', 'zoning_code', 'year_built', 'property_type', 'total_sf', 'units', 'stories'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates.push(`${field} = $${paramIndex}`);
+        values.push(req.body[field]);
+        paramIndex++;
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No valid fields to update' });
+    }
+
+    if (propResult.rows.length > 0) {
+      const propertyId = propResult.rows[0].property_id;
+      updates.push('updated_at = NOW()');
+      values.push(propertyId);
+      await pool.query(
+        `UPDATE properties SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+        values
+      );
+    } else {
+      const insertFields = [];
+      const insertValues = [];
+      const insertPlaceholders = [];
+      let idx = 1;
+
+      const { v4: uuidv4 } = await import('uuid');
+      const newPropertyId = uuidv4();
+      insertFields.push('id');
+      insertValues.push(newPropertyId);
+      insertPlaceholders.push(`$${idx++}`);
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          insertFields.push(field);
+          insertValues.push(req.body[field]);
+          insertPlaceholders.push(`$${idx++}`);
+        }
+      }
+
+      await pool.query(
+        `INSERT INTO properties (${insertFields.join(', ')}) VALUES (${insertPlaceholders.join(', ')})`,
+        insertValues
+      );
+      await pool.query(
+        'INSERT INTO deal_properties (deal_id, property_id) VALUES ($1, $2)',
+        [dealId, newPropertyId]
+      );
+    }
+
+    const dealUpdates: string[] = ['updated_at = NOW()'];
+    const dealValues: any[] = [];
+    let dealParamIndex = 1;
+
+    if (req.body.lot_size_acres !== undefined) {
+      dealUpdates.push(`acres = $${dealParamIndex}`);
+      dealValues.push(req.body.lot_size_acres);
+      dealParamIndex++;
+    }
+    if (req.body.land_cost !== undefined) {
+      dealUpdates.push(`budget = $${dealParamIndex}`);
+      dealValues.push(req.body.land_cost);
+      dealParamIndex++;
+    }
+
+    if (dealValues.length > 0) {
+      dealValues.push(dealId);
+      await pool.query(
+        `UPDATE deals SET ${dealUpdates.join(', ')} WHERE id = $${dealParamIndex}`,
+        dealValues
+      );
+    }
+
+    res.json({ success: true, message: 'Property updated' });
+  } catch (error) {
+    console.error('Error updating property:', error);
+    res.status(500).json({ success: false, error: 'Failed to update property' });
+  }
+});
+
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     // Use pool directly instead of req.dbClient
