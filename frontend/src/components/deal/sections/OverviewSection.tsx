@@ -655,8 +655,6 @@ interface DevOverviewProps {
 }
 
 const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile }) => {
-  const [selectedPathId, setSelectedPathId] = useState('P1');
-
   const zoningStore = useZoningModuleStore();
   const { comps: unitMixComps, program: unitMixProgram, zoning: unitMixZoning, loading: unitMixLoading } = useUnitMixIntelligence(deal?.id, deal?.tradeAreaId);
 
@@ -670,37 +668,31 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     : deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : '—';
   const farValue = zoningFar ? zoningFar.toFixed(1) : '2.0';
 
-  const devPaths = [
-    {
-      id: 'P1', label: '5-Over-1 Mid-Rise', recommended: true,
-      desc: '5 wood-frame residential floors over 1-story concrete podium. Optimal for FL Class B+ suburban markets.',
-      units: maxUnits, floors: 6, height: '63 ft', parking: 'Tuck-under + surface',
-      tdc: '$40.5M', tdcUnit: `$${Math.round(40500000 / maxUnits).toLocaleString()}`, btsIrr: '28.1%', btsEm: '3.2x', yoc: '7.1%',
-      pros: ['Highest unit count at max density', 'Cost-efficient wood frame above podium', 'Proven absorption in corridor'],
-      cons: ['Podium concrete cost premium vs garden', 'Elevator / corridor required'],
-      fitScore: 91,
-    },
-    {
-      id: 'P2', label: 'Garden Style (3-Story)',
-      desc: '3-story walk-up, surface parking. Lower construction cost but significantly fewer units at this density.',
-      units: Math.round(maxUnits * 0.74), floors: 3, height: '38 ft', parking: 'Surface',
-      tdc: '$26.8M', tdcUnit: `$${Math.round(26800000 / Math.round(maxUnits * 0.74)).toLocaleString()}`, btsIrr: '21.4%', btsEm: '2.6x', yoc: '6.2%',
-      pros: ['Lower hard cost / unit', 'Simpler construction timeline', 'No elevator maintenance'],
-      cons: ['18% fewer units vs zoning max', 'Lower revenue ceiling', 'Surface parking consumes lot area'],
-      fitScore: 67,
-    },
-    {
-      id: 'P3', label: 'Urban Mid-Rise (8-Story)',
-      desc: 'Concrete construction 8-story tower. Requires density waiver; suburban market may not support premium.',
-      units: Math.round(maxUnits * 1.13), floors: 8, height: '88 ft', parking: 'Structured garage',
-      tdc: '$58.2M', tdcUnit: `$${Math.round(58200000 / Math.round(maxUnits * 1.13)).toLocaleString()}`, btsIrr: '18.8%', btsEm: '2.1x', yoc: '5.8%',
-      pros: ['Maximum unit count', 'Premium positioning', 'Future infill option'],
-      cons: ['Requires density variance', 'Concrete cost 40% premium', 'Market may not support $2,400+ rents'],
-      fitScore: 42,
-    },
-  ];
-
-  const activePath = devPaths.find(p => p.id === selectedPathId) || devPaths[0];
+  // Building configuration from Dev Capacity Builder + 3D Module
+  const buildingConfig = {
+    // From activeScenario (Development Capacity Builder)
+    label: activeScenario?.name || zoningStore.selected_path_data?.name || design3D?.buildingType || 'Selected Configuration',
+    units: activeScenario?.maxUnits || design3D?.totalUnits || maxUnits,
+    floors: activeScenario?.stories || design3D?.floors || zoningStore.selected_path_data?.stories || 6,
+    height: activeScenario?.buildingHeight ? `${activeScenario.buildingHeight} ft` : design3D?.height ? `${design3D.height} ft` : '63 ft',
+    parking: activeScenario?.parkingType || design3D?.parkingType || 'Tuck-under + surface',
+    parkingSpaces: activeScenario?.parkingRequired || design3D?.parkingSpaces || Math.round(maxUnits * 1.5),
+    constructionType: activeScenario?.constructionType || design3D?.constructionType || 'Wood frame over podium',
+    // Financial metrics
+    tdc: financial?.totalDevelopmentCost 
+      ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` 
+      : `$${(40500000 / 1_000_000).toFixed(1)}M`,
+    tdcUnit: financial?.totalDevelopmentCost && maxUnits
+      ? `$${Math.round(financial.totalDevelopmentCost / maxUnits).toLocaleString()}`
+      : `$${Math.round(40500000 / maxUnits).toLocaleString()}`,
+    btsIrr: financial?.btsIrr ? `${financial.btsIrr.toFixed(1)}%` : '—',
+    btsEm: financial?.btsEquityMultiple ? `${financial.btsEquityMultiple.toFixed(1)}x` : '—',
+    yoc: financial?.yieldOnCost ? `${financial.yieldOnCost.toFixed(1)}%` : '—',
+    // 3D Design recommendations
+    design3DStatus: design3D ? 'configured' : 'pending',
+    grossSqft: design3D?.grossSqft || activeScenario?.grossSqft || null,
+    efficiency: design3D?.efficiency || activeScenario?.efficiency || null,
+  };
 
   const unitMix = (() => {
     const colors: Record<string, { color: string; bg: string }> = {
@@ -712,7 +704,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     const labels: Record<string, string> = { studio: 'Studio', oneBR: '1 BR', twoBR: '2 BR', threeBR: '3 BR' };
 
     if (unitMixProgram?.units && Object.keys(unitMixProgram.units).length > 0) {
-      const totalU = unitMixProgram.totalUnits || activePath.units;
+      const totalU = unitMixProgram.totalUnits || buildingConfig.units;
       return Object.entries(unitMixProgram.units).map(([key, u]) => {
         const pctNum = Math.round((u.mix || 0) * 100);
         const unitCount = Math.round(totalU * (u.mix || 0));
@@ -731,7 +723,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
     if (design3D?.unitMix) {
       const dm = design3D.unitMix;
-      const totalU = design3D.totalUnits || activePath.units;
+      const totalU = design3D.totalUnits || buildingConfig.units;
       const entries = [
         { key: 'studio', count: dm.studio, sf: 548, rent: 1595 },
         { key: 'oneBR', count: dm.oneBed, sf: 768, rent: 1875 },
@@ -752,10 +744,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     }
 
     return [
-      { type: 'Studio', units: Math.round(activePath.units * 0.10), pct: '10%', sqft: 548, targetRent: 1595, rentPsf: 2.91, ...colors.studio },
-      { type: '1 BR', units: Math.round(activePath.units * 0.40), pct: '40%', sqft: 768, targetRent: 1875, rentPsf: 2.44, ...colors.oneBR },
-      { type: '2 BR', units: Math.round(activePath.units * 0.40), pct: '40%', sqft: 1082, targetRent: 2295, rentPsf: 2.12, ...colors.twoBR },
-      { type: '3 BR', units: Math.round(activePath.units * 0.10), pct: '10%', sqft: 1344, targetRent: 2695, rentPsf: 2.01, ...colors.threeBR },
+      { type: 'Studio', units: Math.round(buildingConfig.units * 0.10), pct: '10%', sqft: 548, targetRent: 1595, rentPsf: 2.91, ...colors.studio },
+      { type: '1 BR', units: Math.round(buildingConfig.units * 0.40), pct: '40%', sqft: 768, targetRent: 1875, rentPsf: 2.44, ...colors.oneBR },
+      { type: '2 BR', units: Math.round(buildingConfig.units * 0.40), pct: '40%', sqft: 1082, targetRent: 2295, rentPsf: 2.12, ...colors.twoBR },
+      { type: '3 BR', units: Math.round(buildingConfig.units * 0.10), pct: '10%', sqft: 1344, targetRent: 2695, rentPsf: 2.01, ...colors.threeBR },
     ];
   })();
 
@@ -842,8 +834,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <KVCard label="Max Units (Zoned)" value={`${maxUnits}u`} valueColor="text-cyan-600" note={`${lotSize}`} compact />
         <KVCard label="FAR" value={farValue} note={`Parking: ${activeScenario?.parkingRequired ? (activeScenario.parkingRequired / maxUnits).toFixed(1) : '1.5'} / unit`} compact />
         <KVCard label="Entitlement ETA" value="8-10 mo" valueColor="text-amber-600" note="72% confidence" compact />
-        <KVCard label="Target IRR (BTS)" value={activePath.btsIrr} valueColor="text-emerald-600" note={`${activePath.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
-        <KVCard label="TDC / Unit" value={activePath.tdcUnit} note={`${activePath.units} planned units`} compact />
+        <KVCard label="Target IRR (BTS)" value={buildingConfig.btsIrr} valueColor="text-emerald-600" note={`${buildingConfig.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
+        <KVCard label="TDC / Unit" value={buildingConfig.tdcUnit} note={`${buildingConfig.units} planned units`} compact />
         <KVCard label="Land Cost" value={landCost} valueColor="text-stone-900" compact />
       </div>
 
@@ -866,86 +858,80 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         </div>
       </div>
 
-      <SectionHead title="Recommended Development Path" right={`${devPaths.length} paths evaluated · AI recommendation active`} accentColor="border-violet-500" />
-      <div className="flex gap-px bg-stone-200">
-        {devPaths.map(p => (
-          <button key={p.id} onClick={() => setSelectedPathId(p.id)}
-            className={`flex-1 py-2.5 px-3 text-center transition-all border-t-[3px] ${
-              selectedPathId === p.id
-                ? `${p.recommended ? 'border-emerald-500' : 'border-amber-500'} bg-stone-50`
-                : 'border-transparent bg-white hover:bg-stone-50'
-            }`}>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <span className={`text-xs font-bold ${selectedPathId === p.id ? 'text-stone-900' : 'text-stone-500'}`}>{p.label}</span>
-              {p.recommended && (
-                <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded tracking-wider">AI PICK</span>
-              )}
-              <span className={`text-sm font-bold font-mono ${
-                p.fitScore >= 80 ? 'text-emerald-600' : p.fitScore >= 60 ? 'text-amber-600' : 'text-stone-400'
-              }`}>{p.fitScore}</span>
-            </div>
+      <SectionHead 
+        title="Building Configuration" 
+        right={
+          <button 
+            onClick={() => navigateToTab('design')} 
+            className="text-[10px] text-violet-600 hover:text-violet-700 font-medium"
+          >
+            Edit in 3D Design →
           </button>
-        ))}
-      </div>
-
-      <div className="bg-white border border-stone-200 p-4">
-        <div className="grid grid-cols-2 gap-5">
-          <div>
-            <p className="text-xs text-stone-600 leading-relaxed mb-4">{activePath.desc}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { l: 'Units', v: activePath.units, c: 'text-cyan-600', bc: 'border-cyan-300' },
-                { l: 'Floors', v: `${activePath.floors} stories`, c: 'text-stone-700', bc: 'border-stone-300' },
-                { l: 'Height', v: activePath.height, c: 'text-stone-700', bc: 'border-stone-300' },
-                { l: 'Parking', v: activePath.parking, c: 'text-stone-500', bc: 'border-stone-300', small: true },
-                { l: 'Total Dev Cost', v: activePath.tdc, c: 'text-amber-600', bc: 'border-amber-300' },
-                { l: 'TDC / Unit', v: activePath.tdcUnit, c: 'text-amber-600', bc: 'border-amber-300' },
-                { l: 'BTS IRR', v: activePath.btsIrr, c: 'text-emerald-600', bc: 'border-emerald-300' },
-                { l: 'BTS EM', v: activePath.btsEm, c: 'text-emerald-600', bc: 'border-emerald-300' },
-              ].map((m, i) => (
-                <div key={i} className={`p-2 bg-stone-50 border-l-2 ${m.bc}`}>
-                  <div className="text-[9px] font-mono text-stone-400 tracking-wider">{m.l}</div>
-                  <div className={`${m.small ? 'text-xs' : 'text-sm'} font-bold font-mono ${m.c}`}>{m.v}</div>
-                </div>
-              ))}
-            </div>
+        } 
+        accentColor="border-violet-500" 
+      />
+      
+      {/* Selected configuration from Dev Capacity + 3D Module */}
+      <div className="bg-white border border-stone-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-stone-900">{buildingConfig.label}</span>
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-violet-100 text-violet-700 border border-violet-200">
+              {buildingConfig.units} UNITS
+            </span>
           </div>
-          <div>
-            <div className="text-[10px] font-bold text-emerald-600 tracking-wider mb-2">ADVANTAGES</div>
-            {activePath.pros.map((p, i) => (
-              <div key={i} className="flex gap-2 py-1.5 border-b border-stone-100 last:border-0 items-start">
-                <span className="text-emerald-500 text-xs flex-shrink-0">+</span>
-                <span className="text-xs text-stone-600">{p}</span>
-              </div>
-            ))}
-            <div className="text-[10px] font-bold text-red-500 tracking-wider mt-4 mb-2">TRADE-OFFS</div>
-            {activePath.cons.map((c, i) => (
-              <div key={i} className="flex gap-2 py-1.5 border-b border-stone-100 last:border-0 items-start">
-                <span className="text-orange-400 text-xs flex-shrink-0">—</span>
-                <span className="text-xs text-stone-400">{c}</span>
-              </div>
-            ))}
-
-            <div className="mt-4">
-              <div className="text-[9px] font-mono text-stone-400 tracking-widest font-bold mb-2">PATH COMPARISON</div>
-              {devPaths.map(p => (
-                <button key={p.id} onClick={() => setSelectedPathId(p.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 mb-0.5 rounded text-left transition-colors ${
-                    selectedPathId === p.id ? 'bg-stone-100 border border-stone-300' : 'bg-stone-50 border border-stone-200 hover:bg-stone-100'
-                  }`}>
-                  <span className="text-xs text-stone-600 flex-1">{p.label}</span>
-                  <span className="text-[10px] text-stone-400 font-mono">{p.units}u</span>
-                  <span className="text-[10px] font-bold text-emerald-600 font-mono">{p.btsIrr}</span>
-                  <span className={`text-xs font-bold font-mono ${p.fitScore >= 80 ? 'text-emerald-600' : p.fitScore >= 60 ? 'text-amber-600' : 'text-stone-400'}`}>{p.fitScore}</span>
-                  {p.recommended && <span className="text-[7px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded">✓</span>}
-                </button>
-              ))}
-            </div>
-          </div>
+          {buildingConfig.design3DStatus === 'configured' ? (
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              3D Design Configured
+            </span>
+          ) : (
+            <button 
+              onClick={() => navigateToTab('design')}
+              className="text-[10px] font-medium text-amber-600 hover:text-amber-700"
+            >
+              Configure 3D Design →
+            </button>
+          )}
         </div>
+        
+        <div className="grid grid-cols-4 gap-px bg-stone-200">
+          {[
+            { l: 'Floors', v: `${buildingConfig.floors} stories`, c: 'text-stone-700' },
+            { l: 'Height', v: buildingConfig.height, c: 'text-stone-700' },
+            { l: 'Construction', v: buildingConfig.constructionType, c: 'text-stone-600', small: true },
+            { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: 'text-stone-600' },
+          ].map((m, i) => (
+            <div key={i} className="bg-white p-3">
+              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
+              <div className={`${m.small ? 'text-xs' : 'text-sm'} font-bold ${m.c}`}>{m.v}</div>
+            </div>
+          ))}
+        </div>
+        
+        <div className="grid grid-cols-4 gap-px bg-stone-200">
+          {[
+            { l: 'Total Dev Cost', v: buildingConfig.tdc, c: 'text-amber-600' },
+            { l: 'TDC / Unit', v: buildingConfig.tdcUnit, c: 'text-amber-600' },
+            { l: 'BTS IRR', v: buildingConfig.btsIrr, c: 'text-emerald-600' },
+            { l: 'BTS EM', v: buildingConfig.btsEm, c: 'text-emerald-600' },
+          ].map((m, i) => (
+            <div key={i} className="bg-white p-3">
+              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
+              <div className={`text-sm font-bold font-mono ${m.c}`}>{m.v}</div>
+            </div>
+          ))}
+        </div>
+        
+        {(buildingConfig.grossSqft || buildingConfig.efficiency) && (
+          <div className="px-4 py-2 bg-stone-50 border-t border-stone-100 flex items-center gap-4 text-[10px] text-stone-500">
+            {buildingConfig.grossSqft && <span>Gross SF: <strong className="text-stone-700">{buildingConfig.grossSqft.toLocaleString()}</strong></span>}
+            {buildingConfig.efficiency && <span>Efficiency: <strong className="text-stone-700">{(buildingConfig.efficiency * 100).toFixed(0)}%</strong></span>}
+          </div>
+        )}
       </div>
 
-      <SectionHead title="Unit Mix Program" right={`${activePath.units} units · Based on ${activePath.label}`} accentColor="border-cyan-500" />
+      <SectionHead title="Unit Mix Program" right={`${buildingConfig.units} units · Based on ${buildingConfig.label}`} accentColor="border-cyan-500" />
       <div className="bg-white border border-stone-200">
         <div className="flex border-b border-stone-200">
           {unitMix.map((u, i) => (
@@ -1017,7 +1003,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
           return { name: comp.name, dist: comp.dist, units: comp.units, vintage: comp.vintage, occ: comp.occ, avgRent, avgSf, psf, note: comp.note, traffic: estTraffic, isSubject: false };
         });
 
-        const subjectRow = { name: deal.name || 'Subject Property', dist: '—', units: subjectTotalUnits, vintage: 0, occ: subjectOcc, avgRent: subjectWtdRent, avgSf: subjectWtdSf, psf: subjectPsf, note: `${activePath.label} · ${unitMix.length} unit types`, traffic: subjectTraffic, isSubject: true };
+        const subjectRow = { name: deal.name || 'Subject Property', dist: '—', units: subjectTotalUnits, vintage: 0, occ: subjectOcc, avgRent: subjectWtdRent, avgSf: subjectWtdSf, psf: subjectPsf, note: `${buildingConfig.label} · ${unitMix.length} unit types`, traffic: subjectTraffic, isSubject: true };
 
         const allRows = [subjectRow, ...compRows].sort((a, b) => b.psf - a.psf);
 
@@ -1106,7 +1092,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         );
       })()}
 
-      <SectionHead title="Development Budget + Timeline" right={`TDC ${activePath.tdc} · 22mo build · 14mo absorption`} accentColor="border-amber-500" />
+      <SectionHead title="Development Budget + Timeline" right={`TDC ${buildingConfig.tdc} · 22mo build · 14mo absorption`} accentColor="border-amber-500" />
       <div className="grid grid-cols-2 gap-px bg-stone-200">
         <div className="bg-white p-4">
           <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">BUDGET STACK</div>
@@ -1143,10 +1129,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
           <div className="flex justify-between pt-3 border-t border-stone-200 mt-2">
             <span className="text-xs font-bold text-stone-800">TOTAL DEV COST</span>
             <span className="text-lg font-bold text-amber-600 font-mono">
-              {financial?.totalDevelopmentCost ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` : activePath.tdc}
+              {financial?.totalDevelopmentCost ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` : buildingConfig.tdc}
             </span>
           </div>
-          <div className="text-[10px] text-stone-400 mt-1">{activePath.tdcUnit}/unit · 22mo construction</div>
+          <div className="text-[10px] text-stone-400 mt-1">{buildingConfig.tdcUnit}/unit · 22mo construction</div>
         </div>
 
         <div className="bg-white p-4">
@@ -1193,8 +1179,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               {[
                 { l: 'Revenue', v: '$52.8M' },
                 { l: 'Margin', v: '30.4%' },
-                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : activePath.btsIrr, c: 'text-emerald-600' },
-                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : activePath.btsEm, c: 'text-emerald-600' },
+                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: 'text-emerald-600' },
+                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: 'text-emerald-600' },
               ].map((r, i) => (
                 <div key={i} className="flex justify-between py-1">
                   <span className="text-[10px] text-stone-500">{r.l}</span>
@@ -1206,7 +1192,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               <div className="text-[10px] font-semibold text-stone-500 tracking-wider mb-3">HOLD AS RENTAL</div>
               {[
                 { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : '$2,890,000' },
-                { l: 'YOC', v: activePath.yoc },
+                { l: 'YOC', v: buildingConfig.yoc || "—" },
                 { l: 'Hold IRR', v: '18.4%' },
               ].map((r, i) => (
                 <div key={i} className="flex justify-between py-1">
