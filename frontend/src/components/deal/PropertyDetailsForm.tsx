@@ -74,8 +74,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         const deal = dealProp;
         const property = deal.properties?.[0];
         
-        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.property_data?.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
@@ -107,8 +106,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         // Try properties array first, then fall back to deal-level fields
         const property = deal.properties?.[0];
         
-        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.property_data?.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
@@ -309,7 +307,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           ) : (
             <div className="text-xl font-bold text-stone-900 mb-1">
               {formData.lotSizeAcres ? (
-                `${formData.lotSizeAcres} ac`
+                `${Number(formData.lotSizeAcres).toFixed(2)} ac`
               ) : (
                 <span className="text-stone-300 font-normal text-base">Not set</span>
               )}

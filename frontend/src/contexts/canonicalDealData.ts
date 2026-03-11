@@ -192,8 +192,9 @@ export function parseDealInputs(deal: any): CanonicalDealInputs {
  * Parse zoning data into canonical site data
  */
 export function parseZoningToSiteData(zoning: any, property?: any): CanonicalSiteData {
+  const explicitAcres = property?.lot_size_acres || property?.property_data?.lot_size_acres || null;
   const lotSizeSqft = zoning?.lotAreaSf || zoning?.lot_area_sf || property?.lot_size_sqft || null;
-  const lotSizeAcres = lotSizeSqft ? lotSizeSqft / 43560 : (property?.lot_size_acres || null);
+  const lotSizeAcres = explicitAcres || (lotSizeSqft ? lotSizeSqft / 43560 : null);
   
   return {
     parcelId: property?.parcel_id || zoning?.parcelId || null,
