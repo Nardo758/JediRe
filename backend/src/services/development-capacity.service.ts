@@ -35,9 +35,42 @@ export class DevelopmentCapacityService {
       [dealId]
     );
 
+    const confirmResult = await this.pool.query(
+      `SELECT zoning_code, municipality FROM deal_zoning_confirmations WHERE deal_id = $1`,
+      [dealId]
+    );
+
     const zoning = zoningResult.rows[0] || {};
     const metrics = boundaryResult.rows[0]?.metrics || {};
     const landArea = metrics.area || zoning.land_area || 43560;
+
+    const confirmedCode = confirmResult.rows[0]?.zoning_code || null;
+    if (confirmedCode && confirmedCode !== zoning.zoning_code) {
+      zoning.zoning_code = confirmedCode;
+
+      try {
+        const distStandards = await this.pool.query(
+          `SELECT
+             COALESCE(max_density_per_acre, max_units_per_acre) as max_density,
+             max_far,
+             COALESCE(max_height_feet, max_building_height_ft) as max_height_feet,
+             max_stories,
+             COALESCE(min_parking_per_unit, parking_per_unit) as min_parking_per_unit
+           FROM zoning_districts
+           WHERE UPPER(COALESCE(zoning_code, district_code)) = UPPER($1)
+           LIMIT 1`,
+          [confirmedCode]
+        );
+        if (distStandards.rows.length > 0) {
+          const ds = distStandards.rows[0];
+          if (ds.max_density != null) zoning.max_density = parseFloat(ds.max_density);
+          if (ds.max_far != null) zoning.max_far = parseFloat(ds.max_far);
+          if (ds.max_height_feet != null) zoning.max_height_feet = parseInt(ds.max_height_feet);
+          if (ds.max_stories != null) zoning.max_stories = parseInt(ds.max_stories);
+          if (ds.min_parking_per_unit != null) zoning.min_parking_per_unit = parseFloat(ds.min_parking_per_unit);
+        }
+      } catch {}
+    }
 
     const setbacks = { front: 25, side: 10, rear: 20 };
     if (zoning.zoning_code) {

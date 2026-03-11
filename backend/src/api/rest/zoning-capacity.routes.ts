@@ -93,7 +93,19 @@ router.get('/deals/:dealId/zoning-capacity', async (req: Request, res: Response)
     if (result.rows.length === 0) {
       return res.json(null);
     }
-    res.json(result.rows[0]);
+
+    const row = result.rows[0];
+
+    const confirmResult = await pool.query(
+      'SELECT zoning_code FROM deal_zoning_confirmations WHERE deal_id = $1',
+      [dealId]
+    );
+    const confirmedCode = confirmResult.rows[0]?.zoning_code || null;
+    if (confirmedCode && confirmedCode !== row.zoning_code) {
+      row.zoning_code = confirmedCode;
+    }
+
+    res.json(row);
   } catch (error) {
     console.error('Error fetching zoning capacity:', error);
     res.status(500).json({ error: 'Failed to fetch zoning capacity' });
@@ -104,6 +116,15 @@ router.post('/deals/:dealId/zoning-capacity', async (req: Request, res: Response
   try {
     const { dealId } = req.params;
     const validatedData = ZoningCapacitySchema.parse(req.body);
+
+    const confirmResult = await pool.query(
+      'SELECT zoning_code FROM deal_zoning_confirmations WHERE deal_id = $1',
+      [dealId]
+    );
+    const confirmedCode = confirmResult.rows[0]?.zoning_code || null;
+    if (confirmedCode) {
+      validatedData.zoning_code = confirmedCode;
+    }
 
     const capacityResult = await pool.query(
       `SELECT * FROM calculate_max_units($1::uuid, $2::decimal, $3::decimal, $4::integer, $5::decimal, 850, 10, NULL)`,
@@ -637,10 +658,17 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
     }
 
     const deal = dealResult.rows[0];
-    const zoningCode = deal.zoning_code || req.body.zoning_code;
     const fullAddress = deal.property_address || deal.address || '';
     const addressParts = fullAddress.split(',').map((s: string) => s.trim());
     const city = req.body.city || (addressParts.length >= 2 ? addressParts[addressParts.length - 2] : 'Atlanta');
+
+    const confirmResult = await pool.query(
+      'SELECT zoning_code FROM deal_zoning_confirmations WHERE deal_id = $1',
+      [dealId]
+    );
+    const confirmedCode = confirmResult.rows[0]?.zoning_code || null;
+
+    const zoningCode = confirmedCode || deal.zoning_code || req.body.zoning_code;
 
     if (!zoningCode) {
       const districtsList = await pool.query(
@@ -710,6 +738,18 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
       density_bonus_2024: metadata.density_bonus_2024 || false,
     };
 
+    if (confirmedCode) {
+      try {
+        await pool.query(
+          `UPDATE zoning_capacity SET zoning_code = $1, updated_at = NOW()
+           WHERE deal_id = $2 AND (zoning_code IS DISTINCT FROM $1)`,
+          [confirmedCode, dealId]
+        );
+      } catch (reconcileErr) {
+        console.warn('Zoning capacity reconciliation warning:', reconcileErr);
+      }
+    }
+
     res.json({
       auto_filled: true,
       district_id: district.id,
@@ -718,6 +758,26 @@ router.post('/deals/:dealId/zoning-capacity/auto-fill', async (req: Request, res
   } catch (error) {
     console.error('Error auto-filling zoning capacity:', error);
     res.status(500).json({ error: 'Failed to auto-fill zoning capacity' });
+  }
+});
+
+router.post('/zoning-capacity/reconcile', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `UPDATE zoning_capacity zc
+       SET zoning_code = dzc.zoning_code, updated_at = NOW()
+       FROM deal_zoning_confirmations dzc
+       WHERE dzc.deal_id = zc.deal_id
+         AND zc.zoning_code IS DISTINCT FROM dzc.zoning_code
+       RETURNING zc.deal_id, dzc.zoning_code as confirmed_code`
+    );
+    res.json({
+      reconciled: result.rowCount,
+      details: result.rows,
+    });
+  } catch (error) {
+    console.error('Error reconciling zoning capacity:', error);
+    res.status(500).json({ error: 'Failed to reconcile zoning capacity' });
   }
 });
 
