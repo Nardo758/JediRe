@@ -889,6 +889,347 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'search_comps': {
+        let city = params?.city;
+        let state = params?.state;
+        let lat: number | null = params?.lat != null ? parseFloat(params.lat) : null;
+        let lng: number | null = params?.lng != null ? parseFloat(params.lng) : null;
+
+        if (params?.dealId) {
+          const dealCtx = await pool.query(
+            `SELECT d.city, d.state_code, d.project_type,
+                    p.lat, p.lng
+             FROM deals d
+             LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+             LEFT JOIN properties p ON p.id = dp.property_id
+             WHERE d.id = $1`,
+            [params.dealId]
+          );
+          if (dealCtx.rows.length > 0) {
+            const ctx = dealCtx.rows[0];
+            city = city || ctx.city;
+            state = state || ctx.state_code;
+            if (lat == null && ctx.lat != null) lat = parseFloat(ctx.lat);
+            if (lng == null && ctx.lng != null) lng = parseFloat(ctx.lng);
+          }
+        }
+
+        const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+        if (!city && !hasCoords) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'Provide city/state, lat/lng, or dealId to search comps',
+          });
+        }
+
+        if (city && !state) {
+          return res.status(400).json({
+            error: 'Bad Request',
+            message: 'state is required when searching by city',
+          });
+        }
+
+        const radiusMiles = parseFloat(params?.radiusMiles) || 10;
+        const minUnits = parseInt(params?.minUnits) || 0;
+        const maxUnits = parseInt(params?.maxUnits) || 999999;
+        const minYearBuilt = parseInt(params?.minYearBuilt) || 1900;
+        const maxYearBuilt = parseInt(params?.maxYearBuilt) || 2100;
+        const compLimit = Math.min(parseInt(params?.limit) || 10, 25);
+
+        let compQuery: string;
+        const compValues: any[] = [];
+        let paramIdx = 1;
+
+        if (hasCoords) {
+          compQuery = `
+            SELECT * FROM (
+              SELECT property_id, name, city, state, property_type, total_units,
+                     year_built, t12_avg_rent, t12_avg_occupancy,
+                     ROUND((3959 * acos(LEAST(1.0, GREATEST(-1.0,
+                       cos(radians($${paramIdx})) * cos(radians(latitude))
+                       * cos(radians(longitude) - radians($${paramIdx + 1}))
+                       + sin(radians($${paramIdx})) * sin(radians(latitude))
+                     ))))::numeric, 2) AS distance_miles
+              FROM v_comp_search
+              WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                AND total_units BETWEEN $${paramIdx + 2} AND $${paramIdx + 3}
+                AND (year_built IS NULL OR year_built BETWEEN $${paramIdx + 4} AND $${paramIdx + 5})
+            ) sub
+            WHERE distance_miles <= $${paramIdx + 6}
+            ORDER BY distance_miles ASC
+            LIMIT $${paramIdx + 7}`;
+          compValues.push(lat, lng, minUnits, maxUnits, minYearBuilt, maxYearBuilt, radiusMiles, compLimit);
+        } else {
+          compQuery = `
+            SELECT property_id, name, city, state, property_type, total_units,
+                   year_built, t12_avg_rent, t12_avg_occupancy
+            FROM v_comp_search
+            WHERE LOWER(city) = LOWER($${paramIdx})
+              AND LOWER(state) = LOWER($${paramIdx + 1})
+              AND total_units BETWEEN $${paramIdx + 2} AND $${paramIdx + 3}
+              AND (year_built IS NULL OR year_built BETWEEN $${paramIdx + 4} AND $${paramIdx + 5})
+            ORDER BY total_units DESC
+            LIMIT $${paramIdx + 6}`;
+          compValues.push(city, state || '', minUnits, maxUnits, minYearBuilt, maxYearBuilt, compLimit);
+        }
+
+        const compResults = await pool.query(compQuery, compValues);
+
+        result = {
+          message: `Found ${compResults.rows.length} comparable properties`,
+          searchCriteria: { city, state, lat, lng, radiusMiles, minUnits, maxUnits, minYearBuilt, maxYearBuilt },
+          comps: compResults.rows.map((r: any) => ({
+            propertyId: r.property_id,
+            name: r.name,
+            city: r.city,
+            state: r.state,
+            propertyType: r.property_type,
+            units: r.total_units,
+            yearBuilt: r.year_built,
+            avgRent: r.t12_avg_rent ? parseFloat(r.t12_avg_rent) : null,
+            occupancy: r.t12_avg_occupancy ? parseFloat(r.t12_avg_occupancy) : null,
+            distanceMiles: r.distance_miles ? parseFloat(r.distance_miles) : null,
+          })),
+        };
+        break;
+      }
+
+      case 'get_sale_comps': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const saleComps = await pool.query(
+          `SELECT id, comp_name, comp_property_address, source, status,
+                  distance_miles, match_score, year_built, stories, units,
+                  class_code, avg_rent, occupancy, google_rating,
+                  google_review_count, notes, created_at
+           FROM deal_comp_sets
+           WHERE deal_id = $1 AND status = 'active'
+           ORDER BY match_score DESC NULLS LAST, distance_miles ASC NULLS LAST`,
+          [params.dealId]
+        );
+
+        result = {
+          message: `Found ${saleComps.rows.length} comps for deal`,
+          dealId: params.dealId,
+          comps: saleComps.rows.map((r: any) => ({
+            id: r.id,
+            name: r.comp_name,
+            address: r.comp_property_address,
+            source: r.source,
+            distanceMiles: r.distance_miles ? parseFloat(r.distance_miles) : null,
+            matchScore: r.match_score ? parseFloat(r.match_score) : null,
+            yearBuilt: r.year_built,
+            stories: r.stories,
+            units: r.units,
+            classCode: r.class_code,
+            avgRent: r.avg_rent ? parseFloat(r.avg_rent) : null,
+            occupancy: r.occupancy ? parseFloat(r.occupancy) : null,
+            googleRating: r.google_rating ? parseFloat(r.google_rating) : null,
+            reviewCount: r.google_review_count,
+            notes: r.notes,
+          })),
+        };
+        break;
+      }
+
+      case 'list_documents': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        let docQuery = `
+          SELECT id, file_name, file_type, file_url, file_size,
+                 uploaded_at, metadata
+          FROM deal_documents
+          WHERE deal_id = $1`;
+        const docValues: any[] = [params.dealId];
+
+        if (params.category) {
+          docQuery += ` AND metadata->>'category' = $2`;
+          docValues.push(params.category);
+        }
+
+        docQuery += ` ORDER BY uploaded_at DESC`;
+        const docLimit = Math.min(parseInt(params?.limit) || 50, 100);
+        docValues.push(docLimit);
+        docQuery += ` LIMIT $${docValues.length}`;
+
+        const docs = await pool.query(docQuery, docValues);
+
+        result = {
+          message: `Found ${docs.rows.length} document(s)`,
+          dealId: params.dealId,
+          documents: docs.rows.map((r: any) => ({
+            id: r.id,
+            fileName: r.file_name,
+            fileType: r.file_type,
+            fileSize: r.file_size,
+            uploadedAt: r.uploaded_at,
+            category: r.metadata?.category || null,
+            tags: r.metadata?.tags || [],
+          })),
+        };
+        break;
+      }
+
+      case 'get_document_stats': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        const statsResult = await pool.query(`
+          SELECT
+            COUNT(*) as total_documents,
+            COALESCE(SUM(file_size), 0) as total_bytes,
+            COUNT(DISTINCT file_type) as file_type_count
+          FROM deal_documents
+          WHERE deal_id = $1
+        `, [params.dealId]);
+
+        const byCategoryResult = await pool.query(`
+          SELECT
+            COALESCE(metadata->>'category', 'uncategorized') as category,
+            COUNT(*) as doc_count,
+            COALESCE(SUM(file_size), 0) as total_bytes
+          FROM deal_documents
+          WHERE deal_id = $1
+          GROUP BY metadata->>'category'
+          ORDER BY doc_count DESC
+        `, [params.dealId]);
+
+        const dealStage = await pool.query(
+          `SELECT status, project_type FROM deals WHERE id = $1`,
+          [params.dealId]
+        );
+
+        const stage = dealStage.rows[0]?.status || 'unknown';
+        const existingCategories = byCategoryResult.rows.map((r: any) => r.category);
+
+        const suggestedDocs: string[] = [];
+        const commonDocs = ['Offering Memorandum', 'T-12 Financials', 'Rent Roll', 'Site Plan'];
+        const advancedDocs = ['Appraisal Report', 'Phase I Environmental', 'Title Report', 'Survey'];
+
+        for (const doc of commonDocs) {
+          if (!existingCategories.includes(doc.toLowerCase().replace(/\s+/g, '-'))) {
+            suggestedDocs.push(doc);
+          }
+        }
+        if (['underwriting', 'due_diligence', 'closing'].includes(stage)) {
+          for (const doc of advancedDocs) {
+            if (!existingCategories.includes(doc.toLowerCase().replace(/\s+/g, '-'))) {
+              suggestedDocs.push(doc);
+            }
+          }
+        }
+
+        const stats = statsResult.rows[0];
+        result = {
+          message: 'Document statistics',
+          dealId: params.dealId,
+          dealStage: stage,
+          totals: {
+            documents: parseInt(stats.total_documents),
+            totalSizeMB: Math.round(parseInt(stats.total_bytes) / 1048576 * 100) / 100,
+            fileTypes: parseInt(stats.file_type_count),
+          },
+          byCategory: byCategoryResult.rows.map((r: any) => ({
+            category: r.category,
+            count: parseInt(r.doc_count),
+            sizeMB: Math.round(parseInt(r.total_bytes) / 1048576 * 100) / 100,
+          })),
+          suggestedMissing: suggestedDocs,
+        };
+        break;
+      }
+
+      case 'get_notes': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+
+        let notesQuery = `
+          SELECT id, title, content, author_name, category, tags,
+                 pinned, created_at, updated_at
+          FROM deal_notes
+          WHERE deal_id = $1 AND deleted_at IS NULL`;
+        const notesValues: any[] = [params.dealId];
+
+        if (params.category) {
+          notesQuery += ` AND category = $2`;
+          notesValues.push(params.category);
+        }
+
+        notesQuery += ` ORDER BY pinned DESC, created_at DESC`;
+        const notesLimit = Math.min(parseInt(params?.limit) || 20, 50);
+        notesValues.push(notesLimit);
+        notesQuery += ` LIMIT $${notesValues.length}`;
+
+        const notes = await pool.query(notesQuery, notesValues);
+
+        result = {
+          message: `Found ${notes.rows.length} note(s)`,
+          dealId: params.dealId,
+          notes: notes.rows.map((r: any) => ({
+            id: r.id,
+            title: r.title,
+            content: r.content && r.content.length > 500 ? r.content.substring(0, 500) + '...' : r.content,
+            author: r.author_name,
+            category: r.category,
+            tags: r.tags,
+            pinned: r.pinned,
+            createdAt: r.created_at,
+            updatedAt: r.updated_at,
+          })),
+        };
+        break;
+      }
+
+      case 'add_note': {
+        if (!params?.dealId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'dealId parameter is required' });
+        }
+        if (!params?.content) {
+          return res.status(400).json({ error: 'Bad Request', message: 'content parameter is required' });
+        }
+
+        const CLAWDBOT_UUID = '00000000-0000-0000-0000-000000000001';
+
+        const newNote = await pool.query(
+          `INSERT INTO deal_notes (deal_id, author_id, author_name, title, content, category, tags)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, title, content, author_name, category, tags, pinned, created_at`,
+          [
+            params.dealId,
+            CLAWDBOT_UUID,
+            'Clawdbot',
+            params.title || null,
+            params.content,
+            params.category || 'general',
+            params.tags || null,
+          ]
+        );
+
+        const note = newNote.rows[0];
+        result = {
+          message: 'Note created successfully',
+          dealId: params.dealId,
+          note: {
+            id: note.id,
+            title: note.title,
+            content: note.content,
+            author: note.author_name,
+            category: note.category,
+            tags: note.tags,
+            pinned: note.pinned,
+            createdAt: note.created_at,
+          },
+        };
+        break;
+      }
+
       default:
         return res.status(400).json({ error: 'Bad Request', message: `Unknown command: ${command}` });
     }

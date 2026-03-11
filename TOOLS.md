@@ -45,13 +45,29 @@ Authorization: Bearer 69295404e382acd00de4facdaa053fd20ae0a1cf15dc63c0b8a55cffc0
 
 **Commands Reference:**
 
-| Command | Params | Example |
-|---------|--------|---------|
-| `get_deals` | _(none)_ | `{"command": "get_deals"}` |
-| `get_deal` | `{"dealId": "..."}` | `{"command": "get_deal", "params": {"dealId": "e044db04-..."}}` |
-| `run_analysis` | `{"dealId": "..."}` | `{"command": "run_analysis", "params": {"dealId": "e044db04-..."}}` |
-| `system_stats` | _(none)_ | `{"command": "system_stats"}` |
-| `recent_errors` | _(none)_ | `{"command": "recent_errors"}` |
+| Command | Params | Description |
+|---------|--------|-------------|
+| `get_deals` | _(none)_ | List all active deals |
+| `get_deal` | `{"dealId": "..."}` | Get full deal details |
+| `search_deals` | `{"query": "..."}` | Fuzzy search deals by name |
+| `run_analysis` | `{"dealId": "...", "analysisType": "full\|zoning\|supply\|cashflow"}` | Submit agent analysis tasks |
+| `get_agent_task` | `{"taskId": "..."}` | Poll task status/results |
+| `get_agent_tasks` | `{"dealId": "...", "status": "..."}` | List tasks with optional filters |
+| `system_stats` | _(none)_ | System metrics overview |
+| `recent_errors` | _(none)_ | Recent error log entries |
+| `get_zoning_profile` | `{"dealId": "..."}` | Zoning data for a deal |
+| `get_market_intelligence` | `{"dealId": "..."}` | Market intel for a deal |
+| `get_design` | `{"dealId": "..."}` | 3D design data for a deal |
+| `get_proforma` | `{"dealId": "..."}` | Proforma financials for a deal |
+| `get_capital_structure` | `{"dealId": "..."}` | Capital structure for a deal |
+| `update_deal` | `{"dealId": "...", "name": "...", ...}` | Update deal fields |
+| `update_property` | `{"dealId": "...", "parcel_id": "...", ...}` | Update property fields |
+| `search_comps` | `{"dealId": "..."} or {"city": "...", "state": "...", "minUnits": N, "maxUnits": N, "minYearBuilt": N, "maxYearBuilt": N, "limit": N} or {"lat": N, "lng": N, "radiusMiles": N}` | Search rent comps by deal context, city/state, or lat/lng |
+| `get_sale_comps` | `{"dealId": "..."}` | Get active comp set for a deal |
+| `list_documents` | `{"dealId": "...", "category": "..."}` | List deal documents (category optional) |
+| `get_document_stats` | `{"dealId": "..."}` | Document counts, sizes, and missing file suggestions |
+| `get_notes` | `{"dealId": "...", "category": "...", "limit": N}` | List deal notes (category/limit optional) |
+| `add_note` | `{"dealId": "...", "content": "...", "title": "...", "category": "...", "tags": [...]}` | Create a deal note (title/category/tags optional) |
 
 **Example Usage:**
 ```bash
