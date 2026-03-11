@@ -84,8 +84,11 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 
   const isDev = deal?.developmentType === 'Ground-Up' ||
     deal?.developmentType === 'new' ||
+    deal?.developmentType === 'Redevelopment' ||
     deal?.isDevelopment === true ||
     deal?.projectType === 'land';
+
+  const isRedevelopment = deal?.developmentType === 'Redevelopment';
 
   useEffect(() => {
     setViewMode(isDev ? 'development' : 'existing');
@@ -220,27 +223,18 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     <div className="space-y-5">
       {dataSource !== 'loading' && (
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 bg-stone-100 border border-stone-200 rounded-lg p-0.5">
-            <button
-              onClick={() => setViewMode('existing')}
-              className={`px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider rounded transition-all ${
-                viewMode === 'existing'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-700'
-              }`}
-            >
-              EXISTING DEAL
-            </button>
-            <button
-              onClick={() => setViewMode('development')}
-              className={`px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider rounded transition-all ${
-                viewMode === 'development'
-                  ? 'bg-white text-stone-900 shadow-sm'
-                  : 'text-stone-500 hover:text-stone-700'
-              }`}
-            >
-              DEVELOPMENT DEAL
-            </button>
+          {/* Deal type badge - read-only, set at deal creation */}
+          <div className="inline-flex items-center gap-2">
+            <span className={`px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider rounded-lg border ${
+              isDev
+                ? isRedevelopment
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-violet-50 text-violet-700 border-violet-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
+            }`}>
+              {isRedevelopment ? 'REDEVELOPMENT' : isDev ? 'GROUND-UP DEVELOPMENT' : 'ACQUISITION'}
+            </span>
+            <span className="text-[9px] text-stone-400 font-medium">Set at deal creation</span>
           </div>
           {dataSource === 'live' ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200">
@@ -332,11 +326,12 @@ const KVCard: React.FC<{
   note?: string;
   valueColor?: string;
   noteColor?: string;
-}> = ({ label, value, note, valueColor = 'text-amber-600', noteColor = 'text-stone-400' }) => (
-  <div className="bg-white p-3">
+  compact?: boolean;
+}> = ({ label, value, note, valueColor = 'text-amber-600', noteColor = 'text-stone-400', compact = false }) => (
+  <div className={`bg-white ${compact ? 'p-2' : 'p-3'}`}>
     <div className="text-[9px] font-mono text-stone-400 tracking-widest uppercase mb-1">{label}</div>
-    <div className={`text-lg font-bold font-mono ${valueColor}`}>{value}</div>
-    {note && <div className={`text-[10px] mt-1 ${noteColor}`}>{note}</div>}
+    <div className={`${compact ? 'text-base' : 'text-lg'} font-bold font-mono ${valueColor}`}>{value}</div>
+    {note && <div className={`text-[10px] ${compact ? 'mt-0.5' : 'mt-1'} ${noteColor}`}>{note}</div>}
   </div>
 );
 
@@ -844,12 +839,12 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         accentColor="border-cyan-500"
       />
       <div className="grid grid-cols-6 gap-px bg-stone-200">
-        <KVCard label="Land Cost" value={landCost} valueColor="text-stone-900" />
-        <KVCard label="Max Units (Zoned)" value={`${maxUnits}u`} valueColor="text-cyan-600" note={`${lotSize}`} />
-        <KVCard label="FAR" value={farValue} note={`Parking: ${activeScenario?.parkingRequired ? (activeScenario.parkingRequired / maxUnits).toFixed(1) : '1.5'} / unit`} />
-        <KVCard label="Entitlement ETA" value="8-10 mo" valueColor="text-amber-600" note="72% confidence" />
-        <KVCard label="Target IRR (BTS)" value={activePath.btsIrr} valueColor="text-emerald-600" note={`${activePath.btsEm} equity multiple`} noteColor="text-emerald-500" />
-        <KVCard label="TDC / Unit" value={activePath.tdcUnit} note={`${activePath.units} planned units`} />
+        <KVCard label="Max Units (Zoned)" value={`${maxUnits}u`} valueColor="text-cyan-600" note={`${lotSize}`} compact />
+        <KVCard label="FAR" value={farValue} note={`Parking: ${activeScenario?.parkingRequired ? (activeScenario.parkingRequired / maxUnits).toFixed(1) : '1.5'} / unit`} compact />
+        <KVCard label="Entitlement ETA" value="8-10 mo" valueColor="text-amber-600" note="72% confidence" compact />
+        <KVCard label="Target IRR (BTS)" value={activePath.btsIrr} valueColor="text-emerald-600" note={`${activePath.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
+        <KVCard label="TDC / Unit" value={activePath.tdcUnit} note={`${activePath.units} planned units`} compact />
+        <KVCard label="Land Cost" value={landCost} valueColor="text-stone-900" compact />
       </div>
 
       <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accentColor="border-amber-500" />
