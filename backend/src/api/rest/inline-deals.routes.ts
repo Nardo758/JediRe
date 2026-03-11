@@ -17,11 +17,11 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         ST_AsGeoJSON(d.boundary)::json as boundary_geojson,
         (SELECT count(*) FROM deal_properties dp WHERE dp.deal_id = d.id)::int as "propertyCount",
         (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id AND dt.status != 'done')::int as "pendingTasks",
-        CASE 
+        COALESCE(d.acres, CASE 
           WHEN d.boundary IS NOT NULL THEN 
             ST_Area(d.boundary::geography) / 4046.86
           ELSE 0
-        END as acres
+        END) as acres
       FROM deals d
       WHERE d.user_id = $1 AND d.archived_at IS NULL
       ORDER BY d.created_at DESC
@@ -72,11 +72,11 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         (SELECT count(*) FROM deal_tasks dt WHERE dt.deal_id = d.id)::int as "taskCount",
         (SELECT dp2.stage FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "pipelineStage",
         (SELECT EXTRACT(DAY FROM NOW() - dp2.entered_stage_at)::int FROM deal_pipeline dp2 WHERE dp2.deal_id = d.id ORDER BY dp2.entered_stage_at DESC LIMIT 1) as "daysInStage",
-        CASE 
+        COALESCE(d.acres, CASE 
           WHEN d.boundary IS NOT NULL THEN 
             ST_Area(d.boundary::geography) / 4046.86
           ELSE 0
-        END as acres
+        END) as acres
       FROM deals d
       WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
     `, [req.params.id, req.user!.userId]);
