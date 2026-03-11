@@ -269,7 +269,8 @@ SELECT
   m.submarket_occupancy
   
 FROM deals d
-LEFT JOIN properties p ON p.deal_id = d.id
+LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+LEFT JOIN properties p ON p.id = dp.property_id
 LEFT JOIN deal_assumptions a ON a.deal_id = d.id
 LEFT JOIN deal_market_data m ON m.deal_id = d.id;
 
