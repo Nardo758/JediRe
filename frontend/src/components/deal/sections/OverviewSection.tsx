@@ -250,7 +250,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         </div>
       )}
 
-      <PropertyDetailsForm dealId={deal?.id} />
+      <PropertyDetailsForm dealId={deal?.id} deal={deal} />
 
       {!analysisComplete && (
         <ActionStatusPanel

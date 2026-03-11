@@ -4,6 +4,7 @@ import { apiClient } from '../../services/api.client';
 
 interface PropertyDetailsFormProps {
   dealId: string;
+  deal?: any; // Pass deal directly to avoid extra API call
   propertyId?: string;
   onSave?: () => void;
 }
@@ -17,6 +18,7 @@ interface PropertyDetails {
 
 export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
   dealId,
+  deal: dealProp,
   propertyId,
   onSave,
 }) => {
@@ -42,12 +44,28 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 
   useEffect(() => {
     loadPropertyData();
-  }, [dealId, propertyId]);
+  }, [dealId, propertyId, dealProp]);
 
   const loadPropertyData = async () => {
     try {
       setLoading(true);
       setError(null);
+
+      // If deal object was passed directly, use it
+      if (dealProp && !propertyId) {
+        const deal = dealProp;
+        const property = deal.properties?.[0];
+        const data: PropertyDetails = {
+          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          lotSizeAcres: property?.lot_size_acres ?? deal.lot_size_acres ?? deal.acres ?? deal.lotSizeAcres,
+          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || '',
+        };
+        setFormData(data);
+        setSavedData(data);
+        setLoading(false);
+        return;
+      }
 
       if (propertyId) {
         const response = await apiClient.get(`/properties/${propertyId}`);
@@ -59,19 +77,20 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         };
         setFormData(data);
         setSavedData(data);
-      } else {
+      } else if (dealId) {
         const response = await apiClient.get(`/deals/${dealId}`);
-        if (response.data.properties && response.data.properties.length > 0) {
-          const property = response.data.properties[0];
-          const data: PropertyDetails = {
-            parcelId: property.parcel_id || '',
-            lotSizeAcres: property.lot_size_acres,
-            landCost: property.land_cost,
-            zoningCode: property.zoning_code || '',
-          };
-          setFormData(data);
-          setSavedData(data);
-        }
+        const deal = response.data;
+        
+        // Try properties array first, then fall back to deal-level fields
+        const property = deal.properties?.[0];
+        const data: PropertyDetails = {
+          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          lotSizeAcres: property?.lot_size_acres ?? deal.lot_size_acres ?? deal.acres ?? deal.lotSizeAcres,
+          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || '',
+        };
+        setFormData(data);
+        setSavedData(data);
       }
     } catch (err: any) {
       console.error('Failed to load property data:', err);
