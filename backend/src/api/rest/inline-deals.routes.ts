@@ -111,6 +111,9 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         developmentType: row.development_type,
         address: row.address,
         description: row.description,
+        property_data: row.property_data || null,
+        zoningProfile: row.zoning_profile || null,
+        purchasePrice: parseFloat(row.purchase_price) || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }
