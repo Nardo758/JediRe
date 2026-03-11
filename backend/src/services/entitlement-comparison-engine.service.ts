@@ -231,7 +231,7 @@ export class EntitlementComparisonEngine {
       return isNaN(n) ? null : n;
     };
     return {
-      maxDensity: profile.density_method === 'far_derived' ? null : parsePositiveOrNull(profile.max_density_per_acre),
+      maxDensity: parsePositiveOrNull(profile.max_density_per_acre),
       maxFAR: parsePositiveOrNull(profile.applied_far),
       appliedFAR: parsePositiveOrNull(profile.applied_far),
       residentialFAR: parsePositiveOrNull(profile.residential_far),

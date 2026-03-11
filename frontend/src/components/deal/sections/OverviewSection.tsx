@@ -659,6 +659,7 @@ interface DevOverviewProps {
 }
 
 const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financial, design3D, activeScenario, zoningProfile }) => {
+  const { siteData, canonicalData } = useDealModule();
   const zoningStore = useZoningModuleStore();
   const { comps: unitMixComps, program: unitMixProgram, zoning: unitMixZoning, loading: unitMixLoading } = useUnitMixIntelligence(deal?.id, deal?.tradeAreaId);
 
@@ -666,7 +667,6 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   const zoningFar = activeScenario?.appliedFar || zoningProfile?.appliedFar || zoningStore.selected_path_data?.appliedFar || null;
 
   const maxUnits = zoningMaxUnits || deal.targetUnits || 186;
-  // Use canonical site data for lot size (from municipal API)
   const lotSizeAcres = siteData?.lotSizeAcres ?? canonicalData?.computed?.lotSizeAcres;
   const lotSize = lotSizeAcres ? `${lotSizeAcres.toFixed(2)} ac` : '—';
   const landCost = financial?.landCost

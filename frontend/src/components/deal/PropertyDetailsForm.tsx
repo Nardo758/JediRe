@@ -72,17 +72,17 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       // Priority 2: If deal object was passed directly, use it
       if (dealProp && !propertyId) {
         const deal = dealProp;
+        const pd = deal.property_data || {};
         const property = deal.properties?.[0];
         
-        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
-          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
-          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
+          landCost: property?.land_cost ?? pd.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || pd.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);
@@ -91,7 +91,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       }
 
       if (propertyId) {
-        const response = await apiClient.get(`/properties/${propertyId}`);
+        const response = await apiClient.get(`/api/v1/properties/${propertyId}`);
         const data: PropertyDetails = {
           parcelId: response.data.parcel_id || '',
           lotSizeAcres: response.data.lot_size_acres,
@@ -101,21 +101,21 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         setFormData(data);
         setSavedData(data);
       } else if (dealId) {
-        const response = await apiClient.get(`/deals/${dealId}`);
-        const deal = response.data;
+        const response = await apiClient.get(`/api/v1/deals/${dealId}`);
+        const body = response.data;
+        const deal = body?.deal || body?.data || body;
+        const pd = deal.property_data || {};
         
-        // Try properties array first, then fall back to deal-level fields
         const property = deal.properties?.[0];
         
-        // Get lot size - skip if value looks like a coordinate (> 100 acres is suspicious for urban parcels)
-        const rawAcres = property?.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
+        const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
         
         const data: PropertyDetails = {
-          parcelId: property?.parcel_id || deal.parcel_id || deal.parcelId || '',
+          parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
-          landCost: property?.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
-          zoningCode: property?.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
+          landCost: property?.land_cost ?? pd.land_cost ?? deal.land_cost ?? deal.landCost ?? deal.purchasePrice,
+          zoningCode: property?.zoning_code || pd.zoning_code || deal.zoning_code || deal.zoningCode || deal.zoningProfile?.baseDistrictCode || '',
         };
         setFormData(data);
         setSavedData(data);
@@ -134,16 +134,11 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     setSuccess(false);
 
     try {
-      await apiClient.post('/clawdbot/command', {
-        command: 'update_property',
-        params: {
-          dealId,
-          propertyId,
-          parcel_id: formData.parcelId,
-          lot_size_acres: formData.lotSizeAcres,
-          land_cost: formData.landCost,
-          zoning_code: formData.zoningCode,
-        },
+      await apiClient.patch(`/api/v1/deals/${dealId}/property`, {
+        parcel_id: formData.parcelId,
+        lot_size_acres: formData.lotSizeAcres,
+        land_cost: formData.landCost,
+        zoning_code: formData.zoningCode,
       });
 
       setSavedData({ ...formData });
@@ -309,7 +304,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           ) : (
             <div className="text-xl font-bold text-stone-900 mb-1">
               {formData.lotSizeAcres ? (
-                `${formData.lotSizeAcres} ac`
+                `${Number(formData.lotSizeAcres).toFixed(2)} ac`
               ) : (
                 <span className="text-stone-300 font-normal text-base">Not set</span>
               )}

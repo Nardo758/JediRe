@@ -4,9 +4,10 @@
  * Endpoints for managing deal underwriting assumptions
  */
 
-import { Router, Request, Response } from 'express';
-import { query } from '../../database/connection';
+import { Router, Response } from 'express';
+import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { 
   DealAssumptionsInput, 
   SiteDataInput, 
@@ -15,20 +16,18 @@ import {
 } from '../../types/deal-assumptions.types';
 
 const router = Router();
+const pool = getPool();
 
-// ============================================
-// GET /api/v1/deals/:dealId/assumptions
-// ============================================
-router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
+router.get('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     
-    const result = await query(`
-      SELECT * FROM deal_assumptions WHERE deal_id = $1
-    `, [dealId]);
+    const result = await pool.query(
+      'SELECT * FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    );
     
     if (result.rows.length === 0) {
-      // Return defaults if no assumptions exist
       return res.json({
         success: true,
         data: {
@@ -52,16 +51,12 @@ router.get('/:dealId/assumptions', async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// PUT /api/v1/deals/:dealId/assumptions
-// ============================================
-router.put('/:dealId/assumptions', async (req: Request, res: Response) => {
+router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const input: DealAssumptionsInput = req.body;
     
-    // Upsert assumptions
-    const result = await query(`
+    const result = await pool.query(`
       INSERT INTO deal_assumptions (
         deal_id, land_cost, hard_cost_psf, soft_cost_pct, contingency_pct,
         developer_fee_pct, total_units, avg_unit_sf, efficiency, stories,
@@ -126,35 +121,33 @@ router.put('/:dealId/assumptions', async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// POST /api/v1/deals/:dealId/compute-returns
-// ============================================
-router.post('/:dealId/compute-returns', async (req: Request, res: Response) => {
+router.post('/:dealId/compute-returns', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const overrides: DealAssumptionsInput = req.body;
     
-    // Fetch existing assumptions
-    const assumptionsResult = await query(`
-      SELECT * FROM deal_assumptions WHERE deal_id = $1
+    const assumptionsResult = await pool.query(
+      'SELECT * FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    );
+    
+    const siteResult = await pool.query(`
+      SELECT p.lot_size_acres, p.max_units, p.zoning_code 
+      FROM properties p
+      JOIN deal_properties dp ON dp.property_id = p.id
+      WHERE dp.deal_id = $1
+      LIMIT 1
     `, [dealId]);
     
-    // Fetch site data
-    const siteResult = await query(`
-      SELECT lot_size_acres, max_units, zoning_code 
-      FROM properties WHERE deal_id = $1
-    `, [dealId]);
-    
-    // Fetch deal basics
-    const dealResult = await query(`
-      SELECT target_units, budget FROM deals WHERE id = $1
-    `, [dealId]);
+    const dealResult = await pool.query(
+      'SELECT target_units, budget FROM deals WHERE id = $1',
+      [dealId]
+    );
     
     if (dealResult.rows.length === 0) {
       return res.status(404).json({ error: 'Deal not found' });
     }
     
-    // Merge assumptions with overrides and defaults
     const assumptions = {
       ...DEFAULT_ASSUMPTIONS,
       ...(assumptionsResult.rows[0] || {}),
@@ -164,49 +157,61 @@ router.post('/:dealId/compute-returns', async (req: Request, res: Response) => {
     const site = siteResult.rows[0] || {};
     const deal = dealResult.rows[0];
     
-    // Compute returns
+    const n = (v: any, fallback: number) => {
+      const parsed = parseFloat(v);
+      return isNaN(parsed) ? fallback : parsed;
+    };
+
+    const units = n(assumptions.total_units, 0) || n(deal.target_units, 0);
+    if (!units || units <= 0) {
+      return res.status(400).json({ 
+        error: 'Cannot compute returns without total_units. Set totalUnits in assumptions or target_units on the deal first.' 
+      });
+    }
+
     const returns = computeReturns({
-      landCost: assumptions.land_cost || overrides.landCost || 0,
-      units: assumptions.total_units || deal.target_units || 0,
-      avgUnitSf: assumptions.avg_unit_sf || 900,
-      efficiency: assumptions.efficiency || 0.85,
-      hardCostPsf: assumptions.hard_cost_psf || 185,
-      softCostPct: assumptions.soft_cost_pct || 25,
-      contingencyPct: assumptions.contingency_pct || 5,
-      developerFeePct: assumptions.developer_fee_pct || 4,
-      avgRentPerUnit: assumptions.avg_rent_per_unit || 1950,
-      vacancyPct: assumptions.vacancy_pct || 5,
-      opexRatio: assumptions.opex_ratio || 35,
-      interestRate: assumptions.interest_rate || 0.075,
-      ltc: assumptions.ltc || 0.65,
-      exitCap: assumptions.exit_cap || 0.05,
-      holdPeriodYears: assumptions.hold_period_years || 3,
+      landCost: n(assumptions.land_cost, 0) || n(overrides.landCost, 0),
+      units,
+      avgUnitSf: n(assumptions.avg_unit_sf, 900),
+      efficiency: n(assumptions.efficiency, 0.85),
+      hardCostPsf: n(assumptions.hard_cost_psf, 185),
+      softCostPct: n(assumptions.soft_cost_pct, 25),
+      contingencyPct: n(assumptions.contingency_pct, 5),
+      developerFeePct: n(assumptions.developer_fee_pct, 4),
+      avgRentPerUnit: n(assumptions.avg_rent_per_unit, 1950),
+      vacancyPct: n(assumptions.vacancy_pct, 5),
+      opexRatio: n(assumptions.opex_ratio, 35),
+      interestRate: n(assumptions.interest_rate, 0.075),
+      ltc: n(assumptions.ltc, 0.65),
+      exitCap: n(assumptions.exit_cap, 0.05),
+      holdPeriodYears: n(assumptions.hold_period_years, 3),
     });
     
-    // Update stored computed values
-    await query(`
-      UPDATE deal_assumptions SET
-        tdc = $2,
-        tdc_per_unit = $3,
-        noi_stabilized = $4,
-        yield_on_cost = $5,
-        irr_levered = $6,
-        equity_multiple = $7,
-        stabilized_value = $8,
-        profit_margin = $9,
-        last_computed_at = NOW()
-      WHERE deal_id = $1
-    `, [
-      dealId,
-      returns.tdc,
-      returns.tdcPerUnit,
-      returns.noiStabilized,
-      returns.yieldOnCost,
-      returns.irrLevered,
-      returns.equityMultiple,
-      returns.stabilizedValue,
-      returns.profitMargin
-    ]);
+    if (assumptionsResult.rows.length > 0) {
+      await pool.query(`
+        UPDATE deal_assumptions SET
+          tdc = $2,
+          tdc_per_unit = $3,
+          noi_stabilized = $4,
+          yield_on_cost = $5,
+          irr_levered = $6,
+          equity_multiple = $7,
+          stabilized_value = $8,
+          profit_margin = $9,
+          last_computed_at = NOW()
+        WHERE deal_id = $1
+      `, [
+        dealId,
+        returns.tdc,
+        returns.tdcPerUnit,
+        returns.noiStabilized,
+        returns.yieldOnCost,
+        returns.irrLevered,
+        returns.equityMultiple,
+        returns.stabilizedValue,
+        returns.profitMargin
+      ]);
+    }
     
     res.json({
       success: true,
@@ -233,16 +238,23 @@ router.post('/:dealId/compute-returns', async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// PUT /api/v1/deals/:dealId/site-data
-// ============================================
-router.put('/:dealId/site-data', async (req: Request, res: Response) => {
+router.put('/:dealId/site-data', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     const input: SiteDataInput = req.body;
     
-    // Update properties table
-    const result = await query(`
+    const propLookup = await pool.query(
+      'SELECT property_id FROM deal_properties WHERE deal_id = $1 LIMIT 1',
+      [dealId]
+    );
+
+    if (propLookup.rows.length === 0) {
+      return res.status(404).json({ error: 'Property not found for this deal' });
+    }
+
+    const propertyId = propLookup.rows[0].property_id;
+
+    const result = await pool.query(`
       UPDATE properties SET
         lot_size_acres = COALESCE($2, lot_size_acres),
         parcel_id = COALESCE($3, parcel_id),
@@ -253,10 +265,10 @@ router.put('/:dealId/site-data', async (req: Request, res: Response) => {
         parking_required = COALESCE($8, parking_required),
         zoning_source = COALESCE($9, zoning_source),
         zoning_updated_at = NOW()
-      WHERE deal_id = $1
+      WHERE id = $1
       RETURNING *
     `, [
-      dealId,
+      propertyId,
       input.lotSizeAcres,
       input.parcelId,
       input.zoningCode,
@@ -267,13 +279,8 @@ router.put('/:dealId/site-data', async (req: Request, res: Response) => {
       input.zoningSource
     ]);
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Property not found for this deal' });
-    }
-    
-    // Also update deals.acres if lot size changed
     if (input.lotSizeAcres) {
-      await query(`UPDATE deals SET acres = $2 WHERE id = $1`, [dealId, input.lotSizeAcres]);
+      await pool.query('UPDATE deals SET acres = $2 WHERE id = $1', [dealId, input.lotSizeAcres]);
     }
     
     res.json({
@@ -286,17 +293,14 @@ router.put('/:dealId/site-data', async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// GET /api/v1/deals/:dealId/full-context
-// ============================================
-router.get('/:dealId/full-context', async (req: Request, res: Response) => {
+router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
     
-    // Get everything in one query using the view
-    const result = await query(`
-      SELECT * FROM v_deal_summary WHERE id = $1
-    `, [dealId]);
+    const result = await pool.query(
+      'SELECT * FROM v_deal_summary WHERE id = $1',
+      [dealId]
+    );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Deal not found' });
@@ -312,9 +316,6 @@ router.get('/:dealId/full-context', async (req: Request, res: Response) => {
   }
 });
 
-// ============================================
-// Helper: Compute Returns
-// ============================================
 function computeReturns(params: {
   landCost: number;
   units: number;
@@ -339,11 +340,9 @@ function computeReturns(params: {
     interestRate, ltc, exitCap, holdPeriodYears
   } = params;
   
-  // Building
   const grossSf = units * avgUnitSf / efficiency;
   const rentableSf = units * avgUnitSf;
   
-  // Development Costs
   const hardCosts = grossSf * hardCostPsf;
   const softCosts = hardCosts * (softCostPct / 100);
   const contingency = (hardCosts + softCosts) * (contingencyPct / 100);
@@ -353,38 +352,31 @@ function computeReturns(params: {
   const tdcPerUnit = tdc / units;
   const tdcPerSf = tdc / rentableSf;
   
-  // Revenue
   const grossPotentialRent = avgRentPerUnit * units * 12;
   const effectiveGrossIncome = grossPotentialRent * (1 - vacancyPct / 100);
   const operatingExpenses = effectiveGrossIncome * (opexRatio / 100);
   const noiStabilized = effectiveGrossIncome - operatingExpenses;
   
-  // Financing
   const loanAmount = tdc * ltc;
   const equityRequired = tdc - loanAmount;
-  const annualDebtService = loanAmount * interestRate;  // IO assumption
+  const annualDebtService = loanAmount * interestRate;
   
-  // Returns
   const yieldOnCost = noiStabilized / tdc;
   const stabilizedValue = noiStabilized / exitCap;
   const profit = stabilizedValue - tdc;
   const profitMargin = profit / tdc;
   
-  // Cash flow (simplified, IO period)
   const cashFlowYr1 = noiStabilized - annualDebtService;
   const cashOnCashYr1 = cashFlowYr1 / equityRequired;
   
-  // Equity metrics
   const interestReserve = loanAmount * interestRate * (holdPeriodYears / 2);
   const totalEquity = equityRequired + interestReserve;
   const cashToEquity = stabilizedValue - loanAmount;
   const equityMultiple = cashToEquity / totalEquity;
   
-  // IRR approximation
   const irrLevered = Math.pow(equityMultiple, 1 / holdPeriodYears) - 1;
   const irrUnlevered = Math.pow(stabilizedValue / tdc, 1 / holdPeriodYears) - 1;
   
-  // Ratios
   const dscr = noiStabilized / annualDebtService;
   const debtYield = noiStabilized / loanAmount;
   const ltv = loanAmount / stabilizedValue;

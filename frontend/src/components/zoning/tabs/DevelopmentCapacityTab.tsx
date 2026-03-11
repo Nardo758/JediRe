@@ -1047,8 +1047,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const dynRows = comparison?.rows || [];
         const cells = comparison?.cells || {};
         const hasData = cols.length > 0 || recommendations.length > 0;
-        if (!hasData && !loadingRecs && !loading && profileExists) return null;
-        if (!profileExists && !loading) return null;
 
         const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
 
@@ -1083,7 +1081,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               </div>
             </div>
 
-            {(loadingRecs || loading) && cols.length === 0 ? (
+            {cols.length === 0 ? (
               <div className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1093,8 +1091,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         {[1, 2, 3, 4].map(i => (
                           <th key={i} className="text-center px-3 py-2.5" style={{ width: '20%' }}>
                             <div className="flex flex-col items-center gap-1">
-                              <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-                              <div className="h-3 w-28 bg-gray-100 rounded animate-pulse" />
+                              <div className={`h-4 w-20 bg-gray-200 rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
+                              <div className={`h-3 w-28 bg-gray-100 rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                             </div>
                           </th>
                         ))}
@@ -1106,7 +1104,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                           <td className="px-4 py-2.5 text-xs font-medium text-gray-400">{label}</td>
                           {[1, 2, 3, 4].map(i => (
                             <td key={i} className="px-3 py-2.5 text-center">
-                              <div className="h-4 w-16 bg-gray-100 rounded animate-pulse mx-auto" />
+                              <div className={`h-4 w-16 bg-gray-100 rounded mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                             </td>
                           ))}
                         </tr>
@@ -1115,17 +1113,23 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         <td className="px-4 py-3 text-xs font-bold text-gray-400">Select Path</td>
                         {[1, 2, 3, 4].map(i => (
                           <td key={i} className="px-3 py-3 text-center">
-                            <div className="h-7 w-16 bg-gray-200 rounded-lg animate-pulse mx-auto" />
+                            <div className={`h-7 w-16 bg-gray-200 rounded-lg mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                           </td>
                         ))}
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-                  <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
-                </div>
+                {(loadingRecs || loading) ? (
+                  <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
+                    <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-4 border-t border-gray-100">
+                    <span className="text-xs text-gray-400">Entitlement paths will appear once zoning analysis completes.</span>
+                  </div>
+                )}
               </div>
             ) : (
               <>

@@ -108,6 +108,7 @@ import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes
 import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import dealValidationRoutes from './api/rest/deal-validation.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
+import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -270,6 +271,7 @@ app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
 app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
+app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);

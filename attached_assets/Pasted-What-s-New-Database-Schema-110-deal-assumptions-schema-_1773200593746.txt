@@ -1,0 +1,52 @@
+What's New
+
+📊 Database Schema (110_deal_assumptions_schema.sql)
+
+deal_assumptions table - All underwriting inputs:
+
+| Category     | Fields                                                           |
+| ------------ | ---------------------------------------------------------------- |
+| Land         | land_cost, land_cost_per_acre                                    |
+| Construction | hard_cost_psf, soft_cost_pct, contingency_pct, developer_fee_pct |
+| Building     | total_units, avg_unit_sf, efficiency, stories, construction_type |
+| Unit Mix     | unit_mix (JSON)                                                  |
+| Revenue      | avg_rent_per_unit, vacancy_pct, rent_growth_yr1                  |
+| OpEx         | opex_ratio, property_tax_rate, management_fee_pct                |
+| Financing    | interest_rate, ltc, dscr_min, io_period_months                   |
+| Exit         | exit_cap, hold_period_years                                      |
+| Returns      | noi_stabilized, yield_on_cost, irr_levered, equity_multiple      |
+
+deal_market_data table - Market intelligence:
+
+• Submarket info, rent comps, occupancy, pipeline, demographics
+properties extended - Site/zoning data:
+
+• lot_size_acres, zoning_code, max_far, max_stories, max_units, parking_required
+
+🔌 API Endpoints (deal-assumptions.routes.ts)
+
+GET  /api/v1/deals/:id/assumptions     # Get all assumptions
+PUT  /api/v1/deals/:id/assumptions     # Update assumptions
+POST /api/v1/deals/:id/compute-returns # Calculate returns
+PUT  /api/v1/deals/:id/site-data       # Update site/zoning data
+GET  /api/v1/deals/:id/full-context    # Get everything combined
+
+
+Next Steps in Replit
+
+1. Pull & run migration:
+git pull origin master
+npx ts-node backend/src/scripts/run-migrations.ts
+
+2. Register routes in index.replit.ts:
+import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
+app.use('/api/v1/deals', dealAssumptionsRoutes);
+
+3. Test with Atlanta:
+curl -X PUT /api/v1/deals/e044db04-.../site-data \
+  -d '{"lotSizeAcres": 4.81, "zoningCode": "MRC-2-C"}'
+
+curl -X PUT /api/v1/deals/e044db04-.../assumptions \
+  -d '{"landCost": 9000000, "avgRentPerUnit": 2200}'
+
+curl -X POST /api/v1/deals/e044db04-.../compute-returns

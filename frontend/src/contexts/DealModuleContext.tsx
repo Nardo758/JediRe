@@ -274,9 +274,10 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
       setDealInputs(inputs);
       
       // Parse site data from deal properties and any available zoning
+      const propertyFallback = deal.properties?.[0] || { ...deal, ...(deal.property_data || {}) };
       const site = parseZoningToSiteData(
         deal.zoningProfile || deal.zoning,
-        deal.properties?.[0] || deal
+        propertyFallback
       );
       setSiteData(site);
     }
@@ -344,9 +345,10 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const refreshCanonicalData = useCallback(() => {
     if (deal) {
       setDealInputs(parseDealInputs(deal));
+      const propertyFallback = deal.properties?.[0] || { ...deal, ...(deal.property_data || {}) };
       setSiteData(parseZoningToSiteData(
         deal.zoningProfile || deal.zoning,
-        deal.properties?.[0] || deal
+        propertyFallback
       ));
     }
   }, [deal]);

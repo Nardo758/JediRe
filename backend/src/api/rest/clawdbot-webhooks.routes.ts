@@ -843,6 +843,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           'total_sf',
           'units',
           'stories',
+          'zoning_code',
         ];
 
         const updates: string[] = [];
