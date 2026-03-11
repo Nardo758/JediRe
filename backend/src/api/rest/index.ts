@@ -81,6 +81,7 @@ import designAssistantRoutes from './design-assistant.routes';
 import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
+import scrapeRoutes from './scrape.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -318,6 +319,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // M28 Cycle Intelligence routes (Investment cycle timing analysis)
   app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);
+
+  // Scraping routes (Cloudflare Browser Rendering — zoning code, property records, Municode)
+  app.use(`${API_PREFIX}/scrape`, scrapeRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
