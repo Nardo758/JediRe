@@ -230,7 +230,7 @@ export class EntitlementComparisonEngine {
       const n = parseFloat(String(v));
       return isNaN(n) ? null : n;
     };
-    return {
+    const constraints: ResolvedConstraints = {
       maxDensity: parsePositiveOrNull(profile.max_density_per_acre),
       maxFAR: parsePositiveOrNull(profile.applied_far),
       appliedFAR: parsePositiveOrNull(profile.applied_far),
@@ -242,6 +242,42 @@ export class EntitlementComparisonEngine {
       maxLotCoverage: parsePositiveOrNull(profile.max_lot_coverage_pct),
       densityMethod: profile.density_method || 'units_per_acre',
     };
+
+    if (Array.isArray(profile.overlays)) {
+      const numericFieldMapping: Record<string, keyof ResolvedConstraints> = {
+        min_parking_per_unit: 'minParkingPerUnit',
+        max_density_per_acre: 'maxDensity',
+        max_height_ft: 'maxHeight',
+        max_stories: 'maxStories',
+        max_lot_coverage_pct: 'maxLotCoverage',
+        applied_far: 'appliedFAR',
+        max_far: 'maxFAR',
+      };
+      const stringFieldMapping: Record<string, keyof ResolvedConstraints> = {
+        density_method: 'densityMethod',
+      };
+      for (const overlay of profile.overlays) {
+        if (overlay.modifications && typeof overlay.modifications === 'object') {
+          for (const [dbField, value] of Object.entries(overlay.modifications)) {
+            if (value == null) continue;
+            const numericKey = numericFieldMapping[dbField];
+            if (numericKey) {
+              const parsed = typeof value === 'number' ? value : parseFloat(String(value));
+              if (!isNaN(parsed)) {
+                (constraints as any)[numericKey] = parsed;
+              }
+              continue;
+            }
+            const stringKey = stringFieldMapping[dbField];
+            if (stringKey) {
+              (constraints as any)[stringKey] = String(value);
+            }
+          }
+        }
+      }
+    }
+
+    return constraints;
   }
 
   private computeEnvelope(subject: SubjectProperty, constraints: ResolvedConstraints, avgUnitSizeOverride?: number | null) {

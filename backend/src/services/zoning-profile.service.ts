@@ -304,7 +304,6 @@ export class ZoningProfileService {
       resolution_errors: JSON.stringify(errors),
     };
 
-    const applyOverrides = { ...conditionalOverrides, ...userOverrides };
     const overridableFields = [
       'residential_far', 'nonresidential_far', 'combined_far', 'applied_far',
       'max_density_per_acre', 'max_height_ft', 'max_stories',
@@ -312,6 +311,20 @@ export class ZoningProfileService {
       'max_lot_coverage_pct', 'setback_front_ft', 'setback_side_ft', 'setback_rear_ft',
       'min_parking_per_unit', 'open_space_pct',
     ];
+
+    if (Array.isArray(overlays)) {
+      for (const overlay of overlays) {
+        if (overlay.modifications && typeof overlay.modifications === 'object') {
+          for (const [field, value] of Object.entries(overlay.modifications)) {
+            if (overridableFields.includes(field) && value != null) {
+              profileData[field] = value;
+            }
+          }
+        }
+      }
+    }
+
+    const applyOverrides = { ...conditionalOverrides, ...userOverrides };
     for (const [field, override] of Object.entries(applyOverrides)) {
       if (overridableFields.includes(field) && override != null) {
         const val = typeof override === 'object' ? override.value : override;
