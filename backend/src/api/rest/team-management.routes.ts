@@ -38,9 +38,25 @@ const CommentSchema = z.object({
   content: z.string().min(1),
 });
 
+async function verifyDealAccess(dealId: string, userId: string): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, userId]
+    );
+    return result.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 router.get('/deals/:dealId/team/members', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (userId && !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const result = await pool.query(
       'SELECT * FROM deal_team_members WHERE deal_id = $1 ORDER BY created_at',
       [dealId]
@@ -55,6 +71,10 @@ router.get('/deals/:dealId/team/members', requireAuth, async (req: Request, res:
 router.post('/deals/:dealId/team/members', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (userId && !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const data = MemberSchema.parse(req.body);
     const result = await pool.query(
       `INSERT INTO deal_team_members (deal_id, name, email, phone, role, title, company, permissions, status)
@@ -119,6 +139,10 @@ router.delete('/deals/:dealId/team/members/:memberId', requireAuth, async (req: 
 router.get('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (userId && !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const result = await pool.query(
       'SELECT * FROM deal_tasks WHERE deal_id = $1 ORDER BY created_at DESC',
       [dealId]
@@ -226,6 +250,10 @@ router.post('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (re
 router.get('/deals/:dealId/team/activity', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (userId && !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const result = await pool.query(
       'SELECT * FROM deal_team_activity WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 50',
       [dealId]

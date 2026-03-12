@@ -194,6 +194,11 @@ export function EmailPage() {
   const [dealLinkOpen, setDealLinkOpen] = useState(false);
   const [dealsList, setDealsList] = useState<any[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
+  const [dealDetails, setDealDetails] = useState<any | null>(null);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamActivity, setTeamActivity] = useState<any[]>([]);
+  const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
+  const [intelPanelOpen, setIntelPanelOpen] = useState(true);
 
   useEffect(() => {
     inboxService.getConnectedAccounts().then(res => {
@@ -327,6 +332,10 @@ export function EmailPage() {
   const handleEmailClick = async (email: Email) => {
     setSelectedEmailId(email.id);
     setEmailIntel(null);
+    setDealDetails(null);
+    setTeamMembers([]);
+    setTeamActivity([]);
+    setDismissedActions(new Set());
     if (!email.is_read) {
       try {
         await inboxService.updateEmail(email.id, { is_read: true });
@@ -343,6 +352,20 @@ export function EmailPage() {
       if (intelRes.success) setEmailIntel(intelRes.data);
     } catch {}
     setIntelLoading(false);
+    if (email.deal_id) {
+      try {
+        const dealRes = await inboxService.getDealDetails(email.deal_id);
+        if (dealRes.success) setDealDetails(dealRes.data);
+      } catch {}
+      try {
+        const members = await inboxService.getDealTeamMembers(email.deal_id);
+        if (Array.isArray(members)) setTeamMembers(members);
+      } catch {}
+      try {
+        const activity = await inboxService.getDealTeamActivity(email.deal_id);
+        if (Array.isArray(activity)) setTeamActivity(activity.slice(0, 5));
+      } catch {}
+    }
   };
 
   const handleLinkToDeal = async () => {
@@ -367,26 +390,24 @@ export function EmailPage() {
     } catch {}
   };
 
-  const handleExecuteAction = async (actionItem: { suggestedTask: string; priority: string }) => {
-    if (!selectedEmail) return;
+  const handleExecuteAction = async (actionItem?: { suggestedTask: string; priority: string }) => {
+    if (!selectedEmail || !selectedDetail) return;
+    const emailBody = selectedDetail.body_text || selectedDetail.body_preview || '';
     try {
-      const response = await fetch('/api/v1/emails/' + selectedEmail.id + '/create-task', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: actionItem.suggestedTask,
-          category: 'communication',
-          priority: actionItem.priority,
-          description: `From email: ${selectedEmail.subject}`,
-        }),
-      });
-      if (response.ok) {
-        setIntelLoading(true);
-        const intelRes = await inboxService.getEmailIntel(selectedEmail.id);
-        if (intelRes.success) setEmailIntel(intelRes.data);
-        setIntelLoading(false);
-      }
+      await inboxService.quickTaskFromEmail(
+        selectedEmail.id,
+        emailBody,
+        selectedEmail.deal_id || undefined
+      );
+      setIntelLoading(true);
+      const intelRes = await inboxService.getEmailIntel(selectedEmail.id);
+      if (intelRes.success) setEmailIntel(intelRes.data);
+      setIntelLoading(false);
     } catch {}
+  };
+
+  const handleDismissAction = (actionText: string) => {
+    setDismissedActions(prev => new Set([...prev, actionText]));
   };
 
   const handleToggleFlag = async (emailId: number, currentFlag: boolean) => {
@@ -896,6 +917,90 @@ export function EmailPage() {
                   {selectedDetail.body_text || selectedDetail.body_preview || selectedEmail.body_preview || 'No content available.'}
                 </div>
 
+                {emailIntel && (emailIntel.propertyExtractions.length > 0 || emailIntel.newsExtraction) && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div onClick={() => setIntelPanelOpen(!intelPanelOpen)} style={{
+                      fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, letterSpacing: 1,
+                      textTransform: "uppercase" as const, marginBottom: 8, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 4, userSelect: "none" as const,
+                    }}>
+                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: intelPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
+                      Intelligence Extracted
+                    </div>
+                    {intelPanelOpen && emailIntel.propertyExtractions.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6 }}>Properties</div>
+                        {emailIntel.propertyExtractions.map((prop: any, i: number) => (
+                          <div key={i} style={{
+                            padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                            borderRadius: 6, marginBottom: 6,
+                          }}>
+                            <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
+                              {prop.pin_address || prop.property_name || prop.extracted_data?.address || 'Property'}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, fontSize: 10, color: T.text.tertiary, marginBottom: 4 }}>
+                              {prop.extracted_data?.propertyType && <span>Type: {prop.extracted_data.propertyType}</span>}
+                              {prop.extracted_data?.units && <span>Units: {prop.extracted_data.units}</span>}
+                              {prop.extracted_data?.price && <span>Price: ${(prop.extracted_data.price / 1000000).toFixed(1)}M</span>}
+                              {prop.extracted_data?.capRate && <span>Cap: {(prop.extracted_data.capRate * 100).toFixed(1)}%</span>}
+                              {prop.preference_match_score != null && <span>Match: {Math.round(prop.preference_match_score * 100)}%</span>}
+                              {prop.extracted_data?.confidence != null && <span>Confidence: {Math.round(prop.extracted_data.confidence * 100)}%</span>}
+                            </div>
+                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                              <span style={{
+                                fontSize: 8, fontFamily: FONTS.mono, padding: "1px 5px", borderRadius: 2,
+                                color: prop.status === 'auto-created' ? T.accent.green : prop.status === 'requires-review' ? T.accent.amber : T.text.tertiary,
+                                background: prop.status === 'auto-created' ? `${T.accent.green}15` : prop.status === 'requires-review' ? `${T.accent.amber}15` : T.bg.tertiary,
+                              }}>{prop.status || 'pending'}</span>
+                              {prop.pin_id && <span style={{ fontSize: 9, color: T.accent.blue, fontFamily: FONTS.mono }}>Pin #{prop.pin_id.slice(0, 8)}</span>}
+                              {prop.status === 'requires-review' && (
+                                <button onClick={() => {
+                                  fetch(`/api/v1/email-extractions/properties/${prop.id}/approve`, { method: 'POST' })
+                                    .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
+                                }} style={{
+                                  marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
+                                  background: T.accent.green, border: "none", borderRadius: 3,
+                                  color: "#fff", cursor: "pointer",
+                                }}>Approve</button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {intelPanelOpen && emailIntel.newsExtraction && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6 }}>Private Intelligence</div>
+                        <div style={{
+                          padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
+                        }}>
+                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
+                            {emailIntel.newsExtraction.title}
+                          </div>
+                          <div style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.5, marginBottom: 6 }}>
+                            {emailIntel.newsExtraction.summary}
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, fontSize: 10 }}>
+                            <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
+                            {emailIntel.newsExtraction.impact_score != null && (
+                              <span style={{
+                                fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                                color: emailIntel.newsExtraction.impact_score > 70 ? T.accent.red : emailIntel.newsExtraction.impact_score > 40 ? T.accent.amber : T.accent.green,
+                                background: emailIntel.newsExtraction.impact_score > 70 ? `${T.accent.red}15` : emailIntel.newsExtraction.impact_score > 40 ? `${T.accent.amber}15` : `${T.accent.green}15`,
+                              }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
+                            )}
+                            {emailIntel.newsExtraction.sentiment_score != null && (
+                              <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                                Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {selectedDetail.attachments && selectedDetail.attachments.length > 0 && (
                   <div style={{ marginBottom: 24 }}>
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 8 }}>
@@ -986,10 +1091,19 @@ export function EmailPage() {
                 </div>
                 {selectedEmail && emailIntel && emailIntel.actionItems.length > 0 && (
                   <div style={{ marginBottom: 12 }}>
+                    {emailIntel.actionItems.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                        <button onClick={() => handleExecuteAction()} style={{
+                          flex: 1, padding: "8px 12px",
+                          background: T.accent.green, border: "none", borderRadius: 6,
+                          color: "#fff", fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
+                        }}>Execute</button>
+                      </div>
+                    )}
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, marginBottom: 6 }}>
-                      {emailIntel.actionItems.length} action item{emailIntel.actionItems.length > 1 ? 's' : ''} detected
+                      {emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).length} action item{emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).length !== 1 ? 's' : ''} detected
                     </div>
-                    {emailIntel.actionItems.map((item, i) => (
+                    {emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).map((item, i) => (
                       <div key={i} style={{
                         padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
                         borderRadius: 6, marginBottom: 6,
@@ -1006,6 +1120,11 @@ export function EmailPage() {
                             background: T.accent.green, border: "none", borderRadius: 3,
                             color: "#fff", cursor: "pointer",
                           }}>Execute</button>
+                          <button onClick={() => handleDismissAction(item.text)} style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
+                            background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 3,
+                            color: T.text.tertiary, cursor: "pointer",
+                          }}>Dismiss</button>
                         </div>
                       </div>
                     ))}
@@ -1127,14 +1246,50 @@ export function EmailPage() {
               </div>
             )}
 
-            {sidePanel === 'deal' && selectedEmail?.deal_name && (
+            {sidePanel === 'deal' && selectedEmail?.deal_id && (
               <div>
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
                   Linked Deal
                 </div>
                 <div style={{ padding: 12, background: T.bg.card, borderRadius: 8, border: `1px solid ${T.border.subtle}`, marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>{selectedEmail.deal_name}</div>
-                  <DealStageIndicator stage="prospect" name={selectedEmail.deal_name} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>
+                    {dealDetails?.name || selectedEmail.deal_name || 'Deal'}
+                  </div>
+                  {dealDetails && (
+                    <>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginBottom: 6 }}>
+                        {dealDetails.status && (
+                          <span style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
+                            color: dealDetails.status === 'active' ? T.accent.green : T.text.tertiary,
+                            background: dealDetails.status === 'active' ? `${T.accent.green}15` : T.bg.tertiary,
+                          }}>{dealDetails.status}</span>
+                        )}
+                        {dealDetails.tier && (
+                          <span style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
+                            color: T.accent.blue, background: `${T.accent.blue}15`,
+                          }}>{dealDetails.tier}</span>
+                        )}
+                        {dealDetails.project_type && (
+                          <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary }}>{dealDetails.project_type}</span>
+                        )}
+                      </div>
+                      {dealDetails.budget && (
+                        <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: FONTS.mono }}>
+                          Budget: ${(dealDetails.budget / 1000000).toFixed(1)}M
+                        </div>
+                      )}
+                      {dealDetails.target_units && (
+                        <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: FONTS.mono }}>
+                          Target: {dealDetails.target_units} units
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {!dealDetails && (
+                    <DealStageIndicator stage="prospect" name={selectedEmail.deal_name || ''} />
+                  )}
                 </div>
                 <button onClick={() => { window.location.href = `/dashboard/deals/${selectedEmail.deal_id}`; }} style={{
                   width: "100%", marginTop: 12, padding: "8px",
@@ -1145,7 +1300,7 @@ export function EmailPage() {
               </div>
             )}
 
-            {sidePanel === 'deal' && (!selectedEmail || !selectedEmail.deal_name) && (
+            {sidePanel === 'deal' && (!selectedEmail || !selectedEmail.deal_id) && (
               <div style={{ textAlign: "center" as const, padding: "40px 20px" }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>{"\uD83D\uDD17"}</div>
                 <div style={{ fontSize: 12, color: T.text.secondary, marginBottom: 12 }}>No deal linked</div>
@@ -1159,7 +1314,59 @@ export function EmailPage() {
 
             {sidePanel === 'team' && (
               <div>
-                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
+                {selectedEmail && teamMembers.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
+                      Deal Team
+                    </div>
+                    {teamMembers.map((member: any) => (
+                      <div key={member.id} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                        background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 6,
+                      }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 6, background: `${T.accent.blue}15`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue,
+                        }}>
+                          {(member.name || '?').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{
+                              fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                              color: member.status === 'active' ? T.accent.green : T.accent.amber,
+                              background: member.status === 'active' ? `${T.accent.green}15` : `${T.accent.amber}15`,
+                            }}>{member.role}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{member.name}</div>
+                          {member.email && <div style={{ fontSize: 10, color: T.text.tertiary }}>{member.email}</div>}
+                          {member.company && <div style={{ fontSize: 10, color: T.text.tertiary }}>{member.company}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {selectedEmail && teamActivity.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 8, marginTop: 16, textTransform: "uppercase" as const }}>
+                      Recent Activity
+                    </div>
+                    {teamActivity.map((event: any, i: number) => (
+                      <div key={i} style={{
+                        padding: "6px 10px", borderLeft: `2px solid ${T.accent.blue}40`, marginBottom: 4,
+                      }}>
+                        <div style={{ fontSize: 10, color: T.text.secondary }}>{event.actor_name} {event.action}</div>
+                        <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
+                          {event.created_at ? formatDate(event.created_at) : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, marginTop: teamMembers.length > 0 ? 16 : 0, textTransform: "uppercase" as const }}>
                   Participants
                 </div>
                 {selectedEmail ? (

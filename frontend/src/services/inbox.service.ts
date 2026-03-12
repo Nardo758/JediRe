@@ -187,4 +187,27 @@ export const inboxService = {
     const response = await apiClient.get('/api/v1/deals?limit=50');
     return response.data;
   },
+
+  async getDealDetails(dealId: string): Promise<{ success: boolean; data: any }> {
+    const response = await apiClient.get(`/api/v1/deals/${dealId}`);
+    return response.data;
+  },
+
+  async getDealTeamMembers(dealId: string): Promise<any[]> {
+    const response = await apiClient.get(`/api/v1/team-management/deals/${dealId}/team/members`);
+    return response.data;
+  },
+
+  async getDealTeamActivity(dealId: string): Promise<any[]> {
+    const response = await apiClient.get(`/api/v1/team-management/deals/${dealId}/team/activity`);
+    return response.data;
+  },
+
+  async quickTaskFromEmail(emailId: number, emailBody: string, dealId?: string): Promise<any> {
+    const response = await apiClient.post(`/api/v1/emails/${emailId}/quick-task`, {
+      emailBody,
+      dealId,
+    });
+    return response.data;
+  },
 };

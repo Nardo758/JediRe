@@ -452,13 +452,15 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
 
     let linkedTasks: any[] = [];
     try {
-      const taskResult = await pool.query(
-        `SELECT id, title, status, priority, due_date, created_at FROM deal_tasks WHERE deal_id IN (
-          SELECT deal_id FROM emails WHERE id = $1 AND user_id = $2 AND deal_id IS NOT NULL
-        ) ORDER BY created_at DESC LIMIT 10`,
-        [emailId, userId]
-      );
-      linkedTasks = taskResult.rows;
+      const emailRow = await pool.query('SELECT deal_id FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
+      const dealId = emailRow.rows[0]?.deal_id;
+      if (dealId) {
+        const taskResult = await pool.query(
+          `SELECT id, title, status, priority, due_date, created_at FROM deal_tasks WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 10`,
+          [dealId]
+        );
+        linkedTasks = taskResult.rows;
+      }
     } catch (e: any) {
       if (e.code !== '42P01') console.error('Error fetching linked tasks:', e);
     }
