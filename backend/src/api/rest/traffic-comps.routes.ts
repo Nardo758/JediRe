@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
 import { CompTrafficService } from '../../services/comp-traffic.service';
 import { logger } from '../../utils/logger';
@@ -182,7 +181,7 @@ router.get('/:dealId/proxy-candidates', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/:dealId/deals-with-data', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:dealId/deals-with-data', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const deals = await compTrafficService.getDealsWithTrafficHistory(dealId);
@@ -193,7 +192,7 @@ router.get('/:dealId/deals-with-data', requireAuth, async (req: AuthenticatedReq
   }
 });
 
-router.get('/:dealId/selections', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:dealId/selections', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const selections = await compTrafficService.getSelectedCompDeals(dealId);
@@ -204,7 +203,7 @@ router.get('/:dealId/selections', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-router.put('/:dealId/selections', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:dealId/selections', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const { selections } = req.body as { selections: Array<{ comp_deal_id: string; comp_deal_name?: string }> };
