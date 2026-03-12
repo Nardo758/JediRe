@@ -408,7 +408,7 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
       const linkedNewsId = emailRaw.rows[0]?.raw_data?.linkedNewsItemId;
       if (linkedNewsId) {
         const newsResult = await pool.query(
-          `SELECT id, title, summary, category, impact_score, sentiment_score, published_date FROM news_items WHERE id = $1`,
+          `SELECT id, title, summary, category, impact_score, sentiment_score, credibility_score, impact_radius, event_type, published_date FROM news_items WHERE id = $1`,
           [linkedNewsId]
         );
         newsExtraction = newsResult.rows[0] || null;
@@ -454,12 +454,30 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
     try {
       const emailRow = await pool.query('SELECT deal_id FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
       const dealId = emailRow.rows[0]?.deal_id;
-      if (dealId) {
-        const taskResult = await pool.query(
-          `SELECT id, title, status, priority, due_date, created_at FROM deal_tasks WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 10`,
-          [dealId]
+
+      try {
+        const emailTaskResult = await pool.query(
+          `SELECT id, title, status, priority, due_date, created_at, 'email' as link_source FROM tasks WHERE email_id = $1 AND user_id = $2 ORDER BY created_at DESC LIMIT 10`,
+          [emailId, userId]
         );
-        linkedTasks = taskResult.rows;
+        linkedTasks = emailTaskResult.rows;
+      } catch (e: any) {
+        if (e.code !== '42P01' && e.code !== '42703') {}
+      }
+
+      if (dealId) {
+        try {
+          const dealTaskResult = await pool.query(
+            `SELECT id, title, status, priority, due_date, created_at, 'deal' as link_source FROM deal_tasks WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 10`,
+            [dealId]
+          );
+          const existingIds = new Set(linkedTasks.map(t => t.id));
+          for (const task of dealTaskResult.rows) {
+            if (!existingIds.has(task.id)) linkedTasks.push(task);
+          }
+        } catch (e: any) {
+          if (e.code !== '42P01') {}
+        }
       }
     } catch (e: any) {
       if (e.code !== '42P01') console.error('Error fetching linked tasks:', e);

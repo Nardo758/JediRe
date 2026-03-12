@@ -1254,37 +1254,6 @@ export function EmailPage() {
                     </div>
                   </div>
                 ))}
-                {dealLinkOpen && (
-                  <div style={{
-                    position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0,
-                    background: T.bg.secondary, zIndex: 10, padding: 16, overflowY: "auto" as const,
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text.primary }}>Link to Deal</div>
-                      <button onClick={() => setDealLinkOpen(false)} style={{
-                        background: "transparent", border: "none", color: T.text.tertiary, cursor: "pointer", fontSize: 14,
-                      }}>{"\u2715"}</button>
-                    </div>
-                    {dealsLoading ? (
-                      <div style={{ textAlign: "center" as const, padding: 20, fontSize: 10, color: T.text.tertiary }}>Loading deals...</div>
-                    ) : dealsList.length === 0 ? (
-                      <div style={{ textAlign: "center" as const, padding: 20, fontSize: 11, color: T.text.tertiary }}>No deals found</div>
-                    ) : (
-                      dealsList.map((deal: any) => (
-                        <div key={deal.id} onClick={() => handleSelectDeal(deal.id)} style={{
-                          padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
-                          borderRadius: 6, marginBottom: 4, cursor: "pointer",
-                        }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent.blue; }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = T.border.subtle; }}
-                        >
-                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{deal.name}</div>
-                          <div style={{ fontSize: 10, color: T.text.tertiary }}>{deal.stage || deal.status || ''}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
               </div>
             )}
 
@@ -1521,6 +1490,38 @@ export function EmailPage() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {dealLinkOpen && (
+              <div style={{
+                position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0,
+                background: T.bg.secondary, zIndex: 10, padding: 16, overflowY: "auto" as const,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text.primary }}>Link to Deal</div>
+                  <button onClick={() => setDealLinkOpen(false)} style={{
+                    background: "transparent", border: "none", color: T.text.tertiary, cursor: "pointer", fontSize: 14,
+                  }}>{"\u2715"}</button>
+                </div>
+                {dealsLoading ? (
+                  <div style={{ textAlign: "center" as const, padding: 20, fontSize: 10, color: T.text.tertiary }}>Loading deals...</div>
+                ) : dealsList.length === 0 ? (
+                  <div style={{ textAlign: "center" as const, padding: 20, fontSize: 11, color: T.text.tertiary }}>No deals found</div>
+                ) : (
+                  dealsList.map((deal: any) => (
+                    <div key={deal.id} onClick={() => handleSelectDeal(deal.id)} style={{
+                      padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 6, marginBottom: 4, cursor: "pointer",
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent.blue; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = T.border.subtle; }}
+                    >
+                      <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{deal.name}</div>
+                      <div style={{ fontSize: 10, color: T.text.tertiary }}>{deal.stage || deal.status || ''}</div>
+                    </div>
+                  ))
                 )}
               </div>
             )}

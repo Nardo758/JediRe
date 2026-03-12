@@ -278,7 +278,7 @@ router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, 
       success: true,
       data: {
         task: taskData.data,
-        detectedItems: actionItems,
+        detectedItem: firstItem,
       },
       message: 'Quick task created successfully',
     });
