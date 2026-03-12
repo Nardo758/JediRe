@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
 
 const T = {
@@ -174,6 +174,7 @@ function DealStageIndicator({ stage, name }: { stage: string; name: string }) {
 
 export function EmailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [emails, setEmails] = useState<Email[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -645,6 +646,16 @@ export function EmailPage() {
             <kbd style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono, marginLeft: "auto", padding: "1px 5px", background: T.bg.primary, borderRadius: 3, border: `1px solid ${T.border.subtle}` }}>{"\u2318"}K</kbd>
           </div>
 
+          <button
+            onClick={() => navigate('/settings/email')}
+            style={{
+              background: "transparent", border: `1px solid ${T.border.subtle}`,
+              borderRadius: 6, color: T.text.secondary,
+              fontSize: 11, fontFamily: FONTS.sans, fontWeight: 500,
+              padding: "6px 12px", cursor: "pointer",
+            }}>
+            Accounts
+          </button>
           <button
             onClick={() => { setComposeMode('reply'); setReplyTo(''); setReplyBody(''); setReplyCc(''); setSelectedEmailId(null); }}
             style={{

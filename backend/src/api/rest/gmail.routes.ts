@@ -319,13 +319,13 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
     });
 
     const baseUrl = process.env.CORS_ORIGIN || getRequestOrigin(req);
-    const redirectUrl = `${baseUrl}/dashboard/email?connected=gmail&accountId=${accountId}`;
+    const redirectUrl = `${baseUrl}/dashboard/comms?connected=gmail&accountId=${accountId}`;
     res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Gmail callback error:', error);
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
     const baseUrl = process.env.CORS_ORIGIN || getRequestOrigin(req);
-    const redirectUrl = `${baseUrl}/dashboard/email?error=auth_failed&detail=${encodeURIComponent(errorMsg)}`;
+    const redirectUrl = `${baseUrl}/dashboard/comms?error=auth_failed&detail=${encodeURIComponent(errorMsg)}`;
     res.redirect(redirectUrl);
   }
 });
