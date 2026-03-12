@@ -21,6 +21,7 @@ import trafficPredictionEngine from '../../services/trafficPredictionEngine';
 import { getDotTemporalProfilesService } from '../../services/dot-temporal-profiles.service';
 import { TrafficDataSourcesService } from '../../services/traffic-data-sources.service';
 import { trendPatternDetector } from '../../services/trend-pattern-detector';
+import { visibilityScoringService } from '../../services/visibility-scoring.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -649,7 +650,7 @@ const weeklyUpload = multer({
       const { dealId } = req.params;
 
       const dealResult = await pool.query(
-        `SELECT d.trade_area_id FROM deals d WHERE d.id = $1`,
+        `SELECT d.trade_area_id, d.city, d.state_code, d.lot_size_sqft, d.development_type, d.address, d.property_address FROM deals d WHERE d.id = $1`,
         [dealId]
       );
 
@@ -692,6 +693,55 @@ const weeklyUpload = multer({
       }
 
       const signals = await trafficPredictionEngine.loadDataSourceSignals(propertyId);
+
+      if (!signals.visibility) {
+        try {
+          const lotSqft = deal.lot_size_sqft ? Number(deal.lot_size_sqft) : 20000;
+          const frontageEst = Math.round(Math.sqrt(lotSqft) * 0.7);
+          const devType = (deal.development_type || '').toLowerCase();
+          const storiesEst = devType.includes('high') ? 10 : devType.includes('mid') ? 5 : 3;
+          const autoInput = {
+            property_id: propertyId,
+            assessment_method: 'auto_estimated',
+            assessed_by: 'system',
+            frontage_feet: frontageEst,
+            setback_feet: 15,
+            building_stories: storiesEst,
+            sightline_north_feet: 200,
+            sightline_south_feet: 200,
+            sightline_east_feet: 200,
+            sightline_west_feet: 200,
+            obstruction_trees_pct: 10,
+            obstruction_buildings_pct: 5,
+            has_signage: true,
+            signage_is_lit: false,
+            signage_size_sq_ft: 40,
+            signage_visible_from_feet: 200,
+            entrance_type: 'main',
+            entrance_count: 1,
+            glass_to_wall_ratio: 0.2,
+            facade_condition: 'good',
+          };
+          const estimated = await visibilityScoringService.assessProperty(autoInput);
+          signals.visibility = {
+            overall_score: estimated.overall_visibility_score,
+            capture_rate: estimated.capture_rate,
+            tier: estimated.visibility_tier,
+            is_estimated: true,
+            component_scores: {
+              positional: estimated.positional_score,
+              sightline: estimated.sightline_score,
+              setback: estimated.setback_score,
+              signage: estimated.signage_score,
+              transparency: estimated.transparency_score,
+              entrance: estimated.entrance_score,
+              obstruction_penalty: estimated.obstruction_penalty,
+            },
+          } as any;
+        } catch (visErr: any) {
+          logger.debug('[LeasingTraffic] Auto-visibility estimate skipped', { error: visErr.message });
+        }
+      }
 
       let tradeAreaName: string | undefined;
       if (deal.trade_area_id) {

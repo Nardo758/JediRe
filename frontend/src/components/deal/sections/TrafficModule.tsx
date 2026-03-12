@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   TrendingUp, Upload, ArrowUpRight, ArrowDownRight,
   ChevronDown, ChevronRight, Edit3, Save, X, Building2,
   Users, Target, Activity, BarChart3, Globe, Footprints,
   Minus, Database, AlertCircle, CheckCircle2, Eye, Car,
-  Layers, SlidersHorizontal, Gauge,
+  Layers, SlidersHorizontal, Gauge, ExternalLink,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '@/contexts/DealModuleContext';
@@ -12,6 +12,10 @@ import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
 import TrafficPredictionsTab from './traffic/TrafficPredictionsTab';
+
+const TradeAreaDefinitionPanel = lazy(() =>
+  import('../../trade-area/TradeAreaDefinitionPanel').then(m => ({ default: m.TradeAreaDefinitionPanel }))
+);
 
 interface TrafficModuleProps {
   deal?: any;
@@ -267,8 +271,27 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const [editing, setEditing] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, Record<string, number>>>({});
   const [showAdjustments, setShowAdjustments] = useState(true);
+  const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const dealLatLng = (() => {
+    const boundary = deal?.boundary;
+    if (!boundary?.coordinates) return { lat: 33.749, lng: -84.388 };
+    try {
+      const coords = boundary.type === 'Polygon'
+        ? boundary.coordinates[0]
+        : boundary.type === 'Point'
+        ? [boundary.coordinates]
+        : boundary.coordinates[0]?.[0] ? boundary.coordinates[0] : [boundary.coordinates];
+      if (!coords?.length) return { lat: 33.749, lng: -84.388 };
+      const lngSum = coords.reduce((s: number, c: number[]) => s + c[0], 0);
+      const latSum = coords.reduce((s: number, c: number[]) => s + c[1], 0);
+      return { lat: latSum / coords.length, lng: lngSum / coords.length };
+    } catch {
+      return { lat: 33.749, lng: -84.388 };
+    }
+  })();
 
   const loadData = useCallback(async () => {
     if (!resolvedDealId) return;
@@ -876,12 +899,20 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               Upload weekly operating reports to build submarket-specific calibration data.
               The more deals that contribute data, the better the predictions become.
             </p>
-            <button
-              onClick={triggerUpload}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm hover:bg-stone-800 transition-colors"
-            >
-              <Upload size={14} /> Upload Weekly Report
-            </button>
+            <div className="flex items-center gap-3 justify-center">
+              <button
+                onClick={triggerUpload}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm hover:bg-stone-800 transition-colors"
+              >
+                <Upload size={14} /> Upload Weekly Report
+              </button>
+              <a
+                href="/data-library"
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-stone-300 text-stone-700 rounded-lg text-sm hover:bg-stone-50 transition-colors"
+              >
+                <Database size={14} /> Open Data Library <ExternalLink size={11} />
+              </a>
+            </div>
           </div>
         )}
       </div>
@@ -962,12 +993,44 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
             </>
           )}
-          {activeTab === 'data_sources' && <TrafficDataSourcesTab dealId={resolvedDealId} onNavigateToVisibility={() => setActiveTab('visibility')} />}
+          {activeTab === 'data_sources' && (
+            <TrafficDataSourcesTab
+              dealId={resolvedDealId}
+              onNavigateToVisibility={() => setActiveTab('visibility')}
+              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+            />
+          )}
           {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} />}
           {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
           {activeTab === 'adjustments' && renderAdjustmentsTab()}
           {activeTab === 'calibration' && renderCalibrationTab()}
         </>
+      )}
+
+      {showTradeAreaPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-200">
+              <h2 className="text-lg font-bold text-stone-900">Define Trade Area</h2>
+              <button
+                onClick={() => setShowTradeAreaPanel(false)}
+                className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6">
+              <Suspense fallback={<div className="py-12 text-center text-stone-400 text-sm">Loading map...</div>}>
+                <TradeAreaDefinitionPanel
+                  propertyLat={dealLatLng.lat}
+                  propertyLng={dealLatLng.lng}
+                  onSave={() => setShowTradeAreaPanel(false)}
+                  onSkip={() => setShowTradeAreaPanel(false)}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

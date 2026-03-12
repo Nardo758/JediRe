@@ -24,6 +24,7 @@ export interface DataSourceSignals {
     overall_score: number;
     capture_rate: number;
     tier: string;
+    is_estimated?: boolean;
     component_scores?: Record<string, number>;
   };
   traffic_context?: {

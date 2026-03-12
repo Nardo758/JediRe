@@ -136,12 +136,82 @@ export class DataLibraryService {
         `UPDATE data_library_files SET parsing_status = 'complete', parsed_data = $1 WHERE id = $2`,
         [JSON.stringify(parsedData), fileId]
       );
+
+      this.extractAndStoreCalibration(fileId, parsedData).catch(() => {});
     } catch (err: any) {
       await this.pool.query(
         `UPDATE data_library_files SET parsing_status = 'error', parsing_errors = $1 WHERE id = $2`,
         [err.message, fileId]
       );
     }
+  }
+
+  private async extractAndStoreCalibration(fileId: number, parsedData: any): Promise<void> {
+    if (!parsedData?.preview || parsedData.preview.length < 2) return;
+
+    const fileRow = await this.pool.query(
+      `SELECT city, zip_code, property_type FROM data_library_files WHERE id = $1`,
+      [fileId]
+    ).then(r => r.rows[0]).catch(() => null);
+
+    if (!fileRow) return;
+
+    const city = fileRow.city || '';
+    const state = '';
+    if (!city) return;
+
+    const rows: Record<string, string>[] = parsedData.preview;
+    const headers = parsedData.headers as string[];
+
+    const findCol = (keywords: string[]) =>
+      headers.find(h => keywords.some(k => h.toLowerCase().includes(k))) || null;
+
+    const trafficCol = findCol(['traffic', 'walk', 'foot', 'visits', 'prospects']);
+    const tourCol = findCol(['tour', 'showing']);
+    const appCol = findCol(['app', 'application', 'applicant']);
+    const leaseCol = findCol(['lease', 'net lease', 'move-in', 'move_in', 'movein']);
+
+    if (!trafficCol) return;
+
+    let tourRateSum = 0, tourRateCount = 0;
+    let closingRatioSum = 0, closingRatioCount = 0;
+
+    for (const row of rows) {
+      const traffic = parseFloat(row[trafficCol] || '0');
+      if (!traffic || traffic <= 0) continue;
+
+      if (tourCol) {
+        const tours = parseFloat(row[tourCol] || '0');
+        if (tours >= 0 && tours <= traffic * 2) {
+          tourRateSum += tours / traffic;
+          tourRateCount++;
+        }
+        if (leaseCol) {
+          const leases = parseFloat(row[leaseCol] || '0');
+          if (leases >= 0 && leases <= traffic * 2) {
+            closingRatioSum += leases / traffic;
+            closingRatioCount++;
+          }
+        }
+      }
+    }
+
+    const avgTourConversion = tourRateCount >= 2 ? tourRateSum / tourRateCount : null;
+    const avgClosingRatio = closingRatioCount >= 2 ? closingRatioSum / closingRatioCount : null;
+
+    if (!avgTourConversion && !avgClosingRatio) return;
+
+    await this.pool.query(
+      `INSERT INTO traffic_submarket_calibration
+        (submarket_id, msa_id, city, state, avg_tour_conversion, avg_closing_ratio, sample_count, last_updated)
+       VALUES ('', '', $1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (submarket_id, msa_id, city, state) DO UPDATE SET
+         avg_tour_conversion = COALESCE($3, traffic_submarket_calibration.avg_tour_conversion),
+         avg_closing_ratio = COALESCE($4, traffic_submarket_calibration.avg_closing_ratio),
+         sample_count = traffic_submarket_calibration.sample_count + 1,
+         last_updated = NOW()`,
+      [city, state, avgTourConversion, avgClosingRatio, 1]
+    );
   }
 
   private async parseCSV(filePath: string): Promise<any> {

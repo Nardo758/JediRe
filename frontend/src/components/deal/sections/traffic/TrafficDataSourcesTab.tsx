@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Car, Globe, BarChart3, Eye, AlertCircle, CheckCircle2,
   ArrowUpRight, ArrowDownRight, Minus, Link2, Search,
-  Layers, Clock, TrendingUp,
+  Layers, Clock, TrendingUp, MapPin,
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
@@ -11,6 +11,7 @@ interface DataSourceSignals {
     overall_score: number;
     capture_rate: number;
     tier: string;
+    is_estimated?: boolean;
     component_scores?: Record<string, number>;
   };
   traffic_context?: {
@@ -81,6 +82,7 @@ interface DataSourceSignals {
 interface TrafficDataSourcesTabProps {
   dealId: string;
   onNavigateToVisibility?: () => void;
+  onDefineTradeArea?: () => void;
 }
 
 function StatusBadge({ status, label }: { status: 'connected' | 'proxy' | 'not_connected'; label: string }) {
@@ -115,7 +117,7 @@ function MiniBar({ label, value, max = 100 }: { label: string; value: number; ma
   );
 }
 
-export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }: TrafficDataSourcesTabProps) {
+export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility, onDefineTradeArea }: TrafficDataSourcesTabProps) {
   const [data, setData] = useState<{
     data_sources: DataSourceSignals;
     trade_area_id?: string;
@@ -182,6 +184,14 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
               Define a trade area to unlock full traffic intelligence — comp proxy data, market context, and visibility scoring all depend on it.
             </p>
           </div>
+          {onDefineTradeArea && (
+            <button
+              onClick={onDefineTradeArea}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0 font-medium"
+            >
+              <MapPin size={12} /> Define Trade Area
+            </button>
+          )}
         </div>
       )}
 
@@ -536,13 +546,23 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility }
               <span className="font-semibold text-stone-900 text-sm">Location Visibility</span>
             </div>
             {ds?.visibility ? (
-              <StatusBadge status="connected" label="Assessed" />
+              ds.visibility.is_estimated
+                ? <StatusBadge status="proxy" label="Estimated" />
+                : <StatusBadge status="connected" label="Assessed" />
             ) : (
               <StatusBadge status="not_connected" label="Not Assessed" />
             )}
           </div>
           {ds?.visibility ? (
             <div className="space-y-3">
+              {ds.visibility.is_estimated && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                  <AlertCircle size={12} className="text-amber-600 flex-shrink-0" />
+                  <p className="text-[10px] text-amber-700">
+                    Estimated from property data. <button onClick={onNavigateToVisibility} className="underline font-medium">Complete a full assessment</button> for a precise score.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <div className="text-3xl font-bold text-stone-900">{ds.visibility.overall_score}</div>
                 <div>
