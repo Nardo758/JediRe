@@ -249,6 +249,10 @@ async function processPstAsync(jobId: string, uploadId: string, buffer: Buffer, 
     );
 
     job.status = 'extracting';
+    await query(
+      `UPDATE data_uploads SET status = 'extracting' WHERE id = $1`,
+      [uploadId]
+    );
     const extractionResults = await pstAiExtractionService.extractFromEmails(
       emails,
       (processed) => {
