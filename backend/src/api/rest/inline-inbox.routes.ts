@@ -387,6 +387,11 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
       return res.status(400).json({ success: false, error: 'Invalid email ID' });
     }
 
+    const emailExists = await pool.query('SELECT id FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
+    if (emailExists.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Email not found' });
+    }
+
     let propertyExtractions: any[] = [];
     try {
       const propResult = await pool.query(
