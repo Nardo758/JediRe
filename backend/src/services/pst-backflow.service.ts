@@ -71,7 +71,9 @@ export async function backflowAllPstForUser(userId: string): Promise<{ inserted:
 
 export async function runStartupPstBackflow(): Promise<void> {
   const usersWithPst = await query(
-    `SELECT DISTINCT user_id FROM data_uploads WHERE file_type = 'pst'`
+    `SELECT DISTINCT du.user_id FROM data_uploads du
+     JOIN users u ON u.id = du.user_id
+     WHERE du.file_type = 'pst'`
   );
 
   if (usersWithPst.rows.length === 0) {
@@ -81,8 +83,12 @@ export async function runStartupPstBackflow(): Promise<void> {
 
   let totalInserted = 0;
   for (const row of usersWithPst.rows) {
-    const result = await backflowAllPstForUser(row.user_id);
-    totalInserted += result.inserted;
+    try {
+      const result = await backflowAllPstForUser(row.user_id);
+      totalInserted += result.inserted;
+    } catch (err) {
+      logger.warn(`PST backflow skipped for user ${row.user_id}: ${err}`);
+    }
   }
 
   logger.info(`PST startup backflow complete: ${totalInserted} new emails backflowed for ${usersWithPst.rows.length} user(s)`);

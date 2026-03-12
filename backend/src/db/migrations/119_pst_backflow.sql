@@ -6,6 +6,7 @@
 INSERT INTO email_accounts (user_id, email_address, provider, is_primary, sync_enabled)
 SELECT DISTINCT du.user_id, 'pst-import@jedire.com', 'pst_import', false, false
 FROM data_uploads du
+JOIN users u ON u.id = du.user_id
 WHERE du.file_type = 'pst'
   AND NOT EXISTS (
     SELECT 1 FROM email_accounts ea WHERE ea.provider = 'pst_import' AND ea.user_id = du.user_id

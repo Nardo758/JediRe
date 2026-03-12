@@ -49,6 +49,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
               e.body_preview, e.body_text, e.is_read, e.is_flagged, e.is_archived,
               e.has_attachments, e.deal_id, e.property_id, e.ai_processed,
               e.received_at, e.sent_at, e.created_at,
+              e.is_flagged as has_signal,
               d.name as deal_name,
               ea.provider as source_provider,
               (SELECT COUNT(*) FROM email_attachments att WHERE att.email_id = e.id) as attachment_count
@@ -79,7 +80,10 @@ router.get('/pst-imports', requireAuth, async (req: AuthenticatedRequest, res) =
     const offset = parseInt(req.query.offset as string) || 0;
     const search = req.query.search as string;
 
-    const whereConditions = ['e.user_id = $1', "e.external_id LIKE 'pst-%'"];
+    const whereConditions = [
+      "(du.user_id = $1 OR e.user_id = $1)",
+      "du.file_type = 'pst'"
+    ];
     const params: any[] = [userId];
     let paramIndex = 2;
 
@@ -93,26 +97,43 @@ router.get('/pst-imports', requireAuth, async (req: AuthenticatedRequest, res) =
     params.push(offset);
 
     const result = await pool.query(
-      `SELECT e.id, e.subject, e.from_name, e.from_address, e.body_preview,
-              e.received_at, e.is_read, e.is_flagged, e.has_attachments,
-              e.deal_id, e.created_at, e.external_id, e.to_addresses,
-              pei.has_signal, pei.upload_id,
+      `SELECT
+              e.id,
+              pei.subject,
+              CASE WHEN pei.sender LIKE '%<%' THEN TRIM(SPLIT_PART(pei.sender, '<', 1)) ELSE pei.sender END as from_name,
+              CASE
+                WHEN pei.sender LIKE '%<%>%' THEN TRIM(BOTH '<>' FROM SUBSTRING(pei.sender FROM '<([^>]+)>'))
+                WHEN pei.sender LIKE '%@%' THEN pei.sender
+                ELSE 'unknown@pst-import.local'
+              END as from_address,
+              LEFT(pei.raw_body, 500) as body_preview,
+              COALESCE(pei.email_date, pei.created_at) as received_at,
+              COALESCE(e.is_read, true) as is_read,
+              pei.has_signal as is_flagged,
+              pei.has_signal,
+              pei.has_attachments,
+              pei.created_at,
+              pei.upload_id,
+              pei.recipients as to_addresses,
               du.original_filename as source_file,
-              'pst_import' as source_provider
-       FROM emails e
-       JOIN pst_email_imports pei ON 'pst-' || pei.id::text = e.external_id
+              'pst_import' as source_provider,
+              'pst-' || pei.id::text as external_id,
+              e.deal_id
+       FROM pst_email_imports pei
        JOIN data_uploads du ON du.id = pei.upload_id
+       LEFT JOIN emails e ON e.external_id = 'pst-' || pei.id::text
        WHERE ${whereConditions.join(' AND ')}
-       ORDER BY e.received_at DESC
+       ORDER BY pei.email_date DESC NULLS LAST
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       params
     );
 
-    const countParams = params.slice(0, paramIndex - 1);
     const countResult = await pool.query(
       `SELECT COUNT(*)::int as total
-       FROM emails e
-       WHERE e.user_id = $1 AND e.external_id LIKE 'pst-%'`,
+       FROM pst_email_imports pei
+       JOIN data_uploads du ON du.id = pei.upload_id
+       LEFT JOIN emails e ON e.external_id = 'pst-' || pei.id::text
+       WHERE (du.user_id = $1 OR e.user_id = $1) AND du.file_type = 'pst'`,
       [userId]
     );
 
