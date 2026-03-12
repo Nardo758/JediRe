@@ -494,13 +494,16 @@ export class WeeklyReportParserService {
       });
     }
 
-    const lastActualDate = actualWeeks > 0 ? new Date(actuals[actualWeeks - 1].week_ending) : new Date();
+    // Projections always anchor to today — even if last actual is years in the past
+    const rawLastActual = actualWeeks > 0 ? new Date(actuals[actualWeeks - 1].week_ending) : new Date();
+    const projectionStartDate = new Date(Math.max(rawLastActual.getTime(), Date.now()));
     for (let i = 0; i < (totalWeeks - actualWeeks); i++) {
       const projWeek = i + 1;
       const projYear = projWeek / 52;
       const weekOfYear = (actualWeeks + i) % 52;
 
-      const growthMultiplier = 1 + (trendGrowth * projWeek);
+      // Clamp growth multiplier to [0.1, ∞) so baseTraffic never goes negative
+      const growthMultiplier = Math.max(0.1, 1 + (trendGrowth * projWeek));
       const seasonal = seasonalFactors[weekOfYear] || 1.0;
 
       const yearDecay = Math.max(0.5, 1 - projYear * 0.02);
@@ -510,29 +513,29 @@ export class WeeklyReportParserService {
 
       const combined = periodDemand * periodSupply * periodDigital * seasonal;
 
-      const baseTraffic = Math.round(avgTraffic * growthMultiplier);
-      const baseTours = Math.round(avgTours * growthMultiplier);
-      const baseWebsite = Math.round(avgWebsite * growthMultiplier);
+      const baseTraffic = Math.max(0, Math.round(avgTraffic * growthMultiplier));
+      const baseTours = Math.max(0, Math.round(avgTours * growthMultiplier));
+      const baseWebsite = Math.max(0, Math.round(avgWebsite * growthMultiplier));
       const baseWalkIn = baseTours;
-      const baseApps = Math.round(avgApps * growthMultiplier);
-      const baseCancellations = Math.round(avgCancellations * growthMultiplier * 0.95);
-      const baseDenials = Math.round((avgDenials || 0) * growthMultiplier);
-      const baseNetLeases = Math.round(avgNetLeases * growthMultiplier);
+      const baseApps = Math.max(0, Math.round(avgApps * growthMultiplier));
+      const baseCancellations = Math.max(0, Math.round(avgCancellations * growthMultiplier * 0.95));
+      const baseDenials = Math.max(0, Math.round((avgDenials || 0) * growthMultiplier));
+      const baseNetLeases = Math.max(0, Math.round(avgNetLeases * growthMultiplier));
       const baseClosingRatio = avgClosingRatio;
       const baseOccPct = Math.min(0.99, avgOccPct + projYear * 0.002);
       const baseLeasedPct = Math.min(0.99, avgLeasedPct + projYear * 0.002);
 
-      const adjTraffic = Math.round(baseTraffic * combined);
-      const adjTours = Math.round(baseTours * combined);
-      const adjWebsite = Math.round(baseWebsite * combined);
+      const adjTraffic = Math.max(0, Math.round(baseTraffic * combined));
+      const adjTours = Math.max(0, Math.round(baseTours * combined));
+      const adjWebsite = Math.max(0, Math.round(baseWebsite * combined));
       const adjWalkIn = adjTours;
-      const adjApps = Math.round(baseApps * combined);
-      const adjNetLeases = Math.round(baseNetLeases * combined);
-      const adjClosingRatio = Math.min(0.5, baseClosingRatio * (1 + (combined - 1) * 0.3));
-      const adjOccPct = Math.min(0.99, baseOccPct * (1 + (combined - 1) * 0.1));
-      const adjLeasedPct = Math.min(0.99, baseLeasedPct * (1 + (combined - 1) * 0.1));
+      const adjApps = Math.max(0, Math.round(baseApps * combined));
+      const adjNetLeases = Math.max(0, Math.round(baseNetLeases * combined));
+      const adjClosingRatio = Math.min(0.5, Math.max(0, baseClosingRatio * (1 + (combined - 1) * 0.3)));
+      const adjOccPct = Math.min(0.99, Math.max(0, baseOccPct * (1 + (combined - 1) * 0.1)));
+      const adjLeasedPct = Math.min(0.99, Math.max(0, baseLeasedPct * (1 + (combined - 1) * 0.1)));
 
-      const projDate = new Date(lastActualDate);
+      const projDate = new Date(projectionStartDate);
       projDate.setDate(projDate.getDate() + projWeek * 7);
 
       weeklyPeriods.push({

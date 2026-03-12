@@ -359,7 +359,7 @@ export class TrafficToProFormaService {
       const tourRate = learnedRates?.tour_rate || 0.56;
       const appRate = learnedRates?.app_rate || 0.44;
       const leaseRate = learnedRates?.lease_rate || 0.75;
-      const baseTraffic = 12 + (year <= 3 ? year * 0.3 : -year * 0.2);
+      const baseTraffic = 12 + year * 0.1;
       const tours = baseTraffic * tourRate;
       const apps = tours * appRate;
       const leases = apps * leaseRate;
