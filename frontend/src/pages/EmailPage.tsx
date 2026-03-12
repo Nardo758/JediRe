@@ -1301,6 +1301,12 @@ export function EmailPage() {
                         {dealDetails.project_type && (
                           <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary }}>{dealDetails.project_type}</span>
                         )}
+                        {(dealDetails.pipeline_stage || dealDetails.pipelineStage || dealDetails.stage) && (
+                          <span style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
+                            color: T.accent.purple, background: `${T.accent.purple}15`,
+                          }}>{dealDetails.pipeline_stage || dealDetails.pipelineStage || dealDetails.stage}</span>
+                        )}
                       </div>
                       {dealDetails.budget && (
                         <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: FONTS.mono }}>

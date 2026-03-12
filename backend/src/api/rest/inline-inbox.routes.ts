@@ -470,8 +470,12 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
       if (dealId) {
         try {
           const dealTaskResult = await pool.query(
-            `SELECT id, title, status, priority, due_date, created_at, 'deal' as link_source FROM deal_tasks WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 10`,
-            [dealId]
+            `SELECT dt.id, dt.title, dt.status, dt.priority, dt.due_date, dt.created_at, 'deal' as link_source
+             FROM deal_tasks dt
+             JOIN deals d ON d.id = dt.deal_id
+             WHERE dt.deal_id = $1 AND d.user_id = $2
+             ORDER BY dt.created_at DESC LIMIT 10`,
+            [dealId, userId]
           );
           const existingIds = new Set(linkedTasks.map(t => t.id));
           for (const task of dealTaskResult.rows) {
@@ -538,6 +542,13 @@ router.patch('/:id', requireAuth, validate(updateEmailSchema), async (req: Authe
     const setClauses: string[] = [];
     const params: any[] = [];
     let paramIndex = 1;
+
+    if (updates.deal_id) {
+      const dealCheck = await pool.query('SELECT id FROM deals WHERE id = $1 AND user_id = $2', [updates.deal_id, userId]);
+      if (dealCheck.rows.length === 0) {
+        return res.status(403).json({ success: false, error: 'Deal not found or not owned by user' });
+      }
+    }
 
     for (const [key, value] of Object.entries(updates)) {
       if (['is_read', 'is_flagged', 'is_archived', 'deal_id'].includes(key)) {
