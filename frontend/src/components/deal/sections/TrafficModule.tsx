@@ -915,11 +915,19 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 );
               })}
             </div>
-            {calibration.lastUpdated && (
-              <div className="text-[10px] text-stone-400 mt-2">
-                Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
-              </div>
-            )}
+            <div className="flex items-center justify-between mt-3">
+              {calibration.lastUpdated && (
+                <div className="text-[10px] text-stone-400">
+                  Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
+                </div>
+              )}
+              <a
+                href="/data-library"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 text-stone-600 rounded-lg text-xs hover:bg-stone-50 transition-colors"
+              >
+                <Database size={12} /> Data Library <ExternalLink size={10} />
+              </a>
+            </div>
           </div>
         ) : (
           <div className="text-center py-6">

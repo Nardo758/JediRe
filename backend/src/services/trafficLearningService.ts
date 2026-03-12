@@ -357,13 +357,14 @@ export class TrafficLearningService {
         if (r.rows.length > 0) calRow = r.rows[0];
       }
 
-      if (!calRow && city && state_code) {
+      if (!calRow && city) {
+        const stateValues = state_code ? [state_code, ''] : [''];
         const r = await pool.query(
           `SELECT avg_tour_conversion, avg_closing_ratio, sample_count
            FROM traffic_submarket_calibration
-           WHERE city = $1 AND state = $2 AND sample_count >= 1
+           WHERE LOWER(city) = LOWER($1) AND state = ANY($2) AND sample_count >= 1
            ORDER BY sample_count DESC LIMIT 1`,
-          [city, state_code]
+          [city, stateValues]
         );
         if (r.rows.length > 0) calRow = r.rows[0];
       }

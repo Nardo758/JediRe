@@ -183,10 +183,11 @@ class TrafficCalibrationService {
         if (result.rows.length > 0) cal = result.rows[0];
       }
 
-      if (!cal && city && state) {
+      if (!cal && city) {
+        const stateValues = state ? [state, ''] : [''];
         const result = await pool.query(
-          `SELECT * FROM traffic_submarket_calibration WHERE city = $1 AND state = $2 ORDER BY sample_count DESC LIMIT 1`,
-          [city, state]
+          `SELECT * FROM traffic_submarket_calibration WHERE LOWER(city) = LOWER($1) AND state = ANY($2) ORDER BY sample_count DESC LIMIT 1`,
+          [city, stateValues]
         );
         if (result.rows.length > 0) cal = result.rows[0];
       }

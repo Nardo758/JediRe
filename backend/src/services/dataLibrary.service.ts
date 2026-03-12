@@ -174,25 +174,30 @@ export class DataLibraryService {
     if (!trafficCol) return;
 
     let tourRateSum = 0, tourRateCount = 0;
+    let appRateSum = 0, appRateCount = 0;
     let closingRatioSum = 0, closingRatioCount = 0;
 
     for (const row of rows) {
       const traffic = parseFloat(row[trafficCol] || '0');
       if (!traffic || traffic <= 0) continue;
 
-      if (tourCol) {
-        const tours = parseFloat(row[tourCol] || '0');
-        if (tours >= 0 && tours <= traffic * 2) {
-          tourRateSum += tours / traffic;
-          tourRateCount++;
-        }
-        if (leaseCol) {
-          const leases = parseFloat(row[leaseCol] || '0');
-          if (leases >= 0 && leases <= traffic * 2) {
-            closingRatioSum += leases / traffic;
-            closingRatioCount++;
-          }
-        }
+      const tours = tourCol ? parseFloat(row[tourCol] || '0') : 0;
+      const apps = appCol ? parseFloat(row[appCol] || '0') : 0;
+      const leases = leaseCol ? parseFloat(row[leaseCol] || '0') : 0;
+
+      if (tourCol && tours >= 0 && tours <= traffic * 2) {
+        tourRateSum += tours / traffic;
+        tourRateCount++;
+      }
+
+      if (appCol && tourCol && tours > 0 && apps >= 0 && apps <= tours * 2) {
+        appRateSum += apps / tours;
+        appRateCount++;
+      }
+
+      if (leaseCol && traffic > 0 && leases >= 0 && leases <= traffic * 2) {
+        closingRatioSum += leases / traffic;
+        closingRatioCount++;
       }
     }
 
