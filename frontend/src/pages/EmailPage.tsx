@@ -198,7 +198,8 @@ export function EmailPage() {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [teamActivity, setTeamActivity] = useState<any[]>([]);
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
-  const [intelPanelOpen, setIntelPanelOpen] = useState(true);
+  const [propPanelOpen, setPropPanelOpen] = useState(true);
+  const [newsPanelOpen, setNewsPanelOpen] = useState(true);
 
   useEffect(() => {
     inboxService.getConnectedAccounts().then(res => {
@@ -922,106 +923,111 @@ export function EmailPage() {
                   {selectedDetail.body_text || selectedDetail.body_preview || selectedEmail.body_preview || 'No content available.'}
                 </div>
 
-                {emailIntel && (emailIntel.propertyExtractions.length > 0 || emailIntel.newsExtraction) && (
-                  <div style={{ marginBottom: 24 }}>
-                    <div onClick={() => setIntelPanelOpen(!intelPanelOpen)} style={{
+                {emailIntel && emailIntel.propertyExtractions.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div onClick={() => setPropPanelOpen(!propPanelOpen)} style={{
+                      fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, letterSpacing: 1,
+                      textTransform: "uppercase" as const, marginBottom: 8, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 4, userSelect: "none" as const,
+                    }}>
+                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: propPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
+                      Extracted Property ({emailIntel.propertyExtractions.length})
+                    </div>
+                    {propPanelOpen && emailIntel.propertyExtractions.map((prop: any, i: number) => (
+                      <div key={i} style={{
+                        padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                        borderRadius: 6, marginBottom: 6,
+                      }}>
+                        <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
+                          {prop.pin_address || prop.property_name || prop.extracted_data?.address || 'Property'}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, fontSize: 10, color: T.text.tertiary, marginBottom: 4 }}>
+                          {prop.extracted_data?.propertyType && <span>Type: {prop.extracted_data.propertyType}</span>}
+                          {prop.extracted_data?.units && <span>Units: {prop.extracted_data.units}</span>}
+                          {prop.extracted_data?.price && <span>Price: ${(prop.extracted_data.price / 1000000).toFixed(1)}M</span>}
+                          {prop.extracted_data?.capRate && <span>Cap: {(prop.extracted_data.capRate * 100).toFixed(1)}%</span>}
+                          {prop.preference_match_score != null && <span>Match: {Math.round(prop.preference_match_score * 100)}%</span>}
+                          {prop.extracted_data?.confidence != null && <span>Confidence: {Math.round(prop.extracted_data.confidence * 100)}%</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <span style={{
+                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 5px", borderRadius: 2,
+                            color: prop.status === 'auto-created' ? T.accent.green : prop.status === 'requires-review' ? T.accent.amber : T.text.tertiary,
+                            background: prop.status === 'auto-created' ? `${T.accent.green}15` : prop.status === 'requires-review' ? `${T.accent.amber}15` : T.bg.tertiary,
+                          }}>{prop.status || 'pending'}</span>
+                          {prop.pin_id && <span style={{ fontSize: 9, color: T.accent.blue, fontFamily: FONTS.mono }}>Pin #{prop.pin_id.slice(0, 8)}</span>}
+                          {prop.status === 'requires-review' && (
+                            <button onClick={() => {
+                              inboxService.approveExtraction(prop.id)
+                                .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
+                            }} style={{
+                              marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
+                              background: T.accent.green, border: "none", borderRadius: 3,
+                              color: "#fff", cursor: "pointer",
+                            }}>Approve</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {emailIntel && emailIntel.newsExtraction && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div onClick={() => setNewsPanelOpen(!newsPanelOpen)} style={{
                       fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, letterSpacing: 1,
                       textTransform: "uppercase" as const, marginBottom: 8, cursor: "pointer",
                       display: "flex", alignItems: "center", gap: 4, userSelect: "none" as const,
                     }}>
-                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: intelPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
-                      Intelligence Extracted
+                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: newsPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
+                      Private Intelligence
                     </div>
-                    {intelPanelOpen && emailIntel.propertyExtractions.length > 0 && (
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6 }}>Properties</div>
-                        {emailIntel.propertyExtractions.map((prop: any, i: number) => (
-                          <div key={i} style={{
-                            padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
-                            borderRadius: 6, marginBottom: 6,
-                          }}>
-                            <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
-                              {prop.pin_address || prop.property_name || prop.extracted_data?.address || 'Property'}
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, fontSize: 10, color: T.text.tertiary, marginBottom: 4 }}>
-                              {prop.extracted_data?.propertyType && <span>Type: {prop.extracted_data.propertyType}</span>}
-                              {prop.extracted_data?.units && <span>Units: {prop.extracted_data.units}</span>}
-                              {prop.extracted_data?.price && <span>Price: ${(prop.extracted_data.price / 1000000).toFixed(1)}M</span>}
-                              {prop.extracted_data?.capRate && <span>Cap: {(prop.extracted_data.capRate * 100).toFixed(1)}%</span>}
-                              {prop.preference_match_score != null && <span>Match: {Math.round(prop.preference_match_score * 100)}%</span>}
-                              {prop.extracted_data?.confidence != null && <span>Confidence: {Math.round(prop.extracted_data.confidence * 100)}%</span>}
-                            </div>
-                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                              <span style={{
-                                fontSize: 8, fontFamily: FONTS.mono, padding: "1px 5px", borderRadius: 2,
-                                color: prop.status === 'auto-created' ? T.accent.green : prop.status === 'requires-review' ? T.accent.amber : T.text.tertiary,
-                                background: prop.status === 'auto-created' ? `${T.accent.green}15` : prop.status === 'requires-review' ? `${T.accent.amber}15` : T.bg.tertiary,
-                              }}>{prop.status || 'pending'}</span>
-                              {prop.pin_id && <span style={{ fontSize: 9, color: T.accent.blue, fontFamily: FONTS.mono }}>Pin #{prop.pin_id.slice(0, 8)}</span>}
-                              {prop.status === 'requires-review' && (
-                                <button onClick={() => {
-                                  inboxService.approveExtraction(prop.id)
-                                    .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
-                                }} style={{
-                                  marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
-                                  background: T.accent.green, border: "none", borderRadius: 3,
-                                  color: "#fff", cursor: "pointer",
-                                }}>Approve</button>
-                              )}
-                            </div>
+                    {newsPanelOpen && (
+                      <div style={{
+                        padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
+                      }}>
+                        {emailIntel.newsExtraction.event_type && (
+                          <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 4, textTransform: "uppercase" as const }}>
+                            {emailIntel.newsExtraction.event_type}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                    {intelPanelOpen && emailIntel.newsExtraction && (
-                      <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6 }}>Private Intelligence</div>
-                        <div style={{
-                          padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
-                        }}>
-                          {emailIntel.newsExtraction.event_type && (
-                            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 4, textTransform: "uppercase" as const }}>
-                              {emailIntel.newsExtraction.event_type}
-                            </div>
-                          )}
-                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
-                            {emailIntel.newsExtraction.title}
-                          </div>
-                          <div style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.5, marginBottom: 6 }}>
-                            {emailIntel.newsExtraction.summary}
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, fontSize: 10, marginBottom: 6 }}>
-                            <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
-                            {emailIntel.newsExtraction.impact_score != null && (
-                              <span style={{
-                                fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                                color: emailIntel.newsExtraction.impact_score > 70 ? T.accent.red : emailIntel.newsExtraction.impact_score > 40 ? T.accent.amber : T.accent.green,
-                                background: emailIntel.newsExtraction.impact_score > 70 ? `${T.accent.red}15` : emailIntel.newsExtraction.impact_score > 40 ? `${T.accent.amber}15` : `${T.accent.green}15`,
-                              }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
-                            )}
-                            {emailIntel.newsExtraction.sentiment_score != null && (
-                              <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
-                                Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
-                              </span>
-                            )}
-                            {emailIntel.newsExtraction.credibility_score != null && (
-                              <span style={{
-                                fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                                color: emailIntel.newsExtraction.credibility_score > 70 ? T.accent.green : emailIntel.newsExtraction.credibility_score > 40 ? T.accent.amber : T.accent.red,
-                                background: emailIntel.newsExtraction.credibility_score > 70 ? `${T.accent.green}15` : emailIntel.newsExtraction.credibility_score > 40 ? `${T.accent.amber}15` : `${T.accent.red}15`,
-                              }}>Credibility: {emailIntel.newsExtraction.credibility_score}</span>
-                            )}
-                            {emailIntel.newsExtraction.impact_radius && (
-                              <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
-                                Radius: {emailIntel.newsExtraction.impact_radius}
-                              </span>
-                            )}
-                          </div>
-                          <a href="/dashboard/news" style={{
-                            fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue,
-                            textDecoration: "none", cursor: "pointer",
-                          }}>View in News Feed {"\u2192"}</a>
+                        )}
+                        <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
+                          {emailIntel.newsExtraction.title}
                         </div>
+                        <div style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.5, marginBottom: 6 }}>
+                          {emailIntel.newsExtraction.summary}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, fontSize: 10, marginBottom: 6 }}>
+                          <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
+                          {emailIntel.newsExtraction.impact_score != null && (
+                            <span style={{
+                              fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                              color: emailIntel.newsExtraction.impact_score > 70 ? T.accent.red : emailIntel.newsExtraction.impact_score > 40 ? T.accent.amber : T.accent.green,
+                              background: emailIntel.newsExtraction.impact_score > 70 ? `${T.accent.red}15` : emailIntel.newsExtraction.impact_score > 40 ? `${T.accent.amber}15` : `${T.accent.green}15`,
+                            }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
+                          )}
+                          {emailIntel.newsExtraction.sentiment_score != null && (
+                            <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                              Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
+                            </span>
+                          )}
+                          {emailIntel.newsExtraction.credibility_score != null && (
+                            <span style={{
+                              fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                              color: emailIntel.newsExtraction.credibility_score > 70 ? T.accent.green : emailIntel.newsExtraction.credibility_score > 40 ? T.accent.amber : T.accent.red,
+                              background: emailIntel.newsExtraction.credibility_score > 70 ? `${T.accent.green}15` : emailIntel.newsExtraction.credibility_score > 40 ? `${T.accent.amber}15` : `${T.accent.red}15`,
+                            }}>Credibility: {emailIntel.newsExtraction.credibility_score}</span>
+                          )}
+                          {emailIntel.newsExtraction.impact_radius && (
+                            <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                              Radius: {emailIntel.newsExtraction.impact_radius}
+                            </span>
+                          )}
+                        </div>
+                        <a href="/dashboard/news" style={{
+                          fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue,
+                          textDecoration: "none", cursor: "pointer",
+                        }}>View in News Feed {"\u2192"}</a>
                       </div>
                     )}
                   </div>
@@ -1145,7 +1151,7 @@ export function EmailPage() {
                             marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
                             background: T.accent.green, border: "none", borderRadius: 3,
                             color: "#fff", cursor: "pointer",
-                          }}>Execute</button>
+                          }}>Add Task</button>
                           <button onClick={() => handleDismissAction(item.text)} style={{
                             fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
                             background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 3,
