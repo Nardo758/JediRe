@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { inboxService, Email, EmailDetail, InboxStats } from '../services/inbox.service';
+import { inboxService, Email, EmailDetail, InboxStats, InboxFilters } from '../services/inbox.service';
 
 const T = {
   bg: {
@@ -64,13 +64,17 @@ const CLASSIFICATIONS: Record<string, ClassificationDef> = {
 };
 
 function classifyEmail(email: Email): string {
-  if (email.source_provider === 'pst_import' || email.external_id?.startsWith('pst-')) {
-    if (email.is_flagged || email.deal_id) return 'deal-event';
+  const isPst = email.source_provider === 'pst_import' || email.external_id?.startsWith('pst-');
+  if (isPst) {
+    if (email.deal_id) return 'deal-event';
+    if (email.is_flagged) return 'deal-event';
     const subj = (email.subject || '').toLowerCase();
     if (subj.includes('deal room') || subj.includes('offering memorandum') || subj.includes('investment sale'))
       return 'new-opportunity';
     if (subj.includes('due diligence') || subj.includes('access granted'))
       return 'market-signal';
+    if (subj.includes('alert') || subj.includes('notification') || subj.includes('system'))
+      return 'system-alert';
     return 'correspondence';
   }
   if (email.deal_id) return 'deal-event';
@@ -200,19 +204,25 @@ export function EmailPage() {
   const loadInbox = useCallback(async () => {
     try {
       setLoading(true);
-      const filters: any = { limit: 100 };
-      if (activeView === 'flagged') filters.flagged_only = true;
-      if (activeView === 'pst-imports') filters.source = 'pst';
-      if (activeView === 'unread') filters.unread_only = true;
-      if (activeView === 'deals') filters.deal_linked = true;
-      if (searchQuery.trim()) filters.search = searchQuery.trim();
 
-      const [emailsRes, statsRes] = await Promise.all([
-        inboxService.getEmails(filters),
-        inboxService.getStats(),
-      ]);
-      if (emailsRes.success) setEmails(emailsRes.data);
+      const statsRes = await inboxService.getStats();
       if (statsRes.success) setStats(statsRes.data);
+
+      if (activeView === 'pst-imports') {
+        const pstRes = await inboxService.getPstImports({
+          limit: 100,
+          search: searchQuery.trim() || undefined,
+        });
+        if (pstRes.success) setEmails(pstRes.data);
+      } else {
+        const filters: InboxFilters = { limit: 100 };
+        if (activeView === 'flagged') filters.flagged_only = true;
+        if (activeView === 'unread') filters.unread_only = true;
+        if (activeView === 'deals') filters.deal_linked = true;
+        if (searchQuery.trim()) filters.search = searchQuery.trim();
+        const emailsRes = await inboxService.getEmails(filters);
+        if (emailsRes.success) setEmails(emailsRes.data);
+      }
     } catch (error) {
       console.error('Error loading inbox:', error);
     } finally {
@@ -418,7 +428,45 @@ export function EmailPage() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{
-          width: 420, borderRight: `1px solid ${T.border.subtle}`,
+          width: 180, borderRight: `1px solid ${T.border.subtle}`,
+          display: "flex", flexDirection: "column" as const, flexShrink: 0,
+          background: T.bg.secondary, padding: "12px 0",
+        }}>
+          <div style={{ padding: "0 12px", marginBottom: 16 }}>
+            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
+              Folders
+            </div>
+            {views.map(v => (
+              <div key={v.id} onClick={() => { setActiveView(v.id); setActiveFilter('all'); }} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "7px 10px", borderRadius: 5, cursor: "pointer", marginBottom: 1,
+                background: activeView === v.id ? `${T.accent.blue}12` : "transparent",
+                color: activeView === v.id ? T.accent.blue : T.text.secondary,
+                fontSize: 12, fontFamily: FONTS.sans, transition: "all 0.12s",
+              }}>
+                <span>{v.label}</span>
+                {v.count !== null && v.count > 0 && (
+                  <span style={{
+                    fontSize: 10, fontFamily: FONTS.mono, minWidth: 18, textAlign: "center" as const,
+                    color: activeView === v.id ? T.accent.blue : T.text.tertiary,
+                  }}>{v.count}</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ padding: "0 12px", marginTop: "auto" }}>
+            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
+              Pending Tasks
+            </div>
+            <div style={{ fontSize: 11, color: T.text.tertiary, padding: "8px 10px", background: T.bg.tertiary, borderRadius: 5, textAlign: "center" as const }}>
+              {agentActionCount > 0 ? `${agentActionCount} items need review` : 'All clear'}
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          width: 380, borderRight: `1px solid ${T.border.subtle}`,
           display: "flex", flexDirection: "column" as const, flexShrink: 0,
         }}>
           <div style={{ display: "flex", gap: 4, padding: "8px 12px", borderBottom: `1px solid ${T.border.subtle}`, overflowX: "auto" as const, flexShrink: 0 }}>

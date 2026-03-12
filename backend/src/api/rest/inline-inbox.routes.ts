@@ -93,10 +93,26 @@ router.get('/pst-imports', requireAuth, async (req: AuthenticatedRequest, res) =
     params.push(offset);
 
     const result = await pool.query(
-      `SELECT pei.id, pei.upload_id, pei.subject, pei.sender, pei.recipients,
-              LEFT(pei.raw_body, 500) as body_preview, pei.email_date,
-              pei.has_attachments, pei.has_signal, pei.created_at,
-              du.original_filename as source_file
+      `SELECT pei.id,
+              pei.subject,
+              CASE WHEN pei.sender LIKE '%<%' THEN TRIM(SPLIT_PART(pei.sender, '<', 1)) ELSE pei.sender END as from_name,
+              CASE
+                WHEN pei.sender LIKE '%<%>%' THEN TRIM(BOTH '<>' FROM SUBSTRING(pei.sender FROM '<([^>]+)>'))
+                WHEN pei.sender LIKE '%@%' THEN pei.sender
+                ELSE 'unknown@pst-import.local'
+              END as from_address,
+              LEFT(pei.raw_body, 500) as body_preview,
+              COALESCE(pei.email_date, pei.created_at) as received_at,
+              true as is_read,
+              pei.has_signal as is_flagged,
+              pei.has_attachments,
+              pei.has_signal,
+              pei.created_at,
+              pei.upload_id,
+              pei.recipients as to_addresses,
+              du.original_filename as source_file,
+              'pst_import' as source_provider,
+              'pst-' || pei.id::text as external_id
        FROM pst_email_imports pei
        JOIN data_uploads du ON du.id = pei.upload_id
        WHERE ${whereConditions.join(' AND ')}
