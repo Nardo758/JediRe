@@ -77,6 +77,12 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   });
   
   const [showContent, setShowContent] = useState(() => {
+    const visitedKey = `${storageKey}-content-visited`;
+    const hasVisited = localStorage.getItem(visitedKey);
+    if (!hasVisited) {
+      localStorage.setItem(visitedKey, 'true');
+      return true;
+    }
     const saved = localStorage.getItem(`${storageKey}-show-content`);
     return saved ? JSON.parse(saved) : true;
   });
