@@ -78,10 +78,12 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
     const userId = req.user?.userId;
 
     const gmailResult = await pool.query(
-      `SELECT id, email_address, provider, last_sync_at, sync_enabled, created_at
-       FROM user_email_accounts
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
+      `SELECT uea.id, uea.email_address, uea.provider, uea.last_sync_at,
+              uea.sync_enabled, uea.created_at, uea.token_expires_at,
+              COALESCE((SELECT COUNT(*)::int FROM emails e WHERE e.email_account_id = uea.id), 0) as email_count
+       FROM user_email_accounts uea
+       WHERE uea.user_id = $1
+       ORDER BY uea.created_at DESC`,
       [userId]
     );
 
@@ -89,7 +91,8 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const msResult = await pool.query(
         `SELECT id, email as email_address, 'microsoft' as provider,
-                last_sync_at, is_active as sync_enabled, created_at
+                last_sync_at, is_active as sync_enabled, created_at,
+                token_expires_at, 0 as email_count
          FROM microsoft_accounts
          WHERE user_id = $1 AND is_active = true
          ORDER BY created_at DESC`,
@@ -102,9 +105,17 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
       }
     }
 
+    const now = new Date();
     const accounts = [
-      ...gmailResult.rows.map((r: any) => ({ ...r, provider: r.provider || 'google' })),
-      ...microsoftRows,
+      ...gmailResult.rows.map((r: any) => ({
+        ...r,
+        provider: r.provider || 'google',
+        needs_reauth: r.token_expires_at ? new Date(r.token_expires_at) < now && !r.sync_enabled : false,
+      })),
+      ...microsoftRows.map((r: any) => ({
+        ...r,
+        needs_reauth: r.token_expires_at ? new Date(r.token_expires_at) < now : false,
+      })),
     ];
 
     res.json({ success: true, data: accounts });

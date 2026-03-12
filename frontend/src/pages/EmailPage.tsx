@@ -199,13 +199,33 @@ export function EmailPage() {
     const connected = searchParams.get('connected');
     const error = searchParams.get('error');
     if (connected) {
-      setConnectNotice(`${connected === 'gmail' ? 'Gmail' : 'Outlook'} account connected successfully`);
+      const providerLabel = connected === 'gmail' ? 'Gmail' : 'Outlook';
+      setConnectNotice(`${providerLabel} account connected successfully. Syncing...`);
       searchParams.delete('connected');
       setSearchParams(searchParams, { replace: true });
-      inboxService.getConnectedAccounts().then(res => {
-        if (res.success) setConnectedAccounts(res.data);
+      inboxService.getConnectedAccounts().then(async (res) => {
+        if (res.success) {
+          setConnectedAccounts(res.data);
+          const newAccount = res.data.find(a =>
+            (connected === 'gmail' && a.provider === 'google') ||
+            (connected === 'microsoft' && a.provider === 'microsoft')
+          );
+          if (newAccount && newAccount.provider === 'google') {
+            try {
+              await inboxService.syncAccount(newAccount.id);
+              setConnectNotice(`${providerLabel} connected and synced`);
+              loadInbox();
+              const refreshed = await inboxService.getConnectedAccounts();
+              if (refreshed.success) setConnectedAccounts(refreshed.data);
+            } catch {
+              setConnectNotice(`${providerLabel} connected (sync will run in background)`);
+            }
+          } else {
+            setConnectNotice(`${providerLabel} account connected successfully`);
+          }
+        }
       }).catch(() => {});
-      setTimeout(() => setConnectNotice(null), 5000);
+      setTimeout(() => setConnectNotice(null), 6000);
     }
     if (error) {
       const detail = searchParams.get('detail') || 'Unknown error';
@@ -532,6 +552,11 @@ export function EmailPage() {
                 {connectNotice}
               </div>
             )}
+            {connectedAccounts.length === 0 && !connectNotice && (
+              <div style={{ fontSize: 10, color: T.text.tertiary, padding: "6px 8px", textAlign: "center" as const }}>
+                No accounts connected
+              </div>
+            )}
             {connectedAccounts.map(acct => (
               <div key={acct.id} style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
@@ -544,11 +569,19 @@ export function EmailPage() {
                   flexShrink: 0,
                 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
-                    {acct.email_address}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, flex: 1 }}>
+                      {acct.email_address}
+                    </div>
+                    {acct.needs_reauth && (
+                      <span style={{ fontSize: 8, color: T.accent.amber, fontFamily: FONTS.mono, padding: "1px 4px", background: `${T.accent.amber}15`, borderRadius: 2, flexShrink: 0 }}>
+                        reauth
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
                     {acct.provider === 'google' ? 'Gmail' : acct.provider === 'microsoft' ? 'Outlook' : acct.provider}
+                    {acct.email_count ? ` \u00B7 ${acct.email_count} emails` : ''}
                     {acct.last_sync_at ? ` \u00B7 ${formatDate(acct.last_sync_at)}` : ' \u00B7 never synced'}
                   </div>
                 </div>

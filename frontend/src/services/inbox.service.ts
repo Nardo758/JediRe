@@ -65,6 +65,8 @@ export interface ConnectedAccount {
   last_sync_at: string | null;
   sync_enabled: boolean;
   created_at: string;
+  email_count?: number;
+  needs_reauth?: boolean;
 }
 
 export const inboxService = {
