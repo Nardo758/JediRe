@@ -249,6 +249,13 @@ router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, 
     let createdTask: any = null;
 
     if (dealId) {
+      const dealCheck = await pool.query(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, userId]
+      );
+      if (dealCheck.rows.length === 0) {
+        return res.status(403).json({ success: false, message: 'Access denied: deal not found or not owned by user' });
+      }
       const result = await pool.query(
         `INSERT INTO deal_tasks (deal_id, title, description, status, priority, due_date, tags, created_by_name)
          VALUES ($1, $2, $3, 'pending', $4, $5, $6, 'AI Agent') RETURNING *`,
