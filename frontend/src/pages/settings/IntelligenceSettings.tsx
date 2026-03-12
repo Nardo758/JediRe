@@ -42,8 +42,10 @@ export function IntelligenceSettings() {
   });
 
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [statsError, setStatsError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     loadPreferences();
@@ -65,21 +67,25 @@ export function IntelligenceSettings() {
 
   const loadStats = async () => {
     try {
+      setStatsError(false);
       const response = await apiClient.get('/api/v1/intelligence/user/stats');
       setStats(response.data);
     } catch (error) {
       console.error('Error loading stats:', error);
+      setStatsError(true);
     }
   };
 
   const savePreferences = async () => {
     setSaving(true);
+    setSaveMessage(null);
     try {
       await apiClient.put('/api/v1/intelligence/user/preferences', preferences);
-      // Show success toast
+      setSaveMessage({ type: 'success', text: 'Preferences saved successfully' });
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error('Error saving preferences:', error);
-      // Show error toast
+      setSaveMessage({ type: 'error', text: 'Failed to save preferences' });
     } finally {
       setSaving(false);
     }
@@ -88,11 +94,12 @@ export function IntelligenceSettings() {
   const generateEmbeddings = async () => {
     try {
       await apiClient.post('/api/v1/intelligence/user/generate-embeddings');
-      loadStats(); // Refresh stats
-      // Show success toast
+      loadStats();
+      setSaveMessage({ type: 'success', text: 'Embeddings generation started' });
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error('Error generating embeddings:', error);
-      // Show error toast
+      setSaveMessage({ type: 'error', text: 'Failed to generate embeddings' });
     }
   };
 
@@ -161,6 +168,16 @@ export function IntelligenceSettings() {
                 Generate Embeddings for {stats.pendingEmbeddings} Pending Docs
               </button>
             )}
+          </div>
+        ) : statsError ? (
+          <div className="text-center py-4">
+            <p className="text-red-600 text-sm mb-2">Failed to load intelligence stats</p>
+            <button
+              onClick={loadStats}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              Retry
+            </button>
           </div>
         ) : (
           <div className="text-center text-gray-500 py-4">Loading stats...</div>
@@ -375,6 +392,16 @@ export function IntelligenceSettings() {
               <div className="text-sm text-gray-600 mt-1">Patterns Discovered</div>
             </div>
           </div>
+        </div>
+      )}
+
+      {saveMessage && (
+        <div className={`px-4 py-3 rounded-lg text-sm ${
+          saveMessage.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {saveMessage.text}
         </div>
       )}
 

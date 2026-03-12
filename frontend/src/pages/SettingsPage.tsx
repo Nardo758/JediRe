@@ -32,7 +32,13 @@ function getInitialTab(): SettingsTab {
 }
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab);
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === 'true' || params.get('error') === 'auth_failed') {
+      return 'integrations';
+    }
+    return getInitialTab();
+  });
   const [profileData, setProfileData] = useState({
     firstName: '',
     lastName: '',

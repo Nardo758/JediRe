@@ -40,19 +40,18 @@ export function NotificationSettings() {
     try {
       const response = await apiClient.get('/api/v1/auth/me');
       const data = response.data;
-      if (data.notificationPreferences && Object.keys(data.notificationPreferences).length > 0) {
-        setPreferences({
-          ...defaultPreferences,
-          ...data.notificationPreferences,
-          emailAlerts: {
-            ...defaultPreferences.emailAlerts,
-            ...(data.notificationPreferences.emailAlerts || {}),
-          },
-        });
-      }
-      if (data.phone) {
-        setPreferences(prev => ({ ...prev, phoneNumber: data.phone }));
-      }
+      const notifPrefs = data.notificationPreferences && Object.keys(data.notificationPreferences).length > 0
+        ? data.notificationPreferences
+        : {};
+      setPreferences({
+        ...defaultPreferences,
+        ...notifPrefs,
+        emailAlerts: {
+          ...defaultPreferences.emailAlerts,
+          ...(notifPrefs.emailAlerts || {}),
+        },
+        phoneNumber: data.phone || notifPrefs.phoneNumber || '',
+      });
     } catch (error) {
       console.error('Error loading notification preferences:', error);
     } finally {

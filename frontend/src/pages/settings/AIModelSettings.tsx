@@ -221,7 +221,11 @@ export function AIModelSettings() {
         )}
       </div>
 
-      {showUpgradeFor && (
+      {showUpgradeFor && (() => {
+        const lockedOption = options.find(o => o.value === showUpgradeFor);
+        const lockedLabel = lockedOption?.label || showUpgradeFor;
+        const lockedReason = lockedOption?.lockedReason || 'Upgrade your subscription to unlock this model.';
+        return (
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg border border-purple-200 p-6">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
@@ -230,8 +234,7 @@ export function AIModelSettings() {
             <div className="flex-1">
               <h3 className="font-semibold text-gray-900 mb-1">Upgrade Required</h3>
               <p className="text-sm text-gray-600 mb-4">
-                The Powerful (Opus) model is available on Principal and Institutional plans. 
-                Upgrade your subscription to unlock the highest quality AI responses.
+                The {lockedLabel} model requires an upgrade. {lockedReason}
               </p>
               <div className="flex items-center gap-3">
                 <a
@@ -251,7 +254,8 @@ export function AIModelSettings() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h3 className="font-semibold text-gray-900 mb-3">How Model Selection Works</h3>

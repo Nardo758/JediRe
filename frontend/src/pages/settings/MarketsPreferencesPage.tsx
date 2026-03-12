@@ -26,6 +26,7 @@ const REGION_COLORS: Record<string, { bg: string; border: string; text: string; 
 export default function MarketsPreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedMarkets, setSelectedMarkets] = useState<string[]>([]);
   const [primaryMarket, setPrimaryMarket] = useState<string>('');
@@ -57,14 +58,16 @@ export default function MarketsPreferencesPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
+      setSaveMessage(null);
       await api.put('/preferences/user', {
         preferred_markets: selectedMarkets,
         primary_market: primaryMarket
       });
-      alert('Market preferences saved successfully!');
+      setSaveMessage({ type: 'success', text: 'Market preferences saved successfully!' });
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error('Failed to save preferences:', error);
-      alert('Failed to save preferences');
+      setSaveMessage({ type: 'error', text: 'Failed to save preferences' });
     } finally {
       setSaving(false);
     }
@@ -294,6 +297,16 @@ export default function MarketsPreferencesPage() {
           </div>
         );
       })}
+
+      {saveMessage && (
+        <div className={`px-4 py-3 rounded-lg text-sm ${
+          saveMessage.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {saveMessage.text}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-2">
         <p className="text-sm text-gray-600">

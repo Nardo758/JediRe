@@ -114,6 +114,7 @@ function LucideIcon({ name, className }: { name: string; className?: string }) {
 export default function PropertyTypesSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<PropertyType | null>(null);
@@ -184,14 +185,16 @@ export default function PropertyTypesSettings() {
   const handleSave = async () => {
     try {
       setSaving(true);
+      setSaveMessage(null);
       await api.put('/preferences/user', {
         property_types: selectedTypes,
         primary_use_case: primaryUseCase
       });
-      alert('Preferences saved successfully!');
+      setSaveMessage({ type: 'success', text: 'Preferences saved successfully!' });
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error('Failed to save preferences:', error);
-      alert('Failed to save preferences');
+      setSaveMessage({ type: 'error', text: 'Failed to save preferences' });
     } finally {
       setSaving(false);
     }
@@ -421,7 +424,17 @@ export default function PropertyTypesSettings() {
       </div>
 
       {/* Footer - Save Button */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-white flex items-center justify-between">
+      <div className="px-6 py-4 border-t border-gray-200 bg-white space-y-3">
+        {saveMessage && (
+          <div className={`px-4 py-3 rounded-lg text-sm ${
+            saveMessage.type === 'success'
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {saveMessage.text}
+          </div>
+        )}
+        <div className="flex items-center justify-between">
         <p className="text-sm text-gray-600">
           {selectedTypes.length} property type{selectedTypes.length !== 1 ? 's' : ''} selected
         </p>
@@ -440,6 +453,7 @@ export default function PropertyTypesSettings() {
             'Save Preferences'
           )}
         </button>
+        </div>
       </div>
     </div>
   );

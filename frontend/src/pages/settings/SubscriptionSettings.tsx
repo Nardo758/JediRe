@@ -284,7 +284,7 @@ export function SubscriptionSettings() {
                         {op.operation.replace(/_/g, ' ')}
                       </td>
                       <td className="py-3 px-2 text-right text-gray-600">
-                        {parseInt(op.call_count).toLocaleString()}
+                        {parseInt(op.call_count || '0').toLocaleString()}
                       </td>
                       <td className="py-3 px-2 text-right text-gray-900 font-medium">
                         {parseFloat(op.total_credits || '0').toLocaleString(undefined, { maximumFractionDigits: 1 })}

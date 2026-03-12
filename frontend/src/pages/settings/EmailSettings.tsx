@@ -21,19 +21,27 @@ export function EmailSettings() {
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState<{ id: string; email: string } | null>(null);
+
+  const showMessage = (type: 'success' | 'error' | 'info', text: string, autoDismiss = true) => {
+    setMessage({ type, text });
+    if (autoDismiss) {
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
 
   useEffect(() => {
     loadAccounts();
     
-    // Check for connection success/error in URL
     const params = new URLSearchParams(window.location.search);
     if (params.get('connected') === 'true') {
-      alert('Gmail account connected successfully!');
+      showMessage('success', 'Gmail account connected successfully!');
       window.history.replaceState({}, '', window.location.pathname);
     }
     if (params.get('error') === 'auth_failed') {
       const detail = params.get('detail') || '';
-      alert(`Failed to connect Gmail account: ${detail || 'Please try again.'}`);
+      showMessage('error', `Failed to connect Gmail account: ${detail || 'Please try again.'}`);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -59,12 +67,11 @@ export function EmailSettings() {
       );
       
       if (response.data.success && response.data.data.authUrl) {
-        // Redirect to Google OAuth
         window.location.href = response.data.data.authUrl;
       }
     } catch (error) {
       console.error('Failed to get auth URL:', error);
-      alert('Failed to initiate Gmail connection. Please try again.');
+      showMessage('error', 'Failed to initiate Gmail connection. Please try again.');
     }
   };
 
@@ -78,31 +85,32 @@ export function EmailSettings() {
 
       if (response.data.success) {
         const { fetched, stored, skipped } = response.data.data;
-        alert(
-          `Sync complete!\n\nFetched: ${fetched}\nStored: ${stored}\nSkipped: ${skipped}`
-        );
+        showMessage('success', `Sync complete! Fetched: ${fetched}, Stored: ${stored}, Skipped: ${skipped}`);
         await loadAccounts();
       }
     } catch (error) {
       console.error('Sync failed:', error);
-      alert('Failed to sync emails. Please try again.');
+      showMessage('error', 'Failed to sync emails. Please try again.');
     } finally {
       setSyncing(null);
     }
   };
 
   const handleDisconnect = async (accountId: string, emailAddress: string) => {
-    if (!confirm(`Are you sure you want to disconnect ${emailAddress}?`)) {
-      return;
-    }
+    setConfirmDisconnect({ id: accountId, email: emailAddress });
+  };
 
+  const executeDisconnect = async () => {
+    if (!confirmDisconnect) return;
     try {
-      await apiClient.delete(`/api/v1/gmail/disconnect/${accountId}`);
-      alert('Account disconnected successfully');
+      await apiClient.delete(`/api/v1/gmail/disconnect/${confirmDisconnect.id}`);
+      showMessage('success', 'Account disconnected successfully');
       await loadAccounts();
     } catch (error) {
       console.error('Failed to disconnect account:', error);
-      alert('Failed to disconnect account. Please try again.');
+      showMessage('error', 'Failed to disconnect account. Please try again.');
+    } finally {
+      setConfirmDisconnect(null);
     }
   };
 
@@ -114,7 +122,7 @@ export function EmailSettings() {
       await loadAccounts();
     } catch (error) {
       console.error('Failed to toggle sync:', error);
-      alert('Failed to update sync settings. Please try again.');
+      showMessage('error', 'Failed to update sync settings. Please try again.');
     }
   };
 
@@ -129,6 +137,41 @@ export function EmailSettings() {
 
     return (
         <div className="space-y-6">
+          {message && (
+            <div className={`px-4 py-3 rounded-lg text-sm flex items-center justify-between ${
+              message.type === 'success'
+                ? 'bg-green-50 text-green-700 border border-green-200'
+                : message.type === 'error'
+                ? 'bg-red-50 text-red-700 border border-red-200'
+                : 'bg-blue-50 text-blue-700 border border-blue-200'
+            }`}>
+              <span>{message.text}</span>
+              <button onClick={() => setMessage(null)} className="ml-3 font-medium hover:opacity-70">×</button>
+            </div>
+          )}
+
+          {confirmDisconnect && (
+            <div className="px-4 py-4 rounded-lg border border-amber-200 bg-amber-50">
+              <p className="text-sm text-amber-800 mb-3">
+                Are you sure you want to disconnect <strong>{confirmDisconnect.email}</strong>?
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={executeDisconnect}
+                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  Disconnect
+                </button>
+                <button
+                  onClick={() => setConfirmDisconnect(null)}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
