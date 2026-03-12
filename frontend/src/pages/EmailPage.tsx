@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { inboxService, Email, EmailDetail, InboxStats, InboxFilters } from '../services/inbox.service';
+import { useSearchParams } from 'react-router-dom';
+import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount } from '../services/inbox.service';
 
 const T = {
   bg: {
@@ -172,6 +173,7 @@ function DealStageIndicator({ stage, name }: { stage: string; name: string }) {
 }
 
 export function EmailPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [emails, setEmails] = useState<Email[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,6 +185,71 @@ export function EmailPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [commandOpen, setCommandOpen] = useState(false);
   const commandInputRef = useRef<HTMLInputElement>(null);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
+  const [connectNotice, setConnectNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    inboxService.getConnectedAccounts().then(res => {
+      if (res.success) setConnectedAccounts(res.data);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+    if (connected) {
+      setConnectNotice(`${connected === 'gmail' ? 'Gmail' : 'Outlook'} account connected successfully`);
+      searchParams.delete('connected');
+      setSearchParams(searchParams, { replace: true });
+      inboxService.getConnectedAccounts().then(res => {
+        if (res.success) setConnectedAccounts(res.data);
+      }).catch(() => {});
+      setTimeout(() => setConnectNotice(null), 5000);
+    }
+    if (error) {
+      const detail = searchParams.get('detail') || 'Unknown error';
+      setConnectNotice(`Connection failed: ${detail}`);
+      searchParams.delete('error');
+      searchParams.delete('detail');
+      setSearchParams(searchParams, { replace: true });
+      setTimeout(() => setConnectNotice(null), 6000);
+    }
+  }, []);
+
+  const handleConnectGmail = async () => {
+    try {
+      const res = await inboxService.getGmailAuthUrl();
+      if (res.data?.authUrl) window.location.href = res.data.authUrl;
+    } catch (e) {
+      setConnectNotice('Failed to start Gmail connection');
+      setTimeout(() => setConnectNotice(null), 4000);
+    }
+  };
+
+  const handleConnectMicrosoft = async () => {
+    try {
+      const res = await inboxService.getMicrosoftAuthUrl();
+      if (res.authUrl) window.location.href = res.authUrl;
+    } catch (e) {
+      setConnectNotice('Failed to start Outlook connection');
+      setTimeout(() => setConnectNotice(null), 4000);
+    }
+  };
+
+  const handleSyncAccount = async (accountId: string) => {
+    setSyncingAccountId(accountId);
+    try {
+      await inboxService.syncAccount(accountId);
+      const res = await inboxService.getConnectedAccounts();
+      if (res.success) setConnectedAccounts(res.data);
+      loadInbox();
+    } catch (e) {
+      console.error('Sync failed:', e);
+    } finally {
+      setSyncingAccountId(null);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -450,6 +517,76 @@ export function EmailPage() {
                 )}
               </div>
             ))}
+          </div>
+
+          <div style={{ padding: "0 12px", marginTop: 12 }}>
+            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
+              Connected Accounts
+            </div>
+            {connectNotice && (
+              <div style={{
+                fontSize: 10, color: connectNotice.includes('failed') || connectNotice.includes('Failed') ? T.accent.red : T.accent.green,
+                padding: "6px 8px", background: T.bg.tertiary, borderRadius: 4, marginBottom: 6,
+                border: `1px solid ${connectNotice.includes('failed') || connectNotice.includes('Failed') ? T.accent.red + '30' : T.accent.green + '30'}`,
+              }}>
+                {connectNotice}
+              </div>
+            )}
+            {connectedAccounts.map(acct => (
+              <div key={acct.id} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
+                background: T.bg.tertiary, borderRadius: 5, marginBottom: 4,
+                border: `1px solid ${T.border.subtle}`,
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: acct.sync_enabled ? T.accent.green : T.text.tertiary,
+                  flexShrink: 0,
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+                    {acct.email_address}
+                  </div>
+                  <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
+                    {acct.provider === 'google' ? 'Gmail' : acct.provider === 'microsoft' ? 'Outlook' : acct.provider}
+                    {acct.last_sync_at ? ` \u00B7 ${formatDate(acct.last_sync_at)}` : ' \u00B7 never synced'}
+                  </div>
+                </div>
+                {acct.provider === 'google' ? (
+                  <button
+                    onClick={() => handleSyncAccount(acct.id)}
+                    disabled={syncingAccountId === acct.id}
+                    style={{
+                      background: "transparent", border: "none", cursor: syncingAccountId === acct.id ? "wait" : "pointer",
+                      color: syncingAccountId === acct.id ? T.text.tertiary : T.accent.blue,
+                      fontSize: 10, fontFamily: FONTS.mono, padding: "2px 4px", flexShrink: 0,
+                    }}
+                  >
+                    {syncingAccountId === acct.id ? '\u21BB' : 'sync'}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono, padding: "2px 4px" }}>
+                    linked
+                  </span>
+                )}
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+              <button onClick={handleConnectGmail} style={{
+                flex: 1, padding: "6px 0", fontSize: 10, fontFamily: FONTS.mono,
+                background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}25`,
+                borderRadius: 4, color: T.accent.blue, cursor: "pointer",
+              }}>
+                + Gmail
+              </button>
+              <button onClick={handleConnectMicrosoft} style={{
+                flex: 1, padding: "6px 0", fontSize: 10, fontFamily: FONTS.mono,
+                background: `${T.accent.purple}10`, border: `1px solid ${T.accent.purple}25`,
+                borderRadius: 4, color: T.accent.purple, cursor: "pointer",
+              }}>
+                + Outlook
+              </button>
+            </div>
           </div>
 
           <div style={{ padding: "0 12px", marginTop: "auto" }}>

@@ -58,6 +58,15 @@ export interface InboxFilters {
   source?: 'pst' | 'connected';
 }
 
+export interface ConnectedAccount {
+  id: string;
+  email_address: string;
+  provider: string;
+  last_sync_at: string | null;
+  sync_enabled: boolean;
+  created_at: string;
+}
+
 export const inboxService = {
   async getEmails(filters: InboxFilters = {}) {
     const params = new URLSearchParams();
@@ -131,6 +140,26 @@ export const inboxService = {
       email_ids: emailIds,
       action,
     });
+    return response.data;
+  },
+
+  async getConnectedAccounts(): Promise<{ success: boolean; data: ConnectedAccount[] }> {
+    const response = await apiClient.get('/api/v1/inbox/accounts');
+    return response.data;
+  },
+
+  async syncAccount(accountId: string): Promise<{ success: boolean; data: any }> {
+    const response = await apiClient.post(`/api/v1/inbox/accounts/${accountId}/sync`);
+    return response.data;
+  },
+
+  async getGmailAuthUrl(): Promise<{ success: boolean; data: { authUrl: string } }> {
+    const response = await apiClient.post('/api/v1/gmail/connect');
+    return response.data;
+  },
+
+  async getMicrosoftAuthUrl(): Promise<{ success: boolean; authUrl: string }> {
+    const response = await apiClient.get('/api/v1/microsoft/auth/url');
     return response.data;
   },
 };

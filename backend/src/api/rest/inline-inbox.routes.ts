@@ -73,6 +73,91 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    const gmailResult = await pool.query(
+      `SELECT id, email_address, provider, last_sync_at, sync_enabled, created_at
+       FROM user_email_accounts
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    let microsoftRows: any[] = [];
+    try {
+      const msResult = await pool.query(
+        `SELECT id, email as email_address, 'microsoft' as provider,
+                last_sync_at, is_active as sync_enabled, created_at
+         FROM microsoft_accounts
+         WHERE user_id = $1 AND is_active = true
+         ORDER BY created_at DESC`,
+        [userId]
+      );
+      microsoftRows = msResult.rows;
+    } catch (e: any) {
+      if (e.code !== '42P01') {
+        console.error('Error fetching Microsoft accounts:', e);
+      }
+    }
+
+    const accounts = [
+      ...gmailResult.rows.map((r: any) => ({ ...r, provider: r.provider || 'google' })),
+      ...microsoftRows,
+    ];
+
+    res.json({ success: true, data: accounts });
+  } catch (error: any) {
+    if (error.code === '42P01') {
+      res.json({ success: true, data: [] });
+    } else {
+      console.error('Error fetching connected accounts:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch accounts' });
+    }
+  }
+});
+
+router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const accountId = req.params.id;
+
+    const gmailCheck = await pool.query(
+      'SELECT id FROM user_email_accounts WHERE id = $1 AND user_id = $2',
+      [accountId, userId]
+    );
+
+    if (gmailCheck.rows.length > 0) {
+      const { gmailSyncService } = require('../../services/gmail-sync.service');
+      const result = await gmailSyncService.syncEmails(accountId, 50);
+      return res.json({ success: true, data: result });
+    }
+
+    let msCheck;
+    try {
+      msCheck = await pool.query(
+        'SELECT id FROM microsoft_accounts WHERE id = $1 AND user_id = $2 AND is_active = true',
+        [accountId, userId]
+      );
+    } catch (e: any) {
+      if (e.code === '42P01') {
+        return res.status(404).json({ success: false, error: 'Account not found' });
+      }
+      throw e;
+    }
+
+    if (msCheck && msCheck.rows.length > 0) {
+      return res.json({ success: true, data: { message: 'Microsoft sync not yet implemented' } });
+    }
+
+    res.status(404).json({ success: false, error: 'Account not found' });
+  } catch (error: any) {
+    console.error('Error syncing account:', error);
+    res.status(500).json({ success: false, error: 'Failed to sync account' });
+  }
+});
+
 router.get('/pst-imports', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;

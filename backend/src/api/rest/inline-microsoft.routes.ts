@@ -49,10 +49,10 @@ export function createMicrosoftInlineRoutes(microsoftConfig: MicrosoftConfig) {
     const { code, error } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     if (error) {
-      return res.redirect(`${frontendUrl}/settings?microsoft_error=${error}`);
+      return res.redirect(`${frontendUrl}/dashboard/email?error=microsoft_auth&detail=${error}`);
     }
     if (!code) {
-      return res.redirect(`${frontendUrl}/settings?microsoft_error=no_code`);
+      return res.redirect(`${frontendUrl}/dashboard/email?error=microsoft_auth&detail=no_code`);
     }
     try {
       const axios = require('axios');
@@ -68,10 +68,10 @@ export function createMicrosoftInlineRoutes(microsoftConfig: MicrosoftConfig) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
       );
       console.log('Microsoft OAuth successful');
-      res.redirect(`${frontendUrl}/settings?microsoft_connected=true`);
+      res.redirect(`${frontendUrl}/dashboard/email?connected=microsoft`);
     } catch (error) {
       console.error('Microsoft OAuth error:', error);
-      res.redirect(`${frontendUrl}/settings?microsoft_error=token_exchange_failed`);
+      res.redirect(`${frontendUrl}/dashboard/email?error=microsoft_auth&detail=token_exchange_failed`);
     }
   });
 
