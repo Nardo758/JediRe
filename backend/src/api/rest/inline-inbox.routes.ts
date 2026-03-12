@@ -72,6 +72,63 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.get('/pst-imports', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const search = req.query.search as string;
+
+    const whereConditions = ['EXISTS (SELECT 1 FROM emails e2 WHERE e2.external_id = \'pst-\' || pei.id::text AND e2.user_id = $1)'];
+    const params: any[] = [userId];
+    let paramIndex = 2;
+
+    if (search) {
+      whereConditions.push(`(pei.subject ILIKE $${paramIndex} OR pei.sender ILIKE $${paramIndex})`);
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    params.push(limit);
+    params.push(offset);
+
+    const result = await pool.query(
+      `SELECT pei.id, pei.upload_id, pei.subject, pei.sender, pei.recipients,
+              LEFT(pei.raw_body, 500) as body_preview, pei.email_date,
+              pei.has_attachments, pei.has_signal, pei.created_at,
+              du.original_filename as source_file
+       FROM pst_email_imports pei
+       JOIN data_uploads du ON du.id = pei.upload_id
+       WHERE ${whereConditions.join(' AND ')}
+       ORDER BY pei.email_date DESC NULLS LAST
+       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      params
+    );
+
+    const countParams = params.slice(0, paramIndex - 1);
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int as total
+       FROM pst_email_imports pei
+       JOIN data_uploads du ON du.id = pei.upload_id
+       WHERE ${whereConditions.join(' AND ')}`,
+      countParams
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+      total: countResult.rows[0]?.total || 0,
+    });
+  } catch (error: any) {
+    if (error.code === '42P01') {
+      res.json({ success: true, data: [], total: 0 });
+    } else {
+      console.error('Error fetching PST imports:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch PST imports' });
+    }
+  }
+});
+
 router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;

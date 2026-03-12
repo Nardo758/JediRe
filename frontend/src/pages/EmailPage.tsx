@@ -71,7 +71,7 @@ function classifyEmail(email: Email): string {
       return 'new-opportunity';
     if (subj.includes('due diligence') || subj.includes('access granted'))
       return 'market-signal';
-    return 'pst-import';
+    return 'correspondence';
   }
   if (email.deal_id) return 'deal-event';
   if (email.is_flagged) return 'new-opportunity';
@@ -280,6 +280,10 @@ export function EmailPage() {
     { id: 'attachments', label: 'Attachments', count: emails.filter(e => e.has_attachments).length },
   ];
 
+  const agentActionCount = useMemo(() => {
+    return emails.filter(e => !e.is_read || e.is_flagged || e.deal_id).length;
+  }, [emails]);
+
   const summaryStats = useMemo(() => {
     const pstCount = emails.filter(e => e.external_id?.startsWith('pst-')).length;
     const dealLinked = emails.filter(e => e.deal_id).length;
@@ -372,12 +376,12 @@ export function EmailPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{
             display: "flex", alignItems: "center", gap: 6, padding: "5px 12px",
-            background: `${T.accent.green}10`, border: `1px solid ${T.accent.green}30`,
+            background: `${T.accent.amber}10`, border: `1px solid ${T.accent.amber}30`,
             borderRadius: 6, cursor: "pointer",
           }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.green, animation: "pulse 2s infinite" }} />
-            <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.green }}>
-              {stats?.total ?? 0} EMAILS
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.amber, animation: "pulse 2s infinite" }} />
+            <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.amber }}>
+              {agentActionCount} AGENT ACTIONS
             </span>
           </div>
 
@@ -690,6 +694,20 @@ export function EmailPage() {
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
                   Quick Actions
                 </div>
+                {selectedEmail && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                    <button onClick={() => {}} style={{
+                      flex: 1, padding: "8px 12px",
+                      background: T.accent.green, border: "none", borderRadius: 6,
+                      color: "#fff", fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
+                    }}>Execute</button>
+                    <button onClick={() => {}} style={{
+                      flex: 1, padding: "8px 12px",
+                      background: `${T.accent.blue}20`, border: `1px solid ${T.accent.blue}40`, borderRadius: 6,
+                      color: T.accent.blue, fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
+                    }}>Approve</button>
+                  </div>
+                )}
                 {[
                   { label: "Link to Deal", icon: "\uD83D\uDD17", desc: "Associate this thread with a deal" },
                   { label: "Create Task", icon: "\u2713", desc: "Generate task from this email" },

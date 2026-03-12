@@ -80,6 +80,15 @@ export const inboxService = {
     return response.data;
   },
 
+  async getPstImports(filters: { limit?: number; offset?: number; search?: string } = {}) {
+    const params = new URLSearchParams();
+    if (filters.limit) params.append('limit', filters.limit.toString());
+    if (filters.offset) params.append('offset', filters.offset.toString());
+    if (filters.search) params.append('search', filters.search);
+    const response = await apiClient.get(`/api/v1/inbox/pst-imports?${params.toString()}`);
+    return response.data;
+  },
+
   async getEmail(id: number): Promise<{ success: boolean; data: EmailDetail }> {
     const response = await apiClient.get(`/api/v1/inbox/${id}`);
     return response.data;

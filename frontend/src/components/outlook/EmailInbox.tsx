@@ -1,6 +1,7 @@
 /**
- * Email Inbox Component
- * Display and manage Outlook emails within JediRe
+ * Email Inbox Component (Legacy — Outlook)
+ * @deprecated Use EmailPage (COMMS Hub) at /dashboard/email instead.
+ * This component is retained for backward compatibility only.
  */
 
 import { useState, useEffect } from 'react';
