@@ -89,6 +89,7 @@ export class RentScraperDiscoveryService {
       const detailResp = await axios.get(SERP_BASE, {
         params: {
           engine: 'google_maps',
+          type: 'place',
           place_id: placeId,
           api_key: SERP_API_KEY,
         },

@@ -106,6 +106,7 @@ export class RentScraperAggregationService {
     const agg = await this.pool.query(
       `WITH latest AS (
          SELECT DISTINCT ON (sr.target_id, sr.unit_type)
+           sr.target_id,
            t.submarket,
            sr.bedrooms,
            sr.rent_amount
