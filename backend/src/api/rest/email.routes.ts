@@ -4,7 +4,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/auth';
+import { requireAuth } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -112,7 +112,7 @@ function detectActionItems(emailBody: string): ActionItem[] {
  * GET /api/v1/emails/:id/action-items
  * Detect action items in an email
  */
-router.get('/:id/action-items', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:id/action-items', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { body } = req.query;
@@ -143,7 +143,7 @@ router.get('/:id/action-items', authMiddleware, async (req: Request, res: Respon
  * POST /api/v1/emails/:id/create-task
  * Create a task from an email
  */
-router.post('/:id/create-task', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:id/create-task', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const {
@@ -209,31 +209,39 @@ router.post('/:id/create-task', authMiddleware, async (req: Request, res: Respon
  * POST /api/v1/emails/:id/quick-task
  * Quick task creation with AI-suggested values
  */
-router.post('/:id/quick-task', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { emailBody, dealId } = req.body;
+    const { emailBody, dealId, specificTask, specificPriority } = req.body;
 
-    if (!emailBody) {
+    if (!emailBody && !specificTask) {
       return res.status(400).json({
         success: false,
-        message: 'Email body is required',
+        message: 'Email body or specificTask is required',
       });
     }
 
-    // Detect action items
-    const actionItems = detectActionItems(emailBody);
+    let firstItem: any;
 
-    if (actionItems.length === 0) {
-      return res.json({
-        success: true,
-        data: null,
-        message: 'No action items detected',
-      });
+    if (specificTask) {
+      firstItem = {
+        suggestedTask: specificTask,
+        text: specificTask,
+        priority: specificPriority || 'medium',
+        category: 'general',
+        dueDate: null,
+      };
+    } else {
+      const actionItems = detectActionItems(emailBody);
+      if (actionItems.length === 0) {
+        return res.json({
+          success: true,
+          data: null,
+          message: 'No action items detected',
+        });
+      }
+      firstItem = actionItems[0];
     }
-
-    // Use first action item
-    const firstItem = actionItems[0];
 
     // Create task
     const userId = (req as any).user?.userId || 1;

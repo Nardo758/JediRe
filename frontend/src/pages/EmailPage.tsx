@@ -390,15 +390,20 @@ export function EmailPage() {
     } catch {}
   };
 
-  const handleExecuteAction = async (actionItem?: { suggestedTask: string; priority: string }) => {
+  const handleExecuteAction = async (actionItem?: { suggestedTask: string; priority: string; text?: string }) => {
     if (!selectedEmail || !selectedDetail) return;
     const emailBody = selectedDetail.body_text || selectedDetail.body_preview || '';
     try {
       await inboxService.quickTaskFromEmail(
         selectedEmail.id,
         emailBody,
-        selectedEmail.deal_id || undefined
+        selectedEmail.deal_id || undefined,
+        actionItem?.suggestedTask,
+        actionItem?.priority
       );
+      if (actionItem?.text) {
+        setDismissedActions(prev => new Set([...prev, actionItem.text!]));
+      }
       setIntelLoading(true);
       const intelRes = await inboxService.getEmailIntel(selectedEmail.id);
       if (intelRes.success) setEmailIntel(intelRes.data);
@@ -955,7 +960,7 @@ export function EmailPage() {
                               {prop.pin_id && <span style={{ fontSize: 9, color: T.accent.blue, fontFamily: FONTS.mono }}>Pin #{prop.pin_id.slice(0, 8)}</span>}
                               {prop.status === 'requires-review' && (
                                 <button onClick={() => {
-                                  fetch(`/api/v1/email-extractions/properties/${prop.id}/approve`, { method: 'POST' })
+                                  inboxService.approveExtraction(prop.id)
                                     .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
                                 }} style={{
                                   marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
@@ -980,7 +985,7 @@ export function EmailPage() {
                           <div style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.5, marginBottom: 6 }}>
                             {emailIntel.newsExtraction.summary}
                           </div>
-                          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, fontSize: 10 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 8, fontSize: 10, marginBottom: 6 }}>
                             <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
                             {emailIntel.newsExtraction.impact_score != null && (
                               <span style={{
@@ -994,7 +999,23 @@ export function EmailPage() {
                                 Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
                               </span>
                             )}
+                            {emailIntel.newsExtraction.credibility_score != null && (
+                              <span style={{
+                                fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                                color: emailIntel.newsExtraction.credibility_score > 70 ? T.accent.green : emailIntel.newsExtraction.credibility_score > 40 ? T.accent.amber : T.accent.red,
+                                background: emailIntel.newsExtraction.credibility_score > 70 ? `${T.accent.green}15` : emailIntel.newsExtraction.credibility_score > 40 ? `${T.accent.amber}15` : `${T.accent.red}15`,
+                              }}>Credibility: {emailIntel.newsExtraction.credibility_score}</span>
+                            )}
+                            {emailIntel.newsExtraction.impact_radius && (
+                              <span style={{ fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                                Radius: {emailIntel.newsExtraction.impact_radius}
+                              </span>
+                            )}
                           </div>
+                          <a href="/dashboard/news" style={{
+                            fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue,
+                            textDecoration: "none", cursor: "pointer",
+                          }}>View in News Feed {"\u2192"}</a>
                         </div>
                       </div>
                     )}
@@ -1151,7 +1172,7 @@ export function EmailPage() {
                           }}>{prop.status || 'pending'}</span>
                           {prop.status === 'requires-review' && (
                             <button onClick={() => {
-                              fetch(`/api/v1/email-extractions/properties/${prop.id}/approve`, { method: 'POST' })
+                              inboxService.approveExtraction(prop.id)
                                 .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
                             }} style={{
                               marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
@@ -1178,12 +1199,33 @@ export function EmailPage() {
                       <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>
                         {emailIntel.newsExtraction.summary}
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginBottom: 4 }}>
                         <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
-                        {emailIntel.newsExtraction.impact_score && (
+                        {emailIntel.newsExtraction.impact_score != null && (
                           <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.amber }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
                         )}
+                        {emailIntel.newsExtraction.credibility_score != null && (
+                          <span style={{
+                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                            color: emailIntel.newsExtraction.credibility_score > 70 ? T.accent.green : T.accent.amber,
+                            background: emailIntel.newsExtraction.credibility_score > 70 ? `${T.accent.green}15` : `${T.accent.amber}15`,
+                          }}>Credibility: {emailIntel.newsExtraction.credibility_score}</span>
+                        )}
+                        {emailIntel.newsExtraction.impact_radius && (
+                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                            Radius: {emailIntel.newsExtraction.impact_radius}
+                          </span>
+                        )}
+                        {emailIntel.newsExtraction.sentiment_score != null && (
+                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>
+                            Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
+                          </span>
+                        )}
                       </div>
+                      <a href="/dashboard/news" style={{
+                        fontSize: 9, fontFamily: FONTS.mono, color: T.accent.blue,
+                        textDecoration: "none", cursor: "pointer",
+                      }}>View in News Feed {"\u2192"}</a>
                     </div>
                   </div>
                 )}
@@ -1452,23 +1494,30 @@ export function EmailPage() {
                     {selectedEmail ? 'No tasks linked to this email' : 'Select an email to see tasks'}
                   </div>
                 )}
-                {selectedEmail && emailIntel && emailIntel.actionItems.length > 0 && (
+                {selectedEmail && emailIntel && emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).length > 0 && (
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, marginBottom: 6, textTransform: "uppercase" as const }}>
                       Detected Action Items
                     </div>
-                    {emailIntel.actionItems.map((item, i) => (
+                    {emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).map((item, i) => (
                       <div key={i} style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                         padding: "6px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
                         borderRadius: 6, marginBottom: 4,
                       }}>
                         <div style={{ fontSize: 11, color: T.text.primary, flex: 1 }}>{item.suggestedTask.slice(0, 60)}</div>
-                        <button onClick={() => handleExecuteAction(item)} style={{
-                          fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px",
-                          background: T.accent.green, border: "none", borderRadius: 3,
-                          color: "#fff", cursor: "pointer", flexShrink: 0, marginLeft: 4,
-                        }}>+</button>
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: 4 }}>
+                          <button onClick={() => handleExecuteAction(item)} style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px",
+                            background: T.accent.green, border: "none", borderRadius: 3,
+                            color: "#fff", cursor: "pointer",
+                          }}>+</button>
+                          <button onClick={() => handleDismissAction(item.text)} style={{
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px",
+                            background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 3,
+                            color: T.text.tertiary, cursor: "pointer",
+                          }}>{"\u00D7"}</button>
+                        </div>
                       </div>
                     ))}
                   </div>

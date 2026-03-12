@@ -54,7 +54,7 @@ router.get('/deals/:dealId/team/members', requireAuth, async (req: Request, res:
   try {
     const { dealId } = req.params;
     const userId = (req as any).user?.userId;
-    if (userId && !(await verifyDealAccess(dealId, userId))) {
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
       return res.status(403).json({ error: 'Access denied' });
     }
     const result = await pool.query(
@@ -72,7 +72,7 @@ router.post('/deals/:dealId/team/members', requireAuth, async (req: Request, res
   try {
     const { dealId } = req.params;
     const userId = (req as any).user?.userId;
-    if (userId && !(await verifyDealAccess(dealId, userId))) {
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
       return res.status(403).json({ error: 'Access denied' });
     }
     const data = MemberSchema.parse(req.body);
@@ -100,6 +100,10 @@ router.post('/deals/:dealId/team/members', requireAuth, async (req: Request, res
 router.put('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, memberId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const data = MemberSchema.partial().parse(req.body);
     const setClauses: string[] = [];
     const values: any[] = [dealId, memberId];
@@ -128,6 +132,10 @@ router.put('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Req
 router.delete('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, memberId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     await pool.query('DELETE FROM deal_team_members WHERE deal_id = $1 AND id = $2', [dealId, memberId]);
     res.json({ success: true });
   } catch (error) {
@@ -140,7 +148,7 @@ router.get('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: R
   try {
     const { dealId } = req.params;
     const userId = (req as any).user?.userId;
-    if (userId && !(await verifyDealAccess(dealId, userId))) {
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
       return res.status(403).json({ error: 'Access denied' });
     }
     const result = await pool.query(
@@ -157,6 +165,10 @@ router.get('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: R
 router.post('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const data = TaskSchema.parse(req.body);
     const result = await pool.query(
       `INSERT INTO deal_tasks (deal_id, title, description, assigned_to, assigned_to_name, status, priority, due_date, tags, created_by_name)
@@ -176,6 +188,10 @@ router.post('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: 
 router.put('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const data = TaskSchema.partial().parse(req.body);
     const setClauses: string[] = [];
     const values: any[] = [dealId, taskId];
@@ -209,6 +225,10 @@ router.put('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request
 router.delete('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     await pool.query('DELETE FROM deal_tasks WHERE deal_id = $1 AND id = $2', [dealId, taskId]);
     res.json({ success: true });
   } catch (error) {
@@ -220,6 +240,10 @@ router.delete('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Requ
 router.get('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const result = await pool.query(
       'SELECT * FROM deal_task_comments WHERE deal_id = $1 AND task_id = $2 ORDER BY created_at',
       [dealId, taskId]
@@ -234,6 +258,10 @@ router.get('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (req
 router.post('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
+    const userId = (req as any).user?.userId;
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
     const data = CommentSchema.parse(req.body);
     const result = await pool.query(
       `INSERT INTO deal_task_comments (task_id, deal_id, author_name, content) VALUES ($1, $2, $3, $4) RETURNING *`,
@@ -251,7 +279,7 @@ router.get('/deals/:dealId/team/activity', requireAuth, async (req: Request, res
   try {
     const { dealId } = req.params;
     const userId = (req as any).user?.userId;
-    if (userId && !(await verifyDealAccess(dealId, userId))) {
+    if (!userId || !(await verifyDealAccess(dealId, userId))) {
       return res.status(403).json({ error: 'Access denied' });
     }
     const result = await pool.query(
