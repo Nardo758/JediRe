@@ -260,10 +260,15 @@ async function processPstAsync(jobId: string, uploadId: string, buffer: Buffer, 
     let failed = 0;
     const errors: Array<{ row: number; error: string }> = [];
 
+    const extractionMap = new Map<number, typeof extractionResults[0]>();
+    for (const r of extractionResults) {
+      extractionMap.set(r.emailIndex, r);
+    }
+
     for (let i = 0; i < emails.length; i++) {
       try {
         const email = emails[i];
-        const extraction = extractionResults[i];
+        const extraction = extractionMap.get(i) || extractionResults[i];
         const hasSignal = extraction?.hasSignal || false;
 
         const emailResult = await query(
