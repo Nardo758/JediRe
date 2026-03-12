@@ -368,9 +368,9 @@ export class RentScraperService {
   } = {}): Promise<any[]> {
     const { targetId, market = 'Atlanta', daysBack = 30, minChangePercent = 0 } = options;
 
-    const marketParam = targetId ? null : market;
-    const marketClause = targetId ? `AND sr.target_id = $2` : `AND t.market = $2`;
+    const marketClause = targetId ? `AND sr.target_id = $1` : `AND t.market = $1`;
     const marketValue = targetId || market;
+    const safeDaysBack = Math.max(1, Math.min(365, Math.floor(Number(daysBack) || 30)));
 
     const query = `
       WITH current_rents AS (
@@ -390,7 +390,7 @@ export class RentScraperService {
         FROM scraped_rents sr
         JOIN rent_scrape_targets t ON t.id = sr.target_id
         WHERE sr.rent_amount IS NOT NULL
-          AND sr.date_scraped < CURRENT_DATE - INTERVAL '${daysBack} days'
+          AND sr.date_scraped < CURRENT_DATE - make_interval(days => $2)
           ${marketClause}
         ORDER BY sr.target_id, sr.unit_type, sr.date_scraped DESC
       )
@@ -407,7 +407,7 @@ export class RentScraperService {
       ORDER BY ABS((c.current_rent - p.prior_rent) / NULLIF(p.prior_rent,0) * 100) DESC
     `;
 
-    const result = await this.pool.query(query, [marketValue, marketValue, minChangePercent]);
+    const result = await this.pool.query(query, [marketValue, safeDaysBack, minChangePercent]);
     return result.rows;
   }
 
@@ -468,10 +468,12 @@ export class RentScraperService {
     if (active !== undefined) { query += ` AND active = $${idx++}`; params.push(active); }
     if (market) { query += ` AND market = $${idx++}`; params.push(market); }
 
-    const countResult = await this.pool.query(
-      `SELECT COUNT(*) FROM rent_scrape_targets WHERE 1=1${active !== undefined ? ` AND active = '${active}'` : ''}${market ? ` AND market = '${market}'` : ''}`,
-      []
-    );
+    const countParams: any[] = [];
+    let countQuery = `SELECT COUNT(*) FROM rent_scrape_targets WHERE 1=1`;
+    let cIdx = 1;
+    if (active !== undefined) { countQuery += ` AND active = $${cIdx++}`; countParams.push(active); }
+    if (market) { countQuery += ` AND market = $${cIdx++}`; countParams.push(market); }
+    const countResult = await this.pool.query(countQuery, countParams);
 
     query += ` ORDER BY property_name ASC LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(limit, offset);

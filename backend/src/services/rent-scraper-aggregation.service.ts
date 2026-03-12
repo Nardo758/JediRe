@@ -51,13 +51,17 @@ export class RentScraperAggregationService {
     const { property_name, address, city, unit_count } = target.rows[0];
 
     // Look for existing comp_properties match by name similarity
-    const compMatch = await this.pool.query(
-      `SELECT id, total_units FROM comp_properties
-       WHERE LOWER(name) ILIKE $1
-          OR LOWER(address) ILIKE $2
-       LIMIT 1`,
-      [`%${property_name.toLowerCase().substring(0, 20)}%`, `%${(address || '').toLowerCase().substring(0, 20)}%`]
-    );
+    const namePattern = `%${property_name.toLowerCase().substring(0, 20)}%`;
+    let compMatchQuery = `SELECT id, total_units FROM comp_properties WHERE LOWER(name) ILIKE $1`;
+    const compMatchParams: any[] = [namePattern];
+
+    if (address && address.trim().length > 3) {
+      compMatchQuery += ` OR LOWER(address) ILIKE $2`;
+      compMatchParams.push(`%${address.toLowerCase().substring(0, 20)}%`);
+    }
+    compMatchQuery += ` LIMIT 1`;
+
+    const compMatch = await this.pool.query(compMatchQuery, compMatchParams);
 
     if (compMatch.rows.length === 0) {
       logger.info(`[aggregation] No comp_properties match for "${property_name}" — skipping comp_unit_types backflow`);
