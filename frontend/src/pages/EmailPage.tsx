@@ -956,7 +956,7 @@ export function EmailPage() {
                             background: prop.status === 'auto-created' ? `${T.accent.green}15` : prop.status === 'requires-review' ? `${T.accent.amber}15` : T.bg.tertiary,
                           }}>{prop.status || 'pending'}</span>
                           {prop.pin_id && <span style={{ fontSize: 9, color: T.accent.blue, fontFamily: FONTS.mono }}>Pin #{prop.pin_id.slice(0, 8)}</span>}
-                          {prop.status === 'requires-review' && (
+                          {(prop.status === 'requires-review' || prop.status === 'pending') && (
                             <button onClick={() => {
                               inboxService.approveExtraction(prop.id)
                                 .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
@@ -1125,7 +1125,7 @@ export function EmailPage() {
                   <div style={{ marginBottom: 12 }}>
                     {emailIntel.actionItems.length > 0 && (
                       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                        <button onClick={() => handleExecuteAction()} style={{
+                        <button onClick={() => handleExecuteAction(emailIntel.actionItems.find((a: any) => !dismissedActions.has(a.text)) || emailIntel.actionItems[0])} style={{
                           flex: 1, padding: "8px 12px",
                           background: T.accent.green, border: "none", borderRadius: 6,
                           color: "#fff", fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
