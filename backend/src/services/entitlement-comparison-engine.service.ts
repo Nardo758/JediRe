@@ -876,7 +876,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v2#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v3#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -964,18 +964,31 @@ For each entitlement path, write a 2-3 sentence "Agent Analysis" grounded in the
 4. For overlay paths (BeltLine, etc.): clarify these are DESIGN overlays — they modify ground-floor activation, parking standards, and build-to lines, but do NOT create an independent density path. The underlying base district FAR and density limits still apply.
 5. Flag discrepancies between the computed metric and the ordinance (e.g., if the computed FAR differs from the ordinance's combined FAR ceiling, note which is correct and why).
 
+You MUST also generate exactly these 4 extraRows (new categories not already in the standard table):
+
+1. key="timelineEstimate", label="Est. Timeline" — For each path, write a single precise estimate like "~68 days (2 projects)" or "~302 days avg, range 126–420 (12 projects)". Use "N/A" if no benchmark data exists for that path type.
+
+2. key="approvalBody", label="Approval Body" — The specific entity that approves each path, e.g. "None — administrative permit", "Board of Zoning Adjustment (BZA)", "City Council + DRC", "Zoning Review Board". Be jurisdiction-specific.
+
+3. key="ordinanceRef", label="Ordinance Ref." — The specific code section for each path's zoning district, e.g. "§16-19A MRC-2-C" or "§16-20 MRC-3". Use the actual section numbers from the ordinance text above.
+
+4. key="keyRestriction", label="Key Restriction" — The single most impactful ordinance constraint for each path that a developer must know, e.g. "Combined FAR cap 3.99 (res 1.49 + nonres 2.50)", "Step-back required above 4 stories", "Ground-floor activation mandatory (BeltLine)", "Min. 10% open space". Pull from the ordinance text; do not invent restrictions.
+
 Respond in valid JSON only:
 {
   "insights": {
     "<pathKey>": "2-3 sentence grounded analysis"
   },
   "extraRows": [
-    { "key": "uniqueKey", "label": "Display Label", "values": { "<pathKey>": "value" } }
+    { "key": "timelineEstimate", "label": "Est. Timeline", "values": { "<pathKey>": "value per path" } },
+    { "key": "approvalBody",     "label": "Approval Body",  "values": { "<pathKey>": "value per path" } },
+    { "key": "ordinanceRef",     "label": "Ordinance Ref.", "values": { "<pathKey>": "value per path" } },
+    { "key": "keyRestriction",   "label": "Key Restriction","values": { "<pathKey>": "value per path" } }
   ],
   "summary": "2-3 sentence overall recommendation citing the most favorable risk-adjusted path and its timeline"
 }
 
-Keep insights factual and developer-actionable. Do not repeat data the table already shows. Prioritize timeline accuracy and ordinance grounding over generic advice.`;
+Values must be short (under 60 chars). Use actual section numbers and benchmark counts from the data above. Do not add rows beyond these four.`;
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 90000);
