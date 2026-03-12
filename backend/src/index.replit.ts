@@ -481,6 +481,13 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Failed to start email sync scheduler:', error);
   }
 
+  try {
+    const { runStartupPstBackflow } = await import('./services/pst-backflow.service');
+    await runStartupPstBackflow();
+  } catch (error) {
+    console.error('PST backflow startup check failed (non-fatal):', error);
+  }
+
   await initStripe();
 });
 

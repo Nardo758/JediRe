@@ -66,8 +66,7 @@ const CLASSIFICATIONS: Record<string, ClassificationDef> = {
 function classifyEmail(email: Email): string {
   const isPst = email.source_provider === 'pst_import' || email.external_id?.startsWith('pst-');
   if (isPst) {
-    if (email.deal_id) return 'deal-event';
-    if (email.is_flagged) return 'deal-event';
+    if (email.has_signal || email.is_flagged || email.deal_id) return 'deal-event';
     const subj = (email.subject || '').toLowerCase();
     if (subj.includes('deal room') || subj.includes('offering memorandum') || subj.includes('investment sale'))
       return 'new-opportunity';

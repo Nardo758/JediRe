@@ -17,6 +17,7 @@ export interface Email {
   attachment_count?: number;
   source_provider?: string;
   external_id?: string;
+  has_signal?: boolean;
   to_addresses?: string[];
   cc_addresses?: string[];
 }

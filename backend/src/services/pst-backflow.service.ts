@@ -68,3 +68,22 @@ export async function backflowAllPstForUser(userId: string): Promise<{ inserted:
 
   return { inserted: totalInserted };
 }
+
+export async function runStartupPstBackflow(): Promise<void> {
+  const usersWithPst = await query(
+    `SELECT DISTINCT user_id FROM data_uploads WHERE file_type = 'pst'`
+  );
+
+  if (usersWithPst.rows.length === 0) {
+    logger.info('PST backflow: no users with PST uploads found');
+    return;
+  }
+
+  let totalInserted = 0;
+  for (const row of usersWithPst.rows) {
+    const result = await backflowAllPstForUser(row.user_id);
+    totalInserted += result.inserted;
+  }
+
+  logger.info(`PST startup backflow complete: ${totalInserted} new emails backflowed for ${usersWithPst.rows.length} user(s)`);
+}
