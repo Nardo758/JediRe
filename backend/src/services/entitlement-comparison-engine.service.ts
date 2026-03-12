@@ -7,6 +7,7 @@ import { ZoningAgentService } from './zoning-agent.service';
 import { ZoningProfile } from './zoning-profile.service';
 import { municodeUrlService } from './municode-url.service';
 import { ZoningInterpretationCache } from './zoning-interpretation-cache.service';
+import { ScrapingService } from './scraping.service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -836,10 +837,46 @@ export class EntitlementComparisonEngine {
     const mun = subject.municipality || '';
     const st = subject.state || 'GA';
 
+    // ── 1. Fetch benchmark comps + timeline data ──────────────────────────────
+    let comps: any[] = [];
+    let timelineStats: any[] = [];
+    let compCount = 0;
+    try {
+      const compResult = await this.pool.query(
+        `SELECT project_name, entitlement_type, unit_count, density_achieved,
+                far_achieved, total_entitlement_days, outcome, zoning_from, zoning_to
+         FROM benchmark_projects
+         WHERE municipality ILIKE $1
+         ORDER BY total_entitlement_days ASC NULLS LAST
+         LIMIT 15`,
+        [mun],
+      );
+      comps = compResult.rows;
+      compCount = compResult.rowCount || 0;
+
+      const tlResult = await this.pool.query(
+        `SELECT entitlement_type,
+                COUNT(*)::int AS n,
+                AVG(total_entitlement_days)::int AS avg_days,
+                MIN(total_entitlement_days) AS min_days,
+                MAX(total_entitlement_days) AS max_days
+         FROM benchmark_projects
+         WHERE municipality ILIKE $1
+           AND total_entitlement_days IS NOT NULL
+         GROUP BY entitlement_type`,
+        [mun],
+      );
+      timelineStats = tlResult.rows;
+    } catch (err: any) {
+      console.warn('[EntitlementEngine] Failed to fetch comps/timeline:', err.message);
+    }
+
+    // ── 2. Build cache fingerprint (includes comp count for invalidation) ─────
     const byRightPath = paths.find(p => p.key === 'byRight');
-    const metricsFingerprint = byRightPath
+    const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
+    const metricsFingerprint = `${metricsBase}#v2#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -848,6 +885,24 @@ export class EntitlementComparisonEngine {
     }
     console.log(`[Cache] MISS AI analysis: ${codes.join(',')} fp=${metricsFingerprint}`);
 
+    // ── 3. Fetch ordinance text for the subject district ──────────────────────
+    let ordinanceText = '';
+    try {
+      const munIdResult = await this.pool.query(
+        `SELECT id FROM municipalities WHERE LOWER(name) = LOWER($1) AND LOWER(state) = LOWER($2) LIMIT 1`,
+        [mun, st],
+      );
+      const municipalityId = munIdResult.rows[0]?.id;
+      if (municipalityId && subject.baseDistrictCode) {
+        const scraper = new ScrapingService(this.pool);
+        const scraped = await scraper.scrapeZoningCode(municipalityId, subject.baseDistrictCode);
+        ordinanceText = scraped.text;
+      }
+    } catch (err: any) {
+      console.warn('[EntitlementEngine] Ordinance text fetch failed:', err.message);
+    }
+
+    // ── 4. Build enriched prompt ──────────────────────────────────────────────
     const pathSummaries = paths.map(p => ({
       key: p.key,
       label: p.label,
@@ -858,43 +913,77 @@ export class EntitlementComparisonEngine {
       municodeUrl: p.zoningCode ? municodeUrls[p.zoningCode] || null : null,
     }));
 
-    const prompt = `You are a senior real estate zoning analyst. Analyze these entitlement paths for a development site and provide practical insights.
+    const compsSection = comps.length > 0
+      ? `COMPARABLE PROJECTS IN ${mun.toUpperCase()} (${compCount} total, showing top ${comps.length}):\n` +
+        comps.map(c =>
+          `  • ${c.project_name}: ${c.entitlement_type?.toUpperCase() || 'UNKNOWN'}, ` +
+          `${c.unit_count ?? '?'} units, ` +
+          (c.far_achieved ? `FAR ${c.far_achieved}, ` : '') +
+          (c.density_achieved ? `${parseFloat(c.density_achieved).toFixed(1)} u/acre, ` : '') +
+          `${c.total_entitlement_days ?? '?'} days, outcome: ${c.outcome || 'unknown'}`
+        ).join('\n')
+      : `COMPARABLE PROJECTS: No comparable projects on record for ${mun}.`;
+
+    const timelineSection = timelineStats.length > 0
+      ? `ENTITLEMENT TIMELINE BENCHMARKS (${mun}, from actual project data):\n` +
+        timelineStats.map(t =>
+          `  • ${t.entitlement_type}: avg ${t.avg_days} days (${t.n} projects, range ${t.min_days}–${t.max_days} days)`
+        ).join('\n')
+      : '';
+
+    const trimmedOrdinance = ordinanceText.length > 3000
+      ? ordinanceText.slice(0, 3000) + '\n[...truncated for brevity]'
+      : ordinanceText;
+    const ordinanceSection = trimmedOrdinance
+      ? `ZONING ORDINANCE TEXT (${subject.baseDistrictCode}, ${mun}):\n${trimmedOrdinance}`
+      : '';
+
+    const prompt = `You are a senior real estate entitlement analyst. Analyze entitlement paths for a development site using the actual zoning ordinance, comparable project data, and entitlement timelines provided below.
+
+${ordinanceSection}
+
+${compsSection}
+
+${timelineSection}
 
 SUBJECT PROPERTY:
-- Location: ${subject.municipality || 'Unknown'}, ${subject.state || 'Unknown'}
+- Location: ${mun}, ${st}
 - Lot Area: ${subject.lotAreaSf.toLocaleString()} SF (${(subject.lotAreaSf / 43560).toFixed(2)} acres)
 - Current Zoning: ${subject.baseDistrictCode || 'Unknown'}
 - Property Type: ${subject.propertyType}
-- Active Overlays: ${subject.overlays.length > 0 ? subject.overlays.map((o: any) => o.name || o.code || 'unnamed').join(', ') : 'None detected'}
+- Active Overlays: ${subject.overlays.length > 0 ? subject.overlays.map((o: any) => o.name || o.code || 'unnamed').join(', ') : 'None'}
 
-ENTITLEMENT PATHS COMPUTED:
+COMPUTED ENTITLEMENT PATHS:
 ${JSON.stringify(pathSummaries, null, 2)}
 
 INSTRUCTIONS:
-1. For each path, provide a 1-2 sentence practical insight based on the zoning code and jurisdiction. Reference specific ordinance rules, conditional requirements, step-back rules, approval difficulty, or anything a developer needs to know.
-2. Determine which rows/metrics are most relevant for comparing these specific codes. Standard rows include: zoningCode, density, far, maxUnits, gba, stories, parking, bindingConstraint. You may suggest additional rows if the codes have special rules (e.g., "stepBack", "openSpace", "bufferZone", "conditionalUses").
-3. Provide an overall summary recommendation (2-3 sentences) about which path offers the best risk-adjusted development opportunity.
+For each entitlement path, write a 2-3 sentence "Agent Analysis" grounded in the three data sources above:
+1. Cite specific ordinance values (e.g., "Section 16-19A sets residential FAR at 1.49 and nonresidential at 2.50, yielding a combined ceiling of 3.99").
+2. Reference comparable projects where they exist (e.g., "8 Atlanta CUP projects averaged 180 days to approval").
+3. State a timeline estimate anchored to the benchmark data (e.g., "~10 months based on 12 Atlanta rezones averaging 302 days, ranging 126–420").
+4. For overlay paths (BeltLine, etc.): clarify these are DESIGN overlays — they modify ground-floor activation, parking standards, and build-to lines, but do NOT create an independent density path. The underlying base district FAR and density limits still apply.
+5. Flag discrepancies between the computed metric and the ordinance (e.g., if the computed FAR differs from the ordinance's combined FAR ceiling, note which is correct and why).
 
-Respond in valid JSON:
+Respond in valid JSON only:
 {
   "insights": {
-    "<pathKey>": "1-2 sentence insight for this path"
+    "<pathKey>": "2-3 sentence grounded analysis"
   },
   "extraRows": [
-    { "key": "uniqueKey", "label": "Display Label", "values": { "<pathKey>": "value for this path" } }
+    { "key": "uniqueKey", "label": "Display Label", "values": { "<pathKey>": "value" } }
   ],
-  "summary": "2-3 sentence overall recommendation"
+  "summary": "2-3 sentence overall recommendation citing the most favorable risk-adjusted path and its timeline"
 }
 
-For extraRows, only add rows where you have specific information about the codes involved (e.g., "Step-back above 4 stories: 10ft required" or "Conditional uses: drive-through prohibited"). Include values for each path key. Keep insights concise and actionable. Focus on what a developer needs to know, not general zoning theory.`;
+Keep insights factual and developer-actionable. Do not repeat data the table already shows. Prioritize timeline accuracy and ordinance grounding over generic advice.`;
 
     const abortController = new AbortController();
-    const timeout = setTimeout(() => abortController.abort(), 30000);
+    const timeout = setTimeout(() => abortController.abort(), 90000);
     let message;
     try {
       message = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
+        max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }, { signal: abortController.signal as any });
     } finally {

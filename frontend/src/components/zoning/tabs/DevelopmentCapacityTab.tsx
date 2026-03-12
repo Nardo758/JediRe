@@ -391,7 +391,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           const params: any = {};
           if (variancePctRef.current !== 20) params.variance_density_pct = variancePctRef.current;
           if (rezoneTargetCodeRef.current) params.rezone_target_code = rezoneTargetCodeRef.current;
-          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
+          const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 90000, signal: controller.signal });
           const recs = recsRes.data.recommendations || [];
           setRecommendations(recs);
           setComparison(recsRes.data.comparison || null);
@@ -468,7 +468,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         if (variancePct !== 20) params.variance_density_pct = variancePct;
         if (rezoneTargetCode && rezoneTargetCode !== '__custom__') params.rezone_target_code = rezoneTargetCode;
         if (avgUnitSize !== 900) params.avg_unit_size_sf = avgUnitSize;
-        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 45000, signal: controller.signal });
+        const recsRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios/recommendations`, { params, timeout: 90000, signal: controller.signal });
         const recs = recsRes.data.recommendations || [];
         setRecommendations(recs);
         setComparison(recsRes.data.comparison || null);
@@ -1323,12 +1323,15 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         </tr>
                       ))}
                       {cols.some((col: any) => col.aiInsight) && (
-                        <tr className="border-b border-gray-100">
-                          <td className="px-4 py-2.5 text-xs font-medium text-gray-600 align-top">AI Insight</td>
+                        <tr className="border-t-2 border-blue-100 bg-blue-50/30">
+                          <td className="px-4 py-3 align-top">
+                            <div className="text-xs font-semibold text-blue-700 tracking-wide">Agent Analysis</div>
+                            <div className="text-[10px] text-blue-400 mt-0.5 font-normal">ordinance + comps</div>
+                          </td>
                           {cols.map((col: any) => (
-                            <td key={col.key} className="px-3 py-2.5 text-left">
+                            <td key={col.key} className="px-3 py-3 text-left align-top">
                               {col.aiInsight ? (
-                                <p className="text-[11px] text-gray-600 leading-relaxed bg-gray-50 rounded px-2 py-1.5">{col.aiInsight}</p>
+                                <p className="text-xs text-gray-700 leading-relaxed">{col.aiInsight}</p>
                               ) : (
                                 <span className="text-xs text-gray-400">--</span>
                               )}
