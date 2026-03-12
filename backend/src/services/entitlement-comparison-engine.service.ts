@@ -133,6 +133,34 @@ export class EntitlementComparisonEngine {
       }
     }
 
+    // ── Supplement missing residential/nonresidential FAR from district ───────
+    // Profiles resolved before district data was populated may have these null.
+    // Fill them in without overriding other constraints so the building-envelope
+    // service can select the correct FAR column for the deal's asset type.
+    if ((baseConstraints.residentialFAR == null || baseConstraints.nonresidentialFAR == null) && profile.base_district_code) {
+      try {
+        const municipalityId = `${(profile.municipality || '').toLowerCase().replace(/\s+/g, '-')}-${(profile.state || 'ga').toLowerCase()}`;
+        const distRow = await this.pool.query(
+          `SELECT residential_far, nonresidential_far FROM zoning_districts
+           WHERE municipality_id = $1 AND UPPER(COALESCE(zoning_code, district_code)) = UPPER($2) LIMIT 1`,
+          [municipalityId, profile.base_district_code],
+        );
+        if (distRow.rows[0]) {
+          const d = distRow.rows[0];
+          if (baseConstraints.residentialFAR == null && d.residential_far) {
+            baseConstraints.residentialFAR = parseFloat(d.residential_far) || null;
+            console.log(`[EntitlementEngine] Supplemented residentialFAR=${baseConstraints.residentialFAR} from district`);
+          }
+          if (baseConstraints.nonresidentialFAR == null && d.nonresidential_far) {
+            baseConstraints.nonresidentialFAR = parseFloat(d.nonresidential_far) || null;
+            console.log(`[EntitlementEngine] Supplemented nonresidentialFAR=${baseConstraints.nonresidentialFAR} from district`);
+          }
+        }
+      } catch (err: any) {
+        console.warn('[EntitlementEngine] FAR supplement lookup failed:', err.message);
+      }
+    }
+
     const computedPaths: ComputedPath[] = [];
 
     console.log('[EntitlementEngine] Starting comparison for deal:', dealId);
