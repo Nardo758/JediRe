@@ -11,7 +11,7 @@ const AGGREGATOR_BLOCKLIST = [
   'rent.com', 'rentcafe.com', 'hotpads.com', 'trulia.com', 'padmapper.com',
   'abodo.com', 'forrent.com', 'apartmentguide.com', 'costar.com',
   'loopnet.com', 'crexi.com', 'myapartmentmap.com', 'zumper.com',
-  'furnished finder.com', 'doorsteps.com', 'redfin.com',
+  'furnishedfinder.com', 'doorsteps.com', 'redfin.com',
 ];
 
 function isAggregator(url: string): boolean {
@@ -177,7 +177,7 @@ export class RentScraperDiscoveryService {
     const targets = await this.pool.query(
       `SELECT id, property_name, address, city, state
        FROM rent_scrape_targets
-       WHERE places_search_done = FALSE AND active = TRUE
+       WHERE places_search_done = FALSE AND website_url IS NULL AND active = TRUE
        ORDER BY id ASC
        LIMIT $1`,
       [limit]
