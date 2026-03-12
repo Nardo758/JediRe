@@ -1,0 +1,1420 @@
+import { useState, useEffect, useRef } from "react";
+
+// ════════════════════════════════════════════════════════════════════
+// JEDI RE — Communications Intelligence Hub
+// ════════════════════════════════════════════════════════════════════
+// Not an email client. A deal intelligence surface that happens to 
+// process communications. Every message is a potential data event.
+// ════════════════════════════════════════════════════════════════════
+
+const T = {
+  bg: {
+    primary: "#0a0e17",
+    secondary: "#111827",
+    tertiary: "#1a2236",
+    card: "#141c2e",
+    hover: "#1e2a42",
+    elevated: "#1a2540",
+  },
+  border: {
+    subtle: "#1e293b",
+    default: "#2a3a52",
+    focus: "#3b82f6",
+  },
+  text: {
+    primary: "#f1f5f9",
+    secondary: "#94a3b8",
+    tertiary: "#64748b",
+    inverse: "#0f172a",
+  },
+  accent: {
+    blue: "#3b82f6",
+    green: "#10b981",
+    amber: "#f59e0b",
+    red: "#ef4444",
+    purple: "#8b5cf6",
+    cyan: "#06b6d4",
+    emerald: "#34d399",
+  },
+  deal: {
+    prospect: "#f59e0b",
+    loi: "#3b82f6",
+    dd: "#8b5cf6",
+    closing: "#10b981",
+    owned: "#06b6d4",
+  },
+};
+
+const FONTS = {
+  mono: "'JetBrains Mono', 'Fira Code', monospace",
+  sans: "'IBM Plex Sans', -apple-system, sans-serif",
+};
+
+// ─── Mock Data ────────────────────────────────────────────
+const EMAILS = [
+  {
+    id: "e1",
+    from: { name: "Amanda Torres", company: "CBRE", role: "Broker", avatar: "AT" },
+    subject: "Off-Market: 450-Unit Garden Style in Sandy Springs",
+    preview: "Hi Leon, I have an exclusive off-market opportunity — 450-unit garden style community built in 1998, currently 94% occupied...",
+    date: "2/11/2026",
+    time: "2:34 PM",
+    read: true,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "Sandy_Springs_450_OM.pdf", type: "om", size: "4.2 MB", extracted: false },
+      { name: "T12_Operating_Statement.xlsx", type: "financials", size: "890 KB", extracted: false },
+    ],
+    dealLinked: null,
+    classification: "new-opportunity",
+    agentActions: [
+      { action: "Auto-create deal lead", status: "suggested", agent: "Research" },
+      { action: "Extract OM data → Deal Capsule", status: "suggested", agent: "Research" },
+      { action: "Run JEDI Score on address", status: "suggested", agent: "Coordinator" },
+    ],
+    signals: ["off-market", "450-units", "value-add"],
+    priority: "high",
+    thread: 1,
+  },
+  {
+    id: "e2",
+    from: { name: "Tom Harrison", company: "Atlanta Zoning", role: "Zoning Attorney", avatar: "TH" },
+    subject: "FW: Zoning Board Vote Results - Midtown Upzoning Approved",
+    preview: "Great news — the Midtown overlay district amendment passed 7-2. The new FAR allowance of 8.0 applies to parcels within the...",
+    date: "2/11/2026",
+    time: "1:47 PM",
+    read: false,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "Zoning_Board_Minutes_Feb2026.pdf", type: "legal", size: "1.8 MB", extracted: false },
+    ],
+    dealLinked: { id: "d3", name: "Midtown Development Site", stage: "dd", stationNum: 4 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Update M03 Zoning → FAR 8.0", status: "ready", agent: "Zoning" },
+      { action: "Recalculate massing envelope", status: "ready", agent: "Zoning" },
+      { action: "Flag: Development path may change", status: "ready", agent: "Coordinator" },
+      { action: "Create task: Review updated proforma", status: "suggested", agent: "Coordinator" },
+    ],
+    signals: ["zoning-change", "far-increase", "regulatory-catalyst"],
+    priority: "critical",
+    thread: 4,
+  },
+  {
+    id: "e3",
+    from: { name: "Kevin Park", company: "Marcus & Millichap", role: "Broker", avatar: "KP" },
+    subject: "Price Reduction: Decatur Mixed-Use Development Site",
+    preview: "The seller has agreed to reduce the asking price from $12.5M to $10.8M based on updated appraisal. They're motivated to close...",
+    date: "2/11/2026",
+    time: "12:15 PM",
+    read: false,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "Updated_Appraisal_Decatur.pdf", type: "appraisal", size: "3.1 MB", extracted: false },
+    ],
+    dealLinked: { id: "d5", name: "Decatur Mixed-Use", stage: "loi", stationNum: 2 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Update acquisition price → $10.8M", status: "ready", agent: "Cashflow" },
+      { action: "Recalculate 4-strategy returns", status: "ready", agent: "Cashflow" },
+      { action: "Extract appraisal comps → M15", status: "suggested", agent: "Research" },
+      { action: "Create task: Revise LOI terms", status: "suggested", agent: "Coordinator" },
+    ],
+    signals: ["price-reduction", "motivated-seller", "13.6%-discount"],
+    priority: "high",
+    thread: 7,
+  },
+  {
+    id: "e4",
+    from: { name: "JEDI RE System", company: "Platform", role: "AI Agent", avatar: "JR" },
+    subject: "JEDI Score Alert: Midtown Development Score Increased",
+    preview: "The JEDI Score for Midtown Development Site has increased from 72 to 84 following the zoning board approval...",
+    date: "2/11/2026",
+    time: "11:52 AM",
+    read: false,
+    flagged: true,
+    hasAttachments: false,
+    attachments: [],
+    dealLinked: { id: "d3", name: "Midtown Development Site", stage: "dd", stationNum: 4 },
+    classification: "system-alert",
+    agentActions: [],
+    signals: ["score-change", "+12-points", "regulatory-catalyst"],
+    priority: "info",
+    thread: 1,
+  },
+  {
+    id: "e5",
+    from: { name: "James Wilson", company: "Wilson Appraisals", role: "Appraiser", avatar: "JW" },
+    subject: "Appraisal Report Complete - Buckhead Mixed-Use",
+    preview: "Please find attached the completed appraisal report for the Buckhead Mixed-Use property. The appraised value came in at...",
+    date: "2/11/2026",
+    time: "10:30 AM",
+    read: false,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "Buckhead_MU_Appraisal_Final.pdf", type: "appraisal", size: "5.6 MB", extracted: false },
+    ],
+    dealLinked: { id: "d2", name: "Buckhead Mixed-Use", stage: "dd", stationNum: 4 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Extract appraised value → Deal Capsule", status: "ready", agent: "Research" },
+      { action: "Compare to underwriting assumptions", status: "ready", agent: "Cashflow" },
+      { action: "Update DD checklist: Appraisal ✓", status: "ready", agent: "Coordinator" },
+      { action: "Notify lender: Appraisal received", status: "suggested", agent: "Coordinator" },
+    ],
+    signals: ["appraisal-complete", "dd-milestone"],
+    priority: "high",
+    thread: 3,
+  },
+  {
+    id: "e6",
+    from: { name: "Daniel Foster", company: "Morris Manning", role: "Attorney", avatar: "DF" },
+    subject: "PSA Review Comments - East Atlanta Village Townhomes",
+    preview: "Leon, we've completed our review of the Purchase and Sale Agreement. I have several comments regarding the inspection period...",
+    date: "2/11/2026",
+    time: "9:15 AM",
+    read: false,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "PSA_Redline_EAV_Townhomes.docx", type: "legal", size: "2.3 MB", extracted: false },
+    ],
+    dealLinked: { id: "d4", name: "EAV Townhomes", stage: "loi", stationNum: 3 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Extract deadlines → Task Manager", status: "ready", agent: "Coordinator" },
+      { action: "Flag: 15-day inspection period starts 2/13", status: "ready", agent: "Coordinator" },
+      { action: "Create tasks: Environmental, survey, title", status: "suggested", agent: "Coordinator" },
+    ],
+    signals: ["psa-review", "deadline-trigger", "inspection-period"],
+    priority: "critical",
+    thread: 5,
+  },
+  {
+    id: "e7",
+    from: { name: "Michael Chen", company: "Wells Fargo CRE", role: "Lender", avatar: "MC" },
+    subject: "Term Sheet - Sandy Springs Garden Apartments",
+    preview: "Leon, please find our preliminary term sheet for the Sandy Springs acquisition. We can offer 65% LTV at SOFR + 225bps...",
+    date: "2/10/2026",
+    time: "4:45 PM",
+    read: true,
+    flagged: true,
+    hasAttachments: true,
+    attachments: [
+      { name: "WF_TermSheet_SandySprings.pdf", type: "financials", size: "1.1 MB", extracted: true },
+    ],
+    dealLinked: { id: "d1", name: "Sandy Springs 450", stage: "prospect", stationNum: 1 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Extract debt terms → M09 Debt Tab", status: "completed", agent: "Research" },
+      { action: "Recalculate DSCR with new terms", status: "completed", agent: "Cashflow" },
+    ],
+    signals: ["term-sheet", "65%-ltv", "sofr+225"],
+    priority: "medium",
+    thread: 2,
+  },
+  {
+    id: "e8",
+    from: { name: "Sarah Kim", company: "Greystar", role: "Regional VP", avatar: "SK" },
+    subject: "RE: Property Management Proposal - Buckhead Portfolio",
+    preview: "Thanks for the walkthrough last week. We've put together management fee structure at 3.5% of EGI with...",
+    date: "2/10/2026",
+    time: "3:20 PM",
+    read: true,
+    flagged: false,
+    hasAttachments: true,
+    attachments: [
+      { name: "Greystar_Mgmt_Proposal.pdf", type: "proposal", size: "2.8 MB", extracted: false },
+    ],
+    dealLinked: { id: "d2", name: "Buckhead Mixed-Use", stage: "dd", stationNum: 4 },
+    classification: "deal-event",
+    agentActions: [
+      { action: "Extract mgmt fee → ProForma assumptions", status: "suggested", agent: "Cashflow" },
+    ],
+    signals: ["management-proposal", "3.5%-fee"],
+    priority: "low",
+    thread: 2,
+  },
+];
+
+const DEAL_TEAMS = {
+  d1: { name: "Sandy Springs 450", members: ["Amanda Torres", "Michael Chen"], stage: "prospect" },
+  d2: { name: "Buckhead Mixed-Use", members: ["James Wilson", "Sarah Kim"], stage: "dd" },
+  d3: { name: "Midtown Development", members: ["Tom Harrison"], stage: "dd" },
+  d4: { name: "EAV Townhomes", members: ["Daniel Foster"], stage: "loi" },
+  d5: { name: "Decatur Mixed-Use", members: ["Kevin Park"], stage: "loi" },
+};
+
+const TASKS_PENDING = [
+  { id: "t1", title: "Review updated Decatur proforma", deal: "Decatur Mixed-Use", due: "2/13", source: "email", priority: "high" },
+  { id: "t2", title: "Schedule Buckhead site inspection", deal: "Buckhead Mixed-Use", due: "2/14", source: "deadline", priority: "critical" },
+  { id: "t3", title: "Send revised LOI to Kevin Park", deal: "Decatur Mixed-Use", due: "2/12", source: "email", priority: "high" },
+  { id: "t4", title: "Order Phase I Environmental - EAV", deal: "EAV Townhomes", due: "2/15", source: "psa", priority: "critical" },
+];
+
+// ─── Classification Labels ────────────────────────────────
+const CLASSIFICATIONS = {
+  "new-opportunity": { label: "New Opportunity", color: T.accent.green, icon: "◆" },
+  "deal-event": { label: "Deal Event", color: T.accent.blue, icon: "●" },
+  "market-signal": { label: "Market Signal", color: T.accent.amber, icon: "▲" },
+  "system-alert": { label: "System Alert", color: T.accent.purple, icon: "⬡" },
+  "correspondence": { label: "Correspondence", color: T.text.tertiary, icon: "○" },
+};
+
+const STAGE_COLORS = {
+  prospect: T.deal.prospect,
+  loi: T.deal.loi,
+  dd: T.deal.dd,
+  closing: T.deal.closing,
+  owned: T.deal.owned,
+};
+
+// ─── Components ───────────────────────────────────────────
+
+function AgentActionBadge({ action }) {
+  const statusColors = {
+    ready: T.accent.green,
+    suggested: T.accent.amber,
+    completed: T.accent.cyan,
+    processing: T.accent.blue,
+  };
+  const statusIcons = {
+    ready: "▸",
+    suggested: "?",
+    completed: "✓",
+    processing: "⟳",
+  };
+  const agentColors = {
+    Research: "#3b82f6",
+    Zoning: "#8b5cf6",
+    Supply: "#f59e0b",
+    Cashflow: "#10b981",
+    Coordinator: "#06b6d4",
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        background: `${statusColors[action.status]}08`,
+        border: `1px solid ${statusColors[action.status]}25`,
+        borderRadius: 6,
+        cursor: action.status === "ready" || action.status === "suggested" ? "pointer" : "default",
+        transition: "all 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        if (action.status === "ready" || action.status === "suggested") {
+          e.currentTarget.style.background = `${statusColors[action.status]}15`;
+          e.currentTarget.style.borderColor = `${statusColors[action.status]}50`;
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = `${statusColors[action.status]}08`;
+        e.currentTarget.style.borderColor = `${statusColors[action.status]}25`;
+      }}
+    >
+      <span style={{ color: statusColors[action.status], fontSize: 11, fontFamily: FONTS.mono, width: 14 }}>
+        {statusIcons[action.status]}
+      </span>
+      <span style={{ color: T.text.primary, fontSize: 12, fontFamily: FONTS.sans, flex: 1 }}>
+        {action.action}
+      </span>
+      <span
+        style={{
+          fontSize: 9,
+          fontFamily: FONTS.mono,
+          color: agentColors[action.agent] || T.text.tertiary,
+          padding: "2px 6px",
+          background: `${agentColors[action.agent] || T.text.tertiary}15`,
+          borderRadius: 3,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+        }}
+      >
+        {action.agent}
+      </span>
+      {(action.status === "ready" || action.status === "suggested") && (
+        <button
+          style={{
+            background: statusColors[action.status],
+            border: "none",
+            borderRadius: 3,
+            color: "#fff",
+            fontSize: 9,
+            fontFamily: FONTS.mono,
+            padding: "2px 8px",
+            cursor: "pointer",
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
+          {action.status === "ready" ? "Execute" : "Approve"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AttachmentChip({ attachment }) {
+  const typeColors = {
+    om: T.accent.blue,
+    financials: T.accent.green,
+    appraisal: T.accent.purple,
+    legal: T.accent.amber,
+    proposal: T.accent.cyan,
+  };
+  const typeIcons = {
+    om: "📊",
+    financials: "📈",
+    appraisal: "📋",
+    legal: "⚖️",
+    proposal: "📄",
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        background: `${typeColors[attachment.type] || T.text.tertiary}10`,
+        border: `1px solid ${typeColors[attachment.type] || T.text.tertiary}30`,
+        borderRadius: 6,
+        cursor: "pointer",
+      }}
+    >
+      <span style={{ fontSize: 13 }}>{typeIcons[attachment.type] || "📎"}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans }}>{attachment.name}</div>
+        <div style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>{attachment.size}</div>
+      </div>
+      {attachment.extracted ? (
+        <span style={{ fontSize: 9, color: T.accent.green, fontFamily: FONTS.mono }}>EXTRACTED</span>
+      ) : (
+        <button
+          style={{
+            background: `${typeColors[attachment.type]}20`,
+            border: `1px solid ${typeColors[attachment.type]}40`,
+            borderRadius: 3,
+            color: typeColors[attachment.type],
+            fontSize: 9,
+            fontFamily: FONTS.mono,
+            padding: "2px 8px",
+            cursor: "pointer",
+            letterSpacing: 0.5,
+          }}
+        >
+          EXTRACT
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SignalTag({ signal }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        background: `${T.accent.cyan}12`,
+        border: `1px solid ${T.accent.cyan}25`,
+        borderRadius: 3,
+        color: T.accent.cyan,
+        fontSize: 10,
+        fontFamily: FONTS.mono,
+        letterSpacing: 0.3,
+      }}
+    >
+      {signal}
+    </span>
+  );
+}
+
+function DealStageIndicator({ stage, name, stationNum }) {
+  const c = STAGE_COLORS[stage] || T.text.tertiary;
+  const stageLabels = { prospect: "Prospect", loi: "LOI", dd: "Due Diligence", closing: "Closing", owned: "Owned" };
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "3px 10px",
+        background: `${c}12`,
+        border: `1px solid ${c}30`,
+        borderRadius: 4,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ width: 6, height: 6, borderRadius: "50%", background: c }} />
+      <span style={{ fontSize: 11, color: c, fontFamily: FONTS.mono, fontWeight: 600 }}>
+        S{stationNum}
+      </span>
+      <span style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans }}>
+        {name}
+      </span>
+      <span style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
+        {stageLabels[stage]}
+      </span>
+    </div>
+  );
+}
+
+// ─── Main Hub ─────────────────────────────────────────────
+
+export default function CommunicationsHub() {
+  const [selectedEmail, setSelectedEmail] = useState(EMAILS[1]);
+  const [activeView, setActiveView] = useState("inbox");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [sidePanel, setSidePanel] = useState("actions");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const filteredEmails = EMAILS.filter((e) => {
+    if (activeFilter === "unread") return !e.read;
+    if (activeFilter === "deal-linked") return e.dealLinked !== null;
+    if (activeFilter === "opportunities") return e.classification === "new-opportunity";
+    if (activeFilter === "critical") return e.priority === "critical" || e.priority === "high";
+    return true;
+  });
+
+  const pendingActions = EMAILS.reduce((acc, e) => {
+    return acc + e.agentActions.filter((a) => a.status === "ready" || a.status === "suggested").length;
+  }, 0);
+
+  const views = [
+    { id: "inbox", label: "Inbox", count: EMAILS.filter((e) => !e.read).length },
+    { id: "deals", label: "By Deal", count: Object.keys(DEAL_TEAMS).length },
+    { id: "tasks", label: "Tasks", count: TASKS_PENDING.length },
+    { id: "contacts", label: "Network", count: null },
+  ];
+
+  const filters = [
+    { id: "all", label: "All", count: EMAILS.length },
+    { id: "unread", label: "Unread", count: EMAILS.filter((e) => !e.read).length },
+    { id: "critical", label: "Action Required", count: EMAILS.filter((e) => e.priority === "critical" || e.priority === "high").length },
+    { id: "deal-linked", label: "Deal-Linked", count: EMAILS.filter((e) => e.dealLinked).length },
+    { id: "opportunities", label: "New Opportunities", count: EMAILS.filter((e) => e.classification === "new-opportunity").length },
+  ];
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100vh",
+        background: T.bg.primary,
+        color: T.text.primary,
+        fontFamily: FONTS.sans,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      {/* ── Command Bar ── */}
+      {commandOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 100,
+            display: "flex",
+            justifyContent: "center",
+            paddingTop: 120,
+          }}
+          onClick={() => setCommandOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 560,
+              background: T.bg.secondary,
+              border: `1px solid ${T.border.default}`,
+              borderRadius: 12,
+              overflow: "hidden",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
+              maxHeight: 400,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${T.border.subtle}`, gap: 10 }}>
+              <span style={{ color: T.text.tertiary, fontSize: 14 }}>⌘</span>
+              <input
+                autoFocus
+                placeholder="Search emails, deals, contacts, or type a command..."
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: T.text.primary,
+                  fontSize: 14,
+                  fontFamily: FONTS.sans,
+                }}
+              />
+              <kbd style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono, padding: "2px 6px", background: T.bg.tertiary, borderRadius: 3, border: `1px solid ${T.border.subtle}` }}>ESC</kbd>
+            </div>
+            <div style={{ padding: 8 }}>
+              {["Link email to deal...", "Create task from email...", "Draft response with AI...", "Extract attachment data...", "Find all emails from contact..."].map((cmd, i) => (
+                <div
+                  key={i}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontSize: 13,
+                    color: T.text.secondary,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = T.bg.hover;
+                    e.currentTarget.style.color = T.text.primary;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = T.text.secondary;
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.blue }}>▸</span>
+                  {cmd}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Top Header ── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 20px",
+          height: 52,
+          borderBottom: `1px solid ${T.border.subtle}`,
+          background: T.bg.secondary,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontFamily: FONTS.mono, fontSize: 13, fontWeight: 700, color: T.accent.blue, letterSpacing: 1 }}>
+            COMMS
+          </span>
+          <div style={{ width: 1, height: 20, background: T.border.subtle }} />
+          {views.map((v) => (
+            <button
+              key={v.id}
+              onClick={() => setActiveView(v.id)}
+              style={{
+                background: activeView === v.id ? `${T.accent.blue}15` : "transparent",
+                border: activeView === v.id ? `1px solid ${T.accent.blue}40` : "1px solid transparent",
+                borderRadius: 6,
+                padding: "5px 12px",
+                color: activeView === v.id ? T.accent.blue : T.text.secondary,
+                fontSize: 12,
+                fontFamily: FONTS.sans,
+                fontWeight: 500,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.15s",
+              }}
+            >
+              {v.label}
+              {v.count !== null && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: FONTS.mono,
+                    background: activeView === v.id ? T.accent.blue : T.bg.tertiary,
+                    color: activeView === v.id ? "#fff" : T.text.tertiary,
+                    padding: "1px 5px",
+                    borderRadius: 8,
+                    minWidth: 16,
+                    textAlign: "center",
+                  }}
+                >
+                  {v.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Agent Actions Pending */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 12px",
+              background: `${T.accent.green}10`,
+              border: `1px solid ${T.accent.green}30`,
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.green, animation: "pulse 2s infinite" }} />
+            <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.green }}>
+              {pendingActions} AGENT ACTIONS
+            </span>
+          </div>
+
+          {/* Command Palette Trigger */}
+          <div
+            onClick={() => setCommandOpen(true)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px",
+              background: T.bg.tertiary,
+              border: `1px solid ${T.border.subtle}`,
+              borderRadius: 6,
+              cursor: "pointer",
+              minWidth: 200,
+            }}
+          >
+            <span style={{ color: T.text.tertiary, fontSize: 12 }}>Search or command...</span>
+            <kbd style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono, marginLeft: "auto", padding: "1px 5px", background: T.bg.primary, borderRadius: 3, border: `1px solid ${T.border.subtle}` }}>⌘K</kbd>
+          </div>
+
+          <button
+            style={{
+              background: T.accent.blue,
+              border: "none",
+              borderRadius: 6,
+              color: "#fff",
+              fontSize: 12,
+              fontFamily: FONTS.sans,
+              fontWeight: 600,
+              padding: "7px 16px",
+              cursor: "pointer",
+            }}
+          >
+            Compose
+          </button>
+        </div>
+      </div>
+
+      {/* ── Intelligence Summary Bar ── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: "8px 20px",
+          borderBottom: `1px solid ${T.border.subtle}`,
+          background: `${T.accent.blue}05`,
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 1 }}>
+          Today
+        </span>
+        <div style={{ display: "flex", gap: 12, flex: 1, overflowX: "auto" }}>
+          {[
+            { label: "New Opportunities", value: "1", color: T.accent.green },
+            { label: "Deal Events", value: "5", color: T.accent.blue },
+            { label: "Deadlines This Week", value: "3", color: T.accent.red },
+            { label: "Documents to Extract", value: "7", color: T.accent.purple },
+            { label: "Tasks Created", value: "4", color: T.accent.amber },
+          ].map((stat, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16, fontFamily: FONTS.mono, fontWeight: 700, color: stat.color }}>{stat.value}</span>
+              <span style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.sans, whiteSpace: "nowrap" }}>{stat.label}</span>
+            </div>
+          ))}
+        </div>
+        <button
+          style={{
+            background: "transparent",
+            border: `1px solid ${T.accent.green}40`,
+            borderRadius: 5,
+            color: T.accent.green,
+            fontSize: 10,
+            fontFamily: FONTS.mono,
+            padding: "4px 10px",
+            cursor: "pointer",
+            letterSpacing: 0.5,
+            whiteSpace: "nowrap",
+          }}
+        >
+          EXECUTE ALL READY ({EMAILS.reduce((a, e) => a + e.agentActions.filter((x) => x.status === "ready").length, 0)})
+        </button>
+      </div>
+
+      {/* ── Main Content Area ── */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* ── Left Panel: Email List ── */}
+        <div
+          style={{
+            width: 420,
+            borderRight: `1px solid ${T.border.subtle}`,
+            display: "flex",
+            flexDirection: "column",
+            flexShrink: 0,
+          }}
+        >
+          {/* Filters */}
+          <div style={{ display: "flex", gap: 4, padding: "8px 12px", borderBottom: `1px solid ${T.border.subtle}`, overflowX: "auto", flexShrink: 0 }}>
+            {filters.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setActiveFilter(f.id)}
+                style={{
+                  background: activeFilter === f.id ? T.bg.tertiary : "transparent",
+                  border: `1px solid ${activeFilter === f.id ? T.border.default : "transparent"}`,
+                  borderRadius: 5,
+                  padding: "4px 10px",
+                  color: activeFilter === f.id ? T.text.primary : T.text.tertiary,
+                  fontSize: 11,
+                  fontFamily: FONTS.sans,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  transition: "all 0.12s",
+                }}
+              >
+                {f.label}
+                <span style={{ fontSize: 10, fontFamily: FONTS.mono, opacity: 0.6 }}>{f.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Email List */}
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {filteredEmails.map((email) => {
+              const cls = CLASSIFICATIONS[email.classification];
+              const isSelected = selectedEmail?.id === email.id;
+              const readyCount = email.agentActions.filter((a) => a.status === "ready").length;
+
+              return (
+                <div
+                  key={email.id}
+                  onClick={() => setSelectedEmail(email)}
+                  style={{
+                    padding: "12px 16px",
+                    borderBottom: `1px solid ${T.border.subtle}`,
+                    background: isSelected ? `${T.accent.blue}10` : "transparent",
+                    borderLeft: `3px solid ${isSelected ? T.accent.blue : "transparent"}`,
+                    cursor: "pointer",
+                    transition: "all 0.12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = T.bg.hover;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  {/* Top Row: Classification + Priority + Time */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span style={{ color: cls.color, fontSize: 9, fontFamily: FONTS.mono }}>{cls.icon}</span>
+                    <span style={{ color: cls.color, fontSize: 9, fontFamily: FONTS.mono, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {cls.label}
+                    </span>
+                    {email.priority === "critical" && (
+                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.red, background: `${T.accent.red}15`, padding: "1px 5px", borderRadius: 3 }}>
+                        URGENT
+                      </span>
+                    )}
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
+                      {email.time}
+                    </span>
+                  </div>
+
+                  {/* Sender */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 6,
+                        background: email.classification === "system-alert" ? `${T.accent.purple}20` : T.bg.tertiary,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 10,
+                        fontFamily: FONTS.mono,
+                        color: email.classification === "system-alert" ? T.accent.purple : T.text.secondary,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {email.from.avatar}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: email.read ? 400 : 600, color: T.text.primary }}>
+                          {email.from.name}
+                        </span>
+                        {!email.read && (
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.accent.blue, flexShrink: 0 }} />
+                        )}
+                      </div>
+                      <span style={{ fontSize: 10, color: T.text.tertiary }}>
+                        {email.from.company} · {email.from.role}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Subject */}
+                  <div style={{ fontSize: 12, color: email.read ? T.text.secondary : T.text.primary, fontWeight: email.read ? 400 : 500, marginBottom: 6, lineHeight: 1.3 }}>
+                    {email.subject}
+                  </div>
+
+                  {/* Bottom Row: Deal Link + Attachments + Actions */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    {email.dealLinked && (
+                      <DealStageIndicator
+                        stage={email.dealLinked.stage}
+                        name={email.dealLinked.name}
+                        stationNum={email.dealLinked.stationNum}
+                      />
+                    )}
+                    {email.hasAttachments && (
+                      <span style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
+                        📎 {email.attachments.length}
+                      </span>
+                    )}
+                    {readyCount > 0 && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontFamily: FONTS.mono,
+                          color: T.accent.green,
+                          background: `${T.accent.green}12`,
+                          padding: "2px 6px",
+                          borderRadius: 3,
+                          marginLeft: "auto",
+                        }}
+                      >
+                        {readyCount} READY
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Center Panel: Email Detail ── */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {selectedEmail ? (
+            <>
+              {/* Email Header */}
+              <div
+                style={{
+                  padding: "16px 24px",
+                  borderBottom: `1px solid ${T.border.subtle}`,
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ color: CLASSIFICATIONS[selectedEmail.classification].color, fontSize: 10, fontFamily: FONTS.mono }}>
+                        {CLASSIFICATIONS[selectedEmail.classification].icon} {CLASSIFICATIONS[selectedEmail.classification].label.toUpperCase()}
+                      </span>
+                      {selectedEmail.signals.map((s, i) => (
+                        <SignalTag key={i} signal={s} />
+                      ))}
+                    </div>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: T.text.primary, lineHeight: 1.3 }}>
+                      {selectedEmail.subject}
+                    </h2>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button style={{ background: T.bg.tertiary, border: `1px solid ${T.border.subtle}`, borderRadius: 6, padding: "6px 12px", color: T.text.secondary, fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer" }}>
+                      Reply
+                    </button>
+                    <button style={{ background: `${T.accent.blue}15`, border: `1px solid ${T.accent.blue}40`, borderRadius: 6, padding: "6px 12px", color: T.accent.blue, fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer" }}>
+                      AI Draft
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: selectedEmail.classification === "system-alert" ? `${T.accent.purple}20` : T.bg.tertiary,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontFamily: FONTS.mono,
+                      color: selectedEmail.classification === "system-alert" ? T.accent.purple : T.text.secondary,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {selectedEmail.from.avatar}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text.primary }}>
+                      {selectedEmail.from.name}
+                      <span style={{ fontWeight: 400, color: T.text.tertiary, marginLeft: 8, fontSize: 11 }}>
+                        {selectedEmail.from.company} · {selectedEmail.from.role}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: T.text.tertiary }}>
+                      {selectedEmail.date} at {selectedEmail.time}
+                    </div>
+                  </div>
+                  {selectedEmail.dealLinked && (
+                    <DealStageIndicator
+                      stage={selectedEmail.dealLinked.stage}
+                      name={selectedEmail.dealLinked.name}
+                      stationNum={selectedEmail.dealLinked.stationNum}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Email Body */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+                <div style={{ fontSize: 13, color: T.text.secondary, lineHeight: 1.7, maxWidth: 640, marginBottom: 24 }}>
+                  {selectedEmail.preview}
+                </div>
+
+                {/* Attachments */}
+                {selectedEmail.attachments.length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+                      Attachments ({selectedEmail.attachments.length})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {selectedEmail.attachments.map((a, i) => (
+                        <AttachmentChip key={i} attachment={a} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Agent Actions Section */}
+                {selectedEmail.agentActions.length > 0 && (
+                  <div
+                    style={{
+                      padding: 16,
+                      background: T.bg.card,
+                      border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 8,
+                      marginBottom: 24,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.green }} />
+                        <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.text.primary, letterSpacing: 0.5 }}>
+                          AGENT RECOMMENDATIONS
+                        </span>
+                      </div>
+                      {selectedEmail.agentActions.filter((a) => a.status === "ready").length > 0 && (
+                        <button
+                          style={{
+                            background: T.accent.green,
+                            border: "none",
+                            borderRadius: 5,
+                            color: "#fff",
+                            fontSize: 10,
+                            fontFamily: FONTS.mono,
+                            padding: "4px 12px",
+                            cursor: "pointer",
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          EXECUTE ALL
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {selectedEmail.agentActions.map((action, i) => (
+                        <AgentActionBadge key={i} action={action} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ color: T.text.tertiary, fontSize: 13 }}>Select an email to view</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Right Panel: Context Sidebar ── */}
+        <div
+          style={{
+            width: 300,
+            borderLeft: `1px solid ${T.border.subtle}`,
+            display: "flex",
+            flexDirection: "column",
+            flexShrink: 0,
+            background: T.bg.secondary,
+          }}
+        >
+          {/* Panel Tabs */}
+          <div style={{ display: "flex", borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+            {[
+              { id: "actions", label: "Actions" },
+              { id: "deal", label: "Deal" },
+              { id: "team", label: "Team" },
+              { id: "tasks", label: "Tasks" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSidePanel(tab.id)}
+                style={{
+                  flex: 1,
+                  padding: "10px 0",
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: `2px solid ${sidePanel === tab.id ? T.accent.blue : "transparent"}`,
+                  color: sidePanel === tab.id ? T.accent.blue : T.text.tertiary,
+                  fontSize: 11,
+                  fontFamily: FONTS.sans,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Panel Content */}
+          <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+            {sidePanel === "actions" && (
+              <div>
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" }}>
+                  Quick Actions
+                </div>
+                {[
+                  { label: "Link to Deal", icon: "🔗", desc: "Associate this thread with a deal" },
+                  { label: "Create Task", icon: "✓", desc: "Generate task from this email" },
+                  { label: "Extract Data", icon: "📊", desc: "Pull data from attachments" },
+                  { label: "AI Summary", icon: "✨", desc: "Summarize thread with context" },
+                  { label: "Draft Response", icon: "✍️", desc: "AI-composed reply" },
+                  { label: "Set Follow-up", icon: "⏰", desc: "Schedule reminder" },
+                  { label: "Add to Deal Bible", icon: "📘", desc: "Save to deal document repository" },
+                  { label: "Log Activity", icon: "📝", desc: "Record interaction in deal timeline" },
+                ].map((action, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      marginBottom: 2,
+                      transition: "background 0.12s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = T.bg.hover; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: 14 }}>{action.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{action.label}</div>
+                      <div style={{ fontSize: 10, color: T.text.tertiary }}>{action.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {sidePanel === "deal" && selectedEmail?.dealLinked && (
+              <div>
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" }}>
+                  Linked Deal
+                </div>
+                <div style={{ padding: 12, background: T.bg.card, borderRadius: 8, border: `1px solid ${T.border.subtle}`, marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>
+                    {selectedEmail.dealLinked.name}
+                  </div>
+                  <DealStageIndicator
+                    stage={selectedEmail.dealLinked.stage}
+                    name=""
+                    stationNum={selectedEmail.dealLinked.stationNum}
+                  />
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[
+                      { label: "JEDI Score", value: "78", color: T.accent.amber },
+                      { label: "Strategy", value: "BTS → Rental", color: T.accent.blue },
+                      { label: "Pipeline Value", value: "$10.8M", color: T.text.primary },
+                      { label: "DD Deadline", value: "Feb 28", color: T.accent.red },
+                    ].map((stat, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: T.text.tertiary }}>{stat.label}</span>
+                        <span style={{ fontSize: 12, fontFamily: FONTS.mono, color: stat.color, fontWeight: 600 }}>{stat.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase" }}>
+                  Recent Activity
+                </div>
+                {[
+                  { action: "Price reduced to $10.8M", time: "2h ago", type: "event" },
+                  { action: "Appraisal ordered", time: "3d ago", type: "task" },
+                  { action: "LOI submitted", time: "1w ago", type: "milestone" },
+                  { action: "JEDI Score: 72 → 78", time: "1w ago", type: "score" },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, padding: "6px 0", borderBottom: i < 3 ? `1px solid ${T.border.subtle}` : "none" }}>
+                    <div style={{ width: 4, height: 4, borderRadius: "50%", background: T.accent.blue, marginTop: 6, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, color: T.text.primary }}>{item.action}</div>
+                      <div style={{ fontSize: 10, color: T.text.tertiary }}>{item.time}</div>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  style={{
+                    width: "100%",
+                    marginTop: 12,
+                    padding: "8px",
+                    background: `${T.accent.blue}10`,
+                    border: `1px solid ${T.accent.blue}30`,
+                    borderRadius: 6,
+                    color: T.accent.blue,
+                    fontSize: 11,
+                    fontFamily: FONTS.sans,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  Open Deal Capsule →
+                </button>
+              </div>
+            )}
+
+            {sidePanel === "deal" && !selectedEmail?.dealLinked && (
+              <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🔗</div>
+                <div style={{ fontSize: 12, color: T.text.secondary, marginBottom: 12 }}>No deal linked</div>
+                <button
+                  style={{
+                    padding: "8px 16px",
+                    background: T.accent.blue,
+                    border: "none",
+                    borderRadius: 6,
+                    color: "#fff",
+                    fontSize: 11,
+                    fontFamily: FONTS.sans,
+                    cursor: "pointer",
+                  }}
+                >
+                  Link to Deal
+                </button>
+                <div style={{ fontSize: 10, color: T.text.tertiary, marginTop: 8 }}>
+                  or let the agent auto-detect
+                </div>
+              </div>
+            )}
+
+            {sidePanel === "team" && (
+              <div>
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" }}>
+                  Deal Team — {selectedEmail?.dealLinked?.name || "No Deal"}
+                </div>
+                {selectedEmail?.dealLinked && DEAL_TEAMS[selectedEmail.dealLinked.id] ? (
+                  <>
+                    {/* Team Roles */}
+                    {[
+                      { role: "Broker", name: "Kevin Park", company: "Marcus & Millichap", status: "active", lastContact: "2h ago" },
+                      { role: "Attorney", name: "Daniel Foster", company: "Morris Manning", status: "active", lastContact: "1d ago" },
+                      { role: "Lender", name: "Michael Chen", company: "Wells Fargo CRE", status: "pending", lastContact: "3d ago" },
+                      { role: "Appraiser", name: "—", company: "—", status: "unassigned", lastContact: null },
+                      { role: "Property Mgr", name: "—", company: "—", status: "unassigned", lastContact: null },
+                    ].map((member, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 12px",
+                          background: member.status === "unassigned" ? `${T.bg.tertiary}50` : T.bg.card,
+                          border: `1px solid ${T.border.subtle}`,
+                          borderRadius: 6,
+                          marginBottom: 6,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 6,
+                            background: member.status === "unassigned" ? T.bg.tertiary : `${T.accent.blue}15`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 10,
+                            fontFamily: FONTS.mono,
+                            color: member.status === "unassigned" ? T.text.tertiary : T.accent.blue,
+                          }}
+                        >
+                          {member.status === "unassigned" ? "+" : member.name.split(" ").map((n) => n[0]).join("")}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase" }}>
+                              {member.role}
+                            </span>
+                            {member.status === "active" && (
+                              <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.accent.green }} />
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: member.status === "unassigned" ? T.text.tertiary : T.text.primary, fontWeight: 500 }}>
+                            {member.name}
+                          </div>
+                          {member.lastContact && (
+                            <div style={{ fontSize: 10, color: T.text.tertiary }}>
+                              Last contact: {member.lastContact}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      style={{
+                        width: "100%",
+                        marginTop: 8,
+                        padding: "8px",
+                        background: "transparent",
+                        border: `1px dashed ${T.border.default}`,
+                        borderRadius: 6,
+                        color: T.text.tertiary,
+                        fontSize: 11,
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add Team Member
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: T.text.tertiary, fontSize: 12 }}>
+                    Link email to a deal to see team
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sidePanel === "tasks" && (
+              <div>
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" }}>
+                  Active Tasks
+                </div>
+                {TASKS_PENDING.map((task, i) => (
+                  <div
+                    key={task.id}
+                    style={{
+                      padding: "10px 12px",
+                      background: T.bg.card,
+                      border: `1px solid ${task.priority === "critical" ? `${T.accent.red}30` : T.border.subtle}`,
+                      borderRadius: 6,
+                      marginBottom: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div
+                        style={{
+                          width: 14,
+                          height: 14,
+                          borderRadius: 3,
+                          border: `1.5px solid ${task.priority === "critical" ? T.accent.red : T.accent.blue}`,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, flex: 1 }}>
+                        {task.title}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 22 }}>
+                      <span style={{ fontSize: 10, color: T.text.tertiary }}>{task.deal}</span>
+                      <span style={{ fontSize: 10, color: task.priority === "critical" ? T.accent.red : T.accent.amber, fontFamily: FONTS.mono }}>
+                        Due {task.due}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 9,
+                          fontFamily: FONTS.mono,
+                          padding: "1px 5px",
+                          background: `${T.accent.cyan}12`,
+                          color: T.accent.cyan,
+                          borderRadius: 3,
+                        }}
+                      >
+                        {task.source}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  style={{
+                    width: "100%",
+                    marginTop: 8,
+                    padding: "8px",
+                    background: `${T.accent.blue}10`,
+                    border: `1px solid ${T.accent.blue}30`,
+                    borderRadius: 6,
+                    color: T.accent.blue,
+                    fontSize: 11,
+                    fontFamily: FONTS.sans,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Create Task
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
+    </div>
+  );
+}
