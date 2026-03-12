@@ -35,6 +35,7 @@ const activeJobs = new Map<string, {
   totalEmails: number;
   processedEmails: number;
   entitiesFound: number;
+  emailsWithSignal: number;
   errors: string[];
   startedAt: Date;
   completedAt: Date | null;
@@ -89,6 +90,7 @@ router.post('/', handlePstUpload, async (req: Request, res: Response) => {
       totalEmails: 0,
       processedEmails: 0,
       entitiesFound: 0,
+      emailsWithSignal: 0,
       errors: [],
       startedAt: new Date(),
       completedAt: null,
@@ -270,6 +272,7 @@ async function processPstAsync(jobId: string, uploadId: string, buffer: Buffer, 
         const email = emails[i];
         const extraction = extractionMap.get(i) || extractionResults[i];
         const hasSignal = extraction?.hasSignal || false;
+        if (hasSignal) job.emailsWithSignal++;
 
         const emailResult = await query(
           `INSERT INTO pst_email_imports (upload_id, email_index, subject, sender, recipients, email_date, raw_body, has_signal, has_attachments)

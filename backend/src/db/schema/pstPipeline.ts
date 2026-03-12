@@ -26,20 +26,21 @@ export const pstEmailImports = pgTable('pst_email_imports', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   uploadIdx: index('idx_pst_emails_upload').on(table.uploadId),
-  signalIdx: index('idx_pst_emails_signal').on(table.hasSignal),
+  signalIdx: index('idx_pst_emails_signal').on(table.hasSignal).where(sql`has_signal = TRUE`),
+  dateIdx: index('idx_pst_emails_date').on(table.emailDate),
 }));
 
 export const pstExtractedEntities = pgTable('pst_extracted_entities', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   emailId: uuid('email_id').notNull().references(() => pstEmailImports.id, { onDelete: 'cascade' }),
   uploadId: uuid('upload_id').notNull().references(() => dataUploads.id, { onDelete: 'cascade' }),
-  entityType: varchar('entity_type', { length: 50 }).notNull(),
+  entityType: varchar('entity_type', { length: 50 }).notNull().default('property'),
   propertyAddress: text('property_address'),
   dealName: text('deal_name'),
   unitCount: integer('unit_count'),
-  askingPrice: numeric('asking_price', { precision: 14, scale: 2 }),
+  askingPrice: numeric('asking_price', { precision: 15, scale: 2 }),
   rentFigures: text('rent_figures'),
-  capRate: numeric('cap_rate', { precision: 5, scale: 3 }),
+  capRate: numeric('cap_rate', { precision: 5, scale: 2 }),
   contactName: text('contact_name'),
   organization: text('organization'),
   confidence: numeric('confidence', { precision: 3, scale: 2 }),
@@ -49,6 +50,7 @@ export const pstExtractedEntities = pgTable('pst_extracted_entities', {
   emailIdx: index('idx_pst_entities_email').on(table.emailId),
   uploadIdx: index('idx_pst_entities_upload').on(table.uploadId),
   typeIdx: index('idx_pst_entities_type').on(table.entityType),
+  confidenceIdx: index('idx_pst_entities_confidence').on(table.confidence),
 }));
 
 export const pstEmailImportsRelations = relations(pstEmailImports, ({ one, many }) => ({
