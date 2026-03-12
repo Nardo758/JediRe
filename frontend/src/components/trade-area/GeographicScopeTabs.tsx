@@ -64,7 +64,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
           if (scopeStats?.avg_rent !== undefined) tooltipParts.push(`Avg Rent: $${scopeStats.avg_rent.toLocaleString()}`);
 
           return (
-            <div key={scope} className="flex items-center">
+            <div key={scope} className="flex items-center gap-1">
               <button
                 onClick={() => onChange(scope)}
                 title={hasStats ? tooltipParts.join('  |  ') : undefined}
@@ -72,7 +72,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
                   isActive
                     ? 'bg-blue-50 text-blue-700 border border-blue-200'
                     : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
-                } ${scope === 'trade_area' && onDefineTradeArea ? 'rounded-r-none border-r-0' : ''}`}
+                }`}
               >
                 <span className="text-sm">{scopeIcons[scope]}</span>
                 <span>{scopeLabels[scope]}</span>
@@ -86,15 +86,12 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               </button>
               {scope === 'trade_area' && onDefineTradeArea && (
                 <button
-                  onClick={() => onDefineTradeArea()}
+                  onClick={(e) => { e.stopPropagation(); onDefineTradeArea(); }}
                   title="Edit trade area boundary"
-                  className={`flex items-center px-1.5 py-1.5 text-[13px] font-medium rounded-lg rounded-l-none transition-colors border ${
-                    isActive
-                      ? 'bg-blue-50 text-blue-500 border-blue-200 hover:bg-blue-100'
-                      : 'text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-50'
-                  }`}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-700 transition-colors border border-slate-200 hover:border-blue-300"
                 >
-                  <Pencil size={11} />
+                  <Pencil size={10} />
+                  <span>Edit</span>
                 </button>
               )}
             </div>
