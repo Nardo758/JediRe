@@ -322,7 +322,7 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
     }
 
     const userId = (req as any).user?.userId;
-    const { body, cc } = req.body;
+    const { body, cc, to, subjectOverride } = req.body;
 
     if (!body || !body.trim()) {
       return res.status(400).json({ success: false, message: 'Reply body is required' });
@@ -342,7 +342,8 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
     }
 
     const original = originalResult.rows[0];
-    const replySubject = original.subject?.startsWith('Re:') ? original.subject : `Re: ${original.subject || ''}`;
+    const replySubject = subjectOverride?.trim()
+      || (original.subject?.startsWith('Re:') ? original.subject : `Re: ${original.subject || ''}`);
     const threadId = original.thread_id || `thread-${emailId}`;
 
     const accountResult = await pool.query(
@@ -356,8 +357,13 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
 
     const replyBody = body.trim();
     const preview = replyBody.slice(0, 200);
-    const toAddresses = [original.from_address];
-    const rawCc = Array.isArray(cc) ? cc : (cc ? String(cc).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+
+    const parseCsv = (val: any): string[] =>
+      Array.isArray(val) ? val.map(String).map(s => s.trim()).filter(Boolean)
+        : val ? String(val).split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+
+    const toAddresses = parseCsv(to).length > 0 ? parseCsv(to) : [original.from_address];
+    const rawCc = parseCsv(cc);
 
     const insertResult = await pool.query(
       `INSERT INTO emails

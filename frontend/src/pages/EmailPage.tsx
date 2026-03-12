@@ -200,7 +200,8 @@ export function EmailPage() {
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
   const [propPanelOpen, setPropPanelOpen] = useState(true);
   const [newsPanelOpen, setNewsPanelOpen] = useState(true);
-  const [replyOpen, setReplyOpen] = useState(false);
+  const [composeMode, setComposeMode] = useState<null | 'reply' | 'reply-all' | 'forward'>(null);
+  const [replyTo, setReplyTo] = useState('');
   const [replyBody, setReplyBody] = useState('');
   const [replyCc, setReplyCc] = useState('');
   const [replySending, setReplySending] = useState(false);
@@ -336,22 +337,53 @@ export function EmailPage() {
 
   useEffect(() => { loadInbox(); }, [loadInbox]);
 
+  const openCompose = (mode: 'reply' | 'reply-all' | 'forward') => {
+    if (!selectedEmail) return;
+    setComposeMode(mode);
+    setReplySent(null);
+    setReplyError(null);
+    setReplyBody('');
+
+    if (mode === 'reply') {
+      setReplyTo(selectedEmail.from_address);
+      setReplyCc('');
+    } else if (mode === 'reply-all') {
+      setReplyTo(selectedEmail.from_address);
+      const others = [
+        ...(selectedEmail.to_addresses || []),
+        ...(selectedEmail.cc_addresses || []),
+      ].filter(a => a !== selectedEmail.from_address);
+      setReplyCc(others.join(', '));
+    } else {
+      setReplyTo('');
+      setReplyCc('');
+      const original = selectedDetail?.body_text || selectedDetail?.body_preview || selectedEmail.body_preview || '';
+      const from = selectedEmail.from_name || selectedEmail.from_address;
+      setReplyBody(`\n\n---------- Forwarded message ----------\nFrom: ${from}\nDate: ${new Date(selectedEmail.received_at).toLocaleString()}\nSubject: ${selectedEmail.subject || '(no subject)'}\n\n${original}`);
+    }
+  };
+
   const handleSendReply = async () => {
     if (!selectedEmail || !replyBody.trim()) return;
     setReplySending(true);
     setReplyError(null);
     try {
-      const res = await inboxService.replyToEmail(selectedEmail.id, replyBody, replyCc || undefined);
+      const toList = replyTo.split(',').map(s => s.trim()).filter(Boolean);
+      const subjectOverride = composeMode === 'forward'
+        ? (selectedEmail.subject?.startsWith('Fwd:') ? selectedEmail.subject : `Fwd: ${selectedEmail.subject || ''}`)
+        : undefined;
+      const res = await inboxService.replyToEmail(selectedEmail.id, replyBody, replyCc || undefined, toList.length ? toList : undefined, subjectOverride);
       if (res.success) {
-        setReplySent(selectedEmail.from_address);
+        setReplySent(toList[0] || selectedEmail.from_address);
         setReplyBody('');
         setReplyCc('');
-        setReplyOpen(false);
+        setReplyTo('');
+        setComposeMode(null);
       } else {
-        setReplyError(res.message || 'Failed to save reply');
+        setReplyError(res.message || 'Failed to save message');
       }
     } catch (err: any) {
-      setReplyError(err?.response?.data?.message || err?.message || 'Failed to save reply');
+      setReplyError(err?.response?.data?.message || err?.message || 'Failed to save message');
     }
     setReplySending(false);
   };
@@ -363,7 +395,8 @@ export function EmailPage() {
     setTeamMembers([]);
     setTeamActivity([]);
     setDismissedActions(new Set());
-    setReplyOpen(false);
+    setComposeMode(null);
+    setReplyTo('');
     setReplyBody('');
     setReplyCc('');
     setReplySent(null);
@@ -908,13 +941,17 @@ export function EmailPage() {
                     }}>
                       {selectedEmail.is_flagged ? '\u2605 Flagged' : '\u2606 Flag'}
                     </button>
-                    <button onClick={() => { setReplyOpen(o => !o); setReplySent(null); }} style={{
-                      background: replyOpen ? `${T.accent.green}20` : T.bg.tertiary,
-                      border: `1px solid ${replyOpen ? T.accent.green + '60' : T.border.subtle}`,
-                      borderRadius: 6, padding: "6px 12px",
-                      color: replyOpen ? T.accent.green : T.text.secondary,
-                      fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer",
-                    }}>&#8617; Reply</button>
+                    {(['reply', 'reply-all', 'forward'] as const).map(mode => (
+                      <button key={mode} onClick={() => composeMode === mode ? setComposeMode(null) : openCompose(mode)} style={{
+                        background: composeMode === mode ? `${T.accent.green}20` : T.bg.tertiary,
+                        border: `1px solid ${composeMode === mode ? T.accent.green + '60' : T.border.subtle}`,
+                        borderRadius: 6, padding: "6px 12px",
+                        color: composeMode === mode ? T.accent.green : T.text.secondary,
+                        fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer", whiteSpace: "nowrap" as const,
+                      }}>
+                        {mode === 'reply' ? '↩ Reply' : mode === 'reply-all' ? '↩↩ Reply All' : '↪ Forward'}
+                      </button>
+                    ))}
                     <button style={{
                       background: `${T.accent.blue}15`, border: `1px solid ${T.accent.blue}40`,
                       borderRadius: 6, padding: "6px 12px", color: T.accent.blue,
@@ -971,11 +1008,10 @@ export function EmailPage() {
                   </div>
                 )}
 
-                {replyOpen && (
+                {composeMode && (
                   <div style={{
                     marginBottom: 24, border: `1px solid ${T.border.default}`,
-                    borderRadius: 8, overflow: "hidden",
-                    background: T.bg.secondary,
+                    borderRadius: 8, overflow: "hidden", background: T.bg.secondary,
                   }}>
                     <div style={{
                       padding: "10px 14px", background: T.bg.card,
@@ -983,8 +1019,32 @@ export function EmailPage() {
                       fontSize: 11, fontFamily: FONTS.mono, color: T.text.tertiary,
                       display: "flex", alignItems: "center", gap: 8,
                     }}>
-                      <span style={{ color: T.accent.green }}>&#8617;</span>
-                      <span>Reply to <span style={{ color: T.text.secondary }}>{selectedEmail.from_address}</span></span>
+                      <span style={{ color: T.accent.green }}>
+                        {composeMode === 'forward' ? '↪' : '↩'}
+                      </span>
+                      <span style={{ color: T.text.secondary, textTransform: "capitalize" as const }}>
+                        {composeMode === 'reply' ? 'Reply' : composeMode === 'reply-all' ? 'Reply All' : 'Forward'}
+                      </span>
+                      {composeMode !== 'forward' && (
+                        <span style={{ color: T.text.tertiary }}>
+                          — {selectedEmail.subject?.startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject || ''}`}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, minWidth: 20 }}>TO</span>
+                        <input
+                          type="text"
+                          value={replyTo}
+                          onChange={e => setReplyTo(e.target.value)}
+                          placeholder={composeMode === 'forward' ? 'Enter recipients...' : selectedEmail.from_address}
+                          style={{
+                            flex: 1, background: "transparent", border: "none", outline: "none",
+                            fontSize: 12, color: T.text.primary, fontFamily: FONTS.sans,
+                          }}
+                        />
+                      </div>
                     </div>
                     <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border.subtle}` }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1002,12 +1062,12 @@ export function EmailPage() {
                       </div>
                     </div>
                     <textarea
-                      autoFocus
+                      autoFocus={composeMode !== 'forward'}
                       value={replyBody}
                       onChange={e => setReplyBody(e.target.value)}
-                      placeholder={`Reply to ${selectedEmail.from_name || selectedEmail.from_address}...`}
+                      placeholder={composeMode === 'forward' ? 'Add a message...' : `Reply to ${selectedEmail.from_name || selectedEmail.from_address}...`}
                       style={{
-                        width: "100%", minHeight: 120, padding: "14px",
+                        width: "100%", minHeight: composeMode === 'forward' ? 160 : 120, padding: "14px",
                         background: "transparent", border: "none", outline: "none", resize: "vertical" as const,
                         fontSize: 13, color: T.text.primary, fontFamily: FONTS.sans, lineHeight: 1.6,
                         boxSizing: "border-box" as const,
@@ -1028,20 +1088,20 @@ export function EmailPage() {
                       )}
                       <button
                         onClick={handleSendReply}
-                        disabled={replySending || !replyBody.trim()}
+                        disabled={replySending || !replyBody.trim() || (composeMode === 'forward' && !replyTo.trim())}
                         style={{
                           padding: "7px 18px", borderRadius: 6, border: "none",
-                          background: replyBody.trim() ? T.accent.green : T.bg.tertiary,
-                          color: replyBody.trim() ? "#fff" : T.text.tertiary,
+                          background: (replyBody.trim() && (composeMode !== 'forward' || replyTo.trim())) ? T.accent.green : T.bg.tertiary,
+                          color: (replyBody.trim() && (composeMode !== 'forward' || replyTo.trim())) ? "#fff" : T.text.tertiary,
                           fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600,
-                          cursor: replyBody.trim() ? "pointer" : "not-allowed",
+                          cursor: (replyBody.trim() && (composeMode !== 'forward' || replyTo.trim())) ? "pointer" : "not-allowed",
                           opacity: replySending ? 0.7 : 1,
                         }}
                       >
-                        {replySending ? 'Sending...' : 'Send'}
+                        {replySending ? 'Saving...' : composeMode === 'forward' ? 'Forward' : 'Send Reply'}
                       </button>
                       <button
-                        onClick={() => { setReplyOpen(false); setReplyBody(''); setReplyCc(''); }}
+                        onClick={() => { setComposeMode(null); setReplyBody(''); setReplyCc(''); setReplyTo(''); setReplyError(null); }}
                         style={{
                           padding: "7px 14px", borderRadius: 6,
                           background: "transparent", border: `1px solid ${T.border.subtle}`,
