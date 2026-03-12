@@ -1,8 +1,3 @@
-/**
- * Inbox API Service
- * Frontend client for email management
- */
-
 import { apiClient } from './api.client';
 
 export interface Email {
@@ -11,21 +6,23 @@ export interface Email {
   from_name: string;
   from_address: string;
   body_preview: string;
+  body_text?: string;
   is_read: boolean;
   is_flagged: boolean;
   has_attachments: boolean;
-  deal_id: number | null;
+  deal_id: string | null;
   deal_name?: string;
   received_at: string;
   created_at: string;
   attachment_count?: number;
+  source_provider?: string;
+  external_id?: string;
+  to_addresses?: string[];
+  cc_addresses?: string[];
 }
 
 export interface EmailDetail extends Email {
-  to_addresses: string[];
-  cc_addresses?: string[];
   body_html?: string;
-  body_text?: string;
   attachments?: EmailAttachment[];
   extracted_properties?: any[];
   action_items?: any[];
@@ -45,30 +42,34 @@ export interface InboxStats {
   flagged: number;
   deal_related: number;
   with_attachments: number;
+  pst_imports: number;
 }
 
 export interface InboxFilters {
   limit?: number;
   offset?: number;
   unread_only?: boolean;
+  flagged_only?: boolean;
+  deal_linked?: boolean;
   deal_id?: number;
   label?: string;
   search?: string;
+  source?: 'pst' | 'connected';
 }
 
 export const inboxService = {
-  /**
-   * Get emails with optional filters
-   */
   async getEmails(filters: InboxFilters = {}) {
     const params = new URLSearchParams();
     
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.offset) params.append('offset', filters.offset.toString());
     if (filters.unread_only) params.append('unread_only', 'true');
+    if (filters.flagged_only) params.append('flagged_only', 'true');
     if (filters.deal_id) params.append('deal_id', filters.deal_id.toString());
     if (filters.label) params.append('label', filters.label);
     if (filters.search) params.append('search', filters.search);
+    if (filters.source) params.append('source', filters.source);
+    if (filters.deal_linked) params.append('deal_linked', 'true');
 
     const response = await apiClient.get(`/api/v1/inbox?${params.toString()}`);
     return response.data;
@@ -87,7 +88,7 @@ export const inboxService = {
   async updateEmail(id: number, updates: {
     is_read?: boolean;
     is_flagged?: boolean;
-    deal_id?: number | null;
+    deal_id?: string | null;
     is_archived?: boolean;
   }) {
     const response = await apiClient.patch(`/api/v1/inbox/${id}`, updates);
