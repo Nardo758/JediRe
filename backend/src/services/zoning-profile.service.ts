@@ -78,7 +78,7 @@ function mapProjectTypeToDealType(projectType: string): 'residential' | 'commerc
   const pt = (projectType || '').toLowerCase();
   if (['multifamily', 'residential'].includes(pt)) return 'residential';
   if (['office', 'retail', 'industrial', 'hospitality', 'special_purpose'].includes(pt)) return 'commercial';
-  if (pt === 'mixed_use' || pt === 'mixed-use') return 'mixed-use';
+  if (pt === 'mixed_use' || pt === 'mixed-use' || pt === 'mixed_use_commercial') return 'mixed-use';
   return 'residential';
 }
 

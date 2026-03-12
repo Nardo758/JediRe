@@ -19,6 +19,7 @@ export interface SubjectProperty {
   setbacks: { front: number; side: number; rear: number };
   propertyType: PropertyType;
   dealType: 'residential' | 'commercial' | 'mixed-use';
+  projectType: string;
   baseDistrictCode: string | null;
   municipality: string | null;
   state: string | null;
@@ -188,12 +189,13 @@ export class EntitlementComparisonEngine {
       multifamily: 'multifamily', residential: 'multifamily',
       office: 'office', retail: 'retail', industrial: 'industrial',
       hospitality: 'hospitality', mixed_use: 'mixed-use', 'mixed-use': 'mixed-use',
+      mixed_use_commercial: 'mixed-use',
     };
     const dealTypeMap = (pt: string): 'residential' | 'commercial' | 'mixed-use' => {
       const p = (pt || '').toLowerCase();
       if (['multifamily', 'residential'].includes(p)) return 'residential';
       if (['office', 'retail', 'industrial', 'hospitality', 'special_purpose'].includes(p)) return 'commercial';
-      if (p === 'mixed_use' || p === 'mixed-use') return 'mixed-use';
+      if (p === 'mixed_use' || p === 'mixed-use' || p === 'mixed_use_commercial') return 'mixed-use';
       return 'residential';
     };
 
@@ -206,6 +208,7 @@ export class EntitlementComparisonEngine {
       },
       propertyType: propTypeMap[projectType] || 'multifamily',
       dealType: dealTypeMap(projectType),
+      projectType,
       baseDistrictCode: profile.base_district_code,
       municipality: profile.municipality,
       state: profile.state,
@@ -876,7 +879,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v5#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v6#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -930,12 +933,28 @@ export class EntitlementComparisonEngine {
         ).join('\n')
       : '';
 
-    const trimmedOrdinance = ordinanceText.length > 3000
-      ? ordinanceText.slice(0, 3000) + '\n[...truncated for brevity]'
-      : ordinanceText;
-    const ordinanceSection = trimmedOrdinance
-      ? `ZONING ORDINANCE TEXT (${subject.baseDistrictCode}, ${mun}):\n${trimmedOrdinance}`
+    // Build multi-district ordinance section from all fetched codes
+    const ordinanceSection = Object.keys(ordinanceByCode).length > 0
+      ? Object.entries(ordinanceByCode)
+          .map(([code, text]) => {
+            const trimmed = text.length > 2500 ? text.slice(0, 2500) + '\n[...truncated]' : text;
+            return `ZONING ORDINANCE TEXT (${code}, ${mun}):\n${trimmed}`;
+          })
+          .join('\n\n')
       : '';
+
+    // Asset type context — tells Claude which FAR column applies for this deal
+    const assetTypeLabel: Record<string, string> = {
+      multifamily: 'Multifamily Residential — applies residential FAR only',
+      residential: 'Residential — applies residential FAR only',
+      mixed_use: 'Mixed-Use (Residential-Led) — applies combined FAR, majority residential',
+      mixed_use_commercial: 'Mixed-Use (Commercial-Led) — applies combined FAR, majority nonresidential',
+      office: 'Commercial / Office — applies nonresidential FAR only',
+      retail: 'Retail — applies nonresidential FAR only',
+      hospitality: 'Hospitality — applies nonresidential FAR only',
+      industrial: 'Industrial — applies nonresidential FAR only',
+    };
+    const assetTypeContext = assetTypeLabel[subject.projectType] || subject.projectType;
 
     // Strip raw metrics from what Claude sees for path context — prevents regurgitating engine outputs
     const pathContext = paths.map(p => ({
@@ -946,7 +965,7 @@ export class EntitlementComparisonEngine {
       description: p.description,
       municodeUrl: p.zoningCode ? municodeUrls[p.zoningCode] || null : null,
     }));
-    // Keep full metrics separately, only for discrepancy-flagging text
+    // Keep full metrics separately, only for discrepancy-flagging
     const metricsForFlagging = paths.map(p => ({
       key: p.key,
       engineComputedUnits: p.metrics.maxUnits,
@@ -955,7 +974,7 @@ export class EntitlementComparisonEngine {
       engineComputedStories: p.metrics.maxStories,
     }));
 
-    const prompt = `You are a senior real estate entitlement analyst. Your job is to provide analysis grounded in the ACTUAL ORDINANCE and BENCHMARK DATA provided below — not in the automated engine's computed numbers.
+    const prompt = `You are a senior real estate entitlement analyst. Provide Agent Insights grounded in the ACTUAL ORDINANCE TEXT and BENCHMARK DATA below — not in the automated engine's computed numbers.
 
 ${ordinanceSection}
 
@@ -967,51 +986,57 @@ SUBJECT PROPERTY:
 - Location: ${mun}, ${st}
 - Lot Area: ${subject.lotAreaSf.toLocaleString()} SF (${(subject.lotAreaSf / 43560).toFixed(2)} acres)
 - Current Zoning: ${subject.baseDistrictCode || 'Unknown'}
-- Property Type: ${subject.propertyType}
+- Asset Type: ${assetTypeContext}
 - Active Overlays: ${subject.overlays.length > 0 ? subject.overlays.map((o: any) => o.name || o.code || 'unnamed').join(', ') : 'None'}
 
-ENTITLEMENT PATHS (labels and risk levels only — do not use these as a source of metric values):
+ENTITLEMENT PATHS (label and risk only — do not use as metric source):
 ${JSON.stringify(pathContext, null, 2)}
 
-ENGINE-COMPUTED NUMBERS (provided for cross-checking only — these may contain errors):
+ENGINE-COMPUTED NUMBERS (cross-check only — may contain errors from wrong FAR column or density method):
 ${JSON.stringify(metricsForFlagging, null, 2)}
 
 INSTRUCTIONS:
-Part A — Write a 2-3 sentence "Agent Analysis" for each path using the ORDINANCE TEXT and BENCHMARK DATA above (not the engine numbers). Each insight must:
-1. Cite the specific ordinance section and actual values (e.g., "§16-19A sets combined FAR at 3.99: residential 1.49 + nonresidential 2.50").
-2. Reference comparable projects where they exist (e.g., "6 Atlanta CUP projects averaged 180 days to approval").
-3. Flag any discrepancy between the engine-computed number and the ordinance's actual limit, and state which is correct.
-4. For overlay paths: clarify they are DESIGN overlays (modify build-to lines, ground-floor activation, parking) — they do NOT create an independent density path. Base district FAR and density limits still apply.
+Part A — For each path, write 3–4 key nuances as a compact insight block. Use this exact format (with literal newlines between points):
+"• FAR basis: [which FAR applies for this asset type and why, citing ordinance section]
+• Binding constraint: [what actually limits the project — combined FAR cap, density cap, height, stories]
+• Timeline: [precise estimate from BENCHMARK DATA, e.g. '~302 days avg, range 126–420 (12 projects)'; write 'No benchmark data' if absent]
+• Key nuance: [one specific risk, opportunity, or ordinance quirk for this path — ground-floor activation, absolute FAR ceiling, density bonus eligibility, hardship finding, etc.]"
 
-Part B — Generate exactly these 4 extraRows. *** Values MUST be derived from the ZONING ORDINANCE TEXT and BENCHMARK DATA sections above. Do NOT copy any number from the ENGINE-COMPUTED NUMBERS section. ***
+Rules:
+- Cite actual ordinance values (e.g., "§16-19A combined FAR cap 3.99: res 1.49 + nonres 2.50").
+- For overlay paths: state explicitly they are DESIGN overlays — they do NOT add a separate density path. Base district FAR/density still controls.
+- If the engine-computed FAR differs from the ordinance, flag it: "Engine used X; ordinance §Y sets Z."
+- Never invent values; use '--' for unknown.
+
+Part B — Generate exactly these 4 extraRows. Values MUST come from ORDINANCE TEXT and BENCHMARK DATA only.
 
 1. key="timelineEstimate", label="Est. Timeline"
-   Values: precise estimate from ENTITLEMENT TIMELINE BENCHMARKS (e.g., "~68 days avg, 60–75 range (2 projects)"). If no benchmark data for that entitlement type, write "No benchmark data".
+   Precise benchmark-based estimate (e.g., "~302 days avg, range 126–420 (12 projects)"). Write "No benchmark data" if absent.
 
 2. key="approvalBody", label="Approval Body"
-   Values: the specific approval entity for this jurisdiction (e.g., "None — admin. permit", "Board of Zoning Adjustment (BZA)", "Atlanta City Council + ZRB"). Do not invent — use what you know about Atlanta, GA.
+   Specific body for this jurisdiction and path type (e.g., "Admin. permit — no hearing", "Board of Zoning Adjustment", "Atlanta City Council + ZRB").
 
 3. key="ordinanceRef", label="Ordinance Ref."
-   Values: exact code section from the ZONING ORDINANCE TEXT above (e.g., "§16-19A MRC-2-C", "§16-20 MRC-3"). Use "--" if not stated in the ordinance text.
+   Exact section from the ORDINANCE TEXT above (e.g., "§16-19A MRC-2-C", "§16-20 MRC-3"). Use "--" if not in the text.
 
 4. key="keyRestriction", label="Key Restriction"
-   Values: the single most impactful constraint from the ZONING ORDINANCE TEXT (not the engine numbers). Examples: "Combined FAR cap 3.99 (res 1.49 + nonres 2.50)", "Ground-floor activation mandatory", "Hardship finding required". Pull exact values from the ordinance text; write "--" if the ordinance text does not address this path.
+   Most impactful single constraint from the ordinance (e.g., "Combined FAR cap 3.99 (res 1.49 + nonres 2.50)", "5-story / 52 ft height limit", "Density bonus: up to FAR 8.2 with affordability"). Use "--" if not addressed.
 
 Respond in valid JSON only:
 {
   "insights": {
-    "<pathKey>": "2-3 sentence analysis"
+    "<pathKey>": "• FAR basis: ...\n• Binding constraint: ...\n• Timeline: ...\n• Key nuance: ..."
   },
   "extraRows": [
-    { "key": "timelineEstimate", "label": "Est. Timeline", "values": { "<pathKey>": "value" } },
-    { "key": "approvalBody",     "label": "Approval Body",  "values": { "<pathKey>": "value" } },
-    { "key": "ordinanceRef",     "label": "Ordinance Ref.", "values": { "<pathKey>": "value" } },
-    { "key": "keyRestriction",   "label": "Key Restriction","values": { "<pathKey>": "value" } }
+    { "key": "timelineEstimate", "label": "Est. Timeline",   "values": { "<pathKey>": "value" } },
+    { "key": "approvalBody",     "label": "Approval Body",   "values": { "<pathKey>": "value" } },
+    { "key": "ordinanceRef",     "label": "Ordinance Ref.",  "values": { "<pathKey>": "value" } },
+    { "key": "keyRestriction",   "label": "Key Restriction", "values": { "<pathKey>": "value" } }
   ],
-  "summary": "2-3 sentence recommendation citing the best risk-adjusted path and its benchmark-grounded timeline"
+  "summary": "2–3 sentence recommendation citing the best risk-adjusted path, its ordinance basis, and benchmark timeline"
 }
 
-Keep values under 70 characters. Do not add rows beyond these four.`;
+Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 90000);
