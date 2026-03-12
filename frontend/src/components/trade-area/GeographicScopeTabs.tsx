@@ -1,4 +1,5 @@
 import React from 'react';
+import { Pencil } from 'lucide-react';
 import { GeographicScope } from '../../types/trade-area';
 
 interface GeographicScopeTabsProps {
@@ -63,26 +64,40 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
           if (scopeStats?.avg_rent !== undefined) tooltipParts.push(`Avg Rent: $${scopeStats.avg_rent.toLocaleString()}`);
 
           return (
-            <button
-              key={scope}
-              onClick={() => onChange(scope)}
-              title={hasStats ? tooltipParts.join('  |  ') : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
-              }`}
-            >
-              <span className="text-sm">{scopeIcons[scope]}</span>
-              <span>{scopeLabels[scope]}</span>
-              {hasStats && (
-                <span className={`text-xs font-normal ml-0.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}`}>
-                  {scopeStats.occupancy !== undefined && `${scopeStats.occupancy.toFixed(1)}%`}
-                  {scopeStats.occupancy !== undefined && scopeStats.avg_rent !== undefined && ' \u00B7 '}
-                  {scopeStats.avg_rent !== undefined && `$${scopeStats.avg_rent.toLocaleString()}`}
-                </span>
+            <div key={scope} className="flex items-center">
+              <button
+                onClick={() => onChange(scope)}
+                title={hasStats ? tooltipParts.join('  |  ') : undefined}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
+                } ${scope === 'trade_area' && onDefineTradeArea ? 'rounded-r-none border-r-0' : ''}`}
+              >
+                <span className="text-sm">{scopeIcons[scope]}</span>
+                <span>{scopeLabels[scope]}</span>
+                {hasStats && (
+                  <span className={`text-xs font-normal ml-0.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}`}>
+                    {scopeStats.occupancy !== undefined && `${scopeStats.occupancy.toFixed(1)}%`}
+                    {scopeStats.occupancy !== undefined && scopeStats.avg_rent !== undefined && ' \u00B7 '}
+                    {scopeStats.avg_rent !== undefined && `$${scopeStats.avg_rent.toLocaleString()}`}
+                  </span>
+                )}
+              </button>
+              {scope === 'trade_area' && onDefineTradeArea && (
+                <button
+                  onClick={() => onDefineTradeArea()}
+                  title="Edit trade area boundary"
+                  className={`flex items-center px-1.5 py-1.5 text-[13px] font-medium rounded-lg rounded-l-none transition-colors border ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-500 border-blue-200 hover:bg-blue-100'
+                      : 'text-slate-400 border-transparent hover:text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Pencil size={11} />
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

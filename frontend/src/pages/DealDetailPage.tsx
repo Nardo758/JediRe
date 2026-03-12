@@ -538,7 +538,7 @@ const DealDetailPage: React.FC = () => {
                 activeScope={activeScope}
                 onChange={setScope}
                 tradeAreaEnabled={!!geographicStats?.trade_area}
-                onDefineTradeArea={getDealCentroid() ? () => setShowTradeAreaPanel(true) : undefined}
+                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
                 stats={geographicStats || {}}
                 compact
               />
@@ -552,29 +552,34 @@ const DealDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {showTradeAreaPanel && getDealCentroid() && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
-            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
-                  <button
-                    onClick={() => setShowTradeAreaPanel(false)}
-                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-                  >
-                    &times;
-                  </button>
+        {showTradeAreaPanel && (() => {
+          const centroid = getDealCentroid();
+          const lat = centroid ? centroid[1] : 33.749;
+          const lng = centroid ? centroid[0] : -84.388;
+          return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
+                    <button
+                      onClick={() => setShowTradeAreaPanel(false)}
+                      className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                  <TradeAreaDefinitionPanel
+                    propertyLat={lat}
+                    propertyLng={lng}
+                    onSave={handleTradeAreaSave}
+                    onSkip={() => setShowTradeAreaPanel(false)}
+                  />
                 </div>
-                <TradeAreaDefinitionPanel
-                  propertyLat={getDealCentroid()![1]}
-                  propertyLng={getDealCentroid()![0]}
-                  onSave={handleTradeAreaSave}
-                  onSkip={() => setShowTradeAreaPanel(false)}
-                />
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div className="flex flex-1 overflow-hidden min-w-0">
           <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
