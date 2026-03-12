@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
+import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -11,9 +12,14 @@ const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 
 
 const statusColors: Record<string, string> = {
   complete: '#4ade80',
+  completed: '#4ade80',
   parsing: '#f59e0b',
+  extracting: '#f59e0b',
+  storing: '#f59e0b',
+  processing: '#f59e0b',
   pending: '#8892b0',
   error: '#e06c75',
+  failed: '#e06c75',
 };
 
 export const DataLibraryPage: React.FC = () => {
@@ -25,13 +31,25 @@ export const DataLibraryPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<DataLibrarySearchParams>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pstInputRef = useRef<HTMLInputElement>(null);
 
   const [uploadMeta, setUploadMeta] = useState({
     city: '', zipCode: '', propertyType: 'Multifamily', propertyHeight: '',
     yearBuilt: '', unitCount: '', sourceType: 'owned',
   });
 
+  const [pstJob, setPstJob] = useState<PstJobStatus | null>(null);
+  const [pstEntities, setPstEntities] = useState<PstEntity[]>([]);
+  const [showPstResults, setShowPstResults] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => { loadFiles(); }, [filters]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const loadFiles = async () => {
     setLoading(true);
@@ -65,6 +83,64 @@ export const DataLibraryPage: React.FC = () => {
     }
     setUploading(false);
   };
+
+  const handlePstUpload = async () => {
+    const fileInput = pstInputRef.current;
+    if (!fileInput?.files?.[0]) return;
+
+    const file = fileInput.files[0];
+    if (!file.name.endsWith('.pst')) {
+      setError('Please select a .pst file');
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    try {
+      const { jobId } = await pstUploadService.uploadPst(file);
+      setPstJob({
+        jobId,
+        status: 'parsing',
+        uploadId: jobId,
+        totalEmails: 0,
+        processedEmails: 0,
+        entitiesFound: 0,
+        errors: [],
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+      });
+      setShowPstResults(true);
+      setShowUpload(false);
+      if (fileInput) fileInput.value = '';
+      startPolling(jobId);
+    } catch (e: any) {
+      setError(e.message || 'PST upload failed');
+    }
+    setUploading(false);
+  };
+
+  const startPolling = useCallback((jobId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await pstUploadService.getJobStatus(jobId);
+        setPstJob(status);
+        if (status.status === 'completed' || status.status === 'failed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          if (status.status === 'completed') {
+            try {
+              const { entities } = await pstUploadService.getEntities(jobId, { limit: 50 });
+              setPstEntities(entities);
+            } catch {}
+          }
+        }
+      } catch {
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }, 3000);
+  }, []);
 
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this file?')) return;
@@ -143,6 +219,31 @@ export const DataLibraryPage: React.FC = () => {
               Cancel
             </button>
           </div>
+
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #2a2a4a' }}>
+            <h4 style={{ color: '#ccd6f6', margin: '0 0 12px', fontSize: 14 }}>Email Archive Import</h4>
+            <p style={{ color: '#8892b0', fontSize: 12, margin: '0 0 12px' }}>
+              Upload a Microsoft Outlook .pst file to extract real estate signals from email history.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input ref={pstInputRef} type="file" accept=".pst" style={{ color: '#8892b0', fontSize: 13 }} />
+              <button
+                type="button"
+                onClick={handlePstUpload}
+                disabled={uploading}
+                style={{
+                  padding: '8px 20px', background: '#7c3aed', border: 'none', borderRadius: 6,
+                  color: '#fff', fontSize: 13, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {uploading ? 'Uploading...' : 'Import PST'}
+              </button>
+            </div>
+            <p style={{ color: '#8892b0', fontSize: 11, margin: '4px 0 0' }}>
+              PST files up to 200MB. AI will extract property addresses, deal names, contacts, and financial details.
+            </p>
+          </div>
         </form>
       )}
 
@@ -152,6 +253,8 @@ export const DataLibraryPage: React.FC = () => {
           <button onClick={() => setError(null)} style={{ marginLeft: 12, background: 'none', border: 'none', color: '#e06c75', cursor: 'pointer' }}>x</button>
         </div>
       )}
+
+      {showPstResults && pstJob && <PstProgressPanel job={pstJob} entities={pstEntities} onClose={() => setShowPstResults(false)} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 20 }}>
         <FilterInput placeholder="Filter by city..." value={filters.city || ''} onChange={v => setFilters(p => ({ ...p, city: v || undefined }))} />
@@ -255,6 +358,156 @@ export const DataLibraryPage: React.FC = () => {
   );
 };
 
+const PstProgressPanel: React.FC<{
+  job: PstJobStatus;
+  entities: PstEntity[];
+  onClose: () => void;
+}> = ({ job, entities, onClose }) => {
+  const isActive = job.status !== 'completed' && job.status !== 'failed';
+  const progress = job.totalEmails > 0
+    ? Math.round((job.processedEmails / job.totalEmails) * 100)
+    : 0;
+
+  const statusLabel: Record<string, string> = {
+    parsing: 'Parsing PST archive...',
+    extracting: 'AI extracting real estate signals...',
+    storing: 'Storing results...',
+    completed: 'Import complete',
+    failed: 'Import failed',
+  };
+
+  return (
+    <div style={{
+      background: '#1a1a2e', borderRadius: 8, padding: 20, marginBottom: 20,
+      border: `1px solid ${job.status === 'failed' ? '#e06c75' : job.status === 'completed' ? '#4ade80' : '#7c3aed'}`,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h4 style={{ color: '#ccd6f6', margin: 0, fontSize: 14 }}>
+          PST Email Import
+        </h4>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none', color: '#8892b0', cursor: 'pointer', fontSize: 16,
+        }}>&#10005;</button>
+      </div>
+
+      <div style={{ color: statusColors[job.status] || '#8892b0', fontSize: 13, marginBottom: 8 }}>
+        {statusLabel[job.status] || job.status}
+      </div>
+
+      {isActive && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
+            height: 6, background: '#0d1117', borderRadius: 3, overflow: 'hidden',
+          }}>
+            <div style={{
+              height: '100%', width: `${progress}%`, background: '#7c3aed',
+              borderRadius: 3, transition: 'width 0.5s ease',
+            }} />
+          </div>
+          <div style={{ color: '#8892b0', fontSize: 11, marginTop: 4 }}>
+            {job.processedEmails} / {job.totalEmails || '?'} emails processed
+          </div>
+        </div>
+      )}
+
+      {job.status === 'completed' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+          <StatBox label="Emails Processed" value={String(job.totalEmails)} color="#ccd6f6" />
+          <StatBox label="Entities Extracted" value={String(job.entitiesFound)} color="#4ade80" />
+          <StatBox label="Emails with Signal" value={String(job.emailsWithSignal || 0)} color="#7c3aed" />
+        </div>
+      )}
+
+      {job.status === 'failed' && job.errors.length > 0 && (
+        <div style={{ padding: 10, background: '#3b1a1a', borderRadius: 6, color: '#e06c75', fontSize: 12, marginBottom: 12 }}>
+          {job.errors.slice(0, 3).map((err, i) => (
+            <div key={i}>{err}</div>
+          ))}
+        </div>
+      )}
+
+      {entities.length > 0 && (
+        <div>
+          <h5 style={{ color: '#ccd6f6', fontSize: 12, margin: '12px 0 8px' }}>
+            Extracted Entities ({entities.length})
+          </h5>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Type</th>
+                  <th style={thStyle}>Details</th>
+                  <th style={thStyle}>Source Email</th>
+                  <th style={thStyle}>Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entities.map((e) => (
+                  <tr key={e.id}>
+                    <td style={tdStyle}>
+                      <span style={{
+                        padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                        background: entityTypeColor(e.entity_type) + '22',
+                        color: entityTypeColor(e.entity_type),
+                      }}>
+                        {e.entity_type}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      {e.property_address && <div style={{ color: '#ccd6f6' }}>{e.property_address}</div>}
+                      {e.deal_name && <div style={{ color: '#8892b0' }}>{e.deal_name}</div>}
+                      {e.contact_name && <div style={{ color: '#8892b0' }}>{e.contact_name}{e.organization ? ` (${e.organization})` : ''}</div>}
+                      {e.asking_price && <div style={{ color: '#4ade80' }}>${Number(e.asking_price).toLocaleString()}</div>}
+                      {e.unit_count && <div style={{ color: '#8892b0' }}>{e.unit_count} units</div>}
+                      {e.cap_rate && <div style={{ color: '#8892b0' }}>{Number(e.cap_rate).toFixed(1)}% cap</div>}
+                      {e.rent_figures && <div style={{ color: '#8892b0' }}>{e.rent_figures}</div>}
+                    </td>
+                    <td style={{ ...tdStyle, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ color: '#ccd6f6' }}>{e.email_subject || '(no subject)'}</div>
+                      <div style={{ color: '#8892b0', fontSize: 10 }}>{e.email_sender}</div>
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{ color: Number(e.confidence) >= 0.7 ? '#4ade80' : '#f59e0b' }}>
+                        {Math.round(Number(e.confidence) * 100)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const thStyle: React.CSSProperties = {
+  padding: '6px 8px', color: '#00d4ff', textAlign: 'left',
+  borderBottom: '1px solid #2a2a4a', whiteSpace: 'nowrap', fontSize: 11,
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '6px 8px', borderBottom: '1px solid #1e1e38', verticalAlign: 'top',
+};
+
+function entityTypeColor(type: string): string {
+  const map: Record<string, string> = {
+    property: '#00d4ff',
+    deal: '#4ade80',
+    contact: '#f59e0b',
+    financial: '#e06c75',
+  };
+  return map[type] || '#8892b0';
+}
+
+const StatBox: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
+  <div style={{ padding: 10, background: '#0d1117', borderRadius: 6, textAlign: 'center' }}>
+    <div style={{ color, fontSize: 20, fontWeight: 700 }}>{value}</div>
+    <div style={{ color: '#8892b0', fontSize: 11, marginTop: 2 }}>{label}</div>
+  </div>
+);
+
 const InputField: React.FC<{ label: string; value: string; onChange: (v: string) => void; placeholder?: string }> = ({ label, value, onChange, placeholder }) => (
   <div>
     <label style={{ color: '#8892b0', fontSize: 11, display: 'block', marginBottom: 4 }}>{label}</label>
@@ -272,7 +525,7 @@ const SelectField: React.FC<{ label: string; value: string; onChange: (v: string
       width: '100%', padding: '6px 10px', background: '#0d1117', border: '1px solid #2a2a4a',
       borderRadius: 6, color: '#ccd6f6', fontSize: 12, outline: 'none',
     }}>
-      {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+      {options.map(o => <option key={o} value={o}>{o || '\u2014'}</option>)}
     </select>
   </div>
 );
@@ -294,6 +547,7 @@ const FilterSelect: React.FC<{ value: string; onChange: (v: string) => void; opt
 );
 
 const FileIcon: React.FC<{ type: string }> = ({ type }) => {
+  const isPst = type === 'application/vnd.ms-outlook' || type === 'pst';
   const colors: Record<string, string> = {
     'text/csv': '#4ade80',
     'application/csv': '#4ade80',
@@ -304,8 +558,8 @@ const FileIcon: React.FC<{ type: string }> = ({ type }) => {
     'application/csv': 'CSV',
     'application/pdf': 'PDF',
   };
-  const color = colors[type] || '#00d4ff';
-  const label = labels[type] || 'XLS';
+  const color = isPst ? '#7c3aed' : (colors[type] || '#00d4ff');
+  const label = isPst ? 'PST' : (labels[type] || 'XLS');
 
   return (
     <div style={{

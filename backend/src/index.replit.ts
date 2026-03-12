@@ -75,6 +75,7 @@ import developmentScenariosRouter from './api/rest/development-scenarios.routes'
 import moduleWiringRouter from './api/rest/module-wiring.routes';
 import capitalStructureRouter from './api/rest/capital-structure.routes';
 import dataUploadRouter from './api/rest/data-upload.routes';
+import pstUploadRouter from './api/rest/pst-upload.routes';
 import uploadTemplatesRouter from './api/rest/upload-templates.routes';
 import uploadRouter from './api/rest/upload.routes';
 import compQueryRouter from './api/rest/comp-query.routes';
@@ -308,6 +309,7 @@ app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
 app.use('/api/v1/properties', requireAuth, dataUploadRouter);
+app.use('/api/v1/data-upload/pst', requireAuth, pstUploadRouter);
 app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
 app.use('/api/v1/uploads', requireAuth, uploadRouter);
 app.use('/api/v1/comps', requireAuth, compQueryRouter);
