@@ -195,12 +195,20 @@ export default function TrafficDataSourcesTab({ dealId, onNavigateToVisibility, 
         </div>
       )}
 
-      {hasTradeArea && data?.trade_area_name && (
+      {hasTradeArea && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-3">
           <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-          <span className="text-sm text-emerald-800">
-            Trade Area: <strong>{data.trade_area_name}</strong>
+          <span className="text-sm text-emerald-800 flex-1">
+            Trade Area: <strong>{data?.trade_area_name || 'Defined'}</strong>
           </span>
+          {onDefineTradeArea && (
+            <button
+              onClick={onDefineTradeArea}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs hover:bg-emerald-800 transition-colors flex-shrink-0 font-medium"
+            >
+              <MapPin size={12} /> Edit Trade Area
+            </button>
+          )}
         </div>
       )}
 

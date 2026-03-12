@@ -272,6 +272,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const [editValues, setEditValues] = useState<Record<string, Record<string, number>>>({});
   const [showAdjustments, setShowAdjustments] = useState(true);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+  const [dataSourcesKey, setDataSourcesKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -366,6 +367,17 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
   const triggerUpload = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleTradeAreaSave = async (tradeAreaId: string) => {
+    try {
+      await apiClient.patch(`/api/v1/leasing-traffic/deal-trade-area/${resolvedDealId}`, { trade_area_id: tradeAreaId });
+    } catch (err) {
+      console.error('[TrafficModule] Failed to link trade area to deal:', err);
+    } finally {
+      setShowTradeAreaPanel(false);
+      setDataSourcesKey(k => k + 1);
+    }
   };
 
   const handleSaveEdits = async () => {
@@ -995,6 +1007,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           )}
           {activeTab === 'data_sources' && (
             <TrafficDataSourcesTab
+              key={dataSourcesKey}
               dealId={resolvedDealId}
               onNavigateToVisibility={() => setActiveTab('visibility')}
               onDefineTradeArea={() => setShowTradeAreaPanel(true)}
@@ -1024,7 +1037,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <TradeAreaDefinitionPanel
                   propertyLat={dealLatLng.lat}
                   propertyLng={dealLatLng.lng}
-                  onSave={() => setShowTradeAreaPanel(false)}
+                  onSave={handleTradeAreaSave}
                   onSkip={() => setShowTradeAreaPanel(false)}
                 />
               </Suspense>

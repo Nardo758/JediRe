@@ -747,7 +747,7 @@ const weeklyUpload = multer({
       if (deal.trade_area_id) {
         try {
           const taResult = await pool.query(
-            `SELECT name, method FROM trade_areas WHERE id = $1`,
+            `SELECT name FROM trade_areas WHERE id = $1`,
             [deal.trade_area_id]
           );
           if (taResult.rows.length > 0) {
@@ -766,6 +766,24 @@ const weeklyUpload = multer({
     } catch (error: any) {
       logger.error('[LeasingTraffic] Data sources fetch failed', { error: error.message });
       res.status(500).json({ error: 'Failed to fetch data sources' });
+    }
+  });
+
+  router.patch('/deal-trade-area/:dealId', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const { trade_area_id } = req.body;
+      if (!trade_area_id) {
+        return res.status(400).json({ error: 'trade_area_id is required' });
+      }
+      await pool.query(
+        `UPDATE deals SET trade_area_id = $1, updated_at = NOW() WHERE id = $2`,
+        [trade_area_id, dealId]
+      );
+      res.json({ success: true, trade_area_id });
+    } catch (error: any) {
+      logger.error('[LeasingTraffic] Link trade area failed', { error: error.message });
+      res.status(500).json({ error: 'Failed to link trade area' });
     }
   });
 
