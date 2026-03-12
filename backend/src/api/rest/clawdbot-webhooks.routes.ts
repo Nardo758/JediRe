@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 import { getPool } from '../../database/connection';
+import { RentScraperService } from '../../services/rent-scraper.service';
 
 const router = Router();
 const pool = getPool();
@@ -1226,6 +1227,101 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
             pinned: note.pinned,
             createdAt: note.created_at,
           },
+        };
+        break;
+      }
+
+      case 'scrape_property': {
+        if (!params?.targetId) {
+          return res.status(400).json({ error: 'Bad Request', message: 'targetId parameter is required' });
+        }
+        const rentScraper = new RentScraperService(pool);
+        const scrapeResult = await rentScraper.scrapeProperty(params.targetId);
+        result = {
+          message: scrapeResult.status === 'success'
+            ? `Scraped ${scrapeResult.units.length} unit types from ${scrapeResult.propertyName}`
+            : `Scrape failed for ${scrapeResult.propertyName}: ${scrapeResult.error}`,
+          ...scrapeResult,
+        };
+        break;
+      }
+
+      case 'run_scrape_job': {
+        const rentScraper = new RentScraperService(pool);
+        const jobResult = await rentScraper.runScrapeJob({
+          market: params?.market || 'Atlanta',
+          limit: params?.limit || 50,
+        });
+        const succeeded = jobResult.results.filter(r => r.status === 'success').length;
+        const failed = jobResult.results.filter(r => r.status === 'error').length;
+        result = {
+          message: `Scrape job complete: ${succeeded} succeeded, ${failed} failed out of ${jobResult.jobCount} targets`,
+          jobCount: jobResult.jobCount,
+          succeeded,
+          failed,
+          results: jobResult.results.map(r => ({
+            targetId: r.targetId,
+            propertyName: r.propertyName,
+            status: r.status,
+            unitCount: r.units.length,
+            error: r.error || null,
+          })),
+        };
+        break;
+      }
+
+      case 'get_rent_changes': {
+        const rentScraper = new RentScraperService(pool);
+        const changes = await rentScraper.getRentChanges({
+          targetId: params?.targetId,
+          market: params?.market || 'Atlanta',
+          daysBack: params?.daysBack || 30,
+          minChangePercent: params?.minChangePercent || 0,
+        });
+        result = {
+          message: `Found ${changes.length} rent changes`,
+          changes,
+        };
+        break;
+      }
+
+      case 'add_scrape_target': {
+        if (!params?.propertyName) {
+          return res.status(400).json({ error: 'Bad Request', message: 'propertyName parameter is required' });
+        }
+        const rentScraper = new RentScraperService(pool);
+        const newTarget = await rentScraper.addScrapeTarget({
+          propertyName: params.propertyName,
+          address: params.address,
+          city: params.city,
+          state: params.state,
+          zip: params.zip,
+          url: params.url,
+          unitCount: params.unitCount,
+          yearBuilt: params.yearBuilt,
+          market: params.market,
+          submarket: params.submarket,
+          latitude: params.latitude,
+          longitude: params.longitude,
+        });
+        result = {
+          message: `Added scrape target: ${params.propertyName}`,
+          target: newTarget,
+        };
+        break;
+      }
+
+      case 'list_scrape_targets': {
+        const rentScraper = new RentScraperService(pool);
+        const targets = await rentScraper.listScrapeTargets({
+          market: params?.market,
+          active: params?.active !== undefined ? params.active : true,
+          limit: params?.limit || 50,
+          offset: params?.offset || 0,
+        });
+        result = {
+          message: `Found ${targets.total} scrape targets`,
+          ...targets,
         };
         break;
       }
