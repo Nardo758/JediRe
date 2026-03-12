@@ -477,7 +477,7 @@ export class TrafficPredictionEngine {
         `SELECT overall_visibility_score, visibility_tier,
                 positional_score, sightline_score, setback_score,
                 signage_score, transparency_score, entrance_score,
-                obstruction_penalty
+                obstruction_penalty, assessment_method
          FROM property_visibility WHERE property_id = $1`,
         [propertyId]
       );
@@ -489,6 +489,7 @@ export class TrafficPredictionEngine {
           overall_score: score,
           capture_rate: Math.round(captureRate * 1000) / 1000,
           tier: v.visibility_tier || 'Fair',
+          is_estimated: v.assessment_method === 'auto_estimated',
           component_scores: {
             positional: v.positional_score,
             sightline: v.sightline_score,
