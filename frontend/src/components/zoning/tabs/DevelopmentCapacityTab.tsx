@@ -1218,9 +1218,26 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 }`}>{col.risk}</span>
                               )}
                             </div>
-                            {col.successRate && (
-                              <div className="text-[10px] text-gray-400 mt-0.5">{col.successRate} success · {col.timeline}</div>
-                            )}
+                            <div className="flex items-center justify-center gap-2 mt-0.5">
+                              {col.successRate && (
+                                <span className="text-[10px] text-gray-400">{col.successRate} success · {col.timeline}</span>
+                              )}
+                              {col.municodeUrl && (
+                                <a
+                                  href={col.municodeUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={`View ${col.zoningCode} ordinance source`}
+                                  className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  Source
+                                </a>
+                              )}
+                            </div>
                           </th>
                         ))}
                       </tr>

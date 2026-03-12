@@ -37,6 +37,7 @@ export interface ComparisonColumn {
   timeline: string;
   aiInsight: string;
   source: string;
+  municodeUrl: string | null;
 }
 
 export interface ComparisonRow {
@@ -209,7 +210,7 @@ export class EntitlementComparisonEngine {
       console.error('[EntitlementEngine] AI analysis failed, continuing without insights:', err.message);
     }
 
-    return this.assembleResult(computedPaths, byRight, aiAnalysis, variancePct, profile.base_district_code, subject.lotAreaSf);
+    return this.assembleResult(computedPaths, byRight, aiAnalysis, variancePct, profile.base_district_code, subject.lotAreaSf, municodeUrls);
   }
 
   private buildSubject(profile: ZoningProfile, projectType: string): SubjectProperty {
@@ -907,7 +908,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v6#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v7#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -1024,17 +1025,19 @@ ENGINE-COMPUTED NUMBERS (cross-check only — may contain errors from wrong FAR 
 ${JSON.stringify(metricsForFlagging, null, 2)}
 
 INSTRUCTIONS:
-Part A — For each path, write 3–4 key nuances as a compact insight block. Use this exact format (with literal newlines between points):
-"• FAR basis: [which FAR applies for this asset type and why, citing ordinance section]
-• Binding constraint: [what actually limits the project — combined FAR cap, density cap, height, stories]
-• Timeline: [precise estimate from BENCHMARK DATA, e.g. '~302 days avg, range 126–420 (12 projects)'; write 'No benchmark data' if absent]
-• Key nuance: [one specific risk, opportunity, or ordinance quirk for this path — ground-floor activation, absolute FAR ceiling, density bonus eligibility, hardship finding, etc.]"
+The comparison table already shows FAR, units, stories, density, and binding constraint. Do NOT repeat those numbers.
+
+Part A — For each path write a 3-bullet Agent Insight that adds what is NOT in the table. Use this exact format (with literal \n between bullets):
+"• Decision context: [Is this path viable right now for this asset type? What is the strategic thesis — e.g. straightforward admin permit, politically risky, time-sensitive window, ordinance recently changed?]
+• Risk / obstacle: [The single biggest thing that could kill or delay this path — a hardship finding requirement, council political risk, overlay design approval, affordability obligation, neighbour opposition pattern, etc. Cite the ordinance section if relevant.]
+• Opportunity / next step: [A specific upside or action — density bonus program, comparable precedent that succeeded, which department to file with, timing advantage, or pre-application meeting recommendation.]"
 
 Rules:
-- Cite actual ordinance values (e.g., "§16-19A combined FAR cap 3.99: res 1.49 + nonres 2.50").
-- For overlay paths: state explicitly they are DESIGN overlays — they do NOT add a separate density path. Base district FAR/density still controls.
-- If the engine-computed FAR differs from the ordinance, flag it: "Engine used X; ordinance §Y sets Z."
-- Never invent values; use '--' for unknown.
+- Speak to a developer making a capital allocation decision. Be direct and specific.
+- Cite ordinance sections only when they reveal something not already in the table (e.g., a conditional use trigger, a bonus program, an absolute ceiling that differs from the applied FAR).
+- For overlay paths: clarify they are DESIGN overlays only — ground-floor activation, build-to lines, parking waivers. They do not create an independent density entitlement.
+- Use comparable project data (names, outcomes, timelines) when available from BENCHMARK DATA.
+- Keep each bullet to 1–2 sentences. Total insight under 120 words.
 
 Part B — Generate exactly these 4 extraRows. Values MUST come from ORDINANCE TEXT and BENCHMARK DATA only.
 
@@ -1053,7 +1056,7 @@ Part B — Generate exactly these 4 extraRows. Values MUST come from ORDINANCE T
 Respond in valid JSON only:
 {
   "insights": {
-    "<pathKey>": "• FAR basis: ...\n• Binding constraint: ...\n• Timeline: ...\n• Key nuance: ..."
+    "<pathKey>": "• Decision context: ...\n• Risk / obstacle: ...\n• Opportunity / next step: ..."
   },
   "extraRows": [
     { "key": "timelineEstimate", "label": "Est. Timeline",   "values": { "<pathKey>": "value" } },
@@ -1108,6 +1111,7 @@ Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
     variancePct: number,
     baseDistrictCode: string | null,
     lotAreaSf?: number,
+    municodeUrls: Record<string, string> = {},
   ): ComparisonResult {
     const columns: ComparisonColumn[] = paths.map(p => ({
       key: p.key,
@@ -1118,6 +1122,7 @@ Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
       timeline: p.timeline,
       aiInsight: aiAnalysis.insights[p.key] || '',
       source: p.source,
+      municodeUrl: p.zoningCode ? (municodeUrls[p.zoningCode] || null) : null,
     }));
 
     const standardRows: ComparisonRow[] = [
