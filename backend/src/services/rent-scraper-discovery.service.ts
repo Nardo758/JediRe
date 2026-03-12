@@ -167,6 +167,15 @@ export class RentScraperDiscoveryService {
     );
   }
 
+  async discoverById(targetId: number): Promise<DiscoveryResult> {
+    const row = await this.pool.query(
+      `SELECT id, property_name, address, city, state FROM rent_scrape_targets WHERE id = $1`,
+      [targetId]
+    );
+    if (row.rows.length === 0) throw new Error(`Target ${targetId} not found`);
+    return this.discoverPropertyWebsite(row.rows[0]);
+  }
+
   async discoverAllPendingUrls(options: { limit?: number } = {}): Promise<{
     discovered: number;
     failed: number;

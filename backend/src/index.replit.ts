@@ -104,6 +104,7 @@ import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
 import financialModelRoutes from './api/rest/financial-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
+import rentScraperAdminRouter from './api/rest/rent-scraper-admin.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
 import m28CycleIntelligenceRoutes from './api/rest/m28-cycle-intelligence.routes';
@@ -222,6 +223,7 @@ const microsoftConfig = {
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1/admin/rent-scraper', rentScraperAdminRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
 app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
