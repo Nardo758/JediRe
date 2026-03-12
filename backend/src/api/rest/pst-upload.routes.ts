@@ -64,7 +64,7 @@ router.post('/', handlePstUpload, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No .pst file uploaded' });
     }
 
-    const userId = (req as Request & { user?: { userId: string } }).user?.userId || 'system';
+    const userId = (req as Request & { user?: { userId: string } }).user?.userId || '00000000-0000-0000-0000-000000000000';
     const buffer = req.file.buffer;
     const filename = req.file.originalname;
 
