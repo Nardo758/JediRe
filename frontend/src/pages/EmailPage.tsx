@@ -188,6 +188,7 @@ export function EmailPage() {
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
+  const [accountsPanelOpen, setAccountsPanelOpen] = useState(true);
 
   useEffect(() => {
     inboxService.getConnectedAccounts().then(res => {
@@ -200,19 +201,23 @@ export function EmailPage() {
     const error = searchParams.get('error');
     if (connected) {
       const providerLabel = connected === 'gmail' ? 'Gmail' : 'Outlook';
+      const accountId = searchParams.get('accountId');
       setConnectNotice(`${providerLabel} account connected successfully. Syncing...`);
       searchParams.delete('connected');
+      searchParams.delete('accountId');
       setSearchParams(searchParams, { replace: true });
       inboxService.getConnectedAccounts().then(async (res) => {
         if (res.success) {
           setConnectedAccounts(res.data);
-          const newAccount = res.data.find(a =>
-            (connected === 'gmail' && a.provider === 'google') ||
-            (connected === 'microsoft' && a.provider === 'microsoft')
-          );
-          if (newAccount) {
+          const targetAccount = accountId
+            ? res.data.find(a => a.id === accountId)
+            : res.data.find(a =>
+                (connected === 'gmail' && a.provider === 'google') ||
+                (connected === 'microsoft' && a.provider === 'microsoft')
+              );
+          if (targetAccount) {
             try {
-              await inboxService.syncAccount(newAccount.id);
+              await inboxService.syncAccount(targetAccount.id);
               setConnectNotice(`${providerLabel} connected and synced`);
               loadInbox();
               const refreshed = await inboxService.getConnectedAccounts();
@@ -540,8 +545,18 @@ export function EmailPage() {
           </div>
 
           <div style={{ padding: "0 12px", marginTop: 12 }}>
-            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
+            <div
+              onClick={() => setAccountsPanelOpen(prev => !prev)}
+              style={{
+                fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary,
+                letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                userSelect: "none" as const,
+              }}
+            >
+              <span style={{ fontSize: 8, transition: "transform 0.15s", transform: accountsPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
               Connected Accounts
+              <span style={{ fontSize: 9, color: T.text.tertiary, marginLeft: "auto" }}>{connectedAccounts.length}</span>
             </div>
             {connectNotice && (
               <div style={{
@@ -552,12 +567,12 @@ export function EmailPage() {
                 {connectNotice}
               </div>
             )}
-            {connectedAccounts.length === 0 && !connectNotice && (
+            {accountsPanelOpen && connectedAccounts.length === 0 && !connectNotice && (
               <div style={{ fontSize: 10, color: T.text.tertiary, padding: "6px 8px", textAlign: "center" as const }}>
                 No accounts connected
               </div>
             )}
-            {connectedAccounts.map(acct => (
+            {accountsPanelOpen && connectedAccounts.map(acct => (
               <div key={acct.id} style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
                 background: T.bg.tertiary, borderRadius: 5, marginBottom: 4,
@@ -581,7 +596,7 @@ export function EmailPage() {
                   </div>
                   <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
                     {acct.provider === 'google' ? 'Gmail' : acct.provider === 'microsoft' ? 'Outlook' : acct.provider}
-                    {acct.email_count ? ` \u00B7 ${acct.email_count} emails` : ''}
+                    {` \u00B7 ${acct.email_count ?? 0} emails`}
                     {acct.last_sync_at ? ` \u00B7 ${formatDate(acct.last_sync_at)}` : ' \u00B7 never synced'}
                   </div>
                 </div>
@@ -598,7 +613,7 @@ export function EmailPage() {
                 </button>
               </div>
             ))}
-            <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+            {accountsPanelOpen && <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
               <button onClick={handleConnectGmail} style={{
                 flex: 1, padding: "6px 0", fontSize: 10, fontFamily: FONTS.mono,
                 background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}25`,
@@ -613,7 +628,7 @@ export function EmailPage() {
               }}>
                 + Outlook
               </button>
-            </div>
+            </div>}
           </div>
 
           <div style={{ padding: "0 12px", marginTop: "auto" }}>

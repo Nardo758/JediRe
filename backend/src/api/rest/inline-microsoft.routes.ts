@@ -138,8 +138,13 @@ export function createMicrosoftInlineRoutes(microsoftConfig: MicrosoftConfig) {
         );
       }
 
+      const insertedAccount = await pool.query(
+        'SELECT id FROM microsoft_accounts WHERE email = $1 ORDER BY updated_at DESC LIMIT 1',
+        [userEmail]
+      );
+      const msAccountId = insertedAccount.rows[0]?.id || '';
       console.log(`Microsoft OAuth successful: ${userEmail}`);
-      res.redirect(`${frontendUrl}/dashboard/email?connected=microsoft`);
+      res.redirect(`${frontendUrl}/dashboard/email?connected=microsoft&accountId=${msAccountId}`);
     } catch (error) {
       console.error('Microsoft OAuth error:', error);
       res.redirect(`${frontendUrl}/dashboard/email?error=microsoft_auth&detail=token_exchange_failed`);

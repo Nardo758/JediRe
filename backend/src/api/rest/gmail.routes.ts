@@ -319,7 +319,7 @@ router.get('/callback', async (req: Request, res: Response, next: NextFunction) 
     });
 
     const baseUrl = process.env.CORS_ORIGIN || getRequestOrigin(req);
-    const redirectUrl = `${baseUrl}/dashboard/email?connected=gmail`;
+    const redirectUrl = `${baseUrl}/dashboard/email?connected=gmail&accountId=${accountId}`;
     res.redirect(redirectUrl);
   } catch (error) {
     logger.error('Gmail callback error:', error);

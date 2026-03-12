@@ -90,12 +90,16 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
     let microsoftRows: any[] = [];
     try {
       const msResult = await pool.query(
-        `SELECT id, email as email_address, 'microsoft' as provider,
-                last_sync_at, is_active as sync_enabled, created_at,
-                token_expires_at, 0 as email_count
-         FROM microsoft_accounts
-         WHERE user_id = $1 AND is_active = true
-         ORDER BY created_at DESC`,
+        `SELECT ma.id, ma.email as email_address, 'microsoft' as provider,
+                ma.last_sync_at, ma.is_active as sync_enabled, ma.created_at,
+                ma.token_expires_at,
+                COALESCE((
+                  SELECT COUNT(*)::int FROM emails e
+                  WHERE e.user_id = ma.user_id AND e.external_id LIKE 'ms-%'
+                ), 0) as email_count
+         FROM microsoft_accounts ma
+         WHERE ma.user_id = $1 AND ma.is_active = true
+         ORDER BY ma.created_at DESC`,
         [userId]
       );
       microsoftRows = msResult.rows;
