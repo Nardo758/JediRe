@@ -876,7 +876,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v4#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v5#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -885,21 +885,30 @@ export class EntitlementComparisonEngine {
     }
     console.log(`[Cache] MISS AI analysis: ${codes.join(',')} fp=${metricsFingerprint}`);
 
-    // ── 3. Fetch ordinance text for the subject district ──────────────────────
-    let ordinanceText = '';
+    // ── 3. Fetch ordinance text for every unique path district (parallel) ─────
+    const ordinanceByCode: Record<string, string> = {};
     try {
       const munIdResult = await this.pool.query(
         `SELECT id FROM municipalities WHERE LOWER(name) = LOWER($1) AND LOWER(state) = LOWER($2) LIMIT 1`,
         [mun, st],
       );
       const municipalityId = munIdResult.rows[0]?.id;
-      if (municipalityId && subject.baseDistrictCode) {
+      if (municipalityId) {
         const scraper = new ScrapingService(this.pool);
-        const scraped = await scraper.scrapeZoningCode(municipalityId, subject.baseDistrictCode);
-        ordinanceText = scraped.text;
+        const uniqueCodes = [...new Set(paths.map(p => p.zoningCode).filter(Boolean) as string[])];
+        await Promise.all(
+          uniqueCodes.map(async (code) => {
+            try {
+              const scraped = await scraper.scrapeZoningCode(municipalityId, code);
+              if (scraped.text) ordinanceByCode[code] = scraped.text;
+            } catch {
+              /* skip — best-effort */
+            }
+          }),
+        );
       }
     } catch (err: any) {
-      console.warn('[EntitlementEngine] Ordinance text fetch failed:', err.message);
+      console.warn('[EntitlementEngine] Ordinance fetch failed:', err.message);
     }
 
     // ── 4. Build enriched prompt ──────────────────────────────────────────────
