@@ -200,6 +200,12 @@ export function EmailPage() {
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
   const [propPanelOpen, setPropPanelOpen] = useState(true);
   const [newsPanelOpen, setNewsPanelOpen] = useState(true);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState('');
+  const [replyCc, setReplyCc] = useState('');
+  const [replySending, setReplySending] = useState(false);
+  const [replySent, setReplySent] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   useEffect(() => {
     inboxService.getConnectedAccounts().then(res => {
@@ -330,6 +336,26 @@ export function EmailPage() {
 
   useEffect(() => { loadInbox(); }, [loadInbox]);
 
+  const handleSendReply = async () => {
+    if (!selectedEmail || !replyBody.trim()) return;
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      const res = await inboxService.replyToEmail(selectedEmail.id, replyBody, replyCc || undefined);
+      if (res.success) {
+        setReplySent(selectedEmail.from_address);
+        setReplyBody('');
+        setReplyCc('');
+        setReplyOpen(false);
+      } else {
+        setReplyError(res.message || 'Failed to save reply');
+      }
+    } catch (err: any) {
+      setReplyError(err?.response?.data?.message || err?.message || 'Failed to save reply');
+    }
+    setReplySending(false);
+  };
+
   const handleEmailClick = async (email: Email) => {
     setSelectedEmailId(email.id);
     setEmailIntel(null);
@@ -337,6 +363,11 @@ export function EmailPage() {
     setTeamMembers([]);
     setTeamActivity([]);
     setDismissedActions(new Set());
+    setReplyOpen(false);
+    setReplyBody('');
+    setReplyCc('');
+    setReplySent(null);
+    setReplyError(null);
     if (!email.is_read) {
       try {
         await inboxService.updateEmail(email.id, { is_read: true });
@@ -877,6 +908,13 @@ export function EmailPage() {
                     }}>
                       {selectedEmail.is_flagged ? '\u2605 Flagged' : '\u2606 Flag'}
                     </button>
+                    <button onClick={() => { setReplyOpen(o => !o); setReplySent(null); }} style={{
+                      background: replyOpen ? `${T.accent.green}20` : T.bg.tertiary,
+                      border: `1px solid ${replyOpen ? T.accent.green + '60' : T.border.subtle}`,
+                      borderRadius: 6, padding: "6px 12px",
+                      color: replyOpen ? T.accent.green : T.text.secondary,
+                      fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer",
+                    }}>&#8617; Reply</button>
                     <button style={{
                       background: `${T.accent.blue}15`, border: `1px solid ${T.accent.blue}40`,
                       borderRadius: 6, padding: "6px 12px", color: T.accent.blue,
@@ -922,6 +960,99 @@ export function EmailPage() {
                 <div style={{ fontSize: 13, color: T.text.secondary, lineHeight: 1.7, maxWidth: 700, whiteSpace: "pre-wrap" as const, marginBottom: 24 }}>
                   {selectedDetail.body_text || selectedDetail.body_preview || selectedEmail.body_preview || 'No content available.'}
                 </div>
+
+                {replySent && (
+                  <div style={{
+                    marginBottom: 20, padding: "10px 14px",
+                    background: `${T.accent.green}15`, border: `1px solid ${T.accent.green}40`,
+                    borderRadius: 6, fontSize: 12, color: T.accent.green, fontFamily: FONTS.mono,
+                  }}>
+                    &#10003; Reply saved to sent items (addressed to {replySent})
+                  </div>
+                )}
+
+                {replyOpen && (
+                  <div style={{
+                    marginBottom: 24, border: `1px solid ${T.border.default}`,
+                    borderRadius: 8, overflow: "hidden",
+                    background: T.bg.secondary,
+                  }}>
+                    <div style={{
+                      padding: "10px 14px", background: T.bg.card,
+                      borderBottom: `1px solid ${T.border.subtle}`,
+                      fontSize: 11, fontFamily: FONTS.mono, color: T.text.tertiary,
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span style={{ color: T.accent.green }}>&#8617;</span>
+                      <span>Reply to <span style={{ color: T.text.secondary }}>{selectedEmail.from_address}</span></span>
+                    </div>
+                    <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, minWidth: 20 }}>CC</span>
+                        <input
+                          type="text"
+                          value={replyCc}
+                          onChange={e => setReplyCc(e.target.value)}
+                          placeholder="Add CC recipients..."
+                          style={{
+                            flex: 1, background: "transparent", border: "none", outline: "none",
+                            fontSize: 12, color: T.text.primary, fontFamily: FONTS.sans,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <textarea
+                      autoFocus
+                      value={replyBody}
+                      onChange={e => setReplyBody(e.target.value)}
+                      placeholder={`Reply to ${selectedEmail.from_name || selectedEmail.from_address}...`}
+                      style={{
+                        width: "100%", minHeight: 120, padding: "14px",
+                        background: "transparent", border: "none", outline: "none", resize: "vertical" as const,
+                        fontSize: 13, color: T.text.primary, fontFamily: FONTS.sans, lineHeight: 1.6,
+                        boxSizing: "border-box" as const,
+                      }}
+                    />
+                    <div style={{
+                      padding: "10px 14px", borderTop: `1px solid ${T.border.subtle}`,
+                      display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const,
+                    }}>
+                      {replyError && (
+                        <div style={{
+                          width: "100%", marginBottom: 8, padding: "6px 10px",
+                          background: `${T.accent.red}15`, border: `1px solid ${T.accent.red}40`,
+                          borderRadius: 4, fontSize: 11, color: T.accent.red, fontFamily: FONTS.mono,
+                        }}>
+                          {replyError}
+                        </div>
+                      )}
+                      <button
+                        onClick={handleSendReply}
+                        disabled={replySending || !replyBody.trim()}
+                        style={{
+                          padding: "7px 18px", borderRadius: 6, border: "none",
+                          background: replyBody.trim() ? T.accent.green : T.bg.tertiary,
+                          color: replyBody.trim() ? "#fff" : T.text.tertiary,
+                          fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600,
+                          cursor: replyBody.trim() ? "pointer" : "not-allowed",
+                          opacity: replySending ? 0.7 : 1,
+                        }}
+                      >
+                        {replySending ? 'Sending...' : 'Send'}
+                      </button>
+                      <button
+                        onClick={() => { setReplyOpen(false); setReplyBody(''); setReplyCc(''); }}
+                        style={{
+                          padding: "7px 14px", borderRadius: 6,
+                          background: "transparent", border: `1px solid ${T.border.subtle}`,
+                          color: T.text.tertiary, fontSize: 12, fontFamily: FONTS.sans, cursor: "pointer",
+                        }}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {emailIntel && emailIntel.propertyExtractions.length > 0 && (
                   <div style={{ marginBottom: 16 }}>

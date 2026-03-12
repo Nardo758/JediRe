@@ -219,4 +219,9 @@ export const inboxService = {
     });
     return response.data;
   },
+
+  async replyToEmail(emailId: number, body: string, cc?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    const response = await apiClient.post(`/api/v1/emails/${emailId}/reply`, { body, cc });
+    return response.data;
+  },
 };

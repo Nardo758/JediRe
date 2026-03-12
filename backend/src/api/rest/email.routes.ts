@@ -310,4 +310,86 @@ router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, 
   }
 });
 
+/**
+ * POST /api/v1/emails/:id/reply
+ * Save a reply to an email (stores in DB with sent_at set)
+ */
+router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const emailId = parseInt(req.params.id, 10);
+    if (isNaN(emailId) || emailId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid email ID' });
+    }
+
+    const userId = (req as any).user?.userId;
+    const { body, cc } = req.body;
+
+    if (!body || !body.trim()) {
+      return res.status(400).json({ success: false, message: 'Reply body is required' });
+    }
+    if (body.length > 100000) {
+      return res.status(400).json({ success: false, message: 'Reply body too long' });
+    }
+
+    const pool = getPool();
+
+    const originalResult = await pool.query(
+      'SELECT id, subject, from_address, thread_id, deal_id, email_account_id FROM emails WHERE id = $1 AND user_id = $2',
+      [emailId, userId]
+    );
+    if (originalResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Original email not found' });
+    }
+
+    const original = originalResult.rows[0];
+    const replySubject = original.subject?.startsWith('Re:') ? original.subject : `Re: ${original.subject || ''}`;
+    const threadId = original.thread_id || `thread-${emailId}`;
+
+    const accountResult = await pool.query(
+      'SELECT email_address FROM email_accounts WHERE id = $1 AND user_id = $2',
+      [original.email_account_id, userId]
+    );
+    if (accountResult.rows.length === 0) {
+      return res.status(400).json({ success: false, message: 'No connected email account found for this email' });
+    }
+    const senderAddress = accountResult.rows[0].email_address;
+
+    const replyBody = body.trim();
+    const preview = replyBody.slice(0, 200);
+    const toAddresses = [original.from_address];
+    const rawCc = Array.isArray(cc) ? cc : (cc ? String(cc).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+
+    const insertResult = await pool.query(
+      `INSERT INTO emails
+         (email_account_id, user_id, thread_id, subject, from_address, to_addresses, cc_addresses,
+          body_text, body_preview, is_read, sent_at, deal_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), $10, NOW(), NOW())
+       RETURNING id, subject, to_addresses, cc_addresses, sent_at`,
+      [
+        original.email_account_id,
+        userId,
+        threadId,
+        replySubject,
+        senderAddress,
+        toAddresses,
+        rawCc,
+        replyBody,
+        preview,
+        original.deal_id || null,
+      ]
+    );
+
+    logger.info(`Reply saved for email ${emailId}`, { replyId: insertResult.rows[0].id });
+
+    res.status(201).json({
+      success: true,
+      data: insertResult.rows[0],
+      message: 'Reply saved to sent items',
+    });
+  } catch (error) {
+    logger.error('Error saving reply:', error);
+    next(error);
+  }
+});
+
 export default router;
