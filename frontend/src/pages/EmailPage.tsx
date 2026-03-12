@@ -72,8 +72,8 @@ function classifyEmail(email: Email): string {
       return 'system-alert';
     return 'correspondence';
   }
-  if (email.deal_id) return 'deal-event';
-  if (email.is_flagged) return 'new-opportunity';
+  if (email.has_signal || email.deal_id) return 'deal-event';
+  if (email.is_flagged) return 'deal-event';
   const subj = (email.subject || '').toLowerCase();
   if (subj.includes('jedi') || subj.includes('score') || subj.includes('alert'))
     return 'system-alert';
@@ -288,7 +288,7 @@ export function EmailPage() {
   ];
 
   const agentActionCount = useMemo(() => {
-    return emails.filter(e => !e.is_read || e.is_flagged || e.deal_id).length;
+    return emails.filter(e => e.has_signal || e.is_flagged || e.deal_id).length;
   }, [emails]);
 
   const summaryStats = useMemo(() => {
@@ -383,11 +383,11 @@ export function EmailPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{
             display: "flex", alignItems: "center", gap: 6, padding: "5px 12px",
-            background: `${T.accent.amber}10`, border: `1px solid ${T.accent.amber}30`,
+            background: `${T.accent.green}10`, border: `1px solid ${T.accent.green}30`,
             borderRadius: 6, cursor: "pointer",
           }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.amber, animation: "pulse 2s infinite" }} />
-            <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.amber }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.green, animation: "pulse 2s infinite" }} />
+            <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.accent.green }}>
               {agentActionCount} AGENT ACTIONS
             </span>
           </div>
