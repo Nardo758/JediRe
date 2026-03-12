@@ -12,6 +12,7 @@ import { pool } from '../database';
 import marketResearchEngine from './marketResearchEngine';
 import { trafficLearning } from './trafficLearningService';
 import type { LearnedRates } from './trafficLearningService';
+import { trafficCalibrationService } from './traffic-calibration.service';
 import { PropertyAnalyticsService } from './property-analytics.service';
 import type { DomainTrend } from './property-analytics.service';
 import { trendPatternDetector } from './trend-pattern-detector';
@@ -1651,8 +1652,39 @@ export class TrafficPredictionEngine {
     // Step 1: Run v1 base prediction (traffic + physical score)
     const v1 = await this.predictTraffic(propertyId, options?.targetWeek);
 
-    // Step 2: Load learned rates
+    // Step 2: Load learned rates (includes submarket calibration fallback for cold_start)
     const rates = await trafficLearning.getOrCreateLearnedRates(propertyId);
+
+    // Step 2b: Direct submarket calibration fallback via traffic_submarket_calibration
+    if (rates.data_weeks === 0) {
+      try {
+        const propResult = await pool.query(
+          `SELECT p.city, p.state_code, p.submarket_id FROM properties p WHERE p.id = $1 LIMIT 1`,
+          [propertyId]
+        );
+        if (propResult.rows.length > 0) {
+          const { city, state_code, submarket_id } = propResult.rows[0];
+          const cal = await trafficCalibrationService.getCalibration(submarket_id || undefined, city || undefined, state_code || undefined);
+          if (cal) {
+            if (cal.avg_tour_conversion && Number(cal.avg_tour_conversion) > 0) {
+              rates.tour_rate = Number(cal.avg_tour_conversion);
+            }
+            if (cal.avg_closing_ratio && Number(cal.avg_closing_ratio) > 0) {
+              const closingRatio = Number(cal.avg_closing_ratio);
+              if (rates.tour_rate > 0) {
+                const impliedAppLease = closingRatio / rates.tour_rate;
+                rates.app_rate = Math.min(1.0, impliedAppLease / rates.lease_rate);
+                rates.lease_rate = Math.min(1.0, closingRatio / (rates.tour_rate * rates.app_rate) || rates.lease_rate);
+              }
+            }
+            rates.confidence_level = 'submarket_calibrated';
+            console.log(`📊 predictTrafficV2: Direct submarket calibration applied for ${propertyId}`);
+          }
+        }
+      } catch (err) {
+        console.debug('[predictTrafficV2] Submarket calibration lookup skipped');
+      }
+    }
 
     // Step 3: Determine season from current week
     const { week } = options?.targetWeek
