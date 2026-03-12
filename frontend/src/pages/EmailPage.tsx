@@ -44,7 +44,7 @@ const FONTS = {
   sans: "'IBM Plex Sans', -apple-system, sans-serif",
 };
 
-type ViewType = 'inbox' | 'flagged' | 'deals' | 'pst-imports' | 'unread';
+type ViewType = 'inbox' | 'sent' | 'flagged' | 'deals' | 'pst-imports' | 'unread' | 'tasks';
 type FilterType = 'all' | 'unread' | 'critical' | 'deal-linked' | 'attachments';
 type SidePanelTab = 'actions' | 'deal' | 'team' | 'tasks';
 
@@ -276,10 +276,12 @@ export function EmailPage() {
 
   const views: { id: ViewType; label: string; count: number | null }[] = [
     { id: 'inbox', label: 'Inbox', count: stats?.unread ?? null },
+    { id: 'sent', label: 'Sent', count: null },
     { id: 'flagged', label: 'Flagged', count: stats?.flagged ?? null },
     { id: 'deals', label: 'Deal-Linked', count: stats?.deal_related ?? null },
     { id: 'pst-imports', label: 'PST Imports', count: stats?.pst_imports ?? null },
     { id: 'unread', label: 'Unread', count: stats?.unread ?? null },
+    { id: 'tasks', label: 'Tasks', count: null },
   ];
 
   const filters: { id: FilterType; label: string; count: number }[] = [
@@ -516,6 +518,16 @@ export function EmailPage() {
                     {email.is_flagged && (
                       <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.amber, background: `${T.accent.amber}15`, padding: "1px 5px", borderRadius: 3 }}>
                         FLAGGED
+                      </span>
+                    )}
+                    {extractCompany(email.from_address) && (
+                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, background: T.bg.tertiary, padding: "1px 5px", borderRadius: 3 }}>
+                        {extractCompany(email.from_address)}
+                      </span>
+                    )}
+                    {signals.length > 0 && (
+                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.green, background: `${T.accent.green}12`, padding: "1px 5px", borderRadius: 3 }}>
+                        {signals.length} action{signals.length > 1 ? 's' : ''}
                       </span>
                     )}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
