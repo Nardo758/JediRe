@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
 import { CompTrafficService } from '../../services/comp-traffic.service';
 import { logger } from '../../utils/logger';
@@ -178,6 +179,44 @@ router.get('/:dealId/proxy-candidates', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('[TrafficComps] GET /:dealId/proxy-candidates failed', { error: error.message });
     res.status(500).json({ error: 'Failed to fetch proxy candidates', message: error.message });
+  }
+});
+
+router.get('/:dealId/deals-with-data', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const deals = await compTrafficService.getDealsWithTrafficHistory(dealId);
+    res.json({ dealId, deals, count: deals.length });
+  } catch (error: any) {
+    logger.error('[TrafficComps] GET /:dealId/deals-with-data failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch deals with traffic history', message: error.message });
+  }
+});
+
+router.get('/:dealId/selections', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const selections = await compTrafficService.getSelectedCompDeals(dealId);
+    res.json({ dealId, selections, count: selections.length });
+  } catch (error: any) {
+    logger.error('[TrafficComps] GET /:dealId/selections failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch selections', message: error.message });
+  }
+});
+
+router.put('/:dealId/selections', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { selections } = req.body as { selections: Array<{ comp_deal_id: string; comp_deal_name?: string }> };
+    if (!Array.isArray(selections)) {
+      return res.status(400).json({ error: 'selections must be an array' });
+    }
+    await compTrafficService.setSelectedCompDeals(dealId, selections);
+    const updated = await compTrafficService.getSelectedCompDeals(dealId);
+    res.json({ dealId, selections: updated, count: updated.length });
+  } catch (error: any) {
+    logger.error('[TrafficComps] PUT /:dealId/selections failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to save selections', message: error.message });
   }
 });
 

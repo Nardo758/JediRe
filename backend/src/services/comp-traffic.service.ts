@@ -53,6 +53,35 @@ export interface CompProxyCandidate {
   sessions_30d: number;
 }
 
+export interface DealWithTrafficHistory {
+  deal_id: string;
+  deal_name: string;
+  address: string;
+  total_units: number;
+  snapshot_count: number;
+  earliest_week: string;
+  latest_week: string;
+  avg_traffic: number;
+  avg_tours: number;
+  avg_closing_ratio: number;
+  avg_occ_pct: number;
+  is_selected: boolean;
+}
+
+export interface CompPattern {
+  avgTrafficPerUnit: number;
+  avgTourConversion: number;
+  avgClosingRatio: number;
+  avgNetLeasesPerUnit: number;
+  websitePct: number;
+  seasonalFactors: number[];
+  trendGrowthPerWeek: number;
+  sampleCount: number;
+  compDealIds: string[];
+  compDealNames: string[];
+  scaledToUnits: number;
+}
+
 export class CompTrafficService {
   constructor(private pool: Pool) {}
 
@@ -346,6 +375,187 @@ export class CompTrafficService {
         avg_adt: 0,
       };
     }
+  }
+
+  async getDealsWithTrafficHistory(subjectDealId: string): Promise<DealWithTrafficHistory[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+           d.id::text AS deal_id,
+           d.name AS deal_name,
+           COALESCE(d.address, d.property_address, '') AS address,
+           COUNT(wts.id) AS snapshot_count,
+           MIN(wts.week_ending) AS earliest_week,
+           MAX(wts.week_ending) AS latest_week,
+           ROUND(AVG(COALESCE(wts.traffic, 0))::numeric, 1) AS avg_traffic,
+           ROUND(AVG(COALESCE(wts.in_person_tours, 0))::numeric, 1) AS avg_tours,
+           ROUND(AVG(COALESCE(wts.closing_ratio, 0))::numeric, 4) AS avg_closing_ratio,
+           ROUND(AVG(COALESCE(wts.occ_pct, 0))::numeric, 3) AS avg_occ_pct,
+           MAX(COALESCE(wts.total_units, 0)) AS total_units,
+           EXISTS (
+             SELECT 1 FROM deal_traffic_comp_selections dtcs
+             WHERE dtcs.deal_id = $1 AND dtcs.comp_deal_id = d.id::text
+           ) AS is_selected
+         FROM deals d
+         JOIN weekly_traffic_snapshots wts ON wts.deal_id = d.id::text
+         WHERE d.id::text != $1
+         GROUP BY d.id, d.name, d.address, d.property_address
+         HAVING COUNT(wts.id) > 0
+         ORDER BY snapshot_count DESC`,
+        [subjectDealId]
+      );
+      return result.rows.map((r: any) => ({
+        deal_id: r.deal_id,
+        deal_name: r.deal_name,
+        address: r.address,
+        total_units: parseInt(r.total_units) || 0,
+        snapshot_count: parseInt(r.snapshot_count) || 0,
+        earliest_week: r.earliest_week,
+        latest_week: r.latest_week,
+        avg_traffic: parseFloat(r.avg_traffic) || 0,
+        avg_tours: parseFloat(r.avg_tours) || 0,
+        avg_closing_ratio: parseFloat(r.avg_closing_ratio) || 0,
+        avg_occ_pct: parseFloat(r.avg_occ_pct) || 0,
+        is_selected: r.is_selected === true,
+      }));
+    } catch (error: any) {
+      logger.error('[CompTraffic] getDealsWithTrafficHistory failed', { error: error.message });
+      return [];
+    }
+  }
+
+  async getSelectedCompDeals(subjectDealId: string): Promise<Array<{ comp_deal_id: string; comp_deal_name: string }>> {
+    try {
+      const result = await this.pool.query(
+        `SELECT comp_deal_id, comp_deal_name FROM deal_traffic_comp_selections WHERE deal_id = $1 ORDER BY created_at`,
+        [subjectDealId]
+      );
+      return result.rows;
+    } catch (error: any) {
+      logger.error('[CompTraffic] getSelectedCompDeals failed', { error: error.message });
+      return [];
+    }
+  }
+
+  async setSelectedCompDeals(subjectDealId: string, selections: Array<{ comp_deal_id: string; comp_deal_name?: string }>): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM deal_traffic_comp_selections WHERE deal_id = $1`, [subjectDealId]);
+      for (const sel of selections) {
+        await client.query(
+          `INSERT INTO deal_traffic_comp_selections (deal_id, comp_deal_id, comp_deal_name)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (deal_id, comp_deal_id) DO NOTHING`,
+          [subjectDealId, sel.comp_deal_id, sel.comp_deal_name || null]
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error: any) {
+      await client.query('ROLLBACK');
+      logger.error('[CompTraffic] setSelectedCompDeals failed', { error: error.message });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async extractPatternFromDeals(compDealIds: string[], targetUnits: number): Promise<CompPattern | null> {
+    if (!compDealIds.length) return null;
+    try {
+      const placeholders = compDealIds.map((_, i) => `$${i + 1}`).join(', ');
+
+      // Pull all weekly snapshots for selected comp deals
+      const rows = await this.pool.query(
+        `SELECT
+           d.name AS deal_name,
+           wts.week_ending,
+           EXTRACT(MONTH FROM wts.week_ending)::int AS month,
+           COALESCE(wts.traffic, 0) AS traffic,
+           COALESCE(wts.in_person_tours, 0) AS tours,
+           COALESCE(wts.net_leases, 0) AS net_leases,
+           COALESCE(wts.closing_ratio, 0) AS closing_ratio,
+           COALESCE(wts.website_leads, 0) AS website_leads,
+           COALESCE(wts.total_units, 0) AS total_units,
+           COALESCE(wts.occ_pct, 0) AS occ_pct
+         FROM weekly_traffic_snapshots wts
+         JOIN deals d ON d.id::text = wts.deal_id
+         WHERE wts.deal_id IN (${placeholders})
+           AND wts.traffic > 0
+         ORDER BY wts.week_ending`,
+        compDealIds
+      );
+
+      if (rows.rows.length === 0) return null;
+
+      const data = rows.rows;
+      const compNames = [...new Set(data.map((r: any) => r.deal_name as string))];
+      const avgUnits = this.mean(data.map((r: any) => parseInt(r.total_units) || 0).filter(u => u > 0));
+
+      const avgTraffic = this.mean(data.map((r: any) => parseFloat(r.traffic)));
+      const avgTours = this.mean(data.map((r: any) => parseFloat(r.tours)));
+      const avgNetLeases = this.mean(data.map((r: any) => parseFloat(r.net_leases)));
+      const avgClosingRatio = this.mean(data.filter((r: any) => r.closing_ratio > 0).map((r: any) => parseFloat(r.closing_ratio)));
+      const avgWebsiteLeads = this.mean(data.map((r: any) => parseFloat(r.website_leads)));
+
+      const avgTrafficPerUnit = avgUnits > 0 ? avgTraffic / avgUnits : avgTraffic / 290;
+      const avgToursPerUnit = avgUnits > 0 ? avgTours / avgUnits : avgTours / 290;
+      const avgNetLeasesPerUnit = avgUnits > 0 ? avgNetLeases / avgUnits : avgNetLeases / 290;
+      const avgTourConversion = avgTraffic > 0 ? avgTours / avgTraffic : 0.99;
+      const websitePct = avgTraffic > 0 ? Math.min(0.8, avgWebsiteLeads / avgTraffic) : 0.40;
+
+      // Compute monthly seasonal factors (12 values)
+      const monthlyAvgs: Record<number, number[]> = {};
+      for (const row of data) {
+        const m = parseInt(row.month);
+        if (!monthlyAvgs[m]) monthlyAvgs[m] = [];
+        monthlyAvgs[m].push(parseFloat(row.traffic));
+      }
+      const overallAvg = avgTraffic || 1;
+      const seasonalFactors: number[] = Array.from({ length: 12 }, (_, i) => {
+        const m = i + 1;
+        const monthData = monthlyAvgs[m];
+        if (!monthData || monthData.length === 0) return 1.0;
+        return this.mean(monthData) / overallAvg;
+      });
+
+      // Compute weekly trend (linear regression slope / mean)
+      const trafficSeries = data.map((r: any) => parseFloat(r.traffic));
+      const n = trafficSeries.length;
+      let trendGrowthPerWeek = 0;
+      if (n >= 8) {
+        const sumX = (n * (n - 1)) / 2;
+        const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+        const sumY = trafficSeries.reduce((a, b) => a + b, 0);
+        const sumXY = trafficSeries.reduce((acc, y, x) => acc + x * y, 0);
+        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        trendGrowthPerWeek = overallAvg > 0 ? slope / overallAvg : 0;
+        // Clamp to reasonable range: -1% to +0.5% per week
+        trendGrowthPerWeek = Math.max(-0.01, Math.min(0.005, trendGrowthPerWeek));
+      }
+
+      return {
+        avgTrafficPerUnit,
+        avgTourConversion,
+        avgClosingRatio: avgClosingRatio || 0.207,
+        avgNetLeasesPerUnit,
+        websitePct,
+        seasonalFactors,
+        trendGrowthPerWeek,
+        sampleCount: n,
+        compDealIds,
+        compDealNames: compNames,
+        scaledToUnits: targetUnits,
+      };
+    } catch (error: any) {
+      logger.error('[CompTraffic] extractPatternFromDeals failed', { error: error.message });
+      return null;
+    }
+  }
+
+  private mean(arr: number[]): number {
+    if (!arr.length) return 0;
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
   }
 
   async getCompProxyCandidates(tradeAreaId: string): Promise<CompProxyCandidate[]> {

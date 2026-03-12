@@ -23,8 +23,10 @@ import { TrafficDataSourcesService } from '../../services/traffic-data-sources.s
 import { trendPatternDetector } from '../../services/trend-pattern-detector';
 import { visibilityScoringService } from '../../services/visibility-scoring.service';
 import { logger } from '../../utils/logger';
+import { CompTrafficService } from '../../services/comp-traffic.service';
 
 const router = Router();
+const compTrafficService = new CompTrafficService(pool);
 const trafficService = new MultifamilyTrafficService(pool);
 const digitalTrafficService = new DigitalTrafficService(pool);
 
@@ -621,6 +623,40 @@ const weeklyUpload = multer({
         logger.debug('[LeasingTraffic] Trade area / data source check skipped');
       }
 
+      // Comp pattern: pull from user-selected comp deals with real traffic history
+      let baselineSource: 'comp_pattern' | 'submarket_calibration' | 'property_estimate' = 'property_estimate';
+      let baselineComps: string[] = [];
+      try {
+        const selectedComps = await compTrafficService.getSelectedCompDeals(dealId);
+        if (selectedComps.length > 0) {
+          const compDealIds = selectedComps.map(s => s.comp_deal_id);
+          const targetUnits = propertyData.units || 290;
+          const pattern = await compTrafficService.extractPatternFromDeals(compDealIds, targetUnits);
+          if (pattern) {
+            calibrationData = {
+              avgTrafficPerUnit: pattern.avgTrafficPerUnit,
+              avgClosingRatio: pattern.avgClosingRatio,
+              avgTourConversion: pattern.avgTourConversion,
+              seasonalFactors: pattern.seasonalFactors,
+              websitePct: pattern.websitePct,
+              sampleCount: pattern.sampleCount,
+              trendGrowthPerWeek: pattern.trendGrowthPerWeek,
+            };
+            baselineSource = 'comp_pattern';
+            baselineComps = pattern.compDealNames;
+            logger.info(`[LeasingTraffic] Using comp pattern baseline for ${dealId}`, {
+              comps: baselineComps,
+              sampleCount: pattern.sampleCount,
+              avgTrafficPerUnit: pattern.avgTrafficPerUnit,
+            });
+          }
+        } else if (calibrationData) {
+          baselineSource = 'submarket_calibration';
+        }
+      } catch (e) {
+        logger.debug('[LeasingTraffic] Comp pattern extraction skipped');
+      }
+
       const projection = await weeklyReportParser.generateProjection(
         dealId,
         view as 'weekly' | 'monthly' | 'yearly',
@@ -629,7 +665,7 @@ const weeklyUpload = multer({
         calibrationData
       );
 
-      const response: any = { ...projection };
+      const response: any = { ...projection, baseline_source: baselineSource, baseline_comps: baselineComps };
       if (dataSourceSignals) {
         response.data_sources = dataSourceSignals;
       }

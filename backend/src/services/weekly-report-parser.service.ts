@@ -105,6 +105,7 @@ export interface CalibrationData {
   seasonalFactors?: number[];
   websitePct?: number;
   sampleCount?: number;
+  trendGrowthPerWeek?: number;
 }
 
 export interface ProjectionResult {
@@ -431,7 +432,7 @@ export class WeeklyReportParserService {
       avgTotalUnits = baseline.totalUnits;
       avgVacantTotal = 0;
       avgNoticeTotal = 0;
-      trendGrowth = 0.002;
+      trendGrowth = calibration?.trendGrowthPerWeek ?? 0.002;
       if (calibration?.seasonalFactors && calibration.seasonalFactors.length === 12) {
         seasonalFactors = [];
         for (let m = 0; m < 12; m++) {

@@ -85,6 +85,8 @@ interface ProjectionData {
   view: 'weekly' | 'monthly' | 'yearly';
   dataSource: 'predicted' | 'uploaded' | 'blended';
   calibrationSource?: string;
+  baseline_source?: 'comp_pattern' | 'submarket_calibration' | 'property_estimate';
+  baseline_comps?: string[];
 }
 
 interface HistorySnapshot {
@@ -210,31 +212,45 @@ function FactorCard({ label, factor, summary, direction }: {
   );
 }
 
-function DataSourceBanner({ dataSource, actualsCount, calibrationSource, onUploadClick }: {
+function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselineSource, baselineComps, onUploadClick }: {
   dataSource: 'predicted' | 'uploaded' | 'blended';
   actualsCount: number;
   calibrationSource?: string;
+  baselineSource?: string;
+  baselineComps?: string[];
   onUploadClick: () => void;
 }) {
   if (dataSource === 'predicted') {
+    const isCompPattern = baselineSource === 'comp_pattern' && baselineComps && baselineComps.length > 0;
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-        <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+      <div className={`border rounded-xl p-4 flex items-start gap-3 ${isCompPattern ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+        {isCompPattern
+          ? <CheckCircle2 size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" />
+          : <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+        }
         <div className="flex-1">
-          <div className="text-sm font-semibold text-amber-900">
-            Projections based on property characteristics and market intelligence
+          <div className={`text-sm font-semibold ${isCompPattern ? 'text-emerald-900' : 'text-amber-900'}`}>
+            {isCompPattern
+              ? `Baseline calibrated from ${baselineComps!.length} comp deal${baselineComps!.length !== 1 ? 's' : ''}`
+              : 'Projections based on property characteristics and market intelligence'
+            }
           </div>
-          <p className="text-[11px] text-amber-700 mt-1">
-            {calibrationSource || 'Using industry-standard baselines for multifamily leasing.'}
-            {' '}Upload weekly operator data to refine predictions with actual performance.
+          <p className={`text-[11px] mt-1 ${isCompPattern ? 'text-emerald-700' : 'text-amber-700'}`}>
+            {isCompPattern
+              ? `Traffic, seasonal patterns, and trend rates derived from: ${baselineComps!.join(', ')}. Metrics are scaled to this deal's unit count.`
+              : (calibrationSource || 'Using industry-standard baselines for multifamily leasing.')
+            }
+            {!isCompPattern && ' Upload weekly operator data to refine predictions with actual performance.'}
           </p>
         </div>
-        <button
-          onClick={onUploadClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0"
-        >
-          <Upload size={12} /> Upload Data
-        </button>
+        {!isCompPattern && (
+          <button
+            onClick={onUploadClick}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0"
+          >
+            <Upload size={12} /> Upload Data
+          </button>
+        )}
       </div>
     );
   }
@@ -510,7 +526,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
   const renderPredictionsTab = () => (
     <div className="space-y-6">
-      <DataSourceBanner dataSource={dataSource} actualsCount={projection?.actualsCount || 0} calibrationSource={projection?.calibrationSource} onUploadClick={triggerUpload} />
+      <DataSourceBanner dataSource={dataSource} actualsCount={projection?.actualsCount || 0} calibrationSource={projection?.calibrationSource} baselineSource={projection?.baseline_source} baselineComps={projection?.baseline_comps} onUploadClick={triggerUpload} />
 
       <div className="bg-white rounded-xl border border-stone-200 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -1013,7 +1029,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               onDefineTradeArea={() => setShowTradeAreaPanel(true)}
             />
           )}
-          {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} />}
+          {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
           {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
           {activeTab === 'adjustments' && renderAdjustmentsTab()}
           {activeTab === 'calibration' && renderCalibrationTab()}
