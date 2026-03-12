@@ -1297,10 +1297,16 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         const failed = jobResult.results.filter(r => r.status === 'error').length;
         const noWebsite = jobResult.results.filter(r => r.status === 'no_website').length;
 
-        // Push market snapshots after batch completes
         let marketSnapshot: any = null;
         if (succeeded > 0) {
           const aggregation = new RentScraperAggregationService(pool);
+          for (const r of jobResult.results) {
+            if (r.status === 'success') {
+              try { await aggregation.pushToCompUnitTypes(r.targetId); } catch (e: any) {
+                logger.warn(`[run_scrape_job] comp backflow failed for target ${r.targetId}: ${e.message}`);
+              }
+            }
+          }
           marketSnapshot = await aggregation.pushToApartmentMarketSnapshots(market);
         }
 
