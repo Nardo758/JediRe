@@ -1,4 +1,4 @@
-INSERT INTO rent_scrape_targets (property_name, address, city, state, zip, url, unit_count, year_built, market, submarket) VALUES
+INSERT INTO rent_scrape_targets (property_name, address, city, state, zip, listing_url, unit_count, year_built, market, submarket) VALUES
 ('Alexan Buckhead', '3690 Buckhead Loop NE', 'Atlanta', 'GA', '30326', 'https://www.apartments.com/alexan-buckhead-atlanta-ga/jxz93m4/', 370, 2019, 'Atlanta', 'Buckhead'),
 ('AMLI Buckhead', '3360 Peachtree Rd NE', 'Atlanta', 'GA', '30326', 'https://www.apartments.com/amli-buckhead-atlanta-ga/l2h50jw/', 410, 2001, 'Atlanta', 'Buckhead'),
 ('Broadstone Juniper', '939 Juniper St NE', 'Atlanta', 'GA', '30309', 'https://www.apartments.com/broadstone-juniper-atlanta-ga/7yt8dqw/', 254, 2021, 'Atlanta', 'Midtown'),
@@ -105,4 +105,4 @@ INSERT INTO rent_scrape_targets (property_name, address, city, state, zip, url, 
 ('Solis at Decatur', '511 Commerce Dr', 'Decatur', 'GA', '30030', 'https://www.apartments.com/solis-at-decatur-decatur-ga/l5v8fw4/', 298, 2020, 'Atlanta', 'Decatur'),
 ('Broadstone at Centennial', '101 Alexander St NW', 'Atlanta', 'GA', '30313', 'https://www.apartments.com/broadstone-at-centennial-atlanta-ga/3db5mf7/', 380, 2024, 'Atlanta', 'Downtown'),
 ('Alexan Upper Westside', '1125 Huff Rd NW', 'Atlanta', 'GA', '30318', 'https://www.apartments.com/alexan-upper-westside-atlanta-ga/z6k9pj2/', 318, 2022, 'Atlanta', 'Westside')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (property_name, city) DO NOTHING;
