@@ -155,8 +155,8 @@ export const inboxService = {
     return response.data;
   },
 
-  async getGmailAuthUrl(): Promise<{ success: boolean; data: { authUrl: string } }> {
-    const response = await apiClient.post('/api/v1/gmail/connect');
+  async getGmailAuthUrl(): Promise<{ success: boolean; authUrl: string }> {
+    const response = await apiClient.get('/api/v1/gmail/auth/url');
     return response.data;
   },
 

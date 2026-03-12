@@ -245,7 +245,7 @@ export function EmailPage() {
   const handleConnectGmail = async () => {
     try {
       const res = await inboxService.getGmailAuthUrl();
-      if (res.data?.authUrl) window.location.href = res.data.authUrl;
+      if (res.authUrl) window.location.href = res.authUrl;
     } catch (e) {
       setConnectNotice('Failed to start Gmail connection');
       setTimeout(() => setConnectNotice(null), 4000);

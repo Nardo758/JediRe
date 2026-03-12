@@ -114,7 +114,7 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
       ...gmailResult.rows.map((r: any) => ({
         ...r,
         provider: r.provider || 'google',
-        needs_reauth: r.token_expires_at ? new Date(r.token_expires_at) < now && !r.sync_enabled : false,
+        needs_reauth: r.token_expires_at ? new Date(r.token_expires_at) < now : false,
       })),
       ...microsoftRows.map((r: any) => ({
         ...r,

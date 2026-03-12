@@ -350,6 +350,19 @@ router.post('/connect', requireAuth, async (req: any, res: Response, next: NextF
   }
 });
 
+router.get('/auth/url', requireAuth, async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user!.userId;
+    const callbackUrl = resolveGmailCallbackUrl(req);
+    const state = encodeState({ userId, callbackUrl });
+    const authUrl = gmailSyncService.getAuthUrl(state, callbackUrl);
+    res.json({ success: true, authUrl });
+  } catch (error) {
+    logger.error('Error generating Gmail auth URL:', error);
+    next(error);
+  }
+});
+
 router.get('/accounts', requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const userId = req.user!.userId;

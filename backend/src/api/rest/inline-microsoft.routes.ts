@@ -87,22 +87,6 @@ export function createMicrosoftInlineRoutes(microsoftConfig: MicrosoftConfig) {
 
       const expiresAt = new Date(Date.now() + (tokens.expires_in || 3600) * 1000);
 
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS microsoft_accounts (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id UUID NOT NULL,
-          email VARCHAR(255) NOT NULL,
-          display_name VARCHAR(255),
-          access_token TEXT NOT NULL,
-          refresh_token TEXT,
-          token_expires_at TIMESTAMPTZ,
-          is_active BOOLEAN DEFAULT true,
-          last_sync_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-      `);
-
       let userId: string | null = null;
       try {
         const stateParam = req.query.state as string;
