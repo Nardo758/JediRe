@@ -6,6 +6,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 
 const router = Router();
 
@@ -243,41 +244,55 @@ router.post('/:id/quick-task', requireAuth, async (req: Request, res: Response, 
       firstItem = actionItems[0];
     }
 
-    // Create task
     const userId = (req as any).user?.userId || 1;
+    const pool = getPool();
+    let createdTask: any = null;
 
-    const taskResponse = await fetch(`http://localhost:${process.env.PORT || 3000}/api/v1/tasks`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: req.headers.authorization || '',
-      },
-      body: JSON.stringify({
-        title: firstItem.suggestedTask,
-        description: `From email: ${firstItem.text}`,
-        category: firstItem.category,
-        priority: firstItem.priority,
-        dealId: dealId ? parseInt(dealId) : undefined,
-        emailId: id,
-        assignedToId: userId,
-        dueDate: firstItem.dueDate,
-        source: 'email_ai',
-        tags: ['email', 'ai-detected'],
-      }),
-    });
-
-    const taskData = await taskResponse.json();
-
-    if (!taskData.success) {
-      throw new Error(taskData.message || 'Failed to create task');
+    if (dealId) {
+      const result = await pool.query(
+        `INSERT INTO deal_tasks (deal_id, title, description, status, priority, due_date, tags, created_by_name)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, 'AI Agent') RETURNING *`,
+        [
+          dealId,
+          firstItem.suggestedTask,
+          `From email #${id}: ${firstItem.text}`,
+          firstItem.priority || 'medium',
+          firstItem.dueDate || null,
+          ['email', 'ai-detected'],
+        ]
+      );
+      createdTask = result.rows[0];
+    } else {
+      try {
+        const result = await pool.query(
+          `INSERT INTO tasks (user_id, email_id, title, description, category, priority, status, source, tags, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'todo', 'email_ai', $7, NOW(), NOW()) RETURNING *`,
+          [
+            userId,
+            parseInt(id),
+            firstItem.suggestedTask,
+            `From email: ${firstItem.text}`,
+            firstItem.category || 'general',
+            firstItem.priority || 'medium',
+            ['email', 'ai-detected'],
+          ]
+        );
+        createdTask = result.rows[0];
+      } catch (dbError: any) {
+        if (dbError.code === '42P01') {
+          logger.warn('tasks table does not exist, creating task in deal_tasks');
+        } else {
+          throw dbError;
+        }
+      }
     }
 
-    logger.info(`Quick task created from email ${id}:`, { taskId: taskData.data.id });
+    logger.info(`Quick task created from email ${id}`, { taskId: createdTask?.id });
 
     res.status(201).json({
       success: true,
       data: {
-        task: taskData.data,
+        task: createdTask,
         detectedItem: firstItem,
       },
       message: 'Quick task created successfully',

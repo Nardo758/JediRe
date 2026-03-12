@@ -462,7 +462,9 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
         );
         linkedTasks = emailTaskResult.rows;
       } catch (e: any) {
-        if (e.code !== '42P01' && e.code !== '42703') {}
+        if (e.code !== '42P01' && e.code !== '42703') {
+          console.error('Error fetching email-linked tasks:', e.message);
+        }
       }
 
       if (dealId) {
@@ -476,7 +478,9 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
             if (!existingIds.has(task.id)) linkedTasks.push(task);
           }
         } catch (e: any) {
-          if (e.code !== '42P01') {}
+          if (e.code !== '42P01') {
+            console.error('Error fetching deal-linked tasks:', e.message);
+          }
         }
       }
     } catch (e: any) {

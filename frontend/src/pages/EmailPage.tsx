@@ -979,6 +979,11 @@ export function EmailPage() {
                         <div style={{
                           padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
                         }}>
+                          {emailIntel.newsExtraction.event_type && (
+                            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 4, textTransform: "uppercase" as const }}>
+                              {emailIntel.newsExtraction.event_type}
+                            </div>
+                          )}
                           <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500, marginBottom: 4 }}>
                             {emailIntel.newsExtraction.title}
                           </div>
@@ -1193,6 +1198,11 @@ export function EmailPage() {
                     <div style={{
                       padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
                     }}>
+                      {emailIntel.newsExtraction.event_type && (
+                        <div style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 3, textTransform: "uppercase" as const }}>
+                          {emailIntel.newsExtraction.event_type}
+                        </div>
+                      )}
                       <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
                         {emailIntel.newsExtraction.title}
                       </div>
@@ -1325,6 +1335,19 @@ export function EmailPage() {
 
             {sidePanel === 'team' && (
               <div>
+                {selectedEmail && !selectedEmail.deal_id && teamMembers.length === 0 && (
+                  <div style={{ textAlign: "center" as const, padding: "20px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>{"\uD83D\uDC65"}</div>
+                    <div style={{ fontSize: 12, color: T.text.secondary, marginBottom: 4 }}>No deal linked</div>
+                    <div style={{ fontSize: 10, color: T.text.tertiary }}>Link this email to a deal to see team members and activity</div>
+                    <button onClick={handleLinkToDeal} style={{
+                      marginTop: 12, padding: "6px 16px", background: `${T.accent.blue}10`,
+                      border: `1px solid ${T.accent.blue}30`, borderRadius: 6,
+                      color: T.accent.blue, fontSize: 11, fontFamily: FONTS.sans,
+                      fontWeight: 500, cursor: "pointer",
+                    }}>Link to Deal</button>
+                  </div>
+                )}
                 {selectedEmail && teamMembers.length > 0 && (
                   <>
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
