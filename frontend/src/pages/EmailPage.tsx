@@ -668,6 +668,26 @@ export function EmailPage() {
         </div>
       </div>
 
+      {connectNotice && (
+        <div style={{
+          padding: "8px 20px", flexShrink: 0,
+          background: connectNotice.toLowerCase().includes('fail') ? `${T.accent.red}12` : `${T.accent.green}12`,
+          borderBottom: `1px solid ${connectNotice.toLowerCase().includes('fail') ? T.accent.red + '30' : T.accent.green + '30'}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span style={{
+            fontSize: 12, fontFamily: FONTS.sans,
+            color: connectNotice.toLowerCase().includes('fail') ? T.accent.red : T.accent.green,
+          }}>
+            {connectNotice}
+          </span>
+          <button onClick={() => setConnectNotice(null)} style={{
+            background: "transparent", border: "none", cursor: "pointer",
+            color: T.text.tertiary, fontSize: 14, padding: "0 4px",
+          }}>{"\u2715"}</button>
+        </div>
+      )}
+
       <div style={{
         display: "flex", alignItems: "center", gap: 16, padding: "8px 20px",
         borderBottom: `1px solid ${T.border.subtle}`, background: `${T.accent.blue}05`, flexShrink: 0,
