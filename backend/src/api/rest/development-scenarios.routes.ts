@@ -950,6 +950,8 @@ Respond with ONLY valid JSON (no markdown, no code fences):
   }
 });
 
+const _inFlightComparisons = new Map<string, Promise<any>>();
+
 router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -957,7 +959,16 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
     const rezoneTargetCode = (req.query.rezone_target_code as string) || null;
     const avgUnitSizeSf = req.query.avg_unit_size_sf ? parseFloat(req.query.avg_unit_size_sf as string) : null;
 
-    const result = await comparisonEngine.compare(dealId, { varianceDensityPct, rezoneTargetCode, avgUnitSizeSf });
+    const flightKey = `${dealId}:${varianceDensityPct}:${rezoneTargetCode}:${avgUnitSizeSf}`;
+    let inFlight = _inFlightComparisons.get(flightKey);
+    if (!inFlight) {
+      inFlight = comparisonEngine.compare(dealId, { varianceDensityPct, rezoneTargetCode, avgUnitSizeSf })
+        .finally(() => _inFlightComparisons.delete(flightKey));
+      _inFlightComparisons.set(flightKey, inFlight);
+    } else {
+      console.log(`[Recommendations] Deduped in-flight request for deal ${dealId}`);
+    }
+    const result = await inFlight;
 
     const cellNum = (key: string, field: string) => {
       const v = result.cells[key]?.[field];
