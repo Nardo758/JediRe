@@ -58,6 +58,14 @@ export interface InboxFilters {
   source?: 'pst' | 'connected';
 }
 
+export interface EmailIntel {
+  emailId: number;
+  propertyExtractions: any[];
+  newsExtraction: any | null;
+  actionItems: { text: string; suggestedTask: string; priority: string }[];
+  linkedTasks: any[];
+}
+
 export interface ConnectedAccount {
   id: string;
   email_address: string;
@@ -162,6 +170,21 @@ export const inboxService = {
 
   async getMicrosoftAuthUrl(): Promise<{ success: boolean; authUrl: string }> {
     const response = await apiClient.get('/api/v1/microsoft/auth/url');
+    return response.data;
+  },
+
+  async getEmailIntel(emailId: number): Promise<{ success: boolean; data: EmailIntel }> {
+    const response = await apiClient.get(`/api/v1/inbox/${emailId}/intel`);
+    return response.data;
+  },
+
+  async linkEmailToDeal(emailId: number, dealId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.patch(`/api/v1/inbox/${emailId}`, { deal_id: dealId });
+    return response.data;
+  },
+
+  async getDeals(): Promise<{ success: boolean; data: any[] }> {
+    const response = await apiClient.get('/api/v1/deals?limit=50');
     return response.data;
   },
 };

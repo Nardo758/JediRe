@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getPool } from '../../database/connection';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 const pool = getPool();
@@ -37,7 +38,7 @@ const CommentSchema = z.object({
   content: z.string().min(1),
 });
 
-router.get('/deals/:dealId/team/members', async (req: Request, res: Response) => {
+router.get('/deals/:dealId/team/members', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const result = await pool.query(
@@ -51,7 +52,7 @@ router.get('/deals/:dealId/team/members', async (req: Request, res: Response) =>
   }
 });
 
-router.post('/deals/:dealId/team/members', async (req: Request, res: Response) => {
+router.post('/deals/:dealId/team/members', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const data = MemberSchema.parse(req.body);
@@ -76,7 +77,7 @@ router.post('/deals/:dealId/team/members', async (req: Request, res: Response) =
   }
 });
 
-router.put('/deals/:dealId/team/members/:memberId', async (req: Request, res: Response) => {
+router.put('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, memberId } = req.params;
     const data = MemberSchema.partial().parse(req.body);
@@ -104,7 +105,7 @@ router.put('/deals/:dealId/team/members/:memberId', async (req: Request, res: Re
   }
 });
 
-router.delete('/deals/:dealId/team/members/:memberId', async (req: Request, res: Response) => {
+router.delete('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, memberId } = req.params;
     await pool.query('DELETE FROM deal_team_members WHERE deal_id = $1 AND id = $2', [dealId, memberId]);
@@ -115,7 +116,7 @@ router.delete('/deals/:dealId/team/members/:memberId', async (req: Request, res:
   }
 });
 
-router.get('/deals/:dealId/team/tasks', async (req: Request, res: Response) => {
+router.get('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const result = await pool.query(
@@ -129,7 +130,7 @@ router.get('/deals/:dealId/team/tasks', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/deals/:dealId/team/tasks', async (req: Request, res: Response) => {
+router.post('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const data = TaskSchema.parse(req.body);
@@ -148,7 +149,7 @@ router.post('/deals/:dealId/team/tasks', async (req: Request, res: Response) => 
   }
 });
 
-router.put('/deals/:dealId/team/tasks/:taskId', async (req: Request, res: Response) => {
+router.put('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
     const data = TaskSchema.partial().parse(req.body);
@@ -181,7 +182,7 @@ router.put('/deals/:dealId/team/tasks/:taskId', async (req: Request, res: Respon
   }
 });
 
-router.delete('/deals/:dealId/team/tasks/:taskId', async (req: Request, res: Response) => {
+router.delete('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
     await pool.query('DELETE FROM deal_tasks WHERE deal_id = $1 AND id = $2', [dealId, taskId]);
@@ -192,7 +193,7 @@ router.delete('/deals/:dealId/team/tasks/:taskId', async (req: Request, res: Res
   }
 });
 
-router.get('/deals/:dealId/team/tasks/:taskId/comments', async (req: Request, res: Response) => {
+router.get('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
     const result = await pool.query(
@@ -206,7 +207,7 @@ router.get('/deals/:dealId/team/tasks/:taskId/comments', async (req: Request, re
   }
 });
 
-router.post('/deals/:dealId/team/tasks/:taskId/comments', async (req: Request, res: Response) => {
+router.post('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, taskId } = req.params;
     const data = CommentSchema.parse(req.body);
@@ -222,7 +223,7 @@ router.post('/deals/:dealId/team/tasks/:taskId/comments', async (req: Request, r
   }
 });
 
-router.get('/deals/:dealId/team/activity', async (req: Request, res: Response) => {
+router.get('/deals/:dealId/team/activity', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
     const result = await pool.query(
@@ -236,7 +237,7 @@ router.get('/deals/:dealId/team/activity', async (req: Request, res: Response) =
   }
 });
 
-router.get('/team/role-templates', async (_req: Request, res: Response) => {
+router.get('/team/role-templates', requireAuth, async (_req: Request, res: Response) => {
   try {
     const result = await pool.query('SELECT * FROM deal_role_templates ORDER BY name');
     res.json(result.rows);

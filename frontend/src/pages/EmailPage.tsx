@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount } from '../services/inbox.service';
+import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
 
 const T = {
   bg: {
@@ -189,6 +189,11 @@ export function EmailPage() {
   const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
   const [connectNotice, setConnectNotice] = useState<string | null>(null);
   const [accountsPanelOpen, setAccountsPanelOpen] = useState(true);
+  const [emailIntel, setEmailIntel] = useState<EmailIntel | null>(null);
+  const [intelLoading, setIntelLoading] = useState(false);
+  const [dealLinkOpen, setDealLinkOpen] = useState(false);
+  const [dealsList, setDealsList] = useState<any[]>([]);
+  const [dealsLoading, setDealsLoading] = useState(false);
 
   useEffect(() => {
     inboxService.getConnectedAccounts().then(res => {
@@ -321,6 +326,7 @@ export function EmailPage() {
 
   const handleEmailClick = async (email: Email) => {
     setSelectedEmailId(email.id);
+    setEmailIntel(null);
     if (!email.is_read) {
       try {
         await inboxService.updateEmail(email.id, { is_read: true });
@@ -330,6 +336,56 @@ export function EmailPage() {
     try {
       const res = await inboxService.getEmail(email.id);
       if (res.success) setSelectedDetail(res.data);
+    } catch {}
+    setIntelLoading(true);
+    try {
+      const intelRes = await inboxService.getEmailIntel(email.id);
+      if (intelRes.success) setEmailIntel(intelRes.data);
+    } catch {}
+    setIntelLoading(false);
+  };
+
+  const handleLinkToDeal = async () => {
+    if (!dealsLoading && dealsList.length === 0) {
+      setDealsLoading(true);
+      try {
+        const res = await inboxService.getDeals();
+        if (res.success) setDealsList(res.data || []);
+      } catch {}
+      setDealsLoading(false);
+    }
+    setDealLinkOpen(true);
+  };
+
+  const handleSelectDeal = async (dealId: string) => {
+    if (!selectedEmailId) return;
+    try {
+      await inboxService.linkEmailToDeal(selectedEmailId, dealId);
+      setEmails(prev => prev.map(e => e.id === selectedEmailId ? { ...e, deal_id: dealId } : e));
+      setDealLinkOpen(false);
+      loadInbox();
+    } catch {}
+  };
+
+  const handleExecuteAction = async (actionItem: { suggestedTask: string; priority: string }) => {
+    if (!selectedEmail) return;
+    try {
+      const response = await fetch('/api/v1/emails/' + selectedEmail.id + '/create-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: actionItem.suggestedTask,
+          category: 'communication',
+          priority: actionItem.priority,
+          description: `From email: ${selectedEmail.subject}`,
+        }),
+      });
+      if (response.ok) {
+        setIntelLoading(true);
+        const intelRes = await inboxService.getEmailIntel(selectedEmail.id);
+        if (intelRes.success) setEmailIntel(intelRes.data);
+        setIntelLoading(false);
+      }
     } catch {}
   };
 
@@ -928,31 +984,102 @@ export function EmailPage() {
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
                   Quick Actions
                 </div>
-                {selectedEmail && (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                    <button onClick={() => {}} style={{
-                      flex: 1, padding: "8px 12px",
-                      background: T.accent.green, border: "none", borderRadius: 6,
-                      color: "#fff", fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
-                    }}>Execute</button>
-                    <button onClick={() => {}} style={{
-                      flex: 1, padding: "8px 12px",
-                      background: `${T.accent.blue}20`, border: `1px solid ${T.accent.blue}40`, borderRadius: 6,
-                      color: T.accent.blue, fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
-                    }}>Approve</button>
+                {selectedEmail && emailIntel && emailIntel.actionItems.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, marginBottom: 6 }}>
+                      {emailIntel.actionItems.length} action item{emailIntel.actionItems.length > 1 ? 's' : ''} detected
+                    </div>
+                    {emailIntel.actionItems.map((item, i) => (
+                      <div key={i} style={{
+                        padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                        borderRadius: 6, marginBottom: 6,
+                      }}>
+                        <div style={{ fontSize: 11, color: T.text.primary, marginBottom: 4, lineHeight: 1.4 }}>{item.suggestedTask}</div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <span style={{
+                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                            color: item.priority === 'urgent' ? T.accent.red : item.priority === 'high' ? T.accent.amber : T.text.tertiary,
+                            background: item.priority === 'urgent' ? `${T.accent.red}15` : item.priority === 'high' ? `${T.accent.amber}15` : T.bg.tertiary,
+                          }}>{item.priority}</span>
+                          <button onClick={() => handleExecuteAction(item)} style={{
+                            marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
+                            background: T.accent.green, border: "none", borderRadius: 3,
+                            color: "#fff", cursor: "pointer",
+                          }}>Execute</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedEmail && emailIntel && emailIntel.propertyExtractions.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6, textTransform: "uppercase" as const }}>
+                      Extracted Properties
+                    </div>
+                    {emailIntel.propertyExtractions.map((prop: any, i: number) => (
+                      <div key={i} style={{
+                        padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                        borderRadius: 6, marginBottom: 6,
+                      }}>
+                        <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
+                          {prop.pin_address || prop.property_name || 'Property'}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <span style={{
+                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                            color: prop.status === 'auto-created' ? T.accent.green : T.accent.amber,
+                            background: prop.status === 'auto-created' ? `${T.accent.green}15` : `${T.accent.amber}15`,
+                          }}>{prop.status || 'pending'}</span>
+                          {prop.status === 'requires-review' && (
+                            <button onClick={() => {
+                              fetch(`/api/v1/email-extractions/properties/${prop.id}/approve`, { method: 'POST' })
+                                .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
+                            }} style={{
+                              marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
+                              background: T.accent.blue, border: "none", borderRadius: 3,
+                              color: "#fff", cursor: "pointer",
+                            }}>Approve</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedEmail && emailIntel && emailIntel.newsExtraction && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const }}>
+                      Private Intelligence
+                    </div>
+                    <div style={{
+                      padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
+                    }}>
+                      <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
+                        {emailIntel.newsExtraction.title}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>
+                        {emailIntel.newsExtraction.summary}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
+                        {emailIntel.newsExtraction.impact_score && (
+                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.amber }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {intelLoading && (
+                  <div style={{ textAlign: "center" as const, padding: 12, fontSize: 10, color: T.text.tertiary }}>
+                    Loading intelligence...
                   </div>
                 )}
                 {[
-                  { label: "Link to Deal", icon: "\uD83D\uDD17", desc: "Associate this thread with a deal" },
-                  { label: "Create Task", icon: "\u2713", desc: "Generate task from this email" },
-                  { label: "Extract Data", icon: "\uD83D\uDCCA", desc: "Pull data from attachments" },
-                  { label: "AI Summary", icon: "\u2728", desc: "Summarize thread with context" },
-                  { label: "Draft Response", icon: "\u270D\uFE0F", desc: "AI-composed reply" },
-                  { label: "Set Follow-up", icon: "\u23F0", desc: "Schedule reminder" },
-                  { label: "Add to Deal Bible", icon: "\uD83D\uDCD8", desc: "Save to deal document repository" },
-                  { label: "Log Activity", icon: "\uD83D\uDCDD", desc: "Record interaction in deal timeline" },
+                  { label: "Link to Deal", icon: "\uD83D\uDD17", desc: "Associate this thread with a deal", action: handleLinkToDeal },
+                  { label: "AI Summary", icon: "\u2728", desc: "Summarize thread with context", action: () => {} },
+                  { label: "Draft Response", icon: "\u270D\uFE0F", desc: "AI-composed reply", action: () => {} },
+                  { label: "Set Follow-up", icon: "\u23F0", desc: "Schedule reminder", action: () => {} },
                 ].map((action, i) => (
-                  <div key={i} style={{
+                  <div key={i} onClick={action.action} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
                     borderRadius: 6, cursor: "pointer", marginBottom: 2, transition: "background 0.12s",
                   }}
@@ -966,6 +1093,37 @@ export function EmailPage() {
                     </div>
                   </div>
                 ))}
+                {dealLinkOpen && (
+                  <div style={{
+                    position: "absolute" as const, top: 0, left: 0, right: 0, bottom: 0,
+                    background: T.bg.secondary, zIndex: 10, padding: 16, overflowY: "auto" as const,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: T.text.primary }}>Link to Deal</div>
+                      <button onClick={() => setDealLinkOpen(false)} style={{
+                        background: "transparent", border: "none", color: T.text.tertiary, cursor: "pointer", fontSize: 14,
+                      }}>{"\u2715"}</button>
+                    </div>
+                    {dealsLoading ? (
+                      <div style={{ textAlign: "center" as const, padding: 20, fontSize: 10, color: T.text.tertiary }}>Loading deals...</div>
+                    ) : dealsList.length === 0 ? (
+                      <div style={{ textAlign: "center" as const, padding: 20, fontSize: 11, color: T.text.tertiary }}>No deals found</div>
+                    ) : (
+                      dealsList.map((deal: any) => (
+                        <div key={deal.id} onClick={() => handleSelectDeal(deal.id)} style={{
+                          padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                          borderRadius: 6, marginBottom: 4, cursor: "pointer",
+                        }}
+                          onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent.blue; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = T.border.subtle; }}
+                        >
+                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{deal.name}</div>
+                          <div style={{ fontSize: 10, color: T.text.tertiary }}>{deal.stage || deal.status || ''}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -978,7 +1136,7 @@ export function EmailPage() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>{selectedEmail.deal_name}</div>
                   <DealStageIndicator stage="prospect" name={selectedEmail.deal_name} />
                 </div>
-                <button style={{
+                <button onClick={() => { window.location.href = `/dashboard/deals/${selectedEmail.deal_id}`; }} style={{
                   width: "100%", marginTop: 12, padding: "8px",
                   background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}30`,
                   borderRadius: 6, color: T.accent.blue, fontSize: 11,
@@ -991,7 +1149,7 @@ export function EmailPage() {
               <div style={{ textAlign: "center" as const, padding: "40px 20px" }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>{"\uD83D\uDD17"}</div>
                 <div style={{ fontSize: 12, color: T.text.secondary, marginBottom: 12 }}>No deal linked</div>
-                <button style={{
+                <button onClick={handleLinkToDeal} style={{
                   padding: "8px 16px", background: T.accent.blue, border: "none",
                   borderRadius: 6, color: "#fff", fontSize: 11, fontFamily: FONTS.sans, cursor: "pointer",
                 }}>Link to Deal</button>
@@ -1058,15 +1216,56 @@ export function EmailPage() {
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
                   Active Tasks
                 </div>
-                <div style={{ textAlign: "center" as const, padding: "20px", color: T.text.tertiary, fontSize: 12 }}>
-                  No tasks yet. Create tasks from email actions.
-                </div>
-                <button style={{
-                  width: "100%", marginTop: 8, padding: "8px",
-                  background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}30`,
-                  borderRadius: 6, color: T.accent.blue, fontSize: 11,
-                  fontFamily: FONTS.sans, cursor: "pointer",
-                }}>+ Create Task</button>
+                {emailIntel && emailIntel.linkedTasks.length > 0 ? (
+                  emailIntel.linkedTasks.map((task: any) => (
+                    <div key={task.id} style={{
+                      padding: "10px 12px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 6, marginBottom: 6,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                        <span style={{
+                          fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                          color: task.status === 'completed' ? T.accent.green : task.status === 'in_progress' ? T.accent.blue : T.text.tertiary,
+                          background: task.status === 'completed' ? `${T.accent.green}15` : task.status === 'in_progress' ? `${T.accent.blue}15` : T.bg.tertiary,
+                        }}>{task.status}</span>
+                        <span style={{
+                          fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                          color: task.priority === 'urgent' ? T.accent.red : task.priority === 'high' ? T.accent.amber : T.text.tertiary,
+                          background: task.priority === 'urgent' ? `${T.accent.red}15` : task.priority === 'high' ? `${T.accent.amber}15` : T.bg.tertiary,
+                        }}>{task.priority}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{task.title}</div>
+                      {task.due_date && (
+                        <div style={{ fontSize: 10, color: T.text.tertiary, marginTop: 2 }}>Due: {new Date(task.due_date).toLocaleDateString()}</div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ textAlign: "center" as const, padding: "20px", color: T.text.tertiary, fontSize: 12 }}>
+                    {selectedEmail ? 'No tasks linked to this email' : 'Select an email to see tasks'}
+                  </div>
+                )}
+                {selectedEmail && emailIntel && emailIntel.actionItems.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, marginBottom: 6, textTransform: "uppercase" as const }}>
+                      Detected Action Items
+                    </div>
+                    {emailIntel.actionItems.map((item, i) => (
+                      <div key={i} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "6px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                        borderRadius: 6, marginBottom: 4,
+                      }}>
+                        <div style={{ fontSize: 11, color: T.text.primary, flex: 1 }}>{item.suggestedTask.slice(0, 60)}</div>
+                        <button onClick={() => handleExecuteAction(item)} style={{
+                          fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px",
+                          background: T.accent.green, border: "none", borderRadius: 3,
+                          color: "#fff", cursor: "pointer", flexShrink: 0, marginLeft: 4,
+                        }}>+</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

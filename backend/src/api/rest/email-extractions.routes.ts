@@ -17,7 +17,7 @@ const router = Router();
  * Get all extractions for a specific email
  */
 router.get('/:emailId', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { emailId } = req.params;
 
   try {
@@ -86,7 +86,7 @@ router.get('/:emailId', requireAuth, async (req: Request, res: Response) => {
  * List all property extractions for the user
  */
 router.get('/list/properties', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { status, limit = 50, offset = 0 } = req.query;
 
   try {
@@ -144,7 +144,7 @@ router.get('/list/properties', requireAuth, async (req: Request, res: Response) 
  * List all news extractions from emails
  */
 router.get('/list/news', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { limit = 50, offset = 0 } = req.query;
 
   try {
@@ -196,7 +196,7 @@ router.get('/list/news', requireAuth, async (req: Request, res: Response) => {
  * Approve a property extraction and create pin
  */
 router.post('/properties/:extractionId/approve', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { extractionId } = req.params;
 
   try {
@@ -224,7 +224,7 @@ router.post('/properties/:extractionId/approve', requireAuth, async (req: Reques
  * Reject a property extraction
  */
 router.post('/properties/:extractionId/reject', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { extractionId } = req.params;
   const { reason } = req.body;
 
@@ -265,7 +265,7 @@ router.post('/properties/:extractionId/reject', requireAuth, async (req: Request
  * Delete a property extraction (false positive)
  */
 router.delete('/properties/:extractionId', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { extractionId } = req.params;
 
   try {
@@ -300,7 +300,7 @@ router.delete('/properties/:extractionId', requireAuth, async (req: Request, res
  * Delete a news extraction (false positive)
  */
 router.delete('/news/:newsItemId', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
   const { newsItemId } = req.params;
 
   try {
@@ -341,7 +341,7 @@ router.delete('/news/:newsItemId', requireAuth, async (req: Request, res: Respon
  * Get extraction statistics for the user
  */
 router.get('/stats/summary', requireAuth, async (req: Request, res: Response) => {
-  const userId = (req as any).user.id;
+  const userId = (req as any).user?.userId || (req as any).user?.id;
 
   try {
     // Property extraction stats

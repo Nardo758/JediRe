@@ -379,6 +379,106 @@ router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const emailId = parseInt(req.params.id);
+    if (isNaN(emailId)) {
+      return res.status(400).json({ success: false, error: 'Invalid email ID' });
+    }
+
+    let propertyExtractions: any[] = [];
+    try {
+      const propResult = await pool.query(
+        `SELECT pq.*, mp.id as pin_id, mp.property_name, mp.address as pin_address
+         FROM property_extraction_queue pq
+         LEFT JOIN map_pins mp ON pq.created_pin_id = mp.id
+         WHERE pq.email_id = $1 AND pq.user_id = $2
+         ORDER BY pq.created_at DESC`,
+        [emailId, userId]
+      );
+      propertyExtractions = propResult.rows;
+    } catch (e: any) {
+      if (e.code !== '42P01') console.error('Error fetching property extractions:', e);
+    }
+
+    let newsExtraction = null;
+    try {
+      const emailRaw = await pool.query('SELECT raw_data FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
+      const linkedNewsId = emailRaw.rows[0]?.raw_data?.linkedNewsItemId;
+      if (linkedNewsId) {
+        const newsResult = await pool.query(
+          `SELECT id, title, summary, category, impact_score, sentiment_score, published_date FROM news_items WHERE id = $1`,
+          [linkedNewsId]
+        );
+        newsExtraction = newsResult.rows[0] || null;
+      }
+    } catch (e: any) {
+      if (e.code !== '42P01') console.error('Error fetching news extraction:', e);
+    }
+
+    let actionItems: any[] = [];
+    try {
+      const emailBody = await pool.query('SELECT body_text, body_preview FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
+      const body = emailBody.rows[0]?.body_text || emailBody.rows[0]?.body_preview || '';
+      if (body) {
+        const actionPatterns = [
+          /(?:please|can you|could you|need to|should|must|have to)\s+(send|provide|submit|schedule|review|complete|prepare|update|contact|call|email)/gi,
+          /(by|before|until|no later than)\s+(\w+day|this week|next week|\d{1,2}\/\d{1,2})/gi,
+        ];
+        const sentences = body.split(/[.!?\n]+/);
+        for (const sentence of sentences) {
+          const trimmed = sentence.trim();
+          if (!trimmed || trimmed.length < 10) continue;
+          for (const pattern of actionPatterns) {
+            pattern.lastIndex = 0;
+            if (pattern.test(trimmed)) {
+              let priority: string = 'medium';
+              if (/urgent|asap|immediately|critical/i.test(trimmed)) priority = 'urgent';
+              else if (/important|soon|priority/i.test(trimmed)) priority = 'high';
+              actionItems.push({
+                text: trimmed.slice(0, 300),
+                suggestedTask: trimmed.replace(/^(please|can you|could you|need to|should)\s+/i, '').trim().slice(0, 200),
+                priority,
+              });
+              break;
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('Error detecting action items:', e);
+    }
+
+    let linkedTasks: any[] = [];
+    try {
+      const taskResult = await pool.query(
+        `SELECT id, title, status, priority, due_date, created_at FROM deal_tasks WHERE deal_id IN (
+          SELECT deal_id FROM emails WHERE id = $1 AND user_id = $2 AND deal_id IS NOT NULL
+        ) ORDER BY created_at DESC LIMIT 10`,
+        [emailId, userId]
+      );
+      linkedTasks = taskResult.rows;
+    } catch (e: any) {
+      if (e.code !== '42P01') console.error('Error fetching linked tasks:', e);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        emailId,
+        propertyExtractions,
+        newsExtraction,
+        actionItems: actionItems.slice(0, 10),
+        linkedTasks,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching email intel:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch email intelligence' });
+  }
+});
+
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;
