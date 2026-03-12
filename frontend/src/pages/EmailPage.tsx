@@ -210,7 +210,7 @@ export function EmailPage() {
             (connected === 'gmail' && a.provider === 'google') ||
             (connected === 'microsoft' && a.provider === 'microsoft')
           );
-          if (newAccount && newAccount.provider === 'google') {
+          if (newAccount) {
             try {
               await inboxService.syncAccount(newAccount.id);
               setConnectNotice(`${providerLabel} connected and synced`);
@@ -563,21 +563,21 @@ export function EmailPage() {
                 background: T.bg.tertiary, borderRadius: 5, marginBottom: 4,
                 border: `1px solid ${T.border.subtle}`,
               }}>
-                <div style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: acct.sync_enabled ? T.accent.green : T.text.tertiary,
-                  flexShrink: 0,
-                }} />
+                <span style={{ fontSize: 12, flexShrink: 0, lineHeight: 1 }}>
+                  {acct.provider === 'google' ? '\u2709' : '\uD83D\uDCE8'}
+                </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, flex: 1 }}>
                       {acct.email_address}
                     </div>
-                    {acct.needs_reauth && (
-                      <span style={{ fontSize: 8, color: T.accent.amber, fontFamily: FONTS.mono, padding: "1px 4px", background: `${T.accent.amber}15`, borderRadius: 2, flexShrink: 0 }}>
-                        reauth
-                      </span>
-                    )}
+                    <span style={{
+                      fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2, flexShrink: 0,
+                      color: acct.needs_reauth ? T.accent.amber : T.accent.green,
+                      background: acct.needs_reauth ? `${T.accent.amber}15` : `${T.accent.green}15`,
+                    }}>
+                      {acct.needs_reauth ? 'Needs Re-auth' : 'Active'}
+                    </span>
                   </div>
                   <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
                     {acct.provider === 'google' ? 'Gmail' : acct.provider === 'microsoft' ? 'Outlook' : acct.provider}
@@ -585,23 +585,17 @@ export function EmailPage() {
                     {acct.last_sync_at ? ` \u00B7 ${formatDate(acct.last_sync_at)}` : ' \u00B7 never synced'}
                   </div>
                 </div>
-                {acct.provider === 'google' ? (
-                  <button
-                    onClick={() => handleSyncAccount(acct.id)}
-                    disabled={syncingAccountId === acct.id}
-                    style={{
-                      background: "transparent", border: "none", cursor: syncingAccountId === acct.id ? "wait" : "pointer",
-                      color: syncingAccountId === acct.id ? T.text.tertiary : T.accent.blue,
-                      fontSize: 10, fontFamily: FONTS.mono, padding: "2px 4px", flexShrink: 0,
-                    }}
-                  >
-                    {syncingAccountId === acct.id ? '\u21BB' : 'sync'}
-                  </button>
-                ) : (
-                  <span style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono, padding: "2px 4px" }}>
-                    linked
-                  </span>
-                )}
+                <button
+                  onClick={() => handleSyncAccount(acct.id)}
+                  disabled={syncingAccountId === acct.id}
+                  style={{
+                    background: "transparent", border: "none", cursor: syncingAccountId === acct.id ? "wait" : "pointer",
+                    color: syncingAccountId === acct.id ? T.text.tertiary : T.accent.blue,
+                    fontSize: 10, fontFamily: FONTS.mono, padding: "2px 4px", flexShrink: 0,
+                  }}
+                >
+                  {syncingAccountId === acct.id ? '\u21BB' : 'sync'}
+                </button>
               </div>
             ))}
             <div style={{ display: "flex", gap: 4, marginTop: 6 }}>

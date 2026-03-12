@@ -148,7 +148,7 @@ router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest,
     let msCheck;
     try {
       msCheck = await pool.query(
-        'SELECT id FROM microsoft_accounts WHERE id = $1 AND user_id = $2 AND is_active = true',
+        'SELECT id, user_id, email as email_address, access_token, refresh_token, token_expires_at FROM microsoft_accounts WHERE id = $1 AND user_id = $2 AND is_active = true',
         [accountId, userId]
       );
     } catch (e: any) {
@@ -159,7 +159,109 @@ router.post('/accounts/:id/sync', requireAuth, async (req: AuthenticatedRequest,
     }
 
     if (msCheck && msCheck.rows.length > 0) {
-      return res.json({ success: true, data: { message: 'Microsoft sync not yet implemented' } });
+      const msAccount = msCheck.rows[0];
+      let accessToken = msAccount.access_token;
+
+      if (msAccount.token_expires_at && new Date(msAccount.token_expires_at) < new Date()) {
+        if (msAccount.refresh_token) {
+          try {
+            const axios = require('axios');
+            const refreshRes = await axios.post(
+              `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID || 'common'}/oauth2/v2.0/token`,
+              new URLSearchParams({
+                client_id: process.env.MICROSOFT_CLIENT_ID || '',
+                client_secret: process.env.MICROSOFT_CLIENT_SECRET || '',
+                refresh_token: msAccount.refresh_token,
+                grant_type: 'refresh_token',
+              }),
+              { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            );
+            accessToken = refreshRes.data.access_token;
+            const newExpiry = new Date(Date.now() + (refreshRes.data.expires_in || 3600) * 1000);
+            await pool.query(
+              'UPDATE microsoft_accounts SET access_token = $1, refresh_token = COALESCE($2, refresh_token), token_expires_at = $3, updated_at = NOW() WHERE id = $4',
+              [accessToken, refreshRes.data.refresh_token || null, newExpiry, accountId]
+            );
+          } catch (refreshErr) {
+            console.error('Microsoft token refresh failed:', refreshErr);
+            return res.status(401).json({ success: false, error: 'Token expired. Please reconnect your Outlook account.' });
+          }
+        } else {
+          return res.status(401).json({ success: false, error: 'Token expired. Please reconnect your Outlook account.' });
+        }
+      }
+
+      try {
+        const axios = require('axios');
+        const graphRes = await axios.get('https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: {
+            '$top': 50,
+            '$select': 'id,subject,from,receivedDateTime,bodyPreview,body,hasAttachments,isRead',
+            '$orderby': 'receivedDateTime DESC',
+          },
+        });
+
+        const messages = graphRes.data.value || [];
+        let stored = 0;
+        let skipped = 0;
+
+        const emailAccountResult = await pool.query(
+          `SELECT id FROM email_accounts WHERE provider = 'microsoft' AND user_id = $1 LIMIT 1`,
+          [userId]
+        );
+
+        let emailAccountId: number;
+        if (emailAccountResult.rows.length > 0) {
+          emailAccountId = emailAccountResult.rows[0].id;
+        } else {
+          const insertResult = await pool.query(
+            `INSERT INTO email_accounts (user_id, provider, email_address, display_name, is_active)
+             VALUES ($1, 'microsoft', $2, $3, true) RETURNING id`,
+            [userId, msAccount.email_address, msAccount.email_address]
+          );
+          emailAccountId = insertResult.rows[0].id;
+        }
+
+        for (const msg of messages) {
+          const externalId = `ms-${msg.id}`;
+          const existing = await pool.query(
+            'SELECT id FROM emails WHERE external_id = $1 AND user_id = $2',
+            [externalId, userId]
+          );
+          if (existing.rows.length > 0) {
+            skipped++;
+            continue;
+          }
+
+          const fromName = msg.from?.emailAddress?.name || '';
+          const fromAddress = msg.from?.emailAddress?.address || '';
+          const receivedAt = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
+
+          await pool.query(
+            `INSERT INTO emails (email_account_id, user_id, external_id, subject, from_name, from_address,
+              body_preview, body_text, is_read, has_attachments, received_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+              emailAccountId, userId, externalId,
+              msg.subject || '(no subject)', fromName, fromAddress,
+              msg.bodyPreview || '', msg.body?.content || '',
+              msg.isRead !== false, msg.hasAttachments || false, receivedAt,
+            ]
+          );
+          stored++;
+        }
+
+        await pool.query('UPDATE microsoft_accounts SET last_sync_at = NOW() WHERE id = $1', [accountId]);
+
+        return res.json({ success: true, data: { fetched: messages.length, stored, skipped } });
+      } catch (graphErr: any) {
+        console.error('Microsoft Graph sync error:', graphErr?.response?.data || graphErr);
+        if (graphErr?.response?.status === 401) {
+          return res.status(401).json({ success: false, error: 'Token expired. Please reconnect your Outlook account.' });
+        }
+        return res.status(500).json({ success: false, error: 'Failed to sync Outlook emails' });
+      }
     }
 
     res.status(404).json({ success: false, error: 'Account not found' });
