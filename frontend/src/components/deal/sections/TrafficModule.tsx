@@ -123,6 +123,7 @@ interface CalibrationStats {
   sampleCount: number;
   lastUpdated: string | null;
   comparisons: Record<string, { calibrated: number; default: number }>;
+  dataLibraryFileCount: number;
 }
 
 type TabId = 'predictions' | 'data_sources' | 'comps' | 'visibility' | 'adjustments' | 'calibration';
@@ -878,7 +879,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <h3 className="text-lg font-bold text-stone-900">Data Library Calibration</h3>
             <p className="text-xs text-stone-500 mt-0.5">
               {calibration?.calibrated
-                ? `${calibration.sampleCount} deal${calibration.sampleCount !== 1 ? 's' : ''} in this submarket contributing to calibration`
+                ? `${calibration.sampleCount} deal${calibration.sampleCount !== 1 ? 's' : ''} in this submarket contributing to calibration${calibration.dataLibraryFileCount > 0 ? ` | ${calibration.dataLibraryFileCount} Data Library file${calibration.dataLibraryFileCount !== 1 ? 's' : ''}` : ''}`
                 : 'No submarket calibration data yet — upload weekly reports to teach the engine'}
             </p>
           </div>

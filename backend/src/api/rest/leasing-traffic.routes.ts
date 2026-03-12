@@ -857,6 +857,9 @@ const weeklyUpload = multer({
 
       const deal = dealResult.rows[0];
       let submarketId: string | null = null;
+      let city: string | null = null;
+      let state: string | null = null;
+
       if (deal.trade_area_id) {
         try {
           const taResult = await pool.query(
@@ -866,10 +869,22 @@ const weeklyUpload = multer({
           if (taResult.rows.length > 0) submarketId = taResult.rows[0].submarket_id;
         } catch (_) {}
       }
-      const stats = await trafficCalibrationService.getCalibrationStats(submarketId || undefined);
+
+      try {
+        const propResult = await pool.query(
+          `SELECT city, state_code FROM properties WHERE deal_id = $1 LIMIT 1`,
+          [dealId]
+        );
+        if (propResult.rows.length > 0) {
+          city = propResult.rows[0].city;
+          state = propResult.rows[0].state_code;
+        }
+      } catch (_) {}
+
+      const stats = await trafficCalibrationService.getCalibrationStats(submarketId || undefined, city || undefined, state || undefined);
 
       if (!stats) {
-        return res.json({ calibrated: false, sampleCount: 0, comparisons: {} });
+        return res.json({ calibrated: false, sampleCount: 0, comparisons: {}, dataLibraryFileCount: 0 });
       }
 
       res.json({
@@ -877,6 +892,7 @@ const weeklyUpload = multer({
         sampleCount: stats.sampleCount,
         lastUpdated: stats.lastUpdated,
         comparisons: stats.comparisons,
+        dataLibraryFileCount: stats.dataLibraryFileCount,
       });
     } catch (error: any) {
       logger.error('[LeasingTraffic] Calibration stats failed', { error: error.message });

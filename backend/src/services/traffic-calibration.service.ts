@@ -171,16 +171,28 @@ class TrafficCalibrationService {
     }
   }
 
-  async getCalibrationStats(submarketId?: string): Promise<{ sampleCount: number; lastUpdated: string | null; comparisons: Record<string, { calibrated: number; default: number }> } | null> {
-    if (!submarketId) return null;
+  async getCalibrationStats(submarketId?: string, city?: string, state?: string): Promise<{ sampleCount: number; lastUpdated: string | null; comparisons: Record<string, { calibrated: number; default: number }>; dataLibraryFileCount: number } | null> {
     try {
-      const result = await pool.query(
-        `SELECT * FROM traffic_submarket_calibration WHERE submarket_id = $1 ORDER BY sample_count DESC LIMIT 1`,
-        [submarketId]
-      );
-      if (result.rows.length === 0) return null;
+      let cal: any = null;
 
-      const cal = result.rows[0];
+      if (submarketId) {
+        const result = await pool.query(
+          `SELECT * FROM traffic_submarket_calibration WHERE submarket_id = $1 ORDER BY sample_count DESC LIMIT 1`,
+          [submarketId]
+        );
+        if (result.rows.length > 0) cal = result.rows[0];
+      }
+
+      if (!cal && city && state) {
+        const result = await pool.query(
+          `SELECT * FROM traffic_submarket_calibration WHERE city = $1 AND state = $2 ORDER BY sample_count DESC LIMIT 1`,
+          [city, state]
+        );
+        if (result.rows.length > 0) cal = result.rows[0];
+      }
+
+      if (!cal) return null;
+
       const comparisons: Record<string, { calibrated: number; default: number }> = {};
 
       if (cal.avg_traffic_per_unit) {
@@ -208,10 +220,24 @@ class TrafficCalibrationService {
         };
       }
 
+      let dataLibraryFileCount = 0;
+      try {
+        const lookupCity = cal.city || city;
+        const lookupState = cal.state || state;
+        if (lookupCity) {
+          const dlResult = await pool.query(
+            `SELECT COUNT(*) FROM data_library_files WHERE LOWER(city) = LOWER($1) AND parsing_status = 'complete'`,
+            [lookupCity]
+          );
+          dataLibraryFileCount = parseInt(dlResult.rows[0]?.count || '0');
+        }
+      } catch (_) {}
+
       return {
         sampleCount: cal.sample_count || 0,
         lastUpdated: cal.last_updated,
         comparisons,
+        dataLibraryFileCount,
       };
     } catch {
       return null;

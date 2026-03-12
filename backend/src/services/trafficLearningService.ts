@@ -279,15 +279,17 @@ export class TrafficLearningService {
       };
     }
 
-    // Create with defaults
+    const submarketRates = await this.lookupSubmarketCalibration(propertyId);
+
     const defaults: LearnedRates = {
       property_id: propertyId,
       ...DEFAULT_RATES,
+      ...(submarketRates || {}),
       tour_rate_seasonal: { ...SEASONAL_DEFAULTS.tour_rate },
       app_rate_seasonal: { ...SEASONAL_DEFAULTS.app_rate },
       lease_rate_seasonal: { ...SEASONAL_DEFAULTS.lease_rate },
       data_weeks: 0,
-      confidence_level: 'cold_start',
+      confidence_level: submarketRates ? 'submarket_calibrated' : 'cold_start',
       stabilized_occupancy: null,
       effective_rent_growth_rate: null,
       seasonal_index: [],
@@ -328,6 +330,66 @@ export class TrafficLearningService {
   // ──────────────────────────────────────────────────────────────────
   // Private helpers
   // ──────────────────────────────────────────────────────────────────
+
+  private async lookupSubmarketCalibration(
+    propertyId: string
+  ): Promise<{ tour_rate: number; app_rate: number; lease_rate: number } | null> {
+    try {
+      const propResult = await pool.query(
+        `SELECT p.city, p.state_code, p.submarket_id
+         FROM properties p WHERE p.id = $1 LIMIT 1`,
+        [propertyId]
+      );
+      if (propResult.rows.length === 0) return null;
+
+      const { city, state_code, submarket_id } = propResult.rows[0];
+
+      let calRow: any = null;
+
+      if (submarket_id) {
+        const r = await pool.query(
+          `SELECT avg_tour_conversion, avg_closing_ratio, sample_count
+           FROM traffic_submarket_calibration
+           WHERE submarket_id = $1 AND sample_count >= 1
+           ORDER BY sample_count DESC LIMIT 1`,
+          [submarket_id]
+        );
+        if (r.rows.length > 0) calRow = r.rows[0];
+      }
+
+      if (!calRow && city && state_code) {
+        const r = await pool.query(
+          `SELECT avg_tour_conversion, avg_closing_ratio, sample_count
+           FROM traffic_submarket_calibration
+           WHERE city = $1 AND state = $2 AND sample_count >= 1
+           ORDER BY sample_count DESC LIMIT 1`,
+          [city, state_code]
+        );
+        if (r.rows.length > 0) calRow = r.rows[0];
+      }
+
+      if (!calRow) return null;
+
+      const overrides: { tour_rate: number; app_rate: number; lease_rate: number } = {
+        tour_rate: DEFAULT_RATES.tour_rate,
+        app_rate: DEFAULT_RATES.app_rate,
+        lease_rate: DEFAULT_RATES.lease_rate,
+      };
+
+      if (calRow.avg_tour_conversion && Number(calRow.avg_tour_conversion) > 0) {
+        overrides.tour_rate = Number(calRow.avg_tour_conversion);
+      }
+      if (calRow.avg_closing_ratio && Number(calRow.avg_closing_ratio) > 0) {
+        overrides.lease_rate = Number(calRow.avg_closing_ratio);
+      }
+
+      console.log(`📊 Submarket calibration applied for property ${propertyId}: tour_rate=${overrides.tour_rate}, lease_rate=${overrides.lease_rate} (${calRow.sample_count} deals)`);
+      return overrides;
+    } catch (err: any) {
+      console.error(`[TrafficLearning] Submarket calibration lookup failed:`, err.message);
+      return null;
+    }
+  }
 
   private async getPredictionForWeek(propertyId: string, weekEnding: string): Promise<Record<string, number>> {
     const weekDate = new Date(weekEnding);
