@@ -38,6 +38,8 @@ export interface ComparisonColumn {
   aiInsight: string;
   source: string;
   municodeUrl: string | null;
+  isDesignOverlay?: boolean;
+  densityMethod?: string;
 }
 
 export interface ComparisonRow {
@@ -75,6 +77,8 @@ interface ComputedPath {
   successRate: string;
   timeline: string;
   source: string;
+  isDesignOverlay?: boolean;
+  densityMethod?: string;
   metrics: {
     maxUnits: number;
     maxGba: number;
@@ -334,6 +338,7 @@ export class EntitlementComparisonEngine {
       successRate: '95%',
       timeline: '3-6 months',
       source: 'by-right',
+      densityMethod: constraints.densityMethod || subject.densityMethod,
       description: 'Development under existing zoning with no approvals beyond standard permits.',
       metrics: {
         maxUnits: envelope.maxCapacity,
@@ -370,6 +375,7 @@ export class EntitlementComparisonEngine {
       successRate: pct <= 15 ? '75-85%' : pct <= 30 ? '60-75%' : '40-55%',
       timeline: '6-12 months',
       source: 'variance-multiplier',
+      densityMethod: varianceConstraints.densityMethod,
       description: `Request +${pct}% density deviation through Board of Zoning Appeals.`,
       metrics: {
         maxUnits: envelope.maxCapacity,
@@ -464,6 +470,15 @@ export class EntitlementComparisonEngine {
     return paths;
   }
 
+  private isDesignOnlyOverlay(activeOverlay: any): boolean {
+    const isNeutralCapacity =
+      activeOverlay.capacity_impact === 'neutral' &&
+      (activeOverlay.capacity_modifier == null ||
+        Math.abs(parseFloat(String(activeOverlay.capacity_modifier)) - 1.0) < 0.05);
+    const isDesignReview = activeOverlay.overlay_type === 'design_review';
+    return isNeutralCapacity || isDesignReview;
+  }
+
   private async computeSingleOverlay(
     subject: SubjectProperty,
     baseConstraints: ResolvedConstraints,
@@ -474,96 +489,119 @@ export class EntitlementComparisonEngine {
     avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath | null> {
     let overlayConstraints: ResolvedConstraints = { ...baseConstraints };
+    const isDesignOverlay = this.isDesignOnlyOverlay(activeOverlay);
 
-    if (activeOverlay.modifications) {
-      const mods = activeOverlay.modifications;
-      if (mods.max_density_per_acre != null) overlayConstraints.maxDensity = mods.max_density_per_acre;
-      if (mods.applied_far != null) overlayConstraints.appliedFAR = mods.applied_far;
-      if (mods.max_far != null) overlayConstraints.maxFAR = mods.max_far;
-      if (mods.max_height_ft != null) overlayConstraints.maxHeight = mods.max_height_ft;
-      if (mods.max_stories != null) overlayConstraints.maxStories = mods.max_stories;
-      if (mods.min_parking_per_unit != null) overlayConstraints.minParkingPerUnit = mods.min_parking_per_unit;
-      if (mods.max_lot_coverage_pct != null) overlayConstraints.maxLotCoverage = mods.max_lot_coverage_pct;
-    }
+    if (isDesignOverlay) {
+      // Design overlays (BeltLine, NPU design review, etc.) do NOT change underlying
+      // FAR or density. They only modify design standards, ground-floor activation,
+      // and parking requirements. Inherit base constraints entirely.
+      console.log(`[EntitlementEngine] Overlay ${overlayCode} classified as DESIGN overlay — inheriting base constraints`);
 
-    if (activeOverlay.capacity_modifier && activeOverlay.capacity_modifier !== 1) {
-      const mod = parseFloat(activeOverlay.capacity_modifier);
-      if (!isNaN(mod) && mod > 0) {
-        if (overlayConstraints.maxDensity) overlayConstraints.maxDensity *= mod;
-        if (overlayConstraints.maxFAR) overlayConstraints.maxFAR *= mod;
-        if (overlayConstraints.appliedFAR) overlayConstraints.appliedFAR *= mod;
+      // Apply known parking exemptions. Atlanta's Feb 2024 ordinance eliminated
+      // parking minimums within the BeltLine Overlay District.
+      if (overlayCode === 'BELTLINE' || overlayName.toUpperCase().includes('BELTLINE')) {
+        overlayConstraints.minParkingPerUnit = 0;
+        console.log(`[EntitlementEngine] BeltLine parking exemption applied (Feb 2024 ordinance)`);
       }
-    }
 
-    const overlayMun = subject.municipality || '';
-    const overlaySt = subject.state || 'GA';
-    const cachedOverlay = await this.cache.getConstraints(overlayCode, overlayMun, overlaySt);
-    if (cachedOverlay) {
-      console.log(`[Cache] HIT overlay constraint: ${overlayCode}`);
-      const c = cachedOverlay.constraints;
-      if ((c as any).maxDensity != null && !activeOverlay.modifications?.max_density_per_acre) {
-        overlayConstraints.maxDensity = (c as any).maxDensity;
-      }
-      if ((c as any).maxFAR != null && !activeOverlay.modifications?.max_far) {
-        overlayConstraints.maxFAR = (c as any).maxFAR;
-        overlayConstraints.appliedFAR = (c as any).appliedFAR || (c as any).maxFAR;
-      }
-      if ((c as any).maxHeight != null && !activeOverlay.modifications?.max_height_ft) {
-        overlayConstraints.maxHeight = (c as any).maxHeight;
-      }
-      if ((c as any).maxStories != null && !activeOverlay.modifications?.max_stories) {
-        overlayConstraints.maxStories = (c as any).maxStories;
-      }
-      if ((c as any).minParkingPerUnit != null && !activeOverlay.modifications?.min_parking_per_unit) {
-        overlayConstraints.minParkingPerUnit = (c as any).minParkingPerUnit;
-      }
+      // Do NOT query the AI constraint cache for design overlays — it would return
+      // fabricated FAR/density numbers that do not exist in the ordinance.
     } else {
-      console.log(`[Cache] MISS overlay constraint: ${overlayCode}`);
-      try {
-        const agentData = await this.agentService.retrieveZoningData({
-          districtCode: overlayCode,
-          municipality: overlayMun,
-          state: overlaySt,
-        });
-        if (agentData.success && agentData.district) {
-          const d = agentData.district;
-          if (d.max_density_per_acre != null && !activeOverlay.modifications?.max_density_per_acre) {
-            overlayConstraints.maxDensity = d.max_density_per_acre;
-          }
-          if (d.max_far != null && !activeOverlay.modifications?.max_far) {
-            overlayConstraints.maxFAR = d.max_far;
-            overlayConstraints.appliedFAR = d.max_far;
-          }
-          if (d.max_building_height_ft != null && !activeOverlay.modifications?.max_height_ft) {
-            overlayConstraints.maxHeight = d.max_building_height_ft;
-          }
-          if (d.max_stories != null && !activeOverlay.modifications?.max_stories) {
-            overlayConstraints.maxStories = d.max_stories;
-          }
-          if (d.parking_per_unit != null && !activeOverlay.modifications?.min_parking_per_unit) {
-            overlayConstraints.minParkingPerUnit = d.parking_per_unit;
-          }
-          await this.cache.setConstraints(overlayCode, overlayMun, overlaySt, overlayConstraints, {
-            source: 'ai_retrieved',
-            confidence: agentData.confidence || 'medium',
-          });
+      // Non-design overlay: apply explicit modifications from the DB row
+      if (activeOverlay.modifications) {
+        const mods = activeOverlay.modifications;
+        if (mods.max_density_per_acre != null) overlayConstraints.maxDensity = mods.max_density_per_acre;
+        if (mods.applied_far != null) overlayConstraints.appliedFAR = mods.applied_far;
+        if (mods.max_far != null) overlayConstraints.maxFAR = mods.max_far;
+        if (mods.max_height_ft != null) overlayConstraints.maxHeight = mods.max_height_ft;
+        if (mods.max_stories != null) overlayConstraints.maxStories = mods.max_stories;
+        if (mods.min_parking_per_unit != null) overlayConstraints.minParkingPerUnit = mods.min_parking_per_unit;
+        if (mods.max_lot_coverage_pct != null) overlayConstraints.maxLotCoverage = mods.max_lot_coverage_pct;
+      }
+
+      if (activeOverlay.capacity_modifier && parseFloat(String(activeOverlay.capacity_modifier)) !== 1) {
+        const mod = parseFloat(String(activeOverlay.capacity_modifier));
+        if (!isNaN(mod) && mod > 0) {
+          if (overlayConstraints.maxDensity) overlayConstraints.maxDensity *= mod;
+          if (overlayConstraints.maxFAR) overlayConstraints.maxFAR *= mod;
+          if (overlayConstraints.appliedFAR) overlayConstraints.appliedFAR *= mod;
         }
-      } catch {}
+      }
+
+      const overlayMun = subject.municipality || '';
+      const overlaySt = subject.state || 'GA';
+      const cachedOverlay = await this.cache.getConstraints(overlayCode, overlayMun, overlaySt);
+      if (cachedOverlay) {
+        console.log(`[Cache] HIT overlay constraint: ${overlayCode}`);
+        const c = cachedOverlay.constraints;
+        if ((c as any).maxDensity != null && !activeOverlay.modifications?.max_density_per_acre) {
+          overlayConstraints.maxDensity = (c as any).maxDensity;
+        }
+        if ((c as any).maxFAR != null && !activeOverlay.modifications?.max_far) {
+          overlayConstraints.maxFAR = (c as any).maxFAR;
+          overlayConstraints.appliedFAR = (c as any).appliedFAR || (c as any).maxFAR;
+        }
+        if ((c as any).maxHeight != null && !activeOverlay.modifications?.max_height_ft) {
+          overlayConstraints.maxHeight = (c as any).maxHeight;
+        }
+        if ((c as any).maxStories != null && !activeOverlay.modifications?.max_stories) {
+          overlayConstraints.maxStories = (c as any).maxStories;
+        }
+        if ((c as any).minParkingPerUnit != null && !activeOverlay.modifications?.min_parking_per_unit) {
+          overlayConstraints.minParkingPerUnit = (c as any).minParkingPerUnit;
+        }
+      } else {
+        console.log(`[Cache] MISS overlay constraint: ${overlayCode}`);
+        try {
+          const agentData = await this.agentService.retrieveZoningData({
+            districtCode: overlayCode,
+            municipality: overlayMun,
+            state: overlaySt,
+          });
+          if (agentData.success && agentData.district) {
+            const d = agentData.district;
+            if (d.max_density_per_acre != null && !activeOverlay.modifications?.max_density_per_acre) {
+              overlayConstraints.maxDensity = d.max_density_per_acre;
+            }
+            if (d.max_far != null && !activeOverlay.modifications?.max_far) {
+              overlayConstraints.maxFAR = d.max_far;
+              overlayConstraints.appliedFAR = d.max_far;
+            }
+            if (d.max_building_height_ft != null && !activeOverlay.modifications?.max_height_ft) {
+              overlayConstraints.maxHeight = d.max_building_height_ft;
+            }
+            if (d.max_stories != null && !activeOverlay.modifications?.max_stories) {
+              overlayConstraints.maxStories = d.max_stories;
+            }
+            if (d.parking_per_unit != null && !activeOverlay.modifications?.min_parking_per_unit) {
+              overlayConstraints.minParkingPerUnit = d.parking_per_unit;
+            }
+            await this.cache.setConstraints(overlayCode, overlayMun, overlaySt, overlayConstraints, {
+              source: 'ai_retrieved',
+              confidence: agentData.confidence || 'medium',
+            });
+          }
+        } catch {}
+      }
     }
 
     const envelope = this.computeEnvelope(subject, overlayConstraints, avgUnitSizeOverride);
 
     const key = index === 0 ? 'overlay' : `overlay_${index}`;
+    const designLabel = isDesignOverlay ? `${overlayName} (Design)` : overlayName;
 
     return {
       key,
-      label: `Overlay: ${overlayName}`,
+      label: `Overlay: ${designLabel}`,
       zoningCode: overlayCode,
       risk: 'Low',
-      successRate: '90%',
-      timeline: '3-6 months',
+      successRate: isDesignOverlay ? '95%+' : '85-90%',
+      timeline: isDesignOverlay ? '2-4 months' : '3-6 months',
       source: 'overlay',
-      description: `Development standards modified by ${overlayName} overlay district.`,
+      isDesignOverlay,
+      description: isDesignOverlay
+        ? `${overlayName} is a design overlay — it does not change FAR or density (both governed by base district). Modifies: parking requirements, ground-floor activation, build-to lines, and design standards.`
+        : `Development standards modified by ${overlayName} overlay district.`,
       metrics: {
         maxUnits: envelope.maxCapacity,
         maxGba: Math.round(envelope.maxGFA),
@@ -679,6 +717,35 @@ export class EntitlementComparisonEngine {
     targetCode: string,
     avgUnitSizeOverride?: number | null,
   ): Promise<ComputedPath> {
+    // Derive success rate and timeline from benchmark_projects for this municipality
+    let successRate = '35-65%';
+    let risk = 'Medium';
+    let timeline = '12-24 months';
+    try {
+      const benchRes = await this.pool.query(
+        `SELECT outcome, total_entitlement_days
+         FROM benchmark_projects
+         WHERE municipality = $1 AND state = $2 AND entitlement_type = 'rezone'
+           AND total_entitlement_days IS NOT NULL`,
+        [subject.municipality, subject.state]
+      );
+      if (benchRes.rows.length >= 3) {
+        const approved = benchRes.rows.filter((r: any) => r.outcome === 'approved' || r.outcome == null).length;
+        const total = benchRes.rows.length;
+        const approvalPct = Math.round((approved / total) * 100);
+        const days = benchRes.rows.map((r: any) => parseInt(r.total_entitlement_days)).sort((a: number, b: number) => a - b);
+        const medianDays = days[Math.floor(days.length / 2)];
+        const minDays = days[0];
+        const maxDays = days[days.length - 1];
+        successRate = `${approvalPct}% (${total} comps)`;
+        risk = approvalPct >= 70 ? 'Low' : approvalPct >= 45 ? 'Medium' : 'High';
+        const medMonths = Math.round(medianDays / 30);
+        const minMonths = Math.round(minDays / 30);
+        const maxMonths = Math.round(maxDays / 30);
+        timeline = `~${medMonths} months (range ${minMonths}–${maxMonths})`;
+      }
+    } catch {}
+
     const constraints = await this.resolveConstraints(targetCode, subject.municipality, subject.state);
     if (constraints) {
       if (baseConstraints.minParkingPerUnit != null && baseConstraints.minParkingPerUnit < (constraints.minParkingPerUnit ?? Infinity)) {
@@ -689,10 +756,11 @@ export class EntitlementComparisonEngine {
         key: 'rezone',
         label: `Rezone to ${targetCode}`,
         zoningCode: targetCode,
-        risk: 'Medium',
-        successRate: '35-65%',
-        timeline: '12-24 months',
+        risk,
+        successRate,
+        timeline,
         source: 'user-selected',
+        densityMethod: constraints.densityMethod,
         description: `Rezone to ${targetCode} (user-selected target district).`,
         metrics: {
           maxUnits: envelope.maxCapacity,
@@ -711,9 +779,9 @@ export class EntitlementComparisonEngine {
       key: 'rezone',
       label: `Rezone to ${targetCode}`,
       zoningCode: targetCode,
-      risk: 'High',
-      successRate: '35-50%',
-      timeline: '12-24 months',
+      risk,
+      successRate,
+      timeline,
       source: 'user-selected-missing',
       description: `Rezone to ${targetCode} (constraints not found — using estimates).`,
       metrics: {
@@ -745,6 +813,7 @@ export class EntitlementComparisonEngine {
       successRate: '35-50%',
       timeline: '12-24 months',
       source: 'rezone-multiplier',
+      densityMethod: rezConstraints.densityMethod,
       description: 'Full rezoning petition to City Council for higher-density district designation.',
       metrics: {
         maxUnits: envelope.maxCapacity,
@@ -908,7 +977,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v7#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v8#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -993,6 +1062,8 @@ export class EntitlementComparisonEngine {
       risk: p.risk,
       description: p.description,
       municodeUrl: p.zoningCode ? municodeUrls[p.zoningCode] || null : null,
+      isDesignOverlay: p.isDesignOverlay || false,
+      densityMethod: p.densityMethod || 'units_per_acre',
     }));
     // Keep full metrics separately, only for discrepancy-flagging
     const metricsForFlagging = paths.map(p => ({
@@ -1036,6 +1107,7 @@ Rules:
 - Speak to a developer making a capital allocation decision. Be direct and specific.
 - Cite ordinance sections only when they reveal something not already in the table (e.g., a conditional use trigger, a bonus program, an absolute ceiling that differs from the applied FAR).
 - For overlay paths: clarify they are DESIGN overlays only — ground-floor activation, build-to lines, parking waivers. They do not create an independent density entitlement.
+- For paths with densityMethod="far_derived": density is estimated from FAR ÷ avg unit size and is labeled "Est. Density†" in the table — note this estimation limitation if relevant to the insight.
 - Use comparable project data (names, outcomes, timelines) when available from BENCHMARK DATA.
 - Keep each bullet to 1–2 sentences. Total insight under 120 words.
 
@@ -1123,11 +1195,14 @@ Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
       aiInsight: aiAnalysis.insights[p.key] || '',
       source: p.source,
       municodeUrl: p.zoningCode ? (municodeUrls[p.zoningCode] || null) : null,
+      isDesignOverlay: p.isDesignOverlay,
+      densityMethod: p.densityMethod ?? byRight.densityMethod,
     }));
 
+    const isFarDerived = byRight.densityMethod === 'far_derived';
     const standardRows: ComparisonRow[] = [
       { key: 'zoningCode', label: 'Zoning Code' },
-      { key: 'density', label: 'Density (u/ac)' },
+      { key: 'density', label: isFarDerived ? 'Est. Density† (u/ac)' : 'Density (u/ac)' },
       { key: 'far', label: 'FAR' },
       { key: 'maxUnits', label: 'Max Units' },
       { key: 'gba', label: 'GBA (SF)' },

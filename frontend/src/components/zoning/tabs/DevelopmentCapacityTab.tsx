@@ -1218,6 +1218,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 }`}>{col.risk}</span>
                               )}
                             </div>
+                            {col.isDesignOverlay && (
+                              <div className="flex items-center justify-center mt-0.5">
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-purple-50 text-purple-700 border border-purple-200">Design Overlay</span>
+                              </div>
+                            )}
                             <div className="flex items-center justify-center gap-2 mt-0.5">
                               {col.successRate && (
                                 <span className="text-[10px] text-gray-400">{col.successRate} success · {col.timeline}</span>
