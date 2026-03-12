@@ -126,6 +126,12 @@ export const secrets = {
     apartmentLocator: {
       apiKey: getEnv('API_KEY_APARTMENT_LOCATOR'),
     },
+
+    // Cloudflare Browser Rendering (Rent Scraper)
+    cloudflare: {
+      accountId: getEnv('CLOUDFLARE_ACCOUNT_ID'),
+      brToken: getEnv('CLOUDFLARE_BR_TOKEN'),
+    },
   },
 
   // ============================================
@@ -199,6 +205,10 @@ export function validateSecrets(): void {
 
     if (!secrets.external.ai.claudeApiKey && !secrets.external.ai.openaiApiKey) {
       warnings.push('No AI provider configured - AI features will be disabled');
+    }
+
+    if (!secrets.external.cloudflare.accountId || !secrets.external.cloudflare.brToken) {
+      warnings.push('CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_BR_TOKEN not set - rent scraper will not function');
     }
 
     // Ensure CORS is properly configured

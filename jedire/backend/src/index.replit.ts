@@ -12,6 +12,7 @@ import path from 'path';
 import { requireAuth } from './middleware/auth';
 import { getPool } from './database/connection';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { rentScraperScheduler } from './services/rent-scraper-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
@@ -333,6 +334,13 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
   } catch (error) {
     console.error('Failed to start email sync scheduler:', error);
   }
+
+  try {
+    rentScraperScheduler.start();
+    console.log('Rent scraper scheduler started (weekly: Sunday 2:00 AM EST)');
+  } catch (error) {
+    console.error('Failed to start rent scraper scheduler:', error);
+  }
 });
 
 process.on('SIGTERM', async () => {
@@ -343,6 +351,13 @@ process.on('SIGTERM', async () => {
     console.log('Email sync scheduler stopped');
   } catch (error) {
     console.error('Error stopping email sync scheduler:', error);
+  }
+
+  try {
+    rentScraperScheduler.stop();
+    console.log('Rent scraper scheduler stopped');
+  } catch (error) {
+    console.error('Error stopping rent scraper scheduler:', error);
   }
   
   await pool.end();

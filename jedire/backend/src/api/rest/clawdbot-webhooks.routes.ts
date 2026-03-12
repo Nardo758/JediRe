@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 import { getPool } from '../../database/connection';
+import { rentScraperService, ScrapeTargetResult, RentChange } from '../../services/rent-scraper.service';
 
 const router = Router();
 const pool = getPool();
@@ -395,6 +396,86 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           errors: errorsResult.rows,
           total: errorsResult.rowCount,
           timeRange: `Last ${hours} hours`,
+        };
+        break;
+      }
+
+      case 'scrape_property': {
+        if (!params?.url) {
+          return res.status(400).json({ error: 'Bad Request', message: 'url parameter is required' });
+        }
+        const scrapeResult = await rentScraperService.scrapeAndPersistUrl(params.url);
+        result = {
+          url: params.url,
+          units: scrapeResult.units,
+          avgRent: scrapeResult.avgRent,
+          minRent: scrapeResult.minRent,
+          maxRent: scrapeResult.maxRent,
+          unitCount: scrapeResult.units.length,
+          error: scrapeResult.error || null,
+        };
+        break;
+      }
+
+      case 'run_scrape_job': {
+        if (!params?.market) {
+          return res.status(400).json({ error: 'Bad Request', message: 'market parameter is required' });
+        }
+        const jobResult = await rentScraperService.runScrapeJob(params.market);
+        result = {
+          market: params.market,
+          total: jobResult.total,
+          success: jobResult.success,
+          failed: jobResult.failed,
+          results: jobResult.results.map((r: ScrapeTargetResult) => ({
+            name: r.name,
+            avgRent: r.avgRent,
+            minRent: r.minRent,
+            maxRent: r.maxRent,
+            unitCount: r.units?.length || 0,
+            error: r.error || null,
+          })),
+        };
+        break;
+      }
+
+      case 'get_rent_changes': {
+        const rentMarket = params?.market || 'Atlanta';
+        const rentDays = Math.max(1, Math.min(365, parseInt(params?.days) || 30));
+        const changes = await rentScraperService.getRentChanges(rentMarket, rentDays);
+        result = {
+          market: rentMarket,
+          days: rentDays,
+          changes,
+          totalProperties: changes.length,
+          withChanges: changes.filter((c: RentChange) => c.changePercent !== null).length,
+        };
+        break;
+      }
+
+      case 'add_scrape_target': {
+        if (!params?.name || !params?.address || !params?.websiteUrl) {
+          return res.status(400).json({ error: 'Bad Request', message: 'name, address, and websiteUrl parameters are required' });
+        }
+        const target = await rentScraperService.addTarget(
+          params.name,
+          params.address,
+          params.websiteUrl,
+          params.market || 'Atlanta'
+        );
+        result = {
+          message: 'Scrape target added successfully',
+          target,
+        };
+        break;
+      }
+
+      case 'list_scrape_targets': {
+        const targets = await rentScraperService.listTargets(params?.market);
+        result = {
+          targets,
+          total: targets.length,
+          market: params?.market || 'all',
         };
         break;
       }
