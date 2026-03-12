@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 import { getPool } from '../../database/connection';
 import { RentScraperService } from '../../services/rent-scraper.service';
+import { RentScraperDiscoveryService } from '../../services/rent-scraper-discovery.service';
+import { RentScraperAggregationService } from '../../services/rent-scraper-aggregation.service';
 
 const router = Router();
 const pool = getPool();
@@ -1231,39 +1233,90 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'discover_property_urls': {
+        const discovery = new RentScraperDiscoveryService(pool);
+        const limit = Math.min(params?.limit || 20, 50);
+        const discResult = await discovery.discoverAllPendingUrls({ limit });
+        result = {
+          message: `Discovery complete: ${discResult.discovered} websites found, ${discResult.failed} failed out of ${discResult.results.length} processed`,
+          discovered: discResult.discovered,
+          failed: discResult.failed,
+          skipped: discResult.skipped,
+          results: discResult.results.map(r => ({
+            targetId: r.targetId,
+            propertyName: r.propertyName,
+            websiteUrl: r.websiteUrl,
+            googleRating: r.googleRating,
+            reviewCount: r.reviewCount,
+            phone: r.phone,
+            success: r.success,
+            error: r.error || null,
+          })),
+        };
+        break;
+      }
+
       case 'scrape_property': {
         if (!params?.targetId) {
           return res.status(400).json({ error: 'Bad Request', message: 'targetId parameter is required' });
         }
         const rentScraper = new RentScraperService(pool);
         const scrapeResult = await rentScraper.scrapeProperty(params.targetId);
+
+        let compBackflow: any = null;
+        if (scrapeResult.status === 'success' && scrapeResult.units.length > 0) {
+          const aggregation = new RentScraperAggregationService(pool);
+          compBackflow = await aggregation.pushToCompUnitTypes(params.targetId, scrapeResult.jobId);
+        }
+
         result = {
           message: scrapeResult.status === 'success'
-            ? `Scraped ${scrapeResult.units.length} unit types from ${scrapeResult.propertyName}`
+            ? `Scraped ${scrapeResult.units.length} floor plans from ${scrapeResult.propertyName}${scrapeResult.floorPlanUrl ? ` (${scrapeResult.floorPlanUrl})` : ''}`
+            : scrapeResult.status === 'no_website'
+            ? `${scrapeResult.propertyName}: no website_url — run discover_property_urls first`
             : `Scrape failed for ${scrapeResult.propertyName}: ${scrapeResult.error}`,
           ...scrapeResult,
+          compBackflow,
         };
         break;
       }
 
       case 'run_scrape_job': {
+        const market = params?.market || 'Atlanta';
+        const limit = Math.min(params?.limit || 10, 50);
+
+        if (params?.discoverFirst) {
+          const discovery = new RentScraperDiscoveryService(pool);
+          await discovery.discoverAllPendingUrls({ limit: Math.min(limit * 2, 50) });
+        }
+
         const rentScraper = new RentScraperService(pool);
-        const jobResult = await rentScraper.runScrapeJob({
-          market: params?.market || 'Atlanta',
-          limit: params?.limit || 50,
-        });
+        const jobResult = await rentScraper.runScrapeJob({ market, limit, onlyWithWebsite: true });
+
         const succeeded = jobResult.results.filter(r => r.status === 'success').length;
         const failed = jobResult.results.filter(r => r.status === 'error').length;
+        const noWebsite = jobResult.results.filter(r => r.status === 'no_website').length;
+
+        // Push market snapshots after batch completes
+        let marketSnapshot: any = null;
+        if (succeeded > 0) {
+          const aggregation = new RentScraperAggregationService(pool);
+          marketSnapshot = await aggregation.pushToApartmentMarketSnapshots(market);
+        }
+
         result = {
-          message: `Scrape job complete: ${succeeded} succeeded, ${failed} failed out of ${jobResult.jobCount} targets`,
+          message: `Scrape job complete: ${succeeded} succeeded, ${failed} failed, ${noWebsite} skipped (no website) out of ${jobResult.jobCount} targets`,
           jobCount: jobResult.jobCount,
           succeeded,
           failed,
+          noWebsite,
+          marketSnapshot,
           results: jobResult.results.map(r => ({
             targetId: r.targetId,
             propertyName: r.propertyName,
             status: r.status,
             unitCount: r.units.length,
+            floorPlanUrl: r.floorPlanUrl,
             error: r.error || null,
           })),
         };
@@ -1285,6 +1338,16 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'get_scrape_summary': {
+        const aggregation = new RentScraperAggregationService(pool);
+        const summary = await aggregation.getScrapeSummary(params?.market || 'Atlanta');
+        result = {
+          message: `Scrape summary for ${params?.market || 'Atlanta'}`,
+          summary,
+        };
+        break;
+      }
+
       case 'add_scrape_target': {
         if (!params?.propertyName) {
           return res.status(400).json({ error: 'Bad Request', message: 'propertyName parameter is required' });
@@ -1297,6 +1360,7 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
           state: params.state,
           zip: params.zip,
           url: params.url,
+          websiteUrl: params.websiteUrl,
           unitCount: params.unitCount,
           yearBuilt: params.yearBuilt,
           market: params.market,
