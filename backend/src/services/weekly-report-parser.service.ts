@@ -431,7 +431,7 @@ export class WeeklyReportParserService {
       avgTotalUnits = baseline.totalUnits;
       avgVacantTotal = 0;
       avgNoticeTotal = 0;
-      trendGrowth = 0.0005;
+      trendGrowth = 0.002;
       if (calibration?.seasonalFactors && calibration.seasonalFactors.length === 12) {
         seasonalFactors = [];
         for (let m = 0; m < 12; m++) {
@@ -513,14 +513,19 @@ export class WeeklyReportParserService {
 
       const combined = periodDemand * periodSupply * periodDigital * seasonal;
 
-      const baseTraffic = Math.max(0, Math.round(avgTraffic * growthMultiplier));
-      const baseTours = Math.max(0, Math.round(avgTours * growthMultiplier));
-      const baseWebsite = Math.max(0, Math.round(avgWebsite * growthMultiplier));
+      const n0 = this.deterministicNoise(dealId, i, 0);
+      const n1 = this.deterministicNoise(dealId, i, 1, 0.05);
+      const n2 = this.deterministicNoise(dealId, i, 2, 0.07);
+      const n3 = this.deterministicNoise(dealId, i, 3, 0.04);
+      const n4 = this.deterministicNoise(dealId, i, 4, 0.05);
+      const baseTraffic = Math.max(0, Math.round(avgTraffic * growthMultiplier * n0));
+      const baseTours = Math.max(0, Math.round(avgTours * growthMultiplier * n1));
+      const baseWebsite = Math.max(0, Math.round(avgWebsite * growthMultiplier * n2));
       const baseWalkIn = baseTours;
-      const baseApps = Math.max(0, Math.round(avgApps * growthMultiplier));
+      const baseApps = Math.max(0, Math.round(avgApps * growthMultiplier * n3));
       const baseCancellations = Math.max(0, Math.round(avgCancellations * growthMultiplier * 0.95));
       const baseDenials = Math.max(0, Math.round((avgDenials || 0) * growthMultiplier));
-      const baseNetLeases = Math.max(0, Math.round(avgNetLeases * growthMultiplier));
+      const baseNetLeases = Math.max(0, Math.round(avgNetLeases * growthMultiplier * n4));
       const baseClosingRatio = avgClosingRatio;
       const baseOccPct = Math.min(0.99, avgOccPct + projYear * 0.002);
       const baseLeasedPct = Math.min(0.99, avgLeasedPct + projYear * 0.002);
@@ -621,6 +626,17 @@ export class WeeklyReportParserService {
     const valid = values.filter((v): v is number => v !== null && !isNaN(v));
     if (valid.length === 0) return 0;
     return valid.reduce((sum, v) => sum + v, 0) / valid.length;
+  }
+
+  private deterministicNoise(dealId: string, weekIndex: number, channel: number, amplitude: number = 0.06): number {
+    let h = 2166136261;
+    const str = dealId + ':' + weekIndex + ':' + channel;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    const t = ((h & 0xffff) / 0xffff) * 2 - 1;
+    return 1 + t * amplitude;
   }
 
   private calculateTrend(values: (number | null)[]): number {
