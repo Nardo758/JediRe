@@ -260,7 +260,7 @@ export class TrafficLearningService {
 
     if (result.rows.length > 0) {
       const row = result.rows[0];
-      return {
+      const rates: LearnedRates = {
         property_id: propertyId,
         tour_rate: parseFloat(row.tour_rate),
         app_rate: parseFloat(row.app_rate),
@@ -277,6 +277,24 @@ export class TrafficLearningService {
         consecutive_same_direction: row.consecutive_same_direction || 0,
         bias_direction: row.bias_direction || null,
       };
+
+      if (row.data_weeks === 0 || row.confidence_level === 'cold_start') {
+        const submarketRates = await this.lookupSubmarketCalibration(propertyId);
+        if (submarketRates) {
+          rates.tour_rate = submarketRates.tour_rate;
+          rates.app_rate = submarketRates.app_rate;
+          rates.lease_rate = submarketRates.lease_rate;
+          rates.confidence_level = 'submarket_calibrated';
+
+          await pool.query(`
+            UPDATE traffic_learned_rates
+            SET tour_rate = $2, app_rate = $3, lease_rate = $4, confidence_level = 'submarket_calibrated'
+            WHERE property_id = $1 AND data_weeks = 0
+          `, [propertyId, submarketRates.tour_rate, submarketRates.app_rate, submarketRates.lease_rate]);
+        }
+      }
+
+      return rates;
     }
 
     const submarketRates = await this.lookupSubmarketCalibration(propertyId);
@@ -305,7 +323,7 @@ export class TrafficLearningService {
     `, [
       propertyId, defaults.tour_rate, defaults.app_rate, defaults.lease_rate, defaults.renewal_rate,
       JSON.stringify(defaults.tour_rate_seasonal), JSON.stringify(defaults.app_rate_seasonal),
-      JSON.stringify(defaults.lease_rate_seasonal), 0, 'cold_start', JSON.stringify([]),
+      JSON.stringify(defaults.lease_rate_seasonal), 0, defaults.confidence_level, JSON.stringify([]),
     ]);
 
     return defaults;
