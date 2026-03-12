@@ -876,7 +876,7 @@ export class EntitlementComparisonEngine {
     const metricsBase = byRightPath
       ? `u${byRightPath.metrics.maxUnits}g${byRightPath.metrics.maxGba}f${byRightPath.metrics.appliedFar || 0}`
       : '';
-    const metricsFingerprint = `${metricsBase}#v3#c${compCount}`;
+    const metricsFingerprint = `${metricsBase}#v4#c${compCount}`;
 
     const cachedAnalysis = await this.cache.getAIAnalysis(codes, mun, st, metricsFingerprint);
     if (cachedAnalysis) {
@@ -903,16 +903,6 @@ export class EntitlementComparisonEngine {
     }
 
     // ── 4. Build enriched prompt ──────────────────────────────────────────────
-    const pathSummaries = paths.map(p => ({
-      key: p.key,
-      label: p.label,
-      zoningCode: p.zoningCode,
-      risk: p.risk,
-      description: p.description,
-      metrics: p.metrics,
-      municodeUrl: p.zoningCode ? municodeUrls[p.zoningCode] || null : null,
-    }));
-
     const compsSection = comps.length > 0
       ? `COMPARABLE PROJECTS IN ${mun.toUpperCase()} (${compCount} total, showing top ${comps.length}):\n` +
         comps.map(c =>
@@ -938,7 +928,25 @@ export class EntitlementComparisonEngine {
       ? `ZONING ORDINANCE TEXT (${subject.baseDistrictCode}, ${mun}):\n${trimmedOrdinance}`
       : '';
 
-    const prompt = `You are a senior real estate entitlement analyst. Analyze entitlement paths for a development site using the actual zoning ordinance, comparable project data, and entitlement timelines provided below.
+    // Strip raw metrics from what Claude sees for path context — prevents regurgitating engine outputs
+    const pathContext = paths.map(p => ({
+      key: p.key,
+      label: p.label,
+      zoningCode: p.zoningCode,
+      risk: p.risk,
+      description: p.description,
+      municodeUrl: p.zoningCode ? municodeUrls[p.zoningCode] || null : null,
+    }));
+    // Keep full metrics separately, only for discrepancy-flagging text
+    const metricsForFlagging = paths.map(p => ({
+      key: p.key,
+      engineComputedUnits: p.metrics.maxUnits,
+      engineComputedFar: p.metrics.appliedFar,
+      engineComputedDensity: p.metrics.maxDensity,
+      engineComputedStories: p.metrics.maxStories,
+    }));
+
+    const prompt = `You are a senior real estate entitlement analyst. Your job is to provide analysis grounded in the ACTUAL ORDINANCE and BENCHMARK DATA provided below — not in the automated engine's computed numbers.
 
 ${ordinanceSection}
 
@@ -953,42 +961,48 @@ SUBJECT PROPERTY:
 - Property Type: ${subject.propertyType}
 - Active Overlays: ${subject.overlays.length > 0 ? subject.overlays.map((o: any) => o.name || o.code || 'unnamed').join(', ') : 'None'}
 
-COMPUTED ENTITLEMENT PATHS:
-${JSON.stringify(pathSummaries, null, 2)}
+ENTITLEMENT PATHS (labels and risk levels only — do not use these as a source of metric values):
+${JSON.stringify(pathContext, null, 2)}
+
+ENGINE-COMPUTED NUMBERS (provided for cross-checking only — these may contain errors):
+${JSON.stringify(metricsForFlagging, null, 2)}
 
 INSTRUCTIONS:
-For each entitlement path, write a 2-3 sentence "Agent Analysis" grounded in the three data sources above:
-1. Cite specific ordinance values (e.g., "Section 16-19A sets residential FAR at 1.49 and nonresidential at 2.50, yielding a combined ceiling of 3.99").
-2. Reference comparable projects where they exist (e.g., "8 Atlanta CUP projects averaged 180 days to approval").
-3. State a timeline estimate anchored to the benchmark data (e.g., "~10 months based on 12 Atlanta rezones averaging 302 days, ranging 126–420").
-4. For overlay paths (BeltLine, etc.): clarify these are DESIGN overlays — they modify ground-floor activation, parking standards, and build-to lines, but do NOT create an independent density path. The underlying base district FAR and density limits still apply.
-5. Flag discrepancies between the computed metric and the ordinance (e.g., if the computed FAR differs from the ordinance's combined FAR ceiling, note which is correct and why).
+Part A — Write a 2-3 sentence "Agent Analysis" for each path using the ORDINANCE TEXT and BENCHMARK DATA above (not the engine numbers). Each insight must:
+1. Cite the specific ordinance section and actual values (e.g., "§16-19A sets combined FAR at 3.99: residential 1.49 + nonresidential 2.50").
+2. Reference comparable projects where they exist (e.g., "6 Atlanta CUP projects averaged 180 days to approval").
+3. Flag any discrepancy between the engine-computed number and the ordinance's actual limit, and state which is correct.
+4. For overlay paths: clarify they are DESIGN overlays (modify build-to lines, ground-floor activation, parking) — they do NOT create an independent density path. Base district FAR and density limits still apply.
 
-You MUST also generate exactly these 4 extraRows (new categories not already in the standard table):
+Part B — Generate exactly these 4 extraRows. *** Values MUST be derived from the ZONING ORDINANCE TEXT and BENCHMARK DATA sections above. Do NOT copy any number from the ENGINE-COMPUTED NUMBERS section. ***
 
-1. key="timelineEstimate", label="Est. Timeline" — For each path, write a single precise estimate like "~68 days (2 projects)" or "~302 days avg, range 126–420 (12 projects)". Use "N/A" if no benchmark data exists for that path type.
+1. key="timelineEstimate", label="Est. Timeline"
+   Values: precise estimate from ENTITLEMENT TIMELINE BENCHMARKS (e.g., "~68 days avg, 60–75 range (2 projects)"). If no benchmark data for that entitlement type, write "No benchmark data".
 
-2. key="approvalBody", label="Approval Body" — The specific entity that approves each path, e.g. "None — administrative permit", "Board of Zoning Adjustment (BZA)", "City Council + DRC", "Zoning Review Board". Be jurisdiction-specific.
+2. key="approvalBody", label="Approval Body"
+   Values: the specific approval entity for this jurisdiction (e.g., "None — admin. permit", "Board of Zoning Adjustment (BZA)", "Atlanta City Council + ZRB"). Do not invent — use what you know about Atlanta, GA.
 
-3. key="ordinanceRef", label="Ordinance Ref." — The specific code section for each path's zoning district, e.g. "§16-19A MRC-2-C" or "§16-20 MRC-3". Use the actual section numbers from the ordinance text above.
+3. key="ordinanceRef", label="Ordinance Ref."
+   Values: exact code section from the ZONING ORDINANCE TEXT above (e.g., "§16-19A MRC-2-C", "§16-20 MRC-3"). Use "--" if not stated in the ordinance text.
 
-4. key="keyRestriction", label="Key Restriction" — The single most impactful ordinance constraint for each path that a developer must know, e.g. "Combined FAR cap 3.99 (res 1.49 + nonres 2.50)", "Step-back required above 4 stories", "Ground-floor activation mandatory (BeltLine)", "Min. 10% open space". Pull from the ordinance text; do not invent restrictions.
+4. key="keyRestriction", label="Key Restriction"
+   Values: the single most impactful constraint from the ZONING ORDINANCE TEXT (not the engine numbers). Examples: "Combined FAR cap 3.99 (res 1.49 + nonres 2.50)", "Ground-floor activation mandatory", "Hardship finding required". Pull exact values from the ordinance text; write "--" if the ordinance text does not address this path.
 
 Respond in valid JSON only:
 {
   "insights": {
-    "<pathKey>": "2-3 sentence grounded analysis"
+    "<pathKey>": "2-3 sentence analysis"
   },
   "extraRows": [
-    { "key": "timelineEstimate", "label": "Est. Timeline", "values": { "<pathKey>": "value per path" } },
-    { "key": "approvalBody",     "label": "Approval Body",  "values": { "<pathKey>": "value per path" } },
-    { "key": "ordinanceRef",     "label": "Ordinance Ref.", "values": { "<pathKey>": "value per path" } },
-    { "key": "keyRestriction",   "label": "Key Restriction","values": { "<pathKey>": "value per path" } }
+    { "key": "timelineEstimate", "label": "Est. Timeline", "values": { "<pathKey>": "value" } },
+    { "key": "approvalBody",     "label": "Approval Body",  "values": { "<pathKey>": "value" } },
+    { "key": "ordinanceRef",     "label": "Ordinance Ref.", "values": { "<pathKey>": "value" } },
+    { "key": "keyRestriction",   "label": "Key Restriction","values": { "<pathKey>": "value" } }
   ],
-  "summary": "2-3 sentence overall recommendation citing the most favorable risk-adjusted path and its timeline"
+  "summary": "2-3 sentence recommendation citing the best risk-adjusted path and its benchmark-grounded timeline"
 }
 
-Values must be short (under 60 chars). Use actual section numbers and benchmark counts from the data above. Do not add rows beyond these four.`;
+Keep values under 70 characters. Do not add rows beyond these four.`;
 
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), 90000);
