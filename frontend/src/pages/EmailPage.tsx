@@ -45,7 +45,7 @@ const FONTS = {
   sans: "'IBM Plex Sans', -apple-system, sans-serif",
 };
 
-type ViewType = 'inbox' | 'sent' | 'flagged' | 'deals' | 'pst-imports' | 'unread' | 'tasks';
+type ViewType = 'inbox' | 'deals' | 'tasks' | 'network';
 type FilterType = 'all' | 'unread' | 'critical' | 'deal-linked' | 'attachments';
 type SidePanelTab = 'actions' | 'deal' | 'team' | 'tasks';
 
@@ -313,16 +313,10 @@ export function EmailPage() {
       const statsRes = await inboxService.getStats();
       if (statsRes.success) setStats(statsRes.data);
 
-      if (activeView === 'pst-imports') {
-        const pstRes = await inboxService.getPstImports({
-          limit: 100,
-          search: searchQuery.trim() || undefined,
-        });
-        if (pstRes.success) setEmails(pstRes.data);
+      if (activeView === 'network') {
+        setEmails([]);
       } else {
         const filters: InboxFilters = { limit: 100 };
-        if (activeView === 'flagged') filters.flagged_only = true;
-        if (activeView === 'unread') filters.unread_only = true;
         if (activeView === 'deals') filters.deal_linked = true;
         if (searchQuery.trim()) filters.search = searchQuery.trim();
         const emailsRes = await inboxService.getEmails(filters);
@@ -508,14 +502,11 @@ export function EmailPage() {
     emails.find(e => e.id === selectedEmailId) || null
   , [emails, selectedEmailId]);
 
-  const views: { id: ViewType; label: string; count: number | null }[] = [
+  const views: { id: ViewType; label: string; count: number | null; disabled?: boolean }[] = [
     { id: 'inbox', label: 'Inbox', count: stats?.unread ?? null },
-    { id: 'sent', label: 'Sent', count: null },
-    { id: 'flagged', label: 'Flagged', count: stats?.flagged ?? null },
-    { id: 'deals', label: 'Deal-Linked', count: stats?.deal_related ?? null },
-    { id: 'pst-imports', label: 'PST Imports', count: stats?.pst_imports ?? null },
-    { id: 'unread', label: 'Unread', count: stats?.unread ?? null },
+    { id: 'deals', label: 'By Deal', count: stats?.deal_related ?? null },
     { id: 'tasks', label: 'Tasks', count: null },
+    { id: 'network', label: 'Network', count: null, disabled: true },
   ];
 
   const filters: { id: FilterType; label: string; count: number }[] = [
@@ -530,19 +521,24 @@ export function EmailPage() {
     return emails.filter(e => e.has_signal || e.is_flagged || e.deal_id).length;
   }, [emails]);
 
+  const readyActionsCount = useMemo(() => {
+    return emails.filter(e => e.is_flagged || e.has_signal).length;
+  }, [emails]);
+
   const summaryStats = useMemo(() => {
-    const pstCount = emails.filter(e => e.external_id?.startsWith('pst-')).length;
-    const dealLinked = emails.filter(e => e.deal_id).length;
+    const newOpps = emails.filter(e => classifyEmail(e) === 'new-opportunity').length;
+    const dealEvents = emails.filter(e => classifyEmail(e) === 'deal-event').length;
+    const deadlines = emails.filter(e => e.is_flagged).length;
     const withDocs = emails.filter(e => e.has_attachments).length;
-    const unread = emails.filter(e => !e.is_read).length;
+    const tasksCreated = emails.filter(e => e.deal_id).length;
     return [
-      { label: "Total Emails", value: String(stats?.total ?? emails.length), color: T.accent.blue },
-      { label: "Unread", value: String(unread), color: T.accent.amber },
-      { label: "Deal-Linked", value: String(dealLinked), color: T.accent.green },
-      { label: "PST Imported", value: String(pstCount), color: T.accent.cyan },
-      { label: "With Attachments", value: String(withDocs), color: T.accent.purple },
+      { label: "New Opportunities", value: String(newOpps), color: T.accent.green },
+      { label: "Deal Events", value: String(dealEvents), color: T.accent.blue },
+      { label: "Deadlines This Week", value: String(deadlines), color: T.accent.red },
+      { label: "Docs to Extract", value: String(withDocs), color: T.accent.purple },
+      { label: "Tasks Created", value: String(tasksCreated), color: T.accent.amber },
     ];
-  }, [emails, stats]);
+  }, [emails]);
 
   return (
     <div style={{
@@ -598,14 +594,18 @@ export function EmailPage() {
           <span style={{ fontFamily: FONTS.mono, fontSize: 13, fontWeight: 700, color: T.accent.blue, letterSpacing: 1 }}>COMMS</span>
           <div style={{ width: 1, height: 20, background: T.border.subtle }} />
           {views.map(v => (
-            <button key={v.id} onClick={() => { setActiveView(v.id); setActiveFilter('all'); }} style={{
-              background: activeView === v.id ? `${T.accent.blue}15` : "transparent",
-              border: activeView === v.id ? `1px solid ${T.accent.blue}40` : "1px solid transparent",
-              borderRadius: 6, padding: "5px 12px",
-              color: activeView === v.id ? T.accent.blue : T.text.secondary,
-              fontSize: 12, fontFamily: FONTS.sans, fontWeight: 500, cursor: "pointer",
-              display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
-            }}>
+            <button key={v.id}
+              onClick={() => { if (!v.disabled) { setActiveView(v.id); setActiveFilter('all'); } }}
+              style={{
+                background: activeView === v.id ? `${T.accent.blue}15` : "transparent",
+                border: activeView === v.id ? `1px solid ${T.accent.blue}40` : "1px solid transparent",
+                borderRadius: 6, padding: "5px 12px",
+                color: v.disabled ? T.text.tertiary : activeView === v.id ? T.accent.blue : T.text.secondary,
+                fontSize: 12, fontFamily: FONTS.sans, fontWeight: 500,
+                cursor: v.disabled ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
+                opacity: v.disabled ? 0.5 : 1,
+              }}>
               {v.label}
               {v.count !== null && (
                 <span style={{
@@ -644,6 +644,16 @@ export function EmailPage() {
             )}
             <kbd style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono, marginLeft: "auto", padding: "1px 5px", background: T.bg.primary, borderRadius: 3, border: `1px solid ${T.border.subtle}` }}>{"\u2318"}K</kbd>
           </div>
+
+          <button
+            onClick={() => { setComposeMode('reply'); setReplyTo(''); setReplyBody(''); setReplyCc(''); setSelectedEmailId(null); }}
+            style={{
+              background: T.accent.blue, border: "none", borderRadius: 6,
+              color: "#fff", fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600,
+              padding: "7px 16px", cursor: "pointer",
+            }}>
+            Compose
+          </button>
         </div>
       </div>
 
@@ -651,7 +661,7 @@ export function EmailPage() {
         display: "flex", alignItems: "center", gap: 16, padding: "8px 20px",
         borderBottom: `1px solid ${T.border.subtle}`, background: `${T.accent.blue}05`, flexShrink: 0,
       }}>
-        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase" as const, letterSpacing: 1 }}>Summary</span>
+        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, textTransform: "uppercase" as const, letterSpacing: 1 }}>Today</span>
         <div style={{ display: "flex", gap: 12, flex: 1, overflowX: "auto" as const }}>
           {summaryStats.map((stat, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -660,134 +670,16 @@ export function EmailPage() {
             </div>
           ))}
         </div>
+        <button style={{
+          background: "transparent", border: `1px solid ${T.accent.green}40`,
+          borderRadius: 5, color: T.accent.green, fontSize: 10, fontFamily: FONTS.mono,
+          padding: "4px 10px", cursor: "pointer", letterSpacing: 0.5, whiteSpace: "nowrap" as const,
+        }}>
+          EXECUTE ALL READY ({readyActionsCount})
+        </button>
       </div>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <div style={{
-          width: 180, borderRight: `1px solid ${T.border.subtle}`,
-          display: "flex", flexDirection: "column" as const, flexShrink: 0,
-          background: T.bg.secondary, padding: "12px 0",
-        }}>
-          <div style={{ padding: "0 12px", marginBottom: 16 }}>
-            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
-              Folders
-            </div>
-            {views.map(v => (
-              <div key={v.id} onClick={() => { setActiveView(v.id); setActiveFilter('all'); }} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "7px 10px", borderRadius: 5, cursor: "pointer", marginBottom: 1,
-                background: activeView === v.id ? `${T.accent.blue}12` : "transparent",
-                color: activeView === v.id ? T.accent.blue : T.text.secondary,
-                fontSize: 12, fontFamily: FONTS.sans, transition: "all 0.12s",
-              }}>
-                <span>{v.label}</span>
-                {v.count !== null && v.count > 0 && (
-                  <span style={{
-                    fontSize: 10, fontFamily: FONTS.mono, minWidth: 18, textAlign: "center" as const,
-                    color: activeView === v.id ? T.accent.blue : T.text.tertiary,
-                  }}>{v.count}</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ padding: "0 12px", marginTop: 12 }}>
-            <div
-              onClick={() => setAccountsPanelOpen(prev => !prev)}
-              style={{
-                fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary,
-                letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8,
-                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                userSelect: "none" as const,
-              }}
-            >
-              <span style={{ fontSize: 8, transition: "transform 0.15s", transform: accountsPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
-              Connected Accounts
-              <span style={{ fontSize: 9, color: T.text.tertiary, marginLeft: "auto" }}>{connectedAccounts.length}</span>
-            </div>
-            {connectNotice && (
-              <div style={{
-                fontSize: 10, color: connectNotice.includes('failed') || connectNotice.includes('Failed') ? T.accent.red : T.accent.green,
-                padding: "6px 8px", background: T.bg.tertiary, borderRadius: 4, marginBottom: 6,
-                border: `1px solid ${connectNotice.includes('failed') || connectNotice.includes('Failed') ? T.accent.red + '30' : T.accent.green + '30'}`,
-              }}>
-                {connectNotice}
-              </div>
-            )}
-            {accountsPanelOpen && connectedAccounts.length === 0 && !connectNotice && (
-              <div style={{ fontSize: 10, color: T.text.tertiary, padding: "6px 8px", textAlign: "center" as const }}>
-                No accounts connected
-              </div>
-            )}
-            {accountsPanelOpen && connectedAccounts.map(acct => (
-              <div key={acct.id} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
-                background: T.bg.tertiary, borderRadius: 5, marginBottom: 4,
-                border: `1px solid ${T.border.subtle}`,
-              }}>
-                <span style={{ fontSize: 12, flexShrink: 0, lineHeight: 1 }}>
-                  {acct.provider === 'google' ? '\u2709' : '\uD83D\uDCE8'}
-                </span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 11, color: T.text.primary, fontFamily: FONTS.sans, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, flex: 1 }}>
-                      {acct.email_address}
-                    </div>
-                    <span style={{
-                      fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2, flexShrink: 0,
-                      color: acct.needs_reauth ? T.accent.amber : T.accent.green,
-                      background: acct.needs_reauth ? `${T.accent.amber}15` : `${T.accent.green}15`,
-                    }}>
-                      {acct.needs_reauth ? 'Needs Re-auth' : 'Active'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
-                    {acct.provider === 'google' ? 'Gmail' : acct.provider === 'microsoft' ? 'Outlook' : acct.provider}
-                    {` \u00B7 ${acct.email_count ?? 0} emails`}
-                    {acct.last_sync_at ? ` \u00B7 ${formatDate(acct.last_sync_at)}` : ' \u00B7 never synced'}
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleSyncAccount(acct.id)}
-                  disabled={syncingAccountId === acct.id}
-                  style={{
-                    background: "transparent", border: "none", cursor: syncingAccountId === acct.id ? "wait" : "pointer",
-                    color: syncingAccountId === acct.id ? T.text.tertiary : T.accent.blue,
-                    fontSize: 10, fontFamily: FONTS.mono, padding: "2px 4px", flexShrink: 0,
-                  }}
-                >
-                  {syncingAccountId === acct.id ? '\u21BB' : 'sync'}
-                </button>
-              </div>
-            ))}
-            {accountsPanelOpen && <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-              <button onClick={handleConnectGmail} style={{
-                flex: 1, padding: "6px 0", fontSize: 10, fontFamily: FONTS.mono,
-                background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}25`,
-                borderRadius: 4, color: T.accent.blue, cursor: "pointer",
-              }}>
-                + Gmail
-              </button>
-              <button onClick={handleConnectMicrosoft} style={{
-                flex: 1, padding: "6px 0", fontSize: 10, fontFamily: FONTS.mono,
-                background: `${T.accent.purple}10`, border: `1px solid ${T.accent.purple}25`,
-                borderRadius: 4, color: T.accent.purple, cursor: "pointer",
-              }}>
-                + Outlook
-              </button>
-            </div>}
-          </div>
-
-          <div style={{ padding: "0 12px", marginTop: "auto" }}>
-            <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const, marginBottom: 8 }}>
-              Pending Tasks
-            </div>
-            <div style={{ fontSize: 11, color: T.text.tertiary, padding: "8px 10px", background: T.bg.tertiary, borderRadius: 5, textAlign: "center" as const }}>
-              {agentActionCount > 0 ? `${agentActionCount} items need review` : 'All clear'}
-            </div>
-          </div>
-        </div>
-
         <div style={{
           width: 380, borderRight: `1px solid ${T.border.subtle}`,
           display: "flex", flexDirection: "column" as const, flexShrink: 0,
@@ -837,18 +729,13 @@ export function EmailPage() {
                       {cls.label}
                     </span>
                     {email.is_flagged && (
-                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.amber, background: `${T.accent.amber}15`, padding: "1px 5px", borderRadius: 3 }}>
-                        FLAGGED
-                      </span>
-                    )}
-                    {extractCompany(email.from_address) && (
-                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, background: T.bg.tertiary, padding: "1px 5px", borderRadius: 3 }}>
-                        {extractCompany(email.from_address)}
+                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.red, background: `${T.accent.red}15`, padding: "1px 5px", borderRadius: 3, fontWeight: 700 }}>
+                        URGENT
                       </span>
                     )}
                     {signals.length > 0 && (
-                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.green, background: `${T.accent.green}12`, padding: "1px 5px", borderRadius: 3 }}>
-                        {signals.length} action{signals.length > 1 ? 's' : ''}
+                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.green, background: `${T.accent.green}12`, padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
+                        {signals.length} READY
                       </span>
                     )}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
@@ -997,6 +884,60 @@ export function EmailPage() {
                 <div style={{ fontSize: 13, color: T.text.secondary, lineHeight: 1.7, maxWidth: 700, whiteSpace: "pre-wrap" as const, marginBottom: 24 }}>
                   {selectedDetail.body_text || selectedDetail.body_preview || selectedEmail.body_preview || 'No content available.'}
                 </div>
+
+                {emailIntel && emailIntel.actionItems && emailIntel.actionItems.filter((a: any) => !dismissedActions.has(a.text)).length > 0 && (
+                  <div style={{
+                    marginBottom: 24, padding: "14px 16px",
+                    background: `${T.accent.amber}08`, border: `1px solid ${T.accent.amber}25`,
+                    borderRadius: 8, maxWidth: 700,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.accent.amber }} />
+                        <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, letterSpacing: 1 }}>
+                          AGENT RECOMMENDATIONS
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleExecuteAction(emailIntel.actionItems.find((a: any) => !dismissedActions.has(a.text)))}
+                        style={{
+                          background: T.accent.green, border: "none", borderRadius: 4,
+                          color: "#fff", fontSize: 10, fontFamily: FONTS.mono, fontWeight: 600,
+                          padding: "4px 10px", cursor: "pointer", letterSpacing: 0.5,
+                        }}>
+                        EXECUTE TOP ACTION
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+                      {emailIntel.actionItems.filter((a: any) => !dismissedActions.has(a.text)).map((item: any, i: number) => (
+                        <div key={i} style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "6px 10px", borderRadius: 5,
+                          background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                        }}>
+                          <span style={{
+                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                            color: item.priority === 'urgent' ? T.accent.red : item.priority === 'high' ? T.accent.amber : T.text.tertiary,
+                            background: item.priority === 'urgent' ? `${T.accent.red}15` : item.priority === 'high' ? `${T.accent.amber}15` : T.bg.tertiary,
+                          }}>{(item.priority || 'normal').toUpperCase()}</span>
+                          <span style={{ fontSize: 11, color: T.text.primary, lineHeight: 1.3 }}>{item.suggestedTask}</span>
+                          <div style={{ display: "flex", gap: 3, marginLeft: "auto" }}>
+                            <button onClick={() => handleExecuteAction(item)} style={{
+                              fontSize: 9, fontFamily: FONTS.mono, padding: "2px 7px",
+                              background: T.accent.blue, border: "none", borderRadius: 3,
+                              color: "#fff", cursor: "pointer",
+                            }}>Add</button>
+                            <button onClick={() => handleDismissAction(item.text)} style={{
+                              fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px",
+                              background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 3,
+                              color: T.text.tertiary, cursor: "pointer",
+                            }}>✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {replySent && (
                   <div style={{
@@ -1309,53 +1250,40 @@ export function EmailPage() {
           <div style={{ flex: 1, overflowY: "auto" as const, padding: 16 }}>
             {sidePanel === 'actions' && (
               <div>
-                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 14, textTransform: "uppercase" as const }}>
                   Quick Actions
                 </div>
-                {selectedEmail && emailIntel && emailIntel.actionItems.length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    {emailIntel.actionItems.length > 0 && (
-                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                        <button onClick={() => handleExecuteAction(emailIntel.actionItems.find((a: any) => !dismissedActions.has(a.text)) || emailIntel.actionItems[0])} style={{
-                          flex: 1, padding: "8px 12px",
-                          background: T.accent.green, border: "none", borderRadius: 6,
-                          color: "#fff", fontSize: 11, fontFamily: FONTS.sans, fontWeight: 600, cursor: "pointer",
-                        }}>Execute</button>
-                      </div>
-                    )}
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.amber, marginBottom: 6 }}>
-                      {emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).length} action item{emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).length !== 1 ? 's' : ''} detected
-                    </div>
-                    {emailIntel.actionItems.filter(a => !dismissedActions.has(a.text)).map((item, i) => (
-                      <div key={i} style={{
-                        padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
-                        borderRadius: 6, marginBottom: 6,
-                      }}>
-                        <div style={{ fontSize: 11, color: T.text.primary, marginBottom: 4, lineHeight: 1.4 }}>{item.suggestedTask}</div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <span style={{
-                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                            color: item.priority === 'urgent' ? T.accent.red : item.priority === 'high' ? T.accent.amber : T.text.tertiary,
-                            background: item.priority === 'urgent' ? `${T.accent.red}15` : item.priority === 'high' ? `${T.accent.amber}15` : T.bg.tertiary,
-                          }}>{item.priority}</span>
-                          <button onClick={() => handleExecuteAction(item)} style={{
-                            marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
-                            background: T.accent.green, border: "none", borderRadius: 3,
-                            color: "#fff", cursor: "pointer",
-                          }}>Add Task</button>
-                          <button onClick={() => handleDismissAction(item.text)} style={{
-                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
-                            background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 3,
-                            color: T.text.tertiary, cursor: "pointer",
-                          }}>Dismiss</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {[
+                    { label: "Create / Update Deal", icon: "\uD83C\uDFE2", color: T.accent.blue, action: handleLinkToDeal },
+                    { label: "Schedule Tour", icon: "\uD83D\uDCCD", color: T.accent.cyan, action: () => {} },
+                    { label: "Draft Offer Letter", icon: "\u270D\uFE0F", color: T.accent.purple, action: () => { setComposeMode('reply'); } },
+                    { label: "Research Comps", icon: "\uD83D\uDD0D", color: T.accent.amber, action: () => {} },
+                    { label: "Flag for Review", icon: "\u26A0\uFE0F", color: T.accent.red,
+                      action: () => { if (selectedEmail) inboxService.flagEmail(selectedEmail.id, !selectedEmail.is_flagged).then(() => loadInbox()); } },
+                    { label: "Property Report", icon: "\uD83D\uDCCB", color: T.accent.green, action: () => {} },
+                    { label: "Schedule Follow-up", icon: "\u23F0", color: T.accent.blue, action: () => {} },
+                    { label: "Add to Campaign", icon: "\uD83D\uDCE3", color: T.accent.cyan, action: () => {} },
+                  ].map((act, i) => (
+                    <button key={i} onClick={act.action} style={{
+                      display: "flex", flexDirection: "column" as const, alignItems: "flex-start",
+                      gap: 4, padding: "10px 10px",
+                      background: T.bg.card, border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 7, cursor: "pointer", textAlign: "left" as const,
+                      transition: "border-color 0.12s",
+                    }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = act.color + '60'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = T.border.subtle; }}
+                    >
+                      <span style={{ fontSize: 16, lineHeight: 1 }}>{act.icon}</span>
+                      <span style={{ fontSize: 10, fontFamily: FONTS.sans, color: T.text.primary, fontWeight: 500, lineHeight: 1.3 }}>{act.label}</span>
+                    </button>
+                  ))}
+                </div>
+
                 {selectedEmail && emailIntel && emailIntel.propertyExtractions.length > 0 && (
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6, textTransform: "uppercase" as const }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>
                       Extracted Properties
                     </div>
                     {emailIntel.propertyExtractions.map((prop: any, i: number) => (
@@ -1389,7 +1317,7 @@ export function EmailPage() {
                 )}
                 {selectedEmail && emailIntel && emailIntel.newsExtraction && (
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>
                       Private Intelligence
                     </div>
                     <div style={{
@@ -1406,32 +1334,8 @@ export function EmailPage() {
                       <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>
                         {emailIntel.newsExtraction.summary}
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginBottom: 4 }}>
-                        <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>{emailIntel.newsExtraction.category}</span>
-                        {emailIntel.newsExtraction.impact_score != null && (
-                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.amber }}>Impact: {emailIntel.newsExtraction.impact_score}</span>
-                        )}
-                        {emailIntel.newsExtraction.credibility_score != null && (
-                          <span style={{
-                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                            color: emailIntel.newsExtraction.credibility_score > 70 ? T.accent.green : T.accent.amber,
-                            background: emailIntel.newsExtraction.credibility_score > 70 ? `${T.accent.green}15` : `${T.accent.amber}15`,
-                          }}>Credibility: {emailIntel.newsExtraction.credibility_score}</span>
-                        )}
-                        {emailIntel.newsExtraction.impact_radius && (
-                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>
-                            Radius: {emailIntel.newsExtraction.impact_radius}
-                          </span>
-                        )}
-                        {emailIntel.newsExtraction.sentiment_score != null && (
-                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.text.tertiary }}>
-                            Sentiment: {emailIntel.newsExtraction.sentiment_score > 0 ? '+' : ''}{emailIntel.newsExtraction.sentiment_score.toFixed(1)}
-                          </span>
-                        )}
-                      </div>
                       <a href="/dashboard/news" style={{
-                        fontSize: 9, fontFamily: FONTS.mono, color: T.accent.blue,
-                        textDecoration: "none", cursor: "pointer",
+                        fontSize: 9, fontFamily: FONTS.mono, color: T.accent.blue, textDecoration: "none", cursor: "pointer",
                       }}>View in News Feed {"\u2192"}</a>
                     </div>
                   </div>
@@ -1441,26 +1345,6 @@ export function EmailPage() {
                     Loading intelligence...
                   </div>
                 )}
-                {[
-                  { label: "Link to Deal", icon: "\uD83D\uDD17", desc: "Associate this thread with a deal", action: handleLinkToDeal },
-                  { label: "AI Summary", icon: "\u2728", desc: "Summarize thread with context", action: () => {} },
-                  { label: "Draft Response", icon: "\u270D\uFE0F", desc: "AI-composed reply", action: () => {} },
-                  { label: "Set Follow-up", icon: "\u23F0", desc: "Schedule reminder", action: () => {} },
-                ].map((action, i) => (
-                  <div key={i} onClick={action.action} style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                    borderRadius: 6, cursor: "pointer", marginBottom: 2, transition: "background 0.12s",
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.background = T.bg.hover; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-                  >
-                    <span style={{ fontSize: 14 }}>{action.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{action.label}</div>
-                      <div style={{ fontSize: 10, color: T.text.tertiary }}>{action.desc}</div>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
 
@@ -1469,54 +1353,61 @@ export function EmailPage() {
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
                   Linked Deal
                 </div>
-                <div style={{ padding: 12, background: T.bg.card, borderRadius: 8, border: `1px solid ${T.border.subtle}`, marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>
+                <div style={{ padding: 14, background: T.bg.card, borderRadius: 8, border: `1px solid ${T.border.subtle}`, marginBottom: 14 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 10 }}>
                     {dealDetails?.name || selectedEmail.deal_name || 'Deal'}
                   </div>
-                  {dealDetails && (
-                    <>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const, marginBottom: 6 }}>
-                        {dealDetails.status && (
-                          <span style={{
-                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
-                            color: dealDetails.status === 'active' ? T.accent.green : T.text.tertiary,
-                            background: dealDetails.status === 'active' ? `${T.accent.green}15` : T.bg.tertiary,
-                          }}>{dealDetails.status}</span>
-                        )}
-                        {dealDetails.tier && (
-                          <span style={{
-                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
-                            color: T.accent.blue, background: `${T.accent.blue}15`,
-                          }}>{dealDetails.tier}</span>
-                        )}
-                        {dealDetails.project_type && (
-                          <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary }}>{dealDetails.project_type}</span>
-                        )}
-                        {(dealDetails.pipeline_stage || dealDetails.pipelineStage || dealDetails.stage) && (
-                          <span style={{
-                            fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
-                            color: T.accent.purple, background: `${T.accent.purple}15`,
-                          }}>{dealDetails.pipeline_stage || dealDetails.pipelineStage || dealDetails.stage}</span>
-                        )}
+                  {dealDetails ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
+                        <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, marginBottom: 3 }}>JEDI SCORE</div>
+                        <div style={{ fontSize: 18, fontFamily: FONTS.mono, fontWeight: 700,
+                          color: dealDetails.triage_score >= 80 ? T.accent.green : dealDetails.triage_score >= 50 ? T.accent.amber : T.accent.red }}>
+                          {dealDetails.triage_score ?? '—'}
+                        </div>
                       </div>
-                      {dealDetails.budget && (
-                        <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: FONTS.mono }}>
-                          Budget: ${(dealDetails.budget / 1000000).toFixed(1)}M
+                      <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
+                        <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, marginBottom: 3 }}>STRATEGY</div>
+                        <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, lineHeight: 1.3 }}>
+                          {dealDetails.deal_category || dealDetails.project_type || '—'}
                         </div>
-                      )}
-                      {dealDetails.target_units && (
-                        <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: FONTS.mono }}>
-                          Target: {dealDetails.target_units} units
+                      </div>
+                      <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
+                        <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, marginBottom: 3 }}>PIPELINE VALUE</div>
+                        <div style={{ fontSize: 13, fontFamily: FONTS.mono, fontWeight: 600, color: T.accent.cyan }}>
+                          {dealDetails.budget ? `$${(dealDetails.budget / 1000000).toFixed(1)}M` : '—'}
                         </div>
-                      )}
-                    </>
-                  )}
-                  {!dealDetails && (
+                      </div>
+                      <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
+                        <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, marginBottom: 3 }}>DEADLINE</div>
+                        <div style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.text.primary }}>
+                          {dealDetails.timeline_end ? new Date(dealDetails.timeline_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
                     <DealStageIndicator stage="prospect" name={selectedEmail.deal_name || ''} />
+                  )}
+                  {dealDetails && (
+                    <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                      {dealDetails.status && (
+                        <span style={{
+                          fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
+                          color: dealDetails.status === 'active' ? T.accent.green : T.text.tertiary,
+                          background: dealDetails.status === 'active' ? `${T.accent.green}15` : T.bg.tertiary,
+                        }}>{dealDetails.status}</span>
+                      )}
+                      {(dealDetails.pipeline_stage || dealDetails.pipelineStage) && (
+                        <span style={{
+                          fontSize: 9, fontFamily: FONTS.mono, padding: "2px 6px", borderRadius: 3,
+                          color: T.accent.purple, background: `${T.accent.purple}15`,
+                        }}>{dealDetails.pipeline_stage || dealDetails.pipelineStage}</span>
+                      )}
+                    </div>
                   )}
                 </div>
                 <button onClick={() => { window.location.href = `/dashboard/deals/${selectedEmail.deal_id}`; }} style={{
-                  width: "100%", marginTop: 12, padding: "8px",
+                  width: "100%", padding: "9px",
                   background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}30`,
                   borderRadius: 6, color: T.accent.blue, fontSize: 11,
                   fontFamily: FONTS.sans, fontWeight: 500, cursor: "pointer",
@@ -1542,7 +1433,7 @@ export function EmailPage() {
                   <div style={{ textAlign: "center" as const, padding: "20px", marginBottom: 16 }}>
                     <div style={{ fontSize: 20, marginBottom: 8 }}>{"\uD83D\uDC65"}</div>
                     <div style={{ fontSize: 12, color: T.text.secondary, marginBottom: 4 }}>No deal linked</div>
-                    <div style={{ fontSize: 10, color: T.text.tertiary }}>Link this email to a deal to see team members and activity</div>
+                    <div style={{ fontSize: 10, color: T.text.tertiary }}>Link this email to a deal to see team members</div>
                     <button onClick={handleLinkToDeal} style={{
                       marginTop: 12, padding: "6px 16px", background: `${T.accent.blue}10`,
                       border: `1px solid ${T.accent.blue}30`, borderRadius: 6,
@@ -1551,37 +1442,62 @@ export function EmailPage() {
                     }}>Link to Deal</button>
                   </div>
                 )}
-                {selectedEmail && teamMembers.length > 0 && (
+                {selectedEmail && (
                   <>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 12, textTransform: "uppercase" as const }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 10, textTransform: "uppercase" as const }}>
                       Deal Team
                     </div>
-                    {teamMembers.map((member: any) => (
+                    {(teamMembers.length > 0 ? teamMembers : []).map((member: any) => (
                       <div key={member.id} style={{
-                        display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                        background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 6,
+                        display: "flex", alignItems: "center", gap: 10, padding: "9px 11px",
+                        background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 5,
                       }}>
                         <div style={{
                           width: 32, height: 32, borderRadius: 6, background: `${T.accent.blue}15`,
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue,
+                          fontSize: 10, fontFamily: FONTS.mono, color: T.accent.blue, fontWeight: 600, flexShrink: 0,
                         }}>
                           {(member.name || '?').slice(0, 2).toUpperCase()}
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{member.name}</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                             <span style={{
                               fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                              color: member.status === 'active' ? T.accent.green : T.accent.amber,
-                              background: member.status === 'active' ? `${T.accent.green}15` : `${T.accent.amber}15`,
-                            }}>{member.role}</span>
+                              color: T.accent.blue, background: `${T.accent.blue}15`,
+                            }}>{member.role || 'Member'}</span>
+                            {member.email && <span style={{ fontSize: 9, color: T.text.tertiary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{member.email}</span>}
                           </div>
-                          <div style={{ fontSize: 12, color: T.text.primary, fontWeight: 500 }}>{member.name}</div>
-                          {member.email && <div style={{ fontSize: 10, color: T.text.tertiary }}>{member.email}</div>}
-                          {member.company && <div style={{ fontSize: 10, color: T.text.tertiary }}>{member.company}</div>}
                         </div>
+                        <div style={{
+                          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                          background: member.status === 'active' ? T.accent.green : T.border.default,
+                        }} />
                       </div>
                     ))}
+                    {teamMembers.length === 0 && selectedEmail.deal_id && (
+                      <div style={{ padding: "12px", textAlign: "center" as const, color: T.text.tertiary, fontSize: 11 }}>No team members yet</div>
+                    )}
+                    {(['Lead Buyer', 'Legal', 'Finance', 'Broker'].map((role, i) => {
+                      const hasMember = teamMembers.some((m: any) => (m.role || '').toLowerCase().includes(role.toLowerCase()));
+                      if (hasMember) return null;
+                      return (
+                        <div key={i} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "9px 11px",
+                          background: "transparent", border: `1px dashed ${T.border.subtle}`, borderRadius: 6, marginBottom: 5,
+                        }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: 6, background: T.bg.tertiary,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 14, color: T.text.tertiary, flexShrink: 0,
+                          }}>+</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 11, color: T.text.tertiary }}>{role}</div>
+                            <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>Open slot</div>
+                          </div>
+                        </div>
+                      );
+                    }))}
                   </>
                 )}
 

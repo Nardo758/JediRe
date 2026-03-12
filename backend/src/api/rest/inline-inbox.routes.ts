@@ -80,7 +80,7 @@ router.get('/accounts', requireAuth, async (req: AuthenticatedRequest, res) => {
     const gmailResult = await pool.query(
       `SELECT uea.id, uea.email_address, uea.provider, uea.last_sync_at,
               uea.sync_enabled, uea.created_at, uea.token_expires_at,
-              COALESCE((SELECT COUNT(*)::int FROM emails e WHERE e.email_account_id = uea.id), 0) as email_count
+              COALESCE((SELECT COUNT(*)::int FROM emails e JOIN email_accounts ea ON ea.id = e.email_account_id WHERE ea.email_address = uea.email_address AND e.user_id = uea.user_id), 0) as email_count
        FROM user_email_accounts uea
        WHERE uea.user_id = $1
        ORDER BY uea.created_at DESC`,
@@ -409,17 +409,21 @@ router.get('/:id/intel', requireAuth, async (req: AuthenticatedRequest, res) => 
 
     let newsExtraction = null;
     try {
-      const emailRaw = await pool.query('SELECT raw_data FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
-      const linkedNewsId = emailRaw.rows[0]?.raw_data?.linkedNewsItemId;
+      const emailRaw = await pool.query('SELECT extracted_properties FROM emails WHERE id = $1 AND user_id = $2', [emailId, userId]);
+      const linkedNewsId = emailRaw.rows[0]?.extracted_properties?.linkedNewsItemId;
       if (linkedNewsId) {
-        const newsResult = await pool.query(
-          `SELECT id, title, summary, category, impact_score, sentiment_score, credibility_score, impact_radius, event_type, published_date FROM news_items WHERE id = $1`,
-          [linkedNewsId]
-        );
-        newsExtraction = newsResult.rows[0] || null;
+        try {
+          const newsResult = await pool.query(
+            `SELECT id, title, summary, category, impact_score, sentiment_score, credibility_score, impact_radius, event_type, published_date FROM news_items WHERE id = $1`,
+            [linkedNewsId]
+          );
+          newsExtraction = newsResult.rows[0] || null;
+        } catch (newsErr: any) {
+          if (newsErr.code !== '42P01') console.error('Error fetching news item:', newsErr);
+        }
       }
     } catch (e: any) {
-      if (e.code !== '42P01') console.error('Error fetching news extraction:', e);
+      if (e.code !== '42P01' && e.code !== '42703') console.error('Error fetching news extraction:', e);
     }
 
     let actionItems: any[] = [];
