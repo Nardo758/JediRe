@@ -17,6 +17,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { apiClient } from '../services/api.client';
 import {
   DealContext,
   DealMode,
@@ -352,9 +353,8 @@ export const useDealStore = create<DealStore>()(
     fetchDeals: async () => {
       set({ isLoading: true, error: null });
       try {
-        const response = await fetch('/api/v1/deals');
-        if (!response.ok) throw new Error(`Failed to fetch deals: ${response.status}`);
-        const data = await response.json();
+        const response = await apiClient.get('/api/v1/deals');
+        const data = response.data;
         const dealsList = Array.isArray(data) ? data : (Array.isArray(data?.deals) ? data.deals : []);
         set({ deals: dealsList, isLoading: false });
       } catch (error: any) {
@@ -367,10 +367,8 @@ export const useDealStore = create<DealStore>()(
 
     fetchDealContext: async (dealId: string) => {
       try {
-        const response = await fetch(`/api/v1/deals/${dealId}/context`);
-        if (!response.ok) throw new Error(`Failed to fetch deal context: ${response.status}`);
-
-        const data: DealContext = await response.json();
+        const response = await apiClient.get(`/api/v1/deals/${dealId}/context`);
+        const data: DealContext = response.data;
 
         // Recompute resolved unit mix from the fetched data
         const { resolvedUnitMix, totalUnits } = recomputeResolvedMix(data);

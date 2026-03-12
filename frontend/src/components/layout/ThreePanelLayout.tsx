@@ -106,7 +106,7 @@ export const ThreePanelLayout: React.FC<ThreePanelLayoutProps> = ({
   
   useEffect(() => {
     if (!showContent && !showMap) {
-      setShowMap(true);
+      setShowContent(true);
     }
   }, [showContent, showMap]);
 

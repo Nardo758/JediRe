@@ -30,6 +30,7 @@ export function EmailPage() {
   const [filterUnreadOnly, setFilterUnreadOnly] = useState(false);
   const [filterHasAttachment, setFilterHasAttachment] = useState(false);
   
+  const [mapError, setMapError] = useState(false);
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
@@ -68,14 +69,20 @@ export function EmailPage() {
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/light-v11',
-      center: [-84.388, 33.749],
-      zoom: 11,
-    });
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/light-v11',
+        center: [-84.388, 33.749],
+        zoom: 11,
+      });
 
-    map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+    } catch (err) {
+      console.warn('[EmailPage] Map initialization failed (WebGL likely unavailable):', err);
+      setMapError(true);
+      return;
+    }
 
     return () => {
       if (map.current) {
@@ -407,7 +414,17 @@ export function EmailPage() {
 
   // Map renderer
   const renderMap = () => (
-    <div ref={mapContainer} className="absolute inset-0" />
+    <div className="absolute inset-0">
+      <div ref={mapContainer} className="absolute inset-0" />
+      {mapError && (
+        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+          <div className="text-center text-gray-400">
+            <div className="text-3xl mb-2">🗺️</div>
+            <div className="text-sm">Map unavailable</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 
   return (
