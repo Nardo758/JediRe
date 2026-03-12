@@ -1,7 +1,16 @@
--- Migration 120: Remove any legacy demo/seed emails from the emails table
--- Only keeps real emails (PST-backflowed or connected provider emails)
--- Demo emails have no external_id or have non-provider external_ids
+-- Migration 120: Remove known demo seed emails
+-- Only deletes emails that were created by the demo seed script (migration 106)
+-- Identified by having email_account_id from the demo seed account AND
+-- no external_id (demo seeds don't set external_id)
 
 DELETE FROM emails
 WHERE external_id IS NULL
-  OR (external_id NOT LIKE 'pst-%' AND external_id NOT LIKE 'msg_%' AND external_id NOT LIKE 'AAM%');
+  AND from_address IN (
+    'sarah.chen@blackstone.com',
+    'michael.torres@cbre.com',
+    'jennifer.walsh@eastdilsecured.com',
+    'david.park@cushwake.com',
+    'notifications@jedire.com',
+    'alerts@jedire.com',
+    'system@jedire.com'
+  );
