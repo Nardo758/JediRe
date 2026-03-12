@@ -148,18 +148,16 @@ export class DataLibraryService {
 
   private async extractAndStoreCalibration(fileId: number, parsedData: any): Promise<void> {
     if (!parsedData?.preview || parsedData.preview.length < 2) return;
+    if (!parsedData.headers || !Array.isArray(parsedData.headers)) return;
 
     const fileRow = await this.pool.query(
       `SELECT city, zip_code, property_type FROM data_library_files WHERE id = $1`,
       [fileId]
     ).then(r => r.rows[0]).catch(() => null);
 
-    if (!fileRow) return;
+    if (!fileRow || !fileRow.city) return;
 
-    const city = fileRow.city || '';
-    const state = '';
-    if (!city) return;
-
+    const city = fileRow.city;
     const rows: Record<string, string>[] = parsedData.preview;
     const headers = parsedData.headers as string[];
 
@@ -175,6 +173,7 @@ export class DataLibraryService {
 
     let tourRateSum = 0, tourRateCount = 0;
     let appRateSum = 0, appRateCount = 0;
+    let leaseRateSum = 0, leaseRateCount = 0;
     let closingRatioSum = 0, closingRatioCount = 0;
 
     for (const row of rows) {
@@ -195,7 +194,12 @@ export class DataLibraryService {
         appRateCount++;
       }
 
-      if (leaseCol && traffic > 0 && leases >= 0 && leases <= traffic * 2) {
+      if (leaseCol && appCol && apps > 0 && leases >= 0 && leases <= apps * 2) {
+        leaseRateSum += leases / apps;
+        leaseRateCount++;
+      }
+
+      if (leaseCol && traffic > 0 && leases >= 0 && leases <= traffic) {
         closingRatioSum += leases / traffic;
         closingRatioCount++;
       }
@@ -209,14 +213,16 @@ export class DataLibraryService {
     await this.pool.query(
       `INSERT INTO traffic_submarket_calibration
         (submarket_id, msa_id, city, state, avg_tour_conversion, avg_closing_ratio, sample_count, last_updated)
-       VALUES ('', '', $1, $2, $3, $4, $5, NOW())
+       VALUES ('', '', $1, '', $2, $3, $4, NOW())
        ON CONFLICT (submarket_id, msa_id, city, state) DO UPDATE SET
-         avg_tour_conversion = COALESCE($3, traffic_submarket_calibration.avg_tour_conversion),
-         avg_closing_ratio = COALESCE($4, traffic_submarket_calibration.avg_closing_ratio),
+         avg_tour_conversion = COALESCE($2, traffic_submarket_calibration.avg_tour_conversion),
+         avg_closing_ratio = COALESCE($3, traffic_submarket_calibration.avg_closing_ratio),
          sample_count = traffic_submarket_calibration.sample_count + 1,
          last_updated = NOW()`,
-      [city, state, avgTourConversion, avgClosingRatio, 1]
+      [city, avgTourConversion, avgClosingRatio, 1]
     );
+
+    console.log(`📊 Data Library calibration extracted from file ${fileId}: tour_conv=${avgTourConversion?.toFixed(3)}, closing_ratio=${avgClosingRatio?.toFixed(3)}, app_rate=${appRateCount >= 2 ? (appRateSum / appRateCount).toFixed(3) : 'n/a'}, lease_rate=${leaseRateCount >= 2 ? (leaseRateSum / leaseRateCount).toFixed(3) : 'n/a'}`);
   }
 
   private async parseCSV(filePath: string): Promise<any> {

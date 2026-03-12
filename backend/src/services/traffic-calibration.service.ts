@@ -224,10 +224,13 @@ class TrafficCalibrationService {
       let dataLibraryFileCount = 0;
       try {
         const lookupCity = cal.city || city;
-        const lookupState = cal.state || state;
         if (lookupCity) {
           const dlResult = await pool.query(
-            `SELECT COUNT(*) FROM data_library_files WHERE LOWER(city) = LOWER($1) AND parsing_status = 'complete'`,
+            `SELECT COUNT(*) FROM data_library_files
+             WHERE LOWER(city) = LOWER($1)
+               AND parsing_status = 'complete'
+               AND parsed_data IS NOT NULL
+               AND parsed_data::text LIKE '%traffic%'`,
             [lookupCity]
           );
           dataLibraryFileCount = parseInt(dlResult.rows[0]?.count || '0');

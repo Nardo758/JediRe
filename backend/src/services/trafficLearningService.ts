@@ -377,11 +377,18 @@ export class TrafficLearningService {
         lease_rate: DEFAULT_RATES.lease_rate,
       };
 
-      if (calRow.avg_tour_conversion && Number(calRow.avg_tour_conversion) > 0) {
-        overrides.tour_rate = Number(calRow.avg_tour_conversion);
+      const tourConv = calRow.avg_tour_conversion ? Number(calRow.avg_tour_conversion) : 0;
+      const closingRatio = calRow.avg_closing_ratio ? Number(calRow.avg_closing_ratio) : 0;
+
+      if (tourConv > 0) {
+        overrides.tour_rate = tourConv;
       }
-      if (calRow.avg_closing_ratio && Number(calRow.avg_closing_ratio) > 0) {
-        overrides.lease_rate = Number(calRow.avg_closing_ratio);
+      if (closingRatio > 0 && tourConv > 0) {
+        const impliedLeaseFromTraffic = closingRatio / tourConv;
+        overrides.app_rate = Math.min(1.0, impliedLeaseFromTraffic / DEFAULT_RATES.lease_rate);
+        overrides.lease_rate = Math.min(1.0, closingRatio / (tourConv * overrides.app_rate) || DEFAULT_RATES.lease_rate);
+      } else if (closingRatio > 0) {
+        overrides.lease_rate = closingRatio;
       }
 
       console.log(`📊 Submarket calibration applied for property ${propertyId}: tour_rate=${overrides.tour_rate}, lease_rate=${overrides.lease_rate} (${calRow.sample_count} deals)`);
