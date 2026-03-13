@@ -5,7 +5,7 @@ import { requireAuth } from '../../middleware/auth';
 export default function createUnifiedPropertiesRoutes(pool: Pool) {
   const router = Router();
 
-  router.get('/unified', async (req, res) => {
+  router.get('/unified', requireAuth, async (req, res) => {
     try {
       const city = (req.query.city as string) || (req.query.market as string);
       const search = req.query.search as string;

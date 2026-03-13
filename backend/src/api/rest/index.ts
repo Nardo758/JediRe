@@ -119,6 +119,10 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/notifications`, notificationsRoutes);
 
   // Property routes
+  // Unified Properties routes (must be before propertyRoutes to avoid /:id catching 'unified')
+  const { getPool: getUnifiedPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/properties`, createUnifiedPropertiesRoutes(getUnifiedPool()));
+
   app.use(`${API_PREFIX}/properties`, propertyRoutes);
 
   // Zoning routes
@@ -324,9 +328,6 @@ export function setupRESTRoutes(app: Application): void {
   // Scraping routes (Cloudflare Browser Rendering — zoning code, property records, Municode)
   app.use(`${API_PREFIX}/scrape`, scrapeRoutes);
 
-  // Unified Properties routes (materialized view across property_records, properties, rent_scrape_targets, comp_properties)
-  const { getPool: getUnifiedPool } = require('../../database/connection');
-  app.use(`${API_PREFIX}/properties`, createUnifiedPropertiesRoutes(getUnifiedPool()));
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
