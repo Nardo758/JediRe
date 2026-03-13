@@ -204,7 +204,7 @@ export class RentScraperDiscoveryService {
          phone = COALESCE($5, phone),
          url_source = CASE WHEN $2 IS NOT NULL THEN 'serp' ELSE url_source END,
          property_name = CASE
-           WHEN property_name IS NULL AND $6::text IS NOT NULL THEN $6::text
+           WHEN (property_name IS NULL OR TRIM(property_name) = '') AND $6::text IS NOT NULL THEN $6::text
            ELSE property_name
          END,
          metadata = COALESCE(metadata, '{}'::jsonb) ||
