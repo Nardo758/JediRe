@@ -462,6 +462,9 @@ export interface DealContext {
   /** Project type for deal-type-driven visibility and configuration */
   projectType: 'existing' | 'development' | 'redevelopment';
 
+  /** Product type for strategy and financial model adaptation */
+  productType: 'mf_garden' | 'mf_wrap' | 'mf_midrise' | 'mf_highrise' | 'mf_townhome' | 'office' | 'retail' | 'industrial' | 'hospitality' | 'mixed_use';
+
   /** Site information — always present */
   site: SiteContext;
 
