@@ -12,7 +12,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     const { email, password } = req.body;
     console.log('Login attempt:', { email, hasPassword: !!password, bodyKeys: Object.keys(req.body || {}) });
     
-    if (email === 'demo@jedire.com' && password === 'demo123') {
+    if (email === 'm.dixon5030@gmail.com' && password === 'Nova5030') {
       const result = await pool.query(
         'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE email = $1',
         [email]

@@ -8,8 +8,8 @@ interface LoginFormProps {
 }
 
 export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
-  const [email, setEmail] = useState('demo@jedire.com');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('m.dixon5030@gmail.com');
+  const [password, setPassword] = useState('Nova5030');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
@@ -189,7 +189,7 @@ export default function LoginForm({ onSwitchToRegister }: LoginFormProps) {
             setError('');
             setLoading(true);
             try {
-              const result = await login('demo@jedire.com', 'demo123');
+              const result = await login('m.dixon5030@gmail.com', 'Nova5030');
               if (result.success) {
                 navigate('/dashboard');
               } else {
