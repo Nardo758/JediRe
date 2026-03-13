@@ -1396,6 +1396,65 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'discover_property_urls': {
+        const limit = Math.min(params?.limit || 50, 200);
+        const market = params?.market || 'Atlanta';
+        const source = params?.source || undefined;
+
+        const pendingConditions = ['places_search_done = FALSE', 'website_url IS NULL', 'active = TRUE'];
+        const pendingParams: any[] = [];
+        let pIdx = 1;
+        if (source) { pendingConditions.push(`source = $${pIdx}`); pendingParams.push(source); pIdx++; }
+        if (market) { pendingConditions.push(`(city ILIKE $${pIdx} OR market ILIKE $${pIdx})`); pendingParams.push(market); pIdx++; }
+        const pendingCount = await pool.query(
+          `SELECT COUNT(*) as cnt FROM rent_scrape_targets WHERE ${pendingConditions.join(' AND ')}`,
+          pendingParams
+        );
+
+        const discoveryService = new RentScraperDiscoveryService(pool);
+        const discoveryResult = await discoveryService.discoverAllPendingUrls({
+          limit,
+          source,
+          market,
+        });
+
+        const sampleUrls = discoveryResult.results
+          .filter(r => r.websiteUrl)
+          .slice(0, 5)
+          .map(r => ({ name: r.propertyName, url: r.websiteUrl }));
+
+        result = {
+          message: `URL discovery complete: ${discoveryResult.discovered} found, ${discoveryResult.failed} failed`,
+          market,
+          source: source || 'all',
+          limit,
+          totalPending: parseInt(pendingCount.rows[0].cnt),
+          discovered: discoveryResult.discovered,
+          failed: discoveryResult.failed,
+          skipped: discoveryResult.skipped,
+          processed: discoveryResult.results.length,
+          sampleUrls,
+        };
+        break;
+      }
+
+      case 'sync_property_records_to_targets': {
+        const market = params?.market || 'Atlanta';
+        const syncResult = await pool.query(
+          `SELECT * FROM sync_property_records_to_targets($1)`,
+          [market]
+        );
+        const row = syncResult.rows[0] || { inserted_count: 0, skipped_count: 0, total_records: 0 };
+        result = {
+          message: `Synced property_records to rent_scrape_targets for ${market}: ${row.inserted_count} inserted, ${row.skipped_count} skipped`,
+          market,
+          inserted: parseInt(row.inserted_count),
+          skipped: parseInt(row.skipped_count),
+          totalRecords: parseInt(row.total_records),
+        };
+        break;
+      }
+
       case 'sync_comp_to_targets': {
         const market = params?.market || 'Atlanta';
         const validSources = ['comp_properties', 'properties', 'both'];

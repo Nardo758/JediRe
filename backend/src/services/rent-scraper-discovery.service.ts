@@ -37,12 +37,42 @@ export class RentScraperDiscoveryService {
     this.pool = pool || getPool();
   }
 
+  private buildSearchQuery(target: {
+    property_name: string;
+    address?: string;
+    city: string;
+    state: string;
+    source?: string;
+    owner_name?: string;
+  }): string {
+    const nameIsAddress =
+      target.source === 'property_records' ||
+      (target.address && target.property_name.trim().toLowerCase() === target.address.trim().toLowerCase());
+
+    if (nameIsAddress) {
+      const parts: string[] = [];
+      if (target.owner_name && target.owner_name.trim()) {
+        parts.push(target.owner_name.trim());
+      }
+      parts.push(target.address || target.property_name);
+      parts.push(target.city);
+      parts.push(target.state);
+      return parts.join(' ').replace(/\s+/g, ' ').trim();
+    }
+
+    return `${target.property_name} ${target.address || ''} ${target.city} ${target.state}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   async discoverPropertyWebsite(target: {
     id: number;
     property_name: string;
     address?: string;
     city: string;
     state: string;
+    source?: string;
+    owner_name?: string;
   }): Promise<DiscoveryResult> {
     if (!SERP_API_KEY) {
       throw new Error('SERP_API_KEY environment variable not set');
@@ -59,7 +89,7 @@ export class RentScraperDiscoveryService {
     };
 
     try {
-      const query = `${target.property_name} ${target.address || ''} ${target.city} ${target.state}`.trim();
+      const query = this.buildSearchQuery(target);
 
       // Step 1: Search Google Maps to get place_id
       const searchResp = await axios.get(SERP_BASE, {
@@ -176,21 +206,45 @@ export class RentScraperDiscoveryService {
     return this.discoverPropertyWebsite(row.rows[0]);
   }
 
-  async discoverAllPendingUrls(options: { limit?: number } = {}): Promise<{
+  async discoverAllPendingUrls(options: {
+    limit?: number;
+    source?: string;
+    market?: string;
+  } = {}): Promise<{
     discovered: number;
     failed: number;
     skipped: number;
     results: DiscoveryResult[];
   }> {
-    const { limit = 20 } = options;
+    const { limit = 20, source, market } = options;
+
+    const conditions = ['rst.places_search_done = FALSE', 'rst.website_url IS NULL', 'rst.active = TRUE'];
+    const queryParams: any[] = [];
+    let paramIdx = 1;
+
+    if (source) {
+      conditions.push(`rst.source = $${paramIdx}`);
+      queryParams.push(source);
+      paramIdx++;
+    }
+    if (market) {
+      conditions.push(`(rst.city ILIKE $${paramIdx} OR rst.market ILIKE $${paramIdx})`);
+      queryParams.push(market);
+      paramIdx++;
+    }
+
+    conditions.push(`1=1`);
+    queryParams.push(limit);
 
     const targets = await this.pool.query(
-      `SELECT id, property_name, address, city, state
-       FROM rent_scrape_targets
-       WHERE places_search_done = FALSE AND website_url IS NULL AND active = TRUE
-       ORDER BY id ASC
-       LIMIT $1`,
-      [limit]
+      `SELECT rst.id, rst.property_name, rst.address, rst.city, rst.state,
+              rst.source, pr.owner_name
+       FROM rent_scrape_targets rst
+       LEFT JOIN property_records pr ON pr.id = rst.property_record_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY rst.id ASC
+       LIMIT $${paramIdx}`,
+      queryParams
     );
 
     if (targets.rows.length === 0) {
