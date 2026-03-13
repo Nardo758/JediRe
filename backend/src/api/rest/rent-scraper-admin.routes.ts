@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../../utils/logger';
 import { getPool } from '../../database/connection';
 import { RentScraperDiscoveryService } from '../../services/rent-scraper-discovery.service';
+import { RentScraperService } from '../../services/rent-scraper.service';
 
 const router = Router();
 const pool = getPool();
@@ -188,6 +189,209 @@ router.post('/discovery/run', async (req: Request, res: Response) => {
 
 router.get('/discovery/job/:jobId', (req: Request, res: Response) => {
   const job = activeJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json({ success: true, jobId: req.params.jobId, ...job });
+});
+
+// ── Bulk Scrape Endpoints ────────────────────────────────────────────────────
+
+interface BulkScrapeJob {
+  status: 'running' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  totalUnitsScraped: number;
+  startedAt: Date;
+  completedAt: Date | null;
+  errors: string[];
+}
+
+const activeScrapeJobs = new Map<string, BulkScrapeJob>();
+let currentScrapeJobId: string | null = null;
+
+router.get('/scrape/status', async (_req: Request, res: Response) => {
+  try {
+    const counts = await pool.query(`
+      SELECT
+        COUNT(DISTINCT rst.id)                                              AS total_targets,
+        COUNT(DISTINCT rst.id) FILTER (WHERE rst.website_url IS NOT NULL)  AS with_website,
+        COUNT(DISTINCT rj.target_id) FILTER (WHERE rj.status = 'completed') AS scraped,
+        COUNT(sr.id)                                                        AS total_units_scraped
+      FROM rent_scrape_targets rst
+      LEFT JOIN rent_scrape_jobs rj ON rj.target_id = rst.id
+      LEFT JOIN scraped_rents sr ON sr.target_id = rst.id
+      WHERE rst.source = 'property_records' AND rst.active = TRUE
+    `);
+
+    const byMarket = await pool.query(`
+      SELECT rst.market,
+        COUNT(DISTINCT rst.id)                                                AS total,
+        COUNT(DISTINCT rst.id) FILTER (WHERE rst.website_url IS NOT NULL)    AS with_website,
+        COUNT(DISTINCT rj.target_id) FILTER (WHERE rj.status = 'completed')  AS scraped,
+        COUNT(sr.id)                                                          AS units_scraped
+      FROM rent_scrape_targets rst
+      LEFT JOIN rent_scrape_jobs rj ON rj.target_id = rst.id
+      LEFT JOIN scraped_rents sr ON sr.target_id = rst.id
+      WHERE rst.source = 'property_records' AND rst.active = TRUE
+      GROUP BY rst.market
+      ORDER BY total DESC
+    `);
+
+    const job = currentScrapeJobId ? activeScrapeJobs.get(currentScrapeJobId) : null;
+
+    res.json({
+      success: true,
+      counts: counts.rows[0],
+      byMarket: byMarket.rows,
+      activeJob: job ? { jobId: currentScrapeJobId, ...job } : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/scrape/run', async (req: Request, res: Response) => {
+  try {
+    if (currentScrapeJobId && activeScrapeJobs.get(currentScrapeJobId)?.status === 'running') {
+      return res.status(409).json({
+        error: 'A scrape job is already running',
+        jobId: currentScrapeJobId,
+      });
+    }
+
+    const batchSize = Math.min(req.body?.batchSize || 20, 50);
+    const delayMs   = Math.max(req.body?.delayMs   || 3000, 1000);
+    const market    = req.body?.market || 'Atlanta';
+    const limit     = req.body?.limit  || null;
+
+    const countQ = await pool.query(
+      `SELECT COUNT(DISTINCT rst.id) AS pending
+       FROM rent_scrape_targets rst
+       WHERE rst.active = TRUE
+         AND rst.market = $1
+         AND rst.website_url IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM rent_scrape_jobs rj
+           WHERE rj.target_id = rst.id AND rj.status = 'completed'
+         )`,
+      [market]
+    );
+
+    const total = limit
+      ? Math.min(parseInt(countQ.rows[0].pending, 10), limit)
+      : parseInt(countQ.rows[0].pending, 10);
+
+    if (total === 0) {
+      return res.json({ success: true, message: 'No pending targets — all already scraped', total: 0 });
+    }
+
+    const jobId = `scrape-${market.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+    const job: BulkScrapeJob = {
+      status: 'running',
+      total,
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      totalUnitsScraped: 0,
+      startedAt: new Date(),
+      completedAt: null,
+      errors: [],
+    };
+    activeScrapeJobs.set(jobId, job);
+    currentScrapeJobId = jobId;
+
+    res.json({
+      success: true,
+      jobId,
+      total,
+      market,
+      message: `Scrape job started for ${total} targets in ${market}`,
+      batchSize,
+      delayMs,
+      estimatedMinutes: Math.ceil((total * delayMs * 3) / 60000),
+    });
+
+    setImmediate(async () => {
+      try {
+        const scraper = new RentScraperService(pool);
+        let processed = 0;
+
+        while (true) {
+          if (limit && processed >= limit) break;
+
+          const remaining = limit ? limit - processed : batchSize;
+          const rows = await pool.query(
+            `SELECT DISTINCT rst.id
+             FROM rent_scrape_targets rst
+             WHERE rst.active = TRUE
+               AND rst.market = $1
+               AND rst.website_url IS NOT NULL
+               AND NOT EXISTS (
+                 SELECT 1 FROM rent_scrape_jobs rj
+                 WHERE rj.target_id = rst.id AND rj.status = 'completed'
+               )
+             ORDER BY rst.id ASC
+             LIMIT $2`,
+            [market, Math.min(remaining, batchSize)]
+          );
+
+          if (rows.rows.length === 0) break;
+
+          for (const row of rows.rows) {
+            if (limit && processed >= limit) break;
+            try {
+              const result = await scraper.scrapeProperty(row.id);
+              if (result.status === 'success') {
+                job.succeeded++;
+                job.totalUnitsScraped += result.units.length;
+              } else {
+                job.failed++;
+                if (job.errors.length < 50) {
+                  job.errors.push(`Target ${row.id}: ${result.error || result.status}`);
+                }
+              }
+            } catch (err: any) {
+              job.failed++;
+              if (job.errors.length < 50) {
+                job.errors.push(`Target ${row.id}: ${err.message}`);
+              }
+            }
+            job.processed++;
+            processed++;
+
+            await new Promise(r => setTimeout(r, delayMs));
+          }
+
+          logger.info(
+            `[bulk-scrape] ${job.processed}/${job.total} — ` +
+            `${job.succeeded} ok, ${job.failed} failed, ${job.totalUnitsScraped} units`
+          );
+        }
+
+        job.status = 'completed';
+        job.completedAt = new Date();
+        logger.info(
+          `[bulk-scrape] DONE — ${job.succeeded} scraped, ${job.failed} failed, ` +
+          `${job.totalUnitsScraped} total units out of ${job.processed} targets`
+        );
+      } catch (err: any) {
+        const j = activeScrapeJobs.get(jobId);
+        if (j) {
+          j.status = 'failed';
+          j.completedAt = new Date();
+          j.errors.push(`Job error: ${err.message}`);
+        }
+        logger.error(`[bulk-scrape] Job failed: ${err.message}`);
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/scrape/job/:jobId', (req: Request, res: Response) => {
+  const job = activeScrapeJobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job not found' });
   res.json({ success: true, jobId: req.params.jobId, ...job });
 });
