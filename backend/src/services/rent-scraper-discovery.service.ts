@@ -14,9 +14,64 @@ const AGGREGATOR_BLOCKLIST = [
   'furnishedfinder.com', 'doorsteps.com', 'redfin.com',
 ];
 
+// Known REIT and major property-management company domains.
+// A Google web search for a property name will surface these in organic results
+// even when Google Maps has no website listed.
+const REIT_DOMAINS = [
+  'equityapartments.com',       // Equity Residential
+  'maac.com',                   // Mid-America Apartment (MAA)
+  'camdenliving.com',           // Camden Property Trust
+  'cortland.com',               // Cortland
+  'amli.com',                   // AMLI Residential
+  'udr.com',                    // UDR Inc.
+  'avaloncommunities.com',      // AvalonBay Communities
+  'lincolnapts.com',            // Lincoln Property Company
+  'gables.com',                 // Gables Residential
+  'greystar.com',               // Greystar (PM)
+  'bozzuto.com',                // Bozzuto
+  'essexapartmenthomes.com',    // Essex Property Trust
+  'aimco.com',                  // Aimco
+  'highmarkresidential.com',    // Highmark Residential
+  'pegasusresidential.com',     // Pegasus Residential
+  'alliancerp.com',             // Alliance Residential (Broadstone)
+  'broadstone.com',             // Broadstone
+  'bell-residential.com',       // Bell Partners
+  'bh-management.com',          // BH Management
+  'trinitypropertygroup.com',   // Trinity Property Group
+  'prospera-housing.com',       // Prospera Housing
+  'greystarproperties.com',     // Greystar (alternate)
+  'nuveen.com',                 // Nuveen Real Estate
+  'postproperties.com',         // Post Properties
+  'windsong-properties.com',    // Windsong Properties
+  'lumiresidential.com',        // Lumi Residential
+  'presidio-residential.com',   // Presidio Residential
+  'nexapartments.com',          // Nex Apartments
+  'ventasresidential.com',      // Ventas Residential
+  'missionrockresidential.com', // Mission Rock Residential
+  'irtliving.com',              // IRT Living (Independence Realty)
+  'bellapartmentliving.com',    // Bella Apartment Living
+  'liveatthepaxton.com',        // The Paxton
+  'liveherehousing.com',        // Live Here Housing
+  'liveatwoodlandheights.com',  // Woodland Heights
+  'alexanapts.com',             // Alexan Apartments (Trammell Crow)
+];
+
 function isAggregator(url: string): boolean {
   const lower = url.toLowerCase();
   return AGGREGATOR_BLOCKLIST.some(domain => lower.includes(domain));
+}
+
+function matchesReitDomain(url: string): boolean {
+  const lower = url.toLowerCase();
+  return REIT_DOMAINS.some(domain => lower.includes(domain));
+}
+
+// A URL is a "direct property site" only if it matches a known REIT/PM domain.
+// We deliberately avoid path-based heuristics because they cause false positives
+// (e.g. bbb.org/profile/apartments/..., knockrentals.com/community/...).
+function isDirectPropertyUrl(url: string): boolean {
+  if (isAggregator(url)) return false;
+  return matchesReitDomain(url);
 }
 
 export interface DiscoveryResult {
@@ -312,5 +367,159 @@ export class RentScraperDiscoveryService {
       );
     }
     return q.rowCount ?? 0;
+  }
+
+  // ── REIT / Web-search pass ────────────────────────────────────────────────
+  // For targets that came back with no website from the Google Maps pass,
+  // do a regular Google organic search and look for direct REIT property URLs
+  // in the top results.
+
+  async discoverViaWebSearch(target: {
+    id: number;
+    property_name: string | null;
+    address: string | null;
+    city: string;
+    state: string;
+  }): Promise<DiscoveryResult> {
+    if (!SERP_API_KEY) throw new Error('SERP_API_KEY not set');
+
+    const result: DiscoveryResult = {
+      targetId: target.id,
+      propertyName: target.property_name || target.address || '',
+      websiteUrl: null,
+      googleRating: null,
+      reviewCount: null,
+      phone: null,
+      success: false,
+      nameDiscovered: false,
+    };
+
+    const name = target.property_name || target.address || '';
+    const query = `"${name}" ${target.city} ${target.state} apartments`;
+
+    try {
+      const resp = await axios.get(SERP_BASE, {
+        params: {
+          engine: 'google',
+          q: query,
+          num: 10,
+          api_key: SERP_API_KEY,
+        },
+        timeout: 15000,
+      });
+
+      const organicResults: Array<{ link: string; title?: string }> =
+        resp.data?.organic_results || [];
+
+      let foundUrl: string | null = null;
+
+      // Prefer REIT-domain hits first, then any non-aggregator direct site
+      for (const r of organicResults) {
+        if (!r.link) continue;
+        if (matchesReitDomain(r.link)) {
+          foundUrl = r.link;
+          break;
+        }
+      }
+      if (!foundUrl) {
+        for (const r of organicResults) {
+          if (!r.link) continue;
+          if (isDirectPropertyUrl(r.link)) {
+            foundUrl = r.link;
+            break;
+          }
+        }
+      }
+
+      if (foundUrl) {
+        // Strip UTM params
+        try {
+          const u = new URL(foundUrl);
+          ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
+            .forEach(p => u.searchParams.delete(p));
+          foundUrl = u.toString();
+        } catch { /* keep original */ }
+
+        await this.pool.query(
+          `UPDATE rent_scrape_targets SET
+             website_url = $2,
+             url_source  = 'reit_web_search',
+             metadata    = COALESCE(metadata, '{}'::jsonb) || '{"reit_search_done":true}'::jsonb,
+             updated_at  = NOW()
+           WHERE id = $1`,
+          [target.id, foundUrl]
+        );
+
+        result.websiteUrl = foundUrl;
+        result.success = true;
+        logger.info(`[reit-search] ${name}: ${foundUrl}`);
+      } else {
+        await this.pool.query(
+          `UPDATE rent_scrape_targets SET
+             metadata   = COALESCE(metadata, '{}'::jsonb) || '{"reit_search_done":true}'::jsonb,
+             updated_at = NOW()
+           WHERE id = $1`,
+          [target.id]
+        );
+        logger.info(`[reit-search] ${name}: no REIT URL found`);
+      }
+    } catch (err: any) {
+      result.error = err.message;
+      logger.error(`[reit-search] Error for ${name}: ${err.message}`);
+    }
+
+    return result;
+  }
+
+  async discoverNoWebsiteViaWebSearch(options: {
+    market?: string;
+    limit?: number;
+    delayMs?: number;
+  } = {}): Promise<{
+    discovered: number;
+    failed: number;
+    total: number;
+    results: DiscoveryResult[];
+  }> {
+    const { market, limit = 50, delayMs = 1200 } = options;
+
+    const conditions = [
+      `active = TRUE`,
+      `(website_url IS NULL OR website_url = '')`,
+      `(metadata->>'reit_search_done' IS NULL OR metadata->>'reit_search_done' != 'true')`,
+    ];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (market) {
+      conditions.push(`market ILIKE $${idx}`);
+      params.push(market);
+      idx++;
+    }
+
+    params.push(limit);
+
+    const rows = await this.pool.query(
+      `SELECT id, property_name, address, city, state
+       FROM rent_scrape_targets
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY id ASC
+       LIMIT $${idx}`,
+      params
+    );
+
+    const results: DiscoveryResult[] = [];
+    let discovered = 0;
+    let failed = 0;
+
+    for (const target of rows.rows) {
+      const res = await this.discoverViaWebSearch(target);
+      results.push(res);
+      if (res.websiteUrl) discovered++;
+      else if (res.error) failed++;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+
+    return { discovered, failed, total: rows.rows.length, results };
   }
 }
