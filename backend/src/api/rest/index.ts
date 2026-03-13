@@ -6,6 +6,7 @@
 import { Application } from 'express';
 import authRoutes from './auth.routes';
 import propertyRoutes from './property.routes';
+import createUnifiedPropertiesRoutes from './unified-properties.routes';
 import zoningRoutes from './zoning.routes';
 import marketRoutes from './market.routes';
 import agentRoutes from './agent.routes';
@@ -322,6 +323,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Scraping routes (Cloudflare Browser Rendering — zoning code, property records, Municode)
   app.use(`${API_PREFIX}/scrape`, scrapeRoutes);
+
+  // Unified Properties routes (materialized view across property_records, properties, rent_scrape_targets, comp_properties)
+  const { getPool: getUnifiedPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/properties`, createUnifiedPropertiesRoutes(getUnifiedPool()));
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
