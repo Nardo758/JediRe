@@ -27,6 +27,7 @@ export interface DiscoveryResult {
   reviewCount: number | null;
   phone: string | null;
   success: boolean;
+  nameDiscovered: boolean;
   error?: string;
 }
 
@@ -58,6 +59,7 @@ export class RentScraperDiscoveryService {
       parts.push(target.address || target.property_name || '');
       parts.push(target.city);
       parts.push(target.state);
+      parts.push('apartment');
       return parts.join(' ').replace(/\s+/g, ' ').trim();
     }
 
@@ -87,6 +89,7 @@ export class RentScraperDiscoveryService {
       reviewCount: null,
       phone: null,
       success: false,
+      nameDiscovered: false,
     };
 
     try {
@@ -158,15 +161,22 @@ export class RentScraperDiscoveryService {
       const reviewCount = place.reviews ? parseInt(place.reviews) : null;
       const phone = place.phone || null;
 
-      await this.markSearchDone(target.id, websiteUrl, googleRating, reviewCount, phone);
+      const placeName: string | null = place.title || null;
+      const discoveredName = (!target.property_name && placeName) ? placeName : null;
 
+      await this.markSearchDone(target.id, websiteUrl, googleRating, reviewCount, phone, discoveredName);
+
+      if (discoveredName) {
+        result.propertyName = discoveredName;
+        result.nameDiscovered = true;
+      }
       result.websiteUrl = websiteUrl;
       result.googleRating = googleRating;
       result.reviewCount = reviewCount;
       result.phone = phone;
       result.success = !!websiteUrl;
 
-      logger.info(`[discovery] ${target.property_name}: ${websiteUrl || 'NO WEBSITE FOUND'} (rating: ${googleRating})`);
+      logger.info(`[discovery] ${discoveredName || target.property_name || target.address}: ${websiteUrl || 'NO WEBSITE FOUND'} (rating: ${googleRating})`);
     } catch (err: any) {
       result.error = err.message;
       logger.error(`[discovery] Error for ${target.property_name}: ${err.message}`);
@@ -182,7 +192,8 @@ export class RentScraperDiscoveryService {
     websiteUrl: string | null,
     googleRating: number | null,
     reviewCount: number | null,
-    phone: string | null
+    phone: string | null,
+    discoveredName?: string | null
   ): Promise<void> {
     await this.pool.query(
       `UPDATE rent_scrape_targets SET
@@ -192,15 +203,29 @@ export class RentScraperDiscoveryService {
          review_count = COALESCE($4, review_count),
          phone = COALESCE($5, phone),
          url_source = CASE WHEN $2 IS NOT NULL THEN 'serp' ELSE url_source END,
+         property_name = CASE
+           WHEN property_name IS NULL AND $6::text IS NOT NULL THEN $6::text
+           ELSE property_name
+         END,
+         metadata = COALESCE(metadata, '{}'::jsonb) ||
+           CASE
+             WHEN $6::text IS NOT NULL THEN '{"name_source":"google_maps"}'::jsonb
+             WHEN $2 IS NULL AND $3 IS NULL THEN '{"needs_manual_review":true}'::jsonb
+             ELSE '{}'::jsonb
+           END,
          updated_at = NOW()
        WHERE id = $1`,
-      [targetId, websiteUrl, googleRating, reviewCount, phone]
+      [targetId, websiteUrl, googleRating, reviewCount, phone, discoveredName || null]
     );
   }
 
   async discoverById(targetId: number): Promise<DiscoveryResult> {
     const row = await this.pool.query(
-      `SELECT id, property_name, address, city, state FROM rent_scrape_targets WHERE id = $1`,
+      `SELECT rst.id, rst.property_name, rst.address, rst.city, rst.state, rst.source,
+              pr.owner_name
+       FROM rent_scrape_targets rst
+       LEFT JOIN property_records pr ON pr.id = rst.property_record_id
+       WHERE rst.id = $1`,
       [targetId]
     );
     if (row.rows.length === 0) throw new Error(`Target ${targetId} not found`);

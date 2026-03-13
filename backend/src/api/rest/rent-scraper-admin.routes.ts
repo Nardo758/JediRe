@@ -11,6 +11,7 @@ interface BulkDiscoveryJob {
   total: number;
   processed: number;
   discovered: number;
+  namesFound: number;
   failed: number;
   skipped: number;
   startedAt: Date;
@@ -95,6 +96,7 @@ router.post('/discovery/run', async (req: Request, res: Response) => {
       total,
       processed: 0,
       discovered: 0,
+      namesFound: 0,
       failed: 0,
       skipped: 0,
       startedAt: new Date(),
@@ -121,13 +123,13 @@ router.post('/discovery/run', async (req: Request, res: Response) => {
         while (true) {
           const rows = market
             ? await pool.query(
-                `SELECT id FROM rent_scrape_targets
+                `SELECT id, address, property_name FROM rent_scrape_targets
                  WHERE places_search_done = FALSE AND website_url IS NULL AND active = TRUE AND market = $1
                  ORDER BY id ASC LIMIT $2`,
                 [market, batchSize]
               )
             : await pool.query(
-                `SELECT id FROM rent_scrape_targets
+                `SELECT id, address, property_name FROM rent_scrape_targets
                  WHERE places_search_done = FALSE AND website_url IS NULL AND active = TRUE
                  ORDER BY id ASC LIMIT $1`,
                 [batchSize]
@@ -143,6 +145,9 @@ router.post('/discovery/run', async (req: Request, res: Response) => {
               } else {
                 job.skipped++;
               }
+              if (result.nameDiscovered) {
+                job.namesFound++;
+              }
             } catch (err: any) {
               job.failed++;
               if (job.errors.length < 50) {
@@ -156,14 +161,14 @@ router.post('/discovery/run', async (req: Request, res: Response) => {
 
           logger.info(
             `[bulk-discovery] ${job.processed}/${job.total} — ` +
-            `${job.discovered} found, ${job.skipped} no-url, ${job.failed} failed`
+            `${job.discovered} websites, ${job.namesFound} names, ${job.skipped} no-url, ${job.failed} failed`
           );
         }
 
         job.status = 'completed';
         job.completedAt = new Date();
         logger.info(
-          `[bulk-discovery] DONE — ${job.discovered} discovered, ` +
+          `[bulk-discovery] DONE — ${job.discovered} websites, ${job.namesFound} names discovered, ` +
           `${job.failed} failed, ${job.skipped} no-url out of ${job.processed}`
         );
       } catch (err: any) {
