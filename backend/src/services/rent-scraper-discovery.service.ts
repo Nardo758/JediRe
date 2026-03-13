@@ -38,7 +38,7 @@ export class RentScraperDiscoveryService {
   }
 
   private buildSearchQuery(target: {
-    property_name: string;
+    property_name: string | null;
     address?: string;
     city: string;
     state: string;
@@ -46,6 +46,7 @@ export class RentScraperDiscoveryService {
     owner_name?: string;
   }): string {
     const nameIsAddress =
+      !target.property_name ||
       target.source === 'property_records' ||
       (target.address && target.property_name.trim().toLowerCase() === target.address.trim().toLowerCase());
 
@@ -54,7 +55,7 @@ export class RentScraperDiscoveryService {
       if (target.owner_name && target.owner_name.trim()) {
         parts.push(target.owner_name.trim());
       }
-      parts.push(target.address || target.property_name);
+      parts.push(target.address || target.property_name || '');
       parts.push(target.city);
       parts.push(target.state);
       return parts.join(' ').replace(/\s+/g, ' ').trim();
@@ -67,7 +68,7 @@ export class RentScraperDiscoveryService {
 
   async discoverPropertyWebsite(target: {
     id: number;
-    property_name: string;
+    property_name: string | null;
     address?: string;
     city: string;
     state: string;
@@ -80,7 +81,7 @@ export class RentScraperDiscoveryService {
 
     const result: DiscoveryResult = {
       targetId: target.id,
-      propertyName: target.property_name,
+      propertyName: target.property_name || target.address || '',
       websiteUrl: null,
       googleRating: null,
       reviewCount: null,

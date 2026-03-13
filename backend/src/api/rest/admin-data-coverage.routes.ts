@@ -379,4 +379,60 @@ router.get('/activity/recent', requireAuth, requireAdmin, async (req: Authentica
   }
 });
 
+/**
+ * GET /api/v1/admin/data-coverage/data-quality/georgia
+ * Georgia property records data quality summary
+ */
+router.get('/data-quality/georgia', requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response, next) => {
+  try {
+    const overview = await query(`
+      SELECT
+        COUNT(*) AS total_targets,
+        COUNT(*) FILTER (WHERE active = TRUE) AS active_targets,
+        COUNT(*) FILTER (WHERE active = FALSE) AS inactive_targets,
+        COUNT(*) FILTER (WHERE property_name IS NULL AND active = TRUE) AS needs_name_discovery,
+        COUNT(*) FILTER (WHERE property_name IS NOT NULL AND active = TRUE) AS has_property_name,
+        COUNT(*) FILTER (WHERE places_search_done = TRUE AND active = TRUE) AS searched,
+        COUNT(*) FILTER (WHERE places_search_done = FALSE AND active = TRUE) AS pending_search,
+        COUNT(*) FILTER (WHERE website_url IS NOT NULL AND active = TRUE) AS has_website,
+        COUNT(*) FILTER (WHERE address LIKE '0 %') AS zero_street_total
+      FROM rent_scrape_targets
+      WHERE source = 'property_records'
+    `);
+
+    const byMarket = await query(`
+      SELECT
+        COALESCE(market, city, 'UNKNOWN') AS market,
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE active = TRUE) AS active,
+        COUNT(*) FILTER (WHERE property_name IS NULL AND active = TRUE) AS needs_name,
+        COUNT(*) FILTER (WHERE places_search_done = TRUE AND active = TRUE) AS searched,
+        COUNT(*) FILTER (WHERE website_url IS NOT NULL AND active = TRUE) AS has_website
+      FROM rent_scrape_targets
+      WHERE source = 'property_records'
+      GROUP BY COALESCE(market, city, 'UNKNOWN')
+      ORDER BY total DESC
+    `);
+
+    const geocodeStatus = await query(`
+      SELECT
+        COUNT(*) AS total_ga_records,
+        COUNT(*) FILTER (WHERE city IS NOT NULL) AS has_city,
+        COUNT(*) FILTER (WHERE city IS NULL) AS needs_geocode,
+        COUNT(*) FILTER (WHERE address LIKE '0 %') AS invalid_address,
+        COUNT(*) FILTER (WHERE enrichment_source = 'invalid_parcel_address') AS flagged_invalid
+      FROM property_records
+      WHERE state = 'GA' AND units >= 100
+    `);
+
+    res.json({
+      overview: overview.rows[0],
+      byMarket: byMarket.rows,
+      geocodeStatus: geocodeStatus.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
