@@ -16,6 +16,7 @@ DO $$
 DECLARE
   v_rst_prop INT;
   v_prop_pr INT;
+  v_rst_pr INT;
 BEGIN
   WITH unique_matches AS (
     SELECT rst.id AS rst_id, p.id AS p_id
@@ -27,7 +28,7 @@ BEGIN
       AND rst.source = 'properties_table'
   ),
   single_match AS (
-    SELECT rst_id, MIN(p_id) AS p_id
+    SELECT rst_id, (array_agg(p_id))[1] AS p_id
     FROM unique_matches
     GROUP BY rst_id
     HAVING COUNT(*) = 1
@@ -40,19 +41,21 @@ BEGIN
     RETURNING 1
   )
   SELECT COUNT(*) INTO v_rst_prop FROM updated;
-
   RAISE NOTICE 'rent_scrape_targets → properties: % rows linked', v_rst_prop;
 
   WITH unique_matches AS (
     SELECT p.id AS p_id, pr.id AS pr_id
     FROM properties p
     JOIN property_records pr
-      ON UPPER(TRIM(pr.city)) = UPPER(TRIM(p.city))
-      AND UPPER(TRIM(pr.address)) = UPPER(TRIM(p.address_line1))
+      ON UPPER(TRIM(pr.city)) ILIKE UPPER(TRIM(p.city))
+      AND (
+        UPPER(TRIM(pr.address)) ILIKE UPPER(TRIM(p.address_line1))
+        OR UPPER(TRIM(p.address_line1)) ILIKE '%' || UPPER(TRIM(pr.address)) || '%'
+      )
     WHERE p.property_record_id IS NULL
   ),
   single_match AS (
-    SELECT p_id, MIN(pr_id) AS pr_id
+    SELECT p_id, (array_agg(pr_id))[1] AS pr_id
     FROM unique_matches
     GROUP BY p_id
     HAVING COUNT(*) = 1
@@ -65,11 +68,42 @@ BEGIN
     RETURNING 1
   )
   SELECT COUNT(*) INTO v_prop_pr FROM updated;
-
   RAISE NOTICE 'properties → property_records: % rows linked', v_prop_pr;
+
+  WITH unique_matches AS (
+    SELECT rst.id AS rst_id, pr.id AS pr_id
+    FROM rent_scrape_targets rst
+    JOIN property_records pr
+      ON UPPER(TRIM(pr.city)) ILIKE UPPER(TRIM(rst.city))
+      AND (
+        UPPER(TRIM(pr.address)) ILIKE UPPER(TRIM(rst.address))
+        OR UPPER(TRIM(rst.address)) ILIKE '%' || UPPER(TRIM(pr.address)) || '%'
+      )
+    WHERE rst.property_record_id IS NULL
+      AND rst.source != 'property_records'
+  ),
+  single_match AS (
+    SELECT rst_id, (array_agg(pr_id))[1] AS pr_id
+    FROM unique_matches
+    GROUP BY rst_id
+    HAVING COUNT(*) = 1
+  ),
+  updated AS (
+    UPDATE rent_scrape_targets rst SET
+      property_record_id = sm.pr_id
+    FROM single_match sm
+    WHERE rst.id = sm.rst_id
+    RETURNING 1
+  )
+  SELECT COUNT(*) INTO v_rst_pr FROM updated;
+  RAISE NOTICE 'rent_scrape_targets → property_records (ILIKE): % rows linked', v_rst_pr;
 END $$;
 
 DROP MATERIALIZED VIEW IF EXISTS v_unified_properties;
+
+-- To refresh: REFRESH MATERIALIZED VIEW CONCURRENTLY v_unified_properties;
+-- Concurrent refresh requires the unique index on row_id (created below).
+-- Schedule refresh after data syncs or via POST /api/v1/properties/unified/refresh.
 
 CREATE MATERIALIZED VIEW v_unified_properties AS
 WITH base AS (
@@ -77,6 +111,7 @@ WITH base AS (
     pr.id AS property_record_id,
     NULL::UUID AS properties_id,
     NULL::INT AS scrape_target_id,
+    NULL::UUID AS comp_property_id,
     pr.address AS pr_address,
     pr.city AS pr_city,
     pr.state AS pr_state,
@@ -152,6 +187,7 @@ unlinked_props AS (
     NULL::UUID AS property_record_id,
     p.id AS p_id,
     NULL::INT AS rst_id,
+    NULL::UUID AS comp_property_id,
     p.name AS p_name,
     p.address_line1 AS p_address,
     p.city AS p_city,
@@ -213,9 +249,11 @@ unlinked_rst AS (
     AND rst.properties_id IS NULL
 )
 SELECT
+  md5(COALESCE(property_record_id::TEXT, '') || '|' || COALESCE(p_id::TEXT, '') || '|' || COALESCE(rst_id::TEXT, '')) AS row_id,
   property_record_id,
   COALESCE(p_id, NULL) AS properties_id,
   COALESCE(rst_id, NULL) AS scrape_target_id,
+  NULL::UUID AS comp_property_id,
   COALESCE(p_name, rst_name, pr_address) AS name,
   COALESCE(pr_address, p_address, rst_address) AS address,
   COALESCE(pr_city, p_city, rst_city) AS city,
@@ -260,9 +298,11 @@ FROM with_rst
 UNION ALL
 
 SELECT
+  md5(COALESCE(property_record_id::TEXT, '') || '|' || COALESCE(p_id::TEXT, '') || '|' || COALESCE(rst2_id::TEXT, '')) AS row_id,
   NULL AS property_record_id,
   p_id AS properties_id,
   COALESCE(rst2_id, NULL) AS scrape_target_id,
+  NULL::UUID AS comp_property_id,
   p_name AS name,
   p_address AS address,
   p_city AS city,
@@ -302,9 +342,11 @@ FROM unlinked_props
 UNION ALL
 
 SELECT
+  md5('||' || rst_id::TEXT) AS row_id,
   NULL AS property_record_id,
   NULL AS properties_id,
   rst_id AS scrape_target_id,
+  NULL::UUID AS comp_property_id,
   property_name AS name,
   address,
   city,
@@ -312,8 +354,8 @@ SELECT
   zip,
   unit_count,
   year_built,
-  latitude AS latitude,
-  longitude AS longitude,
+  latitude,
+  longitude,
   website_url,
   google_rating,
   review_count,
@@ -336,7 +378,56 @@ SELECT
   NULL::NUMERIC AS acquisition_price,
   ARRAY['rent_scrape_targets'] AS sources,
   updated_at AS last_updated
-FROM unlinked_rst;
+FROM unlinked_rst
+
+UNION ALL
+
+SELECT
+  md5('comp|' || cp.id::TEXT) AS row_id,
+  NULL AS property_record_id,
+  NULL AS properties_id,
+  NULL AS scrape_target_id,
+  cp.id AS comp_property_id,
+  cp.name,
+  cp.address,
+  NULL AS city,
+  NULL AS state,
+  NULL AS zip,
+  cp.total_units AS unit_count,
+  cp.built_year AS year_built,
+  NULL::DOUBLE PRECISION AS latitude,
+  NULL::DOUBLE PRECISION AS longitude,
+  cp.source_url AS website_url,
+  NULL AS google_rating,
+  NULL AS review_count,
+  NULL AS phone,
+  NULL AS owner_name,
+  NULL AS parcel_id,
+  NULL AS assessed_value,
+  NULL AS appraised_value,
+  cp.class AS building_class,
+  NULL AS county,
+  NULL AS building_sqft,
+  NULL AS land_acres,
+  NULL AS current_occupancy,
+  NULL AS avg_rent,
+  NULL AS market_rent,
+  NULL AS jedi_score,
+  NULL AS submarket_id,
+  NULL AS pipeline_stage,
+  NULL::DATE AS acquisition_date,
+  NULL::NUMERIC AS acquisition_price,
+  ARRAY['comp_properties'] AS sources,
+  cp.updated_at AS last_updated
+FROM comp_properties cp
+WHERE NOT EXISTS (
+  SELECT 1 FROM rent_scrape_targets rst
+  WHERE rst.source = 'comp_properties'
+    AND UPPER(TRIM(rst.property_name)) = UPPER(TRIM(cp.name))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_v_unified_row_id
+  ON v_unified_properties(row_id);
 
 CREATE INDEX IF NOT EXISTS idx_v_unified_city
   ON v_unified_properties(city);

@@ -236,6 +236,9 @@ app.use('/api/v1', taxCompAnalysisRouter);
 app.use('/api/v1/markets', marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
 
+import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
+app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
+
 app.use('/api/v1/grid', optionalAuth, gridRouter);
 app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
 app.use('/api/v1/portfolio', portfolioRouter);
