@@ -88,7 +88,10 @@ WHERE source = 'property_records'
 --    - Requires non-null, non-empty city
 --    - Skips "0 STREET" addresses
 --    - Uses ON CONFLICT (address, city) via the new index
-CREATE OR REPLACE FUNCTION sync_property_records_to_targets(p_market TEXT DEFAULT 'Atlanta')
+CREATE OR REPLACE FUNCTION sync_property_records_to_targets(
+  p_market TEXT DEFAULT 'Atlanta',
+  p_allow_null_city BOOLEAN DEFAULT FALSE
+)
 RETURNS TABLE(inserted_count INT, skipped_count INT, total_records INT) AS $$
 DECLARE
   v_total INT;
@@ -96,37 +99,35 @@ DECLARE
 BEGIN
   SELECT COUNT(*) INTO v_total
   FROM (
-    SELECT DISTINCT ON (LOWER(TRIM(pr.address)), LOWER(TRIM(pr.city)))
+    SELECT DISTINCT ON (LOWER(TRIM(pr.address)), LOWER(COALESCE(TRIM(pr.city), '')))
       pr.id
     FROM property_records pr
     WHERE pr.address IS NOT NULL
       AND TRIM(pr.address) != ''
       AND pr.address NOT LIKE '0 %'
-      AND pr.city IS NOT NULL
-      AND TRIM(pr.city) != ''
+      AND (pr.city IS NOT NULL AND TRIM(pr.city) != '' OR p_allow_null_city)
       AND pr.units >= 100
       AND (
         p_market IS NULL
         OR pr.city ILIKE p_market
       )
-    ORDER BY LOWER(TRIM(pr.address)), LOWER(TRIM(pr.city)), pr.units DESC
+    ORDER BY LOWER(TRIM(pr.address)), LOWER(COALESCE(TRIM(pr.city), '')), pr.units DESC
   ) deduped;
 
   WITH deduped_records AS (
-    SELECT DISTINCT ON (LOWER(TRIM(pr.address)), LOWER(TRIM(pr.city)))
+    SELECT DISTINCT ON (LOWER(TRIM(pr.address)), LOWER(COALESCE(TRIM(pr.city), '')))
       pr.*
     FROM property_records pr
     WHERE pr.address IS NOT NULL
       AND TRIM(pr.address) != ''
       AND pr.address NOT LIKE '0 %'
-      AND pr.city IS NOT NULL
-      AND TRIM(pr.city) != ''
+      AND (pr.city IS NOT NULL AND TRIM(pr.city) != '' OR p_allow_null_city)
       AND pr.units >= 100
       AND (
         p_market IS NULL
         OR pr.city ILIKE p_market
       )
-    ORDER BY LOWER(TRIM(pr.address)), LOWER(TRIM(pr.city)), pr.units DESC
+    ORDER BY LOWER(TRIM(pr.address)), LOWER(COALESCE(TRIM(pr.city), '')), pr.units DESC
   ),
   inserted AS (
     INSERT INTO rent_scrape_targets (

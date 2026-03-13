@@ -70,6 +70,28 @@ async function main() {
     "UPDATE rent_scrape_targets rst SET city=pr.city, market=pr.city, updated_at=NOW() FROM property_records pr WHERE rst.property_record_id=pr.id AND rst.source='property_records' AND pr.city IS NOT NULL AND TRIM(pr.city)!='' AND (rst.city!=pr.city OR rst.market!=pr.city)"
   );
   process.stdout.write('Updated rent_scrape_targets: ' + (u.rowCount || 0) + '\n');
+
+  var VALID_GA_MARKETS = [
+    'atlanta', 'sandy springs', 'roswell', 'alpharetta', 'johns creek',
+    'milton', 'south fulton', 'college park', 'east point', 'hapeville',
+    'union city', 'fairburn', 'palmetto', 'chattahoochee hills',
+    'mountain park', 'decatur', 'brookhaven', 'dunwoody', 'doraville',
+    'chamblee', 'tucker', 'stonecrest', 'clarkston', 'lithonia',
+    'marietta', 'smyrna', 'kennesaw', 'acworth', 'powder springs',
+    'austell', 'mableton', 'lawrenceville', 'duluth', 'suwanee',
+    'norcross', 'peachtree corners', 'snellville', 'lilburn',
+    'conyers', 'covington', 'mcdonough', 'stockbridge', 'morrow',
+    'jonesboro', 'riverdale', 'forest park', 'douglasville',
+    'woodstock', 'canton', 'holly springs', 'cumming',
+    'savannah', 'macon', 'columbus', 'augusta'
+  ];
+  var placeholders = VALID_GA_MARKETS.map(function(_, i) { return '$' + (i + 1); }).join(',');
+  var deactivated = await pool.query(
+    "UPDATE rent_scrape_targets SET active=FALSE, updated_at=NOW() WHERE source='property_records' AND active=TRUE AND city IS NOT NULL AND LOWER(TRIM(city)) NOT IN (" + placeholders + ")",
+    VALID_GA_MARKETS
+  );
+  process.stdout.write('Deactivated out-of-market targets: ' + (deactivated.rowCount || 0) + '\n');
+
   process.stdout.write('DONE\n');
   await pool.end();
 }

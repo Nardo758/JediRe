@@ -173,6 +173,34 @@ async function main() {
   console.log(`  Updated ${updateResult.rowCount} rent_scrape_targets rows with correct city/market.`);
 
   console.log('\n' + '='.repeat(60));
+  console.log('STEP 3: Deactivating out-of-market targets...');
+  console.log('='.repeat(60));
+
+  const VALID_GA_MARKETS = [
+    'atlanta', 'sandy springs', 'roswell', 'alpharetta', 'johns creek',
+    'milton', 'south fulton', 'college park', 'east point', 'hapeville',
+    'union city', 'fairburn', 'palmetto', 'chattahoochee hills',
+    'mountain park', 'decatur', 'brookhaven', 'dunwoody', 'doraville',
+    'chamblee', 'tucker', 'stonecrest', 'clarkston', 'lithonia',
+    'marietta', 'smyrna', 'kennesaw', 'acworth', 'powder springs',
+    'austell', 'mableton', 'lawrenceville', 'duluth', 'suwanee',
+    'norcross', 'peachtree corners', 'snellville', 'lilburn',
+    'conyers', 'covington', 'mcdonough', 'stockbridge', 'morrow',
+    'jonesboro', 'riverdale', 'forest park', 'douglasville',
+    'woodstock', 'canton', 'holly springs', 'cumming',
+    'savannah', 'macon', 'columbus', 'augusta'
+  ];
+  const placeholders = VALID_GA_MARKETS.map((_, i) => `$${i + 1}`).join(',');
+  const deactivated = await pool.query(
+    `UPDATE rent_scrape_targets SET active=FALSE, updated_at=NOW()
+     WHERE source='property_records' AND active=TRUE
+       AND city IS NOT NULL
+       AND LOWER(TRIM(city)) NOT IN (${placeholders})`,
+    VALID_GA_MARKETS
+  );
+  console.log(`  Deactivated ${deactivated.rowCount} out-of-market targets.`);
+
+  console.log('\n' + '='.repeat(60));
   console.log('FINAL SUMMARY:');
   console.log('='.repeat(60));
 
