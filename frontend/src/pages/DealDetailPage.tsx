@@ -104,7 +104,7 @@ const DealDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
-  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
@@ -117,7 +117,6 @@ const DealDetailPage: React.FC = () => {
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
-      loadTradeAreaForDeal(dealId);
       fetchGeographicContext(dealId);
     }
   }, [dealId]);
@@ -127,6 +126,10 @@ const DealDetailPage: React.FC = () => {
       const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
       const context = response?.data?.data;
       setGeographicContext(context || null);
+      setActiveTradeArea(context?.trade_area || null);
+      if (context?.active_scope) {
+        setScope(context.active_scope);
+      }
       const stats: any = {};
       if (context?.trade_area) {
         stats.trade_area = context.trade_area.stats
