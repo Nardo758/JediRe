@@ -87,7 +87,7 @@ async function main() {
   ];
   var placeholders = VALID_GA_MARKETS.map(function(_, i) { return '$' + (i + 1); }).join(',');
   var deactivated = await pool.query(
-    "UPDATE rent_scrape_targets SET active=FALSE, updated_at=NOW() WHERE source='property_records' AND active=TRUE AND city IS NOT NULL AND LOWER(TRIM(city)) NOT IN (" + placeholders + ")",
+    "UPDATE rent_scrape_targets SET active=FALSE, updated_at=NOW() WHERE source='property_records' AND state='GA' AND active=TRUE AND city IS NOT NULL AND LOWER(TRIM(city)) NOT IN (" + placeholders + ")",
     VALID_GA_MARKETS
   );
   process.stdout.write('Deactivated out-of-market targets: ' + (deactivated.rowCount || 0) + '\n');

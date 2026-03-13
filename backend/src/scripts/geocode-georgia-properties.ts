@@ -193,7 +193,7 @@ async function main() {
   const placeholders = VALID_GA_MARKETS.map((_, i) => `$${i + 1}`).join(',');
   const deactivated = await pool.query(
     `UPDATE rent_scrape_targets SET active=FALSE, updated_at=NOW()
-     WHERE source='property_records' AND active=TRUE
+     WHERE source='property_records' AND state='GA' AND active=TRUE
        AND city IS NOT NULL
        AND LOWER(TRIM(city)) NOT IN (${placeholders})`,
     VALID_GA_MARKETS
