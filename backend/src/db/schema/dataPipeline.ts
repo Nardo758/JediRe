@@ -97,6 +97,7 @@ export const properties = pgTable('properties', {
   currentLeaseAmount: numeric('current_lease_amount', { precision: 10, scale: 2 }),
   leaseStartDate: date('lease_start_date'),
   renewalStatus: varchar('renewal_status', { length: 50 }),
+  assessorUrl: text('assessor_url'),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

@@ -203,6 +203,8 @@ import dataTrackerRoutes from './api/rest/data-tracker.routes';
 app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 import adminRouter from './api/rest/admin.routes';
 app.use('/api/v1/admin', adminRouter);
+import atlantaUrlDiscoveryRouter from './api/rest/atlanta-url-discovery.routes';
+app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 app.use('/api/v1', dataRouter);
