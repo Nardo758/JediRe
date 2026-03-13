@@ -158,27 +158,12 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     }
   };
 
-  const loadMarketData = async () => {
-    if (!deal?.id) return;
-    const geo = geographicContext;
-    if (geo) {
-      if (geo?.submarket?.avgCapRate) {
-        setMarketCapRate(geo.submarket.avgCapRate);
-      } else if (geo?.msa?.avgCapRate) {
-        setMarketCapRate(geo.msa.avgCapRate);
-      }
-      return;
-    }
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${deal.id}/geographic-context`);
-      const data = res.data?.data || res.data;
-      if (data?.submarket?.avgCapRate) {
-        setMarketCapRate(data.submarket.avgCapRate);
-      } else if (data?.msa?.avgCapRate) {
-        setMarketCapRate(data.msa.avgCapRate);
-      }
-    } catch (err) {
-      console.warn('Could not load market data:', err);
+  const loadMarketData = () => {
+    if (!deal?.id || !geographicContext) return;
+    if (geographicContext?.submarket?.avgCapRate) {
+      setMarketCapRate(geographicContext.submarket.avgCapRate);
+    } else if (geographicContext?.msa?.avgCapRate) {
+      setMarketCapRate(geographicContext.msa.avgCapRate);
     }
   };
 
