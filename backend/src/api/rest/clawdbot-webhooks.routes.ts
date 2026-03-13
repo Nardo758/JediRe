@@ -1396,6 +1396,43 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
+      case 'sync_comp_to_targets': {
+        const market = params?.market || 'Atlanta';
+        const validSources = ['comp_properties', 'properties', 'both'];
+        const source = validSources.includes(params?.source) ? params.source : 'both';
+
+        interface SyncRow { inserted_count: string; skipped_count: string; total_comps?: string; total_props?: string }
+        const synced: Record<string, SyncRow> = {};
+
+        if (source === 'comp_properties' || source === 'both') {
+          const compResult = await pool.query<SyncRow>(
+            `SELECT * FROM sync_comp_to_targets($1)`,
+            [market]
+          );
+          synced.comp_properties = compResult.rows[0];
+        }
+
+        if (source === 'properties' || source === 'both') {
+          const propResult = await pool.query<SyncRow>(
+            `SELECT * FROM sync_properties_to_targets($1)`,
+            [market]
+          );
+          synced.properties = propResult.rows[0];
+        }
+
+        const totalInserted = Object.values(synced).reduce(
+          (sum: number, r: SyncRow) => sum + (parseInt(r.inserted_count) || 0), 0
+        );
+
+        result = {
+          message: `Sync complete for ${market}: ${totalInserted} new targets added`,
+          market,
+          source,
+          synced,
+        };
+        break;
+      }
+
       default:
         return res.status(400).json({ error: 'Bad Request', message: `Unknown command: ${command}` });
     }
