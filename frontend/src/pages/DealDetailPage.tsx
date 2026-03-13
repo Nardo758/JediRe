@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
+import {
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box,
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
-import { useDealStore } from '../stores/dealStore';
+import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
@@ -105,6 +105,7 @@ const DealDetailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { fetchDealById } = useDealStore();
   const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
+  const config = useDealTypeConfig();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
@@ -315,50 +316,90 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 3: DEAL DESIGN - Create the deal
   // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  const dealDesignTabs: Tab[] = [
-    { 
-      id: '3d-design', 
-      label: '3D Building Design', 
-      icon: <Box size={16} />, 
-      component: Design3DPageEnhanced 
-    },
-    { 
-      id: 'strategy', 
-      label: 'Strategy', 
-      icon: <Target size={16} />, 
-      component: StrategySection 
-    },
-    {
-      id: 'traffic-module',
-      label: 'Traffic Module',
-      icon: <Activity size={16} />,
-      component: TrafficModule
-    },
-    {
-      id: 'proforma',
-      label: 'Pro Forma',
-      icon: <Layers size={16} />,
-      component: ProFormaTab
-    },
-    {
-      id: 'tax',
-      label: 'Tax Intelligence',
-      icon: <Calculator size={16} />,
-      component: TaxModule
-    },
-    {
-      id: 'debt',
-      label: 'Debt, Equity & Exit',
-      icon: <DollarSign size={16} />,
-      component: DebtTab
-    },
-    {
-      id: 'financial-dashboard',
-      label: 'Financial Dashboard',
-      icon: <BarChart3 size={16} />,
-      component: FinancialDashboard
-    },
-  ];
+  // Note: 3D Design (M03) only for development deals
+  const dealDesignTabs: Tab[] = config.isModuleVisible('M03')
+    ? [
+        {
+          id: '3d-design',
+          label: '3D Building Design',
+          icon: <Box size={16} />,
+          component: Design3DPageEnhanced
+        },
+        {
+          id: 'strategy',
+          label: 'Strategy',
+          icon: <Target size={16} />,
+          component: StrategySection
+        },
+        {
+          id: 'traffic-module',
+          label: 'Traffic Module',
+          icon: <Activity size={16} />,
+          component: TrafficModule
+        },
+        {
+          id: 'proforma',
+          label: 'Pro Forma',
+          icon: <Layers size={16} />,
+          component: ProFormaTab
+        },
+        {
+          id: 'tax',
+          label: 'Tax Intelligence',
+          icon: <Calculator size={16} />,
+          component: TaxModule
+        },
+        {
+          id: 'debt',
+          label: 'Debt, Equity & Exit',
+          icon: <DollarSign size={16} />,
+          component: DebtTab
+        },
+        {
+          id: 'financial-dashboard',
+          label: 'Financial Dashboard',
+          icon: <BarChart3 size={16} />,
+          component: FinancialDashboard
+        },
+      ]
+    : [
+        {
+          id: 'strategy',
+          label: 'Strategy',
+          icon: <Target size={16} />,
+          component: StrategySection
+        },
+        {
+          id: 'traffic-module',
+          label: 'Traffic Module',
+          icon: <Activity size={16} />,
+          component: TrafficModule
+        },
+        {
+          id: 'proforma',
+          label: 'Pro Forma',
+          icon: <Layers size={16} />,
+          component: ProFormaTab
+        },
+        {
+          id: 'tax',
+          label: 'Tax Intelligence',
+          icon: <Calculator size={16} />,
+          component: TaxModule
+        },
+        {
+          id: 'debt',
+          label: 'Debt, Equity & Exit',
+          icon: <DollarSign size={16} />,
+          component: DebtTab
+        },
+        {
+          id: 'financial-dashboard',
+          label: 'Financial Dashboard',
+          icon: <BarChart3 size={16} />,
+          component: FinancialDashboard
+        },
+      ];
 
   // Stage 4: DUE DILIGENCE - Verify & validate
   const dueDiligenceTabs: Tab[] = [
