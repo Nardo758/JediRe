@@ -17,6 +17,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { useMemo } from 'react';
 import { apiClient } from '../services/api.client';
 import {
   DealContext,
@@ -31,6 +32,11 @@ import {
   resolveUnitMix,
   layered,
 } from './dealContext.types';
+import {
+  getDealType,
+  getDealTypeConfig,
+  type DealType,
+} from '../shared/config/deal-type-visibility';
 
 // ---------------------------------------------------------------------------
 // Store actions interface
@@ -204,6 +210,7 @@ const INITIAL_CONTEXT: DealContext = {
     createdAt: '',
     updatedAt: '',
   },
+  projectType: 'existing',
   site: {
     acreage: layered(0),
     buildableAcreage: layered(0),
@@ -882,3 +889,15 @@ export const useDealBasics = () =>
     totalUnits: s.totalUnits,
     isDevelopment: s.identity.mode === 'development',
   }));
+
+/** Get the canonical DealType from projectType (existing | development | redevelopment) */
+export const useDealType = (): DealType => {
+  const projectType = useDealStore((s) => s.projectType);
+  return getDealType({ projectType });
+};
+
+/** Get full deal-type configuration (visible tabs, strategies, templates, etc.) */
+export const useDealTypeConfig = () => {
+  const projectType = useDealStore((s) => s.projectType);
+  return useMemo(() => getDealTypeConfig({ projectType }), [projectType]);
+};

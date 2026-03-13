@@ -459,6 +459,9 @@ export interface DealContext {
   /** Deal identity — always present */
   identity: DealIdentity;
 
+  /** Project type for deal-type-driven visibility and configuration */
+  projectType: 'existing' | 'development' | 'redevelopment';
+
   /** Site information — always present */
   site: SiteContext;
 
