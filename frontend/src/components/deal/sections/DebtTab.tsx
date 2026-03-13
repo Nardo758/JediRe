@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type {
   StrategyType,
   CapitalLayer,
-  CapitalScenario,
   MetricInsight,
 } from '../../../types/capital-structure.types';
 import { useDealModule } from '../../../contexts/DealModuleContext';
@@ -15,11 +14,8 @@ import {
   rateForecast,
   lockVsFloatAnalysis,
   spreadAnalysis,
-  defaultWaterfall,
-  waterfallResult,
   stackInsights,
   strategyMismatchWarnings,
-  calcSourcesEqualsUses,
   calcRateSensitivity,
 } from '../../../data/capitalStructureMockData';
 import ExitDrivesCapital from './ExitDrivesCapital';
@@ -36,12 +32,10 @@ interface DebtTabProps {
   dealStatus?: 'pipeline' | 'owned';
 }
 
-type TabId = 'exit-overview' | 'stack' | 'waterfall' | 'debt' | 'rates' | 'metrics' | 'exit' | 'sensitivity' | 'monitor';
+type TabId = 'exit-overview' | 'debt' | 'rates' | 'metrics' | 'exit' | 'sensitivity' | 'monitor';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'exit-overview', label: 'Exit & Capital', icon: '⊕' },
-  { id: 'stack', label: 'Capital Stack', icon: '◈' },
-  { id: 'waterfall', label: 'Equity Waterfall', icon: '▽' },
   { id: 'debt', label: 'Debt Products', icon: '◇' },
   { id: 'rates', label: 'Rate Strategy', icon: '◆' },
   { id: 'metrics', label: 'Key Metrics', icon: '⬡' },
@@ -79,22 +73,11 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const [liveStack, setLiveStack] = useState<any>(null);
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
   const [liveRateData, setLiveRateData] = useState<any>(null);
-  const [liveWaterfall, setLiveWaterfall] = useState<any>(null);
   const [liveInsights, setLiveInsights] = useState<any>(null);
 
   const [liveRates, setLiveRates] = useState<any>(null);
   const [rateHistory, setRateHistory] = useState<any>(null);
   const [historyPeriod, setHistoryPeriod] = useState('2y');
-
-  const [waterfalls, setWaterfalls] = useState<any[]>([{
-    id: 'default',
-    name: 'Default Structure',
-    ...defaultWaterfall,
-    tiers: defaultWaterfall.tiers.map(t => ({ ...t })),
-  }]);
-  const [activeWaterfallId, setActiveWaterfallId] = useState('default');
-
-  const [sentToProForma, setSentToProForma] = useState(false);
 
   const [rateSheetFile, setRateSheetFile] = useState<File | null>(null);
   const [rateSheetParsed, setRateSheetParsed] = useState<any>(null);
@@ -104,7 +87,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const [aiStrategyLoading, setAiStrategyLoading] = useState(false);
 
   const [tabLoading, setTabLoading] = useState<Record<TabId, boolean>>({
-    'exit-overview': false, stack: false, debt: false, rates: false, metrics: false, waterfall: false, exit: false, sensitivity: false, monitor: false,
+    'exit-overview': false, debt: false, rates: false, metrics: false, exit: false, sensitivity: false, monitor: false,
   });
   const [liveDataSources, setLiveDataSources] = useState<Set<TabId>>(new Set());
   const fetchedTabs = useRef<Set<TabId>>(new Set());
@@ -113,7 +96,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     financial,
     capitalStructure,
     updateCapitalStructure,
-    updateDebtTerms,
     strategy: strategyCtx,
     emitEvent,
     lastEvent,
@@ -129,8 +111,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     dealStatus: dealStatus || 'pipeline',
   }), [financial?.noi, capitalStructure?.totalEquity, capitalStructure?.loanBalance, stack?.metrics?.totalEquity, stack?.metrics?.totalDebt, dealStatus]);
 
-  const activeWaterfall = useMemo(() => waterfalls.find(w => w.id === activeWaterfallId) || waterfalls[0], [waterfalls, activeWaterfallId]);
-
   const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
     setTabLoading(prev => ({ ...prev, [tab]: loading }));
   }, []);
@@ -141,7 +121,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
 
   useEffect(() => {
     const fetchStack = async () => {
-      markTabLoading('stack', true);
       try {
         const res = await apiClient.post(`${API_BASE}/stack`, {
           dealId: deal.id,
@@ -154,11 +133,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         if (res.data?.stack) {
           setLiveStack(res.data.stack);
           if (res.data.stack.layers) setLayers(res.data.stack.layers);
-          markTabLive('stack');
         }
       } catch {
-      } finally {
-        markTabLoading('stack', false);
       }
 
       try {
@@ -172,7 +148,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       }
     };
     fetchStack();
-    fetchedTabs.current.add('stack');
   }, [deal.id]);
 
   useEffect(() => {
@@ -265,31 +240,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   }, [historyPeriod]);
 
   useEffect(() => {
-    if (activeTab === 'waterfall' && !fetchedTabs.current.has('waterfall')) {
-      fetchedTabs.current.add('waterfall');
-      const fetchWaterfall = async () => {
-        markTabLoading('waterfall', true);
-        try {
-          const res = await apiClient.post(`${API_BASE}/waterfall`, {
-            config: defaultWaterfall,
-            exitProceeds: waterfallResult.exitProceeds,
-            holdYears: 5,
-            annualCashFlows: [],
-          });
-          if (res.data?.waterfall) {
-            setLiveWaterfall(res.data.waterfall);
-            markTabLive('waterfall');
-          }
-        } catch {
-        } finally {
-          markTabLoading('waterfall', false);
-        }
-      };
-      fetchWaterfall();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
     const fetchLatestRateSheet = async () => {
       try {
         const res = await apiClient.get(`${API_BASE}/rate-sheet/${deal.id}/latest`);
@@ -369,9 +319,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     emitCapitalUpdate();
   }, [selectedStrategy, layers]);
 
-  const totalSources = useMemo(() => layers.reduce((s, l) => s + l.amount, 0), [layers]);
-  const balance = useMemo(() => calcSourcesEqualsUses(totalSources, stack.uses.total), [totalSources, stack.uses.total]);
-
   const filteredProducts = useMemo(
     () => debtProducts.filter((p) => p.bestForStrategies.includes(selectedStrategy)),
     [selectedStrategy],
@@ -385,102 +332,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     () => strategyMismatchWarnings.filter((w) => w.strategy === selectedStrategy),
     [selectedStrategy],
   );
-
-  const computeWaterfallResult = useCallback((wf: any) => {
-    const totalEquity = wf.lpCapital + wf.gpCapital;
-    const exitProceeds = waterfallResult.exitProceeds;
-    const profit = exitProceeds - totalEquity;
-    if (profit <= 0) {
-      return {
-        distributions: wf.tiers.map((t: any) => ({
-          tierId: t.id, tierName: t.name, lpDistribution: 0, gpDistribution: 0,
-          totalDistribution: 0, cumulativeLPReturn: 0, cumulativeGPReturn: 0, irr: 0,
-        })),
-        lpTotalReturn: Math.min(exitProceeds, wf.lpCapital),
-        gpTotalReturn: Math.max(0, exitProceeds - wf.lpCapital),
-        lpIRR: 0, gpIRR: 0, lpEquityMultiple: wf.lpCapital > 0 ? Math.min(exitProceeds, wf.lpCapital) / wf.lpCapital : 0,
-        gpEquityMultiple: 0, gpEffectiveShare: 0, totalDistributed: exitProceeds, exitProceeds,
-      };
-    }
-    const prefAmount = wf.lpCapital * (wf.preferredReturn / 100);
-    let remaining = profit;
-    const dists: any[] = [];
-    let cumLP = wf.lpCapital;
-    let cumGP = wf.gpCapital;
-
-    for (let i = 0; i < wf.tiers.length; i++) {
-      const tier = wf.tiers[i];
-      const nextHurdle = i < wf.tiers.length - 1 ? wf.tiers[i + 1]?.hurdleRate || 1 : 1;
-      const tierAmount = Math.min(remaining, totalEquity * (nextHurdle - tier.hurdleRate));
-      const lpDist = tierAmount * tier.lpSplit;
-      const gpDist = tierAmount * tier.gpSplit;
-      cumLP += lpDist;
-      cumGP += gpDist;
-      remaining -= tierAmount;
-      dists.push({
-        tierId: tier.id, tierName: tier.name,
-        lpDistribution: lpDist, gpDistribution: gpDist,
-        totalDistribution: lpDist + gpDist,
-        cumulativeLPReturn: cumLP, cumulativeGPReturn: cumGP,
-        irr: tier.hurdleRate * 100,
-      });
-      if (remaining <= 0) break;
-    }
-
-    const lpTotal = dists.reduce((s: number, d: any) => s + d.lpDistribution, 0) + wf.lpCapital;
-    const gpTotal = dists.reduce((s: number, d: any) => s + d.gpDistribution, 0) + wf.gpCapital;
-    const totalDist = lpTotal + gpTotal;
-
-    return {
-      distributions: dists,
-      lpTotalReturn: lpTotal,
-      gpTotalReturn: gpTotal,
-      lpIRR: wf.lpCapital > 0 ? ((lpTotal / wf.lpCapital) - 1) * 100 / 5 : 0,
-      gpIRR: wf.gpCapital > 0 ? ((gpTotal / wf.gpCapital) - 1) * 100 / 5 : 0,
-      lpEquityMultiple: wf.lpCapital > 0 ? lpTotal / wf.lpCapital : 0,
-      gpEquityMultiple: wf.gpCapital > 0 ? gpTotal / wf.gpCapital : 0,
-      gpEffectiveShare: totalDist > 0 ? gpTotal / totalDist : 0,
-      totalDistributed: totalDist,
-      exitProceeds,
-    };
-  }, []);
-
-  const handleSendToProForma = useCallback(() => {
-    const totalDebt = layers
-      .filter(l => l.layerType === 'senior' || l.layerType === 'mezz')
-      .reduce((s, l) => s + l.amount, 0);
-    const seniorLayer = layers.find(l => l.layerType === 'senior');
-
-    const isFloating = seniorLayer?.source?.toLowerCase().includes('bridge') ||
-      seniorLayer?.source?.toLowerCase().includes('floating');
-
-    const terms = {
-      loanAmount: totalDebt,
-      loanType: seniorLayer?.source || 'bridge',
-      rateType: isFloating ? 'floating' : 'fixed',
-      interestRate: seniorLayer?.rate || 0,
-      spread: (seniorLayer as any)?.spread || 0,
-      term: seniorLayer?.term || 0,
-      amortization: 360,
-      ioPeriod: (seniorLayer as any)?.ioMonths || 0,
-      originationFee: (seniorLayer as any)?.originationFee || 0,
-      rateCapCost: (seniorLayer as any)?.rateCapCost || 0,
-      indexRate: (seniorLayer as any)?.indexRate || '',
-      waterfall: activeWaterfall,
-      source: 'debt-equity-module',
-    };
-
-    updateDebtTerms(terms);
-
-    emitEvent({
-      source: 'M11-capital-structure',
-      type: 'debt-terms-selected',
-      payload: terms,
-    });
-
-    setSentToProForma(true);
-    setTimeout(() => setSentToProForma(false), 3000);
-  }, [layers, activeWaterfall, updateDebtTerms, emitEvent]);
 
   const handleUploadRateSheet = useCallback(async () => {
     if (!rateSheetFile) return;
@@ -518,62 +369,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       setAiStrategyLoading(false);
     }
   }, [layers, deal, financial, template, selectedStrategy]);
-
-  const updateWaterfall = useCallback((id: string, updates: any) => {
-    setWaterfalls(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
-  }, []);
-
-  const updateWaterfallTier = useCallback((waterfallId: string, tierIdx: number, updates: any) => {
-    setWaterfalls(prev => prev.map(w => {
-      if (w.id !== waterfallId) return w;
-      const newTiers = w.tiers.map((t: any, i: number) => i === tierIdx ? { ...t, ...updates } : t);
-      return { ...w, tiers: newTiers };
-    }));
-  }, []);
-
-  const addWaterfallTier = useCallback((waterfallId: string) => {
-    setWaterfalls(prev => prev.map(w => {
-      if (w.id !== waterfallId) return w;
-      return {
-        ...w,
-        tiers: [...w.tiers, {
-          id: `tier-${Date.now()}`,
-          name: `Tier ${w.tiers.length + 1}`,
-          hurdleRate: 0.20,
-          lpSplit: 0.50,
-          gpSplit: 0.50,
-          description: '',
-        }],
-      };
-    }));
-  }, []);
-
-  const removeWaterfallTier = useCallback((waterfallId: string, tierIdx: number) => {
-    setWaterfalls(prev => prev.map(w => {
-      if (w.id !== waterfallId) return w;
-      return { ...w, tiers: w.tiers.filter((_: any, i: number) => i !== tierIdx) };
-    }));
-  }, []);
-
-  const addNewWaterfall = useCallback(() => {
-    const newId = `wf-${Date.now()}`;
-    setWaterfalls(prev => [...prev, {
-      id: newId,
-      name: `Waterfall ${prev.length + 1}`,
-      ...defaultWaterfall,
-      dealId: deal.id,
-      tiers: defaultWaterfall.tiers.map(t => ({ ...t, id: `${t.id}-${Date.now()}` })),
-    }]);
-    setActiveWaterfallId(newId);
-  }, [deal.id]);
-
-  const deleteWaterfall = useCallback((id: string) => {
-    if (waterfalls.length <= 1) return;
-    setWaterfalls(prev => prev.filter(w => w.id !== id));
-    if (activeWaterfallId === id) {
-      setActiveWaterfallId(waterfalls.find(w => w.id !== id)?.id || waterfalls[0].id);
-    }
-  }, [waterfalls, activeWaterfallId]);
 
   const applyRateSheetProduct = useCallback((product: any) => {
     const seniorIdx = layers.findIndex(l => l.layerType === 'senior');
@@ -618,115 +413,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
       })}
     </div>
   );
-
-  const renderCapitalStack = () => {
-    const totalHeight = stack.uses.total;
-    return (
-      <div className="space-y-6">
-        <div className={`flex items-center justify-between p-4 rounded-lg border-2 ${
-          balance.balanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'
-        }`}>
-          <div className="flex items-center gap-3">
-            <span className={`text-2xl ${balance.balanced ? 'text-green-600' : 'text-red-600'}`}>
-              {balance.balanced ? '=' : '!'}
-            </span>
-            <div>
-              <div className="text-sm font-semibold text-gray-900">
-                Sources {fmtM(totalSources)} {balance.balanced ? '=' : '≠'} Uses {fmtM(stack.uses.total)}
-              </div>
-              {!balance.balanced && (
-                <div className="text-xs text-red-600 mt-1">
-                  {balance.imbalance > 0 ? `${fmtM(balance.imbalance)} excess sources` : `${fmtM(Math.abs(balance.imbalance))} funding gap`}
-                </div>
-              )}
-            </div>
-          </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            balance.balanced ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
-          }`}>
-            {balance.balanced ? 'BALANCED' : 'IMBALANCED'}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Capital Stack</h4>
-            <div className="flex rounded-lg overflow-hidden h-12 border border-gray-300">
-              {layers.map((layer) => {
-                const widthPct = (layer.amount / totalHeight) * 100;
-                return (
-                  <div
-                    key={layer.id}
-                    className={`${layer.color} relative group cursor-pointer transition-opacity hover:opacity-90`}
-                    style={{ width: `${widthPct}%` }}
-                    title={`${layer.name}: ${fmtM(layer.amount)} (${widthPct.toFixed(0)}%)`}
-                  >
-                    {widthPct > 12 && (
-                      <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold">
-                        {widthPct.toFixed(0)}%
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {layers.map((layer) => (
-                <div key={layer.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded ${layer.color}`} />
-                    <span className="text-gray-700">{layer.name}</span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-gray-500">{fmtPct(layer.rate)}</span>
-                    <span className="font-semibold text-gray-900">{fmtM(layer.amount)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Uses of Capital</h4>
-            <div className="space-y-3">
-              {[
-                { label: 'Acquisition Price', value: stack.uses.acquisitionPrice },
-                { label: 'Closing Costs', value: stack.uses.closingCosts },
-                { label: 'Renovation Budget', value: stack.uses.renovationBudget },
-                { label: 'Carrying Costs', value: stack.uses.carryingCosts },
-                { label: 'Reserves', value: stack.uses.reserves },
-                { label: 'Developer Fee', value: stack.uses.developerFee },
-              ].map((u) => (
-                <div key={u.label} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <span className="text-sm text-gray-600">{u.label}</span>
-                  <span className="text-sm font-semibold text-gray-900">{fmtM(u.value)}</span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                <span className="text-sm font-semibold text-gray-900">Total Uses</span>
-                <span className="text-lg font-bold text-gray-900">{fmtM(stack.uses.total)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {renderInsights(liveInsights || stackInsights)}
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleSendToProForma}
-            className="px-6 py-3 rounded-lg text-white font-semibold text-sm transition-all bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-md hover:shadow-lg"
-          >
-            Send to Pro Forma →
-          </button>
-          {sentToProForma && (
-            <span className="text-sm font-semibold text-green-600 animate-pulse">Sent to Pro Forma ✓</span>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const renderDebtSelector = () => (
     <div className="space-y-6">
@@ -1331,236 +1017,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
     </div>
   );
 
-  const renderEquityWaterfall = () => {
-    const wf = activeWaterfall;
-    const result = computeWaterfallResult(wf);
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3 flex-wrap">
-          <select
-            value={activeWaterfallId}
-            onChange={(e) => setActiveWaterfallId(e.target.value)}
-            className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 bg-white"
-          >
-            {waterfalls.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
-          <button
-            onClick={addNewWaterfall}
-            className="px-3 py-2 rounded-lg text-sm font-semibold text-blue-600 border border-blue-300 hover:bg-blue-50 transition-all"
-          >
-            + Add Waterfall
-          </button>
-          {waterfalls.length > 1 && (
-            <button
-              onClick={() => deleteWaterfall(activeWaterfallId)}
-              className="px-3 py-2 rounded-lg text-sm font-semibold text-red-600 border border-red-300 hover:bg-red-50 transition-all"
-            >
-              🗑 Delete
-            </button>
-          )}
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Waterfall Name</h4>
-          <input
-            type="text"
-            value={wf.name}
-            onChange={(e) => updateWaterfall(wf.id, { name: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Equity Structure</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">LP %</span>
-                <input type="number" value={wf.lpPercentage} min={0} max={100}
-                  onChange={(e) => {
-                    const lp = Number(e.target.value);
-                    const gp = 100 - lp;
-                    const totalEq = wf.lpCapital + wf.gpCapital;
-                    updateWaterfall(wf.id, {
-                      lpPercentage: lp, gpPercentage: gp,
-                      lpCapital: totalEq * (lp / 100), gpCapital: totalEq * (gp / 100),
-                    });
-                  }}
-                  className="w-20 px-2 py-1 rounded border border-gray-300 text-sm text-right" />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">GP %</span>
-                <input type="number" value={wf.gpPercentage} min={0} max={100}
-                  onChange={(e) => {
-                    const gp = Number(e.target.value);
-                    const lp = 100 - gp;
-                    const totalEq = wf.lpCapital + wf.gpCapital;
-                    updateWaterfall(wf.id, {
-                      lpPercentage: lp, gpPercentage: gp,
-                      lpCapital: totalEq * (lp / 100), gpCapital: totalEq * (gp / 100),
-                    });
-                  }}
-                  className="w-20 px-2 py-1 rounded border border-gray-300 text-sm text-right" />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">LP Capital</span>
-                <input type="number" value={wf.lpCapital} min={0} step={100000}
-                  onChange={(e) => updateWaterfall(wf.id, {
-                    lpCapital: Number(e.target.value),
-                    totalEquity: Number(e.target.value) + wf.gpCapital,
-                  })}
-                  className="w-32 px-2 py-1 rounded border border-gray-300 text-sm text-right" />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">GP Capital</span>
-                <input type="number" value={wf.gpCapital} min={0} step={100000}
-                  onChange={(e) => updateWaterfall(wf.id, {
-                    gpCapital: Number(e.target.value),
-                    totalEquity: wf.lpCapital + Number(e.target.value),
-                  })}
-                  className="w-32 px-2 py-1 rounded border border-gray-300 text-sm text-right" />
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm font-semibold text-gray-900">Total Equity</span>
-                <span className="text-sm font-bold text-gray-900">{fmtM(wf.lpCapital + wf.gpCapital)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm text-gray-600">Pref Return %</span>
-                <input type="number" value={wf.preferredReturn} min={0} max={30} step={0.25}
-                  onChange={(e) => updateWaterfall(wf.id, { preferredReturn: Number(e.target.value) })}
-                  className="w-20 px-2 py-1 rounded border border-gray-300 text-sm text-right" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">LP Returns</h4>
-            <div className="text-3xl font-bold text-green-600">{fmtPct(result.lpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{(result.lpEquityMultiple ?? 0).toFixed(2)}x Multiple</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.lpTotalReturn)}</div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">GP Returns</h4>
-            <div className="text-3xl font-bold text-purple-600">{fmtPct(result.gpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{((result.gpEffectiveShare ?? 0) * 100).toFixed(0)}% Effective Share</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.gpTotalReturn)}</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Distribution Waterfall</h4>
-          <div className="space-y-4">
-            {result.distributions.map((dist: any) => {
-              const total = result.totalDistributed || 1;
-              const lpWidth = (dist.lpDistribution / total) * 100;
-              const gpWidth = (dist.gpDistribution / total) * 100;
-              return (
-                <div key={dist.tierId}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-900">{dist.tierName}</span>
-                    <span className="text-sm text-gray-600">{fmtM(dist.totalDistribution)}</span>
-                  </div>
-                  <div className="flex rounded-lg overflow-hidden h-8 bg-gray-100">
-                    {lpWidth > 0 && (
-                      <div className="bg-green-500 flex items-center justify-center" style={{ width: `${lpWidth}%` }}>
-                        {lpWidth > 8 && <span className="text-white text-xs font-semibold">LP {fmtM(dist.lpDistribution)}</span>}
-                      </div>
-                    )}
-                    {gpWidth > 0 && (
-                      <div className="bg-purple-500 flex items-center justify-center" style={{ width: `${gpWidth}%` }}>
-                        {gpWidth > 8 && <span className="text-white text-xs font-semibold">GP {fmtM(dist.gpDistribution)}</span>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {result.distributions.length > 0 && (
-            <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <div className="text-sm text-purple-900">
-                <span className="font-semibold">At projected {fmtPct(result.distributions[result.distributions.length - 1]?.irr || 0)} IRR:</span>{' '}
-                GP earns {((result.gpEffectiveShare ?? 0) * 100).toFixed(0)}% effective share on {wf.gpPercentage}% equity contribution.
-                LP still nets {fmtPct(result.lpIRR)} IRR and {(result.lpEquityMultiple ?? 0).toFixed(2)}x multiple.
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Promote Structure</h4>
-            <button
-              onClick={() => addWaterfallTier(wf.id)}
-              className="px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
-            >
-              + Add Tier
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tier</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">IRR Hurdle</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">LP Split</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">GP Split</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {wf.tiers.map((tier: any, idx: number) => (
-                  <tr key={tier.id}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      <input type="text" value={tier.name}
-                        onChange={(e) => updateWaterfallTier(wf.id, idx, { name: e.target.value })}
-                        className="w-full px-2 py-1 rounded border border-gray-200 text-sm" />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={((tier.hurdleRate ?? 0) * 100).toFixed(1)} step={0.5} min={0} max={100}
-                        onChange={(e) => updateWaterfallTier(wf.id, idx, { hurdleRate: Number(e.target.value) / 100 })}
-                        className="w-20 px-2 py-1 rounded border border-gray-200 text-sm text-right" />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={((tier.lpSplit ?? 0) * 100).toFixed(0)} step={5} min={0} max={100}
-                        onChange={(e) => {
-                          const lp = Number(e.target.value) / 100;
-                          updateWaterfallTier(wf.id, idx, { lpSplit: lp, gpSplit: 1 - lp });
-                        }}
-                        className="w-20 px-2 py-1 rounded border border-gray-200 text-sm text-right" />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right">
-                      <input type="number" value={((tier.gpSplit ?? 0) * 100).toFixed(0)} step={5} min={0} max={100}
-                        onChange={(e) => {
-                          const gp = Number(e.target.value) / 100;
-                          updateWaterfallTier(wf.id, idx, { gpSplit: gp, lpSplit: 1 - gp });
-                        }}
-                        className="w-20 px-2 py-1 rounded border border-gray-200 text-sm text-right" />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {idx > 0 && (
-                        <button
-                          onClick={() => removeWaterfallTier(wf.id, idx)}
-                          className="text-red-500 hover:text-red-700 text-sm font-bold"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderInsights = (insights: MetricInsight[]) => (
     <div className="space-y-3">
       {insights.map((insight, i) => (
@@ -1628,7 +1084,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
           dealStatus={dealStatus}
         />
       )}
-      {activeTab === 'stack' && (tabLoading.stack ? renderTabLoading() : renderCapitalStack())}
       {activeTab === 'debt' && (tabLoading.debt ? renderTabLoading() : (
         <div className="space-y-6">
           <DebtProductsChart products={debtProducts} targetRate={template.rateRange?.[0] || 5.0} exitWindowMonths={42} />
@@ -1642,7 +1097,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         </div>
       ))}
       {activeTab === 'metrics' && renderKeyMetrics()}
-      {activeTab === 'waterfall' && (tabLoading.waterfall ? renderTabLoading() : renderEquityWaterfall())}
       {activeTab === 'exit' && <ExitWindowsTab config={exitConfig} />}
       {activeTab === 'sensitivity' && <SensitivityTab config={exitConfig} />}
       {activeTab === 'monitor' && <MonitorTab dealStatus={dealStatus || 'pipeline'} />}
