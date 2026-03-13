@@ -1233,29 +1233,6 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
         break;
       }
 
-      case 'discover_property_urls': {
-        const discovery = new RentScraperDiscoveryService(pool);
-        const limit = Math.min(params?.limit || 20, 50);
-        const discResult = await discovery.discoverAllPendingUrls({ limit });
-        result = {
-          message: `Discovery complete: ${discResult.discovered} websites found, ${discResult.failed} failed out of ${discResult.results.length} processed`,
-          discovered: discResult.discovered,
-          failed: discResult.failed,
-          skipped: discResult.skipped,
-          results: discResult.results.map(r => ({
-            targetId: r.targetId,
-            propertyName: r.propertyName,
-            websiteUrl: r.websiteUrl,
-            googleRating: r.googleRating,
-            reviewCount: r.reviewCount,
-            phone: r.phone,
-            success: r.success,
-            error: r.error || null,
-          })),
-        };
-        break;
-      }
-
       case 'scrape_property': {
         if (!params?.targetId) {
           return res.status(400).json({ error: 'Bad Request', message: 'targetId parameter is required' });
