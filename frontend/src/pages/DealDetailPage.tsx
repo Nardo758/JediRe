@@ -103,7 +103,7 @@ const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { fetchDealById } = useDealStore();
+  const { fetchDealContext } = useDealStore();
   const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
@@ -111,6 +111,7 @@ const DealDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [geographicStats, setGeographicStats] = useState<any>(null);
+  const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
 
   useEffect(() => {
@@ -125,6 +126,7 @@ const DealDetailPage: React.FC = () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
       const context = response?.data?.data;
+      setGeographicContext(context || null);
       const stats: any = {};
       if (context?.trade_area) {
         stats.trade_area = context.trade_area.stats
@@ -145,6 +147,7 @@ const DealDetailPage: React.FC = () => {
       }
       setGeographicStats(stats);
     } catch {
+      setGeographicContext(null);
       setGeographicStats(null);
     }
   };
@@ -186,7 +189,7 @@ const DealDetailPage: React.FC = () => {
       const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
       const body = response?.data;
       setDeal(body?.deal || body?.data || body);
-      fetchDealById(id);
+      fetchDealContext(id);
     } catch (error) {
       console.error('Error loading deal:', error);
     } finally {
@@ -680,7 +683,7 @@ const DealDetailPage: React.FC = () => {
           </aside>
 
           <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
-            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
+            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
           </main>
 
           <ZoningAgentChat
