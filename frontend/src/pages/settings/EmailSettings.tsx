@@ -195,12 +195,6 @@ export function EmailSettings() {
                 <p className="text-gray-600 mb-4">
                   Connect your Gmail account to start syncing emails
                 </p>
-                <button
-                  onClick={handleConnectGmail}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Connect Gmail Account
-                </button>
               </div>
             ) : (
               <div className="space-y-4">
