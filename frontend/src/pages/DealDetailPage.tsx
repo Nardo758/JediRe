@@ -10,6 +10,7 @@ import {
   Shield, Layers, BarChart2, Radar, Zap
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
+import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
@@ -68,6 +69,10 @@ import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 
+
+interface DealTab extends Tab {
+  moduleId?: ModuleId;
+}
 
 const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
   by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
@@ -217,286 +222,286 @@ const DealDetailPage: React.FC = () => {
   }, []);
 
   // Stage 1: OVERVIEW & SETUP - Get oriented
-  const overviewSetupTabs: Tab[] = [
+  const overviewSetupTabs: DealTab[] = [
     { 
       id: 'overview', 
       label: 'Deal Overview', 
       icon: <BarChart3 size={16} />, 
-      component: OverviewSection 
+      component: OverviewSection,
+      moduleId: 'M01',
     },
     { 
       id: 'zoning', 
       label: 'Property & Zoning', 
       icon: <Landmark size={16} />, 
-      component: ZoningModuleSection 
+      component: ZoningModuleSection,
+      moduleId: 'M02',
     },
     { 
       id: 'context-tracker', 
       label: 'Context Tracker', 
       icon: <Compass size={16} />, 
-      component: ContextTrackerSection 
+      component: ContextTrackerSection,
     },
     { 
       id: 'team', 
       label: 'Team & Collaborators', 
       icon: <Users size={16} />, 
-      component: TeamManagementSection 
+      component: TeamManagementSection,
+      moduleId: 'M17',
     },
   ];
 
   // Stage 2: MARKET RESEARCH - Validate opportunity
-  const marketResearchTabs: Tab[] = [
+  const marketResearchTabs: DealTab[] = [
     { 
       id: 'market-intelligence', 
       label: 'Market Intelligence', 
       icon: <TrendingUp size={16} />, 
-      component: MarketIntelligencePage 
+      component: MarketIntelligencePage,
+      moduleId: 'M05',
     },
     {
       id: 'unit-mix-intelligence',
       label: 'Unit Mix Intelligence',
       icon: <Layers size={16} />,
-      component: UnitMixIntelligence
+      component: UnitMixIntelligence,
+      // No moduleId — Unit Program tool, always visible across deal types
     },
     { 
       id: 'competition', 
       label: 'Competition Analysis', 
       icon: <Target size={16} />, 
-      component: CompetitionPage 
+      component: CompetitionPage,
+      moduleId: 'M15',
     },
     {
       id: 'traffic-intelligence',
       label: 'Traffic Intelligence',
       icon: <Activity size={16} />,
-      component: TrafficIntelligenceSection
+      component: TrafficIntelligenceSection,
+      moduleId: 'M07',
     },
     {
       id: 'competitive-position',
       label: 'Competitive Position',
       icon: <Radar size={16} />,
-      component: CompetitivePositionSection
+      component: CompetitivePositionSection,
+      moduleId: 'M15',
     },
     {
       id: 'supply',
       label: 'Supply Pipeline',
       icon: <Package size={16} />,
-      component: SupplyPipelinePage
+      component: SupplyPipelinePage,
+      moduleId: 'M04',
     },
     {
       id: 'supply-intelligence',
       label: 'Supply Intelligence',
       icon: <Radar size={16} />,
-      component: SupplyIntelligence
+      component: SupplyIntelligence,
+      moduleId: 'M04',
     },
     {
       id: 'market-vitals',
       label: 'Market Vitals',
       icon: <BarChart2 size={16} />,
-      component: MarketIntelligence
+      component: MarketIntelligence,
+      moduleId: 'M05',
     },
     {
       id: 'opportunity-engine',
       label: 'Opportunity Engine',
       icon: <Zap size={16} />,
-      component: OpportunityEngineSection
+      component: OpportunityEngineSection,
+      moduleId: 'M05',
     },
     { 
       id: 'trends', 
       label: 'Trends Analysis', 
       icon: <LineChart size={16} />, 
-      component: TrendsAnalysisSection 
+      component: TrendsAnalysisSection,
+      moduleId: 'M05',
     },
     {
       id: 'comps',
       label: 'Sale Comps',
       icon: <Briefcase size={16} />,
-      component: CompsModule
+      component: CompsModule,
+      moduleId: 'M15',
     },
   ];
 
   // Stage 3: DEAL DESIGN - Create the deal
   // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  // Note: 3D Design (M03) only for development deals
-  const dealDesignTabs: Tab[] = config.isModuleVisible('M03')
-    ? [
-        {
-          id: '3d-design',
-          label: '3D Building Design',
-          icon: <Box size={16} />,
-          component: Design3DPageEnhanced
-        },
-        {
-          id: 'strategy',
-          label: 'Strategy',
-          icon: <Target size={16} />,
-          component: StrategySection
-        },
-        {
-          id: 'traffic-module',
-          label: 'Traffic Module',
-          icon: <Activity size={16} />,
-          component: TrafficModule
-        },
-        {
-          id: 'proforma',
-          label: 'Pro Forma',
-          icon: <Layers size={16} />,
-          component: ProFormaTab
-        },
-        {
-          id: 'tax',
-          label: 'Tax Intelligence',
-          icon: <Calculator size={16} />,
-          component: TaxModule
-        },
-        {
-          id: 'debt',
-          label: 'Debt, Equity & Exit',
-          icon: <DollarSign size={16} />,
-          component: DebtTab
-        },
-        {
-          id: 'financial-dashboard',
-          label: 'Financial Dashboard',
-          icon: <BarChart3 size={16} />,
-          component: FinancialDashboard
-        },
-      ]
-    : [
-        {
-          id: 'strategy',
-          label: 'Strategy',
-          icon: <Target size={16} />,
-          component: StrategySection
-        },
-        {
-          id: 'traffic-module',
-          label: 'Traffic Module',
-          icon: <Activity size={16} />,
-          component: TrafficModule
-        },
-        {
-          id: 'proforma',
-          label: 'Pro Forma',
-          icon: <Layers size={16} />,
-          component: ProFormaTab
-        },
-        {
-          id: 'tax',
-          label: 'Tax Intelligence',
-          icon: <Calculator size={16} />,
-          component: TaxModule
-        },
-        {
-          id: 'debt',
-          label: 'Debt, Equity & Exit',
-          icon: <DollarSign size={16} />,
-          component: DebtTab
-        },
-        {
-          id: 'financial-dashboard',
-          label: 'Financial Dashboard',
-          icon: <BarChart3 size={16} />,
-          component: FinancialDashboard
-        },
-      ];
+  // M03 (3D Design) is gated by the visibility filter below — no conditional split needed.
+  const dealDesignTabs: DealTab[] = [
+    {
+      id: '3d-design',
+      label: '3D Building Design',
+      icon: <Box size={16} />,
+      component: Design3DPageEnhanced,
+      moduleId: 'M03',
+    },
+    {
+      id: 'strategy',
+      label: 'Strategy',
+      icon: <Target size={16} />,
+      component: StrategySection,
+      moduleId: 'M08',
+    },
+    {
+      id: 'traffic-module',
+      label: 'Traffic Module',
+      icon: <Activity size={16} />,
+      component: TrafficModule,
+      moduleId: 'M07',
+    },
+    {
+      id: 'proforma',
+      label: 'Pro Forma',
+      icon: <Layers size={16} />,
+      component: ProFormaTab,
+      moduleId: 'M09',
+    },
+    {
+      id: 'tax',
+      label: 'Tax Intelligence',
+      icon: <Calculator size={16} />,
+      component: TaxModule,
+      // No moduleId — always visible
+    },
+    {
+      id: 'debt',
+      label: 'Debt, Equity & Exit',
+      icon: <DollarSign size={16} />,
+      component: DebtTab,
+      moduleId: 'M11',
+    },
+    {
+      id: 'financial-dashboard',
+      label: 'Financial Dashboard',
+      icon: <BarChart3 size={16} />,
+      component: FinancialDashboard,
+      // No moduleId — always visible
+    },
+  ];
 
   // Stage 4: DUE DILIGENCE - Verify & validate
-  const dueDiligenceTabs: Tab[] = [
+  const dueDiligenceTabs: DealTab[] = [
     {
       id: 'collision-analysis',
       label: 'Collision Analysis',
       icon: <Zap size={16} />,
-      component: CollisionAnalysisSection
+      component: CollisionAnalysisSection,
+      // No moduleId — always visible
     },
     { 
       id: 'due-diligence', 
       label: 'DD Checklist', 
       icon: <ClipboardCheck size={16} />, 
-      component: DueDiligencePage 
+      component: DueDiligencePage,
+      moduleId: 'M13',
     },
     { 
       id: 'deal-status', 
       label: 'Deal Lifecycle', 
       icon: <LayoutDashboard size={16} />, 
-      component: DealStatusSection 
+      component: DealStatusSection,
+      // No moduleId — always visible
     },
     {
       id: 'risk-management',
       label: 'Risk Management',
       icon: <AlertTriangle size={16} />,
-      component: RiskManagementSection
+      component: RiskManagementSection,
+      moduleId: 'M14',
     },
     {
       id: 'risk-intelligence',
       label: 'Risk Intelligence',
       icon: <Shield size={16} />,
-      component: RiskIntelligence
+      component: RiskIntelligence,
+      moduleId: 'M14',
     },
     { 
       id: 'environmental-esg', 
       label: 'Environmental & ESG', 
       icon: <Leaf size={16} />, 
-      component: EnvironmentalESGSection 
+      component: EnvironmentalESGSection,
+      // No moduleId — always visible
     },
     { 
       id: 'site-intelligence', 
       label: 'Site Intelligence', 
       icon: <Activity size={16} />, 
-      component: SiteIntelligenceSection 
+      component: SiteIntelligenceSection,
+      // No moduleId — always visible
     },
     { 
       id: 'files', 
       label: 'Files & Assets', 
       icon: <FolderOpen size={16} />, 
-      component: FilesSection 
+      component: FilesSection,
+      moduleId: 'M18',
     },
   ];
 
   // Stage 5: EXECUTION - Build & deliver
-  const executionTabs: Tab[] = [
+  const executionTabs: DealTab[] = [
     { 
       id: 'timeline', 
       label: 'Project Timeline', 
       icon: <Calendar size={16} />, 
-      component: ProjectTimelinePage 
+      component: ProjectTimelinePage,
+      // No moduleId — always visible
     },
     { 
       id: 'project-management', 
       label: 'Project Management', 
       icon: <Briefcase size={16} />, 
-      component: ProjectManagementSection 
+      component: ProjectManagementSection,
+      // No moduleId — always visible
     },
     { 
       id: 'construction-management', 
       label: 'Construction Management', 
       icon: <HardHat size={16} />, 
-      component: ConstructionManagementSection 
+      component: ConstructionManagementSection,
+      // No moduleId — always visible
     },
   ];
 
   // Always Available: AI ASSISTANT
-  const aiAssistantTabs: Tab[] = [
+  const aiAssistantTabs: DealTab[] = [
     { 
       id: 'ai-agent', 
       label: 'Opus AI Agent', 
       icon: <Bot size={16} />, 
-      component: OpusAISection 
+      component: OpusAISection,
     },
     { 
       id: 'ai-recommendations', 
       label: 'AI Recommendations', 
       icon: <Lightbulb size={16} />, 
-      component: AIRecommendationsSection 
+      component: AIRecommendationsSection,
     },
   ];
 
+  // Filter helper: tabs without a moduleId always show; known moduleIds respect deal-type config.
+  const visibleOnly = (tabs: DealTab[]) =>
+    tabs.filter(tab => {
+      if (!tab.moduleId) return true;
+      return config.isModuleVisible(tab.moduleId as ModuleId);
+    });
+
   const allTabs = [
-    ...overviewSetupTabs,
-    ...marketResearchTabs,
-    ...dealDesignTabs,
-    ...dueDiligenceTabs,
-    ...executionTabs,
+    ...visibleOnly(overviewSetupTabs),
+    ...visibleOnly(marketResearchTabs),
+    ...visibleOnly(dealDesignTabs),
+    ...visibleOnly(dueDiligenceTabs),
+    ...visibleOnly(executionTabs),
     ...aiAssistantTabs,
   ];
 

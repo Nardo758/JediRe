@@ -28,6 +28,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         '[]'::jsonb as "parcelIds",
         COALESCE(deal_data->'coordinates', '{"lat":0,"lng":0}'::jsonb) as coordinates,
         project_type,
+        development_type,
         status as stage,
         deal_data,
         created_at as "createdAt",
@@ -184,6 +185,8 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         risk: { hydrated: false, lastFetchedAt: null, source: 'mock' },
       },
       stageHistory: dealData.stageHistory || [],
+      projectType: deal.project_type || 'existing',
+      developmentType: deal.development_type || null,
     };
 
     res.json(context);

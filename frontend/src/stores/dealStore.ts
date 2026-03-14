@@ -386,10 +386,21 @@ export const useDealStore = create<DealStore>()(
         // Recompute resolved unit mix from the fetched data
         const { resolvedUnitMix, totalUnits } = recomputeResolvedMix(data);
 
+        // Hydrate projectType from API response. The backend serializes project_type
+        // as camelCase (projectType) — fall back through both casings plus identity.mode.
+        const resolvedProjectType: DealType =
+          (data as any).projectType ??
+          (data as any).project_type ??
+          (data as any).identity?.mode ??
+          'existing';
+
+        console.log('[dealStore] projectType resolved to:', resolvedProjectType);
+
         set({
           ...data,
           resolvedUnitMix,
           totalUnits,
+          projectType: resolvedProjectType,
         });
       } catch (error) {
         console.error('[dealStore] Failed to fetch deal context:', error);
