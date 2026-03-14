@@ -8,7 +8,7 @@ import { Deal } from '@/types';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
-import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../deal-type-visibility';
+import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
 
 interface UnitMixRow {
   floorPlan: string;

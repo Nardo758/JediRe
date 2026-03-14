@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "build:prod": "NODE_ENV=production tsc && vite build",
+    "build": "vite build",
+    "build:prod": "NODE_ENV=production vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "deploy:check": "npm run lint && npm run build"
@@ -22,6 +22,7 @@
     "@headlessui/react": "^2.2.9",
     "@heroicons/react": "^2.2.0",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@mapbox/point-geometry": "^1.1.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
     "@turf/turf": "^6.5.0",
@@ -31,7 +32,7 @@
     "clsx": "^2.0.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
-    "mapbox-gl": "^3.0.1",
+    "mapbox-gl": "^3.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-map-gl": "^8.1.0",

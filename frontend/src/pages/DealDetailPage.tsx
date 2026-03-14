@@ -10,6 +10,7 @@ import {
   Shield, Layers, BarChart2, Radar, Zap
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
+import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { apiClient } from '../services/api.client';
 import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
@@ -58,6 +59,10 @@ import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 
+
+interface DealTab extends Tab {
+  moduleId?: ModuleId;
+}
 
 const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
   by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
@@ -255,7 +260,8 @@ const DealDetailPage: React.FC = () => {
       id: 'unit-mix-intelligence',
       label: 'Unit Mix Intelligence',
       icon: <Layers size={16} />,
-      component: UnitMixIntelligence
+      component: UnitMixIntelligence,
+      // No moduleId — Unit Program tool, always visible across deal types
     },
     {
       id: 'competition',
@@ -289,7 +295,8 @@ const DealDetailPage: React.FC = () => {
       id: 'comps',
       label: 'Sale Comps',
       icon: <Briefcase size={16} />,
-      component: CompsModule
+      component: CompsModule,
+      moduleId: 'M15',
     },
   ];
 
@@ -341,12 +348,13 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Stage 4: DUE DILIGENCE - Verify & validate
-  const dueDiligenceTabs: Tab[] = [
+  const dueDiligenceTabs: DealTab[] = [
     {
       id: 'collision-analysis',
       label: 'Collision Analysis',
       icon: <Zap size={16} />,
-      component: CollisionAnalysisSection
+      component: CollisionAnalysisSection,
+      // No moduleId — always visible
     },
     {
       id: 'due-diligence',
