@@ -9,7 +9,7 @@
  * - Recent risk events timeline
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
   Box,
@@ -36,6 +36,8 @@ import {
   TrendingDown as TrendingDownIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
+import { useDealType } from '../../stores/dealStore';
+import { getRiskWeightProfile, RISK_WEIGHTS } from '../../deal-type-visibility';
 
 interface CompositeRiskProfile {
   tradeAreaId: string;
@@ -76,6 +78,10 @@ interface RiskDashboardProps {
 }
 
 const RiskDashboard: React.FC<RiskDashboardProps> = ({ dealId, tradeAreaIds }) => {
+  const dealType = useDealType();
+  const riskWeightProfile = useMemo(() => getRiskWeightProfile(dealType), [dealType]);
+  const categoryWeights = useMemo(() => RISK_WEIGHTS[riskWeightProfile], [riskWeightProfile]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [riskProfiles, setRiskProfiles] = useState<CompositeRiskProfile[]>([]);
@@ -142,6 +148,17 @@ const RiskDashboard: React.FC<RiskDashboardProps> = ({ dealId, tradeAreaIds }) =
 
   const formatCategoryName = (name: string): string => {
     return name.charAt(0).toUpperCase() + name.slice(1).replace('_', ' ');
+  };
+
+  const getCategoryWeight = (category: keyof typeof categoryWeights): number => {
+    return categoryWeights?.[category] ?? 0;
+  };
+
+  const getCategoryWeightColor = (weight: number): string => {
+    if (weight >= 0.25) return '#f44336'; // Red for highest weight
+    if (weight >= 0.20) return '#ff9800'; // Orange
+    if (weight >= 0.15) return '#4caf50'; // Green
+    return '#2196f3'; // Blue for lowest
   };
 
   if (loading) {
@@ -215,164 +232,170 @@ const RiskDashboard: React.FC<RiskDashboardProps> = ({ dealId, tradeAreaIds }) =
                 {/* Risk Category Breakdown */}
                 <Box sx={{ mt: 3 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Risk Categories
+                    Risk Categories (weighted for {riskWeightProfile})
                   </Typography>
                   <Grid container spacing={1}>
                     <Grid item xs={6}>
-                      <Tooltip title="Implemented: Pipeline analysis & absorption">
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">
-                            Supply Risk
+                      <Box sx={{ opacity: getCategoryWeight('supply') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Supply Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('supply')) }}>
+                            {(getCategoryWeight('supply') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.supplyRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.supplyRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.supplyRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: getRiskScoreColor(profile.supplyRisk),
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.supplyRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.supplyRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Tooltip title="Implemented: Employer concentration">
-                        <Box>
-                          <Typography variant="caption" color="textSecondary">
-                            Demand Risk
+                      <Box sx={{ opacity: getCategoryWeight('demand') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Demand Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('demand')) }}>
+                            {(getCategoryWeight('demand') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.demandRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.demandRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.demandRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: getRiskScoreColor(profile.demandRisk),
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.demandRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.demandRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Tooltip title="Placeholder: Phase 3">
-                        <Box sx={{ opacity: 0.5 }}>
-                          <Typography variant="caption" color="textSecondary">
-                            Regulatory Risk
+                      <Box sx={{ opacity: getCategoryWeight('regulatory') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Regulatory Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('regulatory')) }}>
+                            {(getCategoryWeight('regulatory') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.regulatoryRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.regulatoryRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.regulatoryRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: '#9e9e9e',
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.regulatoryRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.regulatoryRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Tooltip title="Placeholder: Phase 3">
-                        <Box sx={{ opacity: 0.5 }}>
-                          <Typography variant="caption" color="textSecondary">
-                            Market Risk
+                      <Box sx={{ opacity: getCategoryWeight('market') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Market Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('market')) }}>
+                            {(getCategoryWeight('market') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.marketRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.marketRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.marketRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: '#9e9e9e',
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.marketRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.marketRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Tooltip title="Placeholder: Phase 3">
-                        <Box sx={{ opacity: 0.5 }}>
-                          <Typography variant="caption" color="textSecondary">
-                            Execution Risk
+                      <Box sx={{ opacity: getCategoryWeight('execution') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Execution Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('execution')) }}>
+                            {(getCategoryWeight('execution') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.executionRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.executionRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.executionRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: '#9e9e9e',
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.executionRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.executionRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                     <Grid item xs={6}>
-                      <Tooltip title="Placeholder: Phase 3">
-                        <Box sx={{ opacity: 0.5 }}>
-                          <Typography variant="caption" color="textSecondary">
-                            Climate Risk
+                      <Box sx={{ opacity: getCategoryWeight('climate_insurance') > 0 ? 1 : 0.5 }}>
+                        <Typography variant="caption" color="textSecondary" display="flex" justifyContent="space-between" mb={0.5}>
+                          <span>Climate Risk</span>
+                          <span sx={{ fontSize: '10px', color: getCategoryWeightColor(getCategoryWeight('climate_insurance')) }}>
+                            {(getCategoryWeight('climate_insurance') * 100).toFixed(0)}%
+                          </span>
+                        </Typography>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="body2" fontWeight="bold">
+                            {profile.climateRisk.toFixed(1)}
                           </Typography>
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Typography variant="body2" fontWeight="bold">
-                              {profile.climateRisk.toFixed(1)}
-                            </Typography>
-                            <LinearProgress
-                              variant="determinate"
-                              value={profile.climateRisk}
-                              sx={{
-                                flexGrow: 1,
-                                height: 4,
-                                backgroundColor: '#e0e0e0',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: '#9e9e9e',
-                                },
-                              }}
-                            />
-                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={profile.climateRisk}
+                            sx={{
+                              flexGrow: 1,
+                              height: 4,
+                              backgroundColor: '#e0e0e0',
+                              '& .MuiLinearProgress-bar': {
+                                backgroundColor: getRiskScoreColor(profile.climateRisk),
+                              },
+                            }}
+                          />
                         </Box>
-                      </Tooltip>
+                      </Box>
                     </Grid>
                   </Grid>
                 </Box>

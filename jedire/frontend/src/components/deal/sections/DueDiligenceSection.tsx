@@ -8,6 +8,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { useDealType } from '../../../stores/dealStore';
+import { getDDChecklistPreset, DD_CHECKLISTS } from '../../../deal-type-visibility';
 
 // Type definitions
 interface DDChecklistItem {
@@ -63,6 +65,10 @@ interface DueDiligenceSectionProps {
 
 export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
+  const dealType = useDealType();
+  const ddPreset = useMemo(() => getDDChecklistPreset(dealType), [dealType]);
+  const ddCategories = useMemo(() => DD_CHECKLISTS[ddPreset] || [], [ddPreset]);
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
