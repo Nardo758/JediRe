@@ -4,6 +4,7 @@
  */
 
 import { Router, Response } from 'express';
+import axios from 'axios';
 import { getPool } from '../../database/connection';
 import { AuthenticatedRequest } from '../../middleware/auth';
 
