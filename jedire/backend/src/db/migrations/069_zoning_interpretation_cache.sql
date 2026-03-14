@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS zoning_code_interpretations (
   state VARCHAR(50) NOT NULL DEFAULT 'GA',
   constraints JSONB NOT NULL DEFAULT '{}',
   ai_insight TEXT,
-  source VARCHAR(50),
+  source VARCHAR(255),
   confidence VARCHAR(20) DEFAULT 'medium',
   resolved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),

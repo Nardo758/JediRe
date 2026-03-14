@@ -267,7 +267,7 @@ export class IntelligenceContextService {
       const minSimilarity = params.minSimilarity || 0.7;
 
       let query: string;
-      
+
       if (params.queryEmbedding) {
         // Vector similarity search
         const embeddingParam = paramIndex;
@@ -285,7 +285,7 @@ export class IntelligenceContextService {
             AND content_embedding IS NOT NULL
             AND 1 - (content_embedding <=> $${embeddingParam}::vector) >= $${paramIndex - 2}
           ORDER BY content_embedding <=> $${embeddingParam}::vector
-          LIMIT $${paramIndex - 1}
+          LIMIT $${paramIndex - 1}::bigint
         `;
       } else {
         // Full-text search fallback
@@ -302,7 +302,7 @@ export class IntelligenceContextService {
           FROM unified_documents
           WHERE ${conditions.join(' AND ')}
           ORDER BY created_at DESC
-          LIMIT $${paramIndex - 1}
+          LIMIT $${paramIndex - 1}::bigint
         `;
       }
 

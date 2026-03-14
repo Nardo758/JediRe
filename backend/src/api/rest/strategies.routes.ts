@@ -135,7 +135,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       isOwned: r.user_id === userId,
     }));
 
-    res.json({ success: true, count: strategies.length, strategies });
+    res.json({ success: true, data: strategies });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
