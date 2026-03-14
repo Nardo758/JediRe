@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JEDI RE — Strategy Engine</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0B0E13}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.05);border-radius:2px}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useMemo,useCallback}=React;
+const K={bg:"#0B0E13",s:"rgba(255,255,255,0.025)",b:"rgba(255,255,255,0.06)",bh:"rgba(255,255,255,0.12)",t:"#E8E6E1",tm:"rgba(232,230,225,0.5)",td:"rgba(232,230,225,0.22)",a:"#63B3ED",g:"#68D391",r:"#FC8181",y:"#F6E05E",p:"#B794F4",o:"#F6AD55",c:"#4FD1C5",m:"'JetBrains Mono',monospace",f:"'DM Sans',sans-serif"};
+const fpct=n=>`${n.toFixed(1)}%`;
+
+// ═══════════════════════════════════════════════════════════
+// METRICS CATALOG — the menu users pick from
+// ═══════════════════════════════════════════════════════════
+
+const METRICS=[
+  {id:"C_SURGE_INDEX",name:"Traffic Surge Index",cat:"traffic_composite",color:K.p,unit:"ratio",desc:"(Google realtime - DOT baseline) / DOT baseline. Positive = demand exceeding historical patterns.",formula:"(google_realtime - DOT_baseline) / DOT_baseline",example:"+0.35",higher:true},
+  {id:"C_DIGITAL_PHYSICAL_GAP",name:"Digital-Physical Divergence",cat:"traffic_composite",color:K.p,unit:"pp",desc:"When digital search surges ahead of physical traffic. THE buy window signal.",formula:"D_SEARCH_MOMENTUM - T_AADT_YOY",example:"+31pp",higher:true},
+  {id:"D_SEARCH_MOMENTUM",name:"Search Momentum QoQ",cat:"traffic_digital",color:K.o,unit:"%",desc:"Quarter-over-quarter change in search volume. Leading indicator — digital leads physical by 2-6 months.",formula:"(vol_Q / vol_Q-1) - 1",example:"+35.5%",higher:true},
+  {id:"T_AADT_YOY",name:"AADT Growth YoY",cat:"traffic_physical",color:K.a,unit:"%",desc:"Annual average daily traffic year-over-year growth. Lagging confirmation of demand.",formula:"(AADT_now / AADT_prior) - 1",example:"+4.2%",higher:true},
+  {id:"T_PHYSICAL_SCORE",name:"Physical Traffic Score",cat:"traffic_physical",color:K.a,unit:"0-100",desc:"Relative physical traffic position within submarket.",formula:"normalize(effective_adt) × 0.6 + normalize(walkins) × 0.4",example:"76",higher:true},
+  {id:"D_DIGITAL_SCORE",name:"Digital Traffic Score",cat:"traffic_digital",color:K.o,unit:"0-100",desc:"Combined digital attention score — volume + momentum + share.",formula:"clicks_norm × 0.4 + momentum × 0.3 + share × 0.3",example:"68",higher:true},
+  {id:"F_RENT_GROWTH",name:"Rent Growth YoY",cat:"financial",color:K.g,unit:"%",desc:"Year-over-year effective rent growth in the submarket.",formula:"(rent_now - rent_12mo) / rent_12mo",example:"+3.2%",higher:true},
+  {id:"F_CAP_RATE",name:"Cap Rate",cat:"financial",color:K.g,unit:"%",desc:"Net operating income / property value. Lower = more expensive.",formula:"NOI / value",example:"5.2%",higher:false},
+  {id:"F_PRICE_PER_UNIT",name:"Price per Unit",cat:"financial",color:K.g,unit:"$/unit",desc:"Acquisition price divided by unit count.",formula:"price / units",example:"$165K",higher:false},
+  {id:"F_RENT_TO_INCOME",name:"Rent-to-Income Ratio",cat:"financial",color:K.g,unit:"%",desc:"Avg rent as % of median household income. Above 30% = affordability ceiling.",formula:"(rent × 12) / median_hhi",example:"28%",higher:false},
+  {id:"S_PIPELINE_TO_STOCK",name:"Pipeline-to-Stock Ratio",cat:"supply",color:K.r,unit:"%",desc:"Units under construction as % of existing stock. Above 5% = supply risk.",formula:"pipeline_units / existing_stock × 100",example:"4.2%",higher:false},
+  {id:"S_PERMIT_VELOCITY",name:"Permit Filing Velocity",cat:"supply",color:K.r,unit:"permits/mo",desc:"Rate of new multifamily permits. Decreasing = future supply tightening.",formula:"permits_90d / 3",example:"12/mo",higher:false},
+  {id:"S_MONTHS_OF_SUPPLY",name:"Months of Supply",cat:"supply",color:K.r,unit:"months",desc:"Pipeline units / monthly absorption. Lower = tighter market.",formula:"pipeline / monthly_absorption",example:"8.2",higher:false},
+  {id:"E_EMPLOYMENT_GROWTH",name:"Employment Growth",cat:"demand",color:K.c,unit:"%",desc:"Year-over-year employment growth from BLS QCEW.",formula:"(jobs_now - jobs_12mo) / jobs_12mo",example:"+3.1%",higher:true},
+  {id:"E_WAGE_GROWTH",name:"Wage Growth YoY",cat:"demand",color:K.c,unit:"%",desc:"Year-over-year wage growth. Sets the ceiling for sustainable rent growth.",formula:"BLS QCEW wage_growth",example:"+4.2%",higher:true},
+  {id:"E_POPULATION_GROWTH",name:"Population Growth",cat:"demand",color:K.c,unit:"%",desc:"Annual population growth rate in the MSA/county.",formula:"Census ACS estimates",example:"+2.1%",higher:true},
+  {id:"M_VACANCY",name:"Vacancy Rate",cat:"market",color:K.y,unit:"%",desc:"Current vacancy rate in the submarket.",formula:"vacant_units / total_units",example:"5.8%",higher:false},
+  {id:"M_ABSORPTION",name:"Net Absorption",cat:"market",color:K.y,unit:"units/qtr",desc:"Net units absorbed per quarter.",formula:"occupied_end - occupied_start",example:"255/qtr",higher:true},
+  {id:"M_SUBMARKET_RANK",name:"Submarket Rank",cat:"market",color:K.y,unit:"percentile",desc:"Composite rank within MSA based on rent growth, absorption, vacancy.",formula:"composite_pctl(rg, abs, vac_inv, pop)",example:"78th",higher:true},
+  {id:"K_GOOGLE_RATING",name:"Google Rating",cat:"competition",color:K.o,unit:"stars",desc:"Average Google rating for the property.",formula:"Google Places API",example:"3.8",higher:true},
+  {id:"R_SUPPLY_RISK",name:"Supply Risk Score",cat:"risk",color:K.r,unit:"0-100",desc:"Higher = more supply risk. Based on pipeline, permits, and absorption.",formula:"M14 supply risk model",example:"68",higher:false},
+  {id:"O_DEBT_MATURITY_MO",name:"Months to Debt Maturity",cat:"ownership",color:K.p,unit:"months",desc:"Estimated months until the property's debt matures.",formula:"Estimated from purchase date + typical term",example:"14",higher:false},
+];
+
+const CATEGORIES=[
+  {id:"traffic_composite",name:"Traffic — Composite",color:K.p},
+  {id:"traffic_physical",name:"Traffic — Physical",color:K.a},
+  {id:"traffic_digital",name:"Traffic — Digital",color:K.o},
+  {id:"financial",name:"Financial",color:K.g},
+  {id:"supply",name:"Supply",color:K.r},
+  {id:"demand",name:"Demand",color:K.c},
+  {id:"market",name:"Market",color:K.y},
+  {id:"competition",name:"Competition",color:K.o},
+  {id:"risk",name:"Risk",color:K.r},
+  {id:"ownership",name:"Ownership",color:K.p},
+];
+
+const OPERATORS=[
+  {id:"gt",label:">",desc:"greater than"},
+  {id:"gte",label:">=",desc:"greater or equal"},
+  {id:"lt",label:"<",desc:"less than"},
+  {id:"lte",label:"<=",desc:"less or equal"},
+  {id:"between",label:"between",desc:"between two values"},
+  {id:"top_pct",label:"top %",desc:"top N percentile"},
+  {id:"bottom_pct",label:"bottom %",desc:"bottom N percentile"},
+  {id:"increasing",label:"trending up",desc:"increasing over lookback"},
+  {id:"decreasing",label:"trending down",desc:"decreasing over lookback"},
+];
+
+// Mock scan results
+const MOCK_RESULTS=[
+  {name:"West Melbourne, FL",market:"Palm Bay-Melbourne MSA",surge:0.42,rent:1.8,search:28,pipeline:3.8,score:92},
+  {name:"Nocatee, FL",market:"Jacksonville MSA",surge:0.38,rent:2.1,search:22,pipeline:2.9,score:87},
+  {name:"Plant City, FL",market:"Tampa MSA",surge:0.35,rent:1.5,search:18,pipeline:4.1,score:84},
+  {name:"Wellen Park, FL",market:"North Port MSA",surge:0.33,rent:1.9,search:31,pipeline:3.2,score:82},
+  {name:"Lake Nona, FL",market:"Orlando MSA",surge:0.31,rent:2.3,search:15,pipeline:5.1,score:78},
+  {name:"Wesley Chapel, FL",market:"Tampa MSA",surge:0.29,rent:2.0,search:20,pipeline:4.5,score:76},
+  {name:"Port St Lucie West, FL",market:"Port St Lucie MSA",surge:0.28,rent:1.7,search:25,pipeline:3.5,score:75},
+  {name:"Riverview, FL",market:"Tampa MSA",surge:0.26,rent:2.4,search:12,pipeline:5.8,score:71},
+  {name:"Clermont, FL",market:"Orlando MSA",surge:0.24,rent:1.9,search:16,pipeline:4.0,score:69},
+  {name:"Palm Coast, FL",market:"Deltona MSA",surge:0.22,rent:1.4,search:14,pipeline:2.5,score:67},
+];
+
+// ═══════════════════════════════════════════════════════════
+// PRESET STRATEGIES
+// ═══════════════════════════════════════════════════════════
+
+const PRESETS=[
+  {id:"demand-surge",name:"Demand Surge Detector",desc:"Markets where traffic surges but rents haven't caught up",icon:"⚡",color:K.g,conditions:[{metricId:"C_SURGE_INDEX",op:"gt",val:0.15,wt:35,req:true},{metricId:"F_RENT_GROWTH",op:"lt",val:2.5,wt:25,req:true},{metricId:"D_SEARCH_MOMENTUM",op:"gt",val:10,wt:20,req:false},{metricId:"S_PIPELINE_TO_STOCK",op:"lt",val:6,wt:20,req:false}],matches:23},
+  {id:"rent-runway",name:"Rent Runway Detector",desc:"Wages growing faster than rents — room to push",icon:"📈",color:K.a,conditions:[{metricId:"E_WAGE_GROWTH",op:"gt",val:3.0,wt:40,req:true},{metricId:"F_RENT_GROWTH",op:"lt",val:2.5,wt:30,req:false},{metricId:"M_VACANCY",op:"lt",val:6.0,wt:30,req:false}],matches:15},
+  {id:"supply-cliff",name:"Supply Cliff Opportunity",desc:"Pipeline drying up — future supply tightness = pricing power",icon:"🏗️",color:K.o,conditions:[{metricId:"S_PERMIT_VELOCITY",op:"decreasing",val:null,wt:40,req:true},{metricId:"S_PIPELINE_TO_STOCK",op:"top_pct",val:30,wt:30,req:false},{metricId:"M_ABSORPTION",op:"gt",val:150,wt:30,req:false}],matches:8},
+  {id:"hidden-gem",name:"Hidden Gem Finder",desc:"Strong physical traffic, low digital presence — institutions haven't found it",icon:"💎",color:K.p,conditions:[{metricId:"T_PHYSICAL_SCORE",op:"gte",val:70,wt:40,req:true},{metricId:"D_DIGITAL_SCORE",op:"lt",val:40,wt:30,req:true},{metricId:"K_GOOGLE_RATING",op:"lt",val:3.8,wt:30,req:false}],matches:14},
+  {id:"distress",name:"Distress Signal Scanner",desc:"Approaching debt maturity + operational underperformance",icon:"🔴",color:K.r,conditions:[{metricId:"O_DEBT_MATURITY_MO",op:"lt",val:18,wt:35,req:true},{metricId:"K_GOOGLE_RATING",op:"lt",val:3.5,wt:25,req:false},{metricId:"O_DEBT_MATURITY_MO",op:"gt",val:0,wt:20,req:false}],matches:6},
+];
+
+// ═══════════════════════════════════════════════════════════
+// MAIN APP — Three-tab layout: Presets | Builder | Deal Score
+// ═══════════════════════════════════════════════════════════
+
+const TABS=[{id:"presets",label:"Strategy Library"},{id:"builder",label:"Custom Builder"},{id:"deal",label:"Deal Scoring (M08)"}];
+
+function App(){
+  const[tab,setTab]=useState("presets");
+  const[conditions,setConditions]=useState([
+    {id:"1",metricId:"C_SURGE_INDEX",op:"gt",val:0.15,wt:50,req:true},
+    {id:"2",metricId:"F_RENT_GROWTH",op:"lt",val:2.5,wt:30,req:true},
+    {id:"3",metricId:"D_SEARCH_MOMENTUM",op:"gt",val:10,wt:20,req:false},
+  ]);
+  const[scope,setScope]=useState("submarket");
+  const[showCatalog,setShowCatalog]=useState(false);
+  const[catFilter,setCatFilter]=useState(null);
+  const[stratName,setStratName]=useState("Demand Surge + Low Rent Growth");
+  const[activePreset,setActivePreset]=useState(null);
+  const[showResults,setShowResults]=useState(true);
+
+  const addCondition=(metricId)=>{
+    const m=METRICS.find(x=>x.id===metricId);
+    setConditions(prev=>[...prev,{id:String(Date.now()),metricId,op:m?.higher?"gt":"lt",val:0,wt:20,req:false}]);
+    setShowCatalog(false);
+  };
+
+  const removeCondition=(id)=>setConditions(prev=>prev.filter(c=>c.id!==id));
+
+  const updateCondition=(id,field,value)=>{
+    setConditions(prev=>prev.map(c=>c.id===id?{...c,[field]:value}:c));
+  };
+
+  const loadPreset=(p)=>{
+    setConditions(p.conditions.map((c,i)=>({id:String(i),metricId:c.metricId,op:c.op,val:c.val,wt:c.wt,req:c.req})));
+    setStratName(p.name);
+    setActivePreset(p.id);
+    setTab("builder");
+  };
+
+  const filteredMetrics=catFilter?METRICS.filter(m=>m.cat===catFilter):METRICS;
+  const usedMetricIds=new Set(conditions.map(c=>c.metricId));
+
+  return(
+    <div style={{minHeight:"100vh",background:K.bg,color:K.t,fontFamily:K.f}}>
+      {/* Header */}
+      <div style={{padding:"14px 24px",borderBottom:`1px solid ${K.b}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,color:K.td,fontFamily:K.m}}>M08</span>
+          <h2 style={{fontSize:16,fontWeight:800,margin:0}}>Strategy Engine</h2>
+          <span style={{fontSize:9,fontWeight:600,padding:"2px 8px",borderRadius:12,background:`${K.a}15`,color:K.a}}>{METRICS.length} metrics available</span>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={{padding:"5px 12px",borderRadius:5,fontSize:9,fontWeight:600,cursor:"pointer",border:`1px solid ${K.b}`,background:"transparent",color:K.tm,fontFamily:K.m}}>Export</button>
+          <button style={{padding:"5px 12px",borderRadius:5,fontSize:9,fontWeight:600,cursor:"pointer",border:`1px solid ${K.g}40`,background:`${K.g}08`,color:K.g,fontFamily:K.m}}>Save Strategy</button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{padding:"0 24px",borderBottom:`1px solid ${K.b}`,display:"flex"}}>
+        {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 16px",fontSize:10.5,fontWeight:600,cursor:"pointer",border:"none",fontFamily:K.f,background:"transparent",borderBottom:`2px solid ${tab===t.id?K.a:"transparent"}`,color:tab===t.id?K.t:K.td}}>{t.label}</button>)}
+      </div>
+
+      <div style={{padding:"16px 24px 24px"}}>
+
+        {/* ═══ STRATEGY LIBRARY ═══ */}
+        {tab==="presets"&&<div>
+          <div style={{fontSize:10,color:K.tm,marginBottom:16,lineHeight:1.5}}>Platform-provided strategies and your saved custom strategies. Click any to load into the builder, or run directly.</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            {PRESETS.map(p=><div key={p.id} style={{background:K.s,border:`1px solid ${K.b}`,borderRadius:8,padding:"16px 18px",cursor:"pointer",transition:"all 0.15s"}} onClick={()=>loadPreset(p)}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:16}}>{p.icon}</span>
+                <span style={{fontSize:8,fontWeight:600,padding:"2px 8px",borderRadius:10,background:`${p.color}15`,color:p.color,fontFamily:K.m}}>PRESET</span>
+              </div>
+              <div style={{fontSize:13,fontWeight:700,color:K.t,marginBottom:4}}>{p.name}</div>
+              <div style={{fontSize:10,color:K.tm,lineHeight:1.5,marginBottom:10}}>{p.desc}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+                {p.conditions.map((c,i)=>{const m=METRICS.find(x=>x.id===c.metricId);return<span key={i} style={{fontSize:8,padding:"2px 6px",borderRadius:4,background:`${m?.color||K.tm}10`,color:m?.color||K.tm,fontFamily:K.m,border:`1px solid ${m?.color||K.tm}20`}}>{m?.name?.split(" ").slice(0,2).join(" ")} {c.op==="gt"?">":c.op==="lt"?"<":c.op==="gte"?">=":c.op==="decreasing"?"↓":"?"} {c.val!==null?c.val:""}</span>})}
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontSize:10,fontFamily:K.m,fontWeight:700,color:K.g}}>{p.matches} matches</span>
+                <div style={{display:"flex",gap:4}}>
+                  <button onClick={(e)=>{e.stopPropagation();loadPreset(p)}} style={{padding:"3px 10px",borderRadius:4,fontSize:8,fontWeight:600,cursor:"pointer",border:`1px solid ${K.a}40`,background:`${K.a}08`,color:K.a,fontFamily:K.m}}>Edit</button>
+                  <button onClick={(e)=>{e.stopPropagation();setShowResults(true)}} style={{padding:"3px 10px",borderRadius:4,fontSize:8,fontWeight:600,cursor:"pointer",border:`1px solid ${K.g}40`,background:`${K.g}08`,color:K.g,fontFamily:K.m}}>Run</button>
+                </div>
+              </div>
+            </div>)}
+
+            {/* Custom strategy placeholder */}
+            <div onClick={()=>setTab("builder")} style={{background:"transparent",border:`1px dashed ${K.bh}`,borderRadius:8,padding:"16px 18px",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,minHeight:200}}>
+              <span style={{fontSize:24,color:K.td}}>+</span>
+              <span style={{fontSize:11,fontWeight:600,color:K.td}}>Create Custom Strategy</span>
+              <span style={{fontSize:9,color:K.td,textAlign:"center"}}>Combine any platform metrics into your own quantitative screen</span>
+            </div>
+          </div>
+        </div>}
+
+        {/* ═══ CUSTOM BUILDER ═══ */}
+        {tab==="builder"&&<div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:16}}>
+          {/* Left: Builder */}
+          <div>
+            {/* Strategy name + scope */}
+            <div style={{display:"flex",gap:12,marginBottom:16,alignItems:"center"}}>
+              <input value={stratName} onChange={e=>setStratName(e.target.value)} style={{flex:1,padding:"8px 12px",borderRadius:6,border:`1px solid ${K.b}`,background:"rgba(255,255,255,0.02)",color:K.t,fontSize:14,fontWeight:700,fontFamily:K.f,outline:"none"}} placeholder="Strategy name..."/>
+              <div style={{display:"flex",gap:2}}>
+                {["property","submarket","market"].map(s=><button key={s} onClick={()=>setScope(s)} style={{padding:"6px 10px",borderRadius:4,fontSize:9,fontWeight:600,cursor:"pointer",border:`1px solid ${scope===s?K.a+"40":K.b}`,background:scope===s?`${K.a}08`:"transparent",color:scope===s?K.a:K.td,fontFamily:K.m,textTransform:"capitalize"}}>{s}</button>)}
+              </div>
+            </div>
+
+            {/* Conditions */}
+            <div style={{marginBottom:12}}>
+              {conditions.map((cond,idx)=>{
+                const metric=METRICS.find(m=>m.id===cond.metricId);
+                return<div key={cond.id}>
+                  {idx>0&&<div style={{textAlign:"center",padding:"4px 0",fontSize:9,fontWeight:700,color:K.td,letterSpacing:2,fontFamily:K.m}}>AND</div>}
+                  <div style={{background:K.s,border:`1px solid ${metric?.color||K.b}25`,borderLeft:`3px solid ${metric?.color||K.tm}`,borderRadius:"0 8px 8px 0",padding:"12px 16px",display:"grid",gridTemplateColumns:"1fr auto",gap:12,alignItems:"start"}}>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                        <span style={{fontSize:8,fontFamily:K.m,color:metric?.color||K.tm,padding:"1px 6px",borderRadius:3,background:`${metric?.color||K.tm}10`}}>{metric?.cat?.replace("_"," ")}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:K.t}}>{metric?.name||cond.metricId}</span>
+                        {cond.req&&<span style={{fontSize:7,fontWeight:700,color:K.r,fontFamily:K.m,letterSpacing:0.5}}>REQUIRED</span>}
+                      </div>
+                      <div style={{fontSize:9,color:K.tm,marginBottom:8}}>{metric?.desc}</div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <select value={cond.op} onChange={e=>updateCondition(cond.id,"op",e.target.value)} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${K.b}`,background:"rgba(255,255,255,0.02)",color:K.t,fontSize:10,fontFamily:K.m}}>
+                          {OPERATORS.map(o=><option key={o.id} value={o.id}>{o.label} ({o.desc})</option>)}
+                        </select>
+                        {!["increasing","decreasing"].includes(cond.op)&&<input type="number" step="0.1" value={cond.val||""} onChange={e=>updateCondition(cond.id,"val",parseFloat(e.target.value)||0)} style={{width:80,padding:"4px 8px",borderRadius:4,border:`1px solid ${K.b}`,background:"rgba(255,255,255,0.02)",color:K.t,fontSize:11,fontFamily:K.m,textAlign:"center"}}/>}
+                        <span style={{fontSize:9,color:K.td}}>Weight:</span>
+                        <input type="range" min="0" max="100" value={cond.wt} onChange={e=>updateCondition(cond.id,"wt",parseInt(e.target.value))} style={{width:80,accentColor:metric?.color||K.a}}/>
+                        <span style={{fontSize:10,fontFamily:K.m,fontWeight:600,color:metric?.color||K.a,minWidth:28}}>{cond.wt}%</span>
+                        <button onClick={()=>updateCondition(cond.id,"req",!cond.req)} style={{padding:"2px 8px",borderRadius:3,fontSize:8,fontWeight:600,cursor:"pointer",border:`1px solid ${cond.req?K.r+"40":K.b}`,background:cond.req?`${K.r}08`:"transparent",color:cond.req?K.r:K.td,fontFamily:K.m}}>{cond.req?"Required":"Optional"}</button>
+                      </div>
+                    </div>
+                    <button onClick={()=>removeCondition(cond.id)} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${K.r}30`,background:"transparent",color:K.r,cursor:"pointer",fontSize:10,fontFamily:K.m}}>×</button>
+                  </div>
+                </div>;
+              })}
+            </div>
+
+            {/* Add condition */}
+            {!showCatalog?
+              <button onClick={()=>setShowCatalog(true)} style={{width:"100%",padding:"10px",borderRadius:8,border:`1px dashed ${K.bh}`,background:"transparent",color:K.td,cursor:"pointer",fontSize:11,fontWeight:600,fontFamily:K.f}}>+ Add condition from metrics catalog</button>
+            :
+              <div style={{background:K.s,border:`1px solid ${K.b}`,borderRadius:8,padding:"12px 16px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <span style={{fontSize:10,fontWeight:700,color:K.t}}>Select a metric</span>
+                  <button onClick={()=>setShowCatalog(false)} style={{border:"none",background:"transparent",color:K.td,cursor:"pointer",fontSize:12}}>×</button>
+                </div>
+                <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:10}}>
+                  <button onClick={()=>setCatFilter(null)} style={{padding:"2px 8px",borderRadius:4,fontSize:8,fontWeight:600,cursor:"pointer",border:`1px solid ${!catFilter?K.a+"40":K.b}`,background:!catFilter?`${K.a}08`:"transparent",color:!catFilter?K.a:K.td,fontFamily:K.m}}>All</button>
+                  {CATEGORIES.map(c=><button key={c.id} onClick={()=>setCatFilter(c.id)} style={{padding:"2px 8px",borderRadius:4,fontSize:8,fontWeight:600,cursor:"pointer",border:`1px solid ${catFilter===c.id?c.color+"40":K.b}`,background:catFilter===c.id?`${c.color}08`:"transparent",color:catFilter===c.id?c.color:K.td,fontFamily:K.m}}>{c.name}</button>)}
+                </div>
+                <div style={{maxHeight:240,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
+                  {filteredMetrics.filter(m=>!usedMetricIds.has(m.id)).map(m=><div key={m.id} onClick={()=>addCondition(m.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:5,border:`1px solid ${K.b}`,cursor:"pointer",background:K.s,transition:"all 0.1s"}}>
+                    <span style={{fontSize:8,fontFamily:K.m,color:m.color,padding:"1px 6px",borderRadius:3,background:`${m.color}10`,minWidth:40,textAlign:"center"}}>{m.id.split("_")[0]}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,fontWeight:600,color:K.t}}>{m.name}</div>
+                      <div style={{fontSize:8,color:K.td}}>{m.desc.slice(0,80)}...</div>
+                    </div>
+                    <span style={{fontSize:9,fontFamily:K.m,color:K.td}}>{m.unit}</span>
+                  </div>)}
+                </div>
+              </div>
+            }
+
+            {/* Computed metric hint */}
+            <div style={{marginTop:12,padding:"10px 14px",background:"rgba(183,148,244,0.04)",border:`1px solid rgba(183,148,244,0.12)`,borderRadius:6}}>
+              <div style={{fontSize:9,fontWeight:600,color:K.p}}>Advanced: create computed metrics</div>
+              <div style={{fontSize:9,color:K.tm,marginTop:2}}>Combine metrics with formulas: "E_WAGE_GROWTH - F_RENT_GROWTH" creates a Rent Affordability Runway metric.</div>
+            </div>
+          </div>
+
+          {/* Right: Live Preview */}
+          <div>
+            <div style={{background:K.s,border:`1px solid ${K.b}`,borderRadius:8,padding:"14px 16px",position:"sticky",top:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontSize:9,fontWeight:700,letterSpacing:1,color:K.td,fontFamily:K.m}}>LIVE PREVIEW</span>
+                <span style={{fontSize:10,fontWeight:700,color:K.g,fontFamily:K.m}}>{MOCK_RESULTS.length} matches</span>
+              </div>
+              <div style={{fontSize:9,color:K.tm,marginBottom:10}}>Scanning {scope}s across Florida markets</div>
+
+              {/* Mini condition summary */}
+              <div style={{marginBottom:10,padding:"8px 10px",background:"rgba(255,255,255,0.015)",borderRadius:5}}>
+                {conditions.map((c,i)=>{const m=METRICS.find(x=>x.id===c.metricId);return<div key={c.id} style={{fontSize:8,color:c.req?K.t:K.tm,padding:"2px 0",fontFamily:K.m}}>
+                  {i>0&&<span style={{color:K.td}}> AND </span>}
+                  <span style={{color:m?.color}}>{m?.name?.split(" ").slice(0,3).join(" ")}</span>
+                  <span style={{color:K.td}}> {c.op==="gt"?">":c.op==="lt"?"<":c.op} </span>
+                  <span style={{color:K.t}}>{c.val}</span>
+                  {c.req&&<span style={{color:K.r,marginLeft:4}}>*</span>}
+                </div>})}
+              </div>
+
+              {/* Results */}
+              <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                {MOCK_RESULTS.map((r,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"18px 1fr 48px",gap:6,alignItems:"center",padding:"6px 8px",borderRadius:4,background:i<3?`${K.g}06`:"transparent",border:`1px solid ${i<3?`${K.g}15`:K.b}`}}>
+                  <span style={{fontSize:9,fontFamily:K.m,fontWeight:700,color:i<3?K.g:K.td,textAlign:"center"}}>{i+1}</span>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:600,color:K.t}}>{r.name}</div>
+                    <div style={{fontSize:8,color:K.td}}>{r.market}</div>
+                    <div style={{display:"flex",gap:8,marginTop:2}}>
+                      <span style={{fontSize:7.5,fontFamily:K.m,color:K.p}}>Surge +{(r.surge*100).toFixed(0)}%</span>
+                      <span style={{fontSize:7.5,fontFamily:K.m,color:K.g}}>Rent {r.rent}%</span>
+                      <span style={{fontSize:7.5,fontFamily:K.m,color:K.o}}>Search +{r.search}%</span>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"center"}}>
+                    <div style={{fontSize:14,fontWeight:800,fontFamily:K.m,color:r.score>=80?K.g:r.score>=70?K.a:K.y}}>{r.score}</div>
+                    <div style={{fontSize:7,color:K.td}}>score</div>
+                  </div>
+                </div>)}
+              </div>
+
+              <div style={{marginTop:10,display:"flex",gap:6}}>
+                <button style={{flex:1,padding:"8px",borderRadius:5,fontSize:9,fontWeight:700,cursor:"pointer",border:`1px solid ${K.g}40`,background:`${K.g}08`,color:K.g,fontFamily:K.m}}>Run Full Scan</button>
+                <button style={{flex:1,padding:"8px",borderRadius:5,fontSize:9,fontWeight:700,cursor:"pointer",border:`1px solid ${K.a}40`,background:`${K.a}08`,color:K.a,fontFamily:K.m}}>View on Map</button>
+              </div>
+            </div>
+          </div>
+        </div>}
+
+        {/* ═══ DEAL SCORING (M08) ═══ */}
+        {tab==="deal"&&<div>
+          <div style={{fontSize:10,color:K.tm,marginBottom:16}}>Score a specific deal against all strategies — presets and your custom screens.</div>
+          <div style={{background:K.s,border:`1px solid ${K.b}`,borderRadius:8,padding:"16px 20px",marginBottom:16}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:1,color:K.td,fontFamily:K.m,marginBottom:12}}>4-STRATEGY SCORE MATRIX — Exchange at Holly Springs (320 units)</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+              {[{name:"Build-to-Sell",score:84,color:K.g,signals:{demand:26,supply:18,momentum:17,position:12,risk:9},tag:"RECOMMENDED"},{name:"Fix & Flip",score:58,color:K.y,signals:{demand:10,supply:12,momentum:18,position:12,risk:7}},{name:"Stabilized Rental",score:69,color:K.a,signals:{demand:21,supply:17,momentum:14,position:10,risk:7}},{name:"Short-Term Rental",score:45,color:K.r,signals:{demand:11,supply:9,momentum:11,position:9,risk:5},tag:"REG RISK"}].map(s=><div key={s.name} style={{background:`${s.color}06`,border:`1px solid ${s.color}20`,borderRadius:8,padding:"14px 16px",position:"relative"}}>
+                {s.tag&&<div style={{position:"absolute",top:8,right:8,fontSize:7,fontWeight:700,padding:"2px 6px",borderRadius:8,background:s.tag==="RECOMMENDED"?`${K.g}20`:`${K.r}20`,color:s.tag==="RECOMMENDED"?K.g:K.r,fontFamily:K.m}}>{s.tag}</div>}
+                <div style={{fontSize:28,fontWeight:800,fontFamily:K.m,color:s.color}}>{s.score}</div>
+                <div style={{fontSize:11,fontWeight:700,color:K.t,marginBottom:8}}>{s.name}</div>
+                {Object.entries(s.signals).map(([k,v])=><div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                  <span style={{fontSize:8,color:K.td,minWidth:62,textTransform:"capitalize"}}>{k}</span>
+                  <div style={{flex:1,height:6,background:"rgba(255,255,255,0.04)",borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${v/30*100}%`,background:s.color,borderRadius:3,opacity:0.5}}/></div>
+                  <span style={{fontSize:8,fontFamily:K.m,color:s.color,minWidth:20,textAlign:"right"}}>{v}</span>
+                </div>)}
+              </div>)}
+            </div>
+            <div style={{marginTop:12,padding:"10px 14px",background:`${K.g}06`,border:`1px solid ${K.g}15`,borderRadius:6,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:14}}>⚡</span>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:K.g}}>ARBITRAGE DETECTED: Build-to-Sell outscores Rental by 15 points</div>
+                <div style={{fontSize:9,color:K.tm}}>Zoning allows 3x density. Most investors would default to Rental — you'd miss the development upside.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Custom strategy match */}
+          <div style={{background:K.s,border:`1px solid ${K.b}`,borderRadius:8,padding:"16px 20px"}}>
+            <div style={{fontSize:9,fontWeight:700,letterSpacing:1,color:K.td,fontFamily:K.m,marginBottom:12}}>YOUR CUSTOM STRATEGIES — DEAL MATCH</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {[{name:"Demand Surge + Low Rent",match:true,score:88,reason:"Surge +0.28, rent 2.1% — matches all required conditions"},{name:"Rent Runway Detector",match:true,score:72,reason:"Wage growth 4.2% vs rent 2.1% — 2.1pp runway"},{name:"Supply Cliff Opportunity",match:false,score:35,reason:"Permit velocity increasing — fails required condition"},{name:"Hidden Gem Finder",match:false,score:41,reason:"Digital score 62 — above 40 threshold, not a hidden gem"},{name:"Distress Signal Scanner",match:false,score:12,reason:"No debt maturity data — condition unscoreable"}].map(s=><div key={s.name} style={{display:"grid",gridTemplateColumns:"24px 1fr 48px",gap:10,alignItems:"center",padding:"8px 12px",borderRadius:5,border:`1px solid ${s.match?`${K.g}20`:K.b}`,background:s.match?`${K.g}04`:"transparent"}}>
+                <span style={{fontSize:14,textAlign:"center"}}>{s.match?"✓":"✗"}</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:s.match?K.g:K.tm}}>{s.name}</div>
+                  <div style={{fontSize:9,color:K.td}}>{s.reason}</div>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:14,fontWeight:800,fontFamily:K.m,color:s.match?K.g:K.td}}>{s.score}</div>
+                </div>
+              </div>)}
+            </div>
+          </div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
