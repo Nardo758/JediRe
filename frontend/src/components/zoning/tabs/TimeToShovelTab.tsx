@@ -411,6 +411,7 @@ function AIAnalysisSection({ dealId, developmentPath }: { dealId?: string; devel
       try {
         const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
           params: { path: developmentPath },
+          timeout: 90000,
         });
         if (!cancelled) setIntelligence(resp.data);
       } catch (err: any) {
@@ -597,9 +598,10 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const [totalSampleCount, setTotalSampleCount] = useState(0);
   const [jurisdictions, setJurisdictions] = useState<JurisdictionComparison[]>([]);
   const [jurisdictionDataSource, setJurisdictionDataSource] = useState<'real' | 'synthetic'>('synthetic');
+  const [geographicState, setGeographicState] = useState<string>('GA');
 
   const county = deal?.county || 'Fulton';
-  const state = deal?.state || 'GA';
+  const state = geographicState;
   const municipality = deal?.municipality || deal?.city || '';
   const unitCount = selected_envelope?.max_units || deal?.unit_count || 0;
   const pathLabel = { by_right: 'By-Right', overlay_bonus: 'Overlay Bonus', variance: 'Variance', rezone: 'Full Rezone' }[development_path || ''] || development_path || 'None';
@@ -631,17 +633,32 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   }, [development_path, runSimulation]);
 
   useEffect(() => {
+    const fetchGeographicState = async () => {
+      if (!dealId) return;
+      try {
+        const resp = await apiClient.get(`/api/v1/deals/${dealId}/zoning-confirmation`);
+        if (resp.data?.state) {
+          setGeographicState(resp.data.state);
+        }
+      } catch {
+        setGeographicState('GA');
+      }
+    };
+
     const fetchIntelligence = async () => {
       if (!dealId || !development_path) return;
       try {
         const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
           params: { path: development_path },
+          timeout: 90000,
         });
         setIntelligence(resp.data);
       } catch {
         setIntelligence(null);
       }
     };
+
+    fetchGeographicState();
 
     const fetchBenchmarks = async () => {
       try {
