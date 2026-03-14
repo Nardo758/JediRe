@@ -44,7 +44,13 @@ const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const dealType = useDealType();
-  const zoningDepth = useMemo(() => getZoningDepth(dealType), [dealType]);
+  const zoningDepth = useMemo(() => {
+    // Only use simplified 3-tab view when the deal *explicitly* declares an existing project type.
+    // Deals with no project_type set should show the full 6 tabs.
+    const explicitType = deal?.projectType || deal?.project_type || deal?.identity?.mode;
+    if (!explicitType) return 'full';
+    return getZoningDepth(dealType);
+  }, [dealType, deal]);
 
   // Filter tabs based on zoning depth (simplified for existing, full for dev/redev)
   const visibleTabs = useMemo(() => {
