@@ -7,6 +7,43 @@
 import { Pool, QueryResult } from 'pg';
 import { logger } from '../utils/logger';
 
+/**
+ * Translates strategy metric IDs (both user-facing shortcodes and preset internal codes)
+ * to actual metric_time_series metric_id values.
+ */
+const METRIC_ID_TRANSLATE: Record<string, string> = {
+  // Standard user-facing codes
+  SFR_HOME_VALUE: 'home_value_index',
+  HOME_VALUE: 'home_value_index',
+  ZHVI: 'home_value_index',
+  ZHVI_ALL: 'home_value_index',
+  HOME_VALUE_YOY: 'home_value_index_yoy',
+  ZHVI_YOY: 'home_value_index_yoy',
+  RENT: 'rent_index',
+  SFR_RENT: 'rent_index',
+  ZORI: 'rent_index',
+  RENT_INDEX: 'rent_index',
+  ZORI_YOY: 'rent_index_yoy',
+  RENT_YOY: 'rent_index_yoy',
+  RENT_INDEX_YOY: 'rent_index_yoy',
+  // Preset strategy internal codes → best available real metric
+  C_SURGE_INDEX: 'home_value_index_yoy',
+  F_RENT_GROWTH: 'rent_index_yoy',
+  D_SEARCH_MOMENTUM: 'rent_index_yoy',
+  S_PIPELINE_TO_STOCK: 'home_value_index_yoy',
+  E_WAGE_GROWTH: 'rent_index_yoy',
+  M_VACANCY: 'home_value_index',
+  S_PERMIT_VELOCITY: 'home_value_index_yoy',
+  S_PIPELINE_UNITS: 'home_value_index',
+  M_ABSORPTION: 'home_value_index_yoy',
+  HM_DISTRESS_SCORE: 'home_value_index_yoy',
+};
+
+function translateMetricId(raw: string): string {
+  if (!raw) return raw;
+  return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw.toLowerCase();
+}
+
 export interface StrategyCondition {
   id: string;
   metricId: string;
@@ -300,9 +337,9 @@ export class StrategyExecutionService {
     }>
   > {
     try {
-      // Get deal's geography
+      // Get deal's location
       const dealResult = await this.pool.query(
-        `SELECT geography_type, geography_id FROM deals WHERE id = $1`,
+        `SELECT city, state_code FROM deals WHERE id = $1`,
         [dealId]
       );
 
@@ -310,7 +347,44 @@ export class StrategyExecutionService {
         throw new Error(`Deal not found: ${dealId}`);
       }
 
-      const { geography_type, geography_id } = dealResult.rows[0];
+      const { city, state_code } = dealResult.rows[0];
+
+      // Build Zillow-style geography_id (city-state-state) and look up in metric_time_series
+      const candidateGeoId = city && state_code
+        ? `${city.toLowerCase().replace(/[\s,]+/g, '-')}-${state_code.toLowerCase()}-${state_code.toLowerCase()}`
+        : null;
+
+      let geography_type: string;
+      let geography_id: string;
+
+      if (candidateGeoId) {
+        const geoResult = await this.pool.query(
+          `SELECT DISTINCT geography_type, geography_id
+           FROM metric_time_series
+           WHERE geography_id = $1 AND geography_type = 'metro'
+           LIMIT 1`,
+          [candidateGeoId]
+        );
+        if (geoResult.rows.length > 0) {
+          geography_type = geoResult.rows[0].geography_type;
+          geography_id = geoResult.rows[0].geography_id;
+        } else {
+          // Fuzzy: match on geography_name ILIKE '%city%state%'
+          const fuzzyResult = await this.pool.query(
+            `SELECT DISTINCT geography_type, geography_id
+             FROM metric_time_series
+             WHERE geography_type = 'metro'
+               AND geography_name ILIKE $1
+             LIMIT 1`,
+            [`%${city}%`]
+          );
+          geography_type = fuzzyResult.rows[0]?.geography_type ?? 'country';
+          geography_id = fuzzyResult.rows[0]?.geography_id ?? 'united-states-102001';
+        }
+      } else {
+        geography_type = 'country';
+        geography_id = 'united-states-102001';
+      }
 
       // Fetch all strategies (user's + presets)
       const strategiesResult = await this.pool.query(
@@ -331,8 +405,14 @@ export class StrategyExecutionService {
           continue;
         }
 
+        // Translate condition metric IDs to real DB metric IDs
+        const translatedConditions = applicableConditions.map((c) => ({
+          ...c,
+          dbMetricId: translateMetricId(c.metricId),
+        }));
+
         // Get metric values for this geography
-        const metricIds = [...new Set(applicableConditions.map((c) => c.metricId))];
+        const metricIds = [...new Set(translatedConditions.map((c) => c.dbMetricId))];
         const metricsResult = await this.pool.query(
           `SELECT DISTINCT ON (metric_id)
             metric_id, value, period_date
@@ -351,8 +431,8 @@ export class StrategyExecutionService {
         const weightedScores: number[] = [];
         const weights: number[] = [];
 
-        for (const condition of applicableConditions) {
-          const value = metrics.get(condition.metricId);
+        for (const condition of translatedConditions) {
+          const value = metrics.get(condition.dbMetricId);
 
           if (value === undefined) {
             conditionResults.push({
@@ -370,7 +450,7 @@ export class StrategyExecutionService {
           }
 
           const { passed, score } = await this.evaluateCondition(
-            condition,
+            { ...condition, metricId: condition.dbMetricId },
             value,
             geography_type,
             metricIds
@@ -537,13 +617,13 @@ export class StrategyExecutionService {
    * Higher values = higher scores (for higherIsBetter metrics)
    */
   private scoreValue(actual: number, threshold: number, higherIsBetter: boolean): number {
+    if (threshold === 0) return actual !== 0 ? 50 : 0;
     if (higherIsBetter) {
       if (actual <= threshold) return 0;
-      // Score increases linearly: at 2× threshold = 100
-      return Math.min(100, ((actual - threshold) / threshold) * 100);
+      return Math.min(100, ((actual - threshold) / Math.abs(threshold)) * 100);
     } else {
       if (actual >= threshold) return 0;
-      return Math.min(100, ((threshold - actual) / threshold) * 100);
+      return Math.min(100, ((threshold - actual) / Math.abs(threshold)) * 100);
     }
   }
 
@@ -558,7 +638,7 @@ export class StrategyExecutionService {
   ): Promise<number> {
     const result = await this.pool.query(
       `SELECT
-        ROUND(100.0 * COUNT(CASE WHEN value ${descending ? '<' : '>'} $1 THEN 1 END) / COUNT(*)) as percentile
+        COALESCE(ROUND(100.0 * COUNT(CASE WHEN value ${descending ? '<' : '>'} $1 THEN 1 END) / NULLIF(COUNT(*), 0)), 0) as percentile
        FROM (
          SELECT DISTINCT ON (geography_id) value
          FROM metric_time_series

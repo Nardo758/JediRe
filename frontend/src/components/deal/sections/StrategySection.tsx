@@ -91,9 +91,25 @@ const STRATEGY_ID_TO_TYPE: Record<string, StrategyType> = {
   'development': 'build_to_sell',
 };
 
+type StrategyTab = 'overview' | 'signals' | 'returns' | 'custom';
+
+interface CustomStrategy {
+  id: string;
+  name: string;
+  description?: string;
+  isPreset: boolean;
+  conditions?: any[];
+  scoreResult?: { matched: boolean; score: number };
+}
+
 export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
+  const [activeTab, setActiveTab] = useState<StrategyTab>('overview');
+  const [customStrategies, setCustomStrategies] = useState<CustomStrategy[]>([]);
+  const [customLoading, setCustomLoading] = useState(false);
+  const [scoreDealResult, setScoreDealResult] = useState<any[]>([]);
+  const [scoreDealLoading, setScoreDealLoading] = useState(false);
   const { emitEvent, updateStrategy } = useDealModule();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -218,6 +234,54 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     return () => { cancelled = true; };
   }, [deal.id]);
 
+  // Fetch custom strategies when custom tab is opened
+  useEffect(() => {
+    if (activeTab !== 'custom') return;
+    let cancelled = false;
+    setCustomLoading(true);
+    apiClient.get('/api/v1/strategies')
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.success) setCustomStrategies(res.data.strategies || []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCustomLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  // Score deal against all strategies when custom tab opened
+  useEffect(() => {
+    if (activeTab !== 'custom' || !deal.id) return;
+    let cancelled = false;
+    setScoreDealLoading(true);
+    apiClient.post(`/api/v1/strategy-definitions/score-deal/${deal.id}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.success) setScoreDealResult(res.data.data || []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setScoreDealLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTab, deal.id]);
+
+  // Column visibility based on deal project type
+  const dealPT = (deal.projectType || '').toLowerCase();
+  const showBTS = dealPT !== 'existing';
+  const showFLIP = dealPT !== 'development';
+
+  const visibleStrategyScores = strategyScores.filter((s) => {
+    if (s.id === 'bts' && !showBTS) return false;
+    if (s.id === 'flip' && !showFLIP) return false;
+    return true;
+  });
+
+  const visibleStrategyNames = strategyNames.filter((name) => {
+    const n = name.toLowerCase();
+    if (n === 'bts' && !showBTS) return false;
+    if (n === 'flip' && !showFLIP) return false;
+    return true;
+  });
+
   // M08 → M11+ strategy event: emit when user selects a strategy
   const handleStrategySelect = useCallback((strategyId: string) => {
     setSelectedStrategy(strategyId);
@@ -248,9 +312,34 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     );
   }
 
+  const TABS: { id: StrategyTab; label: string; emoji: string }[] = [
+    { id: 'overview', label: 'Overview', emoji: '📊' },
+    { id: 'signals', label: 'Signals', emoji: '🔥' },
+    { id: 'returns', label: 'Returns', emoji: '💰' },
+    { id: 'custom', label: 'Custom Screen', emoji: '⚙️' },
+  ];
+
   return (
     <div className="space-y-6 p-6">
-      
+
+      {/* Sub-tab Navigation */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-blue-500 text-blue-700 bg-blue-50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <span>{tab.emoji}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
       {/* Mode Indicator */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -281,8 +370,8 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       {/* Quick Stats */}
       <QuickStatsGrid stats={stats} />
 
-      {/* ======== ENHANCED: Strategy Intelligence Layer ======== */}
-      {isPipeline && (
+      {/* ======== SIGNALS TAB: Strategy Intelligence Layer ======== */}
+      {isPipeline && activeTab === 'signals' && (
         <>
           {/* Arbitrage Alert Banner (conditional) */}
           {arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />}
@@ -297,8 +386,8 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               Each strategy scored against 5 JEDI signals with strategy-specific weights
             </p>
 
-            <div className="grid grid-cols-4 gap-4">
-              {strategyScores.map((s) => (
+            <div className={`grid gap-4 ${visibleStrategyScores.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+              {visibleStrategyScores.map((s) => (
                 <div
                   key={s.id}
                   className={`${s.bgColor} rounded-xl p-5 border-2 ${s.rank === 1 ? s.borderColor : 'border-transparent'} relative`}
@@ -362,7 +451,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                 <thead>
                   <tr className="border-b-2 border-gray-200">
                     <th className="text-left py-2 px-3 text-xs font-mono text-gray-400">Signal</th>
-                    {strategyNames.map(name => (
+                    {visibleStrategyNames.map(name => (
                       <th key={name} className="text-center py-2 px-3 text-xs font-mono text-gray-400">{name}</th>
                     ))}
                   </tr>
@@ -371,7 +460,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                   {signalNames.map(signal => (
                     <tr key={signal} className="border-b border-gray-100">
                       <td className="py-2 px-3 font-medium text-gray-700 text-xs">{signal}</td>
-                      {strategyNames.map(strategy => {
+                      {visibleStrategyNames.map(strategy => {
                         const cell = heatmapData.find(c => c.signal === signal && c.strategy === strategy);
                         if (!cell) return <td key={strategy} />;
                         const bgClass =
@@ -422,7 +511,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               <thead>
                 <tr className="border-b-2 border-gray-200">
                   <th className="text-left py-2 px-3 text-xs font-mono text-gray-400">Metric</th>
-                  {strategyScores.map(s => (
+                  {visibleStrategyScores.map(s => (
                     <th key={s.id} className={`text-center py-2 px-3 text-xs font-semibold ${s.color}`}>{s.label}</th>
                   ))}
                 </tr>
@@ -431,15 +520,19 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                 {roiHeadToHead.map((row, idx) => (
                   <tr key={idx} className="border-b border-gray-100">
                     <td className="py-2.5 px-3 text-xs font-medium text-gray-600">{row.label}</td>
-                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'bts' ? 'font-bold text-amber-700 bg-amber-50' : 'text-gray-700'}`}>
-                      {row.bts}
-                    </td>
+                    {showBTS && (
+                      <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'bts' ? 'font-bold text-amber-700 bg-amber-50' : 'text-gray-700'}`}>
+                        {row.bts}
+                      </td>
+                    )}
                     <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'rental' ? 'font-bold text-blue-700 bg-blue-50' : 'text-gray-700'}`}>
                       {row.rental}
                     </td>
-                    <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'flip' ? 'font-bold text-emerald-700 bg-emerald-50' : 'text-gray-700'}`}>
-                      {row.flip}
-                    </td>
+                    {showFLIP && (
+                      <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'flip' ? 'font-bold text-emerald-700 bg-emerald-50' : 'text-gray-700'}`}>
+                        {row.flip}
+                      </td>
+                    )}
                     <td className={`py-2.5 px-3 text-center text-xs ${row.bestStrategy === 'str' ? 'font-bold text-violet-700 bg-violet-50' : 'text-gray-700'}`}>
                       {row.str}
                     </td>
@@ -458,8 +551,8 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
         </>
       )}
 
-      {/* Strategy Cards - Only show in Acquisition Mode */}
-      {isPipeline && (
+      {/* ======== OVERVIEW TAB: Strategy Cards ======== */}
+      {isPipeline && activeTab === 'overview' && (
         <>
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">
@@ -489,22 +582,124 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
         </>
       )}
 
-      {/* Performance Mode - Progress Tracking */}
-      {isOwned && (
+      {/* ======== OVERVIEW TAB: Performance + Checklist + Risk ======== */}
+      {isOwned && activeTab === 'overview' && (
         <>
           <StrategyProgressSection progress={performanceStrategyProgress} />
-          
           <OptimizationsSection optimizations={performanceOptimizations} />
-          
-          <ExitScenariosSection scenarios={exitScenarios} />
         </>
       )}
 
-      {/* Implementation Checklist */}
-      <ImplementationChecklist tasks={tasks} mode={mode} />
+      {activeTab === 'overview' && (
+        <>
+          <ImplementationChecklist tasks={tasks} mode={mode} />
+          <RiskAssessmentSection risks={risks} />
+        </>
+      )}
 
-      {/* Risk Assessment */}
-      <RiskAssessmentSection risks={risks} />
+      {/* ======== RETURNS TAB ======== */}
+      {activeTab === 'returns' && (
+        <div className="space-y-6">
+          <ROIComparisonChart projections={roiProjections} />
+          {isOwned && <ExitScenariosSection scenarios={exitScenarios} />}
+          {!isOwned && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+              <div className="text-3xl mb-3">💰</div>
+              <h3 className="text-lg font-semibold text-blue-900 mb-2">Exit Scenario Analysis</h3>
+              <p className="text-sm text-blue-700">
+                Exit scenarios become available once the deal moves to the Owned stage.
+                ROI projections above are based on current pipeline assumptions.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======== CUSTOM SCREEN TAB ======== */}
+      {activeTab === 'custom' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Custom Strategy Screen</h3>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Your saved strategies scored against this deal's market data
+              </p>
+            </div>
+            {(customLoading || scoreDealLoading) && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                Loading...
+              </div>
+            )}
+          </div>
+
+          {!customLoading && customStrategies.length === 0 ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+              <div className="text-4xl mb-3">⚙️</div>
+              <h4 className="text-base font-semibold text-gray-700 mb-2">No strategies yet</h4>
+              <p className="text-sm text-gray-500">
+                Create custom strategies in the Strategy Builder to see them scored here.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {customStrategies.map((strategy) => {
+                const scoreData = scoreDealResult.find((r: any) => r.strategyId === strategy.id);
+                const matched = scoreData?.matched ?? null;
+                const score = scoreData?.score ?? null;
+                return (
+                  <div
+                    key={strategy.id}
+                    className={`bg-white rounded-lg border-2 p-4 flex items-start gap-4 ${
+                      matched === true
+                        ? 'border-emerald-300'
+                        : matched === false
+                        ? 'border-red-200'
+                        : 'border-gray-200'
+                    }`}
+                  >
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base font-bold ${
+                      matched === true ? 'bg-emerald-100 text-emerald-700' :
+                      matched === false ? 'bg-red-100 text-red-600' :
+                      'bg-gray-100 text-gray-500'
+                    }`}>
+                      {matched === true ? '✓' : matched === false ? '✗' : '?'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-gray-900 text-sm">{strategy.name}</span>
+                        {strategy.isPreset && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 tracking-wider">
+                            PRESET
+                          </span>
+                        )}
+                      </div>
+                      {strategy.description && (
+                        <p className="text-xs text-gray-500 mb-2">{strategy.description}</p>
+                      )}
+                      {score !== null && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                            <div
+                              className={`h-1.5 rounded-full ${
+                                score >= 70 ? 'bg-emerald-500' : score >= 40 ? 'bg-amber-500' : 'bg-red-400'
+                              }`}
+                              style={{ width: `${Math.min(score, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-semibold text-gray-600 w-10 text-right">
+                            {score.toFixed(0)}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
