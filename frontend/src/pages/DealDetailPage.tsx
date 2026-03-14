@@ -97,6 +97,7 @@ const DealDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
+  const config = useDealTypeConfig();
   const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
