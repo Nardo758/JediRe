@@ -5,6 +5,20 @@ import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
 
+// ═══ DEAL-TYPE ADAPTATION IMPORTS ═══
+// Utilities for conformance checks and scenario generation
+import { computeConformanceMetrics, ConformanceCheckData } from '../../../utils/conformance.utils';
+import { generateExpansionScenarios, generateRedevelopmentScenarios, ExpansionScenario } from '../../../utils/scenarios.utils';
+import { getSubTabsForDealType, normalizeDealType } from '../../../utils/tabs.utils';
+
+// UI Components for deal-type views
+import ConformanceCheckSection from './components/ConformanceCheckSection';
+import UntappedEntitlementCard from './components/UntappedEntitlementCard';
+import ExpansionScenariosCards from './components/ExpansionScenariosCards';
+import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards';
+import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard';
+import NonconformingWarning from './components/NonconformingWarning';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -683,6 +697,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [activatingScenario, setActivatingScenario] = useState(false);
   const [pathScenarios, setPathScenarios] = useState<any>(null);
 
+  // ═══ DEAL-TYPE ADAPTATION STATE ═══
+  const [activeSubTab, setActiveSubTab] = useState<string>('');
+  const [conformance, setConformance] = useState<ConformanceCheckData | null>(null);
+  const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
+  const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
+
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
     
@@ -1045,6 +1065,66 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }, 500);
     return () => clearTimeout(timer);
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
+
+  // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══
+  // Initialize activeSubTab and compute conformance/scenarios based on deal type
+  useEffect(() => {
+    if (!profile) return;
+
+    // Determine deal type from deal prop or dealStore
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+
+    // Get available tabs for this deal type
+    const availableTabs = getSubTabsForDealType(dealType);
+    if (availableTabs.length > 0) {
+      setActiveSubTab(availableTabs[0].id);
+    }
+
+    // Compute conformance and scenarios for existing/redevelopment deals
+    if (dealType === 'existing' || dealType === 'redevelopment') {
+      const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+      if (existingProperty) {
+        try {
+          // Compute conformance metrics
+          const zoning = {
+            max_density_units_per_acre: profile.max_density_per_acre,
+            applied_far: profile.applied_far || profile.residential_far,
+            max_height_ft: profile.max_height_ft,
+            max_lot_coverage_pct: profile.max_lot_coverage_pct,
+            min_parking_per_unit: profile.min_parking_per_unit,
+            lot_area_sf: profile.lot_area_sf,
+          };
+
+          const conformanceData = computeConformanceMetrics(existingProperty, zoning, profile.lot_area_sf || 0);
+          setConformance(conformanceData);
+
+          // Compute max allowed from zoning for untapped entitlement card
+          const maxAllowed = {
+            units: Math.floor((profile.lot_area_sf || 0) / 43560 * (profile.max_density_per_acre || 100)),
+            gfa: Math.round((profile.lot_area_sf || 0) * (profile.applied_far || 3.0)),
+            stories: profile.max_stories || 8,
+          };
+
+          // Generate scenarios
+          if (dealType === 'existing') {
+            const scenarios = generateExpansionScenarios(existingProperty, maxAllowed, zoning);
+            setExpansionScenarios(scenarios);
+          } else {
+            const scenarios = generateRedevelopmentScenarios(existingProperty, maxAllowed, zoning);
+            setRedevelopmentScenarios(scenarios);
+          }
+
+          console.log(`✅ Computed ${dealType} metrics for deal`, {
+            conformance: conformanceData,
+            maxAllowed,
+          });
+        } catch (err) {
+          console.error(`Failed to compute ${dealType} metrics:`, err);
+        }
+      }
+    }
+  }, [profile, deal]);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
