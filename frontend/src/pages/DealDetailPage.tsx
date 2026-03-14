@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
@@ -15,6 +15,7 @@ import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
+import { isModuleVisible, type ModuleId } from '@/shared/config/deal-type-visibility';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
@@ -26,13 +27,7 @@ import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
-import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
-import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligence';
-import ProFormaWithTrafficSection from '../components/deal/sections/ProFormaWithTrafficSection';
-import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
-import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
-import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
@@ -51,17 +46,12 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
-import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
-import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
-import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
-import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
@@ -223,39 +213,43 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 1: OVERVIEW & SETUP - Get oriented
   const overviewSetupTabs: Tab[] = [
-    { 
-      id: 'overview', 
-      label: 'Deal Overview', 
-      icon: <BarChart3 size={16} />, 
-      component: OverviewSection 
+    {
+      id: 'overview',
+      label: 'Deal Overview',
+      icon: <BarChart3 size={16} />,
+      component: OverviewSection,
+      moduleId: 'M01'
     },
-    { 
-      id: 'zoning', 
-      label: 'Property & Zoning', 
-      icon: <Landmark size={16} />, 
-      component: ZoningModuleSection 
+    {
+      id: 'zoning',
+      label: 'Property & Zoning',
+      icon: <Landmark size={16} />,
+      component: ZoningModuleSection,
+      moduleId: 'M02'
     },
-    { 
-      id: 'context-tracker', 
-      label: 'Context Tracker', 
-      icon: <Compass size={16} />, 
-      component: ContextTrackerSection 
+    {
+      id: 'context-tracker',
+      label: 'Context Tracker',
+      icon: <Compass size={16} />,
+      component: ContextTrackerSection
     },
-    { 
-      id: 'team', 
-      label: 'Team & Collaborators', 
-      icon: <Users size={16} />, 
-      component: TeamManagementSection 
+    {
+      id: 'team',
+      label: 'Team & Collaborators',
+      icon: <Users size={16} />,
+      component: TeamManagementSection,
+      moduleId: 'M17'
     },
   ];
 
   // Stage 2: MARKET RESEARCH - Validate opportunity
   const marketResearchTabs: Tab[] = [
-    { 
-      id: 'market-intelligence', 
-      label: 'Market Intelligence', 
-      icon: <TrendingUp size={16} />, 
-      component: MarketIntelligencePage 
+    {
+      id: 'market-intelligence',
+      label: 'Market Intelligence',
+      icon: <TrendingUp size={16} />,
+      component: MarketIntelligencePage,
+      moduleId: 'M05'
     },
     {
       id: 'unit-mix-intelligence',
@@ -263,53 +257,33 @@ const DealDetailPage: React.FC = () => {
       icon: <Layers size={16} />,
       component: UnitMixIntelligence
     },
-    { 
-      id: 'competition', 
-      label: 'Competition Analysis', 
-      icon: <Target size={16} />, 
-      component: CompetitionPage 
-    },
     {
-      id: 'traffic-intelligence',
-      label: 'Traffic Intelligence',
-      icon: <Activity size={16} />,
-      component: TrafficIntelligenceSection
-    },
-    {
-      id: 'competitive-position',
-      label: 'Competitive Position',
-      icon: <Radar size={16} />,
-      component: CompetitivePositionSection
+      id: 'competition',
+      label: 'Competition Analysis',
+      icon: <Target size={16} />,
+      component: CompetitionPage,
+      moduleId: 'M15'
     },
     {
       id: 'supply',
       label: 'Supply Pipeline',
       icon: <Package size={16} />,
-      component: SupplyPipelinePage
-    },
-    {
-      id: 'supply-intelligence',
-      label: 'Supply Intelligence',
-      icon: <Radar size={16} />,
-      component: SupplyIntelligence
-    },
-    {
-      id: 'market-vitals',
-      label: 'Market Vitals',
-      icon: <BarChart2 size={16} />,
-      component: MarketIntelligence
+      component: SupplyPipelinePage,
+      moduleId: 'M04'
     },
     {
       id: 'opportunity-engine',
       label: 'Opportunity Engine',
       icon: <Zap size={16} />,
-      component: OpportunityEngineSection
+      component: OpportunityEngineSection,
+      moduleId: 'M05'
     },
-    { 
-      id: 'trends', 
-      label: 'Trends Analysis', 
-      icon: <LineChart size={16} />, 
-      component: TrendsAnalysisSection 
+    {
+      id: 'trends',
+      label: 'Trends Analysis',
+      icon: <LineChart size={16} />,
+      component: TrendsAnalysisSection,
+      moduleId: 'M05'
     },
     {
       id: 'comps',
@@ -374,94 +348,83 @@ const DealDetailPage: React.FC = () => {
       icon: <Zap size={16} />,
       component: CollisionAnalysisSection
     },
-    { 
-      id: 'due-diligence', 
-      label: 'DD Checklist', 
-      icon: <ClipboardCheck size={16} />, 
-      component: DueDiligencePage 
-    },
-    { 
-      id: 'deal-status', 
-      label: 'Deal Lifecycle', 
-      icon: <LayoutDashboard size={16} />, 
-      component: DealStatusSection 
+    {
+      id: 'due-diligence',
+      label: 'DD Checklist',
+      icon: <ClipboardCheck size={16} />,
+      component: DueDiligencePage,
+      moduleId: 'M13'
     },
     {
-      id: 'risk-management',
-      label: 'Risk Management',
-      icon: <AlertTriangle size={16} />,
-      component: RiskManagementSection
+      id: 'deal-status',
+      label: 'Deal Lifecycle',
+      icon: <LayoutDashboard size={16} />,
+      component: DealStatusSection
     },
     {
       id: 'risk-intelligence',
       label: 'Risk Intelligence',
       icon: <Shield size={16} />,
-      component: RiskIntelligence
+      component: RiskIntelligence,
+      moduleId: 'M14'
     },
-    { 
-      id: 'environmental-esg', 
-      label: 'Environmental & ESG', 
-      icon: <Leaf size={16} />, 
-      component: EnvironmentalESGSection 
-    },
-    { 
-      id: 'site-intelligence', 
-      label: 'Site Intelligence', 
-      icon: <Activity size={16} />, 
-      component: SiteIntelligenceSection 
-    },
-    { 
-      id: 'files', 
-      label: 'Files & Assets', 
-      icon: <FolderOpen size={16} />, 
-      component: FilesSection 
+    {
+      id: 'files',
+      label: 'Files & Assets',
+      icon: <FolderOpen size={16} />,
+      component: FilesSection,
+      moduleId: 'M18'
     },
   ];
 
   // Stage 5: EXECUTION - Build & deliver
   const executionTabs: Tab[] = [
-    { 
-      id: 'timeline', 
-      label: 'Project Timeline', 
-      icon: <Calendar size={16} />, 
-      component: ProjectTimelinePage 
+    {
+      id: 'timeline',
+      label: 'Project Timeline',
+      icon: <Calendar size={16} />,
+      component: ProjectTimelinePage
     },
-    { 
-      id: 'project-management', 
-      label: 'Project Management', 
-      icon: <Briefcase size={16} />, 
-      component: ProjectManagementSection 
+    {
+      id: 'project-management',
+      label: 'Project Management',
+      icon: <Briefcase size={16} />,
+      component: ProjectManagementSection,
+      moduleId: 'M17'
     },
-    { 
-      id: 'construction-management', 
-      label: 'Construction Management', 
-      icon: <HardHat size={16} />, 
-      component: ConstructionManagementSection 
+    {
+      id: 'construction-management',
+      label: 'Construction Management',
+      icon: <HardHat size={16} />,
+      component: ConstructionManagementSection
     },
   ];
 
   // Always Available: AI ASSISTANT
   const aiAssistantTabs: Tab[] = [
-    { 
-      id: 'ai-agent', 
-      label: 'Opus AI Agent', 
-      icon: <Bot size={16} />, 
-      component: OpusAISection 
+    {
+      id: 'ai-agent',
+      label: 'Opus AI Agent',
+      icon: <Bot size={16} />,
+      component: OpusAISection
     },
-    { 
-      id: 'ai-recommendations', 
-      label: 'AI Recommendations', 
-      icon: <Lightbulb size={16} />, 
-      component: AIRecommendationsSection 
+    {
+      id: 'ai-recommendations',
+      label: 'AI Recommendations',
+      icon: <Lightbulb size={16} />,
+      component: AIRecommendationsSection
     },
   ];
 
+  // Filter tabs based on module visibility configuration
+  const filtered = (tabs: Tab[]) => tabs.filter(t => !t.moduleId || isModuleVisible(t.moduleId as ModuleId, config.dealType));
+
   const allTabs = [
-    ...overviewSetupTabs,
-    ...marketResearchTabs,
-    ...dealDesignTabs,
-    ...dueDiligenceTabs,
-    ...executionTabs,
+    ...filtered(overviewSetupTabs),
+    ...filtered(marketResearchTabs),
+    ...filtered(dealDesignTabs),
+    ...filtered(dueDiligenceTabs),
+    ...filtered(executionTabs),
     ...aiAssistantTabs,
   ];
 

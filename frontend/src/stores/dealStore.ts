@@ -36,7 +36,7 @@ import {
   getDealType,
   getDealTypeConfig,
   type DealType,
-} from '../../deal-type-visibility';
+} from '@/shared/config/deal-type-visibility';
 import {
   getStrategyAvailability,
   getStrategyStrength,
@@ -386,8 +386,13 @@ export const useDealStore = create<DealStore>()(
         // Recompute resolved unit mix from the fetched data
         const { resolvedUnitMix, totalUnits } = recomputeResolvedMix(data);
 
+        // Explicit projectType hydration: resolve from multiple possible sources
+        const resolvedType = data.projectType ?? data.project_type ?? data.identity?.mode ?? 'existing';
+        console.log('[dealStore] projectType resolved to:', resolvedType);
+
         set({
           ...data,
+          projectType: resolvedType,
           resolvedUnitMix,
           totalUnits,
         });

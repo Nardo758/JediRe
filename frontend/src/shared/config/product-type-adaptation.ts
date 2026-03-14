@@ -10,7 +10,7 @@
 //
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { DealType, StrategyId } from '../../../deal-type-visibility';
+import { DealType, StrategyId } from './deal-type-visibility';
 
 // ─── Product Types ──────────────────────────────────────────────────────────
 
