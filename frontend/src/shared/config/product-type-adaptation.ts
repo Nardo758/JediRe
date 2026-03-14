@@ -290,3 +290,52 @@ export function getStrategyStrength(
   }
   return matrix[strategy];
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UNIT MIX MODE & CONFIGURATION (M03 Unit Program Router)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Determines which unit mix component(s) should be rendered for a given deal type.
+ *
+ * - 'analyzer': Existing deals — unit-mix-positioning-v5 (read-only competitive analysis)
+ * - 'designer': Development deals — development-program-builder (design mode, cost modeling)
+ * - 'analyzer_designer': Redevelopment deals — both stacked vertically
+ *   Shows "Current" (analyzer) + "Target" (designer) with section divider
+ * - 'hidden': Module not applicable (returns null)
+ */
+export type UnitMixMode = 'analyzer' | 'designer' | 'analyzer_designer' | 'hidden';
+
+/**
+ * Unit mix configuration per deal type.
+ * Controls which UI components render in the Unit Program (M03) tab.
+ */
+export interface UnitMixConfig {
+  mode: UnitMixMode;
+  description: string;
+}
+
+/**
+ * Unit mix mode mapping by deal type.
+ */
+export const UNIT_MIX_CONFIG: Record<DealType, UnitMixConfig> = {
+  existing: {
+    mode: 'analyzer',
+    description: 'Current unit mix with competitive positioning analysis',
+  },
+  development: {
+    mode: 'designer',
+    description: 'Design new unit program from market demand and zoning constraints',
+  },
+  redevelopment: {
+    mode: 'analyzer_designer',
+    description: 'Analyze current units, design target program post-repositioning',
+  },
+};
+
+/**
+ * Get the unit mix mode for a given deal type.
+ */
+export function getUnitMixMode(dealType: DealType): UnitMixMode {
+  return UNIT_MIX_CONFIG[dealType].mode;
+}
