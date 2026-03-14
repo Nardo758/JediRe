@@ -1174,8 +1174,15 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       }
       setUserOverrides(newOverrides);
 
-      // TODO: Re-run envelope calculation with overrides
-      // For now, just update state. In production, this would trigger calculateEnvelope(parcel, zoningProfile, newOverrides)
+      // TODO: STEP 2 OF INTERPRETATION PANEL
+      // When user overrides a parameter:
+      // 1. Re-run calculateEnvelope(parcel, zoningProfile, newOverrides)
+      //    The envelope calculation engine should accept overrides as 3rd argument
+      // 2. Update pathScenarios.paths[selectedColKey].envelope with new result
+      // 3. Waterfall will recalculate with new binding constraint
+      // 4. Unit count updates in real-time
+      // For now, state updates but envelope doesn't recalculate
+      console.log('Override changed:', parameter, value);
     },
     [userOverrides]
   );

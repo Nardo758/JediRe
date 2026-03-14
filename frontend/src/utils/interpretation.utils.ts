@@ -128,29 +128,34 @@ export function generateInterpretationDecisions(
   }
 
   // ── WARNINGS ──
+  // 1. Impervious surface data unavailable
   if (!zoningProfile.impervious_surface_data) {
     warnings.push(
-      '⚠ County stormwater impervious limit not checked. This parcel may be further constrained by stormwater runoff regulations before zoning lot coverage is reached.'
+      'County stormwater impervious limit not checked. This parcel may be further constrained by stormwater runoff regulations before zoning lot coverage is reached.'
     );
   }
 
+  // 2. Parking is binding constraint
   if (zoningProfile.parking_is_binding_constraint) {
     warnings.push(
-      '⚠ Parking is your binding constraint — transit reduction or structured parking (rather than surface) could unlock additional units.'
+      'Parking is your binding constraint — transit reduction or structured parking (rather than surface) could unlock additional units.'
     );
   }
 
+  // 3. Low-confidence interpretations
   const lowConfidenceParams = decisions.filter(d => d.confidence === 'low');
   if (lowConfidenceParams.length > 0) {
-    const params = lowConfidenceParams.map(d => d.parameter).join(', ');
-    warnings.push(
-      `⚠ ${params} has low confidence interpretation — confirm with planning department before finalizing underwriting.`
-    );
+    lowConfidenceParams.forEach(param => {
+      warnings.push(
+        `${param.parameter} interpretation has low confidence and potential ambiguity — confirm with planning department before finalizing project underwriting.`
+      );
+    });
   }
 
-  if (existingProperty?.has_nonconforming_items) {
+  // 4. Nonconforming items (only for existing properties)
+  if (existingProperty?.has_nonconforming_items || existingProperty?.nonconformingItems?.length > 0) {
     warnings.push(
-      '⚠ Existing building has nonconforming items (grandfathered under prior code). Expansion exceeding 50% of building value may trigger full code compliance.'
+      'Existing building has nonconforming items (grandfathered under prior code). Expansion exceeding 50% of existing building value may trigger full code compliance, potentially adding significant costs or restricting uses.'
     );
   }
 
