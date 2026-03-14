@@ -463,6 +463,7 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'market', is_enabled: true, config: {} },
       { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
       { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
+      { module_name: 'zoning', is_enabled: true, config: {} },        // M25: Zoning Module
       { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'debt', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
@@ -483,6 +484,7 @@ router.get('/:id/modules', requireAuth, async (req: AuthenticatedRequest, res) =
       { module_name: 'market', is_enabled: true, config: {} },
       { module_name: 'comps', is_enabled: true, config: {} },         // M27: Sale Comps
       { module_name: 'tax', is_enabled: true, config: {} },           // M26: Tax Intelligence
+      { module_name: 'zoning', is_enabled: true, config: {} },        // M25: Zoning Module
       { module_name: 'financial', is_enabled: true, config: {} },
       { module_name: 'strategy', is_enabled: true, config: {} },
       { module_name: 'exit', is_enabled: true, config: {} },

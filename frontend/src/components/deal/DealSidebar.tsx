@@ -13,6 +13,7 @@ const moduleIcons: Record<string, string> = {
   strategy: '🎯',
   'due-diligence': '✅',
   'ai-agent': '🤖',
+  zoning: '🏗️',
   team: '👥',
   documents: '📄',
   timeline: '📅',
@@ -34,6 +35,7 @@ const moduleLabels: Record<string, string> = {
   strategy: 'Strategy',
   'due-diligence': 'Due Diligence',
   'ai-agent': 'AI Agent',
+  zoning: 'Zoning Analysis',
   team: 'Team',
   documents: 'Documents',
   timeline: 'Timeline',
@@ -45,13 +47,13 @@ const moduleLabels: Record<string, string> = {
 };
 
 const PIPELINE_MODULES = [
-  'map', 'overview', 'ai-agent', 'competition', 'supply', 'market', 'debt',
+  'map', 'overview', 'ai-agent', 'competition', 'supply', 'market', 'zoning', 'debt',
   'financial', 'strategy', 'due-diligence', 'team', 'documents', 'timeline',
   'notes', 'files', 'exit', 'context'
 ];
 
 const ASSET_MODULES = [
-  'overview', 'post-close', 'ai-agent', 'financial', 'market', 'competition', 'strategy',
+  'overview', 'post-close', 'ai-agent', 'financial', 'market', 'zoning', 'competition', 'strategy',
   'exit', 'team', 'documents', 'timeline', 'notes', 'files', 'context'
 ];
 

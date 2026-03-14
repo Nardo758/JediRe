@@ -23,6 +23,7 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { NotesSection } from '../components/deal/sections/NotesSection';
 import { TimelineSection } from '../components/deal/sections/TimelineSection';
 import { FilesSection } from '../components/deal/sections/FilesSection';
+import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
@@ -197,6 +198,12 @@ export const DealView: React.FC = () => {
         return (
           <div className="p-6">
             <MarketSection deal={deal} />
+          </div>
+        );
+      case 'zoning':
+        return (
+          <div className="p-6">
+            <ZoningModuleSection deal={deal} dealId={selectedDeal.id} />
           </div>
         );
       case 'strategy':
