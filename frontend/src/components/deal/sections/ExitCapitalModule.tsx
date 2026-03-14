@@ -507,6 +507,25 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: Convergenc
         {/* Hover crosshair */}
         {hoverIdx !== null && <line x1={x(hoverIdx)} y1={pad.t} x2={x(hoverIdx)} y2={pad.t + iH} stroke="rgba(255,255,255,0.12)" strokeWidth={0.5} />}
 
+        {/* FOMC Meeting Markers */}
+        {FOMC_MEETINGS_2026.map((mtg) => {
+          const mtgX = x(mtg.absQuarterIdx);
+          const mtgY = yCap(mtg.currentTarget);
+          const color =
+            mtg.action === 'cut_25' ? '#68D391' :
+            mtg.action === 'hike_25' ? '#FC8181' :
+            '#999';
+
+          return (
+            <g key={`fomc-${mtg.date}`}>
+              {/* Diamond marker */}
+              <polygon points={`${mtgX},${mtgY - 6} ${mtgX + 6},${mtgY} ${mtgX},${mtgY + 6} ${mtgX - 6},${mtgY}`} fill={color} opacity={0.7} />
+              {/* Tooltip on hover */}
+              <circle cx={mtgX} cy={mtgY} r={8} fill="transparent" style={{ cursor: 'pointer' }} title={`${mtg.date}: ${mtg.action}`} />
+            </g>
+          );
+        })}
+
         {/* Legend */}
         <g transform={`translate(${pad.l},${H - 10})`}>
           <line x1={0} y1={0} x2={12} y2={0} stroke="#68D391" strokeWidth={1.5} />
@@ -524,6 +543,10 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: Convergenc
           <line x1={248} y1={0} x2={260} y2={0} stroke="#10b981" strokeWidth={2.5} />
           <text x={264} y={3} fill="rgba(232,230,225,0.22)" fontSize={7}>
             RSS score
+          </text>
+          <polygon points="330,0 335,-3 340,0 335,3" fill="#68D391" />
+          <text x={344} y={3} fill="rgba(232,230,225,0.22)" fontSize={7}>
+            FOMC cut
           </text>
         </g>
       </svg>
