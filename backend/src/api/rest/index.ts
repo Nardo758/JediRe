@@ -86,6 +86,7 @@ import scrapeRoutes from './scrape.routes';
 import metricsCatalogRoutes from './metrics-catalog.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
+import strategiesRoutes from './strategy-definitions.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -312,6 +313,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Custom Strategies routes (Strategy Engine - user-defined strategy management)
   app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
+
+  // Strategy Definitions & Execution routes (Strategy Engine - new execution engine)
+  app.use(`${API_PREFIX}/strategies`, strategiesRoutes);
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
