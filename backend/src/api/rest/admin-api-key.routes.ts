@@ -203,19 +203,224 @@ router.get('/municipalities', requireAdminApiKey, async (req, res) => {
 });
 
 /**
+ * POST /api/v1/admin-api/ingest/bls-qcew
+ * SESSION 8: Ingest BLS QCEW employment & wage data for Florida counties
+ */
+router.post('/ingest/bls-qcew', requireAdminApiKey, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const blsApiKey = process.env.BLS_API_KEY;
+    if (!blsApiKey) {
+      return res.status(400).json({
+        error: 'Configuration Error',
+        message: 'BLS_API_KEY environment variable not configured'
+      });
+    }
+
+    const { ingestBLSQCEW } = await import('../../services/ingestion/bls-ingest.service');
+    const result = await ingestBLSQCEW(blsApiKey);
+
+    res.json({
+      success: true,
+      service: 'BLS QCEW',
+      result: {
+        countiesProcessed: result.countiesProcessed,
+        rowsInserted: result.rowsInserted,
+        errors: result.errors.length,
+        duration_ms: result.endTime.getTime() - result.startTime.getTime(),
+        error_details: result.errors.slice(0, 5)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Ingestion Failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/v1/admin-api/ingest/census-acs
+ * SESSION 8: Ingest Census ACS demographic data for Florida ZIP codes
+ */
+router.post('/ingest/census-acs', requireAdminApiKey, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const censusApiKey = process.env.CENSUS_API_KEY;
+    if (!censusApiKey) {
+      return res.status(400).json({
+        error: 'Configuration Error',
+        message: 'CENSUS_API_KEY environment variable not configured'
+      });
+    }
+
+    const { ingestCensusACS } = await import('../../services/ingestion/census-ingest.service');
+    const result = await ingestCensusACS(censusApiKey);
+
+    res.json({
+      success: true,
+      service: 'Census ACS',
+      result: {
+        zipCodesProcessed: result.zipCodesProcessed,
+        rowsInserted: result.rowsInserted,
+        errors: result.errors.length,
+        duration_ms: result.endTime.getTime() - result.startTime.getTime(),
+        error_details: result.errors.slice(0, 5)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Ingestion Failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/v1/admin-api/ingest/census-building-permits
+ * SESSION 8: Ingest Census Building Permits for Florida counties
+ */
+router.post('/ingest/census-building-permits', requireAdminApiKey, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const censusApiKey = process.env.CENSUS_API_KEY;
+    if (!censusApiKey) {
+      return res.status(400).json({
+        error: 'Configuration Error',
+        message: 'CENSUS_API_KEY environment variable not configured'
+      });
+    }
+
+    const { ingestBuildingPermits } = await import('../../services/ingestion/census-permits-ingest.service');
+    const result = await ingestBuildingPermits(censusApiKey);
+
+    res.json({
+      success: true,
+      service: 'Census Building Permits',
+      result: {
+        countiesProcessed: result.countiesProcessed,
+        rowsInserted: result.rowsInserted,
+        errors: result.errors.length,
+        duration_ms: result.endTime.getTime() - result.startTime.getTime(),
+        error_details: result.errors.slice(0, 5)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Ingestion Failed',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/v1/admin-api/ingest/florida-geographies
+ * SESSION 8: Seed geographies table with Florida counties and MSAs
+ */
+router.post('/ingest/florida-geographies', requireAdminApiKey, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    // Create geographies table if it doesn't exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS geographies (
+        id VARCHAR(50) PRIMARY KEY,
+        type VARCHAR(20) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        parent_id VARCHAR(50),
+        state VARCHAR(2),
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    const counties = [
+      { fipsId: '12001', name: 'Alachua' }, { fipsId: '12003', name: 'Baker' }, { fipsId: '12005', name: 'Bradford' },
+      { fipsId: '12007', name: 'Brevard' }, { fipsId: '12009', name: 'Broward' }, { fipsId: '12011', name: 'Calhoun' },
+      { fipsId: '12013', name: 'Charlotte' }, { fipsId: '12015', name: 'Citrus' }, { fipsId: '12017', name: 'Clay' },
+      { fipsId: '12019', name: 'Collier' }, { fipsId: '12021', name: 'Columbia' }, { fipsId: '12023', name: 'DeSoto' },
+      { fipsId: '12025', name: 'Dixie' }, { fipsId: '12027', name: 'Duval' }, { fipsId: '12029', name: 'Escambia' },
+      { fipsId: '12031', name: 'Flagler' }, { fipsId: '12033', name: 'Franklin' }, { fipsId: '12035', name: 'Gadsden' },
+      { fipsId: '12037', name: 'Gilchrist' }, { fipsId: '12039', name: 'Glades' }, { fipsId: '12041', name: 'Gulf' },
+      { fipsId: '12043', name: 'Hamilton' }, { fipsId: '12045', name: 'Hardee' }, { fipsId: '12047', name: 'Hendry' },
+      { fipsId: '12049', name: 'Hernando' }, { fipsId: '12051', name: 'Highlands' }, { fipsId: '12053', name: 'Hillsborough' },
+      { fipsId: '12055', name: 'Holmes' }, { fipsId: '12057', name: 'Indian River' }, { fipsId: '12059', name: 'Jackson' },
+      { fipsId: '12061', name: 'Jefferson' }, { fipsId: '12063', name: 'Lafayette' }, { fipsId: '12065', name: 'Lake' },
+      { fipsId: '12067', name: 'Lee' }, { fipsId: '12069', name: 'Leon' }, { fipsId: '12071', name: 'Levy' },
+      { fipsId: '12073', name: 'Liberty' }, { fipsId: '12075', name: 'Madison' }, { fipsId: '12077', name: 'Manatee' },
+      { fipsId: '12079', name: 'Marion' }, { fipsId: '12081', name: 'Martin' }, { fipsId: '12083', name: 'Miami-Dade' },
+      { fipsId: '12085', name: 'Monroe' }, { fipsId: '12087', name: 'Nassau' }, { fipsId: '12089', name: 'Okaloosa' },
+      { fipsId: '12091', name: 'Okeechobee' }, { fipsId: '12093', name: 'Orange' }, { fipsId: '12095', name: 'Osceola' },
+      { fipsId: '12097', name: 'Palm Beach' }, { fipsId: '12099', name: 'Pasco' }, { fipsId: '12101', name: 'Pinellas' },
+      { fipsId: '12103', name: 'Polk' }, { fipsId: '12105', name: 'Putnam' }, { fipsId: '12107', name: 'St. Johns' },
+      { fipsId: '12109', name: 'St. Lucie' }, { fipsId: '12111', name: 'Santa Rosa' }, { fipsId: '12113', name: 'Sarasota' },
+      { fipsId: '12115', name: 'Seminole' }, { fipsId: '12117', name: 'Sumter' }, { fipsId: '12119', name: 'Suwannee' },
+      { fipsId: '12121', name: 'Taylor' }, { fipsId: '12123', name: 'Union' }, { fipsId: '12125', name: 'Volusia' },
+      { fipsId: '12127', name: 'Wakulla' }, { fipsId: '12129', name: 'Walton' }, { fipsId: '12131', name: 'Washington' },
+    ];
+
+    const msas = [
+      { fipsId: '45300', name: 'Tampa-St Petersburg' }, { fipsId: '36740', name: 'Orlando' },
+      { fipsId: '33100', name: 'Miami' }, { fipsId: '27260', name: 'Jacksonville' },
+      { fipsId: '38940', name: 'Port St Lucie' }, { fipsId: '15980', name: 'Cape Coral' },
+      { fipsId: '19660', name: 'Deltona' }, { fipsId: '29460', name: 'Lakeland' },
+      { fipsId: '37340', name: 'Palm Bay' }, { fipsId: '35840', name: 'North Port' },
+      { fipsId: '37860', name: 'Pensacola' }, { fipsId: '23540', name: 'Gainesville' },
+    ];
+
+    let countiesInserted = 0;
+    for (const county of counties) {
+      await pool.query(
+        `INSERT INTO geographies (id, type, name, parent_id, state) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+        [county.fipsId, 'county', county.name, '12', 'FL']
+      );
+      countiesInserted++;
+    }
+
+    let msasInserted = 0;
+    for (const msa of msas) {
+      await pool.query(
+        `INSERT INTO geographies (id, type, name, parent_id, state) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+        [msa.fipsId, 'msa', msa.name, '12', 'FL']
+      );
+      msasInserted++;
+    }
+
+    res.json({
+      success: true,
+      service: 'Florida Geographies',
+      result: {
+        countiesInserted,
+        msasInserted,
+        totalInserted: countiesInserted + msasInserted
+      },
+      message: 'Note: ZIP codes are auto-seeded during Census ACS ingestion',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Seeding Failed',
+      message: error.message
+    });
+  }
+});
+
+/**
  * GET /api/v1/admin-api/health
  * Health check
  */
 router.get('/health', requireAdminApiKey, async (req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ 
+    res.json({
       status: 'healthy',
       database: 'connected',
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
-    res.status(500).json({ 
+    res.status(500).json({
       status: 'unhealthy',
       database: 'disconnected',
       error: error.message
