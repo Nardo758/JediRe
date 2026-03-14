@@ -4,6 +4,7 @@
   "description": "**Status:** Planning & Architecture Phase   **Created:** 2026-01-31   **Owner:** Leon D",
   "main": "index.js",
   "scripts": {
+    "dev": "bash start.sh",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

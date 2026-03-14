@@ -506,6 +506,23 @@ export interface DealContext {
   developmentPaths: DevelopmentPath[];
   selectedDevelopmentPathId: string | null;
 
+  /**
+   * Development Envelope — the zoning constraints from the selected development path.
+   * Written by DevelopmentCapacityTab when user selects a path.
+   * Read by UnitMixRouter to show utilization constraints and by ProForma for cost calculations.
+   */
+  developmentEnvelope: {
+    max_units: number;
+    max_gfa: number;
+    max_stories: number;
+    units_per_floor: number;
+    binding_constraint: string;
+    selected_path: string;
+    parking: { type: string; spaces: number; cost_per_space: number };
+    buildable_area_sf: number;
+    impact_fee_credit_units: number;
+  } | null;
+
   // ─── MODE-SPECIFIC: EXISTING ──────────────────────────────
 
   /** Existing property data (existing mode only) */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MapPin,
   CheckCircle2,
@@ -17,8 +17,6 @@ import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
-import { useDealType } from '../../../stores/dealStore';
-import { getZoningDepth } from '@/shared/config/deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -36,21 +34,9 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
   { id: 'entitlements', label: 'Entitlements', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
 
-// Simplified tabs for existing deals (3 tabs)
-const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk', 'timeline'];
-
-// Full tabs for development/redevelopment deals (all 6 tabs)
-const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];
-
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
-  const dealType = useDealType();
-  const zoningDepth = useMemo(() => getZoningDepth(dealType), [dealType]);
-
-  // Filter tabs based on zoning depth (simplified for existing, full for dev/redev)
-  const visibleTabs = useMemo(() => {
-    const tabIds = zoningDepth === 'simplified' ? SIMPLIFIED_TABS : FULL_TABS;
-    return ALL_TABS.filter(tab => tabIds.includes(tab.id));
-  }, [zoningDepth]);
+  // All 6 tabs are always visible regardless of deal type
+  const visibleTabs = ALL_TABS;
 
   const resolvedDealId = propDealId || deal?.id;
   const [activeTab, setActiveTab] = useState<ZoningTabId>('boundary_zoning');

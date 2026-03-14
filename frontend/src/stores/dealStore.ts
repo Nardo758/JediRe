@@ -55,10 +55,26 @@ interface DealStoreActions {
   fetchDeals: () => Promise<void>;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
+  /** Create a new deal */
+  createDeal: (payload: any) => Promise<any>;
   /** Hydrate entire deal context from backend */
   fetchDealContext: (dealId: string) => Promise<void>;
   /** Clear store (on navigate away from deal) */
   clearDeal: () => void;
+
+  // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
+  /** Write zoning constraints from selected development path */
+  setDevelopmentEnvelope: (envelope: {
+    max_units: number;
+    max_gfa: number;
+    max_stories: number;
+    units_per_floor: number;
+    binding_constraint: string;
+    selected_path: string;
+    parking: { type: string; spaces: number; cost_per_space: number };
+    buildable_area_sf: number;
+    impact_fee_credit_units: number;
+  } | null) => void;
 
   // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────
   /**
@@ -239,6 +255,7 @@ const INITIAL_CONTEXT: DealContext = {
   },
   developmentPaths: [],
   selectedDevelopmentPathId: null,
+  developmentEnvelope: null,
   existingProperty: null,
   resolvedUnitMix: [],
   unitMixOverrides: {},
@@ -376,6 +393,31 @@ export const useDealStore = create<DealStore>()(
       }
     },
 
+    createDeal: async (payload: any) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await apiClient.post('/api/v1/deals', payload);
+        const deal = response.data?.deal;
+        if (deal) {
+          // Add to local deals list
+          set(state => ({
+            deals: [deal, ...state.deals],
+            isLoading: false
+          }));
+          return deal;
+        }
+        set({ isLoading: false });
+        return null;
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.error || error.message || 'Failed to create deal';
+        set({
+          error: errorMsg,
+          isLoading: false
+        });
+        throw error;
+      }
+    },
+
     // ─── LIFECYCLE ────────────────────────────────────────────
 
     fetchDealContext: async (dealId: string) => {
@@ -405,6 +447,12 @@ export const useDealStore = create<DealStore>()(
 
     clearDeal: () => {
       set(INITIAL_CONTEXT);
+    },
+
+    // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
+
+    setDevelopmentEnvelope: (envelope) => {
+      set({ developmentEnvelope: envelope });
     },
 
     // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────

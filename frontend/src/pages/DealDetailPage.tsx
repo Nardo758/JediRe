@@ -1,3 +1,33 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * DEV CAPACITY → UNIT MIX CASCADE FLOW
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * 1. User opens the Zoning module (activeTab === 'zoning')
+ *    └─ ZoningModuleSection renders; DevelopmentCapacityTab is the
+ *       second sub-tab ("Dev Capacity").
+ *
+ * 2. User selects a development path inside DevelopmentCapacityTab
+ *    └─ DevelopmentCapacityTab calls:
+ *         useDealStore.getState().setDevelopmentEnvelope({ max_units, max_gfa, … })
+ *         useZoningModuleStore.selectDevelopmentPath(pathId, envelope)
+ *
+ * 3. This page observes developmentEnvelope + selectedDevelopmentPathId
+ *    from dealStore. When both are non-null AND activeTab === 'zoning',
+ *    a sticky CTA banner appears at the bottom of the main content area.
+ *
+ * 4. CTA label is deal-type aware:
+ *      development   → "Design Unit Program →"
+ *      existing      → "View Unit Positioning →"
+ *      redevelopment → "Plan Renovation Mix →"
+ *
+ * 5. Clicking the CTA calls setActiveTab('unit-mix-intelligence').
+ *    └─ UnitMixIntelligence receives developmentEnvelope from the store
+ *       and renders the utilisation bar with max_units / max_gfa constraints.
+ *       For redevelopment deals it also shows the existing vs. net-new
+ *       units split sourced from the envelope's selected_path metadata.
+ * ═══════════════════════════════════════════════════════════════════
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
@@ -7,11 +37,11 @@ import {
   Search, ArrowLeft, Activity, LineChart,
   Lightbulb, StickyNote, Briefcase, LayoutDashboard,
   Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
-  Shield, Layers, BarChart2, Radar, Zap
+  Shield, Layers, BarChart2, Radar, Zap, ArrowRight
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
-import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
+import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
@@ -98,6 +128,9 @@ const DealDetailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
   const config = useDealTypeConfig();
+  const dealType = useDealType();
+  const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
+  const selectedDevelopmentPathId = useDealStore((s) => s.selectedDevelopmentPathId);
   const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
@@ -442,6 +475,18 @@ const DealDetailPage: React.FC = () => {
     ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
     : null;
 
+  const showUnitMixCTA =
+    activeTab === 'zoning' &&
+    developmentEnvelope !== null &&
+    selectedDevelopmentPathId !== null;
+
+  const ctaLabel =
+    dealType === 'development'
+      ? 'Design Unit Program'
+      : dealType === 'redevelopment'
+      ? 'Plan Renovation Mix'
+      : 'View Unit Positioning';
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -655,8 +700,31 @@ const DealDetailPage: React.FC = () => {
             </div>
           </aside>
 
-          <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
-            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+          <main className={`flex-1 min-w-0 min-h-0 flex flex-col ${activeTab === '3d-design' ? 'overflow-hidden' : ''}`}>
+            <div className={`flex-1 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
+              <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+            </div>
+
+            {showUnitMixCTA && (
+              <div className="shrink-0 border-t border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                  <div>
+                    <p className="text-sm font-semibold text-indigo-900">Development path selected</p>
+                    <p className="text-xs text-indigo-600">
+                      {developmentEnvelope.max_units} max units · {developmentEnvelope.max_gfa.toLocaleString()} sf GFA · binding: {developmentEnvelope.binding_constraint}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveTab('unit-mix-intelligence')}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+                >
+                  {ctaLabel}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </main>
 
           <ZoningAgentChat

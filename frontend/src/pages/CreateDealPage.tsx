@@ -28,12 +28,11 @@ interface PropertyType {
 
 const STEPS = {
   DETAILS_ADDRESS: 1,
-  TYPE: 2,
-  PROJECT_TYPE: 3,
-  CATEGORY: 4,
-  PROPERTY_TYPE: 5,
-  DOCUMENTS: 6,
-  TRADE_AREA: 7,
+  PROJECT_TYPE: 2,
+  CATEGORY: 3,
+  PROPERTY_TYPE: 4,
+  DOCUMENTS: 5,
+  TRADE_AREA: 6,
 } as const;
 
 export const CreateDealPage: React.FC = () => {
@@ -44,7 +43,6 @@ export const CreateDealPage: React.FC = () => {
   const locationState = location.state as { dealCategory?: DealCategory } | null;
   const [currentStep, setCurrentStep] = useState<number>(STEPS.DETAILS_ADDRESS);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(locationState?.dealCategory || null);
-  const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [projectType, setProjectType] = useState<DealType | null>(null);
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
@@ -191,12 +189,6 @@ export const CreateDealPage: React.FC = () => {
     });
   }, [coordinates]);
 
-  const handleSelectType = (type: DevelopmentType) => {
-    setDevelopmentType(type);
-    setCurrentStep(STEPS.PROJECT_TYPE);
-    setError(null);
-  };
-
   const handleSelectProjectType = (type: DealType) => {
     setProjectType(type);
     setCurrentStep(STEPS.CATEGORY);
@@ -319,7 +311,7 @@ export const CreateDealPage: React.FC = () => {
         name: dealName,
         description,
         deal_category: dealCategory!,
-        development_type: developmentType!,
+        development_type: projectType === 'development' ? 'new' : 'existing',
         property_type_id: propertyType?.id,
         property_type_key: propertyType?.type_key,
         project_type: projectType,
@@ -373,12 +365,8 @@ export const CreateDealPage: React.FC = () => {
     setError(null);
 
     switch (currentStep) {
-      case STEPS.TYPE:
-        setCurrentStep(STEPS.DETAILS_ADDRESS);
-        setDevelopmentType(null);
-        break;
       case STEPS.PROJECT_TYPE:
-        setCurrentStep(STEPS.TYPE);
+        setCurrentStep(STEPS.DETAILS_ADDRESS);
         setProjectType(null);
         break;
       case STEPS.CATEGORY:
@@ -419,7 +407,7 @@ export const CreateDealPage: React.FC = () => {
       return;
     }
     setError(null);
-    setCurrentStep(STEPS.TYPE);
+    setCurrentStep(STEPS.PROJECT_TYPE);
   };
 
   return (
@@ -442,9 +430,8 @@ export const CreateDealPage: React.FC = () => {
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
               <p className="text-gray-600">
-                Step {currentStep} of {STEPS.TRADE_AREA} &bull; {
+                Step {currentStep} of 6 &bull; {
                   currentStep === STEPS.DETAILS_ADDRESS ? 'Deal Details & Address' :
-                  currentStep === STEPS.TYPE ? 'Development Type' :
                   currentStep === STEPS.PROJECT_TYPE ? 'Deal Type' :
                   currentStep === STEPS.CATEGORY ? 'Deal Category' :
                   currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
@@ -457,7 +444,7 @@ export const CreateDealPage: React.FC = () => {
 
             <div className="mb-8">
               <div className="flex items-center gap-2">
-                {Array.from({ length: STEPS.TRADE_AREA }).map((_, idx) => (
+                {Array.from({ length: 6 }).map((_, idx) => (
                   <div
                     key={idx}
                     className={`h-2 flex-1 rounded-full transition-all ${
@@ -520,52 +507,8 @@ export const CreateDealPage: React.FC = () => {
                       disabled={!dealName.trim() || !address.trim()}
                       className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
                     >
-                      Continue to Development Type &rarr;
+                      Continue to Deal Type &rarr;
                     </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.TYPE && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Is this a new development or existing property?
-                  </h2>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => handleSelectType('new')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏗️</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            New Development
-                          </h3>
-                          <p className="text-gray-600">
-                            Ground-up construction or major redevelopment.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectType('existing')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏠</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Existing Property
-                          </h3>
-                          <p className="text-gray-600">
-                            Existing building or site acquisition.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
                   </div>
                 </div>
               </div>
