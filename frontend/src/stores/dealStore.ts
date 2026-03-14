@@ -60,6 +60,20 @@ interface DealStoreActions {
   /** Clear store (on navigate away from deal) */
   clearDeal: () => void;
 
+  // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
+  /** Write zoning constraints from selected development path */
+  setDevelopmentEnvelope: (envelope: {
+    max_units: number;
+    max_gfa: number;
+    max_stories: number;
+    units_per_floor: number;
+    binding_constraint: string;
+    selected_path: string;
+    parking: { type: string; spaces: number; cost_per_space: number };
+    buildable_area_sf: number;
+    impact_fee_credit_units: number;
+  } | null) => void;
+
   // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────
   /**
    * Apply unit mix to all modules (Financial Model, 3D Design, etc.)
@@ -239,6 +253,7 @@ const INITIAL_CONTEXT: DealContext = {
   },
   developmentPaths: [],
   selectedDevelopmentPathId: null,
+  developmentEnvelope: null,
   existingProperty: null,
   resolvedUnitMix: [],
   unitMixOverrides: {},
@@ -405,6 +420,12 @@ export const useDealStore = create<DealStore>()(
 
     clearDeal: () => {
       set(INITIAL_CONTEXT);
+    },
+
+    // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
+
+    setDevelopmentEnvelope: (envelope) => {
+      set({ developmentEnvelope: envelope });
     },
 
     // ─── UNIT MIX PROPAGATION (Phase 11) ──────────────────────

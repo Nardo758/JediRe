@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import { useDealStore } from '../../../stores/dealStore';
+import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
 
@@ -127,6 +129,60 @@ const PATH_KEY_MAP: Record<string, DevelopmentPath> = {
 function colKeyToPathId(colKey: string): DevelopmentPath {
   if (colKey.startsWith('overlay')) return 'overlay_bonus';
   return PATH_KEY_MAP[colKey] || 'by_right';
+}
+
+/**
+ * CTA button panel shown after path selection.
+ * Routes to Unit Mix Intelligence based on deal type.
+ */
+function PathSelectionPanel({
+  development_path,
+  dealType,
+  onClear,
+}: {
+  development_path: string;
+  dealType?: string;
+  onClear: () => void;
+}) {
+  const { navigateToTab } = useDealModule();
+
+  // Determine CTA button text and navigation based on deal type
+  const getCTALabel = () => {
+    const normalized = dealType?.toLowerCase() || 'development';
+    if (normalized === 'existing') return 'View Unit Positioning →';
+    if (normalized === 'redevelopment') return 'Plan Renovation Mix →';
+    return 'Design Unit Program →';
+  };
+
+  return (
+    <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+      <div className="flex items-center gap-3">
+        <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div className="flex-1">
+          <span className="text-xs font-bold text-blue-900">
+            Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          </span>
+          <span className="text-[10px] text-blue-600 ml-3">
+            Envelope sent to Unit Mix, 3D Design, Strategy, ProForma, and Risk modules
+          </span>
+        </div>
+        <button
+          onClick={() => navigateToTab('unit-mix-intelligence')}
+          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex-shrink-0"
+        >
+          {getCTALabel()}
+        </button>
+        <button
+          onClick={onClear}
+          className="text-[10px] text-blue-500 hover:text-blue-700 underline flex-shrink-0"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
@@ -270,7 +326,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   const handleSelectPath = useCallback(async (colKey: string, rec: any) => {
     if (!dealId) return;
-    
+
     setSelectedColKey(colKey);
     const pathId = colKeyToPathId(colKey);
     const units = rec.maxUnits || 0;
@@ -299,6 +355,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
     // Update Zustand store
     selectDevelopmentPath(pathId, envelope);
+
+    // Write development envelope to dealStore for downstream modules
+    const unitsPerFloor = stories > 0 ? Math.ceil(units / stories) : 0;
+    useDealStore.getState().setDevelopmentEnvelope({
+      max_units: units,
+      max_gfa: gba,
+      max_stories: stories,
+      units_per_floor: unitsPerFloor,
+      binding_constraint: rec.bindingConstraint || 'density',
+      selected_path: pathId,
+      parking: {
+        type: parkingType,
+        spaces: parking,
+        cost_per_space: parkingType === 'surface' ? 2000 : parkingType === 'garage' ? 4000 : 5000,
+      },
+      buildable_area_sf: footprint,
+      impact_fee_credit_units: deal?.projectType === 'redevelopment' ? (deal?.existingProperty?.units || 0) : 0,
+    });
     
     // Persist to database
     try {
@@ -1427,27 +1501,11 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </div>
                 )}
                 {development_path && (
-                  <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="flex-1">
-                        <span className="text-xs font-bold text-blue-900">
-                          Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                        </span>
-                        <span className="text-[10px] text-blue-600 ml-3">
-                          Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
-                        className="text-[10px] text-blue-500 hover:text-blue-700 underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
+                  <PathSelectionPanel
+                    development_path={development_path}
+                    dealType={dealInfo?.project_type || deal?.projectType}
+                    onClear={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
+                  />
                 )}
               </>
             )}

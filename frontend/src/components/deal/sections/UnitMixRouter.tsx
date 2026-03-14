@@ -15,7 +15,7 @@
  */
 
 import React, { useMemo, lazy, Suspense } from 'react';
-import { useDealType } from '../../../stores/dealStore';
+import { useDealType, useDealStore } from '../../../stores/dealStore';
 import { getUnitMixMode } from '../../../shared/config/product-type-adaptation';
 import useDevelopmentProgramData from '../../../hooks/useDevelopmentProgramData';
 
@@ -44,6 +44,12 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
   const dealType = useDealType();
   const mode = useMemo(() => getUnitMixMode(dealType), [dealType]);
 
+  // Read development envelope from dealStore (written by Dev Capacity tab)
+  const envelope = useDealStore(s => s.developmentEnvelope);
+  const resolvedUnitMix = useDealStore(s => s.resolvedUnitMix);
+  const existingUnits = deal?.existingProperty?.units || 0;
+  const netNewUnits = envelope ? Math.max(0, envelope.max_units - existingUnits) : 0;
+
   // Fetch zoning and demand data for development mode
   const { zoning, demand, loading: dataLoading } = useDevelopmentProgramData(
     dealId || deal?.id,
@@ -68,8 +74,54 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
 
   // Development deal — show designer only
   if (mode === 'designer') {
+    // Calculate utilization metrics
+    const totalUnitMixUnits = resolvedUnitMix.reduce((sum, row) => sum + row.count, 0);
+    const totalUnitMixSF = resolvedUnitMix.reduce((sum, row) => sum + (row.count * row.avgSF), 0);
+    const maxUnits = envelope?.max_units || 0;
+    const maxGFA = envelope?.max_gfa || 0;
+    const unitUtilization = maxUnits > 0 ? (totalUnitMixUnits / maxUnits) * 100 : 0;
+    const sfUtilization = maxGFA > 0 ? (totalUnitMixSF / maxGFA) * 100 : 0;
+
     return (
       <div className="space-y-4">
+        {/* Zoning Constraints Bar */}
+        {envelope && (
+          <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-gray-700">Zoning Envelope Utilization</span>
+              <span className="text-xs text-gray-500">
+                {totalUnitMixUnits} of {maxUnits} units · {Math.round(totalUnitMixSF).toLocaleString()} of {Math.round(maxGFA).toLocaleString()} SF
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] text-gray-600">Units</span>
+                  <span className="text-[10px] font-medium text-gray-700">{unitUtilization.toFixed(0)}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(unitUtilization, 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] text-gray-600">Gross Floor Area</span>
+                  <span className="text-[10px] font-medium text-gray-700">{sfUtilization.toFixed(0)}%</span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-teal-500 rounded-full transition-all"
+                    style={{ width: `${Math.min(sfUtilization, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {dataLoading && <LoadingFallback />}
         {!dataLoading && (
           <Suspense fallback={<LoadingFallback />}>
@@ -78,6 +130,7 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
               dealId={dealId || deal?.id}
               zoning={zoning}
               demand={demand}
+              zoningEnvelope={envelope}
             />
           </Suspense>
         )}
@@ -87,13 +140,23 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
 
   // Redevelopment deal — show both with divider
   if (mode === 'analyzer_designer') {
+    // Calculate utilization metrics for redevelopment target
+    const totalUnitMixUnits = resolvedUnitMix.reduce((sum, row) => sum + row.count, 0);
+    const totalUnitMixSF = resolvedUnitMix.reduce((sum, row) => sum + (row.count * row.avgSF), 0);
+    const maxUnits = envelope?.max_units || 0;
+    const maxGFA = envelope?.max_gfa || 0;
+    const unitUtilization = maxUnits > 0 ? (totalUnitMixUnits / maxUnits) * 100 : 0;
+    const sfUtilization = maxGFA > 0 ? (totalUnitMixSF / maxGFA) * 100 : 0;
+
     return (
       <div className="space-y-6">
         {/* CURRENT STATE */}
         <div>
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-gray-700">Current Unit Mix</h3>
-            <p className="text-xs text-gray-500 mt-1">Existing property composition and competitive positioning</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {existingUnits} existing units · Competitive positioning vs. submarket comps
+            </p>
           </div>
           <Suspense fallback={<LoadingFallback />}>
             <UnitMixPositioningV5 deal={deal} dealId={dealId} readonly />
@@ -104,7 +167,7 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
         <div className="flex items-center gap-4">
           <div className="flex-1 h-px bg-gradient-to-r from-gray-200 to-transparent" />
           <span className="text-xs font-medium text-gray-500 px-3 py-1 bg-gray-50 rounded">
-            Current → Target
+            {existingUnits} existing → {maxUnits} total ({netNewUnits} net new)
           </span>
           <div className="flex-1 h-px bg-gradient-to-l from-gray-200 to-transparent" />
         </div>
@@ -113,8 +176,49 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
         <div>
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-gray-700">Target Unit Program</h3>
-            <p className="text-xs text-gray-500 mt-1">Post-repositioning mix informed by market demand and site constraints</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Post-renovation mix informed by market demand and zoning envelope
+            </p>
           </div>
+
+          {/* Zoning Constraints Bar */}
+          {envelope && (
+            <div className="bg-white rounded-lg border border-gray-200 px-4 py-3 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-700">Zoning Envelope (Post-Renovation)</span>
+                <span className="text-xs text-gray-500">
+                  {totalUnitMixUnits} of {maxUnits} units · {Math.round(totalUnitMixSF).toLocaleString()} of {Math.round(maxGFA).toLocaleString()} SF
+                </span>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-gray-600">Units ({netNewUnits} net new, {existingUnits} existing)</span>
+                    <span className="text-[10px] font-medium text-gray-700">{unitUtilization.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(unitUtilization, 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-gray-600">Gross Floor Area</span>
+                    <span className="text-[10px] font-medium text-gray-700">{sfUtilization.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-teal-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(sfUtilization, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {dataLoading && <LoadingFallback />}
           {!dataLoading && (
             <Suspense fallback={<LoadingFallback />}>
@@ -123,6 +227,8 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
                 dealId={dealId || deal?.id}
                 zoning={zoning}
                 demand={demand}
+                zoningEnvelope={envelope}
+                netNewUnits={netNewUnits}
               />
             </Suspense>
           )}
