@@ -3,6 +3,10 @@ import { query, transaction } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
+import multer from 'multer';
+import { ingestZillowCsv, fetchCsvFromUrl, getZillowFreshness, ZillowMetricType } from '../../services/zillow-ingestion.service';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -451,14 +455,103 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
   })();
 });
 
+// ─── Zillow ZHVI / ZORI Ingestion ─────────────────────────────────────────────
+// Accepts either a multipart file upload (field: "file") or a JSON body with
+// a "url" pointing to a publicly accessible Zillow CSV.
+//
+// Required body field: type = "zhvi" | "zori"
+//
+// Example (file upload):
+//   curl -X POST .../ingest/zillow \
+//     -H "x-api-key: $ADMIN_KEY" \
+//     -F "type=zhvi" -F "file=@Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
+//
+// Example (URL):
+//   curl -X POST .../ingest/zillow \
+//     -H "x-api-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+//     -d '{"type":"zori","url":"https://files.zillowstatic.com/research/public_csvs/zori/Metro_ZORI_AllHomesPlusMultifamily_Smoothed.csv"}'
+
+router.post(
+  '/ingest/zillow',
+  requireAdminAuth,
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res: Response) => {
+    const metricType = (req.body?.type || req.query.type) as ZillowMetricType;
+    if (!metricType || !['zhvi', 'zori'].includes(metricType)) {
+      return res.status(400).json({ error: 'Missing required field: type must be "zhvi" or "zori"' });
+    }
+
+    const job = createJob(`zillow-${metricType}`);
+    job.logs.push(`Starting Zillow ${metricType.toUpperCase()} ingestion`);
+
+    res.json({ success: true, jobId: job.id, message: `Zillow ${metricType.toUpperCase()} ingestion queued` });
+
+    (async () => {
+      try {
+        job.status = 'running';
+        let csvBuffer: Buffer;
+
+        // --- Source: uploaded file ---
+        if ((req as any).file) {
+          csvBuffer = (req as any).file.buffer as Buffer;
+          job.logs.push(`Source: uploaded file (${Math.round(csvBuffer.length / 1024)} KB)`);
+
+        // --- Source: remote URL ---
+        } else if (req.body?.url) {
+          job.logs.push(`Source: downloading from URL...`);
+          csvBuffer = await fetchCsvFromUrl(req.body.url);
+          job.logs.push(`Downloaded ${Math.round(csvBuffer.length / 1024)} KB`);
+
+        } else {
+          throw new Error('No CSV source provided — supply a file upload or a "url" in the request body');
+        }
+
+        const stats = await ingestZillowCsv(csvBuffer, metricType, (done, total) => {
+          job.recordsProcessed = done;
+          job.recordsTotal = total;
+        });
+
+        job.recordsProcessed = stats.rowsInserted;
+        job.recordsTotal = stats.periodsTotal;
+        job.errors.push(...stats.errors);
+
+        job.logs.push(`Parsed ${stats.rowsParsed} geographies, ${stats.periodsTotal} data points`);
+        job.logs.push(`Inserted/updated ${stats.rowsInserted} rows into metric_time_series`);
+        job.logs.push(`YoY computed: ${stats.yoyRowsInserted} rows`);
+        job.logs.push(`Skipped: ${stats.rowsSkipped} | Duration: ${(stats.durationMs / 1000).toFixed(1)}s`);
+
+        job.status = stats.errors.length > 0 ? 'failed' : 'completed';
+        job.completedAt = new Date();
+        logger.info(`[Zillow] ${metricType.toUpperCase()} ingestion complete`, {
+          jobId: job.id,
+          inserted: stats.rowsInserted,
+          yoy: stats.yoyRowsInserted,
+          errors: stats.errors.length,
+        });
+      } catch (err: any) {
+        job.status = 'failed';
+        job.completedAt = new Date();
+        job.errors.push(`Fatal: ${err.message}`);
+        logger.error(`[Zillow] Ingestion failed`, { jobId: job.id, error: err.message });
+      }
+    })();
+  }
+);
+
 router.get('/ingest/status', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const jobs = Array.from(activeJobs.values())
     .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
     .slice(0, 20);
 
+  let zillowFreshness: Awaited<ReturnType<typeof getZillowFreshness>> | null = null;
+  try { zillowFreshness = await getZillowFreshness(); } catch {}
+
   res.json({
     success: true,
     activeCount: jobs.filter(j => j.status === 'running').length,
+    dataSources: {
+      zillow: zillowFreshness ?? { zhvi: { latestDate: null, geographyCount: 0 }, zori: { latestDate: null, geographyCount: 0 } },
+    },
     jobs: jobs.map(j => ({
       id: j.id,
       type: j.type,
@@ -467,6 +560,7 @@ router.get('/ingest/status', requireAdminAuth, async (req: AuthenticatedRequest,
       completedAt: j.completedAt,
       progress: j.recordsTotal > 0 ? `${j.recordsProcessed}/${j.recordsTotal}` : '0/0',
       errorCount: j.errors.length,
+      logs: j.logs,
     })),
   });
 });
