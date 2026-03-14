@@ -10,6 +10,7 @@ import { MunicodeLink } from '../SourceCitation';
 import { computeConformanceMetrics, ConformanceCheckData } from '../../../utils/conformance.utils';
 import { generateExpansionScenarios, generateRedevelopmentScenarios, ExpansionScenario } from '../../../utils/scenarios.utils';
 import { getSubTabsForDealType, normalizeDealType } from '../../../utils/tabs.utils';
+import { generateInterpretationDecisions, getInterpretationOverrides, estimateUnitCountForMode } from '../../../utils/interpretation.utils';
 
 // UI Components for deal-type views
 import ConformanceCheckSection from './components/ConformanceCheckSection';
@@ -18,6 +19,7 @@ import ExpansionScenariosCards from './components/ExpansionScenariosCards';
 import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards';
 import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard';
 import NonconformingWarning from './components/NonconformingWarning';
+import InterpretationPanel, { InterpretationDecision } from './components/InterpretationPanel';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
@@ -703,6 +705,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
   const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
 
+  // ═══ INTERPRETATION PANEL STATE ═══
+  const [interpretationDecisions, setInterpretationDecisions] = useState<InterpretationDecision[]>([]);
+  const [interpretationWarnings, setInterpretationWarnings] = useState<string[]>([]);
+  const [userOverrides, setUserOverrides] = useState<Record<string, number>>({});
+  const [interpretationMode, setInterpretationMode] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [unitCounts, setUnitCounts] = useState({
+    conservative: 0,
+    moderate: 0,
+    aggressive: 0,
+  });
+
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
     
@@ -1126,6 +1139,69 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   }, [profile, deal]);
 
+  // ═══ INTERPRETATION DECISIONS EFFECT ═══
+  // Generate interpretation decisions and compute unit counts for each mode
+  useEffect(() => {
+    if (!profile) return;
+
+    const { decisions, warnings } = generateInterpretationDecisions(profile, deal?.existingProperty, deal?.projectType);
+    setInterpretationDecisions(decisions);
+    setInterpretationWarnings(warnings);
+
+    // Compute unit counts for each mode
+    const lotSF = profile.lot_area_sf || 0;
+    const conservative = estimateUnitCountForMode(profile, 'conservative', lotSF);
+    const moderate = estimateUnitCountForMode(profile, 'moderate', lotSF);
+    const aggressive = estimateUnitCountForMode(profile, 'aggressive', lotSF);
+
+    setUnitCounts({ conservative, moderate, aggressive });
+
+    console.log(`✅ Generated interpretation decisions`, {
+      decisions: decisions.length,
+      warnings: warnings.length,
+      unitCounts: { conservative, moderate, aggressive },
+    });
+  }, [profile, deal?.existingProperty, deal?.projectType]);
+
+  // ═══ INTERPRETATION CALLBACKS ═══
+  const handleOverrideChange = useCallback(
+    (parameter: string, value: number | null) => {
+      const newOverrides = { ...userOverrides };
+      if (value === null) {
+        delete newOverrides[parameter];
+      } else {
+        newOverrides[parameter] = value;
+      }
+      setUserOverrides(newOverrides);
+
+      // TODO: Re-run envelope calculation with overrides
+      // For now, just update state. In production, this would trigger calculateEnvelope(parcel, zoningProfile, newOverrides)
+    },
+    [userOverrides]
+  );
+
+  const handleInterpretationModeChange = useCallback(
+    (mode: 'conservative' | 'moderate' | 'aggressive') => {
+      setInterpretationMode(mode);
+      // Mode changes may trigger different unit counts via the envelope engine
+      // The unitCounts state already reflects each mode's max units
+    },
+    []
+  );
+
+  const saveOverridesToAPI = useCallback(async () => {
+    if (!dealId || Object.keys(userOverrides).length === 0) return;
+
+    try {
+      await apiClient.put(`/api/v1/deals/${dealId}/zoning-profile`, {
+        user_overrides: userOverrides,
+      });
+      console.log('✅ Saved interpretation overrides to API');
+    } catch (err) {
+      console.error('Failed to save overrides:', err);
+    }
+  }, [dealId, userOverrides]);
+
   // ═══ HELPER FUNCTIONS ═══
   const getMaxAllowedFromProfile = useCallback(() => {
     if (!profile) return { units: 0, gfa: 0, stories: 0 };
@@ -1451,6 +1527,19 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               }
             }}
           />
+
+          {/* ═══ INTERPRETATION PANEL ═══ */}
+          {interpretationDecisions.length > 0 && (
+            <InterpretationPanel
+              decisions={interpretationDecisions}
+              warnings={interpretationWarnings}
+              userOverrides={userOverrides}
+              onOverrideChange={handleOverrideChange}
+              onModeChange={handleInterpretationModeChange}
+              currentMode={interpretationMode}
+              unitCounts={unitCounts}
+            />
+          )}
 
           {/* Constraint Waterfall */}
           {selectedColKey && pathScenarios.paths.find((p: any) => p.id === selectedColKey) && (
