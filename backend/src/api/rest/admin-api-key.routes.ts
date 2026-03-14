@@ -14,7 +14,7 @@ const pool = getPool();
 /**
  * Middleware: Require Admin API Key
  */
-function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
+export function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
   const apiKey = req.headers['x-api-key'] as string;
   
   if (!apiKey) {

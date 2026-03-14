@@ -1,0 +1,45 @@
+}
+~/workspace$ # Compute correlations for Manatee County (12081)
+curl -X POST http://localhost:4000/api/v1/correlations/admin/correlations/compute \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: test-correlation-key-12345" \
+  -d '{"geographyType": "county", "geographyId": "12081"}' | jq
+
+# Compute correlations for Hillsborough County (12057)
+curl -X POST http://localhost:4000/api/v1/correlations/admin/correlations/compute \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: test-correlation-key-12345" \
+  -d '{"geographyType": "county", "geographyId": "12057"}' | jq
+
+# Retrieve correlations for Manatee
+curl http://localhost:4000/api/v1/correlations/county/12081 | jq
+
+# Retrieve correlations for Hillsborough
+curl http://localhost:4000/api/v1/correlations/county/12057 | jq
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   120  100    69  100    51  32409  23954 --:--:-- --:--:-- --:--:-- 60000
+{
+  "error": "Unauthorized",
+  "message": "No authentication token provided"
+}
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100   120  100    69  100    51  35751  26424 --:--:-- --:--:-- --:--:--  117k
+{
+  "error": "Unauthorized",
+  "message": "No authentication token provided"
+}
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    69  100    69    0     0  45484      0 --:--:-- --:--:-- --:--:-- 69000
+{
+  "error": "Unauthorized",
+  "message": "No authentication token provided"
+}
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100    69  100    69    0     0  48832      0 --:--:-- --:--:-- --:--:-- 69000
+{
+  "error": "Unauthorized",
+  "message": "No au

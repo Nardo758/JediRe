@@ -259,6 +259,9 @@ import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
 app.use('/', messageRouter.createRouter());
 
+// Correlations - public read, admin-key-protected compute
+app.use('/api/v1/correlations', correlationRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -345,7 +348,6 @@ app.use('/api/v1/visibility', requireAuth, visibilityRouter);
 app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
-app.use('/api/v1/correlations', requireAuth, correlationRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
