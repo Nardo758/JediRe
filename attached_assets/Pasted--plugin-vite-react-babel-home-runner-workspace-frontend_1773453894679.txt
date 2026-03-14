@@ -1,0 +1,50 @@
+[plugin:vite:react-babel] /home/runner/workspace/frontend/src/pages/DealDetailPage.tsx: Identifier 'ModuleId' has already been declared. (19:31)
+  22 | import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
+/home/runner/workspace/frontend/src/pages/DealDetailPage.tsx:19:31
+17 |  import { DealModuleProvider } from '../contexts/DealModuleContext';
+18 |  import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
+19 |  import { isModuleVisible, type ModuleId } from '@/shared/config/deal-type-visibility';
+   |                                 ^
+20 |  
+21 |  import OverviewSection from '../components/deal/sections/OverviewSection';
+    at constructor (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:365:19)
+    at TypeScriptParserMixin.raise (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:6599:19)
+    at TypeScriptScopeHandler.declareName (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:4866:21)
+    at TypeScriptParserMixin.declareNameFromIdentifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:7567:16)
+    at TypeScriptParserMixin.checkIdentifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:7563:12)
+    at TypeScriptParserMixin.parseTypeOnlyImportExportSpecifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10203:12)
+    at TypeScriptParserMixin.parseImportSpecifier (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10144:12)
+    at TypeScriptParserMixin.parseNamedImportSpecifiers (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14398:36)
+    at TypeScriptParserMixin.parseImportSpecifiersAndAfter (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14242:37)
+    at TypeScriptParserMixin.parseImport (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14235:17)
+    at TypeScriptParserMixin.parseImport (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9353:26)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12876:27)
+    at TypeScriptParserMixin.parseStatementContent (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:9508:18)
+    at TypeScriptParserMixin.parseStatementLike (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12767:17)
+    at TypeScriptParserMixin.parseModuleItem (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12744:17)
+    at TypeScriptParserMixin.parseBlockOrModuleBlockBody (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13316:36)
+    at TypeScriptParserMixin.parseBlockBody (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:13309:10)
+    at TypeScriptParserMixin.parseProgram (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12622:10)
+    at TypeScriptParserMixin.parseTopLevel (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:12612:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14488:25)
+    at TypeScriptParserMixin.parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:10126:18)
+    at parse (/home/runner/workspace/frontend/node_modules/@babel/parser/lib/index.js:14522:38)
+    at parser (/home/runner/workspace/frontend/node_modules/@babel/core/lib/parser/index.js:41:34)
+    at parser.next (<anonymous>)
+    at normalizeFile (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transformation/normalize-file.js:64:37)
+    at normalizeFile.next (<anonymous>)
+    at run (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transformation/index.js:22:50)
+    at run.next (<anonymous>)
+    at transform (/home/runner/workspace/frontend/node_modules/@babel/core/lib/transform.js:22:33)
+    at transform.next (<anonymous>)
+    at step (/home/runner/workspace/frontend/node_modules/gensync/index.js:261:32)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/frontend/node_modules/gensync/index.js:223:11)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:189:28
+    at /home/runner/workspace/frontend/node_modules/@babel/core/lib/gensync-utils/async.js:67:7
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:113:33
+    at step (/home/runner/workspace/frontend/node_modules/gensync/index.js:287:14)
+    at /home/runner/workspace/frontend/node_modules/gensync/index.js:273:13
+    at async.call.result.err.err (/home/runner/workspace/frontend/node_modules/gensync/index.js:223:11
+Click outside, press Esc key, or fix the code to dismiss.
+You can also disable this overlay by setting server.hmr.overlay to false in vite.config.ts.

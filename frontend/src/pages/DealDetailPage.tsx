@@ -10,13 +10,12 @@ import {
   Shield, Layers, BarChart2, Radar, Zap
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
-import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { apiClient } from '../services/api.client';
-import { useDealStore } from '../stores/dealStore';
+import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
-import { isModuleVisible, type ModuleId } from '@/shared/config/deal-type-visibility';
+import type { ModuleId } from '../shared/config/deal-type-visibility';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
