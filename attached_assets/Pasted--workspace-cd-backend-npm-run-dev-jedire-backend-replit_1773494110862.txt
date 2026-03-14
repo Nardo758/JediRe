@@ -1,0 +1,42 @@
+~/workspace$ cd backend
+npm run dev
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+{"level":"WARN","timestamp":"2026-03-14T13:15:00.494Z","logger":"kafkajs","message":"KafkaJS v2.0.0 switched default partitioner. To retain the same partitioning behavior as in previous versions, create the producer with the option \"createPartitioner: Partitioners.LegacyPartitioner\". See the migration guide at https://kafka.js.org/docs/migration-guide-v2.0.0#producer-new-default-partitioner for details. Silence this warning by setting the environment variable \"KAFKAJS_NO_PARTITIONER_WARNING=1\""}
+{"level":"WARN","timestamp":"2026-03-14T13:15:00.495Z","logger":"kafkajs","message":"[Producer] Limiting retries for the idempotent producer may invalidate EoS guarantees"}
+13:15:01 [warn] Mapbox token not found. Falling back to OpenStreetMap Nominatim (rate-limited).
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+13:15:03 [info] Agent orchestrator processing loop started
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+Serving static files from: /home/runner/workspace/frontend/dist
+13:15:03 [error] Uncaught Exception: listen EADDRINUSE: address already in use 0.0.0.0:4000
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "code": "EADDRINUSE",
+  "errno": -98,
+  "syscall": "listen",
+  "address": "0.0.0.0",
+  "port": 4000,
+  "stack": "Error: listen EADDRINUSE: address already in use 0.0.0.0:4000\n    at Server.setupListenHandle [as _listen2] (node:net:1908:16)\n    at listenInCluster (node:net:1965:12)\n    at doListen (node:net:2139:7)\n    at processTicksAndRejections (node:internal/process/task_queues:83:21)"
+}
+13:15:03 [error] Failed to send Clawdbot webhook: connect ECONNREFUSED 127.0.0.1:8080
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "event": "error"
+}
+13:15:04 [error] Process exiting due to uncaught exception
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+~/workspace/backend$ 
