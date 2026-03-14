@@ -9,7 +9,7 @@
  * - B25003_003E: Renter-occupied housing units
  * - B25003_001E: Total occupied housing units
  *
- * This ingests data at the ZIP Code Tabulation Area (ZCTA) level
+ * This ingests data at the county level for Florida (state FIPS 12)
  */
 
 import axios from 'axios';
@@ -17,9 +17,9 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 interface IngestionResult {
-  zipCodesProcessed: number;
+  countiesProcessed: number;
   rowsInserted: number;
-  errors: Array<{ zip: string; error: string }>;
+  errors: Array<{ county: string; error: string }>;
   startTime: Date;
   endTime: Date;
 }
@@ -37,7 +37,7 @@ const ACS_VARIABLES = {
 };
 
 /**
- * Ingest Census ACS data for Florida ZIP codes
+ * Ingest Census ACS data for Florida counties
  * Uses most recent 5-year ACS (2018-2022 in this case)
  */
 export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> {
@@ -46,7 +46,7 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
   }
 
   const result: IngestionResult = {
-    zipCodesProcessed: 0,
+    countiesProcessed: 0,
     rowsInserted: 0,
     errors: [],
     startTime: new Date(),
@@ -54,7 +54,7 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
   };
 
   try {
-    logger.info('Starting Census ACS ingestion for Florida ZIP codes');
+    logger.info('Starting Census ACS ingestion for Florida counties');
 
     // Build variable list
     const variables = [
@@ -67,11 +67,12 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
 
     logger.debug(`Fetching ACS variables: ${variables}`);
 
-    // Fetch data for all Florida ZCTAs
+    // Fetch data for all Florida counties (state FIPS 12)
+    // County-level geography properly supports in=state filtering
     const response = await axios.get(CENSUS_BASE_URL, {
       params: {
         get: variables,
-        'for': 'zip code tabulation area:*',
+        'for': 'county:*',
         'in': 'state:12', // Florida FIPS
         key: apiKey,
       },
@@ -97,119 +98,52 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
 
     for (const record of records) {
       try {
-        const zipCode = record[colIndex['zip code tabulation area']];
-        if (!zipCode) {
-          continue;
-        }
+        // Census county API returns state+county FIPS separately — combine them
+        const stateCode = record[colIndex['state']];
+        const countyCode = record[colIndex['county']];
+        if (!stateCode || !countyCode) continue;
 
-        // Extract numeric value (some values might be strings)
+        const countyFips = `${stateCode}${countyCode}`; // e.g. "12086" for Miami-Dade
+        const countyName = record[colIndex['NAME']] || `County ${countyFips}`;
+
         const medianIncome = parseFloat(record[colIndex[ACS_VARIABLES.medianIncome]]);
         const population = parseFloat(record[colIndex[ACS_VARIABLES.population]]);
         const renterOccupied = parseFloat(record[colIndex[ACS_VARIABLES.renterOccupied]]);
         const totalOccupied = parseFloat(record[colIndex[ACS_VARIABLES.totalOccupied]]);
 
-        // Skip if critical values are invalid
-        if (isNaN(population) || population <= 0) {
-          continue;
-        }
+        if (isNaN(population) || population <= 0) continue;
 
         const periodDate = new Date(2022, 0, 1); // ACS 2018-2022, use end year
-
         let metricsInserted = 0;
 
-        // Insert median income
-        if (!isNaN(medianIncome) && medianIncome > 0) {
+        const insertMetric = async (metricId: string, value: number) => {
+          if (isNaN(value) || value <= 0) return;
           await query(
-            `
-            INSERT INTO metric_time_series
-              (metric_id, geography_type, geography_id, geography_name, period_date, period_type, value, source, confidence)
-            VALUES
-              ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (metric_id, geography_type, geography_id, period_date)
-            DO UPDATE SET value = EXCLUDED.value
-            `,
-            [
-              'DEMO_MED_INCOME',
-              'zip',
-              zipCode,
-              `ZIP ${zipCode}`,
-              periodDate,
-              'annual',
-              medianIncome,
-              'census_acs',
-              0.8, // ACS is a sample survey
-            ]
+            `INSERT INTO metric_time_series
+               (metric_id, geography_type, geography_id, geography_name, period_date, period_type, value, source, confidence)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             ON CONFLICT (metric_id, geography_type, geography_id, period_date)
+             DO UPDATE SET value = EXCLUDED.value`,
+            [metricId, 'county', countyFips, countyName, periodDate, 'annual', value, 'census_acs', 0.8]
           );
           metricsInserted++;
-        }
+        };
 
-        // Insert population
-        if (!isNaN(population) && population > 0) {
-          await query(
-            `
-            INSERT INTO metric_time_series
-              (metric_id, geography_type, geography_id, geography_name, period_date, period_type, value, source, confidence)
-            VALUES
-              ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (metric_id, geography_type, geography_id, period_date)
-            DO UPDATE SET value = EXCLUDED.value
-            `,
-            [
-              'DEMO_POPULATION',
-              'zip',
-              zipCode,
-              `ZIP ${zipCode}`,
-              periodDate,
-              'annual',
-              population,
-              'census_acs',
-              0.8,
-            ]
-          );
-          metricsInserted++;
-        }
+        await insertMetric('DEMO_MED_INCOME', medianIncome);
+        await insertMetric('DEMO_POPULATION', population);
 
-        // Insert renter percentage
         if (!isNaN(renterOccupied) && !isNaN(totalOccupied) && totalOccupied > 0) {
-          const renterPct = (renterOccupied / totalOccupied) * 100;
-          if (!isNaN(renterPct)) {
-            await query(
-              `
-              INSERT INTO metric_time_series
-                (metric_id, geography_type, geography_id, geography_name, period_date, period_type, value, source, confidence)
-              VALUES
-                ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-              ON CONFLICT (metric_id, geography_type, geography_id, period_date)
-              DO UPDATE SET value = EXCLUDED.value
-              `,
-              [
-                'DEMO_RENTER_PCT',
-                'zip',
-                zipCode,
-                `ZIP ${zipCode}`,
-                periodDate,
-                'annual',
-                renterPct,
-                'census_acs',
-                0.8,
-              ]
-            );
-            metricsInserted++;
-          }
+          await insertMetric('DEMO_RENTER_PCT', (renterOccupied / totalOccupied) * 100);
         }
 
         result.rowsInserted += metricsInserted;
-        result.zipCodesProcessed++;
-
-        if (result.zipCodesProcessed % 100 === 0) {
-          logger.info(`Processed ${result.zipCodesProcessed} ZIP codes`);
-        }
+        result.countiesProcessed++;
       } catch (error) {
         result.errors.push({
-          zip: record[colIndex['zip code tabulation area']] || 'unknown',
+          county: record[colIndex['county']] || 'unknown',
           error: String(error),
         });
-        logger.debug(`Error processing ZIP code record:`, error);
+        logger.debug(`Error processing county record:`, error);
       }
     }
 
@@ -217,7 +151,7 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
     const duration = result.endTime.getTime() - result.startTime.getTime();
 
     logger.info(`Census ACS ingestion complete in ${duration}ms:`, {
-      zipCodesProcessed: result.zipCodesProcessed,
+      countiesProcessed: result.countiesProcessed,
       rowsInserted: result.rowsInserted,
       errors: result.errors.length,
     });

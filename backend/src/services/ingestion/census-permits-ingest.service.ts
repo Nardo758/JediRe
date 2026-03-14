@@ -162,7 +162,7 @@ export async function ingestBuildingPermits(apiKey: string): Promise<IngestionRe
 
             countyMetricsInserted += 2;
           } catch (error) {
-            logger.debug(`Error processing permit record for county ${fipsCode}:`, error);
+            logger.debug(`Error processing permit record for county ${fipsCode}: ${String(error)}`);
           }
         }
 
@@ -171,11 +171,9 @@ export async function ingestBuildingPermits(apiKey: string): Promise<IngestionRe
 
         logger.info(`Inserted ${countyMetricsInserted} records for county ${fipsCode}`);
       } catch (error) {
-        result.errors.push({
-          county: fipsCode,
-          error: String(error),
-        });
-        logger.error(`Error processing county ${fipsCode}:`, error);
+        const errMsg = String(error);
+        result.errors.push({ county: fipsCode, error: errMsg });
+        logger.error(`Error processing county ${fipsCode}: ${errMsg}`);
       }
     }
 
@@ -190,7 +188,12 @@ export async function ingestBuildingPermits(apiKey: string): Promise<IngestionRe
 
     return result;
   } catch (error) {
-    logger.error('Building Permits ingestion failed:', error);
+    if (axios.isAxiosError(error)) {
+      const msg = `Census Building Permits API error ${error.response?.status ?? '?'}: ${error.response?.statusText || error.message}`;
+      logger.error(msg);
+      throw new Error(msg);
+    }
+    logger.error(`Building Permits ingestion failed: ${String(error)}`);
     throw error;
   }
 }
