@@ -37,6 +37,20 @@ export interface CorrelationReport {
   };
 }
 
+export interface MetricCorrelation {
+  id: number;
+  metric_a: string;
+  metric_b: string;
+  geography_type: string;
+  geography_id: string;
+  window_months: number;
+  correlation_r: number;
+  lead_lag_months: number | null;
+  p_value: number | null;
+  sample_size: number;
+  computed_at: string;
+}
+
 interface MarketSnapshot {
   total_properties: number | null;
   total_units: number | null;
@@ -156,6 +170,238 @@ export class CorrelationEngineService {
 
   async computeForProperty(propertyId: string, city: string = 'Atlanta', state: string = 'GA'): Promise<CorrelationReport> {
     return this.computeCorrelations(city, state);
+  }
+
+  async computeTimeSeriesCorrelations(geographyType: string, geographyId: string, windowMonths: number = 36): Promise<void> {
+    try {
+      // Step 1: Get all metrics with sufficient data for this geography
+      const metricsRes = await this.pool.query(
+        `SELECT DISTINCT metric_id, COUNT(*) as points
+         FROM metric_time_series
+         WHERE geography_type = $1 AND geography_id = $2
+         GROUP BY metric_id
+         HAVING COUNT(*) >= 24`,
+        [geographyType, geographyId]
+      );
+
+      const metrics = metricsRes.rows.map((r: any) => r.metric_id);
+      logger.info(`Found ${metrics.length} metrics with sufficient data for ${geographyType}:${geographyId}`);
+
+      if (metrics.length < 2) {
+        logger.warn(`Insufficient metrics (${metrics.length}) to compute correlations`);
+        return;
+      }
+
+      // Step 2: For each pair of metrics, compute correlations
+      let correlationCount = 0;
+      for (let i = 0; i < metrics.length; i++) {
+        for (let j = i + 1; j < metrics.length; j++) {
+          const metricA = metrics[i];
+          const metricB = metrics[j];
+
+          const correlation = await this.computePairCorrelation(
+            metricA,
+            metricB,
+            geographyType,
+            geographyId,
+            windowMonths
+          );
+
+          if (correlation) {
+            correlationCount++;
+          }
+        }
+      }
+
+      // Get geography name for logging
+      const geoRes = await this.pool.query(
+        `SELECT geography_name FROM metric_time_series
+         WHERE geography_type = $1 AND geography_id = $2
+         LIMIT 1`,
+        [geographyType, geographyId]
+      );
+      const geoName = geoRes.rows[0]?.geography_name || geographyId;
+
+      logger.info(`Computed ${correlationCount} correlations for ${geoName}`);
+    } catch (error) {
+      logger.error(`Error in computeTimeSeriesCorrelations: ${String(error)}`);
+      throw error;
+    }
+  }
+
+  private async computePairCorrelation(
+    metricA: string,
+    metricB: string,
+    geographyType: string,
+    geographyId: string,
+    windowMonths: number
+  ): Promise<boolean> {
+    try {
+      // Pull both time series aligned by period_date
+      const dataRes = await this.pool.query(
+        `WITH ts_a AS (
+           SELECT period_date, value as val_a
+           FROM metric_time_series
+           WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
+           ORDER BY period_date
+         ),
+         ts_b AS (
+           SELECT period_date, value as val_b
+           FROM metric_time_series
+           WHERE metric_id = $4 AND geography_type = $2 AND geography_id = $3
+           ORDER BY period_date
+         )
+         SELECT ts_a.period_date, ts_a.val_a, ts_b.val_b
+         FROM ts_a
+         FULL OUTER JOIN ts_b ON ts_a.period_date = ts_b.period_date
+         WHERE ts_a.val_a IS NOT NULL AND ts_b.val_b IS NOT NULL
+         ORDER BY ts_a.period_date`,
+        [metricA, geographyType, geographyId, metricB]
+      );
+
+      const data = dataRes.rows;
+      if (data.length < 24) {
+        return false; // Not enough aligned data points
+      }
+
+      // Compute Pearson correlation coefficient
+      const correlation = this.computePearsonCorrelation(
+        data.map((d: any) => d.val_a),
+        data.map((d: any) => d.val_b)
+      );
+
+      // Compute cross-correlation with lags -12 to +12 months
+      const lagResults = this.computeLagCorrelations(
+        data.map((d: any) => d.val_a),
+        data.map((d: any) => d.val_b)
+      );
+
+      // Compute p-value using t-distribution approximation
+      const n = data.length;
+      const pValue = this.computePValue(correlation.r, n);
+
+      // Insert into metric_correlations with ON CONFLICT DO UPDATE
+      await this.pool.query(
+        `INSERT INTO metric_correlations
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, computed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
+         DO UPDATE SET
+           correlation_r = $6,
+           lead_lag_months = $7,
+           p_value = $8,
+           sample_size = $9,
+           computed_at = NOW()`,
+        [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n]
+      );
+
+      return true;
+    } catch (error) {
+      logger.error(`Error computing pair correlation ${metricA}-${metricB}: ${String(error)}`);
+      return false;
+    }
+  }
+
+  private computePearsonCorrelation(x: number[], y: number[]): { r: number } {
+    const n = x.length;
+    const meanX = x.reduce((a, b) => a + b, 0) / n;
+    const meanY = y.reduce((a, b) => a + b, 0) / n;
+
+    const numerator = x.reduce((sum, xi, i) => sum + (xi - meanX) * (y[i] - meanY), 0);
+    const denominatorX = Math.sqrt(x.reduce((sum, xi) => sum + (xi - meanX) ** 2, 0));
+    const denominatorY = Math.sqrt(y.reduce((sum, yi) => sum + (yi - meanY) ** 2, 0));
+
+    if (denominatorX === 0 || denominatorY === 0) {
+      return { r: 0 };
+    }
+
+    return { r: numerator / (denominatorX * denominatorY) };
+  }
+
+  private computeLagCorrelations(x: number[], y: number[]): { bestLag: number } {
+    let bestLag = 0;
+    let bestAbsR = 0;
+
+    for (let lag = -12; lag <= 12; lag++) {
+      const shiftedX: number[] = [];
+      const alignedY: number[] = [];
+
+      if (lag < 0) {
+        // Shift x forward (negative lag = x leads)
+        for (let i = 0; i < x.length + lag; i++) {
+          shiftedX.push(x[i - lag]);
+          alignedY.push(y[i]);
+        }
+      } else if (lag > 0) {
+        // Shift x backward (positive lag = y leads)
+        for (let i = lag; i < x.length; i++) {
+          shiftedX.push(x[i]);
+          alignedY.push(y[i - lag]);
+        }
+      } else {
+        shiftedX.push(...x);
+        alignedY.push(...y);
+      }
+
+      if (shiftedX.length >= 24) {
+        const corr = this.computePearsonCorrelation(shiftedX, alignedY);
+        const absR = Math.abs(corr.r);
+        if (absR > bestAbsR) {
+          bestAbsR = absR;
+          bestLag = lag;
+        }
+      }
+    }
+
+    return { bestLag };
+  }
+
+  private computePValue(r: number, n: number): number {
+    if (Math.abs(r) >= 1 || n < 3) {
+      return 0;
+    }
+    // t = r * sqrt(n-2) / sqrt(1 - r^2)
+    const t = r * Math.sqrt(n - 2) / Math.sqrt(1 - r * r);
+    // For two-tailed test, approximate p-value
+    // Using normal approximation for simplicity
+    const absT = Math.abs(t);
+    const p = 2 * (1 - this.normalCDF(absT));
+    return Math.max(0, Math.min(1, p));
+  }
+
+  private normalCDF(z: number): number {
+    // Standard normal cumulative distribution function
+    const a1 = 0.254829592;
+    const a2 = -0.284496736;
+    const a3 = 1.421413741;
+    const a4 = -1.453152027;
+    const a5 = 1.061405429;
+    const p = 0.3275911;
+
+    const sign = z < 0 ? -1 : 1;
+    z = Math.abs(z) / Math.sqrt(2);
+
+    const t = 1.0 / (1.0 + p * z);
+    const y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-z * z);
+
+    return 0.5 * (1.0 + sign * y);
+  }
+
+  async getCorrelations(geographyType: string, geographyId: string): Promise<MetricCorrelation[]> {
+    try {
+      const result = await this.pool.query(
+        `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+         FROM metric_correlations
+         WHERE geography_type = $1 AND geography_id = $2
+         ORDER BY ABS(correlation_r) DESC`,
+        [geographyType, geographyId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error(`Error retrieving correlations: ${String(error)}`);
+      return [];
+    }
   }
 
   private async getLatestSnapshot(city: string, state: string): Promise<MarketSnapshot | null> {
