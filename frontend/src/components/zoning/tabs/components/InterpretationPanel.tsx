@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MunicodeLink } from '../SourceCitation';
+import { MunicodeLink } from '../../SourceCitation';
 
 export interface InterpretationDecision {
   parameter: string;
