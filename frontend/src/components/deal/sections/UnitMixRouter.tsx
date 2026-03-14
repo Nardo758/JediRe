@@ -7,6 +7,8 @@
  * - Redevelopment: both stacked vertically (Current → Target workflow)
  * - Hidden: returns null
  *
+ * Fetches real data from M02/M03 (Zoning) and M05/M06 (Market Demand) APIs
+ *
  * Import locations:
  *   - UnitMixPositioningV5: src/components/modules/unit-mix/unit-mix-positioning-v5.jsx
  *   - DevelopmentProgramBuilder: src/components/modules/unit-mix/development-program-builder.jsx
@@ -15,6 +17,7 @@
 import React, { useMemo, lazy, Suspense } from 'react';
 import { useDealType } from '../../../stores/dealStore';
 import { getUnitMixMode } from '../../../shared/config/product-type-adaptation';
+import useDevelopmentProgramData from '../../../hooks/useDevelopmentProgramData';
 
 // Dynamic imports for these components
 // Replace paths if components are located elsewhere in your codebase
@@ -35,10 +38,17 @@ interface UnitMixRouterProps {
 
 /**
  * Routes to the correct unit mix component based on deal type and mode.
+ * Fetches real data from M02/M03 (Zoning) and M05/M06 (Market Demand) for development mode.
  */
 export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) => {
   const dealType = useDealType();
   const mode = useMemo(() => getUnitMixMode(dealType), [dealType]);
+
+  // Fetch zoning and demand data for development mode
+  const { zoning, demand, loading: dataLoading } = useDevelopmentProgramData(
+    dealId || deal?.id,
+    deal?.tradeAreaId
+  );
 
   // Hidden mode — module not rendered
   if (mode === 'hidden') {
@@ -60,9 +70,17 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
   if (mode === 'designer') {
     return (
       <div className="space-y-4">
-        <Suspense fallback={<LoadingFallback />}>
-          <DevelopmentProgramBuilder deal={deal} dealId={dealId} />
-        </Suspense>
+        {dataLoading && <LoadingFallback />}
+        {!dataLoading && (
+          <Suspense fallback={<LoadingFallback />}>
+            <DevelopmentProgramBuilder
+              deal={deal}
+              dealId={dealId || deal?.id}
+              zoning={zoning}
+              demand={demand}
+            />
+          </Suspense>
+        )}
       </div>
     );
   }
@@ -97,9 +115,17 @@ export const UnitMixRouter: React.FC<UnitMixRouterProps> = ({ deal, dealId }) =>
             <h3 className="text-sm font-semibold text-gray-700">Target Unit Program</h3>
             <p className="text-xs text-gray-500 mt-1">Post-repositioning mix informed by market demand and site constraints</p>
           </div>
-          <Suspense fallback={<LoadingFallback />}>
-            <DevelopmentProgramBuilder deal={deal} dealId={dealId} />
-          </Suspense>
+          {dataLoading && <LoadingFallback />}
+          {!dataLoading && (
+            <Suspense fallback={<LoadingFallback />}>
+              <DevelopmentProgramBuilder
+                deal={deal}
+                dealId={dealId || deal?.id}
+                zoning={zoning}
+                demand={demand}
+              />
+            </Suspense>
+          )}
         </div>
       </div>
     );
