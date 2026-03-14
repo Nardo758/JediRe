@@ -4,6 +4,7 @@ modules = ["nodejs-20", "python-3.12", "bash", "web", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["nano"]
 
 [deployment]
 run = ["node", "backend/dist/index.replit.js"]
