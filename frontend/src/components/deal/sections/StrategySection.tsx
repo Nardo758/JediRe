@@ -527,18 +527,22 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                   </tr>
                 </tbody>
               </table>
-            </div>
+                  </div>
 
-            <div className="mt-3 text-[11px] text-gray-400">
-              Hover any cell to see: raw score × strategy weight = weighted contribution.
-              BTS dominates Demand+Supply. Flip wins on Momentum. STR killed by regulatory risk.
-            </div>
-          </div>
+                  <div className="mt-3 text-[11px] text-gray-400">
+                    Hover any cell to see: raw score × strategy weight = weighted contribution.
+                    This strategy dominates on Demand+Supply. Flip wins on Momentum. STR killed by regulatory risk.
+                  </div>
+                </div>
+              )}
 
-          {/* ROI Head-to-Head */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">ROI Head-to-Head</h3>
-            <p className="text-sm text-gray-500 mb-4">Key return metrics compared across all 4 strategies</p>
+              {/* ROI Tab */}
+              {activeSubTab === 'roi' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">ROI Head-to-Head</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">Key return metrics compared across available strategies</p>
 
             <table className="w-full text-sm">
               <thead>
@@ -570,11 +574,21 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               </tbody>
             </table>
 
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs text-blue-800 leading-relaxed">
-                BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
-                Risk-adjusted, BTS wins because you recycle capital 3x faster.
-              </p>
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
+                      Risk-adjusted, BTS wins because you recycle capital 3x faster.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Screen Tab */}
+              {activeSubTab === 'custom' && (
+                <div>
+                  <CustomScreenTab dealId={deal.id} />
+                </div>
+              )}
             </div>
           </div>
         </>
