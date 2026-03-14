@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AnalysisResult } from '../../types';
 import LeaseRolloverAnalysis from './LeaseRolloverAnalysis';
 
@@ -10,9 +10,17 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = () => {
+    if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+    if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
+  };
 
   useEffect(() => {
     fetchLatestAnalysis();
+    return () => stopPolling();
   }, [dealId]);
 
   const fetchLatestAnalysis = async () => {
@@ -37,8 +45,7 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         method: 'POST'
       });
       if (response.ok) {
-        // Poll for completion
-        pollAnalysisStatus();
+        pollAnalysisStatus(Date.now());
       }
     } catch (error) {
       console.error('Failed to trigger analysis:', error);
@@ -46,23 +53,26 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
     }
   };
 
-  const pollAnalysisStatus = () => {
-    const interval = setInterval(async () => {
-      const response = await fetch(`/api/v1/deals/${dealId}/analysis/latest`);
-      if (response.ok) {
-        const data = await response.json();
-        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-        if (new Date(data.createdAt).getTime() > fiveMinutesAgo) {
-          setAnalysis(data);
-          setIsAnalyzing(false);
-          clearInterval(interval);
+  const pollAnalysisStatus = (triggeredAt: number) => {
+    stopPolling();
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/v1/deals/${dealId}/analysis/latest`);
+        if (response.ok) {
+          const data = await response.json();
+          if (new Date(data.createdAt).getTime() > triggeredAt) {
+            setAnalysis(data);
+            setIsAnalyzing(false);
+            stopPolling();
+          }
         }
+      } catch {
+        // swallow — timeout will clean up
       }
     }, 2000);
 
-    // Timeout after 2 minutes
-    setTimeout(() => {
-      clearInterval(interval);
+    pollTimeoutRef.current = setTimeout(() => {
+      stopPolling();
       setIsAnalyzing(false);
     }, 120000);
   };
