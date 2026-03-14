@@ -4,10 +4,25 @@ import {
   TrendingUp, Users, Newspaper, FileText, Building2, MapPin,
   Briefcase, Factory, ChevronDown, ChevronUp, Upload,
   AlertTriangle, CheckCircle2, XCircle, HelpCircle,
-  RefreshCw, Activity, DollarSign, Home, Layers, Link2
+  RefreshCw, Activity, DollarSign, Home, Layers, Link2,
+  TrendingDown, Zap, BarChart3
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
+
+interface MetricCorrelation {
+  id: number;
+  metric_a: string;
+  metric_b: string;
+  geography_type: string;
+  geography_id: string;
+  window_months: number;
+  correlation_r: number;
+  lead_lag_months: number | null;
+  p_value: number | null;
+  sample_size: number;
+  computed_at: string;
+}
 
 interface MarketIntelData {
   economy: any;
@@ -19,6 +34,7 @@ interface MarketIntelData {
 
 const TABS = [
   { id: 'economy', label: 'Local Economy', icon: Briefcase },
+  { id: 'correlations', label: 'Correlations', icon: TrendingUp },
   { id: 'documents', label: 'Document Intelligence', icon: FileText },
   { id: 'demographics', label: 'Demographics & Demand', icon: Users },
   { id: 'news', label: 'News Feed', icon: Newspaper },
@@ -213,6 +229,7 @@ export const MarketIntelligencePage: React.FC = () => {
 
         <div className="p-5">
           {activeTab === 'economy' && <EconomyTab data={data.economy} />}
+          {activeTab === 'correlations' && <CorrelationsTab dealId={dealId} />}
           {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
           {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
           {activeTab === 'news' && <NewsTab events={data.news} />}
@@ -221,6 +238,320 @@ export const MarketIntelligencePage: React.FC = () => {
     </div>
   );
 };
+
+// ═══════════════════════════════════════════════════════════════
+// CORRELATIONS TAB
+// ═══════════════════════════════════════════════════════════════
+
+const FLORIDA_COUNTIES = [
+  { id: '12081', name: 'Manatee County' },
+  { id: '12057', name: 'Hillsborough County' },
+  { id: '12086', name: 'Miami-Dade County' },
+  { id: '12099', name: 'Palm Beach County' },
+  { id: '12031', name: 'Broward County' },
+  { id: '12103', name: 'Pinellas County' },
+];
+
+const MSA_TO_COUNTY: Record<string, string> = {
+  'Tampa': '12057', // Hillsborough (Tampa metro)
+  'Miami': '12086',
+  'Fort Lauderdale': '12031', // Broward
+};
+
+function CorrelationsTab({ dealId }: { dealId: string }) {
+  const [selectedCounty, setSelectedCounty] = useState<string>('12057'); // Default to Tampa/Hillsborough
+  const [correlations, setCorrelations] = useState<MetricCorrelation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedCell, setExpandedCell] = useState<{ a: string; b: string } | null>(null);
+
+  useEffect(() => {
+    fetchCorrelations(selectedCounty);
+  }, [selectedCounty]);
+
+  const fetchCorrelations = async (countyId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.get(`/api/v1/correlations/county/${countyId}`) as any;
+      const data = response?.data?.data || [];
+      setCorrelations(data);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load correlations');
+      setCorrelations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const countyName = FLORIDA_COUNTIES.find(c => c.id === selectedCounty)?.name || 'Unknown';
+
+  if (loading) return <div className="text-center py-8 text-stone-500">Loading correlations...</div>;
+
+  return (
+    <div className="space-y-5">
+      {/* Geography Selector */}
+      <div className="bg-stone-50 border border-stone-200 rounded-lg p-4">
+        <label className="text-sm font-semibold text-stone-700 block mb-2">Select Geography</label>
+        <select
+          value={selectedCounty}
+          onChange={(e) => setSelectedCounty(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-stone-300 text-sm font-medium text-stone-800 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500"
+        >
+          {FLORIDA_COUNTIES.map(county => (
+            <option key={county.id} value={county.id}>{county.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+
+      {!loading && correlations.length === 0 && !error && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+          No correlations computed yet for {countyName}. Run the correlation engine from admin to populate this data.
+        </div>
+      )}
+
+      {correlations.length > 0 && (
+        <>
+          {/* Signal Chain Visualization */}
+          <SignalChainVisualization correlations={correlations} />
+
+          {/* Correlation Heatmap */}
+          <CorrelationHeatmap
+            correlations={correlations}
+            expandedCell={expandedCell}
+            setExpandedCell={setExpandedCell}
+          />
+
+          {/* Top Correlations List */}
+          <TopCorrelationsList correlations={correlations.slice(0, 10)} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIGNAL CHAIN VISUALIZATION
+// ═══════════════════════════════════════════════════════════════
+
+const SIGNAL_CHAIN = [
+  { id: 'BIZ_FORMATIONS', name: 'Business Formations', icon: Briefcase },
+  { id: 'SEARCH_MOMENTUM', name: 'Search Momentum', icon: TrendingUp },
+  { id: 'TRAFFIC_SURGE', name: 'Traffic Surge', icon: Activity },
+  { id: 'VACANCY_DROP', name: 'Vacancy Drop', icon: TrendingDown },
+  { id: 'RENT_GROWTH', name: 'Rent Growth', icon: DollarSign },
+  { id: 'CAP_RATE', name: 'Cap Rate Compression', icon: Zap },
+];
+
+function SignalChainVisualization({ correlations }: { correlations: MetricCorrelation[] }) {
+  return (
+    <div className="border border-stone-200 rounded-lg p-5 bg-gradient-to-r from-stone-50 to-violet-50">
+      <SectionTitle icon={Zap} title="The Golden Chain: Leading→Lagging Indicators" />
+
+      <div className="mt-5">
+        <div className="flex items-center gap-2 overflow-x-auto pb-3">
+          {SIGNAL_CHAIN.map((node, idx) => {
+            const Icon = node.icon;
+            const nextNode = SIGNAL_CHAIN[idx + 1];
+            const relCorr = nextNode
+              ? correlations.find(
+                  c =>
+                    (c.metric_a === node.id && c.metric_b === nextNode.id) ||
+                    (c.metric_a === nextNode.id && c.metric_b === node.id)
+                )
+              : null;
+
+            return (
+              <div key={node.id} className="flex items-center gap-2 shrink-0">
+                <div className="bg-white border-2 border-violet-300 rounded-lg px-3 py-2 text-center min-w-max shadow-sm">
+                  <Icon size={16} className="mx-auto mb-1 text-violet-600" />
+                  <div className="text-[11px] font-semibold text-stone-800">{node.name}</div>
+                  {relCorr && (
+                    <div className="text-[10px] text-violet-600 font-mono mt-1">
+                      r={relCorr.correlation_r.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+                {idx < SIGNAL_CHAIN.length - 1 && (
+                  <div className="text-violet-400 font-bold">→</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 p-3 bg-white border border-violet-200 rounded-lg">
+          <p className="text-sm text-stone-700 leading-relaxed">
+            <span className="font-semibold text-violet-700">The Golden Chain:</span> Buy window is between
+            <span className="font-semibold"> Search Momentum surges </span> and
+            <span className="font-semibold"> Vacancy drops </span> — that's 2-6 months of opportunity
+            before prices reprice.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CORRELATION HEATMAP
+// ═══════════════════════════════════════════════════════════════
+
+interface HeatmapCellProps {
+  metricA: string;
+  metricB: string;
+  correlation: MetricCorrelation | undefined;
+  isExpanded: boolean;
+  onClick: () => void;
+}
+
+function CorrelationHeatmap({
+  correlations,
+  expandedCell,
+  setExpandedCell,
+}: {
+  correlations: MetricCorrelation[];
+  expandedCell: { a: string; b: string } | null;
+  setExpandedCell: (cell: { a: string; b: string } | null) => void;
+}) {
+  const allMetrics = Array.from(
+    new Set([...correlations.map(c => c.metric_a), ...correlations.map(c => c.metric_b)])
+  ).sort();
+
+  const getCorrelationValue = (a: string, b: string) => {
+    const corr = correlations.find(
+      c => (c.metric_a === a && c.metric_b === b) || (c.metric_a === b && c.metric_b === a)
+    );
+    return corr;
+  };
+
+  const getCellColor = (r: number | null): React.CSSProperties => {
+    if (!r) return { backgroundColor: '#d6d3d1' };
+    const absR = Math.abs(r);
+    if (absR < 0.3) return { backgroundColor: '#a8a29e' };
+    if (r > 0) {
+      const intensity = Math.min(absR, 1);
+      const hue = 142; // emerald
+      const saturation = 71;
+      const lightness = 50 - intensity * 20;
+      return { backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+    } else {
+      const intensity = Math.min(absR, 1);
+      const hue = 0; // red
+      const saturation = 84;
+      const lightness = 50 - intensity * 20;
+      return { backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)` };
+    }
+  };
+
+  return (
+    <div className="border border-stone-200 rounded-lg p-4">
+      <SectionTitle icon={BarChart3} title="Correlation Matrix" badge={`${allMetrics.length} metrics`} />
+
+      {allMetrics.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <div className="inline-grid gap-0 bg-white border border-stone-200 rounded-lg overflow-hidden">
+            {/* Header Row */}
+            <div className="flex">
+              <div className="w-32 h-12 bg-stone-100 border-b border-r border-stone-200 text-[10px] font-semibold text-stone-600 p-1 flex items-center justify-center shrink-0" />
+              {allMetrics.map(metric => (
+                <div
+                  key={metric}
+                  className="w-12 h-12 bg-stone-100 border-b border-r border-stone-200 text-[8px] font-semibold text-stone-600 p-1 flex items-center justify-center shrink-0 rotate-45 origin-center"
+                  title={metric}
+                >
+                  {metric}
+                </div>
+              ))}
+            </div>
+
+            {/* Data Rows */}
+            {allMetrics.map(rowMetric => (
+              <div key={rowMetric} className="flex">
+                <div className="w-32 h-12 bg-stone-50 border-b border-r border-stone-200 text-[10px] font-semibold text-stone-700 p-2 flex items-center justify-start shrink-0 overflow-hidden text-ellipsis">
+                  {rowMetric}
+                </div>
+                {allMetrics.map(colMetric => {
+                  const corr = getCorrelationValue(rowMetric, colMetric);
+                  const isExpanded = expandedCell?.a === rowMetric && expandedCell?.b === colMetric;
+
+                  return (
+                    <div
+                      key={`${rowMetric}-${colMetric}`}
+                      onClick={() =>
+                        setExpandedCell(isExpanded ? null : { a: rowMetric, b: colMetric })
+                      }
+                      className="w-12 h-12 border-b border-r border-stone-200 flex items-center justify-center text-[9px] font-bold text-white cursor-pointer hover:opacity-80 transition-opacity shrink-0"
+                      style={getCellColor(corr?.correlation_r ?? null)}
+                      title={corr ? `r=${corr.correlation_r.toFixed(2)}` : 'N/A'}
+                    >
+                      {corr ? corr.correlation_r.toFixed(2) : '—'}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-6 text-stone-500 text-sm">No correlations to display</div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOP CORRELATIONS LIST
+// ═══════════════════════════════════════════════════════════════
+
+function TopCorrelationsList({ correlations }: { correlations: MetricCorrelation[] }) {
+  return (
+    <div className="border border-stone-200 rounded-lg p-4">
+      <SectionTitle icon={TrendingUp} title="Top Correlations" badge={`Top ${correlations.length}`} />
+
+      <div className="mt-4 space-y-2">
+        {correlations.map((corr, idx) => (
+          <div
+            key={corr.id}
+            className={`flex items-center gap-3 p-3 rounded-lg border ${
+              corr.correlation_r > 0
+                ? 'bg-emerald-50 border-emerald-200'
+                : 'bg-red-50 border-red-200'
+            }`}
+          >
+            <div className="text-sm font-semibold text-stone-700 w-8">{idx + 1}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-stone-800 truncate">{corr.metric_a}</span>
+                <span className="text-xs text-stone-500">↔</span>
+                <span className="text-sm font-medium text-stone-800 truncate">{corr.metric_b}</span>
+              </div>
+              {corr.lead_lag_months && (
+                <div className="text-[10px] text-stone-500">
+                  Lead time: {corr.lead_lag_months} months
+                </div>
+              )}
+            </div>
+            <div className="text-right shrink-0">
+              <div className={`text-lg font-bold font-mono ${
+                corr.correlation_r > 0 ? 'text-emerald-700' : 'text-red-700'
+              }`}>
+                {corr.correlation_r.toFixed(2)}
+              </div>
+              <div className="text-[10px] text-stone-500">r value</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function EconomyTab({ data }: { data: any }) {
   if (!data) return <EmptySection message="Economic data not available for this deal." />;
