@@ -1126,6 +1126,89 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }
   }, [profile, deal]);
 
+  // ═══ HELPER FUNCTIONS ═══
+  const getMaxAllowedFromProfile = useCallback(() => {
+    if (!profile) return { units: 0, gfa: 0, stories: 0 };
+    const lotAreaSF = profile.lot_area_sf || 0;
+    const lotAcres = lotAreaSF / 43560;
+    return {
+      units: Math.floor(lotAcres * (profile.max_density_per_acre || 100)),
+      gfa: Math.round(lotAreaSF * (profile.applied_far || 3.0)),
+      stories: profile.max_stories || 8,
+    };
+  }, [profile]);
+
+  // ═══ SUB-TAB RENDERING ═══
+  const renderSubTabContent = useCallback(() => {
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+    const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+    const maxAllowed = getMaxAllowedFromProfile();
+
+    if (dealType === 'existing' && activeSubTab === 'conformance_check') {
+      return (
+        <>
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'existing' && activeSubTab === 'expansion_scenarios') {
+      return <ExpansionScenariosCards scenarios={expansionScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'current_vs_allowed') {
+      return (
+        <>
+          {existingProperty && <NonconformingWarning nonconformingItems={conformance?.nonconformingItems.map(i => i.item) || []} yearBuilt={existingProperty.yearBuilt} />}
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'renovation_scenarios') {
+      return <RedevelopmentScenariosCards scenarios={redevelopmentScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'compliance_analysis') {
+      return (
+        <ComplianceTriggerAnalysisCard
+          triggers={[]}  // Would be populated from redevelopmentScenarios
+          totalCost={1050000}  // $1.05M baseline
+          expansionThreshold={50}
+        />
+      );
+    }
+
+    // Development deals and default: show nothing (existing content handles it)
+    return null;
+  }, [activeSubTab, deal, conformance, expansionScenarios, redevelopmentScenarios, getMaxAllowedFromProfile]);
+
+  // ═══ GET DEAL TYPE FOR RENDERING ═══
+  const projectType = deal?.projectType || deal?.project_type || 'existing';
+  const dealType = normalizeDealType(projectType);
+  const availableSubTabs = getSubTabsForDealType(dealType);
+
   const handleResolveProfile = async () => {
     if (!dealId) return;
     setResolving(true);
@@ -1384,6 +1467,38 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               label={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.label}
             />
           )}
+        </div>
+      )}
+
+      {/* ═══ SUB-TAB SECTION (for existing/redevelopment deals) ═══ */}
+      {(dealType === 'existing' || dealType === 'redevelopment') && availableSubTabs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {/* Sub-tab bar */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+            {availableSubTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSubTab(tab.id)}
+                style={{
+                  padding: '8px 12px',
+                  background: activeSubTab === tab.id ? T.bgCardAlt : 'transparent',
+                  border: `1px solid ${activeSubTab === tab.id ? T.accent : T.border}`,
+                  color: activeSubTab === tab.id ? T.accent : T.textMuted,
+                  cursor: 'pointer',
+                  fontFamily: FONT.mono,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  borderRadius: 4,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-tab content */}
+          {renderSubTabContent()}
         </div>
       )}
 
