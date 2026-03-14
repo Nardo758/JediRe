@@ -36,7 +36,7 @@ import {
   getDealType,
   getDealTypeConfig,
   type DealType,
-} from '../../deal-type-visibility';
+} from '../shared/config/deal-type-visibility';
 import {
   getStrategyAvailability,
   getStrategyStrength,
