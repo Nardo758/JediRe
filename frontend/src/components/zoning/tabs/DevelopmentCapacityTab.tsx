@@ -510,11 +510,31 @@ function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[],
   );
 }
 
-function PathComparisonCards({ paths, selectedPath, onSelectPath }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void }) {
+function PathComparisonCards({ paths, selectedPath, onSelectPath, nearbyEntitlements, currentCode }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void, nearbyEntitlements?: any, currentCode?: string }) {
+  const getPrecedentBadge = (pathId: string) => {
+    if (pathId !== 'rezone' || !nearbyEntitlements || !currentCode) return null;
+
+    const rezoneTransitions = nearbyEntitlements.commonTransitions || [];
+    const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+    if (currentCodeTransitions.length === 0) return null;
+
+    const avgApprovalRate = currentCodeTransitions.reduce((sum: number, t: any) => sum + (t.approvalRate || 0), 0) / currentCodeTransitions.length;
+
+    if (avgApprovalRate > 75) {
+      return { text: `Strong precedent — ${currentCodeTransitions.length} approved`, color: T.green, bg: T.greenDim };
+    } else if (avgApprovalRate >= 50) {
+      return { text: `Moderate precedent — ${avgApprovalRate.toFixed(0)}% approval`, color: T.amber, bg: T.amberDim };
+    } else {
+      return { text: 'Limited precedent — proceed with caution', color: T.amber, bg: T.amberDim };
+    }
+  };
+
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
       {paths.map(path => {
         const sel = selectedPath === path.id;
+        const precedent = getPrecedentBadge(path.id);
         return (
           <div
             key={path.id}
@@ -530,7 +550,22 @@ function PathComparisonCards({ paths, selectedPath, onSelectPath }: { paths: any
                   {path.sublabel}
                 </div>
               </div>
-              <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+                {precedent && (
+                  <span style={{
+                    fontSize: 8,
+                    fontWeight: 700,
+                    color: precedent.color,
+                    background: precedent.bg + "40",
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    fontFamily: FONT.mono,
+                  }}>
+                    {precedent.text}
+                  </span>
+                )}
+              </div>
             </div>
             <div style={s.metric}>{path.envelope.max_units.toLocaleString()}</div>
             <div style={s.metricSub}>units — bound by {path.envelope.binding_constraint}</div>
@@ -719,6 +754,25 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     moderate: 0,
     aggressive: 0,
   });
+
+  // ═══ ENTITLEMENT ACTIVITY STATE ═══
+  const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
+  const fetchNearbyEntitlements = useCallback(async () => {
+    if (!dealId) return;
+    setNearbyLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+      if (res.data?.data) {
+        setNearbyEntitlements(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch nearby entitlements:', err);
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [dealId]);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -1023,6 +1077,16 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
         } catch {}
+
+        // Fetch nearby entitlements for regulatory market research
+        try {
+          const nearbyRes = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+          if (nearbyRes.data?.data) {
+            setNearbyEntitlements(nearbyRes.data.data);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch nearby entitlements:', err);
+        }
 
         // Fetch zoning interpretation from Claude
         setInterpretationLoading(true);
@@ -1555,6 +1619,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           <PathComparisonCards
             paths={pathScenarios.paths}
             selectedPath={selectedColKey || 'by_right'}
+            nearbyEntitlements={nearbyEntitlements}
+            currentCode={profile?.base_district_code}
             onSelectPath={(pathId) => {
               const selectedPath = pathScenarios.paths.find((p: any) => p.id === pathId);
               if (selectedPath && selectedPath.envelope) {
@@ -2623,6 +2689,203 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+
+      {/* ═══ REGULATORY MARKET RESEARCH SECTION ═══ */}
+      {nearbyEntitlements && nearbyEntitlements.totalRecords > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <svg className="h-5 w-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Regulatory Market Research</h3>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">Entitlement activity in {profile?.municipality || 'this area'} — what your neighbors got approved</p>
+          </div>
+
+          <div className="px-5 py-4 space-y-5">
+            {(() => {
+              const ne = nearbyEntitlements;
+              const currentCode = profile?.base_district_code || '';
+
+              // ─── SUB-SECTION A: REZONING ACTIVITY ───
+              const rezones = (ne.projects || []).filter((p: any) => p.entitlementType === 'rezone');
+              const rezoneTransitions = ne.commonTransitions || [];
+              const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+              // ─── SUB-SECTION B: UPZONING TRENDS ───
+              const upzoningRecords = rezones.filter((p: any) => {
+                // Check if project represents upzoning (density or FAR increase)
+                return p.densityAchieved != null || (p.unitCount != null && p.landAcres != null);
+              });
+              const upzoningCount = upzoningRecords.length;
+              const upzoningTrend = rezones.length > 0 ? ((upzoningCount / rezones.length) * 100).toFixed(0) : '0';
+
+              // ─── SUB-SECTION C: ACTIVITY BY CODE ───
+              const projectsByCode: Record<string, any[]> = {};
+              (ne.projects || []).forEach((p: any) => {
+                const code = p.zoningFrom || 'Unknown';
+                if (!projectsByCode[code]) projectsByCode[code] = [];
+                projectsByCode[code].push(p);
+              });
+              const codesSorted = Object.keys(projectsByCode).sort();
+
+              return (
+                <div className="space-y-5">
+                  {/* Sub-section A: Rezoning Activity */}
+                  {rezones.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Rezoning Activity
+                      </h4>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-100 border-b border-gray-200">
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">From Code</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">To Code</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Projects</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Approval %</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Avg Timeline</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rezoneTransitions.slice(0, 8).map((t: any, i: number) => {
+                              const isCurrentCode = t.fromCode.toUpperCase() === currentCode.toUpperCase();
+                              return (
+                                <tr key={i} className={`border-b border-gray-100 ${isCurrentCode ? 'bg-blue-50' : 'bg-white'}`}>
+                                  <td className={`px-3 py-2 font-mono font-medium ${isCurrentCode ? 'text-blue-900 bg-blue-100' : 'text-gray-700'}`}>
+                                    {t.fromCode}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono font-bold text-violet-700">{t.toCode}</td>
+                                  <td className="px-3 py-2 text-center text-gray-700 font-semibold">{t.count}</td>
+                                  <td className={`px-3 py-2 text-center font-bold ${t.approvalRate >= 80 ? 'text-green-700' : t.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                                    {t.approvalRate}%
+                                  </td>
+                                  <td className="px-3 py-2 text-center text-gray-600">
+                                    {t.avgDays != null ? `${Math.round(t.avgDays / 30)} mo` : '--'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-section B: Upzoning Trends */}
+                  {rezones.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Upzoning Trends
+                      </h4>
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between mb-2.5">
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {upzoningCount} of {rezones.length} rezonings ({upzoningTrend}%)
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              represented density increases in the last 3 years
+                            </p>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              parseInt(upzoningTrend) >= 70 ? 'bg-emerald-100 text-emerald-700' :
+                              parseInt(upzoningTrend) >= 40 ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {parseInt(upzoningTrend) >= 70 ? '✓ Favorable' : parseInt(upzoningTrend) >= 40 ? '⚬ Neutral' : '✕ Limited'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              parseInt(upzoningTrend) >= 70 ? 'bg-emerald-500' :
+                              parseInt(upzoningTrend) >= 40 ? 'bg-amber-500' :
+                              'bg-red-500'
+                            }`}
+                            style={{ width: `${upzoningTrend}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-section C: Activity by Zoning Code */}
+                  {codesSorted.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Activity by Zoning Code
+                      </h4>
+                      <div className="space-y-2">
+                        {codesSorted.slice(0, 5).map((code: string) => {
+                          const projects = projectsByCode[code];
+                          const isCurrentCode = code.toUpperCase() === currentCode.toUpperCase();
+                          const approved = projects.filter((p: any) => p.outcome === 'approved').length;
+                          const approvalRate = projects.length > 0 ? Math.round((approved / projects.length) * 100) : 0;
+
+                          // Count by type
+                          const typeCounts: Record<string, number> = {};
+                          projects.forEach((p: any) => {
+                            const type = p.entitlementType || 'other';
+                            typeCounts[type] = (typeCounts[type] || 0) + 1;
+                          });
+                          const typeLabels = { rezone: 'rezonings', cup: 'CUPs', variance: 'variances', site_plan: 'site plans', by_right: 'by-right', other: 'other' };
+
+                          return (
+                            <div
+                              key={code}
+                              className={`border rounded-lg p-3 ${isCurrentCode ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-mono font-bold text-base ${isCurrentCode ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    {code}
+                                  </span>
+                                  {isCurrentCode && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-200 text-blue-800 font-semibold uppercase tracking-wide">
+                                      YOUR CODE
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                  approvalRate >= 75 ? 'bg-green-100 text-green-700' :
+                                  approvalRate >= 50 ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {approvalRate}% approved
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600">
+                                {Object.entries(typeCounts).map(([type, count]) => {
+                                  const label = typeLabels[type as keyof typeof typeLabels] || type;
+                                  return count > 0 ? `${count} ${label}` : null;
+                                }).filter(Boolean).join(', ')}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {nearbyLoading && !nearbyEntitlements && (
+        <div className="bg-white rounded-lg border border-gray-200 p-5 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
+            <span className="text-xs text-gray-600">Loading regulatory market research...</span>
+          </div>
+        </div>
+      )}
 
     </div>
   );
