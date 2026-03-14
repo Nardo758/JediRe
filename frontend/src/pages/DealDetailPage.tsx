@@ -423,7 +423,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   // Filter tabs based on module visibility configuration
-  const filtered = (tabs: Tab[]) => tabs.filter(t => !t.moduleId || isModuleVisible(t.moduleId as ModuleId, config.dealType));
+  const filtered = (tabs: DealTab[]) => tabs.filter(t => !t.moduleId || config.isModuleVisible(t.moduleId as ModuleId));
 
   const allTabs = [
     ...filtered(overviewSetupTabs),
