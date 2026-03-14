@@ -445,13 +445,28 @@ export function getDealType(deal: { projectType?: string; dealType?: string }): 
   const raw = (deal.projectType || deal.dealType || '').toLowerCase().trim();
 
   // Normalize various input strings to canonical types
-  if (['existing', 'acquisition', 'existing_acquisition', 'stabilized', 'value-add', 'value_add'].includes(raw)) {
+  if ([
+    'existing', 'acquisition', 'existing_acquisition', 'stabilized', 'value-add', 'value_add',
+    // Property asset-class strings — all imply acquiring an existing property
+    'multifamily', 'multi-family', 'multi_family',
+    'office', 'retail', 'industrial', 'flex',
+    'mixed_use', 'mixed-use', 'mixeduse',
+    'hotel', 'hospitality', 'self_storage', 'self-storage',
+    'senior_housing', 'senior-housing', 'student_housing',
+    'single_family', 'single-family', 'sfr', 'build_to_rent', 'build-to-rent',
+  ].includes(raw)) {
     return 'existing';
   }
-  if (['development', 'ground_up', 'ground-up', 'new_construction', 'new construction'].includes(raw)) {
+  if ([
+    'development', 'ground_up', 'ground-up', 'new_construction', 'new construction',
+    'new_development', 'new-development', 'land',
+  ].includes(raw)) {
     return 'development';
   }
-  if (['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'adaptive-reuse', 'gut_rehab', 'tear-down'].includes(raw)) {
+  if ([
+    'redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'adaptive-reuse',
+    'gut_rehab', 'tear-down', 'teardown', 'conversion',
+  ].includes(raw)) {
     return 'redevelopment';
   }
 
