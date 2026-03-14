@@ -3,7 +3,6 @@ import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { useDealStore } from '../../../stores/dealStore';
-import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
 
@@ -132,28 +131,16 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
 }
 
 /**
- * CTA button panel shown after path selection.
- * Routes to Unit Mix Intelligence based on deal type.
+ * Info panel shown after path selection.
+ * Displays the selected path and clear button.
  */
 function PathSelectionPanel({
   development_path,
-  dealType,
   onClear,
 }: {
   development_path: string;
-  dealType?: string;
   onClear: () => void;
 }) {
-  const { navigateToTab } = useDealModule();
-
-  // Determine CTA button text and navigation based on deal type
-  const getCTALabel = () => {
-    const normalized = dealType?.toLowerCase() || 'development';
-    if (normalized === 'existing') return 'View Unit Positioning →';
-    if (normalized === 'redevelopment') return 'Plan Renovation Mix →';
-    return 'Design Unit Program →';
-  };
-
   return (
     <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
       <div className="flex items-center gap-3">
@@ -165,15 +152,9 @@ function PathSelectionPanel({
             Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           </span>
           <span className="text-[10px] text-blue-600 ml-3">
-            Envelope sent to Unit Mix, 3D Design, Strategy, ProForma, and Risk modules
+            Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
           </span>
         </div>
-        <button
-          onClick={() => navigateToTab('unit-mix-intelligence')}
-          className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors flex-shrink-0"
-        >
-          {getCTALabel()}
-        </button>
         <button
           onClick={onClear}
           className="text-[10px] text-blue-500 hover:text-blue-700 underline flex-shrink-0"
@@ -1503,7 +1484,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 {development_path && (
                   <PathSelectionPanel
                     development_path={development_path}
-                    dealType={dealInfo?.project_type || deal?.projectType}
                     onClear={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
                   />
                 )}
