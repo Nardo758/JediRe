@@ -58,7 +58,6 @@ import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 
-
 interface DealTab extends Tab {
   moduleId?: ModuleId;
 }
