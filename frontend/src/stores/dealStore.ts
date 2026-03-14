@@ -392,10 +392,9 @@ export const useDealStore = create<DealStore>()(
 
         set({
           ...data,
-          projectType: resolvedType,
           resolvedUnitMix,
           totalUnits,
-          projectType: resolvedProjectType,
+          projectType: resolvedType,
         });
       } catch (error) {
         console.error('[dealStore] Failed to fetch deal context:', error);
