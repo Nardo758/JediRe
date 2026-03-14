@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'react-map-gl': 'react-map-gl/mapbox',
     },
   },
   server: {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   DollarSign, TrendingUp, BarChart3, Edit3, RotateCcw,
   ChevronDown, ChevronRight, Loader2, CheckCircle2,
@@ -7,6 +7,8 @@ import {
 import { Deal } from '@/types';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { useDealType } from '../../../stores/dealStore';
+import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -123,10 +125,19 @@ function fmtPctRaw(n: number): string {
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
   const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D } = useDealModule();
+  const dealType = useDealType();
+  const proformaTemplate = useMemo(() => getProFormaTemplate(dealType), [dealType]);
+
+  // Map template to modelType: 'acquisition' -> 'existing', 'development' -> 'development', 'redevelopment' -> 'development'
+  const defaultModelType = useMemo(() => {
+    if (proformaTemplate === 'acquisition') return 'existing' as const;
+    return 'development' as const;
+  }, [proformaTemplate]);
+
   const lastAppliedTimestamp = useRef(0);
   const lastAppliedDesign3DTimestamp = useRef(0);
   const [designSource, setDesignSource] = useState<string | null>(null);
-  const [modelType, setModelType] = useState<'existing' | 'development'>('existing');
+  const [modelType, setModelType] = useState<'existing' | 'development'>(defaultModelType);
   const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
@@ -205,6 +216,11 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       setDebtSource('Debt & Equity');
     }
   }, [debtTerms]);
+
+  // Sync modelType with ProForma template based on deal type
+  useEffect(() => {
+    setModelType(defaultModelType);
+  }, [defaultModelType]);
 
   const lastStrategyTimestamp = useRef(0);
   useEffect(() => {

@@ -34,8 +34,8 @@ const fc = n => `$${n?.toLocaleString("en-US") ?? "0"}`;
 const fk = n => n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : `$${(n / 1000).toFixed(0)}K`;
 const pct = (a, b) => b ? ((a / b) * 100).toFixed(1) : "—";
 
-// ── ZONING CONSTRAINTS (from M02/M03) ──────────────────────
-const ZONING = {
+// ── DEFAULT ZONING CONSTRAINTS (fallback if M02/M03 API unavailable) ──────────────────────
+const DEFAULT_ZONING = {
   code: "PD-MF", maxDensity: 24, lotAcres: 12.4, maxHeight: 65, stories: 4,
   far: 2.0, lotSF: 540144, setbackSF: 48600, buildableSF: 491544,
   maxUnitsByDensity: 298, maxUnitsByFAR: 312, maxUnitsByHeight: 320,
@@ -43,8 +43,8 @@ const ZONING = {
   parkingRatio: 1.5, parkingSpaces: 447,
 };
 
-// ── MARKET DEMAND SIGNALS (from M05/M06) ──────────────────
-const DEMAND = {
+// ── DEFAULT MARKET DEMAND SIGNALS (fallback if M05/M06 API unavailable) ──────────────────
+const DEFAULT_DEMAND = {
   optimalMix: { studio: 5, "1br": 35, "2br": 45, "3br": 15 },
   avgRents: { studio: 1350, "1br": 1575, "2br": 1925, "3br": 2280 },
   avgSF: { studio: 520, "1br": 750, "2br": 1050, "3br": 1300 },
@@ -117,11 +117,23 @@ function EditCell({ value, onChange, prefix = "", suffix = "", width = 56, color
 }
 
 // ── MAIN COMPONENT ─────────────────────────────────────────
-export default function DevelopmentProgramBuilder() {
+/**
+ * Development Program Builder
+ *
+ * @param {Object} zoning - Zoning constraints from M02/M03 (optional, uses DEFAULT_ZONING fallback)
+ * @param {Object} demand - Market demand signals from M05/M06 (optional, uses DEFAULT_DEMAND fallback)
+ * @param {Object} deal - Deal object with metadata
+ * @param {string} dealId - Deal ID for API calls
+ */
+export default function DevelopmentProgramBuilder({ zoning, demand, deal, dealId }) {
+  // Use provided props or fallback to defaults
+  const ZONING = zoning ?? DEFAULT_ZONING;
+  const DEMAND = demand ?? DEFAULT_DEMAND;
+
   const [types, setTypes] = useState(INITIAL_TYPES);
   const [costs, setCosts] = useState(DEFAULT_COSTS);
   const [activeTab, setActiveTab] = useState("program");
-  const [absorptionRate, setAbsorptionRate] = useState(18); // units/month
+  const [absorptionRate, setAbsorptionRate] = useState(DEMAND.absorption || 18); // units/month
   const [exitCap, setExitCap] = useState(5.25);
   const [constructionMonths, setConstructionMonths] = useState(18);
   const [preLeasePct, setPreLeasePct] = useState(15);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin,
   CheckCircle2,
@@ -10,11 +10,13 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { getDealType, getZoningDepth } from '../../../../../../deal-type-visibility';
 import BoundaryAndZoningTab from '../../zoning/tabs/BoundaryAndZoningTab';
 import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
+import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 
 interface ZoningModuleSectionProps {
@@ -24,13 +26,28 @@ interface ZoningModuleSectionProps {
   onBack?: () => void;
 }
 
-const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
+const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
   { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
   { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
+  { id: 'entitlements', label: 'Entitlements', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
+
+function getFilteredTabs(deal?: any): { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] {
+  if (!deal) return ALL_TABS.slice(0, 5);
+
+  const dealType = getDealType(deal);
+  const depth = getZoningDepth(dealType);
+
+  if (depth === 'simplified') {
+    // Existing: show 3 tabs - Boundary & Zoning, Regulatory Risk, Time-to-Shovel
+    return ALL_TABS.filter(t => ['boundary_zoning', 'risk', 'timeline'].includes(t.id));
+  }
+  // Development/Redevelopment: show full 6 tabs
+  return ALL_TABS;
+}
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const resolvedDealId = propDealId || deal?.id;
@@ -38,6 +55,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   const [boundaryAndZoningComplete, setBoundaryAndZoningComplete] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const tabs = useMemo(() => getFilteredTabs(deal), [deal]);
 
   // Check completion status on mount
   useEffect(() => {
@@ -117,6 +136,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
+      case 'entitlements':
+        return <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />;
       default:
         return (
           <BoundaryAndZoningTab
@@ -170,7 +191,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         )}
 
         <div className="flex gap-0.5 overflow-x-auto">
-          {TABS.map(tab => {
+          {tabs.map(tab => {
             const unlocked = isTabUnlocked(tab.id);
             const completed =
               tab.id === 'boundary_zoning' && boundaryAndZoningComplete;

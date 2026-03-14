@@ -9,7 +9,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealType } from '../../../stores/dealStore';
-import { getDDChecklistPreset, DD_CHECKLISTS } from '../../../deal-type-visibility';
+import { getDDChecklistPreset, DD_CHECKLISTS } from '@/shared/config/deal-type-visibility';
 
 // Type definitions
 interface DDChecklistItem {

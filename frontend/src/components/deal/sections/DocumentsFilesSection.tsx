@@ -16,7 +16,7 @@ import { StorageStats } from './DocumentsFiles/StorageStats';
 import { MissingFileSuggestions } from './DocumentsFiles/MissingFileSuggestions';
 import axios from 'axios';
 import { useDealType } from '../../../stores/dealStore';
-import { MODULE_TABS } from '../../../deal-type-visibility';
+import { MODULE_TABS } from '@/shared/config/deal-type-visibility';
 
 // ============================================================================
 // TYPES

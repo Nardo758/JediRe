@@ -28,6 +28,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         '[]'::jsonb as "parcelIds",
         COALESCE(deal_data->'coordinates', '{"lat":0,"lng":0}'::jsonb) as coordinates,
         project_type,
+        development_type,
         status as stage,
         deal_data,
         created_at as "createdAt",
@@ -43,8 +44,11 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
     const deal = dealResult.rows[0];
     const dealData = deal.deal_data || {};
 
-    // Determine mode: existing vs development
-    const mode = deal.project_type === 'development' ? 'development' : 'existing';
+    // Determine mode: existing vs development vs redevelopment
+    // Note: redevelopment is preserved as a distinct value, not collapsed to 'existing'
+    const modeValue = deal.project_type === 'development' ? 'development'
+                     : deal.project_type === 'redevelopment' ? 'redevelopment'
+                     : 'existing';
 
     // Build identity
     const identity = {
@@ -57,7 +61,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
       county: deal.county,
       parcelIds: deal.parcelIds || [],
       coordinates: deal.coordinates || { lat: 0, lng: 0 },
-      mode,
+      mode: modeValue,
       stage: deal.stage || 'lead',
       createdAt: deal.createdAt,
       updatedAt: deal.updatedAt,
@@ -112,6 +116,7 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
     // Build context object
     const context = {
       identity,
+      projectType: deal.project_type || 'existing',
       site: {
         acreage: layered(dealData.site?.acreage || 0),
         buildableAcreage: layered(dealData.site?.buildableAcreage || 0),
@@ -184,6 +189,8 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
         risk: { hydrated: false, lastFetchedAt: null, source: 'mock' },
       },
       stageHistory: dealData.stageHistory || [],
+      projectType: deal.project_type || 'existing',
+      developmentType: deal.development_type || null,
     };
 
     res.json(context);

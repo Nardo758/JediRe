@@ -15,9 +15,10 @@ import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
+import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { useDealType } from '../../../stores/dealStore';
-import { getZoningDepth } from '../../../deal-type-visibility';
+import { getZoningDepth } from '@/shared/config/deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -32,13 +33,14 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
   { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
   { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
+  { id: 'entitlements', label: 'Entitlements', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
 
 // Simplified tabs for existing deals (3 tabs)
-const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'hbu', 'risk'];
+const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk', 'timeline'];
 
-// Full tabs for development/redevelopment deals (all 5 tabs)
-const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline'];
+// Full tabs for development/redevelopment deals (all 6 tabs)
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const dealType = useDealType();
@@ -134,6 +136,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
+      case 'entitlements':
+        return <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />;
       default:
         return (
           <BoundaryAndZoningTab

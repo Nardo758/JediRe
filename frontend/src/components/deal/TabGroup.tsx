@@ -6,6 +6,7 @@ export interface Tab {
   label: string;
   icon?: React.ReactNode;
   component: React.ComponentType<any>;
+  moduleId?: string;
 }
 
 export interface TabGroupProps {
