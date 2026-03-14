@@ -1,9 +1,39 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
+// ═══════════════════════════════════════════════════════════════════════════════
+const T = {
+  bg:         "#0a0f1a",
+  bgCard:     "#0f1729",
+  bgCardAlt:  "#111d33",
+  bgHover:    "#162040",
+  border:     "#1e2d4a",
+  borderLit:  "#2a4070",
+  text:       "#e2e8f0",
+  textMuted:  "#64748b",
+  textDim:    "#475569",
+  accent:     "#3b82f6",
+  accentDim:  "#1e40af",
+  green:      "#22c55e",
+  greenDim:   "#166534",
+  amber:      "#f59e0b",
+  amberDim:   "#92400e",
+  red:        "#ef4444",
+  redDim:     "#991b1b",
+  cyan:       "#06b6d4",
+  purple:     "#a78bfa",
+};
+
+const FONT = {
+  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+  body: "'IBM Plex Sans', -apple-system, sans-serif",
+};
 
 interface EnvelopeEnrichment {
   sources: Record<string, {
@@ -85,6 +115,191 @@ const PROJECT_TYPE_OPTIONS = [
   { value: 'industrial',  label: 'Industrial', hint: 'Applies nonresidential FAR only' },
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPUTATION FUNCTIONS — Client-side instant preview calculations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function calculateBuildableArea(parcel: any, zoning: any) {
+  const { front_ft, side_ft, rear_ft } = zoning.setbacks || {};
+  const frontage = parcel.frontage_ft || 200;
+  const depth = parcel.depth_ft || 200;
+
+  let buildable_width, buildable_depth;
+  if (parcel.is_corner) {
+    buildable_width = frontage - (front_ft || 0) - (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  } else {
+    buildable_width = frontage - 2 * (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  }
+
+  const buildable_sf = Math.max(0, buildable_width * buildable_depth);
+  const gross_lot_sf = parcel.lot_size_sf || 0;
+
+  return {
+    gross_lot_sf,
+    buildable_sf,
+    buildable_width,
+    buildable_depth,
+    setback_loss_sf: gross_lot_sf - buildable_sf,
+    setback_loss_pct: ((gross_lot_sf - buildable_sf) / gross_lot_sf * 100).toFixed(1),
+  };
+}
+
+function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}) {
+  const area = calculateBuildableArea(parcel, zoning);
+  const lot_acres = (parcel.lot_size_sf || 0) / 43560;
+  const density = overrides.density || zoning.max_density_units_per_acre || 100;
+  const height_ft = overrides.height || zoning.max_height_ft || 85;
+  const far = overrides.far || zoning.max_far || 3.0;
+  const coverage = overrides.coverage || (zoning.lot_coverage_pct || 80) / 100;
+  const parking_per_unit = overrides.parking || zoning.parking?.per_unit || 1.0;
+  const guest_parking = zoning.parking?.guest_per_unit || 0.25;
+
+  // ─── CONSTRAINT 1: Density cap ───
+  const density_cap = Math.floor(density * lot_acres);
+
+  // ─── CONSTRAINT 2: FAR cap ───
+  const avg_unit_sf = overrides.avg_unit_sf || 850;
+  const common_area_factor = 1.15;
+  const max_gfa = far * (parcel.lot_size_sf || 0);
+  const rentable_sf = max_gfa / common_area_factor;
+  const far_cap = Math.floor(rentable_sf / avg_unit_sf);
+
+  // ─── CONSTRAINT 3: Height cap ───
+  const ground_floor_height = 14;
+  const upper_floor_height = 10;
+  const max_stories = height_ft <= ground_floor_height
+    ? 1
+    : 1 + Math.floor((height_ft - ground_floor_height) / upper_floor_height);
+  const footprint_sf = area.buildable_sf * coverage;
+  const units_per_floor = Math.floor(footprint_sf / (avg_unit_sf * common_area_factor));
+  const residential_floors = Math.max(1, max_stories - 1);
+  const height_cap = units_per_floor * residential_floors;
+
+  // ─── CONSTRAINT 4: Lot coverage cap ───
+  const coverage_cap = units_per_floor * max_stories;
+
+  // ─── BINDING CONSTRAINT ───
+  const constraints = [
+    { name: "Density", units: density_cap, param: `${density} units/acre`, formula: `${density} × ${lot_acres.toFixed(2)} acres` },
+    { name: "FAR", units: far_cap, param: `FAR ${far}`, formula: `${far} × ${(parcel.lot_size_sf || 0).toLocaleString()} SF ÷ ${avg_unit_sf} SF/unit ÷ ${common_area_factor}` },
+    { name: "Height", units: height_cap, param: `${height_ft} ft (${max_stories} stories)`, formula: `${units_per_floor} units/floor × ${residential_floors} res. floors` },
+    { name: "Coverage", units: coverage_cap, param: `${(coverage * 100).toFixed(0)}% coverage`, formula: `${units_per_floor} units/floor × ${max_stories} total stories` },
+  ];
+
+  constraints.sort((a, b) => a.units - b.units);
+  const binding = constraints[0];
+  const max_units = binding.units;
+
+  // ─── PARKING ANALYSIS ───
+  const total_parking_spaces = Math.ceil(max_units * (parking_per_unit + guest_parking));
+  const parking_sf_per_space = 350;
+  const parking_cost_per_space_surface = 5000;
+  const parking_cost_per_space_structured = 35000;
+  const surface_parking_sf = total_parking_spaces * parking_sf_per_space;
+  const needs_structured = surface_parking_sf > ((parcel.lot_size_sf || 0) - footprint_sf);
+  const parking_cost_per_space = needs_structured ? parking_cost_per_space_structured : parking_cost_per_space_surface;
+  const total_parking_cost = total_parking_spaces * parking_cost_per_space;
+  const cars_per_parking_level = Math.floor(footprint_sf / parking_sf_per_space);
+  const parking_levels_needed = needs_structured ? Math.ceil(total_parking_spaces / cars_per_parking_level) : 0;
+
+  // ─── ESTIMATED VALUES ───
+  const est_value_per_unit = 250000;
+  const est_construction_cost_per_sf = 185;
+  const total_gfa = max_units * avg_unit_sf * common_area_factor;
+  const est_construction_cost = total_gfa * est_construction_cost_per_sf;
+  const est_total_value = max_units * est_value_per_unit;
+
+  return {
+    max_units,
+    binding_constraint: binding.name,
+    constraints,
+    max_gfa,
+    total_gfa_at_max_units: total_gfa,
+    max_stories,
+    residential_floors,
+    units_per_floor,
+    footprint_sf,
+    buildable_area: area,
+    parking: {
+      total_spaces: total_parking_spaces,
+      per_unit: parking_per_unit,
+      guest_per_unit: guest_parking,
+      needs_structured,
+      parking_levels_needed,
+      cost_per_space: parking_cost_per_space,
+      total_cost: total_parking_cost,
+      pct_of_construction: ((total_parking_cost / est_construction_cost) * 100).toFixed(1),
+    },
+    financials: {
+      est_value_per_unit,
+      est_total_value,
+      est_construction_cost_per_sf,
+      est_construction_cost,
+      est_total_development_cost: est_construction_cost + total_parking_cost,
+    },
+  };
+}
+
+function generatePathScenarios(parcel: any, currentZoning: any) {
+  const byRight = calculateEnvelope(parcel, currentZoning);
+
+  const overlayDensity = (currentZoning.max_density_units_per_acre || 100) * 1.2;
+  const overlayParking = (currentZoning.parking?.per_unit || 1.0) * 0.8;
+  const overlayBonus = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: overlayDensity,
+    parking: { ...currentZoning.parking, per_unit: overlayParking },
+  });
+
+  const varianceDensity = (currentZoning.max_density_units_per_acre || 100) * 1.25;
+  const varianceHeight = (currentZoning.max_height_ft || 85) * 1.10;
+  const variance = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: varianceDensity,
+    max_height_ft: varianceHeight,
+  });
+
+  return {
+    paths: [
+      {
+        id: "by_right",
+        label: "By-Right",
+        sublabel: `Under current ${currentZoning.base_district_code || 'zoning'}`,
+        envelope: byRight,
+        timeline_months: { min: 3, median: 6, max: 9 },
+        approval_probability: 0.95,
+        additional_cost: 0,
+        risk_level: "low",
+        color: T.green,
+      },
+      {
+        id: "overlay_bonus",
+        label: "Overlay Bonus",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + Overlay`,
+        envelope: overlayBonus,
+        timeline_months: { min: 4, median: 8, max: 12 },
+        approval_probability: 0.85,
+        additional_cost: 0,
+        risk_level: "low-medium",
+        color: T.cyan,
+      },
+      {
+        id: "variance",
+        label: "SAP / Variance",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + 25% density bonus`,
+        envelope: variance,
+        timeline_months: { min: 6, median: 10, max: 16 },
+        approval_probability: 0.70,
+        additional_cost: 75000,
+        risk_level: "medium",
+        color: T.amber,
+      },
+    ],
+  };
+}
+
 function formatNumber(v: number | null | undefined): string {
   if (v == null) return '--';
   return v.toLocaleString();
@@ -129,6 +344,308 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
   return PATH_KEY_MAP[colKey] || 'by_right';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI STYLING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const s = {
+  card: {
+    background: T.bgCard,
+    border: `1px solid ${T.border}`,
+    borderRadius: 6,
+    padding: 16,
+    marginBottom: 12,
+  },
+  cardLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    fontFamily: FONT.mono,
+    color: T.accent,
+    marginBottom: 12,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+  },
+  constraintBarBg: {
+    height: 6,
+    background: T.bgCardAlt,
+    borderRadius: 2,
+    overflow: "hidden" as const,
+  },
+  constraintBar: (pct: number, isBinding: boolean) => ({
+    height: "100%",
+    width: `${Math.min(100, pct)}%`,
+    background: isBinding ? T.red : T.accent,
+    transition: "width 0.3s ease",
+  }),
+  bindingTag: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: T.red,
+    background: T.redDim + "40",
+    padding: "2px 6px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  },
+  pathCard: (selected: boolean, color: string) => ({
+    flex: "1 1 220px",
+    background: selected ? T.bgCardAlt : T.bgCard,
+    border: `2px solid ${selected ? color : T.border}`,
+    borderRadius: 6,
+    padding: 12,
+    cursor: "pointer" as const,
+    transition: "all 0.2s",
+    "&:hover": { borderColor: color },
+  }),
+  metric: {
+    fontSize: 32,
+    fontWeight: 800,
+    fontFamily: FONT.mono,
+    color: T.text,
+    marginTop: 8,
+  },
+  metricSub: {
+    fontSize: 10,
+    color: T.textMuted,
+    fontFamily: FONT.mono,
+  },
+  badge: (color: string) => ({
+    fontSize: 8,
+    fontWeight: 700,
+    color: color,
+    background: color + "20",
+    padding: "4px 8px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  }),
+  table: {
+    width: "100%",
+    borderCollapse: "collapse" as const,
+    fontSize: 12,
+  },
+  th: {
+    background: T.bgCardAlt,
+    color: T.accent,
+    padding: "8px 10px",
+    textAlign: "left" as const,
+    fontWeight: 600,
+    fontFamily: FONT.mono,
+    fontSize: 10,
+    borderBottom: `1px solid ${T.border}`,
+  },
+  td: (bold = false) => ({
+    padding: "8px 10px",
+    borderBottom: `1px solid ${T.border}`,
+    fontFamily: FONT.mono,
+    fontSize: 11,
+    color: bold ? T.accent : T.text,
+    fontWeight: bold ? 600 : 400,
+  }),
+  tab: (active: boolean) => ({
+    padding: "8px 12px",
+    background: active ? T.bgCardAlt : "transparent",
+    border: `1px solid ${active ? T.accent : T.border}`,
+    color: active ? T.accent : T.textMuted,
+    cursor: "pointer" as const,
+    fontFamily: FONT.mono,
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 4,
+    transition: "all 0.2s",
+  }),
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[], maxPossible: number }) {
+  return (
+    <div style={s.card}>
+      <div style={s.cardLabel}>CONSTRAINT WATERFALL — BINDING ANALYSIS</div>
+      <div style={{ fontSize: 11, color: T.textDim, marginBottom: 16, fontFamily: FONT.mono }}>
+        Max units = MIN(density, FAR, height, coverage). The lowest is the binding constraint.
+      </div>
+      {constraints.map((c, i) => {
+        const pct = maxPossible > 0 ? (c.units / maxPossible) * 100 : 0;
+        const isBinding = i === 0;
+        return (
+          <div key={c.name} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT.mono, color: isBinding ? T.red : T.text }}>
+                  {c.name}
+                </span>
+                {isBinding && <span style={s.bindingTag}>BINDING</span>}
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 800, fontFamily: FONT.mono, color: isBinding ? T.red : T.accent }}>
+                {c.units.toLocaleString()} units
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono, marginBottom: 4 }}>
+              {c.param} → {c.formula}
+            </div>
+            <div style={s.constraintBarBg}>
+              <div style={s.constraintBar(pct, isBinding)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PathComparisonCards({ paths, selectedPath, onSelectPath }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      {paths.map(path => {
+        const sel = selectedPath === path.id;
+        return (
+          <div
+            key={path.id}
+            style={s.pathCard(sel, path.color)}
+            onClick={() => onSelectPath(path.id)}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: FONT.mono, color: sel ? path.color : T.text }}>
+                  {path.label}
+                </div>
+                <div style={{ fontSize: 10, color: T.textMuted, fontFamily: FONT.mono, marginTop: 2 }}>
+                  {path.sublabel}
+                </div>
+              </div>
+              <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+            </div>
+            <div style={s.metric}>{path.envelope.max_units.toLocaleString()}</div>
+            <div style={s.metricSub}>units — bound by {path.envelope.binding_constraint}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>TIMELINE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {path.timeline_months.min}–{path.timeline_months.max} mo
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PROBABILITY</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {(path.approval_probability * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>EST. VALUE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.green }}>
+                  ${(path.envelope.financials.est_total_value / 1e6).toFixed(1)}M
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PARKING</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: path.envelope.parking.needs_structured ? T.amber : T.text }}>
+                  {path.envelope.parking.total_spaces} sp. {path.envelope.parking.needs_structured ? "(struct.)" : "(surf.)"}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EnvelopeDetail({ envelope, label }: { envelope: any, label: string }) {
+  const { buildable_area: area, parking, financials } = envelope;
+  return (
+    <div style={s.card}>
+      <div style={s.cardLabel}>{label} — DEVELOPMENT ENVELOPE</div>
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.th}>Parameter</th>
+            <th style={s.th}>Value</th>
+            <th style={s.th}>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={s.td()}>Gross Lot Area</td>
+            <td style={s.td(true)}>{area.gross_lot_sf.toLocaleString()} SF ({(area.gross_lot_sf / 43560).toFixed(2)} ac)</td>
+            <td style={s.td()}>County GIS / PostGIS</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Setback Deduction</td>
+            <td style={s.td()}>{area.setback_loss_sf.toLocaleString()} SF ({area.setback_loss_pct}%)</td>
+            <td style={s.td()}>Zoning Code setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Buildable Area</td>
+            <td style={s.td(true)}>{area.buildable_sf.toLocaleString()} SF</td>
+            <td style={s.td()}>Gross - setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Building Footprint</td>
+            <td style={s.td()}>{Math.round(envelope.footprint_sf).toLocaleString()} SF</td>
+            <td style={s.td()}>Buildable × coverage %</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Units</td>
+            <td style={s.td(true)}>{envelope.max_units.toLocaleString()}</td>
+            <td style={s.td()}>Binding: {envelope.binding_constraint}</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Stories</td>
+            <td style={s.td()}>{envelope.max_stories} ({envelope.residential_floors} residential)</td>
+            <td style={s.td()}>Height ÷ floor height</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Units/Floor</td>
+            <td style={s.td()}>{envelope.units_per_floor}</td>
+            <td style={s.td()}>Footprint ÷ unit size</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max GFA</td>
+            <td style={s.td()}>{Math.round(envelope.max_gfa).toLocaleString()} SF</td>
+            <td style={s.td()}>FAR × lot area</td>
+          </tr>
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Required</td>
+            <td style={s.td(true)}>
+              {parking.total_spaces} spaces
+              {parking.needs_structured && <span style={{ ...s.badge(T.amber), marginLeft: 6 }}>STRUCTURED</span>}
+            </td>
+            <td style={s.td()}>{parking.per_unit}/unit + {parking.guest_per_unit} guest</td>
+          </tr>
+          {parking.needs_structured && (
+            <tr style={{ background: T.bgCardAlt }}>
+              <td style={s.td()}>Parking Levels</td>
+              <td style={s.td()}>{parking.parking_levels_needed} levels</td>
+              <td style={s.td()}>Spaces ÷ cars/level</td>
+            </tr>
+          )}
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Cost</td>
+            <td style={s.td(true)}>${(parking.total_cost / 1e6).toFixed(1)}M ({parking.pct_of_construction}% of construction)</td>
+            <td style={s.td()}>${parking.cost_per_space.toLocaleString()}/space</td>
+          </tr>
+          <tr style={{ borderTop: `2px solid ${T.border}` }}>
+            <td style={s.td()}>Est. Construction</td>
+            <td style={s.td()}>${(financials.est_construction_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_construction_cost_per_sf}/SF hard cost</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Dev Cost</td>
+            <td style={s.td(true)}>${(financials.est_total_development_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>Construction + Parking</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Value</td>
+            <td style={{ ...s.td(true), color: T.green }}>${(financials.est_total_value / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_value_per_unit.toLocaleString()}/unit</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
@@ -164,6 +681,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
+  const [pathScenarios, setPathScenarios] = useState<any>(null);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -371,6 +889,44 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setProfileExists(true);
         setProfile(profileData.profile);
         setDealInfo(profileData.deal);
+
+        // Step 5: Feed computation functions with real data
+        // Construct parcel object from deal + profile
+        const prof = profileData.profile;
+        const parcel = {
+          lot_size_sf: prof.lot_area_sf || 0,
+          lot_size_acres: (prof.lot_area_sf || 0) / 43560,
+          is_corner: profileData.deal?.is_corner || false,
+          frontage_ft: profileData.deal?.frontage_ft || 200,
+          depth_ft: profileData.deal?.depth_ft || 200,
+          address: profileData.deal?.address || '',
+          parcel_id: profileData.deal?.parcel_id || '',
+        };
+
+        // Construct currentZoning object from profile
+        const currentZoning = {
+          code: prof.base_district_code || 'Unknown',
+          municipality: prof.municipality || 'Unknown',
+          state: prof.state || 'GA',
+          max_density_units_per_acre: prof.max_density_per_acre || 100,
+          max_height_ft: prof.max_height_ft || 85,
+          max_far: prof.applied_far || prof.combined_far || prof.residential_far || 3.0,
+          lot_coverage_pct: prof.max_lot_coverage_pct || 80,
+          parking: {
+            per_unit: prof.min_parking_per_unit || 1.0,
+            guest_per_unit: 0.25,
+          },
+          setbacks: {
+            front_ft: prof.setback_front_ft || 0,
+            side_ft: prof.setback_side_ft || 10,
+            rear_ft: prof.setback_rear_ft || 20,
+          },
+        };
+
+        // Compute scenarios immediately (client-side preview)
+        const scenarios = generatePathScenarios(parcel, currentZoning);
+        setPathScenarios(scenarios);
+        console.log('🔄 Computed client-side scenarios:', scenarios);
 
         if (profileData.profile?.base_district_code && profileData.profile?.municipality) {
           try {
@@ -701,6 +1257,56 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   return (
     <div className="space-y-5">
+      {/* Path Scenarios Section — Client-side instant preview */}
+      {pathScenarios && pathScenarios.paths && pathScenarios.paths.length > 0 && (
+        <div>
+          {/* Path Selection Intro */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={s.cardLabel}>SELECT DEVELOPMENT PATH</div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono, marginBottom: 10 }}>
+              Path selection cascades to unit mix, construction costs, timeline, ProForma, and JEDI Score.
+            </div>
+          </div>
+
+          {/* Path Comparison Cards */}
+          <PathComparisonCards
+            paths={pathScenarios.paths}
+            selectedPath={selectedColKey || 'by_right'}
+            onSelectPath={(pathId) => {
+              const selectedPath = pathScenarios.paths.find((p: any) => p.id === pathId);
+              if (selectedPath && selectedPath.envelope) {
+                // Convert path envelope to recommendation format for handleSelectPath
+                const rec = {
+                  maxUnits: selectedPath.envelope.max_units,
+                  maxGba: selectedPath.envelope.max_gfa,
+                  maxStories: selectedPath.envelope.max_stories,
+                  parkingRequired: selectedPath.envelope.parking.total_spaces,
+                  appliedFar: null,
+                  bindingConstraint: selectedPath.envelope.binding_constraint,
+                };
+                handleSelectPath(pathId, rec);
+              }
+            }}
+          />
+
+          {/* Constraint Waterfall */}
+          {selectedColKey && pathScenarios.paths.find((p: any) => p.id === selectedColKey) && (
+            <ConstraintWaterfall
+              constraints={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.envelope?.constraints || []}
+              maxPossible={Math.max(...pathScenarios.paths.map((p: any) => p.envelope.max_units))}
+            />
+          )}
+
+          {/* Envelope Detail */}
+          {selectedColKey && pathScenarios.paths.find((p: any) => p.id === selectedColKey) && (
+            <EnvelopeDetail
+              envelope={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.envelope}
+              label={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.label}
+            />
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>
