@@ -3,12 +3,13 @@
  * Investment strategy planning and execution tracking
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { StrategyType } from '../../../contexts/DealModuleContext';
 import { apiClient } from '../../../services/api.client';
+import { getDealType, getAvailableStrategies, type StrategyId, type DealType } from '../../../shared/config/deal-type-visibility';
 import {
   strategyScores as mockStrategyScores,
   heatmapData as mockHeatmapData,
@@ -91,10 +92,84 @@ const STRATEGY_ID_TO_TYPE: Record<string, StrategyType> = {
   'development': 'build_to_sell',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Filter strategy data based on available strategies for deal type
+ */
+function filterStrategyData(
+  availableStrategies: StrategyId[],
+  scores: EnhancedStrategyScore[],
+  heatmap: HeatmapCell[],
+  names: string[],
+  roi: ROIMetric[]
+) {
+  // Convert StrategyId to lowercase for matching (BTS -> bts)
+  const availableIds = availableStrategies.map(s => s.toLowerCase());
+
+  return {
+    filteredScores: scores.filter(s => availableIds.includes(s.id)),
+    filteredHeatmap: heatmap.filter(h => availableIds.includes(h.strategy.toLowerCase())),
+    filteredNames: names.filter(n => {
+      const strategyId = scores.find(s => s.label.includes(n))?.id;
+      return strategyId && availableIds.includes(strategyId);
+    }),
+    filteredROI: roi,  // ROI filtering is more complex, handled in render
+  };
+}
+
+/**
+ * Compute arbitrage alert based on actual strategy scores
+ * Logic: if max score - second max > 15 AND max > 70, show arbitrage opportunity
+ */
+function computeArbitrageAlert(
+  scores: EnhancedStrategyScore[],
+  originalAlert: ArbitrageAlert
+): ArbitrageAlert {
+  if (scores.length < 2) {
+    return { ...originalAlert, show: false };
+  }
+
+  const sorted = [...scores].sort((a, b) => b.score - a.score);
+  const maxScore = sorted[0].score;
+  const secondMaxScore = sorted[1].score;
+  const delta = maxScore - secondMaxScore;
+
+  if (delta > 15 && maxScore > 70) {
+    return {
+      ...originalAlert,
+      show: true,
+      recommended: sorted[0].label,
+      delta,
+    };
+  }
+
+  return { ...originalAlert, show: false };
+}
+
 export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
   const { emitEvent, updateStrategy } = useDealModule();
+
+  // Deal type and strategy filtering
+  const dealType = useMemo(() => getDealType({ projectType: deal.projectType, dealType: deal.dealType }), [deal.projectType, deal.dealType]);
+  const availableStrategies = useMemo(() => getAvailableStrategies(dealType), [dealType]);
+
+  // Sub-tab state
+  const [activeSubTab, setActiveSubTab] = useState<'scores' | 'heatmap' | 'roi' | 'custom'>('scores');
+
+  // Custom strategies for CustomScreenTab
+  interface CustomStrategyScore {
+    strategyId: string;
+    strategyName: string;
+    score: number;
+    matched: boolean;
+    conditionResults: Array<{ conditionId: string; metricId: string; passed: boolean; score: number }>;
+  }
+  const [customStrategyScores, setCustomStrategyScores] = useState<CustomStrategyScore[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveData, setIsLiveData] = useState(false);
@@ -135,28 +210,43 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           const liveStrategyScores = analyses
             .filter((a: any) => a.roi_metrics?.strategyScore)
             .map((a: any) => a.roi_metrics.strategyScore);
-          if (liveStrategyScores.length > 0) setStrategyScores(liveStrategyScores);
+          if (liveStrategyScores.length > 0) {
+            // Apply deal-type filtering
+            const filtered = filterStrategyData(
+              availableStrategies,
+              liveStrategyScores,
+              analyses.find((a: any) => a.roi_metrics?.heatmapData)?.roi_metrics?.heatmapData || mockHeatmapData,
+              analyses.find((a: any) => a.roi_metrics?.strategyNames)?.roi_metrics?.strategyNames || mockStrategyNames,
+              analyses.find((a: any) => a.roi_metrics?.roiHeadToHead)?.roi_metrics?.roiHeadToHead || mockRoiHeadToHead
+            );
+            setStrategyScores(filtered.filteredScores);
+            setHeatmapData(filtered.filteredHeatmap);
+            setStrategyNames(filtered.filteredNames);
+
+            // Compute arbitrage from actual scores
+            const computedAlert = computeArbitrageAlert(filtered.filteredScores, mockArbitrageAlert);
+            setArbitrageAlert(computedAlert);
+          }
 
           const liveHeatmap = analyses
             .filter((a: any) => a.roi_metrics?.heatmapData)
             .flatMap((a: any) => a.roi_metrics.heatmapData);
-          if (liveHeatmap.length > 0) setHeatmapData(liveHeatmap);
+          if (liveHeatmap.length > 0 && liveStrategyScores.length === 0) {
+            // Only set heatmap if we didn't already set it above
+            setHeatmapData(liveHeatmap);
+          }
 
           const liveSignalNames = analyses
             .find((a: any) => a.roi_metrics?.signalNames);
-          if (liveSignalNames) setSignalNames(liveSignalNames.roi_metrics.signalNames);
+          if (liveSignalNames && liveStrategyScores.length === 0) setSignalNames(liveSignalNames.roi_metrics.signalNames);
 
           const liveStrategyNames = analyses
             .find((a: any) => a.roi_metrics?.strategyNames);
-          if (liveStrategyNames) setStrategyNames(liveStrategyNames.roi_metrics.strategyNames);
+          if (liveStrategyNames && liveStrategyScores.length === 0) setStrategyNames(liveStrategyNames.roi_metrics.strategyNames);
 
           const liveRoiHeadToHead = analyses
             .find((a: any) => a.roi_metrics?.roiHeadToHead);
-          if (liveRoiHeadToHead) setRoiHeadToHead(liveRoiHeadToHead.roi_metrics.roiHeadToHead);
-
-          const liveArbitrageAlert = analyses
-            .find((a: any) => a.roi_metrics?.arbitrageAlert);
-          if (liveArbitrageAlert) setArbitrageAlert(liveArbitrageAlert.roi_metrics.arbitrageAlert);
+          if (liveRoiHeadToHead && liveStrategyScores.length === 0) setRoiHeadToHead(liveRoiHeadToHead.roi_metrics.roiHeadToHead);
 
           const liveAcquisitionStats = analyses
             .find((a: any) => a.assumptions?.acquisitionStats);
@@ -216,7 +306,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       });
 
     return () => { cancelled = true; };
-  }, [deal.id]);
+  }, [deal.id, availableStrategies]);
 
   // M08 → M11+ strategy event: emit when user selects a strategy
   const handleStrategySelect = useCallback((strategyId: string) => {
