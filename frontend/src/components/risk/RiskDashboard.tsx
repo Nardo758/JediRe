@@ -37,7 +37,7 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { useDealType } from '../../stores/dealStore';
-import { getRiskWeightProfile, RISK_WEIGHTS } from '../../shared/config/deal-type-visibility';
+import { getRiskWeightProfile, RISK_WEIGHTS } from '@/shared/config/deal-type-visibility';
 
 interface CompositeRiskProfile {
   tradeAreaId: string;

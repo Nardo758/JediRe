@@ -193,6 +193,135 @@ router.get('/discovery/job/:jobId', (req: Request, res: Response) => {
   res.json({ success: true, jobId: req.params.jobId, ...job });
 });
 
+// ── REIT Web-Search Pass ──────────────────────────────────────────────────────
+// Second-pass discovery for no-website targets: uses a regular Google search
+// to find property pages on known REIT / PM company domains.
+
+interface BulkReitSearchJob {
+  status: 'running' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  discovered: number;
+  failed: number;
+  startedAt: Date;
+  completedAt: Date | null;
+  errors: string[];
+}
+
+const activeReitJobs = new Map<string, BulkReitSearchJob>();
+let currentReitJobId: string | null = null;
+
+router.get('/discovery/reit-search/status', async (_req: Request, res: Response) => {
+  try {
+    const counts = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE website_url IS NULL OR website_url = '')              AS no_website,
+        COUNT(*) FILTER (WHERE metadata->>'reit_search_done' = 'true')              AS reit_searched,
+        COUNT(*) FILTER (WHERE (website_url IS NULL OR website_url = '')
+                           AND (metadata->>'reit_search_done' IS NULL
+                             OR metadata->>'reit_search_done' != 'true')
+                           AND active = TRUE)                                        AS pending,
+        COUNT(*) FILTER (WHERE url_source = 'reit_web_search')                     AS found_via_reit_search
+      FROM rent_scrape_targets
+      WHERE market = 'Atlanta'
+    `);
+    const job = currentReitJobId ? activeReitJobs.get(currentReitJobId) : null;
+    res.json({
+      success: true,
+      counts: counts.rows[0],
+      activeJob: job ? { jobId: currentReitJobId, ...job } : null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/discovery/reit-search/run', async (req: Request, res: Response) => {
+  try {
+    if (currentReitJobId && activeReitJobs.get(currentReitJobId)?.status === 'running') {
+      return res.status(409).json({
+        error: 'A REIT search job is already running',
+        jobId: currentReitJobId,
+      });
+    }
+
+    const market  = req.body?.market  || 'Atlanta';
+    const limit   = req.body?.limit   || 277;
+    const delayMs = Math.max(req.body?.delayMs || 1200, 500);
+
+    const countQ = await pool.query(
+      `SELECT COUNT(*) AS pending
+       FROM rent_scrape_targets
+       WHERE market ILIKE $1
+         AND active = TRUE
+         AND (website_url IS NULL OR website_url = '')
+         AND (metadata->>'reit_search_done' IS NULL OR metadata->>'reit_search_done' != 'true')`,
+      [market]
+    );
+
+    const total = Math.min(parseInt(countQ.rows[0].pending, 10), limit);
+    if (total === 0) {
+      return res.json({ success: true, message: 'No pending targets for REIT search', total: 0 });
+    }
+
+    const jobId = `reit-search-${market.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+    const job: BulkReitSearchJob = {
+      status: 'running',
+      total,
+      processed: 0,
+      discovered: 0,
+      failed: 0,
+      startedAt: new Date(),
+      completedAt: null,
+      errors: [],
+    };
+    activeReitJobs.set(jobId, job);
+    currentReitJobId = jobId;
+
+    res.json({
+      success: true,
+      jobId,
+      total,
+      market,
+      delayMs,
+      message: `REIT web-search started for ${total} no-website targets in ${market}`,
+      estimatedMinutes: Math.ceil((total * (delayMs + 800)) / 60000),
+    });
+
+    setImmediate(async () => {
+      const discovery = new RentScraperDiscoveryService(pool);
+      try {
+        const result = await discovery.discoverNoWebsiteViaWebSearch({
+          market,
+          limit: total,
+          delayMs,
+        });
+        job.discovered = result.discovered;
+        job.failed = result.failed;
+        job.processed = result.total;
+        job.status = 'completed';
+        job.completedAt = new Date();
+        logger.info(
+          `[reit-search] DONE — ${result.discovered} URLs found out of ${result.total} searched`
+        );
+      } catch (err: any) {
+        job.status = 'failed';
+        job.completedAt = new Date();
+        job.errors.push(err.message);
+        logger.error(`[reit-search] Job failed: ${err.message}`);
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/discovery/reit-search/job/:jobId', (req: Request, res: Response) => {
+  const job = activeReitJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json({ success: true, jobId: req.params.jobId, ...job });
+});
+
 // ── Bulk Scrape Endpoints ────────────────────────────────────────────────────
 
 interface BulkScrapeJob {

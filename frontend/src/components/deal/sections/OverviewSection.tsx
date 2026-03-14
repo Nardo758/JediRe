@@ -54,12 +54,14 @@ interface OverviewSectionProps {
   deal: any;
   onStrategySelected?: (strategyId: string) => void;
   onTabChange?: (tabId: string) => void;
+  geographicContext?: any;
 }
 
 export const OverviewSection: React.FC<OverviewSectionProps> = ({
   deal,
   onStrategySelected,
   onTabChange,
+  geographicContext,
 }) => {
   const { 
     capitalStructure, strategy: strategyCtx, financial, market, design3D, 
@@ -106,10 +108,14 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     loadJediScore();
     loadEntitlements();
     loadCapitalStack();
-    loadMarketData();
     loadEntitlementBenchmarks();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
+
+  useEffect(() => {
+    if (!deal?.id) return;
+    loadMarketData();
+  }, [deal?.id, geographicContext]);
 
   const loadEntitlements = async () => {
     if (!deal?.id) return;
@@ -152,18 +158,12 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     }
   };
 
-  const loadMarketData = async () => {
-    if (!deal?.id) return;
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${deal.id}/geographic-context`);
-      const geo = res.data?.data || res.data;
-      if (geo?.submarket?.avgCapRate) {
-        setMarketCapRate(geo.submarket.avgCapRate);
-      } else if (geo?.msa?.avgCapRate) {
-        setMarketCapRate(geo.msa.avgCapRate);
-      }
-    } catch (err) {
-      console.warn('Could not load market data:', err);
+  const loadMarketData = () => {
+    if (!deal?.id || !geographicContext) return;
+    if (geographicContext?.submarket?.avgCapRate) {
+      setMarketCapRate(geographicContext.submarket.avgCapRate);
+    } else if (geographicContext?.msa?.avgCapRate) {
+      setMarketCapRate(geographicContext.msa.avgCapRate);
     }
   };
 

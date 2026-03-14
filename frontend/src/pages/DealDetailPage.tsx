@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import {
+import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box,
@@ -12,10 +12,11 @@ import {
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { apiClient } from '../services/api.client';
-import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
+import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
+import { isModuleVisible, type ModuleId } from '@/shared/config/deal-type-visibility';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
@@ -27,13 +28,7 @@ import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
-import FinancialModelingSection from '../components/deal/sections/FinancialModelingSection';
-import ProFormaIntelligence from '../components/deal/sections/ProFormaIntelligence';
-import ProFormaWithTrafficSection from '../components/deal/sections/ProFormaWithTrafficSection';
-import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
-import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
-import CapitalStructureSection from '../components/deal/sections/CapitalStructureSection';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
@@ -52,17 +47,12 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
-import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
-import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
-import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
-import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
@@ -108,21 +98,20 @@ const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { fetchDealById } = useDealStore();
-  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
-  const config = useDealTypeConfig();
+  const { fetchDealContext } = useDealStore();
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [geographicStats, setGeographicStats] = useState<any>(null);
+  const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
 
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
-      loadTradeAreaForDeal(dealId);
       fetchGeographicContext(dealId);
     }
   }, [dealId]);
@@ -131,6 +120,11 @@ const DealDetailPage: React.FC = () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
       const context = response?.data?.data;
+      setGeographicContext(context || null);
+      setActiveTradeArea(context?.trade_area || null);
+      if (context?.active_scope) {
+        setScope(context.active_scope);
+      }
       const stats: any = {};
       if (context?.trade_area) {
         stats.trade_area = context.trade_area.stats
@@ -151,6 +145,7 @@ const DealDetailPage: React.FC = () => {
       }
       setGeographicStats(stats);
     } catch {
+      setGeographicContext(null);
       setGeographicStats(null);
     }
   };
@@ -192,7 +187,7 @@ const DealDetailPage: React.FC = () => {
       const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
       const body = response?.data;
       setDeal(body?.deal || body?.data || body);
-      fetchDealById(id);
+      fetchDealContext(id);
     } catch (error) {
       console.error('Error loading deal:', error);
     } finally {
@@ -222,44 +217,44 @@ const DealDetailPage: React.FC = () => {
   }, []);
 
   // Stage 1: OVERVIEW & SETUP - Get oriented
-  const overviewSetupTabs: DealTab[] = [
-    { 
-      id: 'overview', 
-      label: 'Deal Overview', 
-      icon: <BarChart3 size={16} />, 
+  const overviewSetupTabs: Tab[] = [
+    {
+      id: 'overview',
+      label: 'Deal Overview',
+      icon: <BarChart3 size={16} />,
       component: OverviewSection,
-      moduleId: 'M01',
+      moduleId: 'M01'
     },
-    { 
-      id: 'zoning', 
-      label: 'Property & Zoning', 
-      icon: <Landmark size={16} />, 
+    {
+      id: 'zoning',
+      label: 'Property & Zoning',
+      icon: <Landmark size={16} />,
       component: ZoningModuleSection,
-      moduleId: 'M02',
+      moduleId: 'M02'
     },
-    { 
-      id: 'context-tracker', 
-      label: 'Context Tracker', 
-      icon: <Compass size={16} />, 
-      component: ContextTrackerSection,
+    {
+      id: 'context-tracker',
+      label: 'Context Tracker',
+      icon: <Compass size={16} />,
+      component: ContextTrackerSection
     },
-    { 
-      id: 'team', 
-      label: 'Team & Collaborators', 
-      icon: <Users size={16} />, 
+    {
+      id: 'team',
+      label: 'Team & Collaborators',
+      icon: <Users size={16} />,
       component: TeamManagementSection,
-      moduleId: 'M17',
+      moduleId: 'M17'
     },
   ];
 
   // Stage 2: MARKET RESEARCH - Validate opportunity
-  const marketResearchTabs: DealTab[] = [
-    { 
-      id: 'market-intelligence', 
-      label: 'Market Intelligence', 
-      icon: <TrendingUp size={16} />, 
+  const marketResearchTabs: Tab[] = [
+    {
+      id: 'market-intelligence',
+      label: 'Market Intelligence',
+      icon: <TrendingUp size={16} />,
       component: MarketIntelligencePage,
-      moduleId: 'M05',
+      moduleId: 'M05'
     },
     {
       id: 'unit-mix-intelligence',
@@ -268,61 +263,33 @@ const DealDetailPage: React.FC = () => {
       component: UnitMixIntelligence,
       // No moduleId — Unit Program tool, always visible across deal types
     },
-    { 
-      id: 'competition', 
-      label: 'Competition Analysis', 
-      icon: <Target size={16} />, 
+    {
+      id: 'competition',
+      label: 'Competition Analysis',
+      icon: <Target size={16} />,
       component: CompetitionPage,
-      moduleId: 'M15',
-    },
-    {
-      id: 'traffic-intelligence',
-      label: 'Traffic Intelligence',
-      icon: <Activity size={16} />,
-      component: TrafficIntelligenceSection,
-      moduleId: 'M07',
-    },
-    {
-      id: 'competitive-position',
-      label: 'Competitive Position',
-      icon: <Radar size={16} />,
-      component: CompetitivePositionSection,
-      moduleId: 'M15',
+      moduleId: 'M15'
     },
     {
       id: 'supply',
       label: 'Supply Pipeline',
       icon: <Package size={16} />,
       component: SupplyPipelinePage,
-      moduleId: 'M04',
-    },
-    {
-      id: 'supply-intelligence',
-      label: 'Supply Intelligence',
-      icon: <Radar size={16} />,
-      component: SupplyIntelligence,
-      moduleId: 'M04',
-    },
-    {
-      id: 'market-vitals',
-      label: 'Market Vitals',
-      icon: <BarChart2 size={16} />,
-      component: MarketIntelligence,
-      moduleId: 'M05',
+      moduleId: 'M04'
     },
     {
       id: 'opportunity-engine',
       label: 'Opportunity Engine',
       icon: <Zap size={16} />,
       component: OpportunityEngineSection,
-      moduleId: 'M05',
+      moduleId: 'M05'
     },
-    { 
-      id: 'trends', 
-      label: 'Trends Analysis', 
-      icon: <LineChart size={16} />, 
+    {
+      id: 'trends',
+      label: 'Trends Analysis',
+      icon: <LineChart size={16} />,
       component: TrendsAnalysisSection,
-      moduleId: 'M05',
+      moduleId: 'M05'
     },
     {
       id: 'comps',
@@ -335,56 +302,48 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 3: DEAL DESIGN - Create the deal
   // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  // M03 (3D Design) is gated by the visibility filter below — no conditional split needed.
-  const dealDesignTabs: DealTab[] = [
-    {
-      id: '3d-design',
-      label: '3D Building Design',
-      icon: <Box size={16} />,
-      component: Design3DPageEnhanced,
-      moduleId: 'M03',
+  const dealDesignTabs: Tab[] = [
+    { 
+      id: '3d-design', 
+      label: '3D Building Design', 
+      icon: <Box size={16} />, 
+      component: Design3DPageEnhanced 
     },
-    {
-      id: 'strategy',
-      label: 'Strategy',
-      icon: <Target size={16} />,
-      component: StrategySection,
-      moduleId: 'M08',
+    { 
+      id: 'strategy', 
+      label: 'Strategy', 
+      icon: <Target size={16} />, 
+      component: StrategySection 
     },
     {
       id: 'traffic-module',
       label: 'Traffic Module',
       icon: <Activity size={16} />,
-      component: TrafficModule,
-      moduleId: 'M07',
+      component: TrafficModule
     },
     {
       id: 'proforma',
       label: 'Pro Forma',
       icon: <Layers size={16} />,
-      component: ProFormaTab,
-      moduleId: 'M09',
+      component: ProFormaTab
     },
     {
       id: 'tax',
       label: 'Tax Intelligence',
       icon: <Calculator size={16} />,
-      component: TaxModule,
-      // No moduleId — always visible
+      component: TaxModule
     },
     {
       id: 'debt',
       label: 'Debt, Equity & Exit',
       icon: <DollarSign size={16} />,
-      component: DebtTab,
-      moduleId: 'M11',
+      component: DebtTab
     },
     {
       id: 'financial-dashboard',
       label: 'Financial Dashboard',
       icon: <BarChart3 size={16} />,
-      component: FinancialDashboard,
-      // No moduleId — always visible
+      component: FinancialDashboard
     },
   ];
 
@@ -397,111 +356,83 @@ const DealDetailPage: React.FC = () => {
       component: CollisionAnalysisSection,
       // No moduleId — always visible
     },
-    { 
-      id: 'due-diligence', 
-      label: 'DD Checklist', 
-      icon: <ClipboardCheck size={16} />, 
+    {
+      id: 'due-diligence',
+      label: 'DD Checklist',
+      icon: <ClipboardCheck size={16} />,
       component: DueDiligencePage,
-      moduleId: 'M13',
-    },
-    { 
-      id: 'deal-status', 
-      label: 'Deal Lifecycle', 
-      icon: <LayoutDashboard size={16} />, 
-      component: DealStatusSection,
-      // No moduleId — always visible
+      moduleId: 'M13'
     },
     {
-      id: 'risk-management',
-      label: 'Risk Management',
-      icon: <AlertTriangle size={16} />,
-      component: RiskManagementSection,
-      moduleId: 'M14',
+      id: 'deal-status',
+      label: 'Deal Lifecycle',
+      icon: <LayoutDashboard size={16} />,
+      component: DealStatusSection
     },
     {
       id: 'risk-intelligence',
       label: 'Risk Intelligence',
       icon: <Shield size={16} />,
       component: RiskIntelligence,
-      moduleId: 'M14',
+      moduleId: 'M14'
     },
-    { 
-      id: 'environmental-esg', 
-      label: 'Environmental & ESG', 
-      icon: <Leaf size={16} />, 
-      component: EnvironmentalESGSection,
-      // No moduleId — always visible
-    },
-    { 
-      id: 'site-intelligence', 
-      label: 'Site Intelligence', 
-      icon: <Activity size={16} />, 
-      component: SiteIntelligenceSection,
-      // No moduleId — always visible
-    },
-    { 
-      id: 'files', 
-      label: 'Files & Assets', 
-      icon: <FolderOpen size={16} />, 
+    {
+      id: 'files',
+      label: 'Files & Assets',
+      icon: <FolderOpen size={16} />,
       component: FilesSection,
-      moduleId: 'M18',
+      moduleId: 'M18'
     },
   ];
 
   // Stage 5: EXECUTION - Build & deliver
-  const executionTabs: DealTab[] = [
-    { 
-      id: 'timeline', 
-      label: 'Project Timeline', 
-      icon: <Calendar size={16} />, 
-      component: ProjectTimelinePage,
-      // No moduleId — always visible
+  const executionTabs: Tab[] = [
+    {
+      id: 'timeline',
+      label: 'Project Timeline',
+      icon: <Calendar size={16} />,
+      component: ProjectTimelinePage
     },
-    { 
-      id: 'project-management', 
-      label: 'Project Management', 
-      icon: <Briefcase size={16} />, 
+    {
+      id: 'project-management',
+      label: 'Project Management',
+      icon: <Briefcase size={16} />,
       component: ProjectManagementSection,
-      // No moduleId — always visible
+      moduleId: 'M17'
     },
-    { 
-      id: 'construction-management', 
-      label: 'Construction Management', 
-      icon: <HardHat size={16} />, 
-      component: ConstructionManagementSection,
-      // No moduleId — always visible
+    {
+      id: 'construction-management',
+      label: 'Construction Management',
+      icon: <HardHat size={16} />,
+      component: ConstructionManagementSection
     },
   ];
 
   // Always Available: AI ASSISTANT
-  const aiAssistantTabs: DealTab[] = [
-    { 
-      id: 'ai-agent', 
-      label: 'Opus AI Agent', 
-      icon: <Bot size={16} />, 
-      component: OpusAISection,
+  const aiAssistantTabs: Tab[] = [
+    {
+      id: 'ai-agent',
+      label: 'Opus AI Agent',
+      icon: <Bot size={16} />,
+      component: OpusAISection
     },
-    { 
-      id: 'ai-recommendations', 
-      label: 'AI Recommendations', 
-      icon: <Lightbulb size={16} />, 
-      component: AIRecommendationsSection,
+    {
+      id: 'ai-recommendations',
+      label: 'AI Recommendations',
+      icon: <Lightbulb size={16} />,
+      component: AIRecommendationsSection
     },
   ];
 
-  // Filter helper: tabs without a moduleId always show; known moduleIds respect deal-type config.
-  const visibleOnly = (tabs: DealTab[]) =>
-    tabs.filter(tab => {
-      if (!tab.moduleId) return true;
-      return config.isModuleVisible(tab.moduleId as ModuleId);
-    });
+  // Filter tabs based on module visibility configuration
+  const filtered = (tabs: Tab[]) => tabs.filter(t => !t.moduleId || isModuleVisible(t.moduleId as ModuleId, config.dealType));
 
   const allTabs = [
-    ...visibleOnly(overviewSetupTabs),
-    ...visibleOnly(marketResearchTabs),
-    ...visibleOnly(dealDesignTabs),
-    ...visibleOnly(dueDiligenceTabs),
-    ...visibleOnly(executionTabs),
+    ...filtered(overviewSetupTabs),
+    ...filtered(marketResearchTabs),
+    ...filtered(dealDesignTabs),
+    ...filtered(dueDiligenceTabs),
+    ...filtered(executionTabs),
     ...aiAssistantTabs,
   ];
 
@@ -726,7 +657,7 @@ const DealDetailPage: React.FC = () => {
           </aside>
 
           <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
-            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
+            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
           </main>
 
           <ZoningAgentChat

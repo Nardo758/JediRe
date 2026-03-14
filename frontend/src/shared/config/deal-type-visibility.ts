@@ -543,11 +543,7 @@ export function getRiskWeightProfile(dealType: DealType): RiskWeightProfile {
  */
 export function isModuleVisible(moduleId: ModuleId, dealType: DealType): boolean {
   const tab = MODULE_TABS.find((t) => t.moduleId === moduleId);
-  if (!tab) {
-    console.warn(`[DealTypeVisibility] Unknown moduleId: ${moduleId}`);
-    return true;
-  }
-  return tab.showFor[dealType] !== 'hidden';
+  return tab ? tab.showFor[dealType] !== 'hidden' : false;
 }
 
 /**

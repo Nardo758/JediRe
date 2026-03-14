@@ -18,7 +18,7 @@ import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { useDealType } from '../../../stores/dealStore';
-import { getZoningDepth } from '../../../shared/config/deal-type-visibility';
+import { getZoningDepth } from '@/shared/config/deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
