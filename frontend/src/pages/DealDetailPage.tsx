@@ -27,8 +27,6 @@ import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
-import SupplyIntelligence from '../components/deal/sections/SupplyIntelligence';
-import MarketIntelligence from '../components/deal/sections/MarketIntelligence';
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
@@ -48,17 +46,12 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
-import { RiskManagementSection } from '../components/deal/sections/RiskManagementSection';
-import { EnvironmentalESGSection } from '../components/deal/sections/EnvironmentalESGSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { SiteIntelligenceSection } from '../components/deal/sections/SiteIntelligenceSection';
-import { TrafficIntelligenceSection } from '../components/deal/sections/TrafficIntelligenceSection';
-import { CompetitivePositionSection } from '../components/deal/sections/CompetitivePositionSection';
 import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
@@ -267,39 +260,11 @@ const DealDetailPage: React.FC = () => {
       moduleId: 'M15'
     },
     {
-      id: 'traffic-intelligence',
-      label: 'Traffic Intelligence',
-      icon: <Activity size={16} />,
-      component: TrafficIntelligenceSection,
-      moduleId: 'M07'
-    },
-    {
-      id: 'competitive-position',
-      label: 'Competitive Position',
-      icon: <Radar size={16} />,
-      component: CompetitivePositionSection,
-      moduleId: 'M15'
-    },
-    {
       id: 'supply',
       label: 'Supply Pipeline',
       icon: <Package size={16} />,
       component: SupplyPipelinePage,
       moduleId: 'M04'
-    },
-    {
-      id: 'supply-intelligence',
-      label: 'Supply Intelligence',
-      icon: <Radar size={16} />,
-      component: SupplyIntelligence,
-      moduleId: 'M04'
-    },
-    {
-      id: 'market-vitals',
-      label: 'Market Vitals',
-      icon: <BarChart2 size={16} />,
-      component: MarketIntelligence,
-      moduleId: 'M05'
     },
     {
       id: 'opportunity-engine',
@@ -398,30 +363,11 @@ const DealDetailPage: React.FC = () => {
       component: DealStatusSection
     },
     {
-      id: 'risk-management',
-      label: 'Risk Management',
-      icon: <AlertTriangle size={16} />,
-      component: RiskManagementSection,
-      moduleId: 'M14'
-    },
-    {
       id: 'risk-intelligence',
       label: 'Risk Intelligence',
       icon: <Shield size={16} />,
       component: RiskIntelligence,
       moduleId: 'M14'
-    },
-    {
-      id: 'environmental-esg',
-      label: 'Environmental & ESG',
-      icon: <Leaf size={16} />,
-      component: EnvironmentalESGSection
-    },
-    {
-      id: 'site-intelligence',
-      label: 'Site Intelligence',
-      icon: <Activity size={16} />,
-      component: SiteIntelligenceSection
     },
     {
       id: 'files',

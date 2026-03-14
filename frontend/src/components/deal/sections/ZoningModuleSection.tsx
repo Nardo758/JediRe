@@ -17,7 +17,7 @@ import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { useDealType } from '../../../stores/dealStore';
-import { getZoningDepth } from '../../../deal-type-visibility';
+import { getZoningDepth } from '@/shared/config/deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
