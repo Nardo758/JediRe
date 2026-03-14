@@ -8,7 +8,7 @@
 -- Stores closed/passed deals with outcome data for learning
 -- ───────────────────────────────────────────────────────────────
 
-CREATE TABLE archived_deals (
+CREATE TABLE IF NOT EXISTS archived_deals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   -- Original deal reference
@@ -97,7 +97,7 @@ CREATE INDEX idx_unified_docs_archived_deal ON unified_documents (archived_deal_
 -- Track what documents were preserved with each archive
 -- ───────────────────────────────────────────────────────────────
 
-CREATE TABLE archive_statistics (
+CREATE TABLE IF NOT EXISTS archive_statistics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   archived_deal_id UUID NOT NULL REFERENCES archived_deals(id) ON DELETE CASCADE,
   
@@ -124,7 +124,7 @@ CREATE TABLE archive_statistics (
 -- Stores deal outcomes for pattern learning
 -- ───────────────────────────────────────────────────────────────
 
-CREATE TABLE deal_historical_outcomes (
+CREATE TABLE IF NOT EXISTS deal_historical_outcomes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   
   archived_deal_id UUID NOT NULL REFERENCES archived_deals(id) ON DELETE CASCADE,
