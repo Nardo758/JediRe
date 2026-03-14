@@ -1186,6 +1186,247 @@ router.post('/integrations/test', requireAdminAuth, async (req: AuthenticatedReq
   res.json({ success: true, integrations: results });
 });
 
+// ============================================================================
+// SESSION 8: BLS + CENSUS DATA INGESTION ENDPOINTS
+// ============================================================================
+
+router.post('/ingest/bls-qcew', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const job = createJob('bls-qcew');
+  job.status = 'running';
+  job.logs.push('Starting BLS QCEW ingestion for Florida counties...');
+
+  res.json({ success: true, jobId: job.id, message: 'BLS QCEW ingestion started' });
+
+  (async () => {
+    try {
+      const blsApiKey = process.env.BLS_API_KEY;
+      if (!blsApiKey) {
+        throw new Error('BLS_API_KEY environment variable not configured');
+      }
+
+      const { ingestBLSQCEW } = await import('../../services/ingestion/bls-ingest.service');
+      const result = await ingestBLSQCEW(blsApiKey);
+
+      job.recordsProcessed = result.rowsInserted;
+      job.recordsTotal = result.countiesProcessed * 40; // Estimate ~40 quarters per county
+      job.status = 'completed';
+      job.completedAt = new Date();
+
+      job.logs.push(`BLS QCEW ingestion complete:`);
+      job.logs.push(`  Counties processed: ${result.countiesProcessed}`);
+      job.logs.push(`  Rows inserted: ${result.rowsInserted}`);
+      job.logs.push(`  Errors: ${result.errors.length}`);
+
+      if (result.errors.length > 0) {
+        result.errors.slice(0, 10).forEach(err => {
+          job.logs.push(`  ERROR: ${err.county} - ${err.error}`);
+        });
+      }
+    } catch (err: any) {
+      job.status = 'failed';
+      job.completedAt = new Date();
+      job.errors.push(err.message);
+      job.logs.push(`BLS QCEW ingestion failed: ${err.message}`);
+      logger.error('BLS QCEW ingestion failed:', err);
+    }
+  })();
+});
+
+router.post('/ingest/census-acs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const job = createJob('census-acs');
+  job.status = 'running';
+  job.logs.push('Starting Census ACS ingestion for Florida ZIP codes...');
+
+  res.json({ success: true, jobId: job.id, message: 'Census ACS ingestion started' });
+
+  (async () => {
+    try {
+      const censusApiKey = process.env.CENSUS_API_KEY;
+      if (!censusApiKey) {
+        throw new Error('CENSUS_API_KEY environment variable not configured');
+      }
+
+      const { ingestCensusACS } = await import('../../services/ingestion/census-ingest.service');
+      const result = await ingestCensusACS(censusApiKey);
+
+      job.recordsProcessed = result.rowsInserted;
+      job.recordsTotal = result.zipCodesProcessed * 3; // ~3 metrics per ZIP
+      job.status = 'completed';
+      job.completedAt = new Date();
+
+      job.logs.push(`Census ACS ingestion complete:`);
+      job.logs.push(`  ZIP codes processed: ${result.zipCodesProcessed}`);
+      job.logs.push(`  Rows inserted: ${result.rowsInserted}`);
+      job.logs.push(`  Errors: ${result.errors.length}`);
+
+      if (result.errors.length > 0) {
+        result.errors.slice(0, 10).forEach(err => {
+          job.logs.push(`  ERROR: ${err.zip} - ${err.error}`);
+        });
+      }
+    } catch (err: any) {
+      job.status = 'failed';
+      job.completedAt = new Date();
+      job.errors.push(err.message);
+      job.logs.push(`Census ACS ingestion failed: ${err.message}`);
+      logger.error('Census ACS ingestion failed:', err);
+    }
+  })();
+});
+
+router.post('/ingest/census-building-permits', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const job = createJob('census-building-permits');
+  job.status = 'running';
+  job.logs.push('Starting Census Building Permits ingestion for Florida counties...');
+
+  res.json({ success: true, jobId: job.id, message: 'Census Building Permits ingestion started' });
+
+  (async () => {
+    try {
+      const censusApiKey = process.env.CENSUS_API_KEY;
+      if (!censusApiKey) {
+        throw new Error('CENSUS_API_KEY environment variable not configured');
+      }
+
+      const { ingestBuildingPermits } = await import('../../services/ingestion/census-permits-ingest.service');
+      const result = await ingestBuildingPermits(censusApiKey);
+
+      job.recordsProcessed = result.rowsInserted;
+      job.recordsTotal = result.countiesProcessed * 120; // ~120 months * 2 metrics (SF + MF)
+      job.status = 'completed';
+      job.completedAt = new Date();
+
+      job.logs.push(`Census Building Permits ingestion complete:`);
+      job.logs.push(`  Counties processed: ${result.countiesProcessed}`);
+      job.logs.push(`  Rows inserted: ${result.rowsInserted}`);
+      job.logs.push(`  Errors: ${result.errors.length}`);
+
+      if (result.errors.length > 0) {
+        result.errors.slice(0, 10).forEach(err => {
+          job.logs.push(`  ERROR: ${err.county} - ${err.error}`);
+        });
+      }
+    } catch (err: any) {
+      job.status = 'failed';
+      job.completedAt = new Date();
+      job.errors.push(err.message);
+      job.logs.push(`Census Building Permits ingestion failed: ${err.message}`);
+      logger.error('Census Building Permits ingestion failed:', err);
+    }
+  })();
+});
+
+router.post('/ingest/florida-geographies', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const job = createJob('florida-geographies');
+  job.status = 'running';
+  job.logs.push('Seeding Florida geographies (counties, MSAs, and ZIP codes)...');
+
+  res.json({ success: true, jobId: job.id, message: 'Florida geographies seeding started' });
+
+  (async () => {
+    try {
+      // Create geographies table if not exists
+      await query(`
+        CREATE TABLE IF NOT EXISTS geographies (
+          id VARCHAR(50) PRIMARY KEY,
+          type VARCHAR(20) NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          parent_id VARCHAR(50),
+          state VARCHAR(2),
+          lat DOUBLE PRECISION,
+          lng DOUBLE PRECISION,
+          created_at TIMESTAMPTZ DEFAULT NOW(),
+          updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+      `);
+
+      job.logs.push('Geographies table ready');
+
+      // County FIPS and names
+      const counties = [
+        { fipsId: '12001', name: 'Alachua' }, { fipsId: '12003', name: 'Baker' }, { fipsId: '12005', name: 'Bradford' },
+        { fipsId: '12007', name: 'Brevard' }, { fipsId: '12009', name: 'Broward' }, { fipsId: '12011', name: 'Calhoun' },
+        { fipsId: '12013', name: 'Charlotte' }, { fipsId: '12015', name: 'Citrus' }, { fipsId: '12017', name: 'Clay' },
+        { fipsId: '12019', name: 'Collier' }, { fipsId: '12021', name: 'Columbia' }, { fipsId: '12023', name: 'DeSoto' },
+        { fipsId: '12025', name: 'Dixie' }, { fipsId: '12027', name: 'Duval' }, { fipsId: '12029', name: 'Escambia' },
+        { fipsId: '12031', name: 'Flagler' }, { fipsId: '12033', name: 'Franklin' }, { fipsId: '12035', name: 'Gadsden' },
+        { fipsId: '12037', name: 'Gilchrist' }, { fipsId: '12039', name: 'Glades' }, { fipsId: '12041', name: 'Gulf' },
+        { fipsId: '12043', name: 'Hamilton' }, { fipsId: '12045', name: 'Hardee' }, { fipsId: '12047', name: 'Hendry' },
+        { fipsId: '12049', name: 'Hernando' }, { fipsId: '12051', name: 'Highlands' }, { fipsId: '12053', name: 'Hillsborough' },
+        { fipsId: '12055', name: 'Holmes' }, { fipsId: '12057', name: 'Indian River' }, { fipsId: '12059', name: 'Jackson' },
+        { fipsId: '12061', name: 'Jefferson' }, { fipsId: '12063', name: 'Lafayette' }, { fipsId: '12065', name: 'Lake' },
+        { fipsId: '12067', name: 'Lee' }, { fipsId: '12069', name: 'Leon' }, { fipsId: '12071', name: 'Levy' },
+        { fipsId: '12073', name: 'Liberty' }, { fipsId: '12075', name: 'Madison' }, { fipsId: '12077', name: 'Manatee' },
+        { fipsId: '12079', name: 'Marion' }, { fipsId: '12081', name: 'Martin' }, { fipsId: '12083', name: 'Miami-Dade' },
+        { fipsId: '12085', name: 'Monroe' }, { fipsId: '12087', name: 'Nassau' }, { fipsId: '12089', name: 'Okaloosa' },
+        { fipsId: '12091', name: 'Okeechobee' }, { fipsId: '12093', name: 'Orange' }, { fipsId: '12095', name: 'Osceola' },
+        { fipsId: '12097', name: 'Palm Beach' }, { fipsId: '12099', name: 'Pasco' }, { fipsId: '12101', name: 'Pinellas' },
+        { fipsId: '12103', name: 'Polk' }, { fipsId: '12105', name: 'Putnam' }, { fipsId: '12107', name: 'St. Johns' },
+        { fipsId: '12109', name: 'St. Lucie' }, { fipsId: '12111', name: 'Santa Rosa' }, { fipsId: '12113', name: 'Sarasota' },
+        { fipsId: '12115', name: 'Seminole' }, { fipsId: '12117', name: 'Sumter' }, { fipsId: '12119', name: 'Suwannee' },
+        { fipsId: '12121', name: 'Taylor' }, { fipsId: '12123', name: 'Union' }, { fipsId: '12125', name: 'Volusia' },
+        { fipsId: '12127', name: 'Wakulla' }, { fipsId: '12129', name: 'Walton' }, { fipsId: '12131', name: 'Washington' },
+      ];
+
+      let countiesInserted = 0;
+      for (const county of counties) {
+        try {
+          await query(
+            `INSERT INTO geographies (id, type, name, parent_id, state) VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+            [county.fipsId, 'county', county.name, '12', 'FL']
+          );
+          countiesInserted++;
+        } catch (err: any) {
+          job.logs.push(`Warning: Failed to insert county ${county.name}`);
+        }
+      }
+
+      job.logs.push(`Seeded ${countiesInserted} counties`);
+
+      // Florida MSAs
+      const msas = [
+        { fipsId: '45300', name: 'Tampa-St Petersburg' }, { fipsId: '36740', name: 'Orlando' },
+        { fipsId: '33100', name: 'Miami' }, { fipsId: '27260', name: 'Jacksonville' },
+        { fipsId: '38940', name: 'Port St Lucie' }, { fipsId: '15980', name: 'Cape Coral' },
+        { fipsId: '19660', name: 'Deltona' }, { fipsId: '29460', name: 'Lakeland' },
+        { fipsId: '37340', name: 'Palm Bay' }, { fipsId: '35840', name: 'North Port' },
+        { fipsId: '37860', name: 'Pensacola' }, { fipsId: '23540', name: 'Gainesville' },
+      ];
+
+      let msasInserted = 0;
+      for (const msa of msas) {
+        try {
+          await query(
+            `INSERT INTO geographies (id, type, name, parent_id, state) VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+            [msa.fipsId, 'msa', msa.name, '12', 'FL']
+          );
+          msasInserted++;
+        } catch (err: any) {
+          job.logs.push(`Warning: Failed to insert MSA ${msa.name}`);
+        }
+      }
+
+      job.logs.push(`Seeded ${msasInserted} MSAs`);
+
+      job.recordsProcessed = countiesInserted + msasInserted;
+      job.recordsTotal = counties.length + msas.length;
+      job.status = 'completed';
+      job.completedAt = new Date();
+
+      job.logs.push('Florida geographies seeding complete!');
+      job.logs.push('Note: ZIP codes are automatically seeded during Census ACS ingestion');
+    } catch (err: any) {
+      job.status = 'failed';
+      job.completedAt = new Date();
+      job.errors.push(err.message);
+      job.logs.push(`Florida geographies seeding failed: ${err.message}`);
+      logger.error('Florida geographies seeding failed:', err);
+    }
+  })();
+});
+
 router.get('/jobs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   const status = req.query.status as string;
   let jobs = Array.from(activeJobs.values());
