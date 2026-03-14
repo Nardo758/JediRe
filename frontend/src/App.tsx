@@ -20,7 +20,6 @@ import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
-import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 
 // Lazy-load map-heavy components to reduce initial bundle size
 const MapPage = lazy(() => import('./pages/MapPage').then(m => ({ default: m.MapPage })));
@@ -66,6 +65,7 @@ import {
   CompAnalysisPage,
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
+import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 
 
 function AppContent() {
@@ -181,7 +181,11 @@ function AppContent() {
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
-          
+
+          {/* Strategy Builder */}
+          <Route path="/strategies" element={<StrategyBuilderPage />} />
+          <Route path="/strategies/:id" element={<StrategyBuilderPage />} />
+
           {/* Demo Routes */}
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />

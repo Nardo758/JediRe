@@ -3,12 +3,14 @@
  * Investment strategy planning and execution tracking
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { StrategyType } from '../../../contexts/DealModuleContext';
 import { apiClient } from '../../../services/api.client';
+import { getDealType, getAvailableStrategies, type StrategyId, type DealType } from '../../../shared/config/deal-type-visibility';
+import CustomScreenTab from './CustomScreenTab';
 import {
   strategyScores as mockStrategyScores,
   heatmapData as mockHeatmapData,
@@ -91,6 +93,61 @@ const STRATEGY_ID_TO_TYPE: Record<string, StrategyType> = {
   'development': 'build_to_sell',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Filter strategy data based on available strategies for deal type
+ */
+function filterStrategyData(
+  availableStrategies: StrategyId[],
+  scores: EnhancedStrategyScore[],
+  heatmap: HeatmapCell[],
+  names: string[],
+  roi: ROIMetric[]
+) {
+  const availableIds = availableStrategies.map(s => s.toLowerCase());
+
+  return {
+    filteredScores: scores.filter(s => availableIds.includes(s.id)),
+    filteredHeatmap: heatmap.filter(h => availableIds.includes(h.strategy.toLowerCase())),
+    filteredNames: names.filter(n => {
+      const strategyId = scores.find(s => s.label.includes(n))?.id;
+      return strategyId && availableIds.includes(strategyId);
+    }),
+    filteredROI: roi,
+  };
+}
+
+/**
+ * Compute arbitrage alert based on actual strategy scores
+ */
+function computeArbitrageAlert(
+  scores: EnhancedStrategyScore[],
+  originalAlert: ArbitrageAlert
+): ArbitrageAlert {
+  if (scores.length < 2) {
+    return { ...originalAlert, show: false };
+  }
+
+  const sorted = [...scores].sort((a, b) => b.score - a.score);
+  const maxScore = sorted[0].score;
+  const secondMaxScore = sorted[1].score;
+  const delta = maxScore - secondMaxScore;
+
+  if (delta > 15 && maxScore > 70) {
+    return {
+      ...originalAlert,
+      show: true,
+      recommended: sorted[0].label,
+      delta,
+    };
+  }
+
+  return { ...originalAlert, show: false };
+}
+
 type StrategyTab = 'overview' | 'signals' | 'returns' | 'custom';
 
 interface CustomStrategy {
@@ -111,6 +168,23 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const [scoreDealResult, setScoreDealResult] = useState<any[]>([]);
   const [scoreDealLoading, setScoreDealLoading] = useState(false);
   const { emitEvent, updateStrategy } = useDealModule();
+
+  // Deal type and strategy filtering
+  const dealType = useMemo(() => getDealType({ projectType: deal.projectType, dealType: deal.dealType }), [deal.projectType, deal.dealType]);
+  const availableStrategies = useMemo(() => getAvailableStrategies(dealType), [dealType]);
+
+  // Sub-tab state
+  const [activeSubTab, setActiveSubTab] = useState<'scores' | 'heatmap' | 'roi' | 'custom'>('scores');
+
+  // Custom strategies for CustomScreenTab
+  interface CustomStrategyScore {
+    strategyId: string;
+    strategyName: string;
+    score: number;
+    matched: boolean;
+    conditionResults: Array<{ conditionId: string; metricId: string; passed: boolean; score: number }>;
+  }
+  const [customStrategyScores, setCustomStrategyScores] = useState<CustomStrategyScore[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveData, setIsLiveData] = useState(false);
@@ -151,28 +225,43 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           const liveStrategyScores = analyses
             .filter((a: any) => a.roi_metrics?.strategyScore)
             .map((a: any) => a.roi_metrics.strategyScore);
-          if (liveStrategyScores.length > 0) setStrategyScores(liveStrategyScores);
+          if (liveStrategyScores.length > 0) {
+            // Apply deal-type filtering
+            const filtered = filterStrategyData(
+              availableStrategies,
+              liveStrategyScores,
+              analyses.find((a: any) => a.roi_metrics?.heatmapData)?.roi_metrics?.heatmapData || mockHeatmapData,
+              analyses.find((a: any) => a.roi_metrics?.strategyNames)?.roi_metrics?.strategyNames || mockStrategyNames,
+              analyses.find((a: any) => a.roi_metrics?.roiHeadToHead)?.roi_metrics?.roiHeadToHead || mockRoiHeadToHead
+            );
+            setStrategyScores(filtered.filteredScores);
+            setHeatmapData(filtered.filteredHeatmap);
+            setStrategyNames(filtered.filteredNames);
+
+            // Compute arbitrage from actual scores
+            const computedAlert = computeArbitrageAlert(filtered.filteredScores, mockArbitrageAlert);
+            setArbitrageAlert(computedAlert);
+          }
 
           const liveHeatmap = analyses
             .filter((a: any) => a.roi_metrics?.heatmapData)
             .flatMap((a: any) => a.roi_metrics.heatmapData);
-          if (liveHeatmap.length > 0) setHeatmapData(liveHeatmap);
+          if (liveHeatmap.length > 0 && liveStrategyScores.length === 0) {
+            // Only set heatmap if we didn't already set it above
+            setHeatmapData(liveHeatmap);
+          }
 
           const liveSignalNames = analyses
             .find((a: any) => a.roi_metrics?.signalNames);
-          if (liveSignalNames) setSignalNames(liveSignalNames.roi_metrics.signalNames);
+          if (liveSignalNames && liveStrategyScores.length === 0) setSignalNames(liveSignalNames.roi_metrics.signalNames);
 
           const liveStrategyNames = analyses
             .find((a: any) => a.roi_metrics?.strategyNames);
-          if (liveStrategyNames) setStrategyNames(liveStrategyNames.roi_metrics.strategyNames);
+          if (liveStrategyNames && liveStrategyScores.length === 0) setStrategyNames(liveStrategyNames.roi_metrics.strategyNames);
 
           const liveRoiHeadToHead = analyses
             .find((a: any) => a.roi_metrics?.roiHeadToHead);
-          if (liveRoiHeadToHead) setRoiHeadToHead(liveRoiHeadToHead.roi_metrics.roiHeadToHead);
-
-          const liveArbitrageAlert = analyses
-            .find((a: any) => a.roi_metrics?.arbitrageAlert);
-          if (liveArbitrageAlert) setArbitrageAlert(liveArbitrageAlert.roi_metrics.arbitrageAlert);
+          if (liveRoiHeadToHead && liveStrategyScores.length === 0) setRoiHeadToHead(liveRoiHeadToHead.roi_metrics.roiHeadToHead);
 
           const liveAcquisitionStats = analyses
             .find((a: any) => a.assumptions?.acquisitionStats);
@@ -232,7 +321,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       });
 
     return () => { cancelled = true; };
-  }, [deal.id]);
+  }, [deal.id, availableStrategies]);
 
   // Fetch custom strategies when custom tab is opened
   useEffect(() => {
@@ -376,18 +465,47 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           {/* Arbitrage Alert Banner (conditional) */}
           {arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />}
 
-          {/* 4-Strategy Score Matrix */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-gray-900">4-Strategy Score Matrix</h3>
-              <span className="text-[10px] font-mono text-gray-400 tracking-widest">F23 × STRATEGY WEIGHTS</span>
+          {/* Strategy Analysis Tabs */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 flex">
+              {[
+                { id: 'scores' as const, label: 'Score Matrix', icon: '📊' },
+                { id: 'heatmap' as const, label: 'Signal Heatmap', icon: '🔥' },
+                { id: 'roi' as const, label: 'ROI Head-to-Head', icon: '💰' },
+                { id: 'custom' as const, label: 'Custom Screen', icon: '⚙️' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveSubTab(tab.id)}
+                  className={`flex-1 px-4 py-3 font-medium transition-all text-sm flex items-center justify-center gap-2 ${
+                    activeSubTab === tab.id
+                      ? 'border-b-2 border-blue-500 text-blue-600 bg-blue-50'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                  title={tab.label}
+                >
+                  <span>{tab.icon}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              ))}
             </div>
-            <p className="text-sm text-gray-500 mb-5">
-              Each strategy scored against 5 JEDI signals with strategy-specific weights
-            </p>
 
-            <div className={`grid gap-4 ${visibleStrategyScores.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
-              {visibleStrategyScores.map((s) => (
+            {/* Tab Content */}
+            <div className="p-6">
+              {/* Score Matrix Tab */}
+              {activeSubTab === 'scores' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">4-Strategy Score Matrix</h3>
+                    <span className="text-[10px] font-mono text-gray-400 tracking-widest">F23 × STRATEGY WEIGHTS</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-5">
+                    Each strategy scored against 5 JEDI signals with strategy-specific weights
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {strategyScores.map((s) => (
                 <div
                   key={s.id}
                   className={`${s.bgColor} rounded-xl p-5 border-2 ${s.rank === 1 ? s.borderColor : 'border-transparent'} relative`}
@@ -426,25 +544,27 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               ))}
             </div>
 
-            {/* Insight */}
-            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-xs text-amber-800 leading-relaxed">
-                Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
-                Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
-                Most investors would default to Rental — the platform sees the development play.
-              </p>
-            </div>
-          </div>
+                  {/* Insight */}
+                  <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
+                      Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
+                      Most investors would default to Rental — the platform sees the development play.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-          {/* Signal Heatmap (5 signals × 4 strategies) */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-gray-900">Signal Heatmap</h3>
-              <span className="text-[10px] font-mono text-gray-400 tracking-widest">5 SIGNALS × 4 STRATEGIES</span>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Weighted signal scores — darker cells indicate stronger contribution to strategy score
-            </p>
+              {/* Heatmap Tab */}
+              {activeSubTab === 'heatmap' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">Signal Heatmap</h3>
+                    <span className="text-[10px] font-mono text-gray-400 tracking-widest">5 SIGNALS × {strategyNames.length} STRATEGIES</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Weighted signal scores — darker cells indicate stronger contribution to strategy score
+                  </p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -494,18 +614,22 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                   </tr>
                 </tbody>
               </table>
-            </div>
+                  </div>
 
-            <div className="mt-3 text-[11px] text-gray-400">
-              Hover any cell to see: raw score × strategy weight = weighted contribution.
-              BTS dominates Demand+Supply. Flip wins on Momentum. STR killed by regulatory risk.
-            </div>
-          </div>
+                  <div className="mt-3 text-[11px] text-gray-400">
+                    Hover any cell to see: raw score × strategy weight = weighted contribution.
+                    This strategy dominates on Demand+Supply. Flip wins on Momentum. STR killed by regulatory risk.
+                  </div>
+                </div>
+              )}
 
-          {/* ROI Head-to-Head */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">ROI Head-to-Head</h3>
-            <p className="text-sm text-gray-500 mb-4">Key return metrics compared across all 4 strategies</p>
+              {/* ROI Tab */}
+              {activeSubTab === 'roi' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">ROI Head-to-Head</h3>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">Key return metrics compared across available strategies</p>
 
             <table className="w-full text-sm">
               <thead>
@@ -541,11 +665,21 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               </tbody>
             </table>
 
-            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs text-blue-800 leading-relaxed">
-                BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
-                Risk-adjusted, BTS wins because you recycle capital 3x faster.
-              </p>
+                  <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
+                      Risk-adjusted, BTS wins because you recycle capital 3x faster.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Screen Tab */}
+              {activeSubTab === 'custom' && (
+                <div>
+                  <CustomScreenTab dealId={deal.id} />
+                </div>
+              )}
             </div>
           </div>
         </>
