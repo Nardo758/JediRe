@@ -65,6 +65,7 @@ import {
   CompAnalysisPage,
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
+import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 
 
 function AppContent() {
@@ -178,7 +179,11 @@ function AppContent() {
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
-          
+
+          {/* Strategy Builder */}
+          <Route path="/strategies" element={<StrategyBuilderPage />} />
+          <Route path="/strategies/:id" element={<StrategyBuilderPage />} />
+
           {/* Demo Routes */}
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />

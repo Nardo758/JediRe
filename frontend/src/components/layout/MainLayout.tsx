@@ -306,6 +306,14 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
 
+                  {/* STRATEGIES */}
+                  <SidebarItem
+                    icon="⚡"
+                    label="Strategies"
+                    path="/strategies"
+                    isActive={isActivePrefix('/strategies')}
+                  />
+
                   {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"
