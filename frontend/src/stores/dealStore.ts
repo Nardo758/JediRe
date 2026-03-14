@@ -55,6 +55,8 @@ interface DealStoreActions {
   fetchDeals: () => Promise<void>;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
+  /** Create a new deal */
+  createDeal: (payload: any) => Promise<any>;
   /** Hydrate entire deal context from backend */
   fetchDealContext: (dealId: string) => Promise<void>;
   /** Clear store (on navigate away from deal) */
@@ -373,6 +375,31 @@ export const useDealStore = create<DealStore>()(
       } catch (error: any) {
         console.error('[dealStore] Failed to fetch deals:', error);
         set({ error: error.message, isLoading: false });
+      }
+    },
+
+    createDeal: async (payload: any) => {
+      set({ isLoading: true, error: null });
+      try {
+        const response = await apiClient.post('/api/v1/deals', payload);
+        const deal = response.data?.deal;
+        if (deal) {
+          // Add to local deals list
+          set(state => ({
+            deals: [deal, ...state.deals],
+            isLoading: false
+          }));
+          return deal;
+        }
+        set({ isLoading: false });
+        return null;
+      } catch (error: any) {
+        const errorMsg = error.response?.data?.error || error.message || 'Failed to create deal';
+        set({
+          error: errorMsg,
+          isLoading: false
+        });
+        throw error;
       }
     },
 
