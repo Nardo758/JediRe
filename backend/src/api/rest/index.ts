@@ -83,6 +83,10 @@ import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
 import scrapeRoutes from './scrape.routes';
+import metricsCatalogRoutes from './metrics-catalog.routes';
+import customStrategiesRoutes from './custom-strategies.routes';
+import ingestionRoutes from './ingestion.routes';
+import strategiesRoutes from './strategy-definitions.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -304,6 +308,15 @@ export function setupRESTRoutes(app: Application): void {
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);
 
+  // Metrics Catalog routes (Strategy Engine - metric definitions and historical data)
+  app.use(`${API_PREFIX}/metrics`, metricsCatalogRoutes);
+
+  // Custom Strategies routes (Strategy Engine - user-defined strategy management)
+  app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
+
+  // Strategy Definitions & Execution routes (Strategy Engine - new execution engine)
+  app.use(`${API_PREFIX}/strategies`, strategiesRoutes);
+
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
 
@@ -328,6 +341,8 @@ export function setupRESTRoutes(app: Application): void {
   // Scraping routes (Cloudflare Browser Rendering — zoning code, property records, Municode)
   app.use(`${API_PREFIX}/scrape`, scrapeRoutes);
 
+  // Data Ingestion routes (Admin-only — Zillow, FRED, other data sources)
+  app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
