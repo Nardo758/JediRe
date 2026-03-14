@@ -828,306 +828,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {loadingBenchmarks && (
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
-          <span className="ml-2 text-gray-500 text-xs">Loading density benchmarks...</span>
-        </div>
-      )}
-
-      {!loadingBenchmarks && densityBenchmarks && (() => {
-        const avail = densityBenchmarks.dataAvailability || 'none';
-        const codeProjects: any[] = densityBenchmarks.projects || [];
-        const nearbyProjectsList: any[] = densityBenchmarks.nearbyProjects || [];
-        const allDisplayProjects = [...codeProjects, ...nearbyProjectsList]
-          .sort((a: any, b: any) => (b.similarityScore || 0) - (a.similarityScore || 0));
-        const currentCode = densityBenchmarks.currentCode;
-        const zonedMax = densityBenchmarks.zonedMaxDensity;
-        const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
-        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
-        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
-        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
-        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
-        const totalProjectCount = allDisplayProjects.length;
-        const municipality = profile?.municipality || '';
-        const bestComp = densityBenchmarks.bestComparable;
-
-        if (avail === 'none' || allDisplayProjects.length === 0) {
-          return (
-            <div className="bg-gray-50 rounded-lg border border-gray-200 px-5 py-4">
-              <div className="flex items-center gap-2 mb-1">
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-500">Market Reality Check</span>
-              </div>
-              <p className="text-xs text-gray-400">
-                No density benchmarks available for {currentCode || 'this zoning code'}.
-              </p>
-            </div>
-          );
-        }
-
-        const avgDensityAll = (() => {
-          const d = allDisplayProjects.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
-          return d.length > 0 ? d.reduce((s: number, v: number) => s + v, 0) / d.length : null;
-        })();
-        const avgFarAll = (() => {
-          const f = allDisplayProjects.filter((p: any) => p.farAchieved != null).map((p: any) => p.farAchieved);
-          return f.length > 0 ? f.reduce((s: number, v: number) => s + v, 0) / f.length : null;
-        })();
-        const avgLotCovAll = (() => {
-          const l = allDisplayProjects.filter((p: any) => p.lotCoverageAchieved != null).map((p: any) => p.lotCoverageAchieved);
-          return l.length > 0 ? l.reduce((s: number, v: number) => s + v, 0) / l.length : null;
-        })();
-        const densityUtilPct = zonedMax && avgDensityAll ? (avgDensityAll / zonedMax) * 100 : null;
-        const farUtilPct = zonedMaxFar && avgFarAll ? (avgFarAll / zonedMaxFar) * 100 : null;
-        const lotCovUtilPct = zonedMaxLotCov && avgLotCovAll ? ((avgLotCovAll * 100) / zonedMaxLotCov) * 100 : null;
-
-        const entBadgeClass = (t: string) =>
-          t === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-          t === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-          t === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-          'bg-gray-50 text-gray-500 border-gray-200';
-
-        const utilBadge = (pct: number | null) => {
-          if (pct == null) return null;
-          const cls = pct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
-                      pct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      'bg-red-50 text-red-700 border-red-200';
-          return <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${cls}`}>{pct.toFixed(0)}%</span>;
-        };
-
-        const docLinks = (p: any) => (
-          <div className="flex items-center gap-1.5">
-            {p.ordinanceUrl && (
-              <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-700" title="Ordinance PDF">
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
-              </a>
-            )}
-            {p.sourceUrl && (
-              <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700" title="Source">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </a>
-            )}
-            {p.docketNumber && (
-              <span className="text-[8px] font-mono text-gray-500 bg-gray-100 px-1 py-0.5 rounded" title="Docket">{p.docketNumber}</span>
-            )}
-          </div>
-        );
-
-        const visibleProjects = showAllCodes ? allDisplayProjects : allDisplayProjects.slice(0, 5);
-
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <span className="text-[10px] text-gray-400">
-                {codeMatchCount > 0
-                  ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
-                  : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`}
-              </span>
-            </div>
-
-            <div className="px-5 py-4 space-y-3">
-              {avail === 'sparse' && (
-                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
-                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 flex-wrap text-[10px]">
-                {avgDensityAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">Density:</span>
-                    <span className="font-bold text-teal-700">{avgDensityAll.toFixed(1)}</span>
-                    {zonedMax && <span className="text-gray-400">/ {zonedMax.toFixed(1)} u/ac</span>}
-                    {utilBadge(densityUtilPct)}
-                  </div>
-                )}
-                {avgFarAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">FAR:</span>
-                    <span className="font-bold text-teal-700">{avgFarAll.toFixed(2)}</span>
-                    {zonedMaxFar && <span className="text-gray-400">/ {zonedMaxFar.toFixed(2)}</span>}
-                    {utilBadge(farUtilPct)}
-                  </div>
-                )}
-                {avgLotCovAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">Lot Cov:</span>
-                    <span className="font-bold text-teal-700">{(avgLotCovAll * 100).toFixed(1)}%</span>
-                    {zonedMaxLotCov && <span className="text-gray-400">/ {zonedMaxLotCov.toFixed(1)}%</span>}
-                    {utilBadge(lotCovUtilPct)}
-                  </div>
-                )}
-              </div>
-
-              {bestComp && (
-                <div className="bg-teal-50 rounded-lg border border-teal-200 px-4 py-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-600 text-white font-bold uppercase tracking-wide">Best Comp</span>
-                      <span className="text-[10px] font-bold text-teal-800">{bestComp.similarityScore}% match</span>
-                    </div>
-                    {docLinks(bestComp)}
-                  </div>
-                  <div className="text-[12px] font-semibold text-gray-900 truncate">
-                    {bestComp.projectName || bestComp.address || 'Address not available'}
-                  </div>
-                  {bestComp.projectName && bestComp.address && bestComp.projectName !== bestComp.address && (
-                    <div className="text-[10px] text-gray-500 truncate">{bestComp.address}</div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px]">
-                    {bestComp.landAcres != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.landAcres.toFixed(2)}</span> ac</span>
-                    )}
-                    {bestComp.unitCount != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.unitCount.toLocaleString()}</span> units</span>
-                    )}
-                    {bestComp.densityAchieved != null && (
-                      <span className="text-teal-700 font-bold">{bestComp.densityAchieved.toFixed(1)} u/ac</span>
-                    )}
-                    {bestComp.farAchieved != null && (
-                      <span className="text-gray-600">FAR <span className="font-semibold">{bestComp.farAchieved.toFixed(2)}</span></span>
-                    )}
-                    {bestComp.stories != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.stories}</span> stories</span>
-                    )}
-                    {bestComp.buildingSf != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{formatNumber(bestComp.buildingSf)}</span> SF</span>
-                    )}
-                    {bestComp.entitlementType && (
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${entBadgeClass(bestComp.entitlementType)}`}>
-                        {bestComp.entitlementType}
-                      </span>
-                    )}
-                    {(bestComp.zoningFrom || bestComp.zoningTo) && (
-                      <span className="text-gray-500">
-                        {bestComp.zoningFrom && <span>{bestComp.zoningFrom}</span>}
-                        {bestComp.zoningFrom && bestComp.zoningTo && <span> → </span>}
-                        {bestComp.zoningTo && <span className="font-medium text-gray-700">{bestComp.zoningTo}</span>}
-                      </span>
-                    )}
-                    {bestComp.totalEntitlementDays != null && (
-                      <span className="text-gray-500">{Math.round(bestComp.totalEntitlementDays / 30)} mo timeline</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-[10px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-3 py-1.5 text-gray-500 font-medium w-6">#</th>
-                      <th className="text-left px-2 py-1.5 text-gray-500 font-medium">Project</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Lot</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Units</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Density</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Path</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Score</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Docs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleProjects.map((p: any, i: number) => (
-                      <tr key={i} className={`border-b border-gray-100 last:border-0 ${bestComp && p.address === bestComp.address && p.similarityScore === bestComp.similarityScore ? 'bg-teal-50/30' : 'hover:bg-gray-50'}`}>
-                        <td className="px-3 py-1.5 text-gray-400 font-medium">{i + 1}</td>
-                        <td className="px-2 py-1.5">
-                          <div className="text-[11px] font-medium text-gray-800 truncate max-w-[200px]">
-                            {p.projectName || p.address || 'N/A'}
-                          </div>
-                          {p.projectName && p.address && p.projectName !== p.address && (
-                            <div className="text-[9px] text-gray-400 truncate max-w-[200px]">{p.address}</div>
-                          )}
-                        </td>
-                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {p.landAcres != null ? `${p.landAcres.toFixed(2)} ac` : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {p.unitCount != null ? p.unitCount.toLocaleString() : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right font-bold text-teal-700 whitespace-nowrap">
-                          {p.densityAchieved != null ? `${p.densityAchieved.toFixed(1)}` : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`text-[8px] px-1 py-0.5 rounded border ${entBadgeClass(p.entitlementType || '')}`}>
-                            {p.entitlementType || '--'}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`text-[9px] font-bold ${
-                            p.similarityScore >= 60 ? 'text-green-600' :
-                            p.similarityScore >= 30 ? 'text-amber-600' :
-                            'text-gray-400'
-                          }`}>{p.similarityScore}</span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          {docLinks(p)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {allDisplayProjects.length > 5 && (
-                <button
-                  onClick={() => setShowAllCodes(!showAllCodes)}
-                  className="text-[11px] text-teal-600 hover:text-teal-800 font-medium py-1"
-                >
-                  {showAllCodes ? 'Show top 5 only' : `Show all ${allDisplayProjects.length} projects`}
-                </button>
-              )}
-
-              {rezoneFrom && rezoneFrom.projectCount > 0 && (
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <div className="text-xs font-medium text-gray-600">
-                    Projects That Left {currentCode}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {rezoneFrom.targetCodes.map((code: string, i: number) => (
-                      <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
-                        → {code}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="grid gap-1.5">
-                    {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
-                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
-                        <div className="flex items-center justify-between text-[11px] text-gray-600">
-                          <span className="truncate mr-2">{p.address || '--'}</span>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
-                            {p.densityAchieved != null && (
-                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
-                            )}
-                            {p.unitCount != null && (
-                              <span className="text-gray-400">{p.unitCount} units</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Entitlement Comparison */}
       {(() => {
         const cols = comparison?.columns || [];
@@ -1705,6 +1405,306 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+
+      {loadingBenchmarks && (
+        <div className="flex items-center justify-center py-4">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
+          <span className="ml-2 text-gray-500 text-xs">Loading density benchmarks...</span>
+        </div>
+      )}
+
+      {!loadingBenchmarks && densityBenchmarks && (() => {
+        const avail = densityBenchmarks.dataAvailability || 'none';
+        const codeProjects: any[] = densityBenchmarks.projects || [];
+        const nearbyProjectsList: any[] = densityBenchmarks.nearbyProjects || [];
+        const allDisplayProjects = [...codeProjects, ...nearbyProjectsList]
+          .sort((a: any, b: any) => (b.similarityScore || 0) - (a.similarityScore || 0));
+        const currentCode = densityBenchmarks.currentCode;
+        const zonedMax = densityBenchmarks.zonedMaxDensity;
+        const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
+        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
+        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
+        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
+        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
+        const totalProjectCount = allDisplayProjects.length;
+        const municipality = profile?.municipality || '';
+        const bestComp = densityBenchmarks.bestComparable;
+
+        if (avail === 'none' || allDisplayProjects.length === 0) {
+          return (
+            <div className="bg-gray-50 rounded-lg border border-gray-200 px-5 py-4">
+              <div className="flex items-center gap-2 mb-1">
+                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-500">Market Reality Check</span>
+              </div>
+              <p className="text-xs text-gray-400">
+                No density benchmarks available for {currentCode || 'this zoning code'}.
+              </p>
+            </div>
+          );
+        }
+
+        const avgDensityAll = (() => {
+          const d = allDisplayProjects.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
+          return d.length > 0 ? d.reduce((s: number, v: number) => s + v, 0) / d.length : null;
+        })();
+        const avgFarAll = (() => {
+          const f = allDisplayProjects.filter((p: any) => p.farAchieved != null).map((p: any) => p.farAchieved);
+          return f.length > 0 ? f.reduce((s: number, v: number) => s + v, 0) / f.length : null;
+        })();
+        const avgLotCovAll = (() => {
+          const l = allDisplayProjects.filter((p: any) => p.lotCoverageAchieved != null).map((p: any) => p.lotCoverageAchieved);
+          return l.length > 0 ? l.reduce((s: number, v: number) => s + v, 0) / l.length : null;
+        })();
+        const densityUtilPct = zonedMax && avgDensityAll ? (avgDensityAll / zonedMax) * 100 : null;
+        const farUtilPct = zonedMaxFar && avgFarAll ? (avgFarAll / zonedMaxFar) * 100 : null;
+        const lotCovUtilPct = zonedMaxLotCov && avgLotCovAll ? ((avgLotCovAll * 100) / zonedMaxLotCov) * 100 : null;
+
+        const entBadgeClass = (t: string) =>
+          t === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
+          t === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+          t === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+          'bg-gray-50 text-gray-500 border-gray-200';
+
+        const utilBadge = (pct: number | null) => {
+          if (pct == null) return null;
+          const cls = pct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
+                      pct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      'bg-red-50 text-red-700 border-red-200';
+          return <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${cls}`}>{pct.toFixed(0)}%</span>;
+        };
+
+        const docLinks = (p: any) => (
+          <div className="flex items-center gap-1.5">
+            {p.ordinanceUrl && (
+              <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-700" title="Ordinance PDF">
+                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
+              </a>
+            )}
+            {p.sourceUrl && (
+              <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700" title="Source">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
+            )}
+            {p.docketNumber && (
+              <span className="text-[8px] font-mono text-gray-500 bg-gray-100 px-1 py-0.5 rounded" title="Docket">{p.docketNumber}</span>
+            )}
+          </div>
+        );
+
+        const visibleProjects = showAllCodes ? allDisplayProjects : allDisplayProjects.slice(0, 5);
+
+        return (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
+                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <span className="text-[10px] text-gray-400">
+                {codeMatchCount > 0
+                  ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
+                  : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`}
+              </span>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              {avail === 'sparse' && (
+                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
+                </div>
+              )}
+
+              <div className="flex items-center gap-4 flex-wrap text-[10px]">
+                {avgDensityAll != null && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-500">Density:</span>
+                    <span className="font-bold text-teal-700">{avgDensityAll.toFixed(1)}</span>
+                    {zonedMax && <span className="text-gray-400">/ {zonedMax.toFixed(1)} u/ac</span>}
+                    {utilBadge(densityUtilPct)}
+                  </div>
+                )}
+                {avgFarAll != null && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-500">FAR:</span>
+                    <span className="font-bold text-teal-700">{avgFarAll.toFixed(2)}</span>
+                    {zonedMaxFar && <span className="text-gray-400">/ {zonedMaxFar.toFixed(2)}</span>}
+                    {utilBadge(farUtilPct)}
+                  </div>
+                )}
+                {avgLotCovAll != null && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-500">Lot Cov:</span>
+                    <span className="font-bold text-teal-700">{(avgLotCovAll * 100).toFixed(1)}%</span>
+                    {zonedMaxLotCov && <span className="text-gray-400">/ {zonedMaxLotCov.toFixed(1)}%</span>}
+                    {utilBadge(lotCovUtilPct)}
+                  </div>
+                )}
+              </div>
+
+              {bestComp && (
+                <div className="bg-teal-50 rounded-lg border border-teal-200 px-4 py-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-600 text-white font-bold uppercase tracking-wide">Best Comp</span>
+                      <span className="text-[10px] font-bold text-teal-800">{bestComp.similarityScore}% match</span>
+                    </div>
+                    {docLinks(bestComp)}
+                  </div>
+                  <div className="text-[12px] font-semibold text-gray-900 truncate">
+                    {bestComp.projectName || bestComp.address || 'Address not available'}
+                  </div>
+                  {bestComp.projectName && bestComp.address && bestComp.projectName !== bestComp.address && (
+                    <div className="text-[10px] text-gray-500 truncate">{bestComp.address}</div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px]">
+                    {bestComp.landAcres != null && (
+                      <span className="text-gray-600"><span className="font-semibold">{bestComp.landAcres.toFixed(2)}</span> ac</span>
+                    )}
+                    {bestComp.unitCount != null && (
+                      <span className="text-gray-600"><span className="font-semibold">{bestComp.unitCount.toLocaleString()}</span> units</span>
+                    )}
+                    {bestComp.densityAchieved != null && (
+                      <span className="text-teal-700 font-bold">{bestComp.densityAchieved.toFixed(1)} u/ac</span>
+                    )}
+                    {bestComp.farAchieved != null && (
+                      <span className="text-gray-600">FAR <span className="font-semibold">{bestComp.farAchieved.toFixed(2)}</span></span>
+                    )}
+                    {bestComp.stories != null && (
+                      <span className="text-gray-600"><span className="font-semibold">{bestComp.stories}</span> stories</span>
+                    )}
+                    {bestComp.buildingSf != null && (
+                      <span className="text-gray-600"><span className="font-semibold">{formatNumber(bestComp.buildingSf)}</span> SF</span>
+                    )}
+                    {bestComp.entitlementType && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${entBadgeClass(bestComp.entitlementType)}`}>
+                        {bestComp.entitlementType}
+                      </span>
+                    )}
+                    {(bestComp.zoningFrom || bestComp.zoningTo) && (
+                      <span className="text-gray-500">
+                        {bestComp.zoningFrom && <span>{bestComp.zoningFrom}</span>}
+                        {bestComp.zoningFrom && bestComp.zoningTo && <span> → </span>}
+                        {bestComp.zoningTo && <span className="font-medium text-gray-700">{bestComp.zoningTo}</span>}
+                      </span>
+                    )}
+                    {bestComp.totalEntitlementDays != null && (
+                      <span className="text-gray-500">{Math.round(bestComp.totalEntitlementDays / 30)} mo timeline</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-3 py-1.5 text-gray-500 font-medium w-6">#</th>
+                      <th className="text-left px-2 py-1.5 text-gray-500 font-medium">Project</th>
+                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Lot</th>
+                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Units</th>
+                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Density</th>
+                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Path</th>
+                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Score</th>
+                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Docs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleProjects.map((p: any, i: number) => (
+                      <tr key={i} className={`border-b border-gray-100 last:border-0 ${bestComp && p.address === bestComp.address && p.similarityScore === bestComp.similarityScore ? 'bg-teal-50/30' : 'hover:bg-gray-50'}`}>
+                        <td className="px-3 py-1.5 text-gray-400 font-medium">{i + 1}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="text-[11px] font-medium text-gray-800 truncate max-w-[200px]">
+                            {p.projectName || p.address || 'N/A'}
+                          </div>
+                          {p.projectName && p.address && p.projectName !== p.address && (
+                            <div className="text-[9px] text-gray-400 truncate max-w-[200px]">{p.address}</div>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
+                          {p.landAcres != null ? `${p.landAcres.toFixed(2)} ac` : '--'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
+                          {p.unitCount != null ? p.unitCount.toLocaleString() : '--'}
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-bold text-teal-700 whitespace-nowrap">
+                          {p.densityAchieved != null ? `${p.densityAchieved.toFixed(1)}` : '--'}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <span className={`text-[8px] px-1 py-0.5 rounded border ${entBadgeClass(p.entitlementType || '')}`}>
+                            {p.entitlementType || '--'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <span className={`text-[9px] font-bold ${
+                            p.similarityScore >= 60 ? 'text-green-600' :
+                            p.similarityScore >= 30 ? 'text-amber-600' :
+                            'text-gray-400'
+                          }`}>{p.similarityScore}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          {docLinks(p)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {allDisplayProjects.length > 5 && (
+                <button
+                  onClick={() => setShowAllCodes(!showAllCodes)}
+                  className="text-[11px] text-teal-600 hover:text-teal-800 font-medium py-1"
+                >
+                  {showAllCodes ? 'Show top 5 only' : `Show all ${allDisplayProjects.length} projects`}
+                </button>
+              )}
+
+              {rezoneFrom && rezoneFrom.projectCount > 0 && (
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <div className="text-xs font-medium text-gray-600">
+                    Projects That Left {currentCode}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {rezoneFrom.targetCodes.map((code: string, i: number) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
+                        → {code}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid gap-1.5">
+                    {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
+                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
+                        <div className="flex items-center justify-between text-[11px] text-gray-600">
+                          <span className="truncate mr-2">{p.address || '--'}</span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
+                            {p.densityAchieved != null && (
+                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
+                            )}
+                            {p.unitCount != null && (
+                              <span className="text-gray-400">{p.unitCount} units</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
