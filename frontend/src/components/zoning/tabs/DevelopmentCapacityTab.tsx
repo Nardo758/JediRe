@@ -129,6 +129,449 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
   return PATH_KEY_MAP[colKey] || 'by_right';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// DESIGN TOKENS — Bloomberg Aesthetic
+// ═══════════════════════════════════════════════════════════════════════════════
+const T = {
+  bg:         "#0a0f1a",
+  bgCard:     "#0f1729",
+  bgCardAlt:  "#111d33",
+  bgHover:    "#162040",
+  border:     "#1e2d4a",
+  borderLit:  "#2a4070",
+  text:       "#e2e8f0",
+  textMuted:  "#64748b",
+  textDim:    "#475569",
+  accent:     "#3b82f6",
+  accentDim:  "#1e40af",
+  green:      "#22c55e",
+  greenDim:   "#166534",
+  amber:      "#f59e0b",
+  amberDim:   "#92400e",
+  red:        "#ef4444",
+  redDim:     "#991b1b",
+  cyan:       "#06b6d4",
+  purple:     "#a78bfa",
+};
+
+const FONT = {
+  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+  body: "'IBM Plex Sans', -apple-system, sans-serif",
+};
+
+const s = {
+  page: {
+    background: T.bg,
+    color: T.text,
+    fontFamily: FONT.body,
+    minHeight: "100vh",
+    padding: "20px",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 24,
+    borderBottom: `1px solid ${T.border}`,
+    paddingBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 700,
+    fontFamily: FONT.mono,
+    letterSpacing: "-0.02em",
+    color: T.text,
+  },
+  subtitle: {
+    fontSize: 11,
+    color: T.textMuted,
+    fontFamily: FONT.mono,
+    marginTop: 4,
+  },
+  badge: (color: string) => ({
+    display: "inline-block" as const,
+    padding: "2px 8px",
+    borderRadius: 4,
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: FONT.mono,
+    letterSpacing: "0.05em",
+    background: color + "15",
+    color: color,
+    border: `1px solid ${color}30`,
+  }),
+  card: {
+    background: T.bgCard,
+    border: `1px solid ${T.border}`,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+  },
+  cardLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    fontFamily: FONT.mono,
+    letterSpacing: "0.08em",
+    color: T.textMuted,
+    marginBottom: 8,
+    textTransform: "uppercase" as const,
+  },
+  metric: {
+    fontSize: 28,
+    fontWeight: 800,
+    fontFamily: FONT.mono,
+    color: T.text,
+    lineHeight: 1,
+  },
+  metricSub: {
+    fontSize: 11,
+    color: T.textMuted,
+    fontFamily: FONT.mono,
+    marginTop: 4,
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse" as const,
+    fontSize: 12,
+    fontFamily: FONT.mono,
+  },
+  th: {
+    textAlign: "left" as const,
+    padding: "8px 10px",
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    color: T.textMuted,
+    borderBottom: `1px solid ${T.border}`,
+    textTransform: "uppercase" as const,
+  },
+  td: (highlight = false) => ({
+    padding: "8px 10px",
+    borderBottom: `1px solid ${T.border}10`,
+    color: highlight ? T.accent : T.text,
+    fontWeight: highlight ? 700 : 400,
+  }),
+  tab: (active: boolean) => ({
+    padding: "8px 16px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    fontFamily: FONT.mono,
+    cursor: "pointer" as const,
+    background: active ? T.accentDim + "40" : "transparent",
+    color: active ? T.accent : T.textMuted,
+    border: active ? `1px solid ${T.accent}40` : `1px solid transparent`,
+    transition: "all 0.15s ease",
+  }),
+  pathCard: (selected: boolean, color: string) => ({
+    background: selected ? color + "08" : T.bgCard,
+    border: `1px solid ${selected ? color + "60" : T.border}`,
+    borderRadius: 8,
+    padding: 16,
+    cursor: "pointer" as const,
+    transition: "all 0.15s ease",
+    flex: 1,
+    minWidth: 200,
+  }),
+  constraintBar: (pct: number, isBinding: boolean) => ({
+    height: 6,
+    borderRadius: 3,
+    background: isBinding ? T.red : T.accent + "30",
+    width: `${Math.min(100, pct)}%`,
+    transition: "width 0.4s ease",
+  }),
+  constraintBarBg: {
+    height: 6,
+    borderRadius: 3,
+    background: T.border + "40",
+    width: "100%",
+    marginTop: 4,
+  },
+  bindingTag: {
+    display: "inline-block" as const,
+    padding: "1px 6px",
+    borderRadius: 3,
+    fontSize: 9,
+    fontWeight: 800,
+    fontFamily: FONT.mono,
+    background: T.red + "20",
+    color: T.red,
+    letterSpacing: "0.06em",
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPUTATION FUNCTIONS — Client-side envelope calculator
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface ParcelData {
+  lot_size_sf: number;
+  lot_size_acres: number;
+  frontage_ft: number;
+  depth_ft: number;
+  is_corner: boolean;
+}
+
+interface ZoningData {
+  code?: string;
+  max_density_units_per_acre: number;
+  max_height_ft: number;
+  max_far: number;
+  lot_coverage_pct: number;
+  setback_front_ft?: number;
+  setback_side_ft?: number;
+  setback_rear_ft?: number;
+  parking?: {
+    per_unit: number;
+    guest_per_unit?: number;
+  };
+  overlay_bonuses?: {
+    beltline?: {
+      density_bonus_pct: number;
+      parking_reduction_pct: number;
+      requires?: string;
+    };
+  };
+}
+
+interface EnvelopeResult {
+  max_units: number;
+  binding_constraint: string;
+  constraints: Array<{ name: string; units: number; param: string; formula: string }>;
+  max_gfa: number;
+  total_gfa_at_max_units: number;
+  max_stories: number;
+  residential_floors: number;
+  units_per_floor: number;
+  footprint_sf: number;
+  buildable_area: any;
+  parking: any;
+  financials: any;
+}
+
+function calculateBuildableArea(parcel: ParcelData, zoning: any) {
+  const { front_ft = 0, side_ft = 0, rear_ft = 0 } = zoning.setback_front_ft
+    ? { front_ft: zoning.setback_front_ft, side_ft: zoning.setback_side_ft, rear_ft: zoning.setback_rear_ft }
+    : { front_ft: 0, side_ft: 10, rear_ft: 20 };
+
+  const frontage = parcel.frontage_ft;
+  const depth = parcel.depth_ft;
+
+  let buildable_width, buildable_depth;
+  if (parcel.is_corner) {
+    buildable_width = frontage - front_ft - side_ft;
+    buildable_depth = depth - front_ft - rear_ft;
+  } else {
+    buildable_width = frontage - (2 * side_ft);
+    buildable_depth = depth - front_ft - rear_ft;
+  }
+
+  const buildable_sf = Math.max(0, buildable_width * buildable_depth);
+  const gross_lot_sf = parcel.lot_size_sf;
+
+  return {
+    gross_lot_sf,
+    buildable_sf,
+    buildable_width,
+    buildable_depth,
+    setback_loss_sf: gross_lot_sf - buildable_sf,
+    setback_loss_pct: ((gross_lot_sf - buildable_sf) / gross_lot_sf * 100).toFixed(1),
+  };
+}
+
+function calculateEnvelope(parcel: ParcelData, zoning: any, overrides: any = {}): EnvelopeResult {
+  const area = calculateBuildableArea(parcel, zoning);
+  const lot_acres = parcel.lot_size_acres;
+  const density = overrides.density || zoning.max_density_units_per_acre || 100;
+  const height_ft = overrides.height || zoning.max_height_ft || 150;
+  const far = overrides.far || zoning.max_far || 2.0;
+  const coverage = overrides.coverage || zoning.lot_coverage_pct || 0.75;
+  const parking_per_unit = overrides.parking || zoning.parking?.per_unit || 1.0;
+  const guest_parking = zoning.parking?.guest_per_unit || 0.25;
+
+  // CONSTRAINT 1: Density cap
+  const density_cap = Math.floor(density * lot_acres);
+
+  // CONSTRAINT 2: FAR cap
+  const avg_unit_sf = overrides.avg_unit_sf || 850;
+  const common_area_factor = 1.15;
+  const max_gfa = far * parcel.lot_size_sf;
+  const rentable_sf = max_gfa / common_area_factor;
+  const far_cap = Math.floor(rentable_sf / avg_unit_sf);
+
+  // CONSTRAINT 3: Height cap
+  const ground_floor_height = 14;
+  const upper_floor_height = 10;
+  const max_stories = height_ft <= ground_floor_height
+    ? 1
+    : 1 + Math.floor((height_ft - ground_floor_height) / upper_floor_height);
+  const footprint_sf = area.buildable_sf * coverage;
+  const units_per_floor = Math.floor(footprint_sf / (avg_unit_sf * common_area_factor));
+  const residential_floors = Math.max(1, max_stories - 1);
+  const height_cap = units_per_floor * residential_floors;
+
+  // CONSTRAINT 4: Lot coverage cap
+  const coverage_cap = units_per_floor * max_stories;
+
+  // BINDING CONSTRAINT
+  const constraints = [
+    { name: "Density", units: density_cap, param: `${density} units/acre`, formula: `${density} × ${lot_acres} acres` },
+    { name: "FAR", units: far_cap, param: `FAR ${far}`, formula: `${far} × ${parcel.lot_size_sf.toLocaleString()} SF ÷ ${avg_unit_sf} SF/unit ÷ ${common_area_factor}` },
+    { name: "Height", units: height_cap, param: `${height_ft} ft (${max_stories} stories)`, formula: `${units_per_floor} units/floor × ${residential_floors} res. floors` },
+    { name: "Coverage", units: coverage_cap, param: `${(coverage * 100).toFixed(0)}% coverage`, formula: `${units_per_floor} units/floor × ${max_stories} total stories` },
+  ];
+
+  constraints.sort((a, b) => a.units - b.units);
+  const binding = constraints[0];
+  const max_units = binding.units;
+
+  // PARKING ANALYSIS
+  const total_parking_spaces = Math.ceil(max_units * (parking_per_unit + guest_parking));
+  const parking_sf_per_space = 350;
+  const parking_cost_per_space_surface = 5000;
+  const parking_cost_per_space_structured = 35000;
+  const surface_parking_sf = total_parking_spaces * parking_sf_per_space;
+  const needs_structured = surface_parking_sf > (parcel.lot_size_sf - footprint_sf);
+  const parking_cost_per_space = needs_structured ? parking_cost_per_space_structured : parking_cost_per_space_surface;
+  const total_parking_cost = total_parking_spaces * parking_cost_per_space;
+  const cars_per_parking_level = Math.floor(footprint_sf / parking_sf_per_space);
+  const parking_levels_needed = needs_structured ? Math.ceil(total_parking_spaces / cars_per_parking_level) : 0;
+
+  // ESTIMATED VALUES
+  const est_value_per_unit = 250000;
+  const est_construction_cost_per_sf = 185;
+  const total_gfa = max_units * avg_unit_sf * common_area_factor;
+  const est_construction_cost = total_gfa * est_construction_cost_per_sf;
+  const est_total_value = max_units * est_value_per_unit;
+
+  return {
+    max_units,
+    binding_constraint: binding.name,
+    constraints,
+    max_gfa,
+    total_gfa_at_max_units: total_gfa,
+    max_stories,
+    residential_floors,
+    units_per_floor,
+    footprint_sf,
+    buildable_area: area,
+    parking: {
+      total_spaces: total_parking_spaces,
+      per_unit: parking_per_unit,
+      guest_per_unit: guest_parking,
+      needs_structured,
+      parking_levels_needed,
+      cost_per_space: parking_cost_per_space,
+      total_cost: total_parking_cost,
+      pct_of_construction: ((total_parking_cost / est_construction_cost) * 100).toFixed(1),
+    },
+    financials: {
+      est_value_per_unit,
+      est_total_value,
+      est_construction_cost_per_sf,
+      est_construction_cost,
+      est_total_development_cost: est_construction_cost + total_parking_cost,
+    },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[]; maxPossible: number }) {
+  return (
+    <div style={{ ...s.card, padding: 20 }}>
+      <div style={s.cardLabel}>CONSTRAINT WATERFALL — BINDING ANALYSIS</div>
+      <div style={{ fontSize: 11, color: T.textDim, marginBottom: 16, fontFamily: FONT.mono }}>
+        Max units = MIN(density, FAR, height, coverage). The lowest is the binding constraint.
+      </div>
+      {constraints.map((c, i) => {
+        const pct = maxPossible > 0 ? (c.units / maxPossible) * 100 : 0;
+        const isBinding = i === 0;
+        return (
+          <div key={c.name} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT.mono, color: isBinding ? T.red : T.text }}>
+                  {c.name}
+                </span>
+                {isBinding && <span style={s.bindingTag}>BINDING</span>}
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 800, fontFamily: FONT.mono, color: isBinding ? T.red : T.accent }}>
+                {c.units.toLocaleString()} units
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono, marginBottom: 4 }}>
+              {c.param} → {c.formula}
+            </div>
+            <div style={s.constraintBarBg}>
+              <div style={s.constraintBar(pct, isBinding)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PathComparisonCards({
+  paths,
+  selectedPath,
+  onSelectPath,
+}: {
+  paths: any[];
+  selectedPath: string | null;
+  onSelectPath: (pathId: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      {paths.map(path => {
+        const sel = selectedPath === path.id;
+        return (
+          <div
+            key={path.id}
+            style={{ ...s.pathCard(sel, path.color), position: "relative" } as any}
+            onClick={() => onSelectPath(path.id)}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, fontFamily: FONT.mono, color: T.text, marginBottom: 8 }}>
+              {path.label}
+            </div>
+            <div style={{ fontSize: 10, color: T.textMuted, fontFamily: FONT.mono, marginBottom: 10 }}>
+              {path.sublabel}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT.mono, color: path.color, marginBottom: 12 }}>
+              {path.envelope?.max_units?.toLocaleString() || '--'} units
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                fontSize: 10,
+                fontFamily: FONT.mono,
+              }}
+            >
+              <div>
+                <div style={{ color: T.textMuted }}>Timeline (mo.)</div>
+                <div style={{ color: T.text, fontWeight: 700 }}>
+                  {path.timeline_months?.min}-{path.timeline_months?.max}
+                </div>
+              </div>
+              <div>
+                <div style={{ color: T.textMuted }}>P(Approve)</div>
+                <div style={{ color: T.text, fontWeight: 700 }}>
+                  {Math.round(path.approval_probability * 100)}%
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
@@ -164,6 +607,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
+  const [paths, setPaths] = useState<any[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -490,6 +935,82 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     return () => clearTimeout(timer);
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
+  // Generate development paths from profile using client-side calculations
+  useEffect(() => {
+    if (!profile) {
+      setPaths([]);
+      return;
+    }
+
+    try {
+      // Convert profile to parcel and zoning data format for calculation
+      const parcelData: ParcelData = {
+        lot_size_sf: profile.lot_area_sf || 10000,
+        lot_size_acres: (profile.lot_area_sf || 10000) / 43560,
+        frontage_ft: 200,
+        depth_ft: 200,
+        is_corner: false,
+      };
+
+      const zoningData: ZoningData = {
+        code: profile.base_district_code || 'MRC-3',
+        max_density_units_per_acre: profile.max_density_per_acre || 100,
+        max_height_ft: profile.max_height_ft || 150,
+        max_far: profile.combined_far || profile.residential_far || 2.0,
+        lot_coverage_pct: profile.max_lot_coverage_pct || 0.75,
+        setback_front_ft: profile.setback_front_ft || 0,
+        setback_side_ft: profile.setback_side_ft || 10,
+        setback_rear_ft: profile.setback_rear_ft || 20,
+        parking: { per_unit: profile.min_parking_per_unit || 1.0, guest_per_unit: 0.25 },
+      };
+
+      // Calculate By-Right envelope
+      const byRightEnv = calculateEnvelope(parcelData, zoningData);
+
+      // Calculate Variance envelope (25% density + 10% height)
+      const varianceEnv = calculateEnvelope(parcelData, zoningData, {
+        density: (zoningData.max_density_units_per_acre || 100) * 1.25,
+        height: (zoningData.max_height_ft || 150) * 1.10,
+      });
+
+      // Build paths array
+      const generatedPaths = [
+        {
+          id: "by_right",
+          label: "By-Right",
+          sublabel: `Under current ${profile.base_district_code || 'MRC-3'}`,
+          envelope: byRightEnv,
+          timeline_months: { min: 3, median: 6, max: 9 },
+          approval_probability: 0.95,
+          additional_cost: 0,
+          risk_level: "low",
+          color: T.green,
+        },
+        {
+          id: "variance",
+          label: "SAP / Variance",
+          sublabel: `${profile.base_district_code || 'MRC-3'} + 25% density bonus`,
+          envelope: varianceEnv,
+          timeline_months: { min: 6, median: 10, max: 16 },
+          approval_probability: 0.70,
+          additional_cost: 75000,
+          risk_level: "medium",
+          color: T.amber,
+        },
+      ];
+
+      setPaths(generatedPaths);
+
+      // Auto-select first path if none selected
+      if (!selectedPath) {
+        setSelectedPath("by_right");
+      }
+    } catch (err) {
+      console.error('Failed to generate development paths:', err);
+      setPaths([]);
+    }
+  }, [profile]);
+
   const handleResolveProfile = async () => {
     if (!dealId) return;
     setResolving(true);
@@ -548,6 +1069,72 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       await loadData(true);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to change asset type');
+    }
+  };
+
+  const handleSelectPathNew = async (pathId: string) => {
+    setSelectedPath(pathId);
+    const path = paths.find(p => p.id === pathId);
+    if (!path) return;
+
+    // Build envelope from path calculation
+    const envelope: BuildingEnvelope = {
+      max_units: path.envelope?.max_units || 0,
+      max_gfa_sf: path.envelope?.total_gfa_at_max_units || 0,
+      max_stories: path.envelope?.max_stories || 1,
+      max_footprint_sf: path.envelope?.footprint_sf || 0,
+      buildable_polygon: null,
+      required_parking_spaces: path.envelope?.parking?.total_spaces || 0,
+      parking_structure_type:
+        path.envelope?.max_units > 200
+          ? 'podium'
+          : path.envelope?.max_units > 100
+            ? 'garage'
+            : 'surface',
+      parking_levels: path.envelope?.parking?.parking_levels_needed || 0,
+      residential_floors: path.envelope?.residential_floors || path.envelope?.max_stories - 1,
+      ground_floor_retail_sf: path.envelope?.max_units > 150 ? 5000 : 0,
+      construction_type:
+        path.envelope?.max_stories <= 4
+          ? 'wood_frame'
+          : path.envelope?.max_stories <= 7
+            ? 'podium_wood'
+            : 'steel_concrete',
+    };
+
+    // Update Zustand store
+    selectDevelopmentPath(pathId as DevelopmentPath, envelope);
+
+    // Optionally persist to database (similar to handleSelectPath)
+    if (dealId) {
+      try {
+        const existingRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+        const existing = existingRes.data.scenarios?.find((s: any) => s.name === pathId);
+
+        if (existing) {
+          await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${existing.id}/activate`);
+        } else {
+          const scenarioData = {
+            name: pathId,
+            is_active: true,
+            use_mix: { residential_pct: 100 },
+            avg_unit_size_sf: 850,
+            efficiency_factor: 0.85,
+            max_gba: path.envelope?.total_gfa_at_max_units || 0,
+            max_footprint: path.envelope?.footprint_sf || 0,
+            net_leasable_sf: Math.round((path.envelope?.total_gfa_at_max_units || 0) * 0.85),
+            parking_required: path.envelope?.parking?.total_spaces || 0,
+            max_stories: path.envelope?.max_stories || 1,
+            max_units: path.envelope?.max_units || 0,
+            applied_far: profile?.applied_far || null,
+            binding_constraint: path.envelope?.binding_constraint || null,
+          };
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        }
+        await loadScenarios();
+      } catch (err) {
+        console.warn('Failed to persist path selection:', err);
+      }
     }
   };
 
@@ -701,6 +1288,92 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   return (
     <div className="space-y-5">
+      {/* Development Path Selection Cards */}
+      {paths.length > 0 && (
+        <div style={{ padding: "20px", background: T.bg }}>
+          <PathComparisonCards
+            paths={paths}
+            selectedPath={selectedPath}
+            onSelectPath={handleSelectPathNew}
+          />
+          {selectedPath && (
+            <>
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <ConstraintWaterfall
+                  constraints={
+                    paths.find(p => p.id === selectedPath)?.envelope?.constraints || []
+                  }
+                  maxPossible={
+                    Math.max(
+                      ...(paths.find(p => p.id === selectedPath)?.envelope?.constraints || []).map((c: any) => c.units || 0)
+                    ) || 100
+                  }
+                />
+              </div>
+
+              {/* AI Narrative Analysis */}
+              <div style={{ ...s.card, borderLeft: `3px solid ${T.accent}` }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fontFamily: FONT.mono,
+                    color: T.accent,
+                    marginBottom: 6,
+                  }}
+                >
+                  AI ANALYSIS
+                </div>
+                <div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>
+                  {selectedPath === "by_right" && (
+                    <>
+                      Under current {profile?.base_district_code || 'zoning'}, the{" "}
+                      <strong>
+                        {paths
+                          .find(p => p.id === "by_right")
+                          ?.envelope?.binding_constraint?.toLowerCase()}
+                      </strong>{" "}
+                      is the binding constraint at{" "}
+                      <strong>{paths.find(p => p.id === "by_right")?.envelope?.max_units?.toLocaleString()}</strong> units.
+                      This represents your baseline development envelope—what you can build today without additional
+                      approvals. Parking is{" "}
+                      {paths.find(p => p.id === "by_right")?.envelope?.parking?.needs_structured
+                        ? `structured ($${(
+                            (paths.find(p => p.id === "by_right")?.envelope?.parking?.total_cost || 0) / 1e6
+                          ).toFixed(1)}M), which increases construction costs by ~${
+                            paths.find(p => p.id === "by_right")?.envelope?.parking?.pct_of_construction
+                          }%.`
+                        : "surface, giving you a cost advantage at this density."}
+                    </>
+                  )}
+                  {selectedPath === "variance" && (
+                    <>
+                      A Variance or SAP (Special Administrative Permit) request can typically add 20-30% density and
+                      height relief. This path models a 25% density increase and 10% height boost, reaching{" "}
+                      <strong>{paths.find(p => p.id === "variance")?.envelope?.max_units?.toLocaleString()}</strong>{" "}
+                      units. Approval probability is ~70%, with 6-16 months timeline and $75K soft costs. The trade-off:
+                      +
+                      {(
+                        (paths.find(p => p.id === "variance")?.envelope?.max_units || 0) -
+                        (paths.find(p => p.id === "by_right")?.envelope?.max_units || 0)
+                      )
+                        ?.toLocaleString()}
+                      {" "}additional units justify this path if the value delta exceeds $5M+ in property uplift.
+                    </>
+                  )}
+                  {!selectedPath && (
+                    <>
+                      Select a development path to see constraint analysis and AI insights about feasibility, timeline,
+                      and value creation.
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>
