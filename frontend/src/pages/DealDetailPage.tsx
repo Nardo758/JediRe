@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import {
+import { 
   BarChart3, DollarSign, FileText, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
   ClipboardCheck, Calendar, FolderOpen, Box,
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { TabGroup, Tab } from '../components/deal/TabGroup';
 import { apiClient } from '../services/api.client';
-import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
+import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
@@ -93,21 +93,20 @@ const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { fetchDealById } = useDealStore();
-  const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
-  const config = useDealTypeConfig();
+  const { fetchDealContext } = useDealStore();
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [geographicStats, setGeographicStats] = useState<any>(null);
+  const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
 
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
-      loadTradeAreaForDeal(dealId);
       fetchGeographicContext(dealId);
     }
   }, [dealId]);
@@ -116,6 +115,11 @@ const DealDetailPage: React.FC = () => {
     try {
       const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
       const context = response?.data?.data;
+      setGeographicContext(context || null);
+      setActiveTradeArea(context?.trade_area || null);
+      if (context?.active_scope) {
+        setScope(context.active_scope);
+      }
       const stats: any = {};
       if (context?.trade_area) {
         stats.trade_area = context.trade_area.stats
@@ -136,6 +140,7 @@ const DealDetailPage: React.FC = () => {
       }
       setGeographicStats(stats);
     } catch {
+      setGeographicContext(null);
       setGeographicStats(null);
     }
   };
@@ -177,7 +182,7 @@ const DealDetailPage: React.FC = () => {
       const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
       const body = response?.data;
       setDeal(body?.deal || body?.data || body);
-      fetchDealById(id);
+      fetchDealContext(id);
     } catch (error) {
       console.error('Error loading deal:', error);
     } finally {
@@ -290,35 +295,30 @@ const DealDetailPage: React.FC = () => {
 
   // Stage 3: DEAL DESIGN - Create the deal
   // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  // Note: 3D Design (M03) tab has moduleId and will be filtered based on deal type
   const dealDesignTabs: Tab[] = [
-    {
-      id: '3d-design',
-      label: '3D Building Design',
-      icon: <Box size={16} />,
-      component: Design3DPageEnhanced,
-      moduleId: 'M03'
+    { 
+      id: '3d-design', 
+      label: '3D Building Design', 
+      icon: <Box size={16} />, 
+      component: Design3DPageEnhanced 
     },
-    {
-      id: 'strategy',
-      label: 'Strategy',
-      icon: <Target size={16} />,
-      component: StrategySection,
-      moduleId: 'M08'
+    { 
+      id: 'strategy', 
+      label: 'Strategy', 
+      icon: <Target size={16} />, 
+      component: StrategySection 
     },
     {
       id: 'traffic-module',
       label: 'Traffic Module',
       icon: <Activity size={16} />,
-      component: TrafficModule,
-      moduleId: 'M07'
+      component: TrafficModule
     },
     {
       id: 'proforma',
       label: 'Pro Forma',
       icon: <Layers size={16} />,
-      component: ProFormaTab,
-      moduleId: 'M09'
+      component: ProFormaTab
     },
     {
       id: 'tax',
@@ -330,8 +330,7 @@ const DealDetailPage: React.FC = () => {
       id: 'debt',
       label: 'Debt, Equity & Exit',
       icon: <DollarSign size={16} />,
-      component: DebtTab,
-      moduleId: 'M11'
+      component: DebtTab
     },
     {
       id: 'financial-dashboard',
@@ -650,7 +649,7 @@ const DealDetailPage: React.FC = () => {
           </aside>
 
           <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
-            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} />
+            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
           </main>
 
           <ZoningAgentChat
