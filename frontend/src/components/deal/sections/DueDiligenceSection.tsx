@@ -8,6 +8,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { useDealType } from '../../../stores/dealStore';
+import { getDDChecklistPreset, DD_CHECKLISTS } from '../../../deal-type-visibility';
 
 // Type definitions
 interface DDChecklistItem {
@@ -63,6 +65,10 @@ interface DueDiligenceSectionProps {
 
 export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
+  const dealType = useDealType();
+  const ddPreset = useMemo(() => getDDChecklistPreset(dealType), [dealType]);
+  const ddCategories = useMemo(() => DD_CHECKLISTS[ddPreset] || [], [ddPreset]);
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
@@ -164,25 +170,25 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
     return items;
   }, [checklist, selectedCategory, showCriticalOnly]);
 
-  // Calculate category progress
+  // Calculate category progress from variant-based checklist
   const categoryProgress = useMemo(() => {
-    const categories = ['legal', 'financial', 'physical', 'environmental'];
-    return categories.map(category => {
-      const items = checklist.filter(item => item.category === category);
+    return ddCategories.map(cat => {
+      const categoryName = cat.category.toLowerCase().replace(/\s+/g, '_');
+      const items = checklist.filter(item => item.category === categoryName);
       const completed = items.filter(item => item.status === 'complete').length;
       const total = items.length;
       const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-      
+
       return {
-        category,
-        label: category.charAt(0).toUpperCase() + category.slice(1),
+        category: categoryName,
+        label: cat.category,
         completed,
         total,
         percentage,
-        color: getCategoryColor(category)
+        color: getCategoryColor(categoryName)
       };
     });
-  }, [checklist]);
+  }, [checklist, ddCategories]);
 
   // Get red flags
   const redFlags = useMemo(() => {

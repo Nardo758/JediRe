@@ -4,7 +4,7 @@
  * Features: Grid/List/Folder views, drag & drop upload, version control, smart categorization
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { FileUpload } from './DocumentsFiles/FileUpload';
@@ -15,6 +15,8 @@ import { SearchFilters } from './DocumentsFiles/SearchFilters';
 import { StorageStats } from './DocumentsFiles/StorageStats';
 import { MissingFileSuggestions } from './DocumentsFiles/MissingFileSuggestions';
 import axios from 'axios';
+import { useDealType } from '../../../stores/dealStore';
+import { MODULE_TABS } from '../../../deal-type-visibility';
 
 // ============================================================================
 // TYPES
@@ -74,6 +76,17 @@ interface DocumentsFilesSectionProps {
 
 export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
+  const dealType = useDealType();
+
+  // Get allowed document categories for this deal type
+  const allowedCategories = useMemo(() => {
+    const m18 = MODULE_TABS.find(t => t.moduleId === 'M18');
+    const variant = m18?.variants?.[dealType];
+    if (variant?.documentCategories) {
+      return variant.documentCategories;
+    }
+    return []; // Will allow all categories if not specified
+  }, [dealType]);
 
   // State
   const [files, setFiles] = useState<DealFile[]>([]);
@@ -125,7 +138,15 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
         const statsResponse = await axios.get(`/api/v1/deals/${deal.id}/files/stats`);
         setAnalytics(statsResponse.data.analytics);
         setSuggestions(statsResponse.data.missing_file_suggestions || []);
-        setCategories(statsResponse.data.available_categories || []);
+
+        // Filter categories based on deal type variant
+        let availableCategories = statsResponse.data.available_categories || [];
+        if (allowedCategories.length > 0) {
+          availableCategories = availableCategories.filter((cat: string) =>
+            allowedCategories.includes(cat)
+          );
+        }
+        setCategories(availableCategories);
       }
     } catch (err: any) {
       console.error('Error loading files:', err);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { getDealNav } from "./src/shared/config/deal-type-visibility";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — INTEGRATED BLOOMBERG TERMINAL
@@ -29,14 +30,14 @@ const css = `
 
 // ─── DATA ────────────────────────────────────────────────────
 const DEALS = [
-  {id:1,name:"Westshore Commons",addr:"4201 W Boy Scout Blvd",market:"Tampa, FL",sub:"Westshore",score:82,delta:"+4",strat:"BTS",irr:"24.3%",em:"2.8x",units:248,price:"$38.5M",ppu:"$155K",stage:"DD",days:23,risk:"LOW",rs:32,trend:[72,74,73,76,78,77,79,80,82],lat:27.95,lng:-82.52},
-  {id:2,name:"Nocatee Parcels",addr:"Parcel 7-A Nocatee Pkwy",market:"Jacksonville, FL",sub:"Nocatee",score:88,delta:"+7",strat:"BTS",irr:"28.1%",em:"3.2x",units:0,price:"$4.2M",ppu:"LAND",stage:"LOI",days:11,risk:"LOW",rs:24,trend:[71,73,76,78,80,82,84,86,88],lat:30.09,lng:-81.39},
-  {id:3,name:"Dadeland Station",addr:"8200 SW 72nd Ave",market:"Miami, FL",sub:"Dadeland",score:76,delta:"+2",strat:"RENTAL",irr:"18.7%",em:"2.1x",units:312,price:"$62.4M",ppu:"$200K",stage:"DD",days:34,risk:"MED",rs:54,trend:[70,71,72,72,73,74,75,75,76],lat:25.69,lng:-80.31},
-  {id:4,name:"Colonial Crossings",addr:"3400 Colonial Dr",market:"Orlando, FL",sub:"Colonial Town",score:71,delta:"-1",strat:"FLIP",irr:"21.5%",em:"1.6x",units:180,price:"$24.8M",ppu:"$138K",stage:"PROSPECT",days:8,risk:"MED",rs:48,trend:[68,70,72,73,74,73,72,72,71],lat:28.55,lng:-81.36},
-  {id:5,name:"Riverview Preserve",addr:"11502 Boyette Rd",market:"Tampa, FL",sub:"Riverview",score:79,delta:"+3",strat:"BTS",irr:"22.8%",em:"2.5x",units:0,price:"$2.8M",ppu:"LAND",stage:"LOI",days:5,risk:"LOW",rs:28,trend:[70,72,73,75,76,77,78,78,79],lat:27.86,lng:-82.33},
-  {id:6,name:"Ybor Mixed-Use",addr:"1901 N 13th St",market:"Tampa, FL",sub:"Ybor City",score:54,delta:"-3",strat:"STR",irr:"12.4%",em:"1.3x",units:42,price:"$8.6M",ppu:"$205K",stage:"LEAD",days:2,risk:"HIGH",rs:78,trend:[62,60,59,58,57,56,55,55,54],lat:27.96,lng:-82.44},
-  {id:7,name:"Kendall Commons",addr:"12000 SW 127th Ave",market:"Miami, FL",sub:"Kendall",score:68,delta:"0",strat:"RENTAL",irr:"16.2%",em:"1.9x",units:224,price:"$44.8M",ppu:"$200K",stage:"PROSPECT",days:15,risk:"MED",rs:52,trend:[67,68,68,67,68,69,68,68,68],lat:25.68,lng:-80.44},
-  {id:8,name:"Celebration South",addr:"Parcel 9 Celebration Blvd",market:"Orlando, FL",sub:"Celebration",score:85,delta:"+5",strat:"BTS",irr:"26.4%",em:"3.0x",units:0,price:"$6.1M",ppu:"LAND",stage:"DD",days:18,risk:"LOW",rs:22,trend:[74,76,77,79,80,81,83,84,85],lat:28.32,lng:-81.54},
+  {id:1,name:"Westshore Commons",addr:"4201 W Boy Scout Blvd",market:"Tampa, FL",sub:"Westshore",score:82,delta:"+4",strat:"BTS",irr:"24.3%",em:"2.8x",units:248,price:"$38.5M",ppu:"$155K",stage:"DD",days:23,risk:"LOW",rs:32,trend:[72,74,73,76,78,77,79,80,82],lat:27.95,lng:-82.52,projectType:"existing"},
+  {id:2,name:"Nocatee Parcels",addr:"Parcel 7-A Nocatee Pkwy",market:"Jacksonville, FL",sub:"Nocatee",score:88,delta:"+7",strat:"BTS",irr:"28.1%",em:"3.2x",units:0,price:"$4.2M",ppu:"LAND",stage:"LOI",days:11,risk:"LOW",rs:24,trend:[71,73,76,78,80,82,84,86,88],lat:30.09,lng:-81.39,projectType:"development"},
+  {id:3,name:"Dadeland Station",addr:"8200 SW 72nd Ave",market:"Miami, FL",sub:"Dadeland",score:76,delta:"+2",strat:"RENTAL",irr:"18.7%",em:"2.1x",units:312,price:"$62.4M",ppu:"$200K",stage:"DD",days:34,risk:"MED",rs:54,trend:[70,71,72,72,73,74,75,75,76],lat:25.69,lng:-80.31,projectType:"existing"},
+  {id:4,name:"Colonial Crossings",addr:"3400 Colonial Dr",market:"Orlando, FL",sub:"Colonial Town",score:71,delta:"-1",strat:"FLIP",irr:"21.5%",em:"1.6x",units:180,price:"$24.8M",ppu:"$138K",stage:"PROSPECT",days:8,risk:"MED",rs:48,trend:[68,70,72,73,74,73,72,72,71],lat:28.55,lng:-81.36,projectType:"existing"},
+  {id:5,name:"Riverview Preserve",addr:"11502 Boyette Rd",market:"Tampa, FL",sub:"Riverview",score:79,delta:"+3",strat:"BTS",irr:"22.8%",em:"2.5x",units:0,price:"$2.8M",ppu:"LAND",stage:"LOI",days:5,risk:"LOW",rs:28,trend:[70,72,73,75,76,77,78,78,79],lat:27.86,lng:-82.33,projectType:"development"},
+  {id:6,name:"Ybor Mixed-Use",addr:"1901 N 13th St",market:"Tampa, FL",sub:"Ybor City",score:54,delta:"-3",strat:"STR",irr:"12.4%",em:"1.3x",units:42,price:"$8.6M",ppu:"$205K",stage:"LEAD",days:2,risk:"HIGH",rs:78,trend:[62,60,59,58,57,56,55,55,54],lat:27.96,lng:-82.44,projectType:"redevelopment"},
+  {id:7,name:"Kendall Commons",addr:"12000 SW 127th Ave",market:"Miami, FL",sub:"Kendall",score:68,delta:"0",strat:"RENTAL",irr:"16.2%",em:"1.9x",units:224,price:"$44.8M",ppu:"$200K",stage:"PROSPECT",days:15,risk:"MED",rs:52,trend:[67,68,68,67,68,69,68,68,68],lat:25.68,lng:-80.44,projectType:"existing"},
+  {id:8,name:"Celebration South",addr:"Parcel 9 Celebration Blvd",market:"Orlando, FL",sub:"Celebration",score:85,delta:"+5",strat:"BTS",irr:"26.4%",em:"3.0x",units:0,price:"$6.1M",ppu:"LAND",stage:"DD",days:18,risk:"LOW",rs:22,trend:[74,76,77,79,80,81,83,84,85],lat:28.32,lng:-81.54,projectType:"development"},
 ];
 
 const NEWS = [
@@ -86,12 +87,22 @@ const PORTFOLIO_NAV = [
   {key:"F4",label:"MARKETS"},{key:"F5",label:"COMPETE"},{key:"F6",label:"NEWS"},
   {key:"F7",label:"OPPS"},{key:"F8",label:"REPORTS"},{key:"F9",label:"SETTINGS"},
 ];
-const DEAL_NAV = [
-  {key:"F1",label:"OVERVIEW",m:"M01"},{key:"F2",label:"PROPERTY",m:"M02"},{key:"F3",label:"MARKET",m:"M05"},
-  {key:"F4",label:"SUPPLY",m:"M04"},{key:"F5",label:"STRATEGY",m:"M08"},{key:"F6",label:"PROFORMA",m:"M09"},
-  {key:"F7",label:"CAPITAL",m:"M11"},{key:"F8",label:"RISK",m:"M14"},{key:"F9",label:"COMPS",m:"M15"},
-  {key:"F10",label:"TRAFFIC",m:"M07"},{key:"F11",label:"DOCS",m:"M18"},{key:"F12",label:"EXIT",m:"M20"},
-];
+
+// Helper function to get dynamic DEAL_NAV based on deal type
+function getDealNav_Dynamic(projectType = 'existing') {
+  try {
+    const nav = getDealNav(projectType);
+    return nav.map(item => ({ key: item.key, label: item.label, m: item.m }));
+  } catch {
+    // Fallback to default if function not available
+    return [
+      {key:"F1",label:"OVERVIEW",m:"M01"},{key:"F2",label:"PROPERTY",m:"M02"},{key:"F3",label:"MARKET",m:"M05"},
+      {key:"F4",label:"SUPPLY",m:"M04"},{key:"F5",label:"STRATEGY",m:"M08"},{key:"F6",label:"PROFORMA",m:"M09"},
+      {key:"F7",label:"CAPITAL",m:"M11"},{key:"F8",label:"RISK",m:"M14"},{key:"F9",label:"COMPS",m:"M15"},
+      {key:"F10",label:"TRAFFIC",m:"M07"},{key:"F11",label:"DOCS",m:"M18"},{key:"F12",label:"EXIT",m:"M20"},
+    ];
+  }
+}
 
 // ─── UTILITY COMPONENTS ──────────────────────────────────────
 
@@ -169,7 +180,7 @@ export default function JEDITerminal() {
   const enterDeal = (deal) => { setActiveDeal(deal); setCtx("deal"); setFkey("F1"); };
   const exitDeal = () => { setCtx("portfolio"); setActiveDeal(null); setFkey("F1"); };
 
-  const nav = ctx === "portfolio" ? PORTFOLIO_NAV : DEAL_NAV;
+  const nav = ctx === "portfolio" ? PORTFOLIO_NAV : getDealNav_Dynamic(activeDeal?.projectType || 'existing');
   const sorted = [...DEALS].filter(d => (fStage === "ALL" || d.stage === fStage) && (fStrat === "ALL" || d.strat === fStrat)).sort((a, b) => { const dir = sortDir === "desc" ? -1 : 1; if (sortBy === "score") return (a.score - b.score) * dir; if (sortBy === "name") return a.name.localeCompare(b.name) * dir; if (sortBy === "days") return (a.days - b.days) * dir; return 0; });
   const toggleSort = (c) => { if (sortBy === c) setSortDir(d => d === "desc" ? "asc" : "desc"); else { setSortBy(c); setSortDir("desc"); } };
 
@@ -551,7 +562,7 @@ export default function JEDITerminal() {
         case "F6": return (<DealStub title="PRO FORMA ENGINE" module="M09" items={[{title:"Baseline NOI: $2,840,000",desc:"Broker assumption | Cap rate 5.2% going-in"},{title:"Platform-Adjusted NOI: $2,680,000 (-5.6%)",desc:"AI detected: broker rent growth +4% vs market +3.0%. Insurance understated 22%"},{title:"3-Layer Model Active",desc:"Layer 1: Broker | Layer 2: Platform Intel | Layer 3: Your overrides"},{title:"Sensitivity: IRR range 18.4% - 28.1%",desc:"Key driver: exit cap rate (4.8% - 5.6% range)"}]} />);
         case "F7": return (<DealStub title="CAPITAL STRUCTURE" module="M11" items={[{title:"Senior Debt: $28.8M (75% LTC)",desc:"Rate: SOFR + 275bps | IO 24mo | Term 36mo"},{title:"Mezzanine: $3.8M (10% LTC)",desc:"Rate: 12% fixed | Current pay"},{title:"Equity: $5.9M (15%)",desc:"IRR target: 24% | EM target: 2.8x | Hold: 24mo"},{title:"Capital Stack Visual",desc:"75% senior | 10% mezz | 15% equity | WACC: 8.2%"}]} />);
         case "F8": return (<DealStub title="RISK ASSESSMENT" module="M14" items={[{title:"Overall Risk Score: 32 (LOW)",desc:"Supply: 28 | Regulatory: 18 | Market: 35 | Execution: 42 | Climate: 24 | Insurance: 38"},{title:"Top Risk: Execution (42)",desc:"First-time development in this submarket. Mitigated by experienced GC partnership."},{title:"Insurance Risk: 38",desc:"FL wind zone but inland. Rate capped at 8% per new legislation."},{title:"Monte Carlo: 94% probability of meeting target IRR",desc:"1,000 simulations | p10: 18.4% | p50: 24.3% | p90: 31.2%"}]} />);
-        default: return (<DealStub title={DEAL_NAV.find(n => n.key === fkey)?.label || "MODULE"} module={DEAL_NAV.find(n => n.key === fkey)?.m || ""} items={[{title:"Module content loads here",desc:"This module renders in Bloomberg L1-L4 layout patterns"}]} />);
+        default: return (<DealStub title={nav.find(n => n.key === fkey)?.label || "MODULE"} module={nav.find(n => n.key === fkey)?.m || ""} items={[{title:"Module content loads here",desc:"This module renders in Bloomberg L1-L4 layout patterns"}]} />);
       }
     }
   };

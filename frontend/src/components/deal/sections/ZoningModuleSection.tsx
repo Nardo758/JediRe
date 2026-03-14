@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin,
   CheckCircle2,
@@ -16,6 +16,8 @@ import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
+import { useDealType } from '../../../stores/dealStore';
+import { getZoningDepth } from '../../../deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -24,7 +26,7 @@ interface ZoningModuleSectionProps {
   onBack?: () => void;
 }
 
-const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
+const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
   { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
@@ -32,7 +34,22 @@ const TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: numbe
   { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
 ];
 
+// Simplified tabs for existing deals (3 tabs)
+const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'hbu', 'risk'];
+
+// Full tabs for development/redevelopment deals (all 5 tabs)
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline'];
+
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
+  const dealType = useDealType();
+  const zoningDepth = useMemo(() => getZoningDepth(dealType), [dealType]);
+
+  // Filter tabs based on zoning depth (simplified for existing, full for dev/redev)
+  const visibleTabs = useMemo(() => {
+    const tabIds = zoningDepth === 'simplified' ? SIMPLIFIED_TABS : FULL_TABS;
+    return ALL_TABS.filter(tab => tabIds.includes(tab.id));
+  }, [zoningDepth]);
+
   const resolvedDealId = propDealId || deal?.id;
   const [activeTab, setActiveTab] = useState<ZoningTabId>('boundary_zoning');
   const [boundaryAndZoningComplete, setBoundaryAndZoningComplete] = useState(false);
@@ -170,7 +187,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         )}
 
         <div className="flex gap-0.5 overflow-x-auto">
-          {TABS.map(tab => {
+          {visibleTabs.map(tab => {
             const unlocked = isTabUnlocked(tab.id);
             const completed =
               tab.id === 'boundary_zoning' && boundaryAndZoningComplete;
