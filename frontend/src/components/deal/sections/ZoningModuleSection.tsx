@@ -36,8 +36,8 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
   { id: 'entitlements', label: 'Entitlements', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
 ];
 
-// Simplified tabs for existing deals (3 tabs)
-const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk', 'timeline'];
+// Simplified tabs for existing deals (all 6 tabs now visible)
+const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];
 
 // Full tabs for development/redevelopment deals (all 6 tabs)
 const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];

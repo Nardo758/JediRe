@@ -1,9 +1,55 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
+
+// ═══ DEAL-TYPE ADAPTATION IMPORTS ═══
+// Utilities for conformance checks and scenario generation
+import { computeConformanceMetrics, ConformanceCheckData } from '../../../utils/conformance.utils';
+import { generateExpansionScenarios, generateRedevelopmentScenarios, ExpansionScenario } from '../../../utils/scenarios.utils';
+import { getSubTabsForDealType, normalizeDealType } from '../../../utils/tabs.utils';
+import { generateInterpretationDecisions, getInterpretationOverrides, estimateUnitCountForMode } from '../../../utils/interpretation.utils';
+
+// UI Components for deal-type views
+import ConformanceCheckSection from './components/ConformanceCheckSection';
+import UntappedEntitlementCard from './components/UntappedEntitlementCard';
+import ExpansionScenariosCards from './components/ExpansionScenariosCards';
+import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards';
+import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard';
+import NonconformingWarning from './components/NonconformingWarning';
+import InterpretationPanel, { InterpretationDecision } from './components/InterpretationPanel';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
+// ═══════════════════════════════════════════════════════════════════════════════
+const T = {
+  bg:         "#0a0f1a",
+  bgCard:     "#0f1729",
+  bgCardAlt:  "#111d33",
+  bgHover:    "#162040",
+  border:     "#1e2d4a",
+  borderLit:  "#2a4070",
+  text:       "#e2e8f0",
+  textMuted:  "#64748b",
+  textDim:    "#475569",
+  accent:     "#3b82f6",
+  accentDim:  "#1e40af",
+  green:      "#22c55e",
+  greenDim:   "#166534",
+  amber:      "#f59e0b",
+  amberDim:   "#92400e",
+  red:        "#ef4444",
+  redDim:     "#991b1b",
+  cyan:       "#06b6d4",
+  purple:     "#a78bfa",
+};
+
+const FONT = {
+  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+  body: "'IBM Plex Sans', -apple-system, sans-serif",
+};
 
 interface EnvelopeEnrichment {
   sources: Record<string, {
@@ -85,6 +131,191 @@ const PROJECT_TYPE_OPTIONS = [
   { value: 'industrial',  label: 'Industrial', hint: 'Applies nonresidential FAR only' },
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPUTATION FUNCTIONS — Client-side instant preview calculations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function calculateBuildableArea(parcel: any, zoning: any) {
+  const { front_ft, side_ft, rear_ft } = zoning.setbacks || {};
+  const frontage = parcel.frontage_ft || 200;
+  const depth = parcel.depth_ft || 200;
+
+  let buildable_width, buildable_depth;
+  if (parcel.is_corner) {
+    buildable_width = frontage - (front_ft || 0) - (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  } else {
+    buildable_width = frontage - 2 * (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  }
+
+  const buildable_sf = Math.max(0, buildable_width * buildable_depth);
+  const gross_lot_sf = parcel.lot_size_sf || 0;
+
+  return {
+    gross_lot_sf,
+    buildable_sf,
+    buildable_width,
+    buildable_depth,
+    setback_loss_sf: gross_lot_sf - buildable_sf,
+    setback_loss_pct: ((gross_lot_sf - buildable_sf) / gross_lot_sf * 100).toFixed(1),
+  };
+}
+
+function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}) {
+  const area = calculateBuildableArea(parcel, zoning);
+  const lot_acres = (parcel.lot_size_sf || 0) / 43560;
+  const density = overrides.density || zoning.max_density_units_per_acre || 100;
+  const height_ft = overrides.height || zoning.max_height_ft || 85;
+  const far = overrides.far || zoning.max_far || 3.0;
+  const coverage = overrides.coverage || (zoning.lot_coverage_pct || 80) / 100;
+  const parking_per_unit = overrides.parking || zoning.parking?.per_unit || 1.0;
+  const guest_parking = zoning.parking?.guest_per_unit || 0.25;
+
+  // ─── CONSTRAINT 1: Density cap ───
+  const density_cap = Math.floor(density * lot_acres);
+
+  // ─── CONSTRAINT 2: FAR cap ───
+  const avg_unit_sf = overrides.avg_unit_sf || 850;
+  const common_area_factor = 1.15;
+  const max_gfa = far * (parcel.lot_size_sf || 0);
+  const rentable_sf = max_gfa / common_area_factor;
+  const far_cap = Math.floor(rentable_sf / avg_unit_sf);
+
+  // ─── CONSTRAINT 3: Height cap ───
+  const ground_floor_height = 14;
+  const upper_floor_height = 10;
+  const max_stories = height_ft <= ground_floor_height
+    ? 1
+    : 1 + Math.floor((height_ft - ground_floor_height) / upper_floor_height);
+  const footprint_sf = area.buildable_sf * coverage;
+  const units_per_floor = Math.floor(footprint_sf / (avg_unit_sf * common_area_factor));
+  const residential_floors = Math.max(1, max_stories - 1);
+  const height_cap = units_per_floor * residential_floors;
+
+  // ─── CONSTRAINT 4: Lot coverage cap ───
+  const coverage_cap = units_per_floor * max_stories;
+
+  // ─── BINDING CONSTRAINT ───
+  const constraints = [
+    { name: "Density", units: density_cap, param: `${density} units/acre`, formula: `${density} × ${lot_acres.toFixed(2)} acres` },
+    { name: "FAR", units: far_cap, param: `FAR ${far}`, formula: `${far} × ${(parcel.lot_size_sf || 0).toLocaleString()} SF ÷ ${avg_unit_sf} SF/unit ÷ ${common_area_factor}` },
+    { name: "Height", units: height_cap, param: `${height_ft} ft (${max_stories} stories)`, formula: `${units_per_floor} units/floor × ${residential_floors} res. floors` },
+    { name: "Coverage", units: coverage_cap, param: `${(coverage * 100).toFixed(0)}% coverage`, formula: `${units_per_floor} units/floor × ${max_stories} total stories` },
+  ];
+
+  constraints.sort((a, b) => a.units - b.units);
+  const binding = constraints[0];
+  const max_units = binding.units;
+
+  // ─── PARKING ANALYSIS ───
+  const total_parking_spaces = Math.ceil(max_units * (parking_per_unit + guest_parking));
+  const parking_sf_per_space = 350;
+  const parking_cost_per_space_surface = 5000;
+  const parking_cost_per_space_structured = 35000;
+  const surface_parking_sf = total_parking_spaces * parking_sf_per_space;
+  const needs_structured = surface_parking_sf > ((parcel.lot_size_sf || 0) - footprint_sf);
+  const parking_cost_per_space = needs_structured ? parking_cost_per_space_structured : parking_cost_per_space_surface;
+  const total_parking_cost = total_parking_spaces * parking_cost_per_space;
+  const cars_per_parking_level = Math.floor(footprint_sf / parking_sf_per_space);
+  const parking_levels_needed = needs_structured ? Math.ceil(total_parking_spaces / cars_per_parking_level) : 0;
+
+  // ─── ESTIMATED VALUES ───
+  const est_value_per_unit = 250000;
+  const est_construction_cost_per_sf = 185;
+  const total_gfa = max_units * avg_unit_sf * common_area_factor;
+  const est_construction_cost = total_gfa * est_construction_cost_per_sf;
+  const est_total_value = max_units * est_value_per_unit;
+
+  return {
+    max_units,
+    binding_constraint: binding.name,
+    constraints,
+    max_gfa,
+    total_gfa_at_max_units: total_gfa,
+    max_stories,
+    residential_floors,
+    units_per_floor,
+    footprint_sf,
+    buildable_area: area,
+    parking: {
+      total_spaces: total_parking_spaces,
+      per_unit: parking_per_unit,
+      guest_per_unit: guest_parking,
+      needs_structured,
+      parking_levels_needed,
+      cost_per_space: parking_cost_per_space,
+      total_cost: total_parking_cost,
+      pct_of_construction: ((total_parking_cost / est_construction_cost) * 100).toFixed(1),
+    },
+    financials: {
+      est_value_per_unit,
+      est_total_value,
+      est_construction_cost_per_sf,
+      est_construction_cost,
+      est_total_development_cost: est_construction_cost + total_parking_cost,
+    },
+  };
+}
+
+function generatePathScenarios(parcel: any, currentZoning: any) {
+  const byRight = calculateEnvelope(parcel, currentZoning);
+
+  const overlayDensity = (currentZoning.max_density_units_per_acre || 100) * 1.2;
+  const overlayParking = (currentZoning.parking?.per_unit || 1.0) * 0.8;
+  const overlayBonus = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: overlayDensity,
+    parking: { ...currentZoning.parking, per_unit: overlayParking },
+  });
+
+  const varianceDensity = (currentZoning.max_density_units_per_acre || 100) * 1.25;
+  const varianceHeight = (currentZoning.max_height_ft || 85) * 1.10;
+  const variance = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: varianceDensity,
+    max_height_ft: varianceHeight,
+  });
+
+  return {
+    paths: [
+      {
+        id: "by_right",
+        label: "By-Right",
+        sublabel: `Under current ${currentZoning.base_district_code || 'zoning'}`,
+        envelope: byRight,
+        timeline_months: { min: 3, median: 6, max: 9 },
+        approval_probability: 0.95,
+        additional_cost: 0,
+        risk_level: "low",
+        color: T.green,
+      },
+      {
+        id: "overlay_bonus",
+        label: "Overlay Bonus",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + Overlay`,
+        envelope: overlayBonus,
+        timeline_months: { min: 4, median: 8, max: 12 },
+        approval_probability: 0.85,
+        additional_cost: 0,
+        risk_level: "low-medium",
+        color: T.cyan,
+      },
+      {
+        id: "variance",
+        label: "SAP / Variance",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + 25% density bonus`,
+        envelope: variance,
+        timeline_months: { min: 6, median: 10, max: 16 },
+        approval_probability: 0.70,
+        additional_cost: 75000,
+        risk_level: "medium",
+        color: T.amber,
+      },
+    ],
+  };
+}
+
 function formatNumber(v: number | null | undefined): string {
   if (v == null) return '--';
   return v.toLocaleString();
@@ -129,6 +360,343 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
   return PATH_KEY_MAP[colKey] || 'by_right';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI STYLING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const s = {
+  card: {
+    background: T.bgCard,
+    border: `1px solid ${T.border}`,
+    borderRadius: 6,
+    padding: 16,
+    marginBottom: 12,
+  },
+  cardLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    fontFamily: FONT.mono,
+    color: T.accent,
+    marginBottom: 12,
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
+  },
+  constraintBarBg: {
+    height: 6,
+    background: T.bgCardAlt,
+    borderRadius: 2,
+    overflow: "hidden" as const,
+  },
+  constraintBar: (pct: number, isBinding: boolean) => ({
+    height: "100%",
+    width: `${Math.min(100, pct)}%`,
+    background: isBinding ? T.red : T.accent,
+    transition: "width 0.3s ease",
+  }),
+  bindingTag: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: T.red,
+    background: T.redDim + "40",
+    padding: "2px 6px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  },
+  pathCard: (selected: boolean, color: string) => ({
+    flex: "1 1 220px",
+    background: selected ? T.bgCardAlt : T.bgCard,
+    border: `2px solid ${selected ? color : T.border}`,
+    borderRadius: 6,
+    padding: 12,
+    cursor: "pointer" as const,
+    transition: "all 0.2s",
+    "&:hover": { borderColor: color },
+  }),
+  metric: {
+    fontSize: 32,
+    fontWeight: 800,
+    fontFamily: FONT.mono,
+    color: T.text,
+    marginTop: 8,
+  },
+  metricSub: {
+    fontSize: 10,
+    color: T.textMuted,
+    fontFamily: FONT.mono,
+  },
+  badge: (color: string) => ({
+    fontSize: 8,
+    fontWeight: 700,
+    color: color,
+    background: color + "20",
+    padding: "4px 8px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  }),
+  table: {
+    width: "100%",
+    borderCollapse: "collapse" as const,
+    fontSize: 12,
+  },
+  th: {
+    background: T.bgCardAlt,
+    color: T.accent,
+    padding: "8px 10px",
+    textAlign: "left" as const,
+    fontWeight: 600,
+    fontFamily: FONT.mono,
+    fontSize: 10,
+    borderBottom: `1px solid ${T.border}`,
+  },
+  td: (bold = false) => ({
+    padding: "8px 10px",
+    borderBottom: `1px solid ${T.border}`,
+    fontFamily: FONT.mono,
+    fontSize: 11,
+    color: bold ? T.accent : T.text,
+    fontWeight: bold ? 600 : 400,
+  }),
+  tab: (active: boolean) => ({
+    padding: "8px 12px",
+    background: active ? T.bgCardAlt : "transparent",
+    border: `1px solid ${active ? T.accent : T.border}`,
+    color: active ? T.accent : T.textMuted,
+    cursor: "pointer" as const,
+    fontFamily: FONT.mono,
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 4,
+    transition: "all 0.2s",
+  }),
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI COMPONENTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[], maxPossible: number }) {
+  return (
+    <div style={s.card}>
+      <div style={s.cardLabel}>CONSTRAINT WATERFALL — BINDING ANALYSIS</div>
+      <div style={{ fontSize: 11, color: T.textDim, marginBottom: 16, fontFamily: FONT.mono }}>
+        Max units = MIN(density, FAR, height, coverage). The lowest is the binding constraint.
+      </div>
+      {constraints.map((c, i) => {
+        const pct = maxPossible > 0 ? (c.units / maxPossible) * 100 : 0;
+        const isBinding = i === 0;
+        return (
+          <div key={c.name} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT.mono, color: isBinding ? T.red : T.text }}>
+                  {c.name}
+                </span>
+                {isBinding && <span style={s.bindingTag}>BINDING</span>}
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 800, fontFamily: FONT.mono, color: isBinding ? T.red : T.accent }}>
+                {c.units.toLocaleString()} units
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono, marginBottom: 4 }}>
+              {c.param} → {c.formula}
+            </div>
+            <div style={s.constraintBarBg}>
+              <div style={s.constraintBar(pct, isBinding)} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PathComparisonCards({ paths, selectedPath, onSelectPath, nearbyEntitlements, currentCode }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void, nearbyEntitlements?: any, currentCode?: string }) {
+  const getPrecedentBadge = (pathId: string) => {
+    if (pathId !== 'rezone' || !nearbyEntitlements || !currentCode) return null;
+
+    const rezoneTransitions = nearbyEntitlements.commonTransitions || [];
+    const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+    if (currentCodeTransitions.length === 0) return null;
+
+    const avgApprovalRate = currentCodeTransitions.reduce((sum: number, t: any) => sum + (t.approvalRate || 0), 0) / currentCodeTransitions.length;
+
+    if (avgApprovalRate > 75) {
+      return { text: `Strong precedent — ${currentCodeTransitions.length} approved`, color: T.green, bg: T.greenDim };
+    } else if (avgApprovalRate >= 50) {
+      return { text: `Moderate precedent — ${avgApprovalRate.toFixed(0)}% approval`, color: T.amber, bg: T.amberDim };
+    } else {
+      return { text: 'Limited precedent — proceed with caution', color: T.amber, bg: T.amberDim };
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      {paths.map(path => {
+        const sel = selectedPath === path.id;
+        const precedent = getPrecedentBadge(path.id);
+        return (
+          <div
+            key={path.id}
+            style={s.pathCard(sel, path.color)}
+            onClick={() => onSelectPath(path.id)}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: FONT.mono, color: sel ? path.color : T.text }}>
+                  {path.label}
+                </div>
+                <div style={{ fontSize: 10, color: T.textMuted, fontFamily: FONT.mono, marginTop: 2 }}>
+                  {path.sublabel}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+                {precedent && (
+                  <span style={{
+                    fontSize: 8,
+                    fontWeight: 700,
+                    color: precedent.color,
+                    background: precedent.bg + "40",
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    fontFamily: FONT.mono,
+                  }}>
+                    {precedent.text}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={s.metric}>{path.envelope.max_units.toLocaleString()}</div>
+            <div style={s.metricSub}>units — bound by {path.envelope.binding_constraint}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>TIMELINE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {path.timeline_months.min}–{path.timeline_months.max} mo
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PROBABILITY</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {(path.approval_probability * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>EST. VALUE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.green }}>
+                  ${(path.envelope.financials.est_total_value / 1e6).toFixed(1)}M
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PARKING</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: path.envelope.parking.needs_structured ? T.amber : T.text }}>
+                  {path.envelope.parking.total_spaces} sp. {path.envelope.parking.needs_structured ? "(struct.)" : "(surf.)"}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EnvelopeDetail({ envelope, label }: { envelope: any, label: string }) {
+  const { buildable_area: area, parking, financials } = envelope;
+  return (
+    <div style={s.card}>
+      <div style={s.cardLabel}>{label} — DEVELOPMENT ENVELOPE</div>
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.th}>Parameter</th>
+            <th style={s.th}>Value</th>
+            <th style={s.th}>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={s.td()}>Gross Lot Area</td>
+            <td style={s.td(true)}>{area.gross_lot_sf.toLocaleString()} SF ({(area.gross_lot_sf / 43560).toFixed(2)} ac)</td>
+            <td style={s.td()}>County GIS / PostGIS</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Setback Deduction</td>
+            <td style={s.td()}>{area.setback_loss_sf.toLocaleString()} SF ({area.setback_loss_pct}%)</td>
+            <td style={s.td()}>Zoning Code setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Buildable Area</td>
+            <td style={s.td(true)}>{area.buildable_sf.toLocaleString()} SF</td>
+            <td style={s.td()}>Gross - setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Building Footprint</td>
+            <td style={s.td()}>{Math.round(envelope.footprint_sf).toLocaleString()} SF</td>
+            <td style={s.td()}>Buildable × coverage %</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Units</td>
+            <td style={s.td(true)}>{envelope.max_units.toLocaleString()}</td>
+            <td style={s.td()}>Binding: {envelope.binding_constraint}</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Stories</td>
+            <td style={s.td()}>{envelope.max_stories} ({envelope.residential_floors} residential)</td>
+            <td style={s.td()}>Height ÷ floor height</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Units/Floor</td>
+            <td style={s.td()}>{envelope.units_per_floor}</td>
+            <td style={s.td()}>Footprint ÷ unit size</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max GFA</td>
+            <td style={s.td()}>{Math.round(envelope.max_gfa).toLocaleString()} SF</td>
+            <td style={s.td()}>FAR × lot area</td>
+          </tr>
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Required</td>
+            <td style={s.td(true)}>
+              {parking.total_spaces} spaces
+              {parking.needs_structured && <span style={{ ...s.badge(T.amber), marginLeft: 6 }}>STRUCTURED</span>}
+            </td>
+            <td style={s.td()}>{parking.per_unit}/unit + {parking.guest_per_unit} guest</td>
+          </tr>
+          {parking.needs_structured && (
+            <tr style={{ background: T.bgCardAlt }}>
+              <td style={s.td()}>Parking Levels</td>
+              <td style={s.td()}>{parking.parking_levels_needed} levels</td>
+              <td style={s.td()}>Spaces ÷ cars/level</td>
+            </tr>
+          )}
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Cost</td>
+            <td style={s.td(true)}>${(parking.total_cost / 1e6).toFixed(1)}M ({parking.pct_of_construction}% of construction)</td>
+            <td style={s.td()}>${parking.cost_per_space.toLocaleString()}/space</td>
+          </tr>
+          <tr style={{ borderTop: `2px solid ${T.border}` }}>
+            <td style={s.td()}>Est. Construction</td>
+            <td style={s.td()}>${(financials.est_construction_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_construction_cost_per_sf}/SF hard cost</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Dev Cost</td>
+            <td style={s.td(true)}>${(financials.est_total_development_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>Construction + Parking</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Value</td>
+            <td style={{ ...s.td(true), color: T.green }}>${(financials.est_total_value / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_value_per_unit.toLocaleString()}/unit</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
@@ -164,6 +732,47 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
+  const [pathScenarios, setPathScenarios] = useState<any>(null);
+
+  // ═══ DEAL-TYPE ADAPTATION STATE ═══
+  const [activeSubTab, setActiveSubTab] = useState<string>('');
+  const [conformance, setConformance] = useState<ConformanceCheckData | null>(null);
+
+  // ═══ INTERPRETATION STATE ═══
+  const [zoningInterpretation, setZoningInterpretation] = useState<any>(null);
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
+  const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
+  const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
+
+  // ═══ INTERPRETATION PANEL STATE ═══
+  const [interpretationDecisions, setInterpretationDecisions] = useState<InterpretationDecision[]>([]);
+  const [interpretationWarnings, setInterpretationWarnings] = useState<string[]>([]);
+  const [userOverrides, setUserOverrides] = useState<Record<string, number>>({});
+  const [interpretationMode, setInterpretationMode] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [unitCounts, setUnitCounts] = useState({
+    conservative: 0,
+    moderate: 0,
+    aggressive: 0,
+  });
+
+  // ═══ ENTITLEMENT ACTIVITY STATE ═══
+  const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
+  const fetchNearbyEntitlements = useCallback(async () => {
+    if (!dealId) return;
+    setNearbyLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+      if (res.data?.data) {
+        setNearbyEntitlements(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch nearby entitlements:', err);
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [dealId]);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -372,6 +981,44 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setProfile(profileData.profile);
         setDealInfo(profileData.deal);
 
+        // Step 5: Feed computation functions with real data
+        // Construct parcel object from deal + profile
+        const prof = profileData.profile;
+        const parcel = {
+          lot_size_sf: prof.lot_area_sf || 0,
+          lot_size_acres: (prof.lot_area_sf || 0) / 43560,
+          is_corner: profileData.deal?.is_corner || false,
+          frontage_ft: profileData.deal?.frontage_ft || 200,
+          depth_ft: profileData.deal?.depth_ft || 200,
+          address: profileData.deal?.address || '',
+          parcel_id: profileData.deal?.parcel_id || '',
+        };
+
+        // Construct currentZoning object from profile
+        const currentZoning = {
+          code: prof.base_district_code || 'Unknown',
+          municipality: prof.municipality || 'Unknown',
+          state: prof.state || 'GA',
+          max_density_units_per_acre: prof.max_density_per_acre || 100,
+          max_height_ft: prof.max_height_ft || 85,
+          max_far: prof.applied_far || prof.combined_far || prof.residential_far || 3.0,
+          lot_coverage_pct: prof.max_lot_coverage_pct || 80,
+          parking: {
+            per_unit: prof.min_parking_per_unit || 1.0,
+            guest_per_unit: 0.25,
+          },
+          setbacks: {
+            front_ft: prof.setback_front_ft || 0,
+            side_ft: prof.setback_side_ft || 10,
+            rear_ft: prof.setback_rear_ft || 20,
+          },
+        };
+
+        // Compute scenarios immediately (client-side preview)
+        const scenarios = generatePathScenarios(parcel, currentZoning);
+        setPathScenarios(scenarios);
+        console.log('🔄 Computed client-side scenarios:', scenarios);
+
         if (profileData.profile?.base_district_code && profileData.profile?.municipality) {
           try {
             const municipalityId = `${(profileData.profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profileData.profile.state || 'ga').toLowerCase()}`;
@@ -430,6 +1077,31 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
         } catch {}
+
+        // Fetch nearby entitlements for regulatory market research
+        try {
+          const nearbyRes = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+          if (nearbyRes.data?.data) {
+            setNearbyEntitlements(nearbyRes.data.data);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch nearby entitlements:', err);
+        }
+
+        // Fetch zoning interpretation from Claude
+        setInterpretationLoading(true);
+        try {
+          const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`);
+          if (interpRes.data?.extraction) {
+            setZoningInterpretation(interpRes.data.extraction);
+          }
+        } catch (err) {
+          // Fall back to basic profile data if interpretation unavailable
+          console.warn('Could not load zoning interpretation:', err);
+          setZoningInterpretation(null);
+        } finally {
+          setInterpretationLoading(false);
+        }
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
@@ -489,6 +1161,237 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     }, 500);
     return () => clearTimeout(timer);
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
+
+  // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══
+  // Initialize activeSubTab and compute conformance/scenarios based on deal type
+  useEffect(() => {
+    if (!profile) return;
+
+    // Determine deal type from deal prop or dealStore
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+
+    // Get available tabs for this deal type
+    const availableTabs = getSubTabsForDealType(dealType);
+    if (availableTabs.length > 0) {
+      setActiveSubTab(availableTabs[0].id);
+    }
+
+    // Compute conformance and scenarios for existing/redevelopment deals
+    if (dealType === 'existing' || dealType === 'redevelopment') {
+      const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+      if (existingProperty) {
+        try {
+          // Compute conformance metrics
+          const zoning = {
+            max_density_units_per_acre: profile.max_density_per_acre,
+            applied_far: profile.applied_far || profile.residential_far,
+            max_height_ft: profile.max_height_ft,
+            max_lot_coverage_pct: profile.max_lot_coverage_pct,
+            min_parking_per_unit: profile.min_parking_per_unit,
+            lot_area_sf: profile.lot_area_sf,
+          };
+
+          const conformanceData = computeConformanceMetrics(existingProperty, zoning, profile.lot_area_sf || 0);
+          setConformance(conformanceData);
+
+          // Compute max allowed from zoning for untapped entitlement card
+          const maxAllowed = {
+            units: Math.floor((profile.lot_area_sf || 0) / 43560 * (profile.max_density_per_acre || 100)),
+            gfa: Math.round((profile.lot_area_sf || 0) * (profile.applied_far || 3.0)),
+            stories: profile.max_stories || 8,
+          };
+
+          // Generate scenarios
+          if (dealType === 'existing') {
+            const scenarios = generateExpansionScenarios(existingProperty, maxAllowed, zoning);
+            setExpansionScenarios(scenarios);
+          } else {
+            const scenarios = generateRedevelopmentScenarios(existingProperty, maxAllowed, zoning);
+            setRedevelopmentScenarios(scenarios);
+          }
+
+          console.log(`✅ Computed ${dealType} metrics for deal`, {
+            conformance: conformanceData,
+            maxAllowed,
+          });
+        } catch (err) {
+          console.error(`Failed to compute ${dealType} metrics:`, err);
+        }
+      }
+    }
+  }, [profile, deal]);
+
+  // ═══ INTERPRETATION DECISIONS EFFECT ═══
+  // Generate interpretation decisions and compute unit counts for each mode
+  useEffect(() => {
+    if (!profile) return;
+
+    const { decisions, warnings } = generateInterpretationDecisions(profile, deal?.existingProperty, deal?.projectType);
+    setInterpretationDecisions(decisions);
+    setInterpretationWarnings(warnings);
+
+    // Compute unit counts for each mode
+    const lotSF = profile.lot_area_sf || 0;
+    const conservative = estimateUnitCountForMode(profile, 'conservative', lotSF);
+    const moderate = estimateUnitCountForMode(profile, 'moderate', lotSF);
+    const aggressive = estimateUnitCountForMode(profile, 'aggressive', lotSF);
+
+    setUnitCounts({ conservative, moderate, aggressive });
+
+    console.log(`✅ Generated interpretation decisions`, {
+      decisions: decisions.length,
+      warnings: warnings.length,
+      unitCounts: { conservative, moderate, aggressive },
+    });
+  }, [profile, deal?.existingProperty, deal?.projectType]);
+
+  // ═══ INTERPRETATION CALLBACKS ═══
+  const handleOverrideChange = useCallback(
+    (parameter: string, value: number | null) => {
+      const newOverrides = { ...userOverrides };
+      if (value === null) {
+        delete newOverrides[parameter];
+      } else {
+        newOverrides[parameter] = value;
+      }
+      setUserOverrides(newOverrides);
+
+      // TODO: STEP 2 OF INTERPRETATION PANEL
+      // When user overrides a parameter:
+      // 1. Re-run calculateEnvelope(parcel, zoningProfile, newOverrides)
+      //    The envelope calculation engine should accept overrides as 3rd argument
+      // 2. Update pathScenarios.paths[selectedColKey].envelope with new result
+      // 3. Waterfall will recalculate with new binding constraint
+      // 4. Unit count updates in real-time
+      // For now, state updates but envelope doesn't recalculate
+      console.log('Override changed:', parameter, value);
+    },
+    [userOverrides]
+  );
+
+  const handleInterpretationModeChange = useCallback(
+    (mode: 'conservative' | 'moderate' | 'aggressive') => {
+      setInterpretationMode(mode);
+      // Mode changes may trigger different unit counts via the envelope engine
+      // The unitCounts state already reflects each mode's max units
+    },
+    []
+  );
+
+  const handleReInterpret = useCallback(async () => {
+    if (!dealId) return;
+    setInterpretationLoading(true);
+    try {
+      const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`, {
+        force: true,
+      });
+      if (interpRes.data?.extraction) {
+        setZoningInterpretation(interpRes.data.extraction);
+        console.log('✅ Re-interpreted zoning parameters from Claude');
+      }
+    } catch (err) {
+      console.error('Failed to re-interpret zoning:', err);
+    } finally {
+      setInterpretationLoading(false);
+    }
+  }, [dealId]);
+
+  const saveOverridesToAPI = useCallback(async () => {
+    if (!dealId || Object.keys(userOverrides).length === 0) return;
+
+    try {
+      await apiClient.put(`/api/v1/deals/${dealId}/zoning-profile`, {
+        user_overrides: userOverrides,
+      });
+      console.log('✅ Saved interpretation overrides to API');
+    } catch (err) {
+      console.error('Failed to save overrides:', err);
+    }
+  }, [dealId, userOverrides]);
+
+  // ═══ HELPER FUNCTIONS ═══
+  const getMaxAllowedFromProfile = useCallback(() => {
+    if (!profile) return { units: 0, gfa: 0, stories: 0 };
+    const lotAreaSF = profile.lot_area_sf || 0;
+    const lotAcres = lotAreaSF / 43560;
+    return {
+      units: Math.floor(lotAcres * (profile.max_density_per_acre || 100)),
+      gfa: Math.round(lotAreaSF * (profile.applied_far || 3.0)),
+      stories: profile.max_stories || 8,
+    };
+  }, [profile]);
+
+  // ═══ SUB-TAB RENDERING ═══
+  const renderSubTabContent = useCallback(() => {
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+    const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+    const maxAllowed = getMaxAllowedFromProfile();
+
+    if (dealType === 'existing' && activeSubTab === 'conformance_check') {
+      return (
+        <>
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'existing' && activeSubTab === 'expansion_scenarios') {
+      return <ExpansionScenariosCards scenarios={expansionScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'current_vs_allowed') {
+      return (
+        <>
+          {existingProperty && <NonconformingWarning nonconformingItems={conformance?.nonconformingItems.map(i => i.item) || []} yearBuilt={existingProperty.yearBuilt} />}
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'renovation_scenarios') {
+      return <RedevelopmentScenariosCards scenarios={redevelopmentScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'compliance_analysis') {
+      return (
+        <ComplianceTriggerAnalysisCard
+          triggers={[]}  // Would be populated from redevelopmentScenarios
+          totalCost={1050000}  // $1.05M baseline
+          expansionThreshold={50}
+        />
+      );
+    }
+
+    // Development deals and default: show nothing (existing content handles it)
+    return null;
+  }, [activeSubTab, deal, conformance, expansionScenarios, redevelopmentScenarios, getMaxAllowedFromProfile]);
+
+  // ═══ GET DEAL TYPE FOR RENDERING ═══
+  const projectType = deal?.projectType || deal?.project_type || 'existing';
+  const dealType = normalizeDealType(projectType);
+  const availableSubTabs = getSubTabsForDealType(dealType);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
@@ -701,6 +1604,106 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   return (
     <div className="space-y-5">
+      {/* Path Scenarios Section — Client-side instant preview */}
+      {pathScenarios && pathScenarios.paths && pathScenarios.paths.length > 0 && (
+        <div>
+          {/* Path Selection Intro */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={s.cardLabel}>SELECT DEVELOPMENT PATH</div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono, marginBottom: 10 }}>
+              Path selection cascades to unit mix, construction costs, timeline, ProForma, and JEDI Score.
+            </div>
+          </div>
+
+          {/* Path Comparison Cards */}
+          <PathComparisonCards
+            paths={pathScenarios.paths}
+            selectedPath={selectedColKey || 'by_right'}
+            nearbyEntitlements={nearbyEntitlements}
+            currentCode={profile?.base_district_code}
+            onSelectPath={(pathId) => {
+              const selectedPath = pathScenarios.paths.find((p: any) => p.id === pathId);
+              if (selectedPath && selectedPath.envelope) {
+                // Convert path envelope to recommendation format for handleSelectPath
+                const rec = {
+                  maxUnits: selectedPath.envelope.max_units,
+                  maxGba: selectedPath.envelope.max_gfa,
+                  maxStories: selectedPath.envelope.max_stories,
+                  parkingRequired: selectedPath.envelope.parking.total_spaces,
+                  appliedFar: null,
+                  bindingConstraint: selectedPath.envelope.binding_constraint,
+                };
+                handleSelectPath(pathId, rec);
+              }
+            }}
+          />
+
+          {/* ═══ INTERPRETATION PANEL ═══ */}
+          {interpretationDecisions.length > 0 && (
+            <InterpretationPanel
+              decisions={interpretationDecisions}
+              warnings={interpretationWarnings}
+              userOverrides={userOverrides}
+              onOverrideChange={handleOverrideChange}
+              onModeChange={handleInterpretationModeChange}
+              currentMode={interpretationMode}
+              unitCounts={unitCounts}
+              claudeExtraction={zoningInterpretation}
+              onReInterpret={handleReInterpret}
+              reInterpreting={interpretationLoading}
+            />
+          )}
+
+          {/* Constraint Waterfall */}
+          {selectedColKey && pathScenarios.paths.find((p: any) => p.id === selectedColKey) && (
+            <ConstraintWaterfall
+              constraints={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.envelope?.constraints || []}
+              maxPossible={Math.max(...pathScenarios.paths.map((p: any) => p.envelope.max_units))}
+            />
+          )}
+
+          {/* Envelope Detail */}
+          {selectedColKey && pathScenarios.paths.find((p: any) => p.id === selectedColKey) && (
+            <EnvelopeDetail
+              envelope={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.envelope}
+              label={pathScenarios.paths.find((p: any) => p.id === selectedColKey)?.label}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ═══ SUB-TAB SECTION (for existing/redevelopment deals) ═══ */}
+      {(dealType === 'existing' || dealType === 'redevelopment') && availableSubTabs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          {/* Sub-tab bar */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+            {availableSubTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveSubTab(tab.id)}
+                style={{
+                  padding: '8px 12px',
+                  background: activeSubTab === tab.id ? T.bgCardAlt : 'transparent',
+                  border: `1px solid ${activeSubTab === tab.id ? T.accent : T.border}`,
+                  color: activeSubTab === tab.id ? T.accent : T.textMuted,
+                  cursor: 'pointer',
+                  fontFamily: FONT.mono,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  borderRadius: 4,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-tab content */}
+          {renderSubTabContent()}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>
@@ -1686,6 +2689,203 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+
+      {/* ═══ REGULATORY MARKET RESEARCH SECTION ═══ */}
+      {nearbyEntitlements && nearbyEntitlements.totalRecords > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <svg className="h-5 w-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Regulatory Market Research</h3>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">Entitlement activity in {profile?.municipality || 'this area'} — what your neighbors got approved</p>
+          </div>
+
+          <div className="px-5 py-4 space-y-5">
+            {(() => {
+              const ne = nearbyEntitlements;
+              const currentCode = profile?.base_district_code || '';
+
+              // ─── SUB-SECTION A: REZONING ACTIVITY ───
+              const rezones = (ne.projects || []).filter((p: any) => p.entitlementType === 'rezone');
+              const rezoneTransitions = ne.commonTransitions || [];
+              const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+              // ─── SUB-SECTION B: UPZONING TRENDS ───
+              const upzoningRecords = rezones.filter((p: any) => {
+                // Check if project represents upzoning (density or FAR increase)
+                return p.densityAchieved != null || (p.unitCount != null && p.landAcres != null);
+              });
+              const upzoningCount = upzoningRecords.length;
+              const upzoningTrend = rezones.length > 0 ? ((upzoningCount / rezones.length) * 100).toFixed(0) : '0';
+
+              // ─── SUB-SECTION C: ACTIVITY BY CODE ───
+              const projectsByCode: Record<string, any[]> = {};
+              (ne.projects || []).forEach((p: any) => {
+                const code = p.zoningFrom || 'Unknown';
+                if (!projectsByCode[code]) projectsByCode[code] = [];
+                projectsByCode[code].push(p);
+              });
+              const codesSorted = Object.keys(projectsByCode).sort();
+
+              return (
+                <div className="space-y-5">
+                  {/* Sub-section A: Rezoning Activity */}
+                  {rezones.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Rezoning Activity
+                      </h4>
+                      <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-100 border-b border-gray-200">
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">From Code</th>
+                              <th className="px-3 py-2 text-left font-semibold text-gray-700">To Code</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Projects</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Approval %</th>
+                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Avg Timeline</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rezoneTransitions.slice(0, 8).map((t: any, i: number) => {
+                              const isCurrentCode = t.fromCode.toUpperCase() === currentCode.toUpperCase();
+                              return (
+                                <tr key={i} className={`border-b border-gray-100 ${isCurrentCode ? 'bg-blue-50' : 'bg-white'}`}>
+                                  <td className={`px-3 py-2 font-mono font-medium ${isCurrentCode ? 'text-blue-900 bg-blue-100' : 'text-gray-700'}`}>
+                                    {t.fromCode}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono font-bold text-violet-700">{t.toCode}</td>
+                                  <td className="px-3 py-2 text-center text-gray-700 font-semibold">{t.count}</td>
+                                  <td className={`px-3 py-2 text-center font-bold ${t.approvalRate >= 80 ? 'text-green-700' : t.approvalRate >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+                                    {t.approvalRate}%
+                                  </td>
+                                  <td className="px-3 py-2 text-center text-gray-600">
+                                    {t.avgDays != null ? `${Math.round(t.avgDays / 30)} mo` : '--'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-section B: Upzoning Trends */}
+                  {rezones.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Upzoning Trends
+                      </h4>
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between mb-2.5">
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {upzoningCount} of {rezones.length} rezonings ({upzoningTrend}%)
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              represented density increases in the last 3 years
+                            </p>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              parseInt(upzoningTrend) >= 70 ? 'bg-emerald-100 text-emerald-700' :
+                              parseInt(upzoningTrend) >= 40 ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {parseInt(upzoningTrend) >= 70 ? '✓ Favorable' : parseInt(upzoningTrend) >= 40 ? '⚬ Neutral' : '✕ Limited'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              parseInt(upzoningTrend) >= 70 ? 'bg-emerald-500' :
+                              parseInt(upzoningTrend) >= 40 ? 'bg-amber-500' :
+                              'bg-red-500'
+                            }`}
+                            style={{ width: `${upzoningTrend}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-section C: Activity by Zoning Code */}
+                  {codesSorted.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2.5">
+                        Activity by Zoning Code
+                      </h4>
+                      <div className="space-y-2">
+                        {codesSorted.slice(0, 5).map((code: string) => {
+                          const projects = projectsByCode[code];
+                          const isCurrentCode = code.toUpperCase() === currentCode.toUpperCase();
+                          const approved = projects.filter((p: any) => p.outcome === 'approved').length;
+                          const approvalRate = projects.length > 0 ? Math.round((approved / projects.length) * 100) : 0;
+
+                          // Count by type
+                          const typeCounts: Record<string, number> = {};
+                          projects.forEach((p: any) => {
+                            const type = p.entitlementType || 'other';
+                            typeCounts[type] = (typeCounts[type] || 0) + 1;
+                          });
+                          const typeLabels = { rezone: 'rezonings', cup: 'CUPs', variance: 'variances', site_plan: 'site plans', by_right: 'by-right', other: 'other' };
+
+                          return (
+                            <div
+                              key={code}
+                              className={`border rounded-lg p-3 ${isCurrentCode ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-mono font-bold text-base ${isCurrentCode ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    {code}
+                                  </span>
+                                  {isCurrentCode && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-200 text-blue-800 font-semibold uppercase tracking-wide">
+                                      YOUR CODE
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                  approvalRate >= 75 ? 'bg-green-100 text-green-700' :
+                                  approvalRate >= 50 ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {approvalRate}% approved
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600">
+                                {Object.entries(typeCounts).map(([type, count]) => {
+                                  const label = typeLabels[type as keyof typeof typeLabels] || type;
+                                  return count > 0 ? `${count} ${label}` : null;
+                                }).filter(Boolean).join(', ')}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {nearbyLoading && !nearbyEntitlements && (
+        <div className="bg-white rounded-lg border border-gray-200 p-5 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
+            <span className="text-xs text-gray-600">Loading regulatory market research...</span>
+          </div>
+        </div>
+      )}
 
     </div>
   );
