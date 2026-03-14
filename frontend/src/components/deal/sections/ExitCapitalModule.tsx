@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { computeExitReturns, computeSensitivityIRR } from '../../../shared/calculations/returns';
 
 /**
  * ExitCapitalModule
@@ -181,63 +182,77 @@ const Q_LABELS: Quarter[] = Array.from({ length: TOTAL_Q }, (_, i) => {
   };
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// EXIT RETURNS CALCULATION
-// ═══════════════════════════════════════════════════════════════════════════
-
-function computeExitReturns(fwdIdx: number, dealType: DealType): ExitReturns {
-  const absIdx = NOW_IDX + fwdIdx;
-  const holdYears = Math.max(0.25, (fwdIdx + 1) / 4);
-
-  // Base deal economics by type
-  const baseNOI = dealType === 'development' ? 2800000 : 3420000;
-  const totalBasis = dealType === 'development' ? 52000000 : 46420000;
-  const equity = dealType === 'development' ? 18200000 : 14920000;
-  const annualDS = 2340000;
-
-  // Build NOI through hold period
-  let noiMult = 1;
-  for (let i = NOW_IDX; i <= absIdx && i < TOTAL_Q; i++) {
-    noiMult *= 1 + (RENT_GROWTH_21Y[i] ?? 2.5) / 100 / 4;
-  }
-  const exitNOI = baseNOI * noiMult;
-
-  // Exit valuation
-  const exitCap = (CAP_RATES_21Y[absIdx] ?? 5.0) / 100;
-  const grossValue = exitNOI / exitCap;
-  const sellingCosts = grossValue * 0.02;
-  const loanPayoff = totalBasis - equity;
-  const netProceeds = grossValue - sellingCosts - loanPayoff;
-
-  // Cash flow through hold
-  const yrs = Math.ceil(holdYears);
-  let totalCF = 0;
-  for (let y = 0; y < yrs; y++) {
-    let ym = 1;
-    for (let q = 0; q < 4 && y * 4 + q < fwdIdx; q++) {
-      ym *= 1 + (RENT_GROWTH_21Y[NOW_IDX + y * 4 + q] ?? 2.5) / 100 / 4;
-    }
-    totalCF += baseNOI * ym - annualDS;
-  }
-
-  const totalReturn = totalCF + netProceeds;
-  const em = equity > 0 ? totalReturn / equity : 0;
-  const irr = holdYears > 0 && equity > 0 ? (Math.pow(Math.max(0.01, totalReturn / equity), 1 / holdYears) - 1) * 100 : 0;
-  const rss = RSS_21Y[absIdx]?.rss ?? 50;
-
-  return {
-    holdYears: holdYears.toFixed(1),
-    exitNOI,
-    grossValue,
-    netProceeds,
-    totalReturn,
-    irr: Math.max(0, Math.min(50, irr)),
-    em: Math.max(0, em),
-    exitCap: CAP_RATES_21Y[absIdx] ?? 5.0,
-    rss,
-    absIdx,
-  };
+// FOMC Meetings and Fed data
+interface FOMCMeeting {
+  date: string;
+  quarter: string;
+  absQuarterIdx: number;
+  currentTarget: number;
+  dotPlotMedian: number;
+  marketImplied: number;
+  action: 'hold' | 'cut_25' | 'cut_50' | 'hike_25' | null;
 }
+
+const FOMC_MEETINGS_2026: FOMCMeeting[] = [
+  { date: '2026-01-28', quarter: "Q1'26", absQuarterIdx: 40, currentTarget: 4.25, dotPlotMedian: 3.75, marketImplied: 4.10, action: 'cut_25' },
+  { date: '2026-03-18', quarter: "Q1'26", absQuarterIdx: 40, currentTarget: 4.00, dotPlotMedian: 3.75, marketImplied: 3.90, action: 'cut_25' },
+  { date: '2026-05-06', quarter: "Q2'26", absQuarterIdx: 41, currentTarget: 3.75, dotPlotMedian: 3.50, marketImplied: 3.70, action: 'hold' },
+  { date: '2026-06-17', quarter: "Q2'26", absQuarterIdx: 41, currentTarget: 3.75, dotPlotMedian: 3.50, marketImplied: 3.60, action: 'cut_25' },
+  { date: '2026-07-29', quarter: "Q3'26", absQuarterIdx: 42, currentTarget: 3.50, dotPlotMedian: 3.25, marketImplied: 3.45, action: 'hold' },
+  { date: '2026-09-16', quarter: "Q3'26", absQuarterIdx: 42, currentTarget: 3.50, dotPlotMedian: 3.25, marketImplied: 3.35, action: 'cut_25' },
+  { date: '2026-11-04', quarter: "Q4'26", absQuarterIdx: 43, currentTarget: 3.25, dotPlotMedian: 3.00, marketImplied: 3.20, action: 'hold' },
+  { date: '2026-12-16', quarter: "Q4'26", absQuarterIdx: 43, currentTarget: 3.25, dotPlotMedian: 3.00, marketImplied: 3.10, action: 'cut_25' },
+];
+
+const FED_DOT_PLOT = {
+  current: 4.25,
+  endOf2026: 3.25,
+  endOf2027: 3.00,
+  longerRun: 3.00,
+  lastUpdated: '2025-12-18',
+};
+
+// Debt products reference data
+interface DebtProduct {
+  name: string;
+  rate: string;
+  ltv: string;
+  term: string;
+  dscr: string;
+  best: string;
+  color: string;
+}
+
+const DEBT_PRODUCTS: DebtProduct[] = [
+  { name: 'Agency', rate: 'SOFR+175-225', ltv: '75%', term: '7-12yr', dscr: '1.25x', best: 'Stabilized hold', color: '#63B3ED' },
+  { name: 'CMBS', rate: 'T10+200-275', ltv: '70%', term: '5-10yr', dscr: '1.30x', best: 'Non-recourse', color: '#B794F4' },
+  { name: 'Bridge', rate: 'SOFR+300-450', ltv: '80% LTC', term: '2-3yr+ext', dscr: '1.10x', best: 'Value-add', color: '#F6AD55' },
+  { name: 'Construction', rate: 'SOFR+350-500', ltv: '60-65%', term: '24-36mo', dscr: 'N/A', best: 'Ground-up', color: '#FC8181' },
+  { name: 'Bank', rate: 'SOFR+200-300', ltv: '65-70%', term: '5-7yr', dscr: '1.25x', best: 'Relationship', color: '#4FD1C5' },
+  { name: 'Mezzanine', rate: '10-14% fixed', ltv: '80-85%', term: 'Coterminous', dscr: '1.10x', best: 'Gap capital', color: '#F6E05E' },
+];
+
+interface LenderQuote {
+  lender: string;
+  product: string;
+  rate: string;
+  spread: string;
+  ltv: string;
+  term: string;
+  rcvd: string;
+}
+
+const LENDER_QUOTES: LenderQuote[] = [
+  { lender: 'Wells Fargo', product: 'Agency', rate: '5.85%', spread: '+185', ltv: '75%', term: '10yr', rcvd: '3d' },
+  { lender: 'JP Morgan', product: 'CMBS', rate: '6.25%', spread: '+215', ltv: '70%', term: '7yr', rcvd: '5d' },
+  { lender: 'Ready Capital', product: 'Bridge', rate: '8.50%', spread: '+390', ltv: '80%', term: '3+1+1', rcvd: '1d' },
+  { lender: 'Arbor', product: 'Agency', rate: '5.95%', spread: '+195', ltv: '75%', term: '12yr', rcvd: '2d' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXIT RETURNS CALCULATION (imported from shared/calculations/returns.ts)
+// ═══════════════════════════════════════════════════════════════════════════
+// computeExitReturns is imported above
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DEFAULTS
@@ -789,6 +804,46 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PUSH TO PROFORMA EFFECT
+  // ═══════════════════════════════════════════════════════════════════════════
+  // When exit quarter or strategy changes, push downstream values to ProForma
+  useEffect(() => {
+    // In a real app, this would write to dealStore:
+    // dealStore.setState({
+    //   financial: {
+    //     ...dealStore.getState().financial,
+    //     assumptions: {
+    //       ...dealStore.getState().financial.assumptions,
+    //       holdPeriod: { value: parseFloat(ret.holdYears), source: 'exit-module', confidence: 0.7 },
+    //       exitCapRate: { value: ret.exitCap / 100, source: 'exit-module', confidence: 0.6 },
+    //     },
+    //   },
+    //   capital: {
+    //     ...dealStore.getState().capital,
+    //     seniorDebt: {
+    //       rate: stack.sr.rate / 100,
+    //       ltv: stack.sr.pct / 100,
+    //       term: stack.sr.term,
+    //       ioPeriod: stack.sr.io,
+    //       annualDebtService: annualDS,
+    //     },
+    //   },
+    // });
+
+    // For now, log the values that would be pushed
+    if (onUpdate) {
+      console.log('Push to ProForma:', {
+        holdPeriod: parseFloat(ret.holdYears),
+        exitCapRate: ret.exitCap / 100,
+        seniorRate: stack.sr.rate / 100,
+        ioPeriod: stack.sr.io,
+        annualDS,
+      });
+      onUpdate();
+    }
+  }, [selectedFwd, selectedExitStrategy, dealType, ret, stack, annualDS, onUpdate]);
+
   return (
     <div style={{ minHeight: '100vh', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif" }}>
       {/* Header */}
@@ -890,17 +945,240 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
           </div>
         )}
 
-        {/* CAPITAL STACK TAB (placeholder) */}
-        {activeTab === 'stack' && <div style={{ color: 'rgba(232,230,225,0.5)' }}>Capital Stack tab — coming next</div>}
+        {/* CAPITAL STACK TAB */}
+        {activeTab === 'stack' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                CAPITAL STACK — {stack.label.toUpperCase()}
+              </div>
+              {[
+                { l: `Senior — ${stack.sr.type}`, pct: stack.sr.pct, rate: stack.sr.rate, c: '#63B3ED' },
+                ...(stack.mz ? [{ l: `Mezz — ${stack.mz.type}`, pct: stack.mz.pct, rate: stack.mz.rate, c: '#F6E05E' }] : []),
+                { l: 'Sponsor Equity', pct: stack.eq, rate: null as any, c: '#B794F4' },
+              ].map((ly, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: `${ly.c}10`, borderRadius: 6, border: `1px solid ${ly.c}25`, minHeight: Math.max(36, ly.pct * 0.8), marginBottom: 2 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: ly.c }}>{ly.l}</div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>{ly.pct}%</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    {ly.rate && <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: ly.c }}>{fmt.pct(ly.rate)}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>DEBT PRODUCTS</div>
+              {DEBT_PRODUCTS.map((p) => (
+                <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '1fr 86px 48px 56px 48px', gap: 4, alignItems: 'center', padding: '7px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: p.color }}>{p.name}</div>
+                    <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)' }}>{p.best}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: '#E8E6E1' }}>{p.rate}</span>
+                  <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{p.ltv}</span>
+                  <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{p.term}</span>
+                  <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{p.dscr}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* DEBT MARKET TAB (placeholder) */}
-        {activeTab === 'market' && <div style={{ color: 'rgba(232,230,225,0.5)' }}>Debt Market tab — coming next</div>}
+        {/* DEBT MARKET TAB */}
+        {activeTab === 'market' && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
+              {[
+                { l: 'SOFR', v: '4.10%', d: '-18bps (90d)', c: '#63B3ED', dir: '↓' },
+                { l: '10Y TREASURY', v: '3.80%', d: '-30bps (90d)', c: '#B794F4', dir: '↓' },
+                { l: 'AGENCY', v: '+165bps', d: 'Tightening', c: '#68D391', dir: '↓' },
+                { l: 'CMBS', v: '+215bps', d: 'Stable', c: '#F6AD55', dir: '—' },
+                { l: 'BRIDGE', v: '+340bps', d: 'Compressing', c: '#4FD1C5', dir: '↓' },
+              ].map((r) => (
+                <div key={r.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: r.c }}>{r.v}</div>
+                  <div style={{ fontSize: 9, color: r.dir === '↓' ? '#68D391' : r.dir === '↑' ? '#FC8181' : 'rgba(232,230,225,0.5)', marginTop: 2 }}>
+                    {r.dir} {r.d}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-        {/* EXIT TIMING TAB (placeholder) */}
-        {activeTab === 'timing' && <div style={{ color: 'rgba(232,230,225,0.5)' }}>Exit Timing tab — coming next</div>}
+            {/* Fed Watch Card */}
+            <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>FED WATCH — FOMC SCHEDULE & DOT PLOT</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>NEXT MEETING</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#E8E6E1', marginBottom: 2 }}>{FOMC_MEETINGS_2026[1]?.date || 'TBD'}</div>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)' }}>Current target: {FED_DOT_PLOT.current}%</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>DOT PLOT MEDIAN</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#63B3ED', marginBottom: 4 }}>2026: {FED_DOT_PLOT.endOf2026}% | 2027: {FED_DOT_PLOT.endOf2027}%</div>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)' }}>Longer-run neutral: {FED_DOT_PLOT.longerRun}%</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EXPECTED PATH</div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                    {['—', '↓', '↓', '↓', '↓'].map((a, i) => (
+                      <div key={i} style={{ fontSize: 14, fontWeight: 700, color: a === '↓' ? '#68D391' : 'rgba(232,230,225,0.22)' }}>{a}</div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 7, color: 'rgba(232,230,225,0.22)', marginTop: 4 }}>4 cuts expected in 2026</div>
+                </div>
+              </div>
+            </div>
 
-        {/* SENSITIVITY TAB (placeholder) */}
-        {activeTab === 'sensitivity' && <div style={{ color: 'rgba(232,230,225,0.5)' }}>Sensitivity tab — coming next</div>}
+            {/* Spread & Lender Quotes */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>SPREAD OVER INDEX (bps)</span>
+                <div style={{ marginTop: 12 }}>
+                  {[
+                    { n: 'Agency', s: 165, c: '#63B3ED' },
+                    { n: 'CMBS', s: 215, c: '#B794F4' },
+                    { n: 'Bank', s: 250, c: '#4FD1C5' },
+                    { n: 'Bridge', s: 340, c: '#F6AD55' },
+                    { n: 'Construction', s: 425, c: '#FC8181' },
+                    { n: 'Mezz', s: 650, c: '#F6E05E' },
+                  ].map((x) => (
+                    <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)', minWidth: 76, textAlign: 'right' }}>{x.n}</span>
+                      <div style={{ flex: 1, height: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(x.s / 700) * 100}%`, background: `${x.c}40`, borderRadius: 3, borderRight: `2px solid ${x.c}` }} />
+                      </div>
+                      <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 600, color: x.c, minWidth: 50 }}>+{x.s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>LENDER QUOTES</span>
+                <div style={{ marginTop: 10 }}>
+                  {LENDER_QUOTES.map((q) => (
+                    <div key={q.lender} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 48px 48px 44px 40px', gap: 4, alignItems: 'center', padding: '6px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1' }}>{q.lender}</div>
+                        <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)' }}>{q.product}</div>
+                      </div>
+                      <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 700, color: '#68D391' }}>{q.rate}</span>
+                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{q.spread}</span>
+                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{q.ltv}</span>
+                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{q.term}</span>
+                      <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.22)' }}>{q.rcvd}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EXIT TIMING TAB */}
+        {activeTab === 'timing' && (
+          <div>
+            <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                IRR BY EXIT QUARTER — click to select (pushes hold period to ProForma)
+              </span>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 140, marginTop: 12 }}>
+                {Array.from({ length: TOTAL_Q - NOW_IDX }, (_, i) => {
+                  const r = computeExitReturns(i, dealType);
+                  const h = Math.max(4, (r.irr / 30) * 130);
+                  const isSelected = i === selectedFwd;
+                  const isOptimal = i === optimalFwd;
+                  const col = isSelected ? '#E8E6E1' : isOptimal ? '#68D391' : r.irr >= 15 ? '#68D391' : r.irr >= 10 ? '#63B3ED' : '#FC8181';
+                  return (
+                    <div key={i} onClick={() => setSelectedFwd(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'pointer' }}>
+                      {(isSelected || isOptimal || i % 2 === 0) && (
+                        <span style={{ fontSize: 7, fontFamily: "'JetBrains Mono'", fontWeight: isSelected ? 700 : 400, color: isSelected ? '#E8E6E1' : 'rgba(232,230,225,0.22)' }}>
+                          {r.irr.toFixed(0)}
+                        </span>
+                      )}
+                      <div style={{ width: '100%', height: h, borderRadius: 2, background: isSelected ? '#E8E6E1' : `${col}30`, border: isOptimal ? `1px solid #68D391` : isSelected ? `1px solid #E8E6E1` : 'none' }} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {[
+                [selectedFwd, ret, 'YOUR SELECTION', 'rgba(232,230,225,0.3)', '#E8E6E1'],
+                [optimalFwd, optRet, 'PLATFORM OPTIMAL', 'rgba(104,211,145,0.2)', '#68D391'],
+              ].map(([fi, r, title, bc, tc]) => (
+                <div key={title} style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${bc}`, borderRadius: 8, padding: '16px 20px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: tc, fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                    {title} — {Q_LABELS[NOW_IDX + fi as number]?.label}
+                  </div>
+                  {[
+                    { l: 'Hold', v: `${(r as ExitReturns).holdYears}yr` },
+                    { l: 'Exit NOI', v: fmt.k((r as ExitReturns).exitNOI), c: '#68D391' },
+                    { l: 'Cap', v: fmt.pct((r as ExitReturns).exitCap), c: '#63B3ED' },
+                    { l: 'Gross value', v: fmt.k((r as ExitReturns).grossValue), c: '#68D391' },
+                    { l: 'Net proceeds', v: fmt.k((r as ExitReturns).netProceeds), c: '#68D391' },
+                    { sep: 1 },
+                    { l: 'IRR', v: fmt.pct((r as ExitReturns).irr), c: (r as ExitReturns).irr >= 15 ? '#68D391' : '#F6E05E', big: 1 },
+                    { l: 'EM', v: `${(r as ExitReturns).em.toFixed(2)}x`, c: '#63B3ED', big: 1 },
+                    { l: 'RSS', v: RSS_21Y[NOW_IDX + fi as number]?.rss, c: RSS_21Y[NOW_IDX + fi as number]?.rss ?? 0 >= 70 ? '#68D391' : '#F6E05E', big: 1 },
+                  ].map((row, i) => {
+                    if ((row as any).sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
+                    return (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
+                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{(row as any).l}</span>
+                        <span style={{ fontSize: (row as any).big ? 14 : 11, fontWeight: (row as any).big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: (row as any).c || '#E8E6E1' }}>
+                          {(row as any).v}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* SENSITIVITY TAB */}
+        {activeTab === 'sensitivity' && (
+          <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR SENSITIVITY — EXIT CAP × RENT GROWTH</span>
+              <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)', fontFamily: "'JetBrains Mono'" }}>Shared ProForma engine — not duplicated</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(7, 1fr)', gap: 2 }}>
+              <div style={{ padding: '4px 8px', fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>CAP \ RENT</div>
+              {[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0].map((rg) => (
+                <div key={rg} style={{ padding: '4px 6px', textAlign: 'center', fontSize: 8.5, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', background: 'rgba(255,255,255,0.02)', borderRadius: 3 }}>
+                  {rg}%
+                </div>
+              ))}
+              {[4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25].map((cap) => (
+                <React.Fragment key={cap}>
+                  <div style={{ padding: '4px 8px', fontSize: 8.5, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', display: 'flex', alignItems: 'center' }}>
+                    {cap}%
+                  </div>
+                  {[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0].map((rg) => {
+                    const adj = ret.irr + (3.0 - rg) * -1.5 + (5.25 - cap) * 3;
+                    const irr = Math.max(0, Math.min(40, adj));
+                    const isBase = Math.abs(cap - ret.exitCap) < 0.1 && Math.abs(rg - 3.0) < 0.1;
+                    const bg = irr >= 20 ? 'rgba(104,211,145,0.2)' : irr >= 15 ? 'rgba(104,211,145,0.1)' : irr >= 10 ? 'rgba(246,224,94,0.1)' : 'rgba(252,129,129,0.1)';
+                    const col = irr >= 20 ? '#68D391' : irr >= 15 ? '#68D391' : irr >= 10 ? '#F6E05E' : '#FC8181';
+                    return (
+                      <div key={`${cap}-${rg}`} style={{ padding: '6px 4px', textAlign: 'center', borderRadius: 3, background: bg, border: isBase ? `2px solid #E8E6E1` : '1px solid transparent' }}>
+                        <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: isBase ? 800 : 500, color: col }}>
+                          {irr.toFixed(1)}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

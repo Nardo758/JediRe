@@ -31,7 +31,7 @@ import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
-import { DebtTab } from '../components/deal/sections/DebtTab';
+import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
 import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
@@ -335,7 +335,7 @@ const DealDetailPage: React.FC = () => {
       id: 'debt',
       label: 'Debt, Equity & Exit',
       icon: <DollarSign size={16} />,
-      component: DebtTab
+      component: ExitCapitalModule
     },
     {
       id: 'financial-dashboard',
