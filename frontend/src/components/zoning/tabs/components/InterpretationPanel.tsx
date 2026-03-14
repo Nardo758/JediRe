@@ -25,6 +25,9 @@ export interface InterpretationPanelProps {
     moderate: number;
     aggressive: number;
   };
+  claudeExtraction?: any;
+  onReInterpret?: () => void;
+  reInterpreting?: boolean;
 }
 
 const T = {
@@ -79,6 +82,9 @@ export default function InterpretationPanel({
   onModeChange,
   currentMode,
   unitCounts,
+  claudeExtraction,
+  onReInterpret,
+  reInterpreting,
 }: InterpretationPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedParameter, setExpandedParameter] = useState<string | null>(null);
@@ -111,36 +117,71 @@ export default function InterpretationPanel({
     <div style={{ marginBottom: 16 }}>
       {/* ═══ COLLAPSIBLE HEADER ═══ */}
       <div
-        onClick={() => setIsExpanded(!isExpanded)}
         style={{
           background: T.bgCard,
           border: `1px solid ${T.border}`,
           borderRadius: 6,
           padding: 12,
-          cursor: 'pointer',
           transition: 'all 0.2s',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
         }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLDivElement).style.background = T.bgCardAlt;
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLDivElement).style.background = T.bgCard;
-        }}
       >
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, fontFamily: FONT.mono, color: T.accent, marginBottom: 4 }}>
-            INTERPRETATION DECISIONS
+        <div
+          onClick={() => setIsExpanded(!isExpanded)}
+          style={{
+            flex: 1,
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = T.bgCardAlt;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, fontFamily: FONT.mono, color: T.accent, marginBottom: 4 }}>
+              INTERPRETATION DECISIONS
+            </div>
+            <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono }}>
+              {summaryText}
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: T.textDim, fontFamily: FONT.mono }}>
-            {summaryText}
+          <div style={{ fontSize: 16, color: T.textMuted }}>
+            {isExpanded ? '▼' : '▶'}
           </div>
         </div>
-        <div style={{ fontSize: 16, color: T.textMuted }}>
-          {isExpanded ? '▼' : '▶'}
-        </div>
+        {onReInterpret && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onReInterpret();
+            }}
+            disabled={reInterpreting}
+            style={{
+              padding: '6px 10px',
+              background: T.accent,
+              color: T.bg,
+              border: 'none',
+              borderRadius: 4,
+              cursor: reInterpreting ? 'not-allowed' : 'pointer',
+              fontFamily: FONT.mono,
+              fontSize: 9,
+              fontWeight: 600,
+              opacity: reInterpreting ? 0.6 : 1,
+              transition: 'all 0.2s',
+              marginLeft: 12,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {reInterpreting ? '⟳ Interpreting...' : '⟳ Re-interpret'}
+          </button>
+        )}
       </div>
 
       {/* ═══ EXPANDED CONTENT ═══ */}

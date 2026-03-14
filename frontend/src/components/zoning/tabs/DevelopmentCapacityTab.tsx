@@ -702,6 +702,10 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   // ═══ DEAL-TYPE ADAPTATION STATE ═══
   const [activeSubTab, setActiveSubTab] = useState<string>('');
   const [conformance, setConformance] = useState<ConformanceCheckData | null>(null);
+
+  // ═══ INTERPRETATION STATE ═══
+  const [zoningInterpretation, setZoningInterpretation] = useState<any>(null);
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
   const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
 
@@ -1019,6 +1023,21 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
         } catch {}
+
+        // Fetch zoning interpretation from Claude
+        setInterpretationLoading(true);
+        try {
+          const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`);
+          if (interpRes.data?.extraction) {
+            setZoningInterpretation(interpRes.data.extraction);
+          }
+        } catch (err) {
+          // Fall back to basic profile data if interpretation unavailable
+          console.warn('Could not load zoning interpretation:', err);
+          setZoningInterpretation(null);
+        } finally {
+          setInterpretationLoading(false);
+        }
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
@@ -1195,6 +1214,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     },
     []
   );
+
+  const handleReInterpret = useCallback(async () => {
+    if (!dealId) return;
+    setInterpretationLoading(true);
+    try {
+      const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`, {
+        force: true,
+      });
+      if (interpRes.data?.extraction) {
+        setZoningInterpretation(interpRes.data.extraction);
+        console.log('✅ Re-interpreted zoning parameters from Claude');
+      }
+    } catch (err) {
+      console.error('Failed to re-interpret zoning:', err);
+    } finally {
+      setInterpretationLoading(false);
+    }
+  }, [dealId]);
 
   const saveOverridesToAPI = useCallback(async () => {
     if (!dealId || Object.keys(userOverrides).length === 0) return;
@@ -1545,6 +1582,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               onModeChange={handleInterpretationModeChange}
               currentMode={interpretationMode}
               unitCounts={unitCounts}
+              claudeExtraction={zoningInterpretation}
+              onReInterpret={handleReInterpret}
+              reInterpreting={interpretationLoading}
             />
           )}
 

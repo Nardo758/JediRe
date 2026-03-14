@@ -5,6 +5,11 @@ import { getPool } from '../../database/connection';
 import { ZoningAgentService } from '../../services/zoning-agent.service';
 import { ArcGISConnector, CITY_APIS } from '../../services/municipal-api-connectors';
 import { municodeUrlService } from '../../services/municode-url.service';
+import { EntitlementComparisonEngine } from '../../services/entitlement-comparison-engine.service';
+import { BuildingEnvelopeService } from '../../services/building-envelope.service';
+import { RezoneAnalysisService } from '../../services/rezone-analysis.service';
+import { ZoningRecommendationOrchestrator } from '../../services/zoning-recommendation-orchestrator.service';
+import { ZoningInterpretationCache } from '../../services/zoning-interpretation-cache.service';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -1254,6 +1259,138 @@ router.post('/zoning-agent/retrieve', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Zoning agent retrieve error:', error);
     res.status(500).json({ error: 'Failed to retrieve zoning data' });
+  }
+});
+
+// POST /api/v1/deals/:dealId/zoning-interpretation
+// Fetches structured zoning extraction from Claude with caching
+router.post('/deals/:dealId/zoning-interpretation', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { force } = req.body || {};
+
+    // Get deal's zoning profile to find district_code and municipality
+    const dealResult = await pool.query(
+      `SELECT
+        zd.district_code,
+        zd.municipality_name as municipality,
+        zd.state,
+        zd.alternate_zoning_district_code
+      FROM deals d
+      LEFT JOIN zoning_districts zd ON d.zoning_district_id = zd.id
+      WHERE d.id = $1`,
+      [dealId]
+    );
+
+    if (!dealResult.rows.length) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const dealRow = dealResult.rows[0];
+    const districtCode = dealRow.district_code || dealRow.alternate_zoning_district_code;
+    const municipality = dealRow.municipality_name;
+    const state = dealRow.state;
+
+    if (!districtCode || !municipality) {
+      return res.status(400).json({
+        error: 'Deal missing zoning district information. Cannot extract zoning interpretation.'
+      });
+    }
+
+    // Check cache if not force refresh
+    if (!force) {
+      const cacheResult = await pool.query(
+        `SELECT rules, source_url, last_verified
+         FROM municipality_zoning_rules
+         WHERE municipality = $1 AND state = $2 AND district_code = $3
+         AND last_verified > NOW() - INTERVAL '90 days'
+         LIMIT 1`,
+        [municipality, state, districtCode]
+      );
+
+      if (cacheResult.rows.length > 0) {
+        return res.json({
+          extraction: cacheResult.rows[0].rules,
+          source: 'cache',
+          cacheAge: new Date(cacheResult.rows[0].last_verified),
+        });
+      }
+    }
+
+    // Cache miss or force refresh: fetch Municode text
+    let municodeText: string;
+    try {
+      // Try to get the text from the existing scraping service or municode URL service
+      const urlResult = await pool.query(
+        `SELECT content FROM zoning_code_cache
+         WHERE municipality = $1 AND district_code = $2
+         AND cached_at > NOW() - INTERVAL '30 days'
+         LIMIT 1`,
+        [municipality, districtCode]
+      );
+
+      if (urlResult.rows.length > 0) {
+        municodeText = urlResult.rows[0].content;
+      } else {
+        // If no cached content, try to fetch from Municode using the service
+        // For now, return error if no text is available
+        return res.status(404).json({
+          error: 'Could not retrieve zoning code text for this district',
+          details: `No cached Municode text available for ${municipality}, district ${districtCode}`
+        });
+      }
+    } catch (fetchError) {
+      console.error('Error fetching Municode text:', fetchError);
+      return res.status(500).json({
+        error: 'Could not retrieve zoning code text',
+        details: 'Failed to fetch ordinance text from Municode'
+      });
+    }
+
+    // Extract structured zoning using Claude
+    const buildingEnvelopeService = new BuildingEnvelopeService(pool);
+    const rezoneService = new RezoneAnalysisService(pool);
+    const orchestrator = new ZoningRecommendationOrchestrator(pool);
+    const cache = new ZoningInterpretationCache(pool);
+
+    const comparisonEngine = new EntitlementComparisonEngine(
+      pool,
+      buildingEnvelopeService,
+      rezoneService,
+      orchestrator,
+      zoningAgent,
+      cache
+    );
+
+    const extraction = await comparisonEngine.extractStructuredZoning(
+      municodeText,
+      districtCode,
+      municipality
+    );
+
+    // Cache the result
+    const sourceUrl = `https://www.municode.com/${municipality.toLowerCase().replace(/ /g, '-')}-code/chapter-${districtCode.split('-')[0]}`;
+    await pool.query(
+      `INSERT INTO municipality_zoning_rules
+       (municipality, state, district_code, rules, source_url, last_verified, verified_by)
+       VALUES ($1, $2, $3, $4, $5, NOW(), 'zoning_agent')
+       ON CONFLICT (municipality, state, district_code)
+       DO UPDATE SET rules = EXCLUDED.rules, last_verified = NOW(), source_url = EXCLUDED.source_url`,
+      [municipality, state, districtCode, JSON.stringify(extraction), sourceUrl]
+    );
+
+    res.json({
+      extraction,
+      source: 'claude_extraction',
+      cached: false,
+      cacheKey: `${municipality}/${state}/${districtCode}`,
+    });
+  } catch (error) {
+    console.error('Error extracting zoning interpretation:', error);
+    res.status(500).json({
+      error: 'Failed to extract zoning interpretation',
+      details: (error as any).message
+    });
   }
 });
 
