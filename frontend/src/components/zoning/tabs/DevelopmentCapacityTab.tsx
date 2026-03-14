@@ -130,42 +130,6 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
   return PATH_KEY_MAP[colKey] || 'by_right';
 }
 
-/**
- * Info panel shown after path selection.
- * Displays the selected path and clear button.
- */
-function PathSelectionPanel({
-  development_path,
-  onClear,
-}: {
-  development_path: string;
-  onClear: () => void;
-}) {
-  return (
-    <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
-      <div className="flex items-center gap-3">
-        <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <div className="flex-1">
-          <span className="text-xs font-bold text-blue-900">
-            Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-          </span>
-          <span className="text-[10px] text-blue-600 ml-3">
-            Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
-          </span>
-        </div>
-        <button
-          onClick={onClear}
-          className="text-[10px] text-blue-500 hover:text-blue-700 underline flex-shrink-0"
-        >
-          Clear
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
@@ -1482,10 +1446,27 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </div>
                 )}
                 {development_path && (
-                  <PathSelectionPanel
-                    development_path={development_path}
-                    onClear={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
-                  />
+                  <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+                    <div className="flex items-center gap-3">
+                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1">
+                        <span className="text-xs font-bold text-blue-900">
+                          Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </span>
+                        <span className="text-[10px] text-blue-600 ml-3">
+                          Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
+                        className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
                 )}
               </>
             )}
