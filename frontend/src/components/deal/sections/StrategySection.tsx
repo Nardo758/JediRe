@@ -10,6 +10,7 @@ import { useDealModule } from '../../../contexts/DealModuleContext';
 import type { StrategyType } from '../../../contexts/DealModuleContext';
 import { apiClient } from '../../../services/api.client';
 import { getDealType, getAvailableStrategies, type StrategyId, type DealType } from '../../../shared/config/deal-type-visibility';
+import CustomScreenTab from './CustomScreenTab';
 import {
   strategyScores as mockStrategyScores,
   heatmapData as mockHeatmapData,
@@ -377,18 +378,47 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           {/* Arbitrage Alert Banner (conditional) */}
           {arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />}
 
-          {/* 4-Strategy Score Matrix */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-gray-900">4-Strategy Score Matrix</h3>
-              <span className="text-[10px] font-mono text-gray-400 tracking-widest">F23 × STRATEGY WEIGHTS</span>
+          {/* Strategy Analysis Tabs */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            {/* Tab Navigation */}
+            <div className="border-b border-gray-200 flex">
+              {[
+                { id: 'scores' as const, label: 'Score Matrix', icon: '📊' },
+                { id: 'heatmap' as const, label: 'Signal Heatmap', icon: '🔥' },
+                { id: 'roi' as const, label: 'ROI Head-to-Head', icon: '💰' },
+                { id: 'custom' as const, label: 'Custom Screen', icon: '⚙️' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveSubTab(tab.id)}
+                  className={`flex-1 px-4 py-3 font-medium transition-all text-sm flex items-center justify-center gap-2 ${
+                    activeSubTab === tab.id
+                      ? 'border-b-2 border-blue-500 text-blue-600 bg-blue-50'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                  }`}
+                  title={tab.label}
+                >
+                  <span>{tab.icon}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              ))}
             </div>
-            <p className="text-sm text-gray-500 mb-5">
-              Each strategy scored against 5 JEDI signals with strategy-specific weights
-            </p>
 
-            <div className="grid grid-cols-4 gap-4">
-              {strategyScores.map((s) => (
+            {/* Tab Content */}
+            <div className="p-6">
+              {/* Score Matrix Tab */}
+              {activeSubTab === 'scores' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">4-Strategy Score Matrix</h3>
+                    <span className="text-[10px] font-mono text-gray-400 tracking-widest">F23 × STRATEGY WEIGHTS</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-5">
+                    Each strategy scored against 5 JEDI signals with strategy-specific weights
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {strategyScores.map((s) => (
                 <div
                   key={s.id}
                   className={`${s.bgColor} rounded-xl p-5 border-2 ${s.rank === 1 ? s.borderColor : 'border-transparent'} relative`}
@@ -427,25 +457,27 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               ))}
             </div>
 
-            {/* Insight */}
-            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-xs text-amber-800 leading-relaxed">
-                Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
-                Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
-                Most investors would default to Rental — the platform sees the development play.
-              </p>
-            </div>
-          </div>
+                  {/* Insight */}
+                  <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
+                      Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
+                      Most investors would default to Rental — the platform sees the development play.
+                    </p>
+                  </div>
+                </div>
+              )}
 
-          {/* Signal Heatmap (5 signals × 4 strategies) */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-gray-900">Signal Heatmap</h3>
-              <span className="text-[10px] font-mono text-gray-400 tracking-widest">5 SIGNALS × 4 STRATEGIES</span>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              Weighted signal scores — darker cells indicate stronger contribution to strategy score
-            </p>
+              {/* Heatmap Tab */}
+              {activeSubTab === 'heatmap' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-lg font-bold text-gray-900">Signal Heatmap</h3>
+                    <span className="text-[10px] font-mono text-gray-400 tracking-widest">5 SIGNALS × {strategyNames.length} STRATEGIES</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Weighted signal scores — darker cells indicate stronger contribution to strategy score
+                  </p>
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
