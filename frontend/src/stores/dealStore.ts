@@ -17,6 +17,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { useMemo } from 'react';
 import { apiClient } from '../services/api.client';
 import {
   DealContext,
@@ -31,6 +32,16 @@ import {
   resolveUnitMix,
   layered,
 } from './dealContext.types';
+import {
+  getDealType,
+  getDealTypeConfig,
+  type DealType,
+} from '../../deal-type-visibility';
+import {
+  getStrategyAvailability,
+  getStrategyStrength,
+  type ProductType,
+} from '../shared/config/product-type-adaptation';
 
 // ---------------------------------------------------------------------------
 // Store actions interface
@@ -204,6 +215,8 @@ const INITIAL_CONTEXT: DealContext = {
     createdAt: '',
     updatedAt: '',
   },
+  projectType: 'existing',
+  productType: 'mf_garden',
   site: {
     acreage: layered(0),
     buildableAcreage: layered(0),
@@ -857,6 +870,8 @@ export const useStrategyArbitrage = () =>
     market: s.market,
     supply: s.supply,
     isDevelopment: s.isDevelopment(),
+    projectType: s.projectType,
+    productType: s.productType,
   }));
 
 /** M09 ProForma — reads unit mix, assumptions, capital */
@@ -882,3 +897,29 @@ export const useDealBasics = () =>
     totalUnits: s.totalUnits,
     isDevelopment: s.identity.mode === 'development',
   }));
+
+/** Get the canonical DealType from projectType (existing | development | redevelopment) */
+export const useDealType = (): DealType => {
+  const projectType = useDealStore((s) => s.projectType);
+  return getDealType({ projectType });
+};
+
+/** Get full deal-type configuration (visible tabs, strategies, templates, etc.) */
+export const useDealTypeConfig = () => {
+  const projectType = useDealStore((s) => s.projectType);
+  return useMemo(() => getDealTypeConfig({ projectType }), [projectType]);
+};
+
+/** Get strategy availability based on deal type × product type */
+export const useStrategyAvailability = () => {
+  const dealType = useDealType();
+  const productType = useDealStore((s) => s.productType);
+
+  return useMemo(
+    () => ({
+      availableStrategies: getStrategyAvailability(dealType, productType),
+      getStrengthFor: (strategy: any) => getStrategyStrength(dealType, productType, strategy),
+    }),
+    [dealType, productType]
+  );
+};

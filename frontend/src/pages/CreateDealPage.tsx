@@ -8,6 +8,7 @@ import { Button } from '../components/shared/Button';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import { apiClient } from '../services/api.client';
+import { DealType } from '../shared/config/deal-type-visibility';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -28,10 +29,11 @@ interface PropertyType {
 const STEPS = {
   DETAILS_ADDRESS: 1,
   TYPE: 2,
-  CATEGORY: 3,
-  PROPERTY_TYPE: 4,
-  DOCUMENTS: 5,
-  TRADE_AREA: 6,
+  PROJECT_TYPE: 3,
+  CATEGORY: 4,
+  PROPERTY_TYPE: 5,
+  DOCUMENTS: 6,
+  TRADE_AREA: 7,
 } as const;
 
 export const CreateDealPage: React.FC = () => {
@@ -43,6 +45,7 @@ export const CreateDealPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<number>(STEPS.DETAILS_ADDRESS);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(locationState?.dealCategory || null);
   const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
+  const [projectType, setProjectType] = useState<DealType | null>(null);
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
   const [address, setAddress] = useState('');
@@ -190,6 +193,12 @@ export const CreateDealPage: React.FC = () => {
 
   const handleSelectType = (type: DevelopmentType) => {
     setDevelopmentType(type);
+    setCurrentStep(STEPS.PROJECT_TYPE);
+    setError(null);
+  };
+
+  const handleSelectProjectType = (type: DealType) => {
+    setProjectType(type);
     setCurrentStep(STEPS.CATEGORY);
     setError(null);
   };
@@ -313,7 +322,7 @@ export const CreateDealPage: React.FC = () => {
         development_type: developmentType!,
         property_type_id: propertyType?.id,
         property_type_key: propertyType?.type_key,
-        projectType: propertyType?.category ? categoryToProjectType[propertyType.category] || 'multifamily' : 'multifamily',
+        project_type: projectType,
         address,
         boundary,
         purchase_price: purchasePrice ? parseFloat(purchasePrice.replace(/[^0-9.]/g, '')) : undefined,
@@ -362,14 +371,18 @@ export const CreateDealPage: React.FC = () => {
 
   const handleBack = () => {
     setError(null);
-    
+
     switch (currentStep) {
       case STEPS.TYPE:
         setCurrentStep(STEPS.DETAILS_ADDRESS);
         setDevelopmentType(null);
         break;
-      case STEPS.CATEGORY:
+      case STEPS.PROJECT_TYPE:
         setCurrentStep(STEPS.TYPE);
+        setProjectType(null);
+        break;
+      case STEPS.CATEGORY:
+        setCurrentStep(STEPS.PROJECT_TYPE);
         setDealCategory(null);
         break;
       case STEPS.PROPERTY_TYPE:
@@ -432,6 +445,7 @@ export const CreateDealPage: React.FC = () => {
                 Step {currentStep} of {STEPS.TRADE_AREA} &bull; {
                   currentStep === STEPS.DETAILS_ADDRESS ? 'Deal Details & Address' :
                   currentStep === STEPS.TYPE ? 'Development Type' :
+                  currentStep === STEPS.PROJECT_TYPE ? 'Deal Type' :
                   currentStep === STEPS.CATEGORY ? 'Deal Category' :
                   currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
                   currentStep === STEPS.DOCUMENTS ? 'Documents & Data' :
@@ -548,6 +562,66 @@ export const CreateDealPage: React.FC = () => {
                           </h3>
                           <p className="text-gray-600">
                             Existing building or site acquisition.
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {currentStep === STEPS.PROJECT_TYPE && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                    What type of deal is this?
+                  </h2>
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => handleSelectProjectType('existing')}
+                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition text-left"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="text-4xl">🏢</div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
+                            Existing Acquisition
+                          </h3>
+                          <p className="text-gray-600">
+                            Buying an operating property (stabilized or value-add).
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleSelectProjectType('development')}
+                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition text-left"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="text-4xl">🏗️</div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
+                            Development
+                          </h3>
+                          <p className="text-gray-600">
+                            Ground-up new construction on vacant or cleared land.
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => handleSelectProjectType('redevelopment')}
+                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition text-left"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="text-4xl">🔄</div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
+                            Redevelopment
+                          </h3>
+                          <p className="text-gray-600">
+                            Tear-down, gut-rehab, or major repositioning of existing structure.
                           </p>
                         </div>
                       </div>

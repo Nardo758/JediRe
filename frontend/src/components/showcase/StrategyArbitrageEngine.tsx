@@ -1,12 +1,36 @@
 import React, { useState } from 'react';
 import ShowcaseDataService from '../../services/showcase.service';
+import { useStrategyAvailability, useDealType } from '../../stores/dealStore';
 
 export function StrategyArbitrageEngine() {
   const strategies = ShowcaseDataService.getStrategies();
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'roi' | 'risk' | 'cost'>('roi');
 
+  // Get available strategies based on deal type × product type
+  const { availableStrategies, getStrengthFor } = useStrategyAvailability();
+  const dealType = useDealType();
+
+  // Map strategy IDs to display names for comparison
+  const strategyIdMap: Record<string, string> = {
+    BTS: 'Build-to-Sell',
+    FLIP: 'Flip',
+    RENTAL: 'Rental',
+    STR: 'Short-Term Rental',
+  };
+
   const toggleStrategy = (id: string) => {
+    // Prevent selecting unavailable strategies
+    const strategy = strategies.find(s => s.id === id);
+    if (!strategy) return;
+
+    const strategyIdUpper = strategy.id.toUpperCase();
+    const strength = getStrengthFor(strategyIdUpper);
+    if (strength.strength === 'na') {
+      console.warn(`Strategy ${strategyIdUpper} is not available for this deal type`);
+      return;
+    }
+
     if (selectedStrategies.includes(id)) {
       setSelectedStrategies(selectedStrategies.filter(s => s !== id));
     } else if (selectedStrategies.length < 4) {
@@ -14,7 +38,14 @@ export function StrategyArbitrageEngine() {
     }
   };
 
-  const sortedStrategies = [...strategies].sort((a, b) => {
+  // Filter strategies to only show available ones (strength !== 'na')
+  const availableStrategyIds = new Set(availableStrategies);
+  const displayableStrategies = strategies.filter((s) => {
+    const strategyIdUpper = s.id.toUpperCase();
+    return availableStrategyIds.has(strategyIdUpper as any);
+  });
+
+  const sortedStrategies = [...displayableStrategies].sort((a, b) => {
     switch (sortBy) {
       case 'roi': return b.projectedROI - a.projectedROI;
       case 'cost': return a.implementationCost - b.implementationCost;
@@ -31,6 +62,16 @@ export function StrategyArbitrageEngine() {
       case 'low': return 'bg-green-100 text-green-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
       case 'high': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getStrengthColor = (strength: string) => {
+    switch (strength) {
+      case 'strong': return 'bg-blue-100 text-blue-800';
+      case 'moderate': return 'bg-cyan-100 text-cyan-800';
+      case 'weak': return 'bg-orange-100 text-orange-800';
+      case 'na': return 'bg-gray-100 text-gray-500';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -82,9 +123,16 @@ export function StrategyArbitrageEngine() {
                   <th className="text-left p-2 text-sm font-medium text-blue-800">Metric</th>
                   {selectedStrategies.map(id => {
                     const strategy = strategies.find(s => s.id === id);
+                    const strategyIdUpper = strategy?.id.toUpperCase();
+                    const strength = getStrengthFor(strategyIdUpper);
                     return (
                       <th key={id} className="p-2 text-sm font-medium text-blue-800">
-                        {strategy?.name}
+                        <div className="flex flex-col items-center gap-1">
+                          <div>{strategy?.name}</div>
+                          <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${getStrengthColor(strength.strength)}`}>
+                            {strength.strength === 'na' ? 'Not Available' : strength.strength}
+                          </span>
+                        </div>
                       </th>
                     );
                   })}
@@ -150,25 +198,32 @@ export function StrategyArbitrageEngine() {
       <div className="grid gap-3">
         {sortedStrategies.map(strategy => {
           const isSelected = selectedStrategies.includes(strategy.id);
-          
+          const strategyIdUpper = strategy.id.toUpperCase();
+          const strength = getStrengthFor(strategyIdUpper);
+
           return (
             <div
               key={strategy.id}
               onClick={() => toggleStrategy(strategy.id)}
-              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                isSelected
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+              className={`p-4 border-2 rounded-lg transition-all ${
+                strength.strength === 'na'
+                  ? 'cursor-not-allowed opacity-50 border-gray-100 bg-gray-50'
+                  : isSelected
+                  ? 'cursor-pointer border-blue-500 bg-blue-50'
+                  : 'cursor-pointer border-gray-200 hover:border-gray-300 hover:shadow-sm'
               }`}
             >
               <div className="flex items-start gap-4">
                 <div className="text-3xl">{getCategoryIcon(strategy.category)}</div>
-                
+
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-gray-900">{strategy.name}</h4>
+                        <span className={`px-2 py-0.5 text-xs rounded-full font-semibold ${getStrengthColor(strength.strength)}`}>
+                          {strength.strength === 'na' ? 'Not Available' : strength.strength.charAt(0).toUpperCase() + strength.strength.slice(1)}
+                        </span>
                         {isSelected && (
                           <span className="px-2 py-0.5 text-xs rounded-full bg-blue-600 text-white">
                             ✓ Selected
@@ -176,6 +231,9 @@ export function StrategyArbitrageEngine() {
                         )}
                       </div>
                       <p className="text-sm text-gray-600 mt-1">{strategy.description}</p>
+                      {strength.strength !== 'na' && (
+                        <p className="text-xs text-gray-500 mt-1">{strength.description}</p>
+                      )}
                     </div>
                     
                     <div className="text-right ml-4">
