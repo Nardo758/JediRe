@@ -83,6 +83,8 @@ import m28CycleIntelligenceRoutes from './m28-cycle-intelligence.routes';
 import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
 import scrapeRoutes from './scrape.routes';
+import metricsCatalogRoutes from './metrics-catalog.routes';
+import customStrategiesRoutes from './custom-strategies.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -303,6 +305,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);
+
+  // Metrics Catalog routes (Strategy Engine - metric definitions and historical data)
+  app.use(`${API_PREFIX}/metrics`, metricsCatalogRoutes);
+
+  // Custom Strategies routes (Strategy Engine - user-defined strategy management)
+  app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
