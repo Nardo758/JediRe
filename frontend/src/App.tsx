@@ -20,6 +20,7 @@ import { TeamPage } from './pages/TeamPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
+import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 
 // Lazy-load map-heavy components to reduce initial bundle size
 const MapPage = lazy(() => import('./pages/MapPage').then(m => ({ default: m.MapPage })));
@@ -94,6 +95,8 @@ function AppContent() {
           <Route path="/dashboard/email/sent" element={<EmailPage />} />
           <Route path="/dashboard/email/drafts" element={<EmailPage />} />
           <Route path="/dashboard/email/flagged" element={<EmailPage />} />
+          <Route path="/strategy-builder" element={<StrategyBuilderPage />} />
+          <Route path="/strategy-builder/:id" element={<StrategyBuilderPage />} />
           <Route path="/news-intel" element={<NewsIntelligencePage />} />
           <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />

@@ -346,4 +346,68 @@ router.post('/preview', requireAuth, async (req: AuthenticatedRequest, res: Resp
   }
 });
 
+// ── PUT /api/v1/strategies/:id ────────────────────────────────────────────────
+router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    const {
+      name, description, scope, conditions,
+      combinator, signalWeights, sortBy, sortDirection,
+      maxResults, assetClasses, dealTypes, tags, isPublic,
+    } = req.body;
+
+    const result = await query(`
+      UPDATE strategy_definitions SET
+        name = COALESCE($3, name),
+        description = COALESCE($4, description),
+        scope = COALESCE($5, scope),
+        conditions = COALESCE($6, conditions),
+        combinator = COALESCE($7, combinator),
+        sort_by = COALESCE($8, sort_by),
+        sort_direction = COALESCE($9, sort_direction),
+        max_results = COALESCE($10, max_results),
+        asset_classes = COALESCE($11, asset_classes),
+        deal_types = COALESCE($12, deal_types),
+        tags = COALESCE($13, tags),
+        is_public = COALESCE($14, is_public),
+        updated_at = NOW()
+      WHERE id = $1 AND user_id = $2
+      RETURNING *
+    `, [
+      id, userId, name, description, scope,
+      conditions ? JSON.stringify(conditions) : null,
+      combinator, sortBy, sortDirection, maxResults,
+      assetClasses, dealTypes, tags, isPublic,
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Strategy not found or unauthorized' });
+    }
+    res.json({ success: true, strategy: result.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── DELETE /api/v1/strategies/:id ─────────────────────────────────────────────
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const result = await query(
+      `DELETE FROM strategy_definitions WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Strategy not found or unauthorized' });
+    }
+    res.json({ success: true, deleted: id });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 export default router;

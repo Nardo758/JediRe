@@ -22,6 +22,7 @@ import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.ro
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import strategiesRouter from './api/rest/strategies.routes';
 import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
+import metricsCatalogRouter from './api/rest/metrics-catalog.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
@@ -305,6 +306,7 @@ app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesR
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/strategies', requireAuth, strategiesRouter);
 app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
+app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
 app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
 app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));

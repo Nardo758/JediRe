@@ -306,6 +306,14 @@ export const MainLayout: React.FC = () => {
                     </div>
                   )}
 
+                  {/* STRATEGY BUILDER */}
+                  <SidebarItem
+                    icon="🔧"
+                    label="Strategy Builder"
+                    path="/strategy-builder"
+                    isActive={isActivePrefix('/strategy-builder')}
+                  />
+
                   {/* NEWS INTEL */}
                   <SidebarItem
                     icon="📰"
