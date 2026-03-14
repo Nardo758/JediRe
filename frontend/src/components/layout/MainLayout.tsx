@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
+import { CommandPanel } from './CommandPanel';
 import { WarMapsComposer } from '../map/WarMapsComposer';
 import { ChatOverlay } from '../chat/ChatOverlay';
 import QuickSetupModal from '../onboarding/QuickSetupModal';
@@ -31,6 +32,7 @@ export const MainLayout: React.FC = () => {
   const [layers, setLayers] = useState<MapLayer[]>([]);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [commandPanelOpen, setCommandPanelOpen] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
   const isActivePrefix = (prefix: string) => location.pathname.startsWith(prefix);
@@ -89,6 +91,18 @@ export const MainLayout: React.FC = () => {
     }
   };
 
+  // Keyboard shortcut for command panel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setCommandPanelOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
     const handler = () => setIsWarMapsOpen(true);
     window.addEventListener('open-war-maps', handler);
@@ -132,6 +146,7 @@ export const MainLayout: React.FC = () => {
         activeConfigId={activeConfig?.id}
         onConfigSelect={handleConfigSelect}
         onNewConfig={() => setIsWarMapsOpen(true)}
+        onOpenCommandPanel={() => setCommandPanelOpen(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -409,6 +424,12 @@ export const MainLayout: React.FC = () => {
           }}
         />
       )}
+
+      {/* Command Panel */}
+      <CommandPanel
+        isOpen={commandPanelOpen}
+        onClose={() => setCommandPanelOpen(false)}
+      />
 
       <ChatOverlay />
     </div>

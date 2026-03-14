@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiClient } from '../services/api';
+import api from '../services/api';
 
 interface Metric {
   id: string;
@@ -118,8 +118,8 @@ export const StrategyBuilderPage: React.FC = () => {
     const fetchData = async () => {
       try {
         const [strategiesRes, catalogRes] = await Promise.all([
-          apiClient.get('/api/v1/strategies'),
-          apiClient.get('/api/v1/metrics/catalog'),
+          api.get('/api/v1/strategies'),
+          api.get('/api/v1/metrics/catalog'),
         ]);
 
         setStrategies(strategiesRes.data || []);
@@ -160,7 +160,7 @@ export const StrategyBuilderPage: React.FC = () => {
 
     try {
       setPreviewLoading(true);
-      const response = await apiClient.post('/api/v1/strategies/preview', {
+      const response = await api.post('/api/v1/strategies/preview', {
         conditions,
         scope,
         assetClasses: selectedAssetClasses,
@@ -235,9 +235,9 @@ export const StrategyBuilderPage: React.FC = () => {
       };
 
       if (strategyId) {
-        await apiClient.put(`/api/v1/strategies/${strategyId}`, payload);
+        await api.put(`/api/v1/strategies/${strategyId}`, payload);
       } else {
-        await apiClient.post('/api/v1/strategies', payload);
+        await api.post('/api/v1/strategies', payload);
       }
 
       navigate('/strategies');
@@ -252,7 +252,7 @@ export const StrategyBuilderPage: React.FC = () => {
     if (!confirm('Are you sure you want to delete this strategy?')) return;
 
     try {
-      await apiClient.delete(`/api/v1/strategies/${strategyId}`);
+      await api.delete(`/api/v1/strategies/${strategyId}`);
       navigate('/strategies');
     } catch (error) {
       console.error('Error deleting strategy:', error);
@@ -262,7 +262,7 @@ export const StrategyBuilderPage: React.FC = () => {
 
   const handleRunStrategy = async (id: string) => {
     try {
-      const response = await apiClient.post(`/api/v1/strategies/${id}/run`);
+      const response = await api.post(`/api/v1/strategies/${id}/run`);
       console.log('Strategy run results:', response.data);
       // TODO: Show results in modal or expand inline
     } catch (error) {
