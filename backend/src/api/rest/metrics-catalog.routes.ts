@@ -260,4 +260,55 @@ router.get('/:metricId/history', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/v1/metrics/fred-rates
+ * Get FRED rate data (SOFR, 10Y Treasury)
+ * Query params: days (default 365), metrics (default 'RATE_SOFR,RATE_TREASURY_10Y')
+ */
+router.get('/fred-rates', async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 365;
+    const metricsParam = (req.query.metrics as string) || 'RATE_SOFR,RATE_TREASURY_10Y';
+    const metrics = metricsParam.split(',');
+
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const result = await pool.query(
+      `SELECT
+        metric_id,
+        period_date,
+        value,
+        computed_at
+      FROM metric_time_series
+      WHERE metric_id = ANY($1)
+      AND geography_type = 'national'
+      AND period_date >= $2
+      ORDER BY period_date ASC`,
+      [metrics, startDate.toISOString()]
+    );
+
+    const grouped: Record<string, Array<{ date: string; value: number }>> = {};
+    result.rows.forEach((row: any) => {
+      if (!grouped[row.metric_id]) grouped[row.metric_id] = [];
+      grouped[row.metric_id].push({
+        date: row.period_date,
+        value: parseFloat(row.value),
+      });
+    });
+
+    res.json({
+      success: true,
+      data: grouped,
+      count: result.rows.length,
+    });
+  } catch (error) {
+    logger.error('Error fetching FRED rates:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch FRED rates',
+    });
+  }
+});
+
 export default router;

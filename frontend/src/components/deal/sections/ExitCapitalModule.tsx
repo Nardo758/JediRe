@@ -736,6 +736,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const [activeTab, setActiveTab] = useState<TabId>('exit');
   const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
   const [selectedExitStrategy, setSelectedExitStrategy] = useState<string>(DEFAULT_EXIT_STRATEGY[dealType]);
+  const [fredRates, setFredRates] = useState<Record<string, Array<{ date: string; value: number }>>>({});
+  const [fredLoading, setFredLoading] = useState(false);
 
   // Compute optimal exit quarter (highest RSS in forward window)
   const optimalFwd = useMemo(() => {
@@ -753,6 +755,25 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   useEffect(() => {
     setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
+
+  // Fetch FRED rate data on mount
+  useEffect(() => {
+    const fetchFredRates = async () => {
+      setFredLoading(true);
+      try {
+        const response = await fetch('/api/v1/metrics/fred-rates?days=365');
+        if (response.ok) {
+          const data = await response.json();
+          setFredRates(data.data || {});
+        }
+      } catch (error) {
+        console.error('Error fetching FRED rates:', error);
+      } finally {
+        setFredLoading(false);
+      }
+    };
+    fetchFredRates();
+  }, []);
 
   // Compute returns for selected and optimal quarters
   const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
@@ -990,13 +1011,24 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         {activeTab === 'market' && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
-              {[
-                { l: 'SOFR', v: '4.10%', d: '-18bps (90d)', c: '#63B3ED', dir: '↓' },
-                { l: '10Y TREASURY', v: '3.80%', d: '-30bps (90d)', c: '#B794F4', dir: '↓' },
-                { l: 'AGENCY', v: '+165bps', d: 'Tightening', c: '#68D391', dir: '↓' },
-                { l: 'CMBS', v: '+215bps', d: 'Stable', c: '#F6AD55', dir: '—' },
-                { l: 'BRIDGE', v: '+340bps', d: 'Compressing', c: '#4FD1C5', dir: '↓' },
-              ].map((r) => (
+              {(() => {
+                const sofrData = fredRates['RATE_SOFR'] || [];
+                const treasData = fredRates['RATE_TREASURY_10Y'] || [];
+                const latestSofr = sofrData.length > 0 ? sofrData[sofrData.length - 1].value : 4.10;
+                const latestTreas = treasData.length > 0 ? treasData[treasData.length - 1].value : 3.80;
+
+                // Calculate 90-day change
+                const sofr90d = sofrData.length > 10 ? sofrData[sofrData.length - 1].value - sofrData[sofrData.length - 10].value : 0;
+                const treas90d = treasData.length > 10 ? treasData[treasData.length - 1].value - treasData[treasData.length - 10].value : 0;
+
+                return [
+                  { l: 'SOFR', v: `${latestSofr.toFixed(2)}%`, d: `${(sofr90d * 100).toFixed(0)}bps (90d)`, c: '#63B3ED', dir: sofr90d < 0 ? '↓' : sofr90d > 0 ? '↑' : '—' },
+                  { l: '10Y TREASURY', v: `${latestTreas.toFixed(2)}%`, d: `${(treas90d * 100).toFixed(0)}bps (90d)`, c: '#B794F4', dir: treas90d < 0 ? '↓' : treas90d > 0 ? '↑' : '—' },
+                  { l: 'AGENCY', v: '+165bps', d: 'Tightening', c: '#68D391', dir: '↓' },
+                  { l: 'CMBS', v: '+215bps', d: 'Stable', c: '#F6AD55', dir: '—' },
+                  { l: 'BRIDGE', v: '+340bps', d: 'Compressing', c: '#4FD1C5', dir: '↓' },
+                ];
+              })().map((r) => (
                 <div key={r.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
                   <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
                   <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: r.c }}>{r.v}</div>
