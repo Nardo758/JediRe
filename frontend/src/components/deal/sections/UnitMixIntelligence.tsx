@@ -1386,7 +1386,8 @@ export default function UnitMixIntelligence() {
     initializedRef.current = true;
     if (apiZoning) setZoning(apiZoning as ZoningData);
 
-    if (apiProgram && (apiProgram as any).totalUnits) {
+    const hasSaved = apiProgram && typeof apiProgram === 'object' && 'totalUnits' in apiProgram && (apiProgram as Program).totalUnits > 0;
+    if (hasSaved) {
       hasDbProgramRef.current = true;
       setProgram(apiProgram as Program);
     } else {
@@ -1398,14 +1399,14 @@ export default function UnitMixIntelligence() {
 
   useEffect(() => {
     if (!developmentEnvelope?.max_units || !initializedRef.current || hasDbProgramRef.current) return;
-    setProgram(prev => prev.totalUnits === developmentEnvelope.max_units
-      ? prev
-      : computeOptimalProgram(developmentEnvelope.max_units, comps));
+    const newUnits = developmentEnvelope.max_units;
+    setProgram(prev => prev.totalUnits === newUnits ? prev : { ...prev, totalUnits: newUnits });
   }, [developmentEnvelope?.max_units]);
 
   const handleProgramChange = (p: Program) => {
     setProgram(p);
-    saveProgram(p as any);
+    hasDbProgramRef.current = true;
+    saveProgram(p);
   };
 
   const computed   = computeProgram(program);
