@@ -78,7 +78,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
   const loadStrategies = async () => {
     setStrategiesLoading(true);
     try {
-      const response = await api.get('/api/v1/strategies');
+      const response = await api.get('/strategies');
       setStrategies(response.data.data || []);
     } catch (error) {
       console.error('Failed to load strategies:', error);
@@ -95,7 +95,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
     }));
 
     try {
-      const response = await api.post(`/api/v1/strategies/${strategyId}/run`);
+      const response = await api.post(`/strategies/${strategyId}/run`);
       const data = response.data.data;
 
       // Extract top 3 results
