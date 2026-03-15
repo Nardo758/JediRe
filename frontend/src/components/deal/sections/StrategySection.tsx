@@ -343,7 +343,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     if (activeTab !== 'custom' || !deal.id) return;
     let cancelled = false;
     setScoreDealLoading(true);
-    apiClient.post(`/api/v1/strategy-definitions/score-deal/${deal.id}`)
+    apiClient.post(`/api/v1/strategies/score-deal/${deal.id}`)
       .then((res) => {
         if (cancelled) return;
         if (res.data?.success) setScoreDealResult(res.data.data || []);
@@ -458,6 +458,16 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
 
       {/* Quick Stats */}
       <QuickStatsGrid stats={stats} />
+
+      {/* Mock data notice */}
+      {!isLiveData && (
+        <div className="mx-4 mb-1 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <span className="text-xs text-amber-700">Showing sample data — strategy scores will update when market intelligence modules are connected.</span>
+        </div>
+      )}
 
       {/* ======== SIGNALS TAB: Strategy Intelligence Layer ======== */}
       {isPipeline && activeTab === 'signals' && (

@@ -274,7 +274,11 @@ export class IntelligenceContextService {
         values.push(`[${params.queryEmbedding.join(',')}]`);
         paramIndex++;
 
+        const minSimilarityParam = paramIndex;
         values.push(minSimilarity);
+        paramIndex++;
+
+        const limitParam = paramIndex;
         values.push(limit);
 
         query = `
@@ -283,9 +287,9 @@ export class IntelligenceContextService {
           FROM unified_documents
           WHERE ${whereClause}
             AND content_embedding IS NOT NULL
-            AND 1 - (content_embedding <=> $${embeddingParam}::vector) >= $${paramIndex - 2}
+            AND 1 - (content_embedding <=> $${embeddingParam}::vector) >= $${minSimilarityParam}
           ORDER BY content_embedding <=> $${embeddingParam}::vector
-          LIMIT $${paramIndex - 1}::bigint
+          LIMIT $${limitParam}::bigint
         `;
       } else {
         // Full-text search fallback
@@ -295,6 +299,7 @@ export class IntelligenceContextService {
           paramIndex++;
         }
 
+        const limitParam = paramIndex;
         values.push(limit);
 
         query = `
@@ -302,7 +307,7 @@ export class IntelligenceContextService {
           FROM unified_documents
           WHERE ${conditions.join(' AND ')}
           ORDER BY created_at DESC
-          LIMIT $${paramIndex - 1}::bigint
+          LIMIT $${limitParam}::bigint
         `;
       }
 

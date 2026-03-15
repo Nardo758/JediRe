@@ -122,7 +122,8 @@ export const StrategyBuilderPage: React.FC = () => {
           api.get('/metrics/catalog'),
         ]);
 
-        setStrategies(strategiesRes.data || []);
+        const raw = strategiesRes.data;
+        setStrategies(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
 
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
@@ -1022,8 +1023,9 @@ export const StrategyBuilderPage: React.FC = () => {
                       </div>
                     ))
                   ) : conditions.length > 0 ? (
-                    <div style={{ fontSize: 9, color: COLORS.textMuted, textAlign: 'center', padding: '10px' }}>
-                      No matches found
+                    <div style={{ textAlign: 'center', padding: '16px 10px' }}>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 4 }}>No matching geographies found.</div>
+                      <div style={{ fontSize: 8, color: COLORS.textDim }}>Ensure market data has been ingested for the selected scope.</div>
                     </div>
                   ) : null}
                 </div>
