@@ -357,23 +357,34 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         )}
 
         {/* PROBABILITY DISTRIBUTION */}
-        {mcData && (
+        {mcData && mcData.histogram.filter(h => h.probability > 0.001).length > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Probability Distribution</h4>
-            <div className="flex items-end gap-px h-20 bg-gray-50 rounded-lg p-2 border border-gray-200">
+            <div className="flex items-end gap-px bg-gray-50 rounded-lg border border-gray-200 px-2 pt-2" style={{ height: '80px' }}>
               {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
                 const heightPct = (h.probability / maxProb) * 100;
                 const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center justify-end group relative">
-                    <div
-                      className={`w-full rounded-t transition-colors ${isExpected ? 'bg-blue-600' : 'bg-blue-300 group-hover:bg-blue-400'}`}
-                      style={{ height: `${Math.max(2, heightPct)}%` }}
-                    />
-                    {i % 3 === 0 && <span className="text-[8px] text-gray-500 mt-0.5">{h.monthBucket}m</span>}
-                  </div>
+                  <div
+                    key={i}
+                    className={`flex-1 rounded-t transition-colors cursor-default ${isExpected ? 'bg-blue-600' : 'bg-blue-300 hover:bg-blue-400'}`}
+                    style={{ height: `${Math.max(3, heightPct)}%` }}
+                    title={`${h.monthBucket} months: ${(h.probability * 100).toFixed(1)}%`}
+                  />
                 );
               })}
+            </div>
+            <div className="flex justify-between text-[8px] text-gray-400 mt-1 px-2">
+              {(() => {
+                const bars = mcData.histogram.filter(h => h.probability > 0.001);
+                if (bars.length === 0) return null;
+                const first = bars[0];
+                const mid = bars[Math.floor(bars.length / 2)];
+                const last = bars[bars.length - 1];
+                return [first, mid, last].filter(Boolean).map(b => (
+                  <span key={b.monthBucket}>{b.monthBucket}mo</span>
+                ));
+              })()}
             </div>
           </div>
         )}
