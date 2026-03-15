@@ -878,7 +878,7 @@ export const StrategyBuilderPage: React.FC = () => {
                     color: COLORS.success,
                   }}
                 >
-                  Save Strategy
+                  {strategyId ? 'Update Strategy' : 'Save Strategy'}
                 </button>
                 {strategyId && (
                   <button
