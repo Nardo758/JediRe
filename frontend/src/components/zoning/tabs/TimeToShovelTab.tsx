@@ -274,7 +274,14 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
     );
   }
 
-  if (!mcData && !intelligence) return null;
+  if (!mcData && !intelligence) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path above to generate timeline estimates.</p>
+        <p className="text-xs text-gray-400 mt-1">The simulation requires a path selection to compute phase durations.</p>
+      </div>
+    );
+  }
 
   // Use AI Intelligence estimates if available, otherwise use Monte Carlo
   const bestCase = intelligence?.estimatedMonths.optimistic ?? mcData?.percentiles.p10 ?? 0;
@@ -396,38 +403,21 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
 // SECTION 3: AI ANALYSIS (QUALITATIVE INSIGHTS)
 // ========================================
 
-function AIAnalysisSection({ dealId, developmentPath }: { dealId?: string; developmentPath: string | null }) {
-  const [intelligence, setIntelligence] = useState<TimelineIntelligence | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading, intelligenceError }: {
+  developmentPath: string | null;
+  intelligence: TimelineIntelligence | null;
+  intelligenceLoading: boolean;
+  intelligenceError: string | null;
+}) {
+  if (!developmentPath) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path to see AI timeline analysis.</p>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!dealId || !developmentPath) return;
-    let cancelled = false;
-
-    async function fetchIntelligence() {
-      setLoading(true);
-      setError(null);
-      try {
-        const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
-          params: { path: developmentPath },
-          timeout: 90000,
-        });
-        if (!cancelled) setIntelligence(resp.data);
-      } catch (err: any) {
-        if (!cancelled) setError(err.response?.data?.error || err.message || 'Failed to load timeline intelligence');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchIntelligence();
-    return () => { cancelled = true; };
-  }, [dealId, developmentPath]);
-
-  if (!developmentPath) return null;
-
-  if (loading) {
+  if (intelligenceLoading) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-3"></div>
@@ -437,16 +427,23 @@ function AIAnalysisSection({ dealId, developmentPath }: { dealId?: string; devel
     );
   }
 
-  if (error) {
+  if (intelligenceError) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-sm font-medium text-red-700">Timeline Intelligence Error</p>
-        <p className="text-xs text-red-600 mt-1">{error}</p>
+        <p className="text-xs text-red-600 mt-1">{intelligenceError}</p>
       </div>
     );
   }
 
-  if (!intelligence) return null;
+  if (!intelligence) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">AI timeline analysis unavailable for this deal.</p>
+        <p className="text-xs text-gray-400 mt-1">Ensure zoning profile and benchmark data are loaded.</p>
+      </div>
+    );
+  }
 
   const severityColors: Record<string, string> = {
     low: 'text-green-700 bg-green-50 border-green-200',
@@ -591,6 +588,8 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const [mcLoading, setMcLoading] = useState(false);
   const [mcError, setMcError] = useState<string | null>(null);
   const [intelligence, setIntelligence] = useState<TimelineIntelligence | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [intelligenceError, setIntelligenceError] = useState<string | null>(null);
   const [benchmarks, setBenchmarks] = useState<MunicipalBenchmark[]>([]);
   const [detailedSteps, setDetailedSteps] = useState<DetailedStep[]>([]);
   const [stepsDataSource, setStepsDataSource] = useState<'real' | 'synthetic'>('synthetic');
@@ -605,6 +604,13 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const municipality = deal?.municipality || deal?.city || '';
   const unitCount = selected_envelope?.max_units || deal?.unit_count || 0;
   const pathLabel = { by_right: 'By-Right', overlay_bonus: 'Overlay Bonus', variance: 'Variance', rezone: 'Full Rezone' }[development_path || ''] || development_path || 'None';
+
+  // Default to 'by_right' path on first load
+  useEffect(() => {
+    if (!development_path && dealId) {
+      selectDevelopmentPath('by_right' as any, selected_envelope);
+    }
+  }, [dealId]);
 
   const runSimulation = useCallback(async () => {
     if (!dealId || !development_path) return;
@@ -647,14 +653,19 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
 
     const fetchIntelligence = async () => {
       if (!dealId || !development_path) return;
+      setIntelligenceLoading(true);
+      setIntelligenceError(null);
       try {
         const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
           params: { path: development_path },
           timeout: 90000,
         });
         setIntelligence(resp.data);
-      } catch {
+      } catch (err: any) {
         setIntelligence(null);
+        setIntelligenceError(err.response?.data?.error || err.message || 'Failed to load intelligence');
+      } finally {
+        setIntelligenceLoading(false);
       }
     };
 
@@ -767,7 +778,12 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
       )}
 
       {/* SECTION 3: AI ANALYSIS (QUALITATIVE INSIGHTS) */}
-      <AIAnalysisSection dealId={dealId} developmentPath={development_path} />
+      <AIAnalysisSection
+        developmentPath={development_path}
+        intelligence={intelligence}
+        intelligenceLoading={intelligenceLoading}
+        intelligenceError={intelligenceError}
+      />
     </div>
   );
 }
