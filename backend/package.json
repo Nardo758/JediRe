@@ -10,7 +10,10 @@
     "replit": "npm install && npm run build && npm run start",
     "migrate": "ts-node src/scripts/run-migrations.ts",
     "backfill": "ts-node src/scripts/backfill-data-library.ts",
-    "embeddings": "ts-node src/scripts/generate-embeddings.ts"
+    "embeddings": "ts-node src/scripts/generate-embeddings.ts",
+    "setup-strategy-engine": "ts-node src/scripts/setup-strategy-engine.ts",
+    "seed-presets": "ts-node src/scripts/seed-preset-strategies.ts",
+    "seed-florida": "ts-node src/scripts/seed-florida-geographies.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
