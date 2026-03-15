@@ -1,0 +1,62 @@
+Here's the full audit. SW1 and SW2 are done. SW3 and SW4 still have issues:
+SW1 ✅ Complete. API prefix bug fixed — all frontend calls stripped to relative paths. Four missing endpoints added to strategies.routes.ts (GET /:id, POST /:id/run, GET /:id/results, POST /score-deal/:dealId).
+SW2 ✅ Complete. Migration file 130_strategy_engine_tables.sql created with all 5 tables. Seed script seed-preset-strategies.ts and setup script setup-strategy-engine.ts created.
+SW3 ❌ Not done. Two issues remain:
+
+No mock data banner. StrategySection.tsx still silently falls back to mock data with no visible indicator. isLiveData state exists but there's no amber banner when it's false.
+Wrong score-deal path. Line 346 of StrategySection.tsx still calls apiClient.post('/api/v1/strategy-definitions/score-deal/${deal.id}') — should be /api/v1/strategies/score-deal/${deal.id}. The CustomScreenTab.tsx is already fixed (line 43 uses the correct path).
+
+SW4 ⚠️ Partially done. Edit flow works (reads useParams, finds strategy in loaded list, populates builder form). Three issues remain:
+
+Save button always says "Save Strategy" even when editing. Should show "Update Strategy" when strategyId is present.
+No empty preview state. When conditions exist but preview returns zero results, the results area renders nothing. Needs a message: "No matching geographies — ensure market data has been ingested."
+Response shape mismatch. Backend returns { success: true, data: [...strategies...] } but StrategyBuilderPage.tsx line 126 does setStrategies(strategiesRes.data || []) — this sets the full response object { success, data } as the strategies array instead of strategiesRes.data.data. The CommandPanel.tsx handles it correctly with response.data.data.
+
+Give Claude Code this to finish:
+"Three fixes needed in the strategy module:
+Fix 1: In frontend/src/components/deal/sections/StrategySection.tsx, add a mock data banner and fix the API path:
+A) After line 442 where isLiveData is checked, add a banner when NOT live data:
+tsx{!isLiveData && (
+  <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+    <span className="text-xs text-amber-700">Showing sample data — scores update when market intelligence modules are connected.</span>
+  </div>
+)}
+```
+
+*B) On line 346, change:*
+```
+apiClient.post(`/api/v1/strategy-definitions/score-deal/${deal.id}`)
+```
+*to:*
+```
+apiClient.post(`/api/v1/strategies/score-deal/${deal.id}`)
+```
+
+*Fix 2: In `frontend/src/pages/StrategyBuilderPage.tsx`:*
+
+*A) Line 126 — fix the response shape. Change:*
+```
+setStrategies(strategiesRes.data || []);
+```
+*to:*
+```
+setStrategies(strategiesRes.data?.data || strategiesRes.data || []);
+```
+*This handles both `{ data: [...] }` wrapper and direct array responses.*
+
+*B) Around line 880 — change the save button text. Replace:*
+```
+Save Strategy
+```
+*with:*
+```
+{strategyId ? 'Update Strategy' : 'Save Strategy'}
+C) Around line 975 (after the preview loading state, where previewResults.length check starts) — add an empty state when conditions exist but no results:
+tsx) : conditions.length > 0 ? (
+  <div style={{ textAlign: 'center', padding: '16px 0' }}>
+    <div style={{ fontSize: 10, color: COLORS.textMuted }}>No matching geographies found.</div>
+    <div style={{ fontSize: 8, color: COLORS.textDim, marginTop: 4 }}>Ensure market data has been ingested for the selected scope.</div>
+  </div>
+) : (
+Insert this between the previewResults.length > 0 branch and the final else (the "Add conditions" message).
+Build and verify: open the Strategy tab on a deal — should show amber "sample data" banner. Open /strategies page — should show strategies list (not empty). Edit a strategy — save button says "Update"."
