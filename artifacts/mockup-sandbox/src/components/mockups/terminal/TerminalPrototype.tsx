@@ -481,11 +481,16 @@ export function TerminalPrototype() {
       </div>
 
       {/* TICKER */}
-      <div style={{background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,height:18,overflow:"hidden",flexShrink:0}}>
-        <div style={{display:"inline-block",animation:"ticker 40s linear infinite",whiteSpace:"nowrap",paddingTop:2}}>
-          {[tickerContent,tickerContent].map((t,i)=>(
-            <span key={i} style={{fontSize:8,color:T.text.muted,marginRight:40}}>{t}</span>
-          ))}
+      <div style={{background:T.bg.topBar,borderTop:`1px solid ${T.border.bright}`,borderBottom:`1px solid ${T.border.bright}`,height:22,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
+        <div style={{display:"inline-flex",alignItems:"center",gap:0,animation:"ticker 40s linear infinite",whiteSpace:"nowrap"}}>
+          {[...TICKERS,...TICKERS].map((t,i)=>{
+            const up=t.startsWith("^"),dn=t.startsWith("v");
+            return (
+              <span key={i} style={{fontSize:9,fontWeight:600,color:up?T.text.green:dn?T.text.red:T.text.amber,marginRight:28,letterSpacing:.2}}>
+                {t}
+              </span>
+            );
+          })}
         </div>
       </div>
 
