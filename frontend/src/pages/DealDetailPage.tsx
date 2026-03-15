@@ -47,7 +47,6 @@ import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 
-import OverviewSection from '../components/deal/sections/OverviewSection';
 import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { Design3DPageEnhanced } from './Design3DPage.enhanced';
