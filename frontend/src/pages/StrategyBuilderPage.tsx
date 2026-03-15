@@ -122,7 +122,8 @@ export const StrategyBuilderPage: React.FC = () => {
           api.get('/metrics/catalog'),
         ]);
 
-        setStrategies(strategiesRes.data || []);
+        const raw = strategiesRes.data;
+        setStrategies(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
 
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
