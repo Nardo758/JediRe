@@ -283,10 +283,10 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
     );
   }
 
-  // Use AI Intelligence estimates if available, otherwise use Monte Carlo
-  const bestCase = intelligence?.estimatedMonths.optimistic ?? mcData?.percentiles.p10 ?? 0;
-  const expectedCase = intelligence?.estimatedMonths.expected ?? mcData?.percentiles.p50 ?? 0;
-  const worstCase = intelligence?.estimatedMonths.worstCase ?? mcData?.percentiles.p90 ?? 0;
+  // Use Monte Carlo estimates for hero values
+  const bestCase = mcData?.percentiles.p10 ?? 0;
+  const expectedCase = mcData?.percentiles.p50 ?? 0;
+  const worstCase = mcData?.percentiles.p90 ?? 0;
 
   const maxProb = mcData ? Math.max(...mcData.histogram.map(h => h.probability)) : 1;
 
@@ -320,26 +320,9 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
           </div>
         </div>
 
-        {/* PROBABILITY DISTRIBUTION */}
+        {/* ATTRIBUTION */}
         {mcData && (
-          <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Probability Distribution</h4>
-            <div className="flex items-end gap-px h-20 bg-gray-50 rounded-lg p-2 border border-gray-200">
-              {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
-                const heightPct = (h.probability / maxProb) * 100;
-                const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center justify-end group relative">
-                    <div
-                      className={`w-full rounded-t transition-colors ${isExpected ? 'bg-blue-600' : 'bg-blue-300 group-hover:bg-blue-400'}`}
-                      style={{ height: `${Math.max(2, heightPct)}%` }}
-                    />
-                    {i % 3 === 0 && <span className="text-[8px] text-gray-500 mt-0.5">{h.monthBucket}m</span>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <p className="text-[10px] text-gray-400 text-center">Based on Monte Carlo simulation ({mcData.nSimulations.toLocaleString()} iterations)</p>
         )}
 
         {/* PHASE BREAKDOWN */}
@@ -373,15 +356,37 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
           </div>
         )}
 
+        {/* PROBABILITY DISTRIBUTION */}
+        {mcData && (
+          <div>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Probability Distribution</h4>
+            <div className="flex items-end gap-px h-20 bg-gray-50 rounded-lg p-2 border border-gray-200">
+              {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
+                const heightPct = (h.probability / maxProb) * 100;
+                const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end group relative">
+                    <div
+                      className={`w-full rounded-t transition-colors ${isExpected ? 'bg-blue-600' : 'bg-blue-300 group-hover:bg-blue-400'}`}
+                      style={{ height: `${Math.max(2, heightPct)}%` }}
+                    />
+                    {i % 3 === 0 && <span className="text-[8px] text-gray-500 mt-0.5">{h.monthBucket}m</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* FINANCIAL IMPACT */}
         {mcData && (
           <div>
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Financial Impact</h4>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: 'Best', data: mcData.financialImpact.p10, color: 'border-green-200 bg-green-50' },
-                { label: 'Expected', data: mcData.financialImpact.p50, color: 'border-blue-200 bg-blue-50' },
-                { label: 'Worst', data: mcData.financialImpact.p90, color: 'border-red-200 bg-red-50' },
+                { label: 'Best (P10)', data: mcData.financialImpact.p10, color: 'border-green-200 bg-green-50' },
+                { label: 'Expected (P50)', data: mcData.financialImpact.p50, color: 'border-blue-200 bg-blue-50' },
+                { label: 'Worst (P90)', data: mcData.financialImpact.p90, color: 'border-red-200 bg-red-50' },
               ].map(item => (
                 <div key={item.label} className={`border rounded p-2 ${item.color}`}>
                   <div className="text-[9px] font-medium text-gray-600">{item.label}</div>
