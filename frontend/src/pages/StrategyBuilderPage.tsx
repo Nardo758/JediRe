@@ -118,8 +118,8 @@ export const StrategyBuilderPage: React.FC = () => {
     const fetchData = async () => {
       try {
         const [strategiesRes, catalogRes] = await Promise.all([
-          api.get('/api/v1/strategies'),
-          api.get('/api/v1/metrics/catalog'),
+          api.get('/strategies'),
+          api.get('/metrics/catalog'),
         ]);
 
         setStrategies(strategiesRes.data || []);
@@ -160,7 +160,7 @@ export const StrategyBuilderPage: React.FC = () => {
 
     try {
       setPreviewLoading(true);
-      const response = await api.post('/api/v1/strategies/preview', {
+      const response = await api.post('/strategies/preview', {
         conditions,
         scope,
         assetClasses: selectedAssetClasses,
@@ -235,9 +235,9 @@ export const StrategyBuilderPage: React.FC = () => {
       };
 
       if (strategyId) {
-        await api.put(`/api/v1/strategies/${strategyId}`, payload);
+        await api.put(`/strategies/${strategyId}`, payload);
       } else {
-        await api.post('/api/v1/strategies', payload);
+        await api.post('/strategies', payload);
       }
 
       navigate('/strategies');
@@ -252,7 +252,7 @@ export const StrategyBuilderPage: React.FC = () => {
     if (!confirm('Are you sure you want to delete this strategy?')) return;
 
     try {
-      await api.delete(`/api/v1/strategies/${strategyId}`);
+      await api.delete(`/strategies/${strategyId}`);
       navigate('/strategies');
     } catch (error) {
       console.error('Error deleting strategy:', error);
@@ -262,7 +262,7 @@ export const StrategyBuilderPage: React.FC = () => {
 
   const handleRunStrategy = async (id: string) => {
     try {
-      const response = await api.post(`/api/v1/strategies/${id}/run`);
+      const response = await api.post(`/strategies/${id}/run`);
       console.log('Strategy run results:', response.data);
       // TODO: Show results in modal or expand inline
     } catch (error) {

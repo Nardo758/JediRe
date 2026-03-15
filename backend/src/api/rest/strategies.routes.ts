@@ -3,13 +3,20 @@
  * GET  /api/v1/strategies          — list preset + user's custom strategies
  * POST /api/v1/strategies          — save a new custom strategy
  * POST /api/v1/strategies/preview  — evaluate conditions against metric_time_series
+ * GET  /api/v1/strategies/:id      — get single strategy
+ * POST /api/v1/strategies/:id/run  — execute strategy
+ * GET  /api/v1/strategies/:id/results — get cached results
+ * POST /api/v1/strategies/score-deal/:dealId — score a deal
  */
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
-import { query } from '../../database/connection';
+import { query, getPool } from '../../database/connection';
+import { StrategyExecutionService } from '../../services/strategyExecution.service';
 
 const router = Router();
+const pool = getPool();
+const strategyExecutionService = new StrategyExecutionService(pool);
 
 // ── Metric ID mapping ────────────────────────────────────────────────────────
 // Maps user-facing metricId strings to actual metric_id values in metric_time_series
@@ -407,6 +414,141 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respon
     res.json({ success: true, deleted: id });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── GET /api/v1/strategies/:id ────────────────────────────────────────────────
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT id, name, description, type, scope, conditions, combinator,
+              signal_weights, sort_by, sort_direction, max_results,
+              asset_classes, deal_types, tags, is_active, is_public,
+              run_count, last_run_at, created_at, updated_at, user_id
+       FROM strategy_definitions
+       WHERE id = $1 AND (type = 'preset' OR user_id = $2 OR is_public = true)`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Strategy not found' });
+    }
+
+    const r = result.rows[0];
+    const strategy = {
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      type: r.type,
+      scope: r.scope,
+      conditions: r.conditions,
+      combinator: r.combinator,
+      signalWeights: r.signal_weights,
+      sortBy: r.sort_by,
+      sortDirection: r.sort_direction,
+      maxResults: r.max_results,
+      assetClasses: r.asset_classes,
+      dealTypes: r.deal_types,
+      tags: r.tags,
+      isActive: r.is_active,
+      isPublic: r.is_public,
+      runCount: r.run_count,
+      lastRunAt: r.last_run_at,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+
+    res.json({ success: true, data: strategy });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── POST /api/v1/strategies/:id/run ────────────────────────────────────────────
+router.post('/:id/run', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const results = await strategyExecutionService.executeStrategy(id);
+
+    res.json({
+      success: true,
+      data: results,
+      match_count: results.length,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to run strategy',
+    });
+  }
+});
+
+// ── GET /api/v1/strategies/:id/results ─────────────────────────────────────────
+router.get('/:id/results', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT * FROM strategy_runs WHERE strategy_id = $1 ORDER BY run_at DESC LIMIT 1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No results found for this strategy',
+      });
+    }
+
+    const runData = result.rows[0];
+    const results = JSON.parse(runData.results);
+
+    res.json({
+      success: true,
+      data: results,
+      count: results.length,
+      runAt: runData.run_at,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch results',
+    });
+  }
+});
+
+// ── POST /api/v1/strategies/score-deal/:dealId ─────────────────────────────────
+router.post('/score-deal/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'User ID required',
+      });
+    }
+
+    const results = await strategyExecutionService.scoreDeal(dealId, userId);
+
+    // Filter to only strategies that matched
+    const matched = results.filter((r) => r.matched);
+
+    res.json({
+      success: true,
+      data: results,
+      matchedCount: matched.length,
+      totalCount: results.length,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to score deal',
+    });
   }
 });
 
