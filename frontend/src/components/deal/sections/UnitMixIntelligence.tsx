@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { useUnitMixIntelligence } from "../../../hooks/useUnitMixIntelligence";
 import { useTradeAreaStore } from "../../../stores/tradeAreaStore";
+import { useDealStore } from "../../../stores/dealStore";
 
 type UnitKey = "studio" | "oneBR" | "twoBR" | "threeBR";
 type SigKey = "vac" | "dom" | "conc";
@@ -166,11 +167,57 @@ function computeProgram(program: Program) {
     return s + Math.round(program.totalUnits * u.mix / 100) * u.sf;
   }, 0);
   const mixTotal  = UT_META.reduce((s, ut) => s + program.units[ut.key].mix, 0);
+  const totalMonthlyRent = UT_META.reduce((s, ut) => {
+    const u = program.units[ut.key];
+    return s + Math.round(program.totalUnits * u.mix / 100) * u.rent;
+  }, 0);
   const grossRevPA = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
     return s + Math.round(program.totalUnits * u.mix / 100) * u.rent * 12 * 0.95;
   }, 0);
-  return { totalSF, mixTotal, grossRevPA };
+  const wtdPSF = totalSF > 0 ? +(totalMonthlyRent / totalSF).toFixed(2) : 0;
+  return { totalSF, mixTotal, grossRevPA, wtdPSF };
+}
+
+function computeOptimalProgram(totalUnits: number, comps: CompData[]): Program {
+  const inventory = computeInventory(comps);
+  const gaps = computeGaps(inventory);
+
+  const psfPerType = UT_META.map(ut => {
+    const avg = compAvg(ut.key, comps);
+    return avg.sf > 0 ? avg.rent / avg.sf : 0;
+  });
+  const maxPsf = Math.max(...psfPerType, 1);
+  const psfScores = psfPerType.map(p => (p / maxPsf) * 100);
+
+  const rawScores = UT_META.map((ut, i) => {
+    const inv = gaps[i];
+    const demandScore = inv.demandScore || 0;
+    const psfScore = psfScores[i];
+    const gapScore = Math.max(0, inv.gap || 0) * 5;
+    return demandScore * 0.45 + psfScore * 0.35 + Math.min(gapScore, 100) * 0.20;
+  });
+
+  const totalScore = rawScores.reduce((s, v) => s + v, 0) || 1;
+  const mixPcts = rawScores.map(s => Math.round(s / totalScore * 100));
+
+  const mixSum = mixPcts.reduce((s, v) => s + v, 0);
+  if (mixSum !== 100 && mixPcts.length > 0) {
+    const maxIdx = mixPcts.indexOf(Math.max(...mixPcts));
+    mixPcts[maxIdx] += 100 - mixSum;
+  }
+
+  const units: Record<string, { mix: number; sf: number; rent: number }> = {};
+  UT_META.forEach((ut, i) => {
+    const avg = compAvg(ut.key, comps);
+    units[ut.key] = {
+      mix: mixPcts[i],
+      sf: avg.sf || PROGRAM_SEED.units[ut.key].sf,
+      rent: avg.rent || PROGRAM_SEED.units[ut.key].rent,
+    };
+  });
+
+  return { totalUnits, units: units as Record<UnitKey, ProgramUnit> };
 }
 
 // Inventory: per unit-type aggregate across all comps
@@ -651,20 +698,16 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 //  TAB 2 — PROGRAM EDITOR
 // ─────────────────────────────────────────────────────────
 function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[] }) {
-  const { totalSF, mixTotal, grossRevPA } = computed;
+  const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
     onProgramChange({ ...program, units: { ...program.units, [utKey]: { ...program.units[utKey], [field]: val } } });
   }
 
-  function applyCompAvgs() {
-    const units = {};
-    UT_META.forEach(ut => {
-      const avg = compAvg(ut.key, comps);
-      units[ut.key] = { mix: Math.round(avg.mix) || program.units[ut.key].mix, sf: avg.sf || program.units[ut.key].sf, rent: avg.rent || program.units[ut.key].rent };
-    });
-    onProgramChange({ ...program, units });
+  function applyOptimalMix() {
+    const optimal = computeOptimalProgram(program.totalUnits, comps);
+    onProgramChange(optimal);
   }
 
   const gridTpl = "96px 90px 76px 100px 80px 100px 80px 68px 100px";
@@ -677,9 +720,9 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { 
           sub="Edit mix %, unit SF, and target rent. All views update live." />
         <div style={{ display: "flex", gap: 8 }}>
           {!mixOk && <Tag label={`MIX = ${mixTotal}% ≠ 100`} color={C.red} />}
-          <button onClick={applyCompAvgs} style={{ background: "none", border: `1px solid ${C.border}`,
+          <button onClick={applyOptimalMix} style={{ background: "none", border: `1px solid ${C.border}`,
             borderRadius: 6, padding: "4px 11px", color: C.dim, fontSize: 10, fontFamily: "monospace", cursor: "pointer" }}>
-            ↓ Comp Avgs
+            ↓ Optimal Mix
           </button>
           <button onClick={() => onProgramChange(PROGRAM_SEED)} style={{ background: "none",
             border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 11px",
@@ -704,6 +747,9 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { 
           </span>
           <span style={{ color: C.dim, fontSize: 11 }}>
             Rev: <span style={{ color: C.green, fontFamily: "monospace", fontWeight: 700 }}>${(grossRevPA/1e6).toFixed(2)}M/yr</span>
+          </span>
+          <span style={{ color: C.dim, fontSize: 11 }}>
+            Wtd $/SF: <span style={{ color: C.yellow, fontFamily: "monospace", fontWeight: 700 }}>${wtdPSF.toFixed(2)}</span>
           </span>
         </div>
       </div>
@@ -1312,6 +1358,7 @@ export default function UnitMixIntelligence() {
   const { dealId } = useParams<{ dealId: string }>();
   const { activeTradeArea } = useTradeAreaStore();
   const tradeAreaId = activeTradeArea?.id;
+  const developmentEnvelope = useDealStore(s => s.developmentEnvelope);
 
   const {
     comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
@@ -1332,13 +1379,29 @@ export default function UnitMixIntelligence() {
   const [filterUT,  setFilterUT]  = useState("all");
   const [tableUT,   setTableUT]   = useState<UnitKey>("twoBR");
   const initializedRef = useRef(false);
+  const hasDbProgramRef = useRef(false);
 
   useEffect(() => {
     if (loading || initializedRef.current) return;
     initializedRef.current = true;
     if (apiZoning) setZoning(apiZoning as ZoningData);
-    if (apiProgram && (apiProgram as any).totalUnits) setProgram(apiProgram as Program);
+
+    if (apiProgram && (apiProgram as any).totalUnits) {
+      hasDbProgramRef.current = true;
+      setProgram(apiProgram as Program);
+    } else {
+      const seedUnits = developmentEnvelope?.max_units || PROGRAM_SEED.totalUnits;
+      const optimal = computeOptimalProgram(seedUnits, comps);
+      setProgram(optimal);
+    }
   }, [loading, apiZoning, apiProgram]);
+
+  useEffect(() => {
+    if (!developmentEnvelope?.max_units || !initializedRef.current || hasDbProgramRef.current) return;
+    setProgram(prev => prev.totalUnits === developmentEnvelope.max_units
+      ? prev
+      : computeOptimalProgram(developmentEnvelope.max_units, comps));
+  }, [developmentEnvelope?.max_units]);
 
   const handleProgramChange = (p: Program) => {
     setProgram(p);
