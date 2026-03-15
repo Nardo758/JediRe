@@ -326,35 +326,58 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         )}
 
         {/* PHASE BREAKDOWN */}
-        {mcData && (
-          <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Phase Timeline (Best / Expected / Worst)</h4>
-            <div className="space-y-2">
-              {mcData.ganttPhases.map((phase, i) => {
-                const maxEnd = mcData!.ganttPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0);
-                const scale = 100 / Math.max(1, maxEnd);
-                return (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-[10px] text-gray-600 w-32 text-right truncate font-medium">{phase.name}</span>
-                    <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200">
-                      <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p90Duration * scale}%` }} />
-                      <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p50Duration * scale}%` }} />
-                      <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p10Duration * scale}%` }} />
-                      <span className="absolute text-[8px] text-gray-700 font-semibold" style={{ left: `${(phase.startMonth + phase.p50Duration / 2) * scale}%`, top: '1px', transform: 'translateX(-50%)' }}>
-                        {phase.p50Duration}
+        {mcData && (() => {
+          const isConstruction = (name: string) => /construction/i.test(name);
+          const entitlementPhases = mcData.ganttPhases.filter(p => !isConstruction(p.name));
+          const constructionPhase = mcData.ganttPhases.find(p => isConstruction(p.name));
+          const entitlementMaxEnd = entitlementPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0.1);
+          const entitlementScale = 100 / entitlementMaxEnd;
+          return (
+            <div>
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Phase Timeline (Best / Expected / Worst)</h4>
+              {entitlementPhases.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
+                  {entitlementPhases.map((phase, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-600 w-32 text-right truncate font-medium">{phase.name}</span>
+                      <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                        <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
+                        <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
+                        <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
+                        <span className="absolute text-[8px] text-gray-700 font-semibold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '1px', transform: 'translateX(-50%)' }}>
+                          {phase.p50Duration}mo
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {constructionPhase && (
+                <div className="space-y-2">
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">Construction</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-600 w-32 text-right truncate font-medium">{constructionPhase.name}</span>
+                    <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                      <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
+                      <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                      <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                      <span className="absolute text-[8px] text-white font-semibold" style={{ left: '50%', top: '1px', transform: 'translateX(-50%)' }}>
+                        {constructionPhase.p50Duration}mo
                       </span>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              )}
+              <div className="flex items-center gap-4 mt-2 justify-center text-[9px] text-gray-500 flex-wrap">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-green-400 rounded" />Best</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-blue-300 rounded" />Expected</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-red-200 rounded" />Worst</span>
+                {constructionPhase && <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-orange-400 rounded" />Construction</span>}
+              </div>
             </div>
-            <div className="flex items-center gap-4 mt-2 justify-center text-[9px] text-gray-500">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-green-400 rounded" />Best</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-blue-300 rounded" />Expected</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-red-200 rounded" />Worst</span>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* PROBABILITY DISTRIBUTION */}
         {mcData && mcData.histogram.filter(h => h.probability > 0.001).length > 0 && (
@@ -655,6 +678,11 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   useEffect(() => {
     if (development_path) runSimulation();
   }, [development_path, runSimulation]);
+
+  useEffect(() => {
+    setGeographicState('GA');
+    setGeographicMunicipality('');
+  }, [dealId]);
 
   useEffect(() => {
     const fetchGeographicContext = async () => {
