@@ -614,10 +614,11 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const [jurisdictions, setJurisdictions] = useState<JurisdictionComparison[]>([]);
   const [jurisdictionDataSource, setJurisdictionDataSource] = useState<'real' | 'synthetic'>('synthetic');
   const [geographicState, setGeographicState] = useState<string>('GA');
+  const [geographicMunicipality, setGeographicMunicipality] = useState<string>('');
 
   const county = deal?.county || 'Fulton';
   const state = geographicState;
-  const municipality = deal?.municipality || deal?.city || '';
+  const municipality = geographicMunicipality || deal?.municipality || deal?.city || '';
   const unitCount = selected_envelope?.max_units || deal?.unit_count || 0;
   const pathLabel = { by_right: 'By-Right', overlay_bonus: 'Overlay Bonus', variance: 'Variance', rezone: 'Full Rezone' }[development_path || ''] || development_path || 'None';
 
@@ -630,6 +631,7 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
 
   const runSimulation = useCallback(async () => {
     if (!dealId || !development_path) return;
+    setMcData(null);
     setMcLoading(true);
     setMcError(null);
     try {
@@ -655,12 +657,15 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   }, [development_path, runSimulation]);
 
   useEffect(() => {
-    const fetchGeographicState = async () => {
+    const fetchGeographicContext = async () => {
       if (!dealId) return;
       try {
         const resp = await apiClient.get(`/api/v1/deals/${dealId}/zoning-confirmation`);
         if (resp.data?.state) {
           setGeographicState(resp.data.state);
+        }
+        if (resp.data?.municipality) {
+          setGeographicMunicipality(resp.data.municipality);
         }
       } catch {
         setGeographicState('GA');
@@ -685,7 +690,7 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
       }
     };
 
-    fetchGeographicState();
+    fetchGeographicContext();
 
     const fetchBenchmarks = async () => {
       try {
