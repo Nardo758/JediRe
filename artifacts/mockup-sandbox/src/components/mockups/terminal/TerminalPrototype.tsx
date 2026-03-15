@@ -1,513 +1,698 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
-// ─── TOKENS ──────────────────────────────────────────────────
-const DARK = {
-  bg: { app:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810" },
+// ═══════════════════════════════════════════════════════════════
+// JEDI RE — INTEGRATED BLOOMBERG TERMINAL
+// Exact copy of uploaded design. Named export for mockup sandbox.
+// ═══════════════════════════════════════════════════════════════
+
+const T = {
+  bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810" },
   text: { primary:"#E8ECF1",secondary:"#8B95A5",muted:"#4A5568",amber:"#F5A623",amberBright:"#FFD166",green:"#00D26A",red:"#FF4757",cyan:"#00BCD4",orange:"#FF8C42",purple:"#A78BFA",white:"#FFFFFF" },
   border: { subtle:"#1E2538",medium:"#2A3348",bright:"#3B4A6B" },
+  font: { mono:"'JetBrains Mono','Fira Code','SF Mono',monospace",display:"'IBM Plex Mono',monospace",label:"'IBM Plex Sans',sans-serif" },
 };
-const LIGHT = {
-  bg: { app:"#F0F2F5",panel:"#FFFFFF",panelAlt:"#F8F9FA",header:"#E9ECEF",hover:"#DEE2E6",active:"#CED4DA",input:"#FFFFFF",topBar:"#1A1F2E" },
-  text: { primary:"#1A1F2E",secondary:"#495057",muted:"#868E96",amber:"#C96600",amberBright:"#E07800",green:"#2B8A3E",red:"#C92A2A",cyan:"#0B7285",orange:"#D9480F",purple:"#5F3DC4",white:"#FFFFFF" },
-  border: { subtle:"#DEE2E6",medium:"#CED4DA",bright:"#ADB5BD" },
-};
-const MONO = "'JetBrains Mono','IBM Plex Mono','Fira Code',monospace";
 
-// ─── DATA ─────────────────────────────────────────────────────
-const DEALS = [
-  {id:1,name:"Westshore Commons",market:"Tampa, FL",score:82,delta:"+4",strat:"BTS",irr:"24.3%",em:"2.8x",price:"$38.5M",stage:"DD",days:23,risk:"LOW",trend:[72,74,76,78,79,80,82]},
-  {id:2,name:"Nocatee Parcels",market:"Jacksonville, FL",score:88,delta:"+7",strat:"BTS",irr:"28.1%",em:"3.2x",price:"$4.2M",stage:"LOI",days:11,risk:"LOW",trend:[71,73,78,82,84,86,88]},
-  {id:3,name:"Dadeland Station",market:"Miami, FL",score:76,delta:"+2",strat:"RENTAL",irr:"18.7%",em:"2.1x",price:"$62.4M",stage:"DD",days:34,risk:"MED",trend:[70,71,72,73,74,75,76]},
-  {id:4,name:"Colonial Crossings",market:"Orlando, FL",score:71,delta:"-1",strat:"FLIP",irr:"21.5%",em:"1.6x",price:"$24.8M",stage:"PROSPECT",days:8,risk:"MED",trend:[74,73,73,72,72,71,71]},
-  {id:5,name:"Riverview Preserve",market:"Tampa, FL",score:79,delta:"+3",strat:"BTS",irr:"22.8%",em:"2.5x",price:"$2.8M",stage:"LOI",days:5,risk:"LOW",trend:[70,72,74,76,77,78,79]},
-  {id:6,name:"Ybor Mixed-Use",market:"Tampa, FL",score:54,delta:"-3",strat:"STR",irr:"12.4%",em:"1.3x",price:"$8.6M",stage:"LEAD",days:2,risk:"HIGH",trend:[62,60,58,57,56,55,54]},
-  {id:7,name:"Celebration South",market:"Orlando, FL",score:85,delta:"+5",strat:"BTS",irr:"26.4%",em:"3.0x",price:"$6.1M",stage:"DD",days:18,risk:"LOW",trend:[74,77,79,81,83,84,85]},
-];
-const NEWS_ITEMS = [
-  {time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",tag:"JOBS"},
-  {time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",tag:"SUPPLY"},
-  {time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",tag:"REG"},
-  {time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",tag:"DEMAND"},
-  {time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",tag:"REG"},
-];
-const ALERTS = [
-  {sev:"critical",type:"ARBITRAGE",msg:"Nocatee: BTS outscores Rental by 22pts, zoning 18 DU/ac",time:"10m"},
-  {sev:"high",type:"RISK",msg:"Ybor Mixed-Use: Insurance risk 78 (+4), STR uncertainty",time:"34m"},
-  {sev:"med",type:"SCORE",msg:"Celebration South crossed 85 — Strong Opportunity",time:"1h"},
-  {sev:"high",type:"DEADLINE",msg:"Dadeland Station DD expires 9 days, 3 inspections outstanding",time:"2h"},
-  {sev:"low",type:"MARKET",msg:"Tampa MSA absorption exceeded 95% 2nd consecutive month",time:"3h"},
-];
-const AGENTS = [
-  {id:"A01",name:"Data Collector",st:"ON",act:"Scraped 47 comps Apartments.com, Tampa",t:"2s"},
-  {id:"A03",name:"Zoning Agent",st:"ON",act:"Parsed Municode 27-156 setback, Nocatee",t:"8s"},
-  {id:"A05",name:"Market Analyst",st:"ON",act:"Updated Tampa absorption 95.2%",t:"34s"},
-  {id:"A07",name:"Risk Scorer",st:"ON",act:"Recalculated Ybor insurance 78 (+4)",t:"1m"},
-  {id:"A08",name:"Strategy Engine",st:"IDLE",act:"Awaiting new intake",t:"4m"},
-];
-const SUBMARKETS = [
-  {name:"Midtown",rent:"$2,056",vac:"10.1%",growth:"+3.0%",opp:"6.0"},
-  {name:"Westshore",rent:"$2,031",vac:"8.4%",growth:"+2.8%",opp:"7.2"},
-  {name:"Downtown",rent:"$1,977",vac:"9.5%",growth:"+1.2%",opp:"7.9"},
-  {name:"Channelside",rent:"$1,883",vac:"9.8%",growth:"-0.5%",opp:"9.0"},
-  {name:"Ybor City",rent:"$1,542",vac:"12.9%",growth:"-0.8%",opp:"5.1"},
-];
-const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3 NATIONALLY"];
-const LAYER_TYPES = ["Heatmap","Cluster","Bubble","Overlay"];
-const SOURCE_TYPES = ["Rent Comps","Vacancy Data","Demographics","Zoning","Traffic"];
-const PORTFOLIO_NAV = ["DASHBOARD","PIPELINE","PORTFOLIO","MARKETS","MAP + LAYERS","NEWS","COMPETE","REPORTS","SETTINGS"];
-const DEAL_NAV = ["OVERVIEW","PROPERTY","MARKET","SUPPLY","STRATEGY","PROFORMA","CAPITAL","RISK","COMPS","TRAFFIC","DOCS","EXIT"];
-const DEAL_FKEYS = ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"];
-
-const INJECTED_CSS = `
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}
+@keyframes glowR{0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766}}
+@keyframes flash{0%{background:transparent}15%{background:#F5A62322}100%{background:transparent}}
 @keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
-@keyframes glowR{0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+*{scrollbar-width:thin;scrollbar-color:#2A3348 #0A0E17}
+*::-webkit-scrollbar{width:5px;height:5px}
+*::-webkit-scrollbar-track{background:#0A0E17}
+*::-webkit-scrollbar-thumb{background:#2A3348}
 `;
 
-// ─── HELPERS ──────────────────────────────────────────────────
-function Spark({ data, color, w=60, h=14 }: {data:number[];color:string;w?:number;h?:number}) {
-  const mx=Math.max(...data),mn=Math.min(...data),r=mx-mn||1;
-  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-mn)/r)*h}`).join(" ");
-  return <svg width={w} height={h} style={{display:"block"}}><polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/></svg>;
+// ─── DATA ────────────────────────────────────────────────────
+const DEALS = [
+  {id:1,name:"Westshore Commons",addr:"4201 W Boy Scout Blvd",market:"Tampa, FL",sub:"Westshore",score:82,delta:"+4",strat:"BTS",irr:"24.3%",em:"2.8x",units:248,price:"$38.5M",ppu:"$155K",stage:"DD",days:23,risk:"LOW",rs:32,trend:[72,74,73,76,78,77,79,80,82],lat:27.95,lng:-82.52},
+  {id:2,name:"Nocatee Parcels",addr:"Parcel 7-A Nocatee Pkwy",market:"Jacksonville, FL",sub:"Nocatee",score:88,delta:"+7",strat:"BTS",irr:"28.1%",em:"3.2x",units:0,price:"$4.2M",ppu:"LAND",stage:"LOI",days:11,risk:"LOW",rs:24,trend:[71,73,76,78,80,82,84,86,88],lat:30.09,lng:-81.39},
+  {id:3,name:"Dadeland Station",addr:"8200 SW 72nd Ave",market:"Miami, FL",sub:"Dadeland",score:76,delta:"+2",strat:"RENTAL",irr:"18.7%",em:"2.1x",units:312,price:"$62.4M",ppu:"$200K",stage:"DD",days:34,risk:"MED",rs:54,trend:[70,71,72,72,73,74,75,75,76],lat:25.69,lng:-80.31},
+  {id:4,name:"Colonial Crossings",addr:"3400 Colonial Dr",market:"Orlando, FL",sub:"Colonial Town",score:71,delta:"-1",strat:"FLIP",irr:"21.5%",em:"1.6x",units:180,price:"$24.8M",ppu:"$138K",stage:"PROSPECT",days:8,risk:"MED",rs:48,trend:[68,70,72,73,74,73,72,72,71],lat:28.55,lng:-81.36},
+  {id:5,name:"Riverview Preserve",addr:"11502 Boyette Rd",market:"Tampa, FL",sub:"Riverview",score:79,delta:"+3",strat:"BTS",irr:"22.8%",em:"2.5x",units:0,price:"$2.8M",ppu:"LAND",stage:"LOI",days:5,risk:"LOW",rs:28,trend:[70,72,73,75,76,77,78,78,79],lat:27.86,lng:-82.33},
+  {id:6,name:"Ybor Mixed-Use",addr:"1901 N 13th St",market:"Tampa, FL",sub:"Ybor City",score:54,delta:"-3",strat:"STR",irr:"12.4%",em:"1.3x",units:42,price:"$8.6M",ppu:"$205K",stage:"LEAD",days:2,risk:"HIGH",rs:78,trend:[62,60,59,58,57,56,55,55,54],lat:27.96,lng:-82.44},
+  {id:7,name:"Kendall Commons",addr:"12000 SW 127th Ave",market:"Miami, FL",sub:"Kendall",score:68,delta:"0",strat:"RENTAL",irr:"16.2%",em:"1.9x",units:224,price:"$44.8M",ppu:"$200K",stage:"PROSPECT",days:15,risk:"MED",rs:52,trend:[67,68,68,67,68,69,68,68,68],lat:25.68,lng:-80.44},
+  {id:8,name:"Celebration South",addr:"Parcel 9 Celebration Blvd",market:"Orlando, FL",sub:"Celebration",score:85,delta:"+5",strat:"BTS",irr:"26.4%",em:"3.0x",units:0,price:"$6.1M",ppu:"LAND",stage:"DD",days:18,risk:"LOW",rs:22,trend:[74,76,77,79,80,81,83,84,85],lat:28.32,lng:-81.54},
+];
+
+const NEWS = [
+  {time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",tag:"JOBS",affects:["Westshore Commons"]},
+  {time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",tag:"SUPPLY",affects:[] as string[]},
+  {time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",tag:"REG",affects:["ALL FL"]},
+  {time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",tag:"DEMAND",affects:["Nocatee Parcels"]},
+  {time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",tag:"REG",affects:["Dadeland Station"]},
+  {time:"YST",hl:"Colonial Dr BRT Phase 1 funded",impact:"+POSITION",pts:"+1.5",tag:"INFRA",affects:["Colonial Crossings"]},
+];
+
+const ALERTS = [
+  {type:"ARBITRAGE",sev:"critical",msg:"Nocatee Parcels: BTS outscores Rental by 22pts, zoning 18 DU/ac",deal:"Nocatee Parcels",time:"10m"},
+  {type:"RISK",sev:"high",msg:"Ybor Mixed-Use: Insurance risk 78 (+4), wind zone + STR uncertainty",deal:"Ybor Mixed-Use",time:"34m"},
+  {type:"SCORE",sev:"med",msg:"Celebration South crossed 85, Strong Opportunity",deal:"Celebration South",time:"1h"},
+  {type:"DEADLINE",sev:"high",msg:"Dadeland Station DD expires 9 days, 3 inspections outstanding",deal:"Dadeland Station",time:"2h"},
+  {type:"MARKET",sev:"low",msg:"Tampa MSA absorption exceeded 95% 2nd consecutive month",deal:null as string|null,time:"3h"},
+];
+
+const AGENTS = [
+  {id:"A01",name:"Data Collector",st:"ON",act:"Scraped 47 comps Apartments.com, Tampa",t:"2s",m:142},
+  {id:"A03",name:"Zoning Agent",st:"ON",act:"Parsed Municode 27-156 setback, Nocatee",t:"8s",m:38},
+  {id:"A05",name:"Market Analyst",st:"ON",act:"Updated Tampa absorption 95.2%",t:"34s",m:87},
+  {id:"A07",name:"Risk Scorer",st:"ON",act:"Recalculated Ybor insurance 78 (+4)",t:"1m",m:64},
+  {id:"A08",name:"Strategy Engine",st:"IDLE",act:"Awaiting new intake",t:"4m",m:23},
+  {id:"A10",name:"Orchestrator",st:"ON",act:"Coordinating DD checklist, Dadeland",t:"12s",m:312},
+];
+
+const MARKET_VITALS = [
+  {label:"Avg Effective Rent",value:"$1,908",sub:"/mo",change:"+3.0%",period:"90d",dir:"up"},
+  {label:"Vacancy Rate",value:"8.5",sub:"%",change:"-0.8%",period:"12wk",dir:"down"},
+  {label:"Avg Absorbed Units",value:"11,658",sub:" units",change:"steady",period:"wkly",dir:"flat"},
+  {label:"Rent Growth Trend",value:"+3.0",sub:"%",change:"Accelerating",period:"",dir:"up"},
+  {label:"Submarket Strength",value:"40th",sub:" pctl",change:"Below median",period:"",dir:"down"},
+];
+
+const SUBMARKETS = [
+  {name:"Midtown",props:52,units:"14,856",rent:"$2,056",vac:"10.1%",growth:"+3.0%",opp:"6.0/10",pressure:"seller"},
+  {name:"East Atlanta",props:23,units:"6,789",rent:"$2,031",vac:"15.4%",growth:"-0.6%",opp:"6.2/10",pressure:"seller"},
+  {name:"West End",props:53,units:"5,924",rent:"$1,977",vac:"10.5%",growth:"+1.2%",opp:"7.9/10",pressure:"buyer"},
+  {name:"Buckhead",props:39,units:"14,338",rent:"$1,883",vac:"9.8%",growth:"-0.5%",opp:"9.0/10",pressure:"buyer"},
+  {name:"Downtown",props:35,units:"8,473",rent:"$1,542",vac:"6.9%",growth:"+0.6%",opp:"5.1/10",pressure:"buyer"},
+];
+
+const PORTFOLIO_NAV = [
+  {key:"F1",label:"DASHBOARD"},{key:"F2",label:"PIPELINE"},{key:"F3",label:"PORTFOLIO"},
+  {key:"F4",label:"MARKETS"},{key:"F5",label:"COMPETE"},{key:"F6",label:"NEWS"},
+  {key:"F7",label:"OPPS"},{key:"F8",label:"REPORTS"},{key:"F9",label:"SETTINGS"},
+];
+const DEAL_NAV = [
+  {key:"F1",label:"OVERVIEW",m:"M01"},{key:"F2",label:"PROPERTY",m:"M02"},{key:"F3",label:"MARKET",m:"M05"},
+  {key:"F4",label:"SUPPLY",m:"M04"},{key:"F5",label:"STRATEGY",m:"M08"},{key:"F6",label:"PROFORMA",m:"M09"},
+  {key:"F7",label:"CAPITAL",m:"M11"},{key:"F8",label:"RISK",m:"M14"},{key:"F9",label:"COMPS",m:"M15"},
+  {key:"F10",label:"TRAFFIC",m:"M07"},{key:"F11",label:"DOCS",m:"M18"},{key:"F12",label:"EXIT",m:"M20"},
+];
+
+// ─── UTILITY COMPONENTS ──────────────────────────────────────
+
+function Spark({ data, color = T.text.green, w = 56, h = 16 }: {data:number[];color?:string;w?:number;h?:number}) {
+  const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
+  const p = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / r) * h}`).join(" ");
+  return (<svg width={w} height={h} style={{ display: "block" }}><polyline points={p} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" /></svg>);
 }
 
-function Bd({ children, c }: {children:React.ReactNode;c:string}) {
-  return <span style={{fontFamily:MONO,fontSize:8,fontWeight:700,color:c,background:c+"18",border:`1px solid ${c}33`,padding:"1px 5px",letterSpacing:.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;
+function Bd({ children, c, bg, b }: {children:React.ReactNode;c:string;bg?:string;b?:string}) {
+  return (<span style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: 700, color: c, background: bg || c + "18", border: `1px solid ${b || c + "33"}`, padding: "1px 5px", letterSpacing: 0.5, textTransform: "uppercase" as const, whiteSpace: "nowrap" }}>{children}</span>);
 }
 
-// ─── FLOATING WINDOW ──────────────────────────────────────────
-type WinData = {id:string;title:string;x:number;y:number;w:number;h:number;minimized:boolean;z:number;type:"news"|"tv"};
+function StageBd({ stage }: {stage:string}) {
+  const m: Record<string,string> = { DD: T.text.cyan, LOI: T.text.amber, PROSPECT: T.text.secondary, LEAD: T.text.muted };
+  return (<Bd c={m[stage] || T.text.muted}>{stage}</Bd>);
+}
 
-function FloatingWindow({ win, T, onClose, onMinimize, onFocus, onMove }: {
-  win:WinData; T:typeof DARK; onClose:()=>void; onMinimize:()=>void; onFocus:()=>void; onMove:(x:number,y:number)=>void;
-}) {
-  const dragRef = useRef<{startX:number;startY:number;winX:number;winY:number}|null>(null);
-  const onMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    onFocus();
-    dragRef.current = {startX:e.clientX,startY:e.clientY,winX:win.x,winY:win.y};
-    const onMove_ = (e2:MouseEvent) => {
-      if(!dragRef.current) return;
-      onMove(dragRef.current.winX+(e2.clientX-dragRef.current.startX), dragRef.current.winY+(e2.clientY-dragRef.current.startY));
-    };
-    const onUp = () => { dragRef.current=null; document.removeEventListener("mousemove",onMove_); document.removeEventListener("mouseup",onUp); };
-    document.addEventListener("mousemove",onMove_);
-    document.addEventListener("mouseup",onUp);
-  };
+function StratBd({ s }: {s:string}) {
+  return (<Bd c={T.text.purple}>^ {s}</Bd>);
+}
+
+function RiskDot({ level }: {level:string}) {
+  const c = level === "HIGH" ? T.text.red : level === "MED" ? T.text.orange : T.text.green;
+  return (<span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 8, fontFamily: T.font.mono, fontWeight: 600, color: c }}><span style={{ width: 5, height: 5, borderRadius: "50%", background: c, ...(level === "HIGH" ? { animation: "glowR 2s infinite" } : {}) }} />{level}</span>);
+}
+
+function PanelHeader({ title, subtitle, right, borderColor }: {title:string;subtitle?:string;right?:React.ReactNode;borderColor?:string}) {
   return (
-    <div onClick={onFocus} style={{position:"fixed",left:win.x,top:win.y,width:win.w,height:win.minimized?32:win.h,zIndex:win.z,background:T.bg.panel,border:`1px solid ${T.border.medium}`,boxShadow:`0 8px 32px #00000066`,display:"flex",flexDirection:"column",overflow:"hidden",userSelect:"none"}}>
-      <div onMouseDown={onMouseDown} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,cursor:"move",flexShrink:0}}>
-        <span style={{fontFamily:MONO,fontSize:9,fontWeight:700,color:T.text.amber}}>{win.title}</span>
-        <div style={{display:"flex",gap:4}}>
-          <button onClick={(e)=>{e.stopPropagation();onMinimize();}} style={{fontFamily:MONO,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0 5px",cursor:"pointer",lineHeight:"14px"}}>_</button>
-          <button onClick={(e)=>{e.stopPropagation();onClose();}} style={{fontFamily:MONO,fontSize:8,color:T.text.red,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0 5px",cursor:"pointer",lineHeight:"14px"}}>x</button>
-        </div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, borderTop: borderColor ? `2px solid ${borderColor}` : "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: T.text.white, letterSpacing: 0.8 }}>{title}</span>
+        {subtitle && <span style={{ fontSize: 8, color: T.text.secondary }}>{subtitle}</span>}
       </div>
-      {!win.minimized && (
-        <div style={{flex:1,overflow:"auto",padding:8}}>
-          {win.type==="news" ? (
-            NEWS_ITEMS.map((n,i)=>(
-              <div key={i} style={{padding:"5px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-                <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:2}}>
-                  <span style={{fontSize:8,color:T.text.muted,minWidth:32}}>{n.time}</span>
-                  <Bd c={T.text.cyan}>{n.tag}</Bd>
-                  <span style={{fontSize:8,fontWeight:700,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</span>
-                </div>
-                <div style={{fontSize:9,color:T.text.primary,lineHeight:1.4}}>{n.hl}</div>
-              </div>
-            ))
-          ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>Select a channel to stream:</div>
-              {["CNBC Live","Bloomberg TV","Yahoo Finance Live","Fox Business"].map((ch,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",background:T.bg.panelAlt,border:`1px solid ${T.border.subtle}`,cursor:"pointer"}}>
-                  <span style={{fontFamily:MONO,fontSize:10,fontWeight:600,color:T.text.primary}}>{ch}</span>
-                  <Bd c={T.text.green}>LIVE</Bd>
-                </div>
-              ))}
-              <div style={{marginTop:8,padding:"10px",background:T.bg.active,border:`1px solid ${T.border.medium}`,textAlign:"center"}}>
-                <div style={{fontSize:8,color:T.text.muted,marginBottom:4}}>CNBC LIVE FEED</div>
-                <div style={{fontSize:9,color:T.text.amber}}>▶ Streaming — embed would load here</div>
-              </div>
-            </div>
-          )}
+      {right && <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{right}</div>}
+    </div>
+  );
+}
+
+function MetricBox({ label, value, sub, change, dir }: {label:string;value:string;sub:string;change:string;dir:string}) {
+  return (
+    <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: "8px 10px", flex: 1 }}>
+      <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+        <span style={{ fontSize: 18, fontWeight: 800, color: T.text.amber }}>{value}</span>
+        <span style={{ fontSize: 10, color: T.text.secondary }}>{sub}</span>
+      </div>
+      <div style={{ fontSize: 8, color: dir === "up" ? T.text.green : dir === "down" ? T.text.red : T.text.secondary, marginTop: 2, fontWeight: 600 }}>{change}</div>
+      <Spark data={[3,4,3,5,4,6,5,7,8]} color={dir === "up" ? T.text.green : dir === "down" ? T.text.red : T.text.amber} w={80} h={12} />
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────
+
+type Deal = typeof DEALS[0];
+
+export function TerminalPrototype() {
+  const [time, setTime] = useState(new Date());
+  const [ctx, setCtx] = useState<"portfolio"|"deal">("portfolio");
+  const [fkey, setFkey] = useState("F1");
+  const [activeDeal, setActiveDeal] = useState<Deal|null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [selDeal, setSelDeal] = useState<number|null>(null);
+  const [btab, setBtab] = useState("alerts");
+  const [cmd, setCmd] = useState("");
+  const [sortBy, setSortBy] = useState("score");
+  const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
+  const [fStage, setFStage] = useState("ALL");
+  const [fStrat, setFStrat] = useState("ALL");
+  const [flashes, setFlashes] = useState<Record<number,boolean>>({});
+
+  useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => { const id = DEALS[Math.floor(Math.random() * DEALS.length)].id; setFlashes(p => ({ ...p, [id]: true })); setTimeout(() => setFlashes(p => ({ ...p, [id]: false })), 700); }, 5000); return () => clearInterval(t); }, []);
+
+  const enterDeal = (deal: Deal) => { setActiveDeal(deal); setCtx("deal"); setFkey("F1"); };
+  const exitDeal = () => { setCtx("portfolio"); setActiveDeal(null); setFkey("F1"); };
+
+  const nav = ctx === "portfolio" ? PORTFOLIO_NAV : DEAL_NAV;
+  const sorted = [...DEALS]
+    .filter(d => (fStage === "ALL" || d.stage === fStage) && (fStrat === "ALL" || d.strat === fStrat))
+    .sort((a, b) => {
+      const dir = sortDir === "desc" ? -1 : 1;
+      if (sortBy === "score") return (a.score - b.score) * dir;
+      if (sortBy === "name") return a.name.localeCompare(b.name) * dir;
+      if (sortBy === "days") return (a.days - b.days) * dir;
+      return 0;
+    });
+  const toggleSort = (c: string) => { if (sortBy === c) setSortDir(d => d === "desc" ? "asc" : "desc"); else { setSortBy(c); setSortDir("desc"); } };
+
+  const totalPV = DEALS.reduce((s, d) => s + parseFloat(d.price.replace(/[$M,]/g, "")), 0);
+  const avgS = Math.round(DEALS.reduce((s, d) => s + d.score, 0) / DEALS.length);
+  const hAlerts = ALERTS.filter(a => a.sev === "critical" || a.sev === "high").length;
+  const stages: Record<string,number> = { DD: 0, LOI: 0, PROSPECT: 0, LEAD: 0 };
+  DEALS.forEach(d => { if (stages[d.stage] !== undefined) stages[d.stage]++; });
+
+  const tickers = ["^ TAMPA CAP 5.2% (-15bps)", "* MIAMI ABS 94.7%", "v ORL PIPELINE +2400", "^ JAX EMPL +3.2%", "* FL HOME $412K", "^ RENT TPA +3.7%", "* FDOT I-275 148.2K", "v INS +18% YoY", "^ NOCATEE +42%", "* TPA JOBS #3"];
+  const gc = "30px 1.4fr 0.8fr 44px 40px 58px 52px 48px 54px 46px 46px 42px 42px";
+
+  // ─── DEAL GRID ───────────────────────────────────────────
+  const DealGrid = ({ compact }: {compact?:boolean}) => (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {!compact && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.text.white }}>DEAL PIPELINE</span>
+            <span style={{ fontSize: 8, color: T.text.secondary }}>{sorted.length} deals</span>
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <select value={fStage} onChange={e => setFStage(e.target.value)} style={{ fontFamily: T.font.mono, fontSize: 8, background: T.bg.input, color: T.text.secondary, border: `1px solid ${T.border.subtle}`, padding: "1px 4px" }}>
+              <option value="ALL">ALL STAGES</option>
+              {["DD","LOI","PROSPECT","LEAD"].map(s => (<option key={s} value={s}>{s}</option>))}
+            </select>
+            <select value={fStrat} onChange={e => setFStrat(e.target.value)} style={{ fontFamily: T.font.mono, fontSize: 8, background: T.bg.input, color: T.text.secondary, border: `1px solid ${T.border.subtle}`, padding: "1px 4px" }}>
+              <option value="ALL">ALL STRAT</option>
+              {["BTS","FLIP","RENTAL","STR"].map(s => (<option key={s} value={s}>{s}</option>))}
+            </select>
+            <button onClick={() => setMapOpen(!mapOpen)} style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: 600, background: mapOpen ? T.text.amber : T.bg.input, color: mapOpen ? T.bg.terminal : T.text.secondary, border: `1px solid ${mapOpen ? T.text.amber : T.border.subtle}`, padding: "1px 6px", cursor: "pointer" }}>MAP</button>
+          </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── VIEWS ────────────────────────────────────────────────────
-function PipelineView({ T, onDealClick }: {T:typeof DARK;onDealClick:(d:typeof DEALS[0])=>void}) {
-  const [sortKey,setSortKey]=useState("score");
-  const sorted=[...DEALS].sort((a,b)=>b[sortKey as "score"|"days"]-a[sortKey as "score"|"days"]);
-  const cols="30px 1.6fr 0.9fr 44px 40px 56px 52px 54px 50px 46px 46px 44px";
-  return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{display:"grid",gridTemplateColumns:cols,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        {["#","PROPERTY","MARKET","JEDI","D30","STRAT","IRR","PRICE","STAGE","RISK","DAYS","TREND"].map((h,i)=>(
-          <div key={i} onClick={()=>i===3&&setSortKey("score")} style={{padding:"3px 5px",fontSize:7,fontWeight:700,color:i===3&&sortKey==="score"?T.text.amber:T.text.muted,letterSpacing:.5,borderRight:`1px solid ${T.border.subtle}`,cursor:i===3?"pointer":"default"}}>{h}{i===3&&" ▼"}</div>
-        ))}
-      </div>
-      <div style={{flex:1,overflow:"auto"}}>
-        {sorted.map((d,i)=>(
-          <div key={d.id} onDoubleClick={()=>onDealClick(d)} style={{display:"grid",gridTemplateColumns:cols,background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer"}}
-            onMouseEnter={e=>(e.currentTarget.style.background=T.bg.hover)} onMouseLeave={e=>(e.currentTarget.style.background=i%2===0?T.bg.panel:T.bg.panelAlt)}>
-            <div style={{padding:4,fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{d.name}</div></div>
-            <div style={{padding:"3px 5px",fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.market}</div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><span style={{fontSize:12,fontWeight:800,color:d.score>=80?T.text.green:d.score>=65?T.text.amber:T.text.red}}>{d.score}</span></div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><span style={{fontSize:9,fontWeight:600,color:d.delta.startsWith("+")?T.text.green:T.text.red}}>{d.delta}</span></div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><Bd c={T.text.purple}>{d.strat}</Bd></div>
-            <div style={{padding:"3px 5px",fontSize:9,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.irr}</div>
-            <div style={{padding:"3px 5px",fontSize:9,fontWeight:600,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.price}</div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><Bd c={{DD:T.text.cyan,LOI:T.text.amber,PROSPECT:T.text.secondary,LEAD:T.text.muted}[d.stage]||T.text.muted}>{d.stage}</Bd></div>
-            <div style={{padding:"3px 5px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><span style={{fontSize:8,fontWeight:600,color:{HIGH:T.text.red,MED:T.text.orange,LOW:T.text.green}[d.risk]}}>{d.risk}</span></div>
-            <div style={{padding:"3px 5px",fontSize:8,color:d.days>30?T.text.orange:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.days}d</div>
-            <div style={{padding:"3px 5px",display:"flex",alignItems:"center"}}><Spark data={d.trend} color={d.score>=80?T.text.green:d.score>=65?T.text.amber:T.text.red}/></div>
+      <div style={{ display: "grid", gridTemplateColumns: gc, background: T.bg.header, borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0 }}>
+        {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h, i) => (
+          <div key={i} onClick={() => h.c && toggleSort(h.c)} style={{ padding: "3px 4px", fontSize: 7, fontWeight: 700, color: sortBy === h.c ? T.text.amber : T.text.muted, letterSpacing: 0.5, borderRight: `1px solid ${T.border.subtle}`, cursor: h.c ? "pointer" : "default", userSelect: "none" as const }}>
+            {h.l}{h.c && sortBy === h.c && <span style={{ color: T.text.amber, marginLeft: 1 }}>{sortDir === "desc" ? "v" : "^"}</span>}
           </div>
         ))}
       </div>
-      <div style={{padding:"4px 10px",background:T.bg.header,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0,fontSize:8,color:T.text.muted}}>
-        {DEALS.length} deals · Double-click a row to open Deal Capsule
-      </div>
-    </div>
-  );
-}
-
-function PortfolioView({ T }: {T:typeof DARK}) {
-  const metrics=[{l:"TOTAL VALUE",v:"$312M",c:T.text.amberBright},{l:"WEIGHTED IRR",v:"16.8%",c:T.text.amber},{l:"AVG OCCUPANCY",v:"93.4%",c:T.text.green},{l:"NOI VARIANCE",v:"+2.3%",c:T.text.green}];
-  const assets=[{n:"Midtown Heights (248u)",s:76,v:"$44.2M",d:[72,73,74,75,76]},{n:"West End Lofts (180u)",s:72,v:"$28.1M",d:[70,71,71,72,72]},{n:"Buckhead Tower (312u)",s:81,v:"$72.6M",d:[78,79,80,80,81]},{n:"Downtown Station (156u)",s:68,v:"$31.5M",d:[70,69,68,68,68]}];
-  return (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn .15s"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle,margin:"0 0 1px"}}>
-        {metrics.map((m,i)=>(
-          <div key={i} style={{background:T.bg.panel,padding:"10px 12px"}}>
-            <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,marginBottom:4}}>{m.l}</div>
-            <div style={{fontSize:20,fontWeight:800,color:m.c}}>{m.v}</div>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {sorted.map((d, i) => (
+          <div key={d.id}
+            onDoubleClick={() => enterDeal(d)}
+            onClick={() => setSelDeal(selDeal === d.id ? null : d.id)}
+            style={{ display: "grid", gridTemplateColumns: gc, background: selDeal === d.id ? T.bg.active : i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer", borderLeft: selDeal === d.id ? `2px solid ${T.text.amber}` : "2px solid transparent", animation: flashes[d.id] ? "flash 0.7s ease-out" : "none" }}
+            onMouseEnter={e => { if (selDeal !== d.id) (e.currentTarget as HTMLElement).style.background = T.bg.hover; }}
+            onMouseLeave={e => { if (selDeal !== d.id) (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? T.bg.panel : T.bg.panelAlt; }}>
+            <div style={{ padding: 4, fontSize: 8, color: T.text.muted, borderRight: `1px solid ${T.border.subtle}` }}>{i + 1}</div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}` }}><div style={{ fontSize: 9, fontWeight: 600, color: T.text.primary }}>{d.name}</div><div style={{ fontSize: 7, color: T.text.muted }}>{d.addr}</div></div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}` }}><div style={{ fontSize: 8, color: T.text.secondary }}>{d.market}</div></div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}><span style={{ fontSize: 11, fontWeight: 800, color: d.score >= 80 ? T.text.green : d.score >= 65 ? T.text.amber : T.text.red }}>{d.score}</span></div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}><span style={{ fontSize: 9, fontWeight: 600, color: d.delta.startsWith("+") ? T.text.green : d.delta.startsWith("-") ? T.text.red : T.text.muted }}>{d.delta}</span></div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}><StratBd s={d.strat} /></div>
+            <div style={{ padding: 4, fontSize: 9, fontWeight: 700, color: T.text.amber, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}>{d.irr}</div>
+            <div style={{ padding: 4, fontSize: 8, color: T.text.secondary, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}>{d.em}</div>
+            <div style={{ padding: 4, fontSize: 9, fontWeight: 600, color: T.text.amber, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}>{d.price}</div>
+            <div style={{ padding: 4, fontSize: 8, color: T.text.secondary, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}>{d.ppu}</div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}><StageBd stage={d.stage} /></div>
+            <div style={{ padding: 4, borderRight: `1px solid ${T.border.subtle}`, display: "flex", alignItems: "center" }}><RiskDot level={d.risk} /></div>
+            <div style={{ padding: 4, fontSize: 8, color: d.days > 30 ? T.text.orange : T.text.secondary, display: "flex", alignItems: "center" }}>{d.days}d</div>
           </div>
         ))}
       </div>
-      <div style={{padding:"8px 12px",fontSize:9,color:T.text.muted,borderBottom:`1px solid ${T.border.subtle}`}}>23 owned assets · $312M total value · Weighted IRR 16.8%</div>
-      {assets.map((a,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
-          <span style={{fontSize:10,color:T.text.primary,fontWeight:600}}>{a.n}</span>
-          <div style={{display:"flex",gap:12,alignItems:"center"}}>
-            <span style={{fontSize:11,fontWeight:800,color:T.text.green}}>{a.s}</span>
-            <Spark data={a.d} color={T.text.green} w={44} h={14}/>
-            <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{a.v}</span>
-          </div>
-        </div>
-      ))}
     </div>
   );
-}
 
-function MarketsView({ T }: {T:typeof DARK}) {
-  return (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn .15s"}}>
-      <div style={{padding:"8px 12px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-        <div style={{fontSize:8,color:T.text.muted,marginBottom:2}}>THE DECISION THIS PAGE DRIVES:</div>
-        <div style={{fontSize:11,color:T.text.primary,fontWeight:600}}>Is this submarket getting stronger or weaker — and how fast?</div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1.4fr .7fr .8fr .7fr .7fr .7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-        {["SUBMARKET","PROPS","AVG RENT","VACANCY","GROWTH 30D","OPP"].map(h=>(
-          <div key={h} style={{padding:"4px 8px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-        ))}
-      </div>
-      {SUBMARKETS.map((s,i)=>(
-        <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr .7fr .8fr .7fr .7fr .7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-          <div style={{padding:"6px 8px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-          <div style={{padding:"6px 8px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>52</div>
-          <div style={{padding:"6px 8px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
-          <div style={{padding:"6px 8px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
-          <div style={{padding:"6px 8px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
-          <div style={{padding:"6px 8px",fontSize:9,color:T.text.amber}}>{s.opp}/10</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-type Layer = {id:number;name:string;type:string;source:string;opacity:number;visible:boolean};
-
-function MapLayersView({ T }: {T:typeof DARK}) {
-  const [layers,setLayers]=useState<Layer[]>([
-    {id:1,name:"Rent Heatmap",type:"Heatmap",source:"Rent Comps",opacity:0.8,visible:true},
-    {id:2,name:"Deal Clusters",type:"Cluster",source:"Demographics",opacity:1,visible:true},
-  ]);
-  const [form,setForm]=useState({name:"",type:"Heatmap",source:"Rent Comps",opacity:0.8});
-  const [drawerOpen,setDrawerOpen]=useState(true);
-  const nextId=useRef(3);
-  const addLayer=()=>{
-    if(!form.name.trim()) return;
-    setLayers(l=>[...l,{id:nextId.current++,...form,visible:true}]);
-    setForm(f=>({...f,name:""}));
-  };
-  const mapDots=[{x:"22%",y:"38%",c:T.text.green},{x:"68%",y:"25%",c:T.text.green},{x:"54%",y:"58%",c:T.text.amber},{x:"42%",y:"45%",c:T.text.amber},{x:"28%",y:"52%",c:T.text.green},{x:"36%",y:"44%",c:T.text.red},{x:"60%",y:"65%",c:T.text.green},{x:"45%",y:"35%",c:T.text.green}];
-  return (
-    <div style={{display:"flex",height:"100%"}}>
-      <div style={{flex:1,position:"relative",background:"#080C14",overflow:"hidden"}}>
-        <svg width="100%" height="100%" style={{position:"absolute",inset:0,opacity:.05}}>
-          {Array.from({length:20}).map((_,i)=><line key={`h${i}`} x1="0" y1={i*30} x2="100%" y2={i*30} stroke="#8B95A5" strokeWidth=".5"/>)}
-          {Array.from({length:30}).map((_,i)=><line key={`v${i}`} x1={i*30} y1="0" x2={i*30} y2="100%" stroke="#8B95A5" strokeWidth=".5"/>)}
-        </svg>
-        {mapDots.map((d,i)=>(
-          <div key={i} style={{position:"absolute",left:d.x,top:d.y,width:10,height:10,borderRadius:"50%",background:d.c,opacity:.85,boxShadow:`0 0 8px ${d.c}88`,transform:"translate(-50%,-50%)"}}/>
-        ))}
-        <div style={{position:"absolute",top:8,left:8,display:"flex",gap:4}}>
-          {layers.filter(l=>l.visible).map(l=>(
-            <div key={l.id} style={{padding:"2px 6px",background:T.bg.header+"CC",border:`1px solid ${T.border.medium}`,fontSize:8,color:T.text.amber,fontFamily:MONO}}>{l.name}</div>
-          ))}
-        </div>
-        <div style={{position:"absolute",bottom:8,left:8,fontSize:8,color:T.text.muted,opacity:.4}}>Tampa, FL MSA · Interactive Map</div>
-      </div>
-      <div style={{width:260,borderLeft:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",background:T.bg.panel,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
-          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:.8}}>LAYER MANAGER</span>
-          <button onClick={()=>setDrawerOpen(o=>!o)} style={{fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0 5px",cursor:"pointer",fontFamily:MONO}}>{drawerOpen?"▲":"▼"}</button>
-        </div>
-        {drawerOpen && (
-          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-            <div style={{fontSize:8,color:T.text.muted,marginBottom:6,letterSpacing:.8}}>CREATE LAYER</div>
-            <div style={{marginBottom:4}}>
-              <div style={{fontSize:7,color:T.text.muted,marginBottom:2}}>LAYER NAME</div>
-              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Rent Heatmap" style={{width:"100%",padding:"3px 6px",background:T.bg.input,border:`1px solid ${T.border.medium}`,color:T.text.primary,fontFamily:MONO,fontSize:9,boxSizing:"border-box"}}/>
-            </div>
-            <div style={{marginBottom:4}}>
-              <div style={{fontSize:7,color:T.text.muted,marginBottom:2}}>LAYER TYPE</div>
-              <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                {LAYER_TYPES.map(t=>(
-                  <button key={t} onClick={()=>setForm(f=>({...f,type:t}))} style={{fontFamily:MONO,fontSize:7,padding:"2px 6px",background:form.type===t?T.text.amber:T.bg.panelAlt,color:form.type===t?T.bg.app:T.text.secondary,border:`1px solid ${form.type===t?T.text.amber:T.border.subtle}`,cursor:"pointer"}}>{t}</button>
-                ))}
-              </div>
-            </div>
-            <div style={{marginBottom:4}}>
-              <div style={{fontSize:7,color:T.text.muted,marginBottom:2}}>DATA SOURCE</div>
-              <select value={form.source} onChange={e=>setForm(f=>({...f,source:e.target.value}))} style={{width:"100%",padding:"3px 6px",background:T.bg.input,border:`1px solid ${T.border.medium}`,color:T.text.primary,fontFamily:MONO,fontSize:9}}>
-                {SOURCE_TYPES.map(s=><option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div style={{marginBottom:8}}>
-              <div style={{fontSize:7,color:T.text.muted,marginBottom:2}}>OPACITY: {Math.round(form.opacity*100)}%</div>
-              <input type="range" min="0" max="1" step=".05" value={form.opacity} onChange={e=>setForm(f=>({...f,opacity:parseFloat(e.target.value)}))} style={{width:"100%",accentColor:T.text.amber}}/>
-            </div>
-            <button onClick={addLayer} style={{width:"100%",padding:"5px",background:T.text.amber,color:T.bg.app,fontFamily:MONO,fontSize:9,fontWeight:700,border:"none",cursor:"pointer",letterSpacing:.5}}>+ CREATE LAYER</button>
-          </div>
-        )}
-        <div style={{flex:1,overflow:"auto"}}>
-          <div style={{padding:"4px 10px",fontSize:7,color:T.text.muted,letterSpacing:.8,borderBottom:`1px solid ${T.border.subtle}`}}>ACTIVE LAYERS ({layers.filter(l=>l.visible).length}/{layers.length})</div>
-          {layers.map(l=>(
-            <div key={l.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:l.visible?T.bg.panel:T.bg.panelAlt}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:9,fontWeight:600,color:l.visible?T.text.primary:T.text.muted}}>{l.name}</div>
-                <div style={{fontSize:7,color:T.text.muted}}>{l.type} · {l.source} · {Math.round(l.opacity*100)}%</div>
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                <button onClick={()=>setLayers(ls=>ls.map(x=>x.id===l.id?{...x,visible:!x.visible}:x))} style={{fontSize:7,padding:"1px 5px",background:"transparent",border:`1px solid ${T.border.subtle}`,color:l.visible?T.text.green:T.text.muted,cursor:"pointer",fontFamily:MONO}}>{l.visible?"ON":"OFF"}</button>
-                <button onClick={()=>setLayers(ls=>ls.filter(x=>x.id!==l.id))} style={{fontSize:7,padding:"1px 5px",background:"transparent",border:`1px solid ${T.border.subtle}`,color:T.text.red,cursor:"pointer",fontFamily:MONO}}>✕</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NewsView({ T, onOpenWindow }: {T:typeof DARK;onOpenWindow:(type:"news"|"tv")=>void}) {
-  return (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn .15s"}}>
-      <div style={{padding:"6px 12px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <span style={{fontSize:9,color:T.text.secondary}}>Real-time market intelligence · Score-linked event taxonomy</span>
-        <button onClick={()=>onOpenWindow("news")} style={{fontFamily:MONO,fontSize:8,padding:"2px 8px",background:T.text.cyan+"18",border:`1px solid ${T.text.cyan}33`,color:T.text.cyan,cursor:"pointer"}}>⤢ OPEN IN WINDOW</button>
-      </div>
-      {NEWS_ITEMS.map((n,i)=>(
-        <div key={i} style={{display:"flex",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`}}>
-          <span style={{fontSize:9,color:T.text.muted,minWidth:36}}>{n.time}</span>
-          <div style={{flex:1}}><div style={{fontSize:10,color:T.text.primary,fontWeight:500,lineHeight:1.4}}>{n.hl}</div></div>
-          <div style={{textAlign:"right",minWidth:70}}>
-            <div style={{fontSize:9,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div>
-            <div style={{fontSize:9,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts} pts</div>
-            <Bd c={T.text.secondary}>{n.tag}</Bd>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── BOTTOM PANEL ─────────────────────────────────────────────
-function BottomPanel({ T, onOpenWindow }: {T:typeof DARK;onOpenWindow:(type:"news"|"tv")=>void}) {
-  const [tab,setTab]=useState("alerts");
-  const tabs=[{id:"alerts",l:"ALERTS",ct:ALERTS.filter(a=>a.sev==="critical"||a.sev==="high").length,cc:T.text.red},{id:"news",l:"NEWS",ct:NEWS_ITEMS.length,cc:T.text.cyan},{id:"agents",l:"AGENTS",ct:AGENTS.filter(a=>a.st==="ON").length,cc:T.text.green},{id:"media",l:"MEDIA",ct:"TV",cc:T.text.orange}];
-  return (
-    <div style={{height:180,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0}}>
-      <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{fontFamily:MONO,fontSize:9,fontWeight:600,color:tab===t.id?T.bg.app:T.text.secondary,background:tab===t.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 12px",display:"flex",alignItems:"center",gap:4}}>
-            {t.l} <span style={{fontSize:7,padding:"0 4px",background:tab===t.id?"rgba(0,0,0,.2)":t.cc+"18",color:tab===t.id?"rgba(0,0,0,.7)":t.cc}}>{t.ct}</span>
+  // ─── BOTTOM PANEL ──────────────────────────────────────────
+  const BottomPanel = () => (
+    <div style={{ height: 180, borderTop: `1px solid ${T.border.medium}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <div style={{ display: "flex", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        {[{id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},{id:"news",l:"NEWS",ct:NEWS.length,cc:T.text.cyan},{id:"agents",l:"AGENTS",ct:AGENTS.filter(a=>a.st==="ON").length,cc:T.text.green}].map(tab => (
+          <button key={tab.id} onClick={() => setBtab(tab.id)} style={{ fontFamily: T.font.mono, fontSize: 9, fontWeight: 600, color: btab === tab.id ? T.bg.terminal : T.text.secondary, background: btab === tab.id ? T.text.amber : "transparent", border: "none", cursor: "pointer", padding: "4px 12px", display: "flex", alignItems: "center", gap: 4 }}>
+            {tab.l}<span style={{ fontSize: 7, fontWeight: 700, padding: "0px 4px", background: btab === tab.id ? "rgba(0,0,0,0.2)" : tab.cc + "18", color: btab === tab.id ? "rgba(0,0,0,0.7)" : tab.cc }}>{tab.ct}</span>
           </button>
         ))}
       </div>
-      <div style={{flex:1,overflow:"auto"}}>
-        {tab==="alerts" && ALERTS.map((a,i)=>{
-          const bc={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted}[a.sev];
-          return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}>
-            <div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc!}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd></div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div>
-            <span style={{fontSize:7,color:T.text.muted}}>{a.time}</span>
-          </div>;
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {btab === "alerts" && ALERTS.map((a, i) => {
+          const bc = ({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
+          return (<div key={i} style={{ display: "flex", gap: 6, padding: "5px 10px", borderBottom: `1px solid ${T.border.subtle}`, borderLeft: `3px solid ${bc}` }}><div style={{ flex: 1 }}><div style={{ display: "flex", gap: 4, marginBottom: 2 }}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal && <span style={{ fontSize: 8, color: T.text.amber, fontWeight: 600 }}>{a.deal}</span>}</div><div style={{ fontSize: 9, color: T.text.primary, lineHeight: 1.3 }}>{a.msg}</div></div><span style={{ fontSize: 7, color: T.text.muted }}>{a.time}</span></div>);
         })}
-        {tab==="news" && NEWS_ITEMS.map((n,i)=>(
-          <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-            <span style={{fontSize:8,color:T.text.muted,minWidth:30}}>{n.time}</span>
-            <div style={{flex:1,fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>
-            <button onClick={()=>onOpenWindow("news")} style={{fontSize:7,color:T.text.cyan,background:"transparent",border:"none",cursor:"pointer"}}>⤢</button>
+        {btab === "news" && NEWS.map((n, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, padding: "5px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
+            <span style={{ fontSize: 8, color: T.text.muted, minWidth: 30 }}>{n.time}</span>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 9, color: T.text.primary, lineHeight: 1.3 }}>{n.hl}</div>{n.affects.length > 0 && <div style={{ display: "flex", gap: 3, marginTop: 2 }}>{n.affects.map((a, j) => (<Bd key={j} c={T.text.amber}>{a}</Bd>))}</div>}</div>
+            <div style={{ textAlign: "right", minWidth: 50 }}><div style={{ fontSize: 8, fontWeight: 700, color: n.impact.includes("+") ? T.text.green : T.text.red }}>{n.impact}</div><div style={{ fontSize: 8, color: n.pts.startsWith("+") ? T.text.green : T.text.red }}>{n.pts}</div></div>
           </div>
         ))}
-        {tab==="agents" && (
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
-            {AGENTS.map((a,i)=>(
-              <div key={i} style={{background:T.bg.panel,padding:"6px 8px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                  <span style={{fontSize:9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary}}>{a.name}</span></span>
-                  <span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span>
-                </div>
-                <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
-                <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{a.t} ago</div>
+        {btab === "agents" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 1, background: T.border.subtle }}>
+            {AGENTS.map((a, i) => (
+              <div key={i} style={{ background: T.bg.panel, padding: "6px 8px", borderLeft: a.st === "ON" ? `2px solid ${T.text.green}` : `2px solid ${T.text.muted}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}><span style={{ fontSize: 9, fontWeight: 700, color: T.text.purple }}>{a.id} <span style={{ color: T.text.primary, fontWeight: 600 }}>{a.name}</span></span><span style={{ fontSize: 7, color: a.st === "ON" ? T.text.green : T.text.muted }}>{a.st}</span></div>
+                <div style={{ fontSize: 8, color: T.text.secondary, lineHeight: 1.3 }}>{a.act}</div>
+                <div style={{ fontSize: 7, color: T.text.muted, marginTop: 2 }}>{a.t} ago | {a.m} msgs</div>
               </div>
             ))}
           </div>
         )}
-        {tab==="media" && (
-          <div style={{display:"flex",gap:8,padding:10}}>
-            {["CNBC Live","Bloomberg TV","Yahoo Finance","Fox Business"].map((ch,i)=>(
-              <button key={i} onClick={()=>onOpenWindow("tv")} style={{flex:1,padding:"8px 6px",background:T.bg.panelAlt,border:`1px solid ${T.border.medium}`,cursor:"pointer",textAlign:"center"}}>
-                <div style={{fontSize:8,fontWeight:700,color:T.text.primary,fontFamily:MONO,marginBottom:2}}>{ch}</div>
-                <Bd c={T.text.green}>LIVE ⤢</Bd>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
-}
 
-// ─── MAIN ─────────────────────────────────────────────────────
-export function TerminalPrototype() {
-  const [dark,setDark]=useState(true);
-  const T=dark?DARK:LIGHT;
-  const [fkey,setFkey]=useState(0);
-  const [ctx,setCtx]=useState<"portfolio"|"deal">("portfolio");
-  const [activeDeal,setActiveDeal]=useState<typeof DEALS[0]|null>(null);
-  const [time,setTime]=useState(new Date());
-  const [windows,setWindows]=useState<WinData[]>([]);
-  const maxZ=useRef(1000);
-
-  useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
-
-  const openWindow=useCallback((type:"news"|"tv")=>{
-    const id=`w${Date.now()}`;
-    maxZ.current+=1;
-    setWindows(ws=>[...ws,{id,title:type==="news"?"NEWS INTELLIGENCE":"LIVE TV",x:120+ws.length*30,y:80+ws.length*30,w:400,h:320,minimized:false,z:maxZ.current,type}]);
-  },[]);
-  const closeWindow=useCallback((id:string)=>setWindows(ws=>ws.filter(w=>w.id!==id)),[]);
-  const minimizeWindow=useCallback((id:string)=>setWindows(ws=>ws.map(w=>w.id===id?{...w,minimized:!w.minimized}:w)),[]);
-  const focusWindow=useCallback((id:string)=>{maxZ.current+=1;setWindows(ws=>ws.map(w=>w.id===id?{...w,z:maxZ.current}:w));},[]);
-  const moveWindow=useCallback((id:string,x:number,y:number)=>setWindows(ws=>ws.map(w=>w.id===id?{...w,x,y}:w)),[]);
-
-  const enterDeal=(d:typeof DEALS[0])=>{setActiveDeal(d);setCtx("deal");setFkey(0);};
-  const exitDeal=()=>{setCtx("portfolio");setActiveDeal(null);setFkey(0);};
-
-  const nav=ctx==="portfolio"?PORTFOLIO_NAV:DEAL_NAV;
-
-  const tickerContent=TICKERS.join("    ·    ");
-
-  const views: Record<number,React.ReactNode> = {
-    0: <PipelineView T={T} onDealClick={enterDeal}/>,
-    1: <PortfolioView T={T}/>,
-    2: <MarketsView T={T}/>,
-    3: <MapLayersView T={T}/>,
-    4: <NewsView T={T} onOpenWindow={openWindow}/>,
-  };
-  const dealViews: Record<number,React.ReactNode> = {};
-  for(let i=0;i<12;i++) dealViews[i]=(
-    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
-      <div style={{fontSize:11,color:T.text.amber,fontFamily:MONO,fontWeight:700}}>{activeDeal?.name} — {DEAL_NAV[i]}</div>
-      <div style={{fontSize:9,color:T.text.muted}}>Module content renders here · Wire to production module in Task #62</div>
-    </div>
-  );
-
-  return (
-    <div style={{width:"100vw",height:"100vh",display:"flex",flexDirection:"column",background:T.bg.app,fontFamily:MONO,overflow:"hidden",position:"relative"}}>
-      <style>{INJECTED_CSS}</style>
-
-      {/* TOP BAR */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 12px",background:T.bg.topBar,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,minHeight:32}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:12,fontWeight:800,color:T.text.amber,letterSpacing:1}}>JEDI RE</span>
-          {ctx==="deal" && activeDeal && (
-            <>
-              <span style={{fontSize:9,color:T.text.muted}}>›</span>
-              <span style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{activeDeal.name}</span>
-              <button onClick={exitDeal} style={{fontSize:7,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0 5px",cursor:"pointer"}}>← BACK</button>
-            </>
-          )}
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          {windows.length>0&&<button onClick={()=>focusWindow(windows[windows.length-1].id)} style={{fontSize:8,color:T.text.cyan,background:T.text.cyan+"18",border:`1px solid ${T.text.cyan}33`,padding:"1px 7px",cursor:"pointer"}}>{windows.length} WINDOW{windows.length!==1?"S":""}</button>}
-          <div style={{display:"flex",gap:4,alignItems:"center"}}>
-            <span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"pulse 2s infinite",display:"inline-block"}}/>
-            <span style={{fontSize:7,color:T.text.muted}}>5 AGENTS ON</span>
-          </div>
-          <span style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
-          <button onClick={()=>setDark(d=>!d)} style={{fontFamily:MONO,fontSize:8,padding:"2px 8px",background:dark?T.text.amber+"18":"#1A1F2E",border:`1px solid ${dark?T.text.amber+"44":T.border.medium}`,color:dark?T.text.amber:T.text.primary,cursor:"pointer",letterSpacing:.3}}>{dark?"☾ DARK":"☀ LIGHT"}</button>
-        </div>
-      </div>
-
-      {/* F-KEY NAV */}
-      <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflow:"hidden"}}>
-        {nav.map((label,i)=>{
-          const key=ctx==="portfolio"?`F${i+1}`:`F${i+1}`;
-          const active=fkey===i;
+  // ─── MAP PANEL ─────────────────────────────────────────────
+  const MapPanel = () => (
+    <div style={{ width: 340, borderLeft: `1px solid ${T.border.medium}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <PanelHeader title="MAP" subtitle="LIVE" right={<button onClick={() => setMapOpen(false)} style={{ fontFamily: T.font.mono, fontSize: 8, color: T.text.muted, background: "transparent", border: `1px solid ${T.border.subtle}`, padding: "0px 5px", cursor: "pointer" }}>X</button>} />
+      <div style={{ flex: 1, background: "#080C14", position: "relative" }}>
+        <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, opacity: 0.05 }}>
+          {Array.from({length:20}).map((_,i) => (<line key={i} x1="0" y1={i*25} x2="100%" y2={i*25} stroke="#8B95A5" strokeWidth="0.5" />))}
+          {Array.from({length:15}).map((_,i) => (<line key={`v${i}`} x1={i*25} y1="0" x2={i*25} y2="100%" stroke="#8B95A5" strokeWidth="0.5" />))}
+        </svg>
+        {[{x:"28%",y:"30%",i:0},{x:"70%",y:"20%",i:1},{x:"58%",y:"62%",i:2},{x:"46%",y:"48%",i:3},{x:"24%",y:"42%",i:4},{x:"32%",y:"38%",i:5},{x:"62%",y:"68%",i:6},{x:"48%",y:"40%",i:7}].map((m, idx) => {
+          const d = DEALS[m.i]; const c = d.score >= 80 ? T.text.green : d.score >= 65 ? T.text.amber : T.text.red;
+          const sz = d.units > 200 ? 16 : d.units > 100 ? 12 : d.units > 0 ? 9 : 7;
+          const sel = selDeal === d.id;
           return (
-            <button key={i} onClick={()=>setFkey(i)} style={{fontFamily:MONO,fontSize:8,fontWeight:active?700:500,color:active?T.bg.app:T.text.secondary,background:active?T.text.amber:"transparent",border:"none",borderRight:`1px solid ${T.border.subtle}`,padding:"5px 10px",cursor:"pointer",whiteSpace:"nowrap",letterSpacing:.3,display:"flex",alignItems:"center",gap:4}}>
-              <span style={{fontSize:7,color:active?T.bg.app+"88":T.text.muted}}>{key}</span> {label}
-            </button>
+            <div key={idx} onClick={() => setSelDeal(d.id)} style={{ position: "absolute", left: m.x, top: m.y, transform: "translate(-50%,-50%)", cursor: "pointer", zIndex: sel ? 10 : 1 }}>
+              <div style={{ width: sz, height: sz, borderRadius: "50%", background: c, border: sel ? `2px solid white` : `1px solid ${c}`, opacity: sel ? 1 : 0.8, boxShadow: sel ? `0 0 12px ${c}66` : "none" }} />
+              {sel && (
+                <div style={{ position: "absolute", top: "calc(100% + 4px)", left: "50%", transform: "translateX(-50%)", background: T.bg.header, border: `1px solid ${T.border.bright}`, padding: "4px 6px", whiteSpace: "nowrap", zIndex: 20, animation: "fadeIn 0.15s" }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: T.text.white }}>{d.name}</div>
+                  <div style={{ display: "flex", gap: 4, marginTop: 2 }}><span style={{ fontSize: 8, color: c, fontWeight: 700 }}>{d.score}</span><span style={{ fontSize: 8, color: T.text.amber }}>{d.irr}</span><StratBd s={d.strat} /></div>
+                  <div onClick={() => enterDeal(d)} style={{ marginTop: 3, fontSize: 7, color: T.text.amber, cursor: "pointer", fontWeight: 600 }}>OPEN CAPSULE &rarr;</div>
+                </div>
+              )}
+            </div>
           );
         })}
+        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 8, color: T.text.muted, opacity: 0.15, textAlign: "center", pointerEvents: "none" }}>MAPBOX GL JS<br />FLORIDA</div>
       </div>
+    </div>
+  );
 
-      {/* TICKER */}
-      <div style={{background:T.bg.topBar,borderTop:`1px solid ${T.border.bright}`,borderBottom:`1px solid ${T.border.bright}`,height:22,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
-        <div style={{display:"inline-flex",alignItems:"center",gap:0,animation:"ticker 40s linear infinite",whiteSpace:"nowrap"}}>
-          {[...TICKERS,...TICKERS].map((t,i)=>{
-            const up=t.startsWith("^"),dn=t.startsWith("v");
-            return (
-              <span key={i} style={{fontSize:9,fontWeight:600,color:up?T.text.green:dn?T.text.red:T.text.amber,marginRight:28,letterSpacing:.2}}>
-                {t}
-              </span>
-            );
-          })}
+  // ─── PORTFOLIO VIEWS ───────────────────────────────────────
+
+  const ViewDashboard = () => (
+    <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <DealGrid />
+        <BottomPanel />
+      </div>
+      {mapOpen && <MapPanel />}
+    </div>
+  );
+
+  const ViewPipeline = () => (
+    <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <DealGrid />
+      </div>
+      {mapOpen && <MapPanel />}
+    </div>
+  );
+
+  const ViewPortfolio = () => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title="OWNED ASSETS" subtitle="23 properties | $312M value" borderColor={T.text.green} right={<Bd c={T.text.green}>PORTFOLIO JEDI: 74</Bd>} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: T.border.subtle }}>
+        {[{l:"TOTAL VALUE",v:"$312M",c:T.text.amberBright},{l:"WEIGHTED IRR",v:"16.8%",c:T.text.amber},{l:"AVG OCCUPANCY",v:"93.4%",c:T.text.green},{l:"NOI VARIANCE",v:"+2.3%",c:T.text.green}].map((m, i) => (
+          <div key={i} style={{ background: T.bg.panel, padding: "8px 10px" }}>
+            <div style={{ fontSize: 7, color: T.text.muted, letterSpacing: 1 }}>{m.l}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: m.c }}>{m.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: 10 }}>
+        <div style={{ fontSize: 9, color: T.text.muted, marginBottom: 6 }}>Actual vs. projected variance tracking | Monthly actuals upload | Decision timeline</div>
+        {["Midtown Heights (248u)","West End Lofts (180u)","Buckhead Tower (312u)","Downtown Station (156u)"].map((a, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+            <span style={{ fontSize: 10, color: T.text.primary, fontWeight: 600 }}>{a}</span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: T.text.green }}>{[76,72,81,68][i]}</span>
+              <Spark data={[[72,73,74,75,76],[70,71,71,72,72],[78,79,80,80,81],[70,69,68,68,68]][i]} color={T.text.green} w={40} h={12} />
+              <span style={{ fontSize: 8, color: T.text.amber }}>{["$44.2M","$28.1M","$72.6M","$31.5M"][i]}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const ViewMarkets = () => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<Bd c={T.text.green}>LIVE DATA</Bd>} />
+      <div style={{ padding: "10px 10px 0" }}>
+        <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 4, fontFamily: T.font.label }}>THE DECISION THIS PAGE DRIVES:</div>
+        <div style={{ fontSize: 11, color: T.text.white, fontWeight: 600, marginBottom: 10, fontFamily: T.font.label }}>Is this submarket getting stronger or weaker — and how fast?</div>
+      </div>
+      <div style={{ display: "flex", gap: 1, padding: "0 10px 10px" }}>
+        {MARKET_VITALS.map((v, i) => (<MetricBox key={i} {...v} />))}
+      </div>
+      <div style={{ margin: "0 10px 10px", padding: "6px 10px", background: T.text.amber + "08", borderLeft: `3px solid ${T.text.amber}` }}>
+        <span style={{ fontSize: 9, color: T.text.secondary }}>Tracking 5 submarkets with 202 properties and 50,380 total units. Momentum signal: <span style={{ fontWeight: 700, color: T.text.amber }}>STRONG</span>. Top submarket: Midtown ($2,056 avg rent).</span>
+      </div>
+      <div style={{ margin: "0 10px" }}>
+        <PanelHeader title="SUBMARKET COMPARISON" />
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr", background: T.bg.header, borderBottom: `1px solid ${T.border.medium}` }}>
+          {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h => (
+            <div key={h} style={{ padding: "4px 6px", fontSize: 7, fontWeight: 700, color: T.text.muted, letterSpacing: 0.7, borderRight: `1px solid ${T.border.subtle}` }}>{h}</div>
+          ))}
+        </div>
+        {SUBMARKETS.map((s, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr", background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}` }}>
+            <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 600, color: T.text.primary, borderRight: `1px solid ${T.border.subtle}` }}>{s.name}</div>
+            <div style={{ padding: "5px 6px", fontSize: 9, color: T.text.secondary, borderRight: `1px solid ${T.border.subtle}` }}>{s.props}</div>
+            <div style={{ padding: "5px 6px", fontSize: 9, color: T.text.secondary, borderRight: `1px solid ${T.border.subtle}` }}>{s.units}</div>
+            <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, color: T.text.amber, borderRight: `1px solid ${T.border.subtle}` }}>{s.rent}</div>
+            <div style={{ padding: "5px 6px", fontSize: 9, color: T.text.secondary, borderRight: `1px solid ${T.border.subtle}` }}>{s.vac}</div>
+            <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, color: s.growth.startsWith("+") ? T.text.green : T.text.red, borderRight: `1px solid ${T.border.subtle}` }}>{s.growth}</div>
+            <div style={{ padding: "5px 6px", fontSize: 9, color: T.text.amber, borderRight: `1px solid ${T.border.subtle}` }}>{s.opp}</div>
+            <div style={{ padding: "5px 6px", display: "flex", alignItems: "center" }}><Bd c={s.pressure === "seller" ? T.text.red : T.text.green}>{s.pressure}</Bd></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const ViewCompete = () => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title="COMPETITIVE INTELLIGENCE" subtitle="Performance Rankings | Acquisition Intel | Comp Analysis" borderColor={T.text.purple} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: T.border.subtle, margin: 10 }}>
+        <div style={{ background: T.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.white, marginBottom: 6 }}>PERFORMANCE RANKINGS</div>
+          {["Westshore Commons","Celebration South","Riverview Preserve","Dadeland Station"].map((n, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
+              <span style={{ fontSize: 9, color: T.text.primary }}>#{i+1} {n}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.text.amber }}>{[82,85,79,76][i]}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ background: T.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.white, marginBottom: 6 }}>ACQUISITION TARGETS</div>
+          {["Flagler Village 42u (distress)","Channelside 186u (value-add)","Winter Park 94u (mismanaged)"].map((n, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
+              <span style={{ fontSize: 9, color: T.text.primary }}>{n}</span>
+              <Bd c={T.text.orange}>TARGET</Bd>
+            </div>
+          ))}
+        </div>
+        <div style={{ background: T.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.white, marginBottom: 6 }}>OPPORTUNITY ALERTS</div>
+          {["Buckhead: opp score 9.0, buyer market","West End: opp 7.9, rent growth accelerating","East Atlanta: vac 15.4%, distress signal"].map((n, i) => (
+            <div key={i} style={{ padding: "4px 0", borderBottom: `1px solid ${T.border.subtle}`, fontSize: 9, color: T.text.secondary }}>{n}</div>
+          ))}
+        </div>
+        <div style={{ background: T.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.white, marginBottom: 6 }}>PATTERN DETECTION</div>
+          <div style={{ fontSize: 9, color: T.text.secondary, lineHeight: 1.5 }}>3 submarkets showing rent convergence pattern. West End approaching Midtown pricing within 18 months at current trajectory. <span style={{ color: T.text.amber, fontWeight: 600 }}>Gentrification signal: STRONG.</span></div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ViewNews = () => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title="NEWS INTELLIGENCE" subtitle="Event taxonomy | Score impact | Deal linking" borderColor={T.text.cyan} />
+      {NEWS.map((n, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${T.border.subtle}` }}>
+          <span style={{ fontSize: 9, color: T.text.muted, minWidth: 36 }}>{n.time}</span>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: T.text.primary, fontWeight: 500, lineHeight: 1.4 }}>{n.hl}</div>{n.affects.length > 0 && <div style={{ display: "flex", gap: 4, marginTop: 3 }}>{n.affects.map((a, j) => (<Bd key={j} c={T.text.amber}>{a}</Bd>))}</div>}</div>
+          <div style={{ textAlign: "right", minWidth: 60 }}><div style={{ fontSize: 9, fontWeight: 700, color: n.impact.includes("+") ? T.text.green : T.text.red }}>{n.impact}</div><div style={{ fontSize: 9, fontWeight: 600, color: n.pts.startsWith("+") ? T.text.green : T.text.red }}>{n.pts} pts</div><Bd c={T.text.secondary}>{n.tag}</Bd></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const ViewStub = ({ title, subtitle, items }: {title:string;subtitle:string;items:string[]}) => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title={title} subtitle={subtitle} borderColor={T.text.amber} />
+      <div style={{ padding: 12 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+            <span style={{ fontSize: 9, color: T.text.amber, fontWeight: 700, minWidth: 20 }}>{String(i+1).padStart(2,"0")}</span>
+            <span style={{ fontSize: 10, color: T.text.primary }}>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ─── DEAL CONTEXT VIEWS ────────────────────────────────────
+
+  const DealOverview = () => {
+    const d = activeDeal!;
+    const sc = d.score >= 80 ? T.text.green : d.score >= 65 ? T.text.amber : T.text.red;
+    const signals = [{l:"DEMAND",v:88,w:"30%"},{l:"SUPPLY",v:72,w:"25%"},{l:"MOMENTUM",v:85,w:"20%"},{l:"POSITION",v:79,w:"15%"},{l:"RISK",v:81,w:"10%"}];
+    return (
+      <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 1, background: T.border.subtle }}>
+          <div style={{ background: T.bg.panel, padding: 14, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1.5, marginBottom: 6 }}>JEDI SCORE</div>
+            <div style={{ width: 100, height: 100, borderRadius: "50%", border: `3px solid ${sc}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 20px ${sc}33` }}>
+              <span style={{ fontSize: 32, fontWeight: 800, color: sc }}>{d.score}</span>
+              <span style={{ fontSize: 9, color: d.delta.startsWith("+") ? T.text.green : T.text.red, fontWeight: 600 }}>{d.delta} 30d</span>
+            </div>
+            <div style={{ fontSize: 8, color: T.text.muted, marginTop: 6 }}>Confidence: 87%</div>
+            <Spark data={d.trend} color={sc} w={120} h={24} />
+          </div>
+          <div style={{ background: T.bg.panel, padding: 14 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.white, marginBottom: 8 }}>5 MASTER SIGNALS</div>
+            {signals.map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 8, color: T.text.muted, minWidth: 70, letterSpacing: 0.5 }}>{s.l} <span style={{ color: T.text.muted, fontSize: 7 }}>({s.w})</span></span>
+                <div style={{ flex: 1, height: 6, background: T.bg.terminal, position: "relative" }}>
+                  <div style={{ height: "100%", width: `${s.v}%`, background: s.v >= 80 ? T.text.green : s.v >= 60 ? T.text.amber : T.text.red }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: s.v >= 80 ? T.text.green : s.v >= 60 ? T.text.amber : T.text.red, minWidth: 24 }}>{s.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: T.border.subtle }}>
+          {[{l:"BTS",v:84,win:true},{l:"FLIP",v:58},{l:"RENTAL",v:69},{l:"STR",v:45}].map((s, i) => (
+            <div key={i} style={{ background: T.bg.panel, padding: 10, borderTop: s.win ? `2px solid ${T.text.amber}` : "2px solid transparent", textAlign: "center" }}>
+              <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1 }}>{s.l}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: s.win ? T.text.amber : T.text.secondary }}>{s.v}</div>
+              {s.win && <Bd c={T.text.amber}>RECOMMENDED</Bd>}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: 8, background: T.text.amber + "08", borderLeft: `3px solid ${T.text.amber}`, margin: "1px 0" }}>
+          <span style={{ fontSize: 9, color: T.text.amber, fontWeight: 600 }}>ARBITRAGE DETECTED:</span>
+          <span style={{ fontSize: 9, color: T.text.secondary }}> BTS outscores Rental by 15pts. Zoning allows 3x density, supply pipeline thin for new construction.</span>
+        </div>
+      </div>
+    );
+  };
+
+  const DealStrategy = () => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title="STRATEGY ARBITRAGE" subtitle="M08 | 4-Strategy Comparison" borderColor={T.text.purple} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: T.border.subtle }}>
+        {[
+          {s:"BUILD-TO-SELL",sc:84,irr:"24.3%",yoc:"7.2%",time:"24mo",win:true,signals:{D:88,S:72,M:85,P:79,R:81}},
+          {s:"FLIP",sc:58,irr:"21.5%",yoc:"N/A",time:"8mo",signals:{D:60,S:55,M:72,P:52,R:48}},
+          {s:"RENTAL",sc:69,irr:"18.7%",yoc:"5.8%",time:"Hold",signals:{D:75,S:68,M:62,P:70,R:72}},
+          {s:"STR",sc:45,irr:"12.4%",yoc:"4.4%",time:"Hold",signals:{D:42,S:40,M:55,P:48,R:38}},
+        ].map((col, ci) => (
+          <div key={ci} style={{ background: T.bg.panel, borderTop: col.win ? `3px solid ${T.text.amber}` : "3px solid transparent" }}>
+            <div style={{ padding: "8px 10px", textAlign: "center", borderBottom: `1px solid ${T.border.subtle}` }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: col.win ? T.text.amber : T.text.secondary, letterSpacing: 1 }}>{col.s}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: col.win ? T.text.amber : T.text.muted, marginTop: 2 }}>{col.sc}</div>
+              {col.win && <Bd c={T.text.amber}>WINNER +15</Bd>}
+            </div>
+            <div style={{ padding: 8 }}>
+              {[{l:"IRR",v:col.irr},{l:"YOC",v:col.yoc},{l:"TIMELINE",v:col.time}].map((m, mi) => (
+                <div key={mi} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <span style={{ fontSize: 8, color: T.text.muted }}>{m.l}</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.text.amber }}>{m.v}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: 6, fontSize: 8, color: T.text.muted, letterSpacing: 1 }}>SIGNALS</div>
+              {Object.entries(col.signals).map(([k, v]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                  <span style={{ fontSize: 7, color: T.text.muted, minWidth: 14 }}>{k}</span>
+                  <div style={{ flex: 1, height: 4, background: T.bg.terminal }}><div style={{ height: "100%", width: `${v}%`, background: v >= 75 ? T.text.green : v >= 55 ? T.text.amber : T.text.red }} /></div>
+                  <span style={{ fontSize: 7, fontWeight: 700, color: v >= 75 ? T.text.green : v >= 55 ? T.text.amber : T.text.red }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const DealStub = ({ title, module, items }: {title:string;module:string;items:{title:string;desc:string}[]}) => (
+    <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+      <PanelHeader title={title} subtitle={module} borderColor={T.text.cyan} />
+      <div style={{ padding: 12 }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ padding: "6px 8px", borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+            <div style={{ fontSize: 9, color: T.text.primary }}>{item.title}</div>
+            <div style={{ fontSize: 8, color: T.text.muted, marginTop: 2 }}>{item.desc}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ─── RENDER ────────────────────────────────────────────────
+
+  const renderContent = () => {
+    if (ctx === "portfolio") {
+      switch (fkey) {
+        case "F1": return <ViewDashboard />;
+        case "F2": return <ViewPipeline />;
+        case "F3": return <ViewPortfolio />;
+        case "F4": return <ViewMarkets />;
+        case "F5": return <ViewCompete />;
+        case "F6": return <ViewNews />;
+        case "F7": return <ViewStub title="OPPORTUNITY CENTER" subtitle="Deals the platform detected for you" items={["Flagler Village 42u: Distress signal, owner behind on taxes 18mo","Channelside 186u: Below-market rents by 22%, value-add play","Winter Park 94u: Management score 2.1/10, NOI 34% below potential","Lake Nona Parcel: Zoning change approved, BTS score 91","St Pete Beach 28u: STR deregulation passed, RevPAR premium 2.1x"]} />;
+        case "F8": return <ViewStub title="REPORTS" subtitle="Deal memos | LP presentations | Market reports" items={["Deal Memo: Westshore Commons (generated 2d ago)","LP Quarterly Report Q1 2026 (draft)","Market Report: Tampa MSA (monthly auto-gen)","Comp Report: Dadeland submarket (on request)","Strategy Brief: Nocatee BTS opportunity"]} />;
+        case "F9": return <ViewStub title="SETTINGS & LIBRARIES" subtitle="Comp Library | Data Library | Benchmarks | Team" items={["Comp Library: 847 comps across 4 markets","Data Library: CSV/Excel upload for monthly actuals","Template Library: ProForma, Deal Memo, LP Report","Market Benchmarks: Cap rates, rent growth by submarket","Model Library: Saved financial model versions","Team: 4 members, role-based permissions"]} />;
+        default: return null;
+      }
+    } else {
+      switch (fkey) {
+        case "F1": return <DealOverview />;
+        case "F5": return <DealStrategy />;
+        case "F2": return <DealStub title="PROPERTY & ZONING" module="M02" items={[{title:"Zoning: PD-C (Planned Dev Commercial)",desc:"Municode 27-156 | Max density 18 DU/ac | Height 65ft | FAR 2.0"},{title:"Entitlement Status: Pre-Application",desc:"Estimated timeline: 8-12mo | Monte Carlo p50: 10mo"},{title:"Source Chain: 10/10 links verified",desc:"Planning -> Permitted Uses -> Dev Capacity -> HBU -> Strategy"},{title:"Setbacks: Front 25ft | Side 10ft | Rear 20ft",desc:"Source: Municode 27-156.4(b) | Verified 3/1/2026"}]} />;
+        case "F3": return <DealStub title="MARKET & DEMAND" module="M05+M06" items={[{title:"Trade Area: 3-mile radius, 42,000 residents",desc:"Avg HHI $78,200 | Renter pct 58% | Growth +2.1% YoY"},{title:"Demand Score: 88 (Strong)",desc:"Absorption 1.3x pipeline | Employment +3.2% | Population inflow"},{title:"Rent Comp: $1,908/mo avg effective",desc:"+3.0% growth 90d | Accelerating trend"},{title:"Market Vitals: 5 tracked metrics",desc:"Vacancy 8.5% | Absorbed 11,658/wk | Strength 40th pctl"}]} />;
+        case "F4": return <DealStub title="SUPPLY PIPELINE" module="M04" items={[{title:"Active Pipeline: 1,240 units within trade area",desc:"Delivering Q3 2026: 380u | Q1 2027: 860u"},{title:"Threat Level: MODERATE",desc:"Pipeline-to-stock ratio: 4.2% (below 5% threshold)"},{title:"Nearest Competitor: Greystar 380u tower",desc:"2.1 miles | Luxury segment | Est. absorption 18mo"},{title:"10-Year Capacity Forecast",desc:"Zoned capacity: 8,400 units | Current stock: 14,200 | Headroom: 59%"}]} />;
+        case "F6": return <DealStub title="PRO FORMA ENGINE" module="M09" items={[{title:"Baseline NOI: $2,840,000",desc:"Broker assumption | Cap rate 5.2% going-in"},{title:"Platform-Adjusted NOI: $2,680,000 (-5.6%)",desc:"AI detected: broker rent growth +4% vs market +3.0%. Insurance understated 22%"},{title:"3-Layer Model Active",desc:"Layer 1: Broker | Layer 2: Platform Intel | Layer 3: Your overrides"},{title:"Sensitivity: IRR range 18.4% - 28.1%",desc:"Key driver: exit cap rate (4.8% - 5.6% range)"}]} />;
+        case "F7": return <DealStub title="CAPITAL STRUCTURE" module="M11" items={[{title:"Senior Debt: $28.8M (75% LTC)",desc:"Rate: SOFR + 275bps | IO 24mo | Term 36mo"},{title:"Mezzanine: $3.8M (10% LTC)",desc:"Rate: 12% fixed | Current pay"},{title:"Equity: $5.9M (15%)",desc:"IRR target: 24% | EM target: 2.8x | Hold: 24mo"},{title:"Capital Stack Visual",desc:"75% senior | 10% mezz | 15% equity | WACC: 8.2%"}]} />;
+        case "F8": return <DealStub title="RISK ASSESSMENT" module="M14" items={[{title:"Overall Risk Score: 32 (LOW)",desc:"Supply: 28 | Regulatory: 18 | Market: 35 | Execution: 42 | Climate: 24 | Insurance: 38"},{title:"Top Risk: Execution (42)",desc:"First-time development in this submarket. Mitigated by experienced GC partnership."},{title:"Insurance Risk: 38",desc:"FL wind zone but inland. Rate capped at 8% per new legislation."},{title:"Monte Carlo: 94% probability of meeting target IRR",desc:"1,000 simulations | p10: 18.4% | p50: 24.3% | p90: 31.2%"}]} />;
+        default: return <DealStub title={DEAL_NAV.find(n => n.key === fkey)?.label || "MODULE"} module={DEAL_NAV.find(n => n.key === fkey)?.m || ""} items={[{title:"Module content loads here",desc:"This module renders in Bloomberg L1-L4 layout patterns"}]} />;
+      }
+    }
+  };
+
+  return (
+    <div style={{ background: T.bg.terminal, height: "100vh", fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <style>{css}</style>
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, background: "repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)" }} />
+
+      {/* ═══ TOP STATUS BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", height: 24, background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontFamily: T.font.display, fontSize: 12, fontWeight: 800, color: T.text.amber, letterSpacing: 2 }}>JEDI RE</span>
+          <span style={{ fontSize: 8, color: T.text.muted }}>|</span>
+          <span style={{ fontSize: 8, color: T.text.secondary }}>{ctx === "portfolio" ? "PORTFOLIO" : "DEAL"}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 8, color: T.text.green, display: "flex", alignItems: "center", gap: 3 }}><span style={{ width: 4, height: 4, borderRadius: "50%", background: T.text.green, animation: "glow 2s infinite" }} />{AGENTS.filter(a => a.st === "ON").length} AGENTS</span>
+          <span style={{ fontSize: 8, color: T.text.cyan }}>EMAIL: 5</span>
+          <span style={{ fontSize: 8, color: T.text.secondary }}>KAFKA: 312/s</span>
+          <span style={{ fontSize: 8, color: T.text.amber, fontWeight: 600 }}>{time.toLocaleTimeString("en-US", { hour12: false })}</span>
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",animation:"fadeIn .1s"}}>
-        {ctx==="portfolio" ? (views[fkey]||views[0]) : (dealViews[fkey]||dealViews[0])}
+      {/* ═══ TICKER ═══ */}
+      <div style={{ height: 18, background: "#06080E", borderBottom: `1px solid ${T.border.subtle}`, overflow: "hidden", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 20, whiteSpace: "nowrap", animation: "ticker 45s linear infinite", fontSize: 8, lineHeight: "18px" }}>
+          {[...tickers,...tickers].map((t, i) => (<span key={i} style={{ color: t.startsWith("^") ? T.text.green : t.startsWith("v") ? T.text.red : T.text.amber }}>{t}</span>))}
+        </div>
       </div>
 
-      {/* BOTTOM PANEL */}
-      <BottomPanel T={T} onOpenWindow={openWindow}/>
+      {/* ═══ DEAL CONTEXT BAR ═══ */}
+      {ctx === "deal" && activeDeal && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", height: 26, background: T.text.amber + "08", borderBottom: `1px solid ${T.text.amber}22`, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={exitDeal} style={{ fontFamily: T.font.mono, fontSize: 7, color: T.text.muted, background: T.bg.input, border: `1px solid ${T.border.subtle}`, padding: "1px 5px", cursor: "pointer", fontWeight: 700 }}>ESC</button>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.text.amber }}>{activeDeal.name}</span>
+            <span style={{ fontSize: 8, color: T.text.secondary }}>{activeDeal.addr}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: activeDeal.score >= 80 ? T.text.green : T.text.amber }}>{activeDeal.score}</span>
+            <span style={{ fontSize: 8, color: activeDeal.delta.startsWith("+") ? T.text.green : T.text.red }}>{activeDeal.delta}</span>
+            <StratBd s={activeDeal.strat} />
+            <StageBd stage={activeDeal.stage} />
+          </div>
+        </div>
+      )}
 
-      {/* FLOATING WINDOWS */}
-      {windows.map(w=>(
-        <FloatingWindow key={w.id} win={w} T={T}
-          onClose={()=>closeWindow(w.id)} onMinimize={()=>minimizeWindow(w.id)}
-          onFocus={()=>focusWindow(w.id)} onMove={(x,y)=>moveWindow(w.id,x,y)}/>
-      ))}
+      {/* ═══ KPI BAR (portfolio only) ═══ */}
+      {ctx === "portfolio" && (
+        <div style={{ display: "flex", alignItems: "stretch", background: T.bg.panel, borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0, height: 50 }}>
+          {[
+            {l:"PIPELINE",v:`$${totalPV.toFixed(1)}M`,c:T.text.amberBright,sub:"+$6.1M wk"},
+            {l:"DEALS",v:String(DEALS.length),c:T.text.amber,sub:"4 mkts"},
+            {l:"AVG JEDI",v:String(avgS),c:avgS >= 75 ? T.text.green : T.text.amber,sub:"+2.3"},
+          ].map((kpi, i) => (
+            <div key={i} style={{ padding: "4px 12px", borderRight: `1px solid ${T.border.subtle}`, minWidth: 90 }}>
+              <div style={{ fontSize: 7, fontWeight: 600, color: T.text.muted, letterSpacing: 1 }}>{kpi.l}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: kpi.c }}>{kpi.v}</div>
+              <div style={{ fontSize: 7, color: T.text.green }}>{kpi.sub}</div>
+            </div>
+          ))}
+          <div style={{ padding: "4px 12px", borderRight: `1px solid ${T.border.subtle}`, minWidth: 120 }}>
+            <div style={{ fontSize: 7, fontWeight: 600, color: T.text.muted, letterSpacing: 1 }}>BY STAGE</div>
+            <div style={{ display: "flex", gap: 8 }}>{Object.entries(stages).map(([s, c]) => (<div key={s} style={{ textAlign: "center" }}><div style={{ fontSize: 11, fontWeight: 700, color: c > 0 ? T.text.amber : T.text.muted }}>{c}</div><div style={{ fontSize: 6, color: T.text.muted }}>{s}</div></div>))}</div>
+          </div>
+          <div onClick={() => setBtab("alerts")} style={{ padding: "4px 12px", borderRight: `1px solid ${T.border.subtle}`, cursor: "pointer", minWidth: 70 }}>
+            <div style={{ fontSize: 7, fontWeight: 600, color: T.text.muted, letterSpacing: 1 }}>ALERTS</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: hAlerts > 0 ? T.text.red : T.text.green, animation: hAlerts > 0 ? "pulse 2s infinite" : "none" }}>{hAlerts}</div>
+          </div>
+          <div style={{ flex: 1 }} />
+        </div>
+      )}
+
+      {/* ═══ F-KEY NAV BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0, background: T.bg.header }}>
+        <div style={{ display: "flex", flex: 1, overflow: "auto" }}>
+          {nav.map(n => (
+            <button key={n.key} onClick={() => setFkey(n.key)} style={{ fontFamily: T.font.mono, fontSize: 9, fontWeight: 600, padding: "0 10px", height: 28, cursor: "pointer", background: fkey === n.key ? T.text.amber : "transparent", color: fkey === n.key ? T.bg.terminal : T.text.secondary, border: "none", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", flexShrink: 0 }}>
+              <span style={{ fontSize: 7, fontWeight: 700, opacity: 0.6, color: fkey === n.key ? T.bg.terminal : T.text.muted }}>{n.key}</span>
+              {n.label}
+              {"m" in n && n.m && <span style={{ fontSize: 6, opacity: 0.5, marginLeft: 1 }}>{n.m}</span>}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding: "0 8px", borderLeft: `1px solid ${T.border.medium}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 3, background: T.bg.input, border: `1px solid ${T.border.subtle}`, padding: "0 6px", height: 20, width: 180 }}>
+            <span style={{ color: T.text.amber, fontSize: 8, fontWeight: 700 }}>{">"}</span>
+            <input value={cmd} onChange={e => setCmd(e.target.value)} placeholder="CMD (/ to focus)" style={{ background: "transparent", border: "none", outline: "none", fontFamily: T.font.mono, fontSize: 9, color: T.text.primary, flex: 1, width: "100%" }} />
+            <span style={{ width: 6, height: 11, background: T.text.amber, animation: "blink 1s infinite", display: "inline-block" }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ MAIN CONTENT ═══ */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+        {renderContent()}
+      </div>
+
+      {/* ═══ STATUS BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", height: 16, background: T.bg.topBar, borderTop: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 12 }}><span style={{ fontSize: 7, color: T.text.muted }}>JEDI RE v0.31</span><span style={{ fontSize: 7, color: T.text.muted }}>REACT + VITE + MAPBOX + ZUSTAND + KAFKA</span></div>
+        <div style={{ display: "flex", gap: 12 }}><span style={{ fontSize: 7, color: T.text.green }}>DB OK</span><span style={{ fontSize: 7, color: T.text.green }}>REDIS OK</span><span style={{ fontSize: 7, color: T.text.muted }}>{time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span></div>
+      </div>
     </div>
   );
 }
