@@ -48,6 +48,7 @@ import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/tra
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 
 import OverviewSection from '../components/deal/sections/OverviewSection';
+import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { Design3DPageEnhanced } from './Design3DPage.enhanced';
 
@@ -254,7 +255,7 @@ const DealDetailPage: React.FC = () => {
       id: 'overview',
       label: 'Deal Overview',
       icon: <BarChart3 size={16} />,
-      component: OverviewSection,
+      component: OverviewRouter,
       moduleId: 'M01'
     },
     {
@@ -469,7 +470,7 @@ const DealDetailPage: React.FC = () => {
   ];
 
   const activeTabData = allTabs.find(tab => tab.id === activeTab);
-  const ActiveComponent = activeTabData?.component || OverviewSection;
+  const ActiveComponent = activeTabData?.component || OverviewRouter;
 
   const filteredTabs = searchQuery
     ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
