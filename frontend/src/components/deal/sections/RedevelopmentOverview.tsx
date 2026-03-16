@@ -75,7 +75,7 @@ function Metric({ label, value, sub, color, small }: { label: string; value: str
   );
 }
 
-function Row({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
+function DataRow({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '7px 0', borderBottom: `1px solid ${T.border}` }}>
       <span style={{ fontSize: 12, color: T.text, fontWeight: bold ? 700 : 400, ...sans }}>{label}</span>
@@ -240,7 +240,11 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
   const rentDelta         = stabRent != null && existingRent != null ? stabRent - existingRent : null;
   const renovROI          = noiDelta != null && renovBudget != null ? noiDelta / (renovBudget + (expCost ?? 0)) : null;
 
-  const ddItems           = deal?.ddItems ?? DEFAULT_DD;
+  // §9 always uses canonical M02–M20 set; merge status from deal.ddItems if present
+  const ddItems = DEFAULT_DD.map(canonical => {
+    const override = (deal?.ddItems ?? []).find((d: any) => d.module === canonical.module);
+    return override ? { ...canonical, status: override.status ?? canonical.status } : canonical;
+  });
 
   return (
     <div style={{ background: T.bg, padding: '20px 24px', color: T.text, ...sans }}>
@@ -398,18 +402,18 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
                   </div>
                 </div>
               )}
-              <Row label="Current Zoning" value={`${zoning}${zoningDesc ? ` — ${zoningDesc}` : ''}`} />
-              {maxDensity != null   && <Row label="Max Density" value={`${maxDensity} DU/acre`} />}
-              <Row label="By-Right Additional" value={addlByRight > 0 ? `+${addlByRight} units` : '0 — nonconforming'} />
-              {addlVariance != null && <Row label="With Variance" value={`+${addlVariance} units`} />}
-              {addlRezone   != null && <Row label="Full Rezone" value={`+${addlRezone} units`} />}
+              <DataRow label="Current Zoning" value={`${zoning}${zoningDesc ? ` — ${zoningDesc}` : ''}`} />
+              {maxDensity != null   && <DataRow label="Max Density" value={`${maxDensity} DU/acre`} />}
+              <DataRow label="By-Right Additional" value={addlByRight > 0 ? `+${addlByRight} units` : '0 — nonconforming'} />
+              {addlVariance != null && <DataRow label="With Variance" value={`+${addlVariance} units`} />}
+              {addlRezone   != null && <DataRow label="Full Rezone" value={`+${addlRezone} units`} />}
             </Card>
 
             <Card>
               <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>ZONING ENVELOPE</div>
-              <Row label="Max Height"       value={maxHeight      != null ? `${maxHeight} ft` : '—'} />
-              <Row label="Max Lot Coverage" value={maxLotCoverage != null ? pct(maxLotCoverage) : '—'} />
-              <Row label="Lot Size"         value={lotAcres != null ? `${lotAcres} ac${lotSf ? ` (${num(lotSf)} SF)` : ''}` : '—'} />
+              <DataRow label="Max Height"       value={maxHeight      != null ? `${maxHeight} ft` : '—'} />
+              <DataRow label="Max Lot Coverage" value={maxLotCoverage != null ? pct(maxLotCoverage) : '—'} />
+              <DataRow label="Lot Size"         value={lotAcres != null ? `${lotAcres} ac${lotSf ? ` (${num(lotSf)} SF)` : ''}` : '—'} />
 
               {needsVariance && (
                 <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: T.amberBg, border: `1px solid ${T.amber}40` }}>
@@ -479,12 +483,12 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
                 </div>
               </div>
 
-              {expUnits     != null && <Row label="New Units"         value={`+${expUnits}`} />}
-              {expSqft      != null && <Row label="New SF"            value={`${num(expSqft)} SF`} />}
-              {expType !== '—'      && <Row label="Building Type"     value={expType} />}
-              {expParkingAdd!= null && <Row label="Added Parking"     value={`+${expParkingAdd} spaces`} />}
-              {expCost != null && expSqft != null && <Row label="Cost / SF" value={fmt(Math.round(expCost / expSqft))} />}
-              <Row label="Entitlement" value={needsVariance ? 'Variance needed' : 'By-right'} />
+              {expUnits     != null && <DataRow label="New Units"         value={`+${expUnits}`} />}
+              {expSqft      != null && <DataRow label="New SF"            value={`${num(expSqft)} SF`} />}
+              {expType !== '—'      && <DataRow label="Building Type"     value={expType} />}
+              {expParkingAdd!= null && <DataRow label="Added Parking"     value={`+${expParkingAdd} spaces`} />}
+              {expCost != null && expSqft != null && <DataRow label="Cost / SF" value={fmt(Math.round(expCost / expSqft))} />}
+              <DataRow label="Entitlement" value={needsVariance ? 'Variance needed' : 'By-right'} />
 
               <div style={{ marginTop: 12, padding: '10px 12px', background: T.violBg, borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -590,7 +594,7 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
                       </div>
                     </div>
                   ))}
-                  <Row label="Total Investment" value={fmt(totalInvestment)} bold />
+                  <DataRow label="Total Investment" value={fmt(totalInvestment)} bold />
                 </>
               ) : (
                 <div style={{ color: T.td, fontSize: 13, ...sans }}>Budget breakdown not yet defined</div>
@@ -622,8 +626,8 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
                 <div style={{ color: T.td, fontSize: 13, ...sans }}>
                   {renovMonths != null ? (
                     <>
-                      <Row label="Renovation Period" value={`${renovMonths} months`} />
-                      {totalMonths != null && <Row label="Total Timeline" value={`${totalMonths} months`} />}
+                      <DataRow label="Renovation Period" value={`${renovMonths} months`} />
+                      {totalMonths != null && <DataRow label="Total Timeline" value={`${totalMonths} months`} />}
                     </>
                   ) : 'Timeline phases not yet defined'}
                 </div>
@@ -638,17 +642,17 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Card>
               <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>SOURCES</div>
-              {seniorDebt != null && <Row label="Senior Debt (Bridge)" value={fmt(seniorDebt)} />}
-              {ltv        != null && <Row label="LTV" value={pct(ltv)} />}
-              {rate       != null && <Row label="Interest Rate" value={pct(rate)} />}
-              {loanTerm   !== '—' && <Row label="Term" value={loanTerm} />}
-              {lender     !== '—' && <Row label="Lender Type" value={lender} />}
+              {seniorDebt != null && <DataRow label="Senior Debt (Bridge)" value={fmt(seniorDebt)} />}
+              {ltv        != null && <DataRow label="LTV" value={pct(ltv)} />}
+              {rate       != null && <DataRow label="Interest Rate" value={pct(rate)} />}
+              {loanTerm   !== '—' && <DataRow label="Term" value={loanTerm} />}
+              {lender     !== '—' && <DataRow label="Lender Type" value={lender} />}
               <div style={{ height: 12 }} />
-              {equityReq  != null && <Row label="Sponsor Equity" value={fmt(equityReq)} />}
-              {equitySplit!== '—' && <Row label="LP/GP Split" value={equitySplit} />}
-              {prefReturn != null && <Row label="Pref Return" value={pct(prefReturn)} />}
-              {promote    !== '—' && <Row label="Promote" value={promote} />}
-              {seniorDebt != null && equityReq != null && <Row label="Total Capitalization" value={fmt(seniorDebt + equityReq)} bold />}
+              {equityReq  != null && <DataRow label="Sponsor Equity" value={fmt(equityReq)} />}
+              {equitySplit!== '—' && <DataRow label="LP/GP Split" value={equitySplit} />}
+              {prefReturn != null && <DataRow label="Pref Return" value={pct(prefReturn)} />}
+              {promote    !== '—' && <DataRow label="Promote" value={promote} />}
+              {seniorDebt != null && equityReq != null && <DataRow label="Total Capitalization" value={fmt(seniorDebt + equityReq)} bold />}
               {seniorDebt == null && equityReq == null && (
                 <div style={{ color: T.td, fontSize: 13, ...sans }}>Capital structure not yet configured — run M11</div>
               )}
