@@ -389,9 +389,38 @@ app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
 
 const activeUsers = new Map<string, any>();
+const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
+
+function getDealParticipants(dealId: string) {
+  const members = dealPresence.get(dealId);
+  return members ? Array.from(members.values()) : [];
+}
+
+function broadcastDealPresence(dealId: string) {
+  const room = `deal:${dealId}`;
+  io.to(room).emit('deal:presence', { dealId, participants: getDealParticipants(dealId) });
+}
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    try {
+      const { verifyAccessToken } = require('./auth/jwt');
+      const payload = verifyAccessToken(token);
+      if (payload) {
+        (socket as any).userId = payload.userId;
+        (socket as any).email = payload.email;
+        return next();
+      }
+    } catch {}
+  }
+  (socket as any).userId = socket.id;
+  (socket as any).email = 'anonymous';
+  next();
+});
 
 io.on('connection', (socket) => {
-  console.log(`WebSocket connected: ${socket.id}`);
+  console.log(`WebSocket connected: ${socket.id} (user: ${(socket as any).userId})`);
   
   socket.on('user:join', (userData) => {
     activeUsers.set(socket.id, {
@@ -416,39 +445,45 @@ io.on('connection', (socket) => {
     });
   });
   
-  const dealPresenceMap = new Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>();
+  const socketDeals = new Set<string>();
 
   socket.on('deal:join', (data: { dealId: string; activeModule?: string }) => {
-    const room = `deal:${data.dealId}`;
+    const { dealId, activeModule } = data;
+    const room = `deal:${dealId}`;
     socket.join(room);
-    dealPresenceMap.set(data.dealId, {
-      userId: (socket as any).userId || socket.id,
-      email: (socket as any).email || 'unknown',
-      activeModule: data.activeModule,
+    socketDeals.add(dealId);
+
+    if (!dealPresence.has(dealId)) dealPresence.set(dealId, new Map());
+    dealPresence.get(dealId)!.set(socket.id, {
+      userId: (socket as any).userId,
+      email: (socket as any).email,
+      activeModule,
       joinedAt: Date.now(),
     });
-    const members = io.sockets.adapter.rooms.get(room);
-    io.to(room).emit('deal:presence', { dealId: data.dealId, count: members?.size || 1 });
+    broadcastDealPresence(dealId);
   });
 
   socket.on('deal:leave', (data: { dealId: string }) => {
-    socket.leave(`deal:${data.dealId}`);
-    dealPresenceMap.delete(data.dealId);
-    const room = `deal:${data.dealId}`;
-    const members = io.sockets.adapter.rooms.get(room);
-    io.to(room).emit('deal:presence', { dealId: data.dealId, count: members?.size || 0 });
+    const { dealId } = data;
+    socket.leave(`deal:${dealId}`);
+    socketDeals.delete(dealId);
+    dealPresence.get(dealId)?.delete(socket.id);
+    if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+    broadcastDealPresence(dealId);
   });
 
   socket.on('deal:module_change', (data: { dealId: string; activeModule?: string }) => {
-    if (dealPresenceMap.has(data.dealId)) {
-      dealPresenceMap.get(data.dealId)!.activeModule = data.activeModule;
+    const entry = dealPresence.get(data.dealId)?.get(socket.id);
+    if (entry) {
+      entry.activeModule = data.activeModule;
+      broadcastDealPresence(data.dealId);
     }
   });
 
   socket.on('deal:field_change', (data: { dealId: string; module: string; field: string; value: any }) => {
     socket.to(`deal:${data.dealId}`).emit('deal:field_updated', {
       ...data,
-      userId: (socket as any).userId || socket.id,
+      userId: (socket as any).userId,
       timestamp: Date.now(),
     });
   });
@@ -456,7 +491,7 @@ io.on('connection', (socket) => {
   socket.on('deal:comment_added', (data: { dealId: string; comment: any }) => {
     io.to(`deal:${data.dealId}`).emit('deal:new_comment', {
       ...data,
-      userId: (socket as any).userId || socket.id,
+      userId: (socket as any).userId,
       timestamp: Date.now(),
     });
   });
@@ -464,7 +499,7 @@ io.on('connection', (socket) => {
   socket.on('deal:comment_resolved', (data: { dealId: string; commentId: string }) => {
     io.to(`deal:${data.dealId}`).emit('deal:comment_resolved', {
       ...data,
-      userId: (socket as any).userId || socket.id,
+      userId: (socket as any).userId,
       timestamp: Date.now(),
     });
   });
@@ -472,10 +507,10 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`WebSocket disconnected: ${socket.id}`);
     activeUsers.delete(socket.id);
-    for (const dealId of dealPresenceMap.keys()) {
-      const room = `deal:${dealId}`;
-      const members = io.sockets.adapter.rooms.get(room);
-      io.to(room).emit('deal:presence', { dealId, count: members?.size || 0 });
+    for (const dealId of socketDeals) {
+      dealPresence.get(dealId)?.delete(socket.id);
+      if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+      broadcastDealPresence(dealId);
     }
     io.emit('users:update', Array.from(activeUsers.values()));
   });
