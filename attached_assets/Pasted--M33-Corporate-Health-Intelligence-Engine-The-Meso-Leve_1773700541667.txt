@@ -1,0 +1,889 @@
+# M33 — Corporate Health Intelligence Engine
+## The Meso-Level Leading Indicator Nobody Tracks
+
+> **Module Decision:** "Is this submarket's demand base strengthening or weakening — and does the market know yet?"
+
+---
+
+## 1. THESIS
+
+Real estate analysis has two blind spots:
+
+1. **Macro indicators (M28)** are too broad — Fed rate changes, GDP, unemployment move entire metros. They don't tell you that Westchase (Tampa) is about to lose 800 tech jobs while Brandon (Tampa) is gaining 1,200 healthcare jobs.
+
+2. **Deal-level metrics (M05/M07)** are too lagging — by the time vacancy rises, rent growth stalls, or absorption slows, the corporate decision that caused it happened 6–18 months ago.
+
+**M33 sits in the middle.** Publicly traded companies report earnings, headcount, facility plans, and guidance quarterly — creating a real-time signal layer about submarket-specific demand that RE professionals never systematically track. The stock price moves first, the earnings call confirms it, the lease decision follows, and the RE metrics catch up last.
+
+**The arbitrage:** Buy into submarkets where corporate health is improving before RE metrics reflect it. Sell out of submarkets where corporate health is deteriorating before RE metrics punish you.
+
+---
+
+## 2. CORE CONCEPTS
+
+### 2.1 Employer Concentration Mapping
+
+Every submarket has an employer DNA — a fingerprint of which companies, industries, and employment types drive demand. M33 maps this systematically:
+
+```
+EMPLOYER_DNA(submarket) = {
+  employers: [
+    {
+      company: "Chewy",
+      ticker: "CHWY",
+      is_public: true,
+      hq_or_office: "office",
+      estimated_local_employees: 800,
+      naics: "454110",           // Electronic Shopping
+      facility_type: "corporate_hq",
+      lease_expiry_known: false,
+      submarket_employment_share: 0.034,  // 3.4% of submarket jobs
+    },
+    // ... all major employers (>50 local employees)
+  ],
+  concentration_metrics: {
+    herfindahl_index: 0.042,           // <0.05 = diversified, >0.15 = concentrated
+    top_5_share: 0.18,                 // Top 5 employers = 18% of jobs
+    public_company_coverage: 0.41,     // 41% of jobs traceable to public companies
+    single_employer_max_share: 0.065,  // No single employer >6.5%
+    industry_diversity_score: 78,      // 0-100, higher = more diverse
+  }
+}
+```
+
+**Why this matters:** A submarket where one employer = 25% of demand is fundamentally riskier than one where the top 5 employers combined = 15%. M33 quantifies this, and — critically — tracks it forward using corporate earnings data.
+
+### 2.2 Corporate Health Score (CHS)
+
+For each public company with a meaningful local presence, M33 computes a Corporate Health Score:
+
+```
+CHS(company, quarter) = (
+  Revenue_Momentum    × 0.25 +
+  Earnings_Trajectory × 0.20 +
+  Headcount_Signal    × 0.25 +
+  Guidance_Sentiment  × 0.15 +
+  Stock_Momentum      × 0.15
+)
+Scale: 0–100 where 70+ = Healthy, 40–69 = Watch, <40 = Stress
+```
+
+**Component Definitions:**
+
+| Component | Formula | Data Source | Update Freq |
+|-----------|---------|-------------|-------------|
+| Revenue Momentum | `(rev_ttm / rev_ttm_4q_ago - 1) × 100`, normalized to 0–100 | SEC EDGAR / Yahoo Finance API | Quarterly |
+| Earnings Trajectory | `EPS beat/miss streak + margin trend (3Q)`, normalized | SEC EDGAR / Yahoo Finance API | Quarterly |
+| Headcount Signal | `(current_employees / employees_4q_ago - 1) × 100`, normalized | 10-K/10-Q filings, LinkedIn (proxy) | Quarterly |
+| Guidance Sentiment | NLP score from earnings call transcript: expansion/contraction language | Earnings call transcripts (SEC / free APIs) | Quarterly |
+| Stock Momentum | `(price_90d / price_180d - 1) × 100`, normalized to 0–100 | Yahoo Finance API (free) | Daily |
+
+### 2.3 Submarket Corporate Health Index (SCHI)
+
+The CHS scores roll up to a submarket-level composite:
+
+```
+SCHI(submarket) = Σ(CHS_i × employment_share_i × public_weight_adjustment)
+
+where:
+  CHS_i = Corporate Health Score for employer i
+  employment_share_i = employer i's share of submarket employment
+  public_weight_adjustment = 1 / public_company_coverage
+    (scales up public company signals to represent full employment base)
+```
+
+**Interpretation:**
+- SCHI > 70: Corporate demand base strengthening — leading indicator of future rent growth, absorption
+- SCHI 50–70: Stable — no divergence signal
+- SCHI < 50: Corporate demand base weakening — leading indicator of future vacancy, rent pressure
+- SCHI trending (±10pts over 2 quarters): Stronger signal than absolute level
+
+### 2.4 Corporate-RE Divergence Score (The Alpha Signal)
+
+This is the money metric. It compares what corporate data says about a submarket's future vs. what RE metrics say about its present:
+
+```
+DIVERGENCE(submarket) = SCHI(submarket) - RE_HEALTH(submarket)
+
+where RE_HEALTH = normalized composite of:
+  - Current vacancy rate (inverted, 0-100)
+  - Trailing 12-month rent growth (normalized, 0-100)
+  - Trailing 12-month absorption (normalized, 0-100)
+  - Cap rate trend (compression = positive, normalized, 0-100)
+
+DIVERGENCE > +15: BULLISH DIVERGENCE
+  → Corporate health says demand is coming, RE metrics haven't reflected it yet
+  → ACTION: Buy before the market catches up
+
+DIVERGENCE < -15: BEARISH DIVERGENCE
+  → Corporate health says demand is weakening, RE metrics haven't reflected it yet
+  → ACTION: Sell/avoid before the market catches up
+
+|DIVERGENCE| < 15: NO SIGNAL
+  → Corporate and RE metrics are aligned — no timing advantage
+```
+
+---
+
+## 3. FORMULA REGISTRY
+
+| Formula | Name | Inputs | Output | Feeds |
+|---------|------|--------|--------|-------|
+| F65 | Corporate Health Score | Revenue, EPS, headcount, guidance, stock price | 0–100 per company | F67 |
+| F66 | Employer Concentration Index | QCEW data, SEC filings, local employer databases | Herfindahl + diversity metrics | F67, M14 Risk |
+| F67 | Submarket Corporate Health Index | F65 scores × employment shares | 0–100 per submarket | F68 |
+| F68 | Corporate-RE Divergence | F67 (SCHI) minus RE_HEALTH composite | -100 to +100, ±15 threshold | M25 JEDI Score, M08 Strategy, M14 Risk, M20 Exit |
+| F69 | Sector Rotation Signal | Industry-level CHS trends across target markets | Sector heatmap + rotation direction | M06 Demand, Dashboard |
+| F70 | Earnings Surprise Impact | Post-earnings stock move × local employment share | Basis point impact on submarket demand | M06 Demand, Alert System |
+| F71 | Facility Expansion/Contraction Tracker | 10-K facility disclosures, lease commitments, CapEx guidance | Net SF change per submarket | M04 Supply (demand-side), M06 Demand |
+| F72 | Corporate Risk Exposure Score | F66 concentration × F65 lowest-CHS employers | 0–100 risk overlay | M14 Risk (new sub-component) |
+
+---
+
+## 4. DATA SOURCES & ACQUISITION
+
+### 4.1 Free / Low-Cost Sources
+
+| Source | Data | Cost | Update Freq | Coverage |
+|--------|------|------|-------------|----------|
+| **SEC EDGAR** (XBRL) | Revenue, EPS, headcount, facility disclosures, CapEx | Free | Quarterly | All public companies |
+| **Yahoo Finance API** (via `yahoo-finance2` npm) | Stock prices, market cap, basic financials | Free | Daily | All US-listed |
+| **BLS QCEW** (Quarterly Census of Employment & Wages) | Employment by NAICS × county | Free | Quarterly (6-month lag) | All US counties |
+| **Census CBP** (County Business Patterns) | Establishment counts by NAICS × ZIP | Free | Annual | All US ZIPs |
+| **SEC Earnings Transcripts** | Full text of earnings calls | Free (via SEC website) | Quarterly | All public companies |
+| **LinkedIn Company Pages** (proxy headcount) | Employee count badges | Free (manual or scraping) | Real-time | Public company pages |
+| **Florida DEO** (Dept of Economic Opportunity) | Employer-level WARN Act filings + major hires | Free | As filed | Florida only |
+| **Georgia DOL** | WARN Act + major employer announcements | Free | As filed | Georgia only |
+| **Texas Workforce Commission** | WARN Act + major employer data | Free | As filed | Texas only |
+
+### 4.2 Premium Sources (Phase 2)
+
+| Source | Data | Cost | Justification |
+|--------|------|------|---------------|
+| **Financial Modeling Prep API** | Bulk financials + transcripts | $29/mo (Starter) | Structured API vs. scraping EDGAR |
+| **Polygon.io** | Real-time stock data | $29/mo (Starter) | More reliable than Yahoo Finance |
+| **Revelio Labs** or **Lightcast** | Employer-level headcount by ZIP | $$$$ (enterprise) | Ground truth for employer mapping |
+
+### 4.3 Data Assembly Pipeline
+
+```
+           ┌──────────────┐
+           │  SEC EDGAR    │──→ Revenue, EPS, headcount, facilities
+           │  (quarterly)  │
+           └──────┬───────┘
+                  │
+           ┌──────┴───────┐
+           │ Yahoo Finance │──→ Stock prices, momentum
+           │  (daily)      │
+           └──────┬───────┘
+                  │
+           ┌──────┴───────┐
+           │  BLS QCEW    │──→ Employment concentration by county
+           │  (quarterly) │
+           └──────┬───────┘
+                  │
+    ┌─────────────┼─────────────┐
+    ▼             ▼             ▼
+┌────────┐  ┌────────┐  ┌────────┐
+│ F65    │  │ F66    │  │ F71    │
+│ CHS    │  │ Conc.  │  │ Facil. │
+│ Score  │  │ Index  │  │ Track  │
+└───┬────┘  └───┬────┘  └───┬────┘
+    │           │           │
+    └─────┬─────┘           │
+          ▼                 │
+    ┌──────────┐            │
+    │ F67 SCHI │◄───────────┘
+    │ (subkt)  │
+    └────┬─────┘
+         │          ┌──────────┐
+         ├─────────►│ F68      │
+         │          │ Diverge  │──→ M25 JEDI Score (Demand signal boost)
+         │          └──────────┘    M08 Strategy (demand confidence)
+         │                          M14 Risk (concentration risk)
+         │                          M20 Exit (sell signal)
+         │
+         ├─────────►│ F69 Sector Rotation │──→ Dashboard heatmap
+         │
+         └─────────►│ F72 Corp Risk Exposure │──→ M14 Risk sub-component
+```
+
+---
+
+## 5. DATABASE SCHEMA
+
+```sql
+-- ═══════════════════════════════════════════════════════
+-- M33: Corporate Health Intelligence Tables
+-- ═══════════════════════════════════════════════════════
+
+-- Master employer registry per submarket
+CREATE TABLE submarket_employers (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  submarket_id          UUID NOT NULL REFERENCES submarkets(id),
+  company_name          TEXT NOT NULL,
+  ticker                TEXT,                          -- NULL for private companies
+  is_public             BOOLEAN NOT NULL DEFAULT false,
+  naics_code            TEXT,
+  facility_type         TEXT CHECK (facility_type IN (
+    'corporate_hq', 'regional_office', 'distribution_center',
+    'manufacturing', 'retail', 'healthcare', 'technology', 'other'
+  )),
+  estimated_local_employees  INTEGER,
+  employment_share           DECIMAL(5,4),             -- 0.0000–1.0000
+  data_source                TEXT,                     -- 'qcew', 'manual', 'sec_10k', 'linkedin'
+  confidence                 DECIMAL(3,2),             -- 0.00–1.00
+  last_verified_at           TIMESTAMPTZ,
+  created_at                 TIMESTAMPTZ DEFAULT NOW(),
+  updated_at                 TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(submarket_id, company_name, facility_type)
+);
+
+-- Corporate financial snapshots (quarterly)
+CREATE TABLE corporate_financials (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker                TEXT NOT NULL,
+  fiscal_quarter        TEXT NOT NULL,                 -- '2026-Q1'
+  fiscal_year           INTEGER NOT NULL,
+  revenue_ttm           BIGINT,                        -- cents
+  revenue_yoy_pct       DECIMAL(8,4),
+  eps_actual            DECIMAL(10,4),
+  eps_estimate          DECIMAL(10,4),
+  eps_surprise_pct      DECIMAL(8,4),
+  net_income_ttm        BIGINT,
+  operating_margin      DECIMAL(8,4),
+  total_employees       INTEGER,
+  employee_yoy_pct      DECIMAL(8,4),
+  capex_ttm             BIGINT,
+  free_cash_flow_ttm    BIGINT,
+  guidance_sentiment    DECIMAL(5,2),                  -- -100 to +100 from NLP
+  guidance_raw_text     TEXT,                           -- Key quotes from earnings call
+  data_source           TEXT DEFAULT 'sec_edgar',
+  filed_at              TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(ticker, fiscal_quarter)
+);
+
+-- Daily stock price cache
+CREATE TABLE corporate_stock_prices (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker                TEXT NOT NULL,
+  price_date            DATE NOT NULL,
+  close_price           DECIMAL(12,4),
+  volume                BIGINT,
+  market_cap            BIGINT,
+  price_90d_ago         DECIMAL(12,4),                 -- cached for momentum calc
+  price_180d_ago        DECIMAL(12,4),
+  stock_momentum_score  DECIMAL(5,2),                  -- pre-computed 0–100
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(ticker, price_date)
+);
+
+-- Computed: Corporate Health Score per company per quarter
+CREATE TABLE corporate_health_scores (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker                TEXT NOT NULL,
+  quarter               TEXT NOT NULL,                 -- '2026-Q1'
+  revenue_momentum      DECIMAL(5,2),                  -- 0–100
+  earnings_trajectory   DECIMAL(5,2),
+  headcount_signal      DECIMAL(5,2),
+  guidance_sentiment    DECIMAL(5,2),
+  stock_momentum        DECIMAL(5,2),
+  composite_chs         DECIMAL(5,2),                  -- Weighted composite
+  chs_delta_qoq         DECIMAL(6,2),                  -- Change from prior quarter
+  health_tier           TEXT CHECK (health_tier IN ('healthy', 'watch', 'stress')),
+  computed_at           TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(ticker, quarter)
+);
+
+-- Computed: Submarket Corporate Health Index
+CREATE TABLE submarket_corporate_health (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  submarket_id          UUID NOT NULL REFERENCES submarkets(id),
+  quarter               TEXT NOT NULL,
+  schi_score            DECIMAL(5,2),                  -- 0–100
+  schi_delta_qoq        DECIMAL(6,2),
+  re_health_score       DECIMAL(5,2),                  -- RE metrics composite
+  divergence_score      DECIMAL(6,2),                  -- SCHI - RE_HEALTH
+  divergence_signal     TEXT CHECK (divergence_signal IN (
+    'bullish_divergence', 'bearish_divergence', 'aligned'
+  )),
+  herfindahl_index      DECIMAL(6,4),
+  top_5_share           DECIMAL(5,4),
+  public_coverage       DECIMAL(5,4),
+  employer_count        INTEGER,
+  public_employer_count INTEGER,
+  sector_breakdown      JSONB,                         -- {naics: share} map
+  computed_at           TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(submarket_id, quarter)
+);
+
+-- Facility expansion/contraction events
+CREATE TABLE corporate_facility_events (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ticker                TEXT,
+  company_name          TEXT NOT NULL,
+  event_type            TEXT CHECK (event_type IN (
+    'expansion', 'contraction', 'relocation_in', 'relocation_out',
+    'new_lease', 'lease_expiry', 'layoff', 'hiring_announcement'
+  )),
+  submarket_id          UUID REFERENCES submarkets(id),
+  estimated_job_impact  INTEGER,                       -- positive = jobs added
+  estimated_sf_impact   INTEGER,                       -- positive = SF added
+  announced_at          DATE,
+  effective_at          DATE,
+  source_url            TEXT,
+  source_type           TEXT,                          -- 'warn_act', '10k', 'news', 'press_release'
+  confidence            DECIMAL(3,2),
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_employers_submarket ON submarket_employers(submarket_id);
+CREATE INDEX idx_employers_ticker ON submarket_employers(ticker);
+CREATE INDEX idx_financials_ticker ON corporate_financials(ticker, fiscal_quarter);
+CREATE INDEX idx_stock_ticker_date ON corporate_stock_prices(ticker, price_date);
+CREATE INDEX idx_chs_ticker ON corporate_health_scores(ticker, quarter);
+CREATE INDEX idx_sch_submarket ON submarket_corporate_health(submarket_id, quarter);
+CREATE INDEX idx_facility_events_submarket ON corporate_facility_events(submarket_id);
+CREATE INDEX idx_facility_events_ticker ON corporate_facility_events(ticker);
+```
+
+---
+
+## 6. SERVICE ARCHITECTURE
+
+### 6.1 Service Files
+
+| Service File | Lines (Est.) | Purpose |
+|-------------|-------------|---------|
+| `corporate-data-ingestion.service.ts` | ~400 | SEC EDGAR + Yahoo Finance data pull, parsing, normalization |
+| `corporate-health-score.service.ts` | ~350 | F65 CHS computation per company per quarter |
+| `employer-concentration.service.ts` | ~300 | F66 QCEW/Census employer mapping + Herfindahl computation |
+| `submarket-corporate-health.service.ts` | ~250 | F67 SCHI rollup from CHS × employment shares |
+| `corporate-re-divergence.service.ts` | ~200 | F68 Divergence = SCHI - RE_HEALTH |
+| `earnings-transcript-nlp.service.ts` | ~300 | Guidance sentiment extraction (Claude as NLP engine) |
+| `facility-event-tracker.service.ts` | ~250 | F71 WARN Act + 10-K facility disclosures + news events |
+| `corporate-risk-exposure.service.ts` | ~150 | F72 Concentration × stress scoring for M14 integration |
+| `sector-rotation.service.ts` | ~200 | F69 Cross-market industry trend heatmap |
+
+### 6.2 Key Service Pattern: `corporate-health-score.service.ts`
+
+```typescript
+import { db } from '../../db';
+import { corporateFinancials, corporateStockPrices, corporateHealthScores } from '../../db/schema';
+
+interface CorporateHealthInput {
+  ticker: string;
+  quarter: string;
+}
+
+interface CorporateHealthResult {
+  ticker: string;
+  quarter: string;
+  components: {
+    revenueMomentum: number;
+    earningsTrajectory: number;
+    headcountSignal: number;
+    guidanceSentiment: number;
+    stockMomentum: number;
+  };
+  compositeCHS: number;
+  healthTier: 'healthy' | 'watch' | 'stress';
+  deltaQoQ: number;
+}
+
+const WEIGHTS = {
+  revenueMomentum: 0.25,
+  earningsTrajectory: 0.20,
+  headcountSignal: 0.25,
+  guidanceSentiment: 0.15,
+  stockMomentum: 0.15,
+};
+
+export async function computeCorporateHealthScore(
+  input: CorporateHealthInput
+): Promise<CorporateHealthResult> {
+  // 1. Pull financial data for this quarter + prior 4 quarters
+  const financials = await db.select()
+    .from(corporateFinancials)
+    .where(eq(corporateFinancials.ticker, input.ticker))
+    .orderBy(desc(corporateFinancials.fiscal_quarter))
+    .limit(5);
+
+  // 2. Pull stock momentum from latest price record
+  const latestPrice = await db.select()
+    .from(corporateStockPrices)
+    .where(eq(corporateStockPrices.ticker, input.ticker))
+    .orderBy(desc(corporateStockPrices.price_date))
+    .limit(1);
+
+  // 3. Compute each component (0–100 normalized)
+  const revenueMomentum = normalizeRevenueMomentum(financials);
+  const earningsTrajectory = normalizeEarningsTrajectory(financials);
+  const headcountSignal = normalizeHeadcountSignal(financials);
+  const guidanceSentiment = financials[0]?.guidance_sentiment
+    ? normalizeGuidance(financials[0].guidance_sentiment)
+    : 50; // neutral if no transcript
+  const stockMomentum = latestPrice[0]?.stock_momentum_score ?? 50;
+
+  // 4. Weighted composite
+  const compositeCHS =
+    revenueMomentum * WEIGHTS.revenueMomentum +
+    earningsTrajectory * WEIGHTS.earningsTrajectory +
+    headcountSignal * WEIGHTS.headcountSignal +
+    guidanceSentiment * WEIGHTS.guidanceSentiment +
+    stockMomentum * WEIGHTS.stockMomentum;
+
+  // 5. Tier classification
+  const healthTier = compositeCHS >= 70 ? 'healthy'
+    : compositeCHS >= 40 ? 'watch'
+    : 'stress';
+
+  // 6. QoQ delta
+  const priorCHS = await getPriorQuarterCHS(input.ticker, input.quarter);
+  const deltaQoQ = priorCHS ? compositeCHS - priorCHS : 0;
+
+  // 7. Persist
+  await db.insert(corporateHealthScores).values({
+    ticker: input.ticker,
+    quarter: input.quarter,
+    revenue_momentum: revenueMomentum,
+    earnings_trajectory: earningsTrajectory,
+    headcount_signal: headcountSignal,
+    guidance_sentiment: guidanceSentiment,
+    stock_momentum: stockMomentum,
+    composite_chs: compositeCHS,
+    chs_delta_qoq: deltaQoQ,
+    health_tier: healthTier,
+  }).onConflictDoUpdate({
+    target: [corporateHealthScores.ticker, corporateHealthScores.quarter],
+    set: { composite_chs: compositeCHS, health_tier: healthTier, computed_at: new Date() },
+  });
+
+  return {
+    ticker: input.ticker,
+    quarter: input.quarter,
+    components: { revenueMomentum, earningsTrajectory, headcountSignal, guidanceSentiment, stockMomentum },
+    compositeCHS,
+    healthTier,
+    deltaQoQ,
+  };
+}
+```
+
+### 6.3 Earnings Transcript NLP (Claude as Compute Engine)
+
+Following the established JEDI RE pattern, Claude processes earnings call transcripts to extract guidance sentiment:
+
+```typescript
+// earnings-transcript-nlp.service.ts
+import Anthropic from '@anthropic-ai/sdk';
+
+const GUIDANCE_PROMPT = `You are analyzing an earnings call transcript for real estate demand signals.
+Extract ONLY information relevant to:
+1. Headcount plans (hiring, layoffs, freeze)
+2. Facility/office plans (expansion, consolidation, relocation)
+3. Geographic market commentary (growth markets, exit markets)
+4. Forward guidance tone (confident expansion vs cautious contraction)
+
+Respond ONLY in JSON:
+{
+  "sentiment_score": <number -100 to +100>,
+  "headcount_direction": "expanding" | "stable" | "contracting",
+  "facility_plans": [{ "type": "expansion|contraction|relocation", "location_hint": string, "magnitude": string }],
+  "key_quotes": [<max 3 relevant quotes, under 15 words each>],
+  "confidence": <0.0 to 1.0>
+}`;
+
+export async function analyzeEarningsTranscript(
+  transcript: string,
+  ticker: string
+): Promise<GuidanceSentimentResult> {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1000,
+    system: GUIDANCE_PROMPT,
+    messages: [{ role: 'user', content: `Ticker: ${ticker}\n\nTranscript excerpt:\n${transcript.slice(0, 8000)}` }],
+  });
+
+  const parsed = JSON.parse(response.content[0].text);
+  return parsed;
+}
+```
+
+---
+
+## 7. API ENDPOINTS
+
+### 7.1 Route File: `corporate-health.routes.ts`
+
+| Method | Endpoint | Purpose | Response Shape |
+|--------|----------|---------|---------------|
+| `GET` | `/api/v1/corporate-health/submarket/:submarketId` | SCHI + divergence for a submarket | `{ schi, divergence, employers[], trend[] }` |
+| `GET` | `/api/v1/corporate-health/company/:ticker` | CHS detail for one company | `{ chs, components, history[], facilities[] }` |
+| `GET` | `/api/v1/corporate-health/deal/:dealId` | Corporate health overlay for a deal's trade area | `{ submarkets[], weightedSCHI, divergence, topEmployers[] }` |
+| `GET` | `/api/v1/corporate-health/sector-rotation` | Cross-market sector heatmap | `{ sectors[], markets[], heatmap[][] }` |
+| `GET` | `/api/v1/corporate-health/alerts` | Active divergence alerts | `{ alerts[{ submarket, signal, magnitude }] }` |
+| `POST` | `/api/v1/corporate-health/refresh/:ticker` | Force refresh financials for a company | `{ updated: true, chs }` |
+| `GET` | `/api/v1/corporate-health/concentration/:submarketId` | Employer concentration detail | `{ herfindahl, employers[], sectorBreakdown }` |
+
+### 7.2 Frontend API Client Addition
+
+```typescript
+// Addition to api.client.ts
+corporateHealth: {
+  getSubmarket: (submarketId: string) =>
+    apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`),
+  getCompany: (ticker: string) =>
+    apiClient.get(`/api/v1/corporate-health/company/${ticker}`),
+  getDealOverlay: (dealId: string) =>
+    apiClient.get(`/api/v1/corporate-health/deal/${dealId}`),
+  getSectorRotation: () =>
+    apiClient.get('/api/v1/corporate-health/sector-rotation'),
+  getAlerts: () =>
+    apiClient.get('/api/v1/corporate-health/alerts'),
+  getConcentration: (submarketId: string) =>
+    apiClient.get(`/api/v1/corporate-health/concentration/${submarketId}`),
+},
+```
+
+---
+
+## 8. CROSS-MODULE INTEGRATION MAP
+
+M33 is a **feeder module** — it produces intelligence consumed by many other modules but doesn't depend on their output (except M05 for RE_HEALTH baseline).
+
+### 8.1 M33 → Other Modules
+
+| Target Module | What M33 Feeds | How It's Used | Formula |
+|---------------|---------------|---------------|---------|
+| **M25 JEDI Score** | F68 Divergence Score | Modifies Demand signal weight: bullish divergence → boost Demand by up to +8pts, bearish → penalize by up to -8pts | `demand_adjusted = demand_base + (divergence / 15 × 8)` capped at ±8 |
+| **M06 Demand Intelligence** | F67 SCHI + F71 Facility Events | Corporate health becomes a demand driver alongside population, jobs, infrastructure. Facility events generate demand event entries. | Facility expansion = new demand event with `impact = estimated_jobs × avg_salary / market_avg_rent` |
+| **M08 Strategy Arbitrage** | F68 Divergence + F66 Concentration | Bullish divergence boosts BTS/Rental confidence. High concentration + stress = penalize long-hold strategies. | BTS demand_confidence = `base × (1 + divergence/100)` |
+| **M14 Risk Assessment** | F72 Corporate Risk Exposure | New 7th risk sub-component: "Corporate Concentration Risk." High Herfindahl + any employer in 'stress' tier = elevated risk. | `corp_risk = herfindahl_normalized × (1 - min_chs/100) × 100` |
+| **M20 Exit Strategy** | F68 Bearish Divergence | Bearish divergence in owned asset's submarket triggers exit timing alert. Corporate health declining = sell signal. | RSS gets new sub-component: `corporate_health_momentum × 0.10` (reduces other weights proportionally) |
+| **M28 Macro Cycle** | F69 Sector Rotation | Sector-level corporate health trends feed the meso layer between macro indicators and deal-level metrics. | Sector rotation velocity = leading cycle indicator |
+| **Dashboard (F1)** | Top divergence alerts | "Bullish divergence detected in Westchase (Tampa): SCHI 74 vs RE Health 58" pushed to alert feed | Alert priority = abs(divergence) × employment_share_of_portfolio |
+| **S6 Opportunity Alerts** | F68 + F70 Earnings Surprise | Major earnings miss by top submarket employer → immediate opportunity alert | Trigger: CHS drops >15pts in one quarter AND employer share >5% |
+
+### 8.2 Other Modules → M33
+
+| Source Module | What M33 Consumes | Purpose |
+|--------------|-------------------|---------|
+| **M05 Market Intelligence** | Vacancy, rent growth, absorption, cap rate trends | RE_HEALTH composite for divergence calculation |
+| **M04 Supply Pipeline** | Months of supply | Contextualizes corporate expansion signals (expansion into oversupplied submarket = less impactful) |
+| **Zustand dealStore** | Current deal's submarket_id, trade_area_geometry | Determines which employers to surface for deal-level overlay |
+
+### 8.3 Kafka Events
+
+```typescript
+// New event types for corporate-health-consumer.ts
+interface CorporateHealthEvent extends BaseEvent {
+  eventType: 'corporate.chs_updated' | 'corporate.divergence_alert'
+    | 'corporate.facility_event' | 'corporate.earnings_surprise';
+  payload: {
+    ticker?: string;
+    submarketId: string;
+    signal: 'bullish_divergence' | 'bearish_divergence' | 'facility_expansion'
+      | 'facility_contraction' | 'earnings_beat' | 'earnings_miss';
+    magnitude: number;
+    affectedDealIds?: string[];
+  };
+}
+```
+
+---
+
+## 9. BLOOMBERG TERMINAL UI INTEGRATION
+
+### 9.1 F-Key Placement
+
+M33 lives in **two locations**:
+
+**Portfolio Context → F4 (Markets) → "Corporate Health" tab**
+- Submarket SCHI heatmap (Mapbox layer colored by SCHI)
+- Divergence scanner table (all submarkets sorted by absolute divergence)
+- Sector rotation matrix
+- Top employer health dashboard
+
+**Deal Context → Embedded in F3 (Market) and F8 (Risk)**
+- F3 Market tab gets a "Corporate Health" sub-section showing:
+  - Top 10 employers in deal's trade area
+  - SCHI score + trend sparkline
+  - Divergence signal badge (bullish/bearish/aligned)
+- F8 Risk tab gets new "Corporate Concentration Risk" card:
+  - Herfindahl index gauge
+  - Employer stress alerts (any CHS < 40)
+  - Single-employer dependency warnings
+
+### 9.2 UI Components
+
+**Corporate Health Dashboard (Portfolio Context)**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ F4 MARKETS > CORPORATE HEALTH                          ⌘K Search  │
+├──────────────────────────────┬──────────────────────────────────────┤
+│                              │  DIVERGENCE SCANNER                 │
+│  SUBMARKET SCHI HEATMAP      │  ┌────────┬──────┬───────┬────────┐ │
+│  (Mapbox choropleth)         │  │Subkt   │ SCHI │RE Hlth│Diverg. │ │
+│                              │  ├────────┼──────┼───────┼────────┤ │
+│  [Tampa — 6 submarkets]      │  │Wstchse │  74  │  58   │ +16 ▲ │ │
+│  [Orlando — 5 submarkets]    │  │Brandon │  71  │  64   │  +7   │ │
+│  [Miami — 8 submarkets]      │  │Doral   │  42  │  68   │ -26 ▼ │ │
+│  [Atlanta — 7 submarkets]    │  │Buckhead│  65  │  62   │  +3   │ │
+│  [Dallas — 6 submarkets]     │  │Frisco  │  78  │  59   │ +19 ▲ │ │
+│                              │  └────────┴──────┴───────┴────────┘ │
+│  Legend:                     │                                      │
+│  ● 70+ Healthy (green)      │  SECTOR ROTATION (90-day)           │
+│  ● 50-69 Watch (amber)      │  Tech:    ████████░░ 72 → 68  ▼    │
+│  ● <50 Stress (red)         │  Health:  ██████████ 81 → 84  ▲    │
+│                              │  Finance: ███████░░░ 65 → 63  ▼    │
+│                              │  Logistics:████████░ 74 → 77  ▲    │
+├──────────────────────────────┴──────────────────────────────────────┤
+│  TOP EMPLOYER HEALTH    (sorted by submarket employment share)      │
+│  ┌────────┬────┬──────┬────────┬──────────┬──────────┬───────────┐ │
+│  │Company │Tick│ CHS  │ Trend  │Local Emp │Submarket │ Signal    │ │
+│  ├────────┼────┼──────┼────────┼──────────┼──────────┼───────────┤ │
+│  │Chewy   │CHWY│  58  │ ▼ -12  │ 800      │Plantation│ ⚠ WATCH  │ │
+│  │TECO    │TE  │  72  │ ▲ +4   │ 3,200    │Downtown  │ ✓ HEALTHY│ │
+│  │Jabil   │JBL │  81  │ ▲ +8   │ 1,400    │St Pete   │ ✓ HEALTHY│ │
+│  └────────┴────┴──────┴────────┴──────────┴──────────┴───────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Deal-Level Overlay (Deal Context → F3 Market)**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ CORPORATE HEALTH — Trade Area Overlay                   │
+│                                                         │
+│ SCHI: 71 ████████░░  (▲ +6 QoQ)   Divergence: +13     │
+│                                     Signal: WATCH ◐     │
+│                                                         │
+│ Top 5 Employers in Trade Area:                          │
+│ ┌──────────┬────┬─────┬───────┬───────────────────────┐ │
+│ │ Company  │CHS │Share│Trend  │ Facility Signal       │ │
+│ ├──────────┼────┼─────┼───────┼───────────────────────┤ │
+│ │ AdventHth│ 78 │8.2% │▲ +5  │ Expanding: +200 jobs  │ │
+│ │ Lockheed │ 74 │6.1% │▲ +3  │ Stable                │ │
+│ │ Publix   │ 82 │5.4% │─  0  │ New store 0.8mi       │ │
+│ │ Tech Co  │ 38 │4.8% │▼ -18 │ ⚠ WARN filed: -150   │ │
+│ │ Bank     │ 65 │3.9% │▼ -4  │ Stable                │ │
+│ └──────────┴────┴─────┴───────┴───────────────────────┘ │
+│                                                         │
+│ ⚠ Corporate Risk: Tech Co CHS dropped 18pts.           │
+│   At 4.8% employment share, impact is MODERATE.         │
+│   Offset: AdventHealth expanding +200 jobs (8.2% share) │
+│   Net corporate demand trajectory: POSITIVE              │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. IMPLEMENTATION PLAN
+
+### Phase 1: Foundation (Week 1–2)
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Write migration file for all 6 tables | S | `migration-100-corporate-health.sql` |
+| Build `employer-concentration.service.ts` | M | BLS QCEW data pull + Herfindahl computation |
+| Build `corporate-data-ingestion.service.ts` | M | Yahoo Finance API integration for stock prices + basic financials |
+| Seed employer data for Tampa, Orlando, Miami submarkets | L | Manual + QCEW bulk load |
+| Mount `corporate-health.routes.ts` in `index.ts` | S | 7 endpoints |
+
+### Phase 2: Scoring Engine (Week 3–4)
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Build `corporate-health-score.service.ts` | M | F65 CHS computation |
+| Build `submarket-corporate-health.service.ts` | M | F67 SCHI rollup |
+| Build `corporate-re-divergence.service.ts` | M | F68 Divergence scoring |
+| Build `corporate-risk-exposure.service.ts` | S | F72 Risk overlay |
+| Add typed methods to `api.client.ts` | S | Frontend can call endpoints |
+| Wire SCHI → M25 JEDI Score (Demand signal modifier) | M | Divergence adjusts Demand sub-score |
+
+### Phase 3: NLP + Events (Week 5–6)
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Build `earnings-transcript-nlp.service.ts` | M | Claude-powered guidance sentiment extraction |
+| Build `facility-event-tracker.service.ts` | M | WARN Act + 10-K facility parsing |
+| Build `sector-rotation.service.ts` | M | F69 cross-market sector heatmap |
+| Wire facility events → M06 Demand Intelligence | S | Expansion/contraction as demand events |
+| Kafka consumer for corporate health events | M | Real-time alert propagation |
+
+### Phase 4: UI (Week 7–8)
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Corporate Health tab in F4 Markets (Portfolio Context) | L | SCHI heatmap + divergence scanner + sector rotation |
+| Corporate Health sub-section in F3 Market (Deal Context) | M | Employer table + SCHI badge + divergence signal |
+| Corporate Risk card in F8 Risk (Deal Context) | S | Herfindahl gauge + stress alerts |
+| Divergence alerts in Dashboard F1 alert feed | S | Push alerts on ±15 divergence |
+
+### Phase 5: Expansion (Week 9+)
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Add Atlanta + Dallas employer data | L | Full market coverage |
+| SEC EDGAR XBRL parser for headcount + facilities | L | Automated quarterly ingestion |
+| Wire to M20 Exit Strategy (RSS corporate component) | M | Bearish divergence → sell signal |
+| Wire to M08 Strategy Arbitrage (demand confidence) | M | CHS modifies strategy confidence |
+| Historical backtest: divergence → RE outcome correlation | L | Validate the thesis with data |
+
+---
+
+## 11. MARKET-SPECIFIC EMPLOYER SEEDS
+
+### Tampa MSA (Initial Target)
+
+| Submarket | Top Employers (Public) | Key Private | Concentration Risk |
+|-----------|----------------------|-------------|-------------------|
+| Westshore/Westchase | Raymond James (RJF), TECO Energy (TE), Sykes (SYKE) | BayCare, Amalie | Moderate — financial sector heavy |
+| Brandon/Riverview | Amazon (AMZN) distribution, Publix (private) | HCA Healthcare | Moderate — logistics dependent |
+| St. Petersburg | Jabil (JBL), Raymond James (RJF) | Johns Hopkins All Children's | Low — diversified |
+| Downtown Tampa | TECO (TE), Mosaic (MOS) | USF, Tampa General | Low — anchor institutions |
+| Temple Terrace/USF | Moffitt (non-profit), USAA | Busch Gardens (SeaWorld - SEAS) | Moderate |
+
+### Orlando MSA
+
+| Submarket | Top Employers (Public) | Key Private | Concentration Risk |
+|-----------|----------------------|-------------|-------------------|
+| Lake Nona | AECOM (ACM), Northrop Grumman (NOC) | VA Medical, Tavistock | High — medical city concentration |
+| International Dr | Disney (DIS), Universal/Comcast (CMCSA), SeaWorld (SEAS) | Marriott, Hilton | Very High — tourism mono-economy |
+| Downtown Orlando | Deloitte, KPMG (Big 4 — private) | Orlando Health | Moderate |
+
+### Miami MSA
+
+| Submarket | Top Employers (Public) | Key Private | Concentration Risk |
+|-----------|----------------------|-------------|-------------------|
+| Doral | Carnival (CCL), World Fuel Services (INT) | Baptist Health | Moderate — cruise/logistics |
+| Brickell | Citadel Securities (private), numerous hedge funds | Watsco (WSO) | High — finance concentration |
+| Plantation/Sunrise | Chewy (CHWY), DHL (Deutsche Post - DPSGY), Magic Leap | Spirit Airlines (SAVE — bankrupt) | Watch — recent disruptions |
+
+---
+
+## 12. VALIDATION & BACKTESTING FRAMEWORK
+
+Before trusting M33 signals for live deals, backtest the divergence thesis:
+
+```
+BACKTEST DESIGN:
+1. For each submarket in Tampa/Orlando/Miami (2019–2025):
+   a. Compute historical SCHI from archived financials
+   b. Compute historical RE_HEALTH from CoStar/RentCast archived data
+   c. Compute DIVERGENCE at each quarter
+   d. Measure: Did bullish divergence predict rent growth 2–4 quarters later?
+   e. Measure: Did bearish divergence predict vacancy increase 2–4 quarters later?
+
+2. Key test cases:
+   - Spirit Airlines bankruptcy (SAVE) → Plantation/Sunrise submarket impact
+   - Amazon HQ2 effect on Arlington (control: other metros without HQ2)
+   - COVID-era tech layoffs → impact on Brickell/Wynwood
+   - Disney hiring waves → impact on I-Drive/Kissimmee
+
+3. Success criteria:
+   - Divergence signal leads RE metric changes by ≥2 quarters in >60% of cases
+   - False positive rate <30% (divergence signals that didn't materialize)
+   - Magnitude correlation: larger divergence → larger eventual RE impact
+```
+
+---
+
+## 13. COST MODEL
+
+### Data Acquisition (Monthly)
+
+| Source | Cost | Notes |
+|--------|------|-------|
+| SEC EDGAR | $0 | Free API, rate limited |
+| Yahoo Finance (`yahoo-finance2`) | $0 | npm package, unofficial API |
+| BLS QCEW | $0 | Bulk download quarterly |
+| WARN Act (FL/GA/TX DOL) | $0 | Public records |
+| Claude API (transcript NLP) | ~$15/mo | ~100 transcripts/quarter × $0.15 avg per call |
+
+**Total Phase 1 cost: ~$15/month**
+
+### Phase 2 Upgrades
+
+| Source | Cost | Trigger |
+|--------|------|---------|
+| Financial Modeling Prep | $29/mo | When Yahoo Finance rate limits become painful |
+| Polygon.io | $29/mo | When real-time stock alerts needed |
+| Lightcast / Revelio | Negotiated | When ground-truth employer data needed at scale |
+
+---
+
+## 14. COMPETITIVE MOAT
+
+Nobody does this systematically for CRE. Here's why:
+
+1. **Institutional investors** track their own portfolio company exposure but don't share it and don't map it spatially to submarkets.
+2. **CBRE/JLL research** publishes annual employer reports per metro but not submarket-level, not quarterly, and not scored.
+3. **CoStar** has employer data in their analytics but doesn't connect it to stock performance or earnings sentiment.
+4. **Bloomberg Terminal** (the real one) tracks corporate data for equity analysts — but equity analysts don't think about which submarket Chewy's jobs sit in.
+
+**JEDI RE's advantage:** We bridge equity market intelligence → spatial submarket mapping → RE deal scoring. The data is all free/cheap. The moat is the synthesis layer and the fact that nobody else is doing the wiring.
+
+---
+
+## 15. ZUSTAND STORE INTEGRATION
+
+```typescript
+// Addition to dealStore.ts or new corporateHealthStore.ts
+interface CorporateHealthSlice {
+  submarketSCHI: number | null;
+  divergenceScore: number | null;
+  divergenceSignal: 'bullish_divergence' | 'bearish_divergence' | 'aligned' | null;
+  topEmployers: CorporateEmployerSummary[];
+  corporateRiskExposure: number | null;
+  sectorBreakdown: Record<string, number>;
+  loading: boolean;
+  error: string | null;
+
+  fetchCorporateHealth: (dealId: string) => Promise<void>;
+  fetchSubmarketHealth: (submarketId: string) => Promise<void>;
+}
+
+// Convenience hook for deal-level components
+export const useCorporateHealth = () =>
+  useDealStore((s) => ({
+    schi: s.submarketSCHI,
+    divergence: s.divergenceScore,
+    signal: s.divergenceSignal,
+    employers: s.topEmployers,
+    riskExposure: s.corporateRiskExposure,
+    loading: s.loading,
+  }));
+```
+
+---
+
+## 16. ALERT DEFINITIONS
+
+| Alert | Trigger | Priority | Channel |
+|-------|---------|----------|---------|
+| Bullish Divergence Detected | DIVERGENCE > +15 for user's tracked submarkets | High | Dashboard + Push |
+| Bearish Divergence Detected | DIVERGENCE < -15 for user's portfolio submarkets | Critical | Dashboard + Push + Email |
+| Major Employer Stress | Any employer with >5% submarket share drops to CHS < 40 | High | Dashboard + Push |
+| Earnings Surprise Impact | Top-5 employer misses estimates by >10% | Medium | Dashboard |
+| Facility Event | WARN filing or expansion announcement in tracked submarket | Medium | Dashboard |
+| Concentration Warning | Herfindahl > 0.15 for deal's submarket | Low (one-time) | Deal Context only |
+| Sector Rotation Signal | Any sector CHS changes >10pts across 2+ target markets | Medium | Dashboard |
+
+---
+
+*Module M33 Corporate Health Intelligence — Version 1.0*
+*Formula range: F65–F72*
+*Tables: 6 new (submarket_employers, corporate_financials, corporate_stock_prices, corporate_health_scores, submarket_corporate_health, corporate_facility_events)*
+*Endpoints: 7 new under /api/v1/corporate-health/*
+*Services: 9 new TypeScript service files*
+*Estimated total implementation: 8 weeks (phased)*
