@@ -66,6 +66,7 @@ import {
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
 import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
+import TerminalPage from './pages/TerminalPage';
 
 
 function AppContent() {
@@ -81,15 +82,18 @@ function AppContent() {
         <Route path="/showcase/deal/:dealId" element={<DealShowcasePage />} />
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
+
+        {/* Terminal — full-page, no MainLayout */}
+        <Route path="/terminal" element={<TerminalPage />} />
         
         <Route element={<MainLayout />}>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/terminal" replace />} />
           <Route path="/map" element={
             <Suspense fallback={<PageLoadingFallback />}>
               <MapPage />
             </Suspense>
           } />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Navigate to="/terminal" replace />} />
           <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
           <Route path="/dashboard/email" element={<EmailPage />} />
           <Route path="/dashboard/email/sent" element={<EmailPage />} />
@@ -190,7 +194,7 @@ function AppContent() {
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />
           
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/terminal" replace />} />
         </Route>
       </Routes>
       
