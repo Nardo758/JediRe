@@ -760,10 +760,10 @@ export function TerminalPrototype() {
   // ─── VIEW DASHBOARD ──────────────────────────────────────────
   const CATEGORIES = ["DEALS","INTEL","MARKET","OPS","MEDIA"];
   const ViewDashboard = () => (
-    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative",animation:"fadeIn 0.15s"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
       {/* ── Widget menu overlay ── */}
       {dashMenuOpen && (
-        <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:20,display:"flex",flexDirection:"column",animation:"fadeIn 0.15s"}}>
+        <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:20,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
             <div>
               <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
