@@ -223,13 +223,16 @@ router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Resp
     const userId = (req as any).user?.userId;
     const { unread_only = 'false', limit = 50, offset = 0 } = req.query;
 
-    const alerts = await dealAlertService.getUserAlerts(userId, {
-      unreadOnly: unread_only === 'true',
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string),
-    });
+    const [dbAlerts, corpDivAlerts] = await Promise.all([
+      dealAlertService.getUserAlerts(userId, {
+        unreadOnly: unread_only === 'true',
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      }),
+      dealAlertService.getCorporateHealthDivergenceAlerts(userId).catch(() => []),
+    ]);
+    const alerts = [...dbAlerts, ...corpDivAlerts];
 
-    // Group by severity
     const grouped = alerts.reduce((acc: any, alert) => {
       if (!acc[alert.severity]) {
         acc[alert.severity] = [];

@@ -731,24 +731,23 @@ export class JEDIScoreService {
       if (result.rows.length === 0) return { demandAdj: 0, riskAdj: 0 };
 
       const { schi_score, divergence_score, herfindahl_index, top_5_share } = result.rows[0];
-      const schiVal = parseFloat(schi_score || '50');
       const divVal = parseFloat(divergence_score || '0');
       const hhi = parseFloat(herfindahl_index || '0');
-      const topShare = parseFloat(top_5_share || '0') * 100;
 
-      let demandAdj = Math.max(-8, Math.min(8, (divVal / 15) * 8));
+      const minChsResult = await query(
+        `SELECT MIN(chs.composite_chs) as min_chs
+         FROM corporate_health_scores chs
+         JOIN submarket_employers se ON se.ticker = chs.ticker
+         WHERE se.submarket_id = $1
+           AND chs.quarter = (SELECT MAX(quarter) FROM corporate_health_scores)`,
+        [submarketId]
+      );
+      const minChs = parseFloat(minChsResult.rows[0]?.min_chs || '50');
 
-      if (schiVal >= 70) demandAdj += 2;
-      else if (schiVal < 40) demandAdj -= 3;
+      const demandAdj = Math.max(-8, Math.min(8, (divVal / 15) * 8));
 
-      let riskAdj = 0;
-      if (hhi > 0.25) riskAdj += 5;
-      else if (hhi > 0.15) riskAdj += 3;
-
-      if (topShare > 30) riskAdj += 3;
-      else if (topShare > 20) riskAdj += 1;
-
-      if (schiVal < 40) riskAdj += 4;
+      const hhiNormalized = Math.min(1, hhi / 0.25);
+      const riskAdj = Math.round(hhiNormalized * (1 - minChs / 100) * 100) / 10;
 
       return { demandAdj, riskAdj };
     } catch {

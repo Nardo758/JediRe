@@ -290,32 +290,20 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     }
 
     if (corpHealthRisk.loaded && (corpHealthRisk.hhi !== null || corpHealthRisk.schi !== null)) {
-      let concRiskScore = 30;
       const hhi = corpHealthRisk.hhi ?? 0;
-      const topShare = corpHealthRisk.topShare ?? 0;
-      const schi = corpHealthRisk.schi ?? 50;
-
-      if (hhi > 0.25) concRiskScore += 25;
-      else if (hhi > 0.15) concRiskScore += 15;
-      else if (hhi > 0.1) concRiskScore += 5;
-
-      if (topShare > 30) concRiskScore += 15;
-      else if (topShare > 20) concRiskScore += 8;
-
-      if (schi < 40) concRiskScore += 15;
-      else if (schi < 55) concRiskScore += 5;
-
-      concRiskScore = Math.min(100, concRiskScore);
+      const minChs = corpHealthRisk.schi ?? 50;
+      const hhiNormalized = Math.min(1, hhi / 0.25);
+      const f72 = hhiNormalized * (1 - minChs / 100) * 100;
 
       cats = cats.map(cat => {
         if (cat.id !== 'demand') return cat;
-        const corpAdj = Math.round((concRiskScore - 30) * 0.3);
+        const corpAdj = Math.round(f72 / 10);
         const adjustedScore = Math.min(100, cat.score + corpAdj);
         return {
           ...cat,
           score: adjustedScore,
           driver: corpAdj > 0
-            ? `${cat.driver} | Corp Concentration: HHI ${hhi.toFixed(3)}, SCHI ${schi.toFixed(0)}`
+            ? `${cat.driver} | Corp Concentration Risk (F72): ${f72.toFixed(1)} — HHI ${hhi.toFixed(3)}`
             : cat.driver,
           severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
         };

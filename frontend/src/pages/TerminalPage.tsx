@@ -1451,19 +1451,24 @@ export default function TerminalPage() {
             <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
             <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Are the employers in this submarket healthy enough to sustain demand?</div>
           </div>
-          <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-            <MetricBox T={T} label="SCHI SCORE" value={DEMO_SCHI.toFixed(1)} sub="Submarket Corporate Health" color={DEMO_SCHI>=60?T.text.green:DEMO_SCHI>=40?T.text.amber:T.text.red}/>
-            <MetricBox T={T} label="RE HEALTH" value={DEMO_RE_HEALTH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
-            <MetricBox T={T} label="DIVERGENCE" value={(DEMO_DIVERGENCE>0?"+":"")+DEMO_DIVERGENCE.toFixed(1)} sub={Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?T.text.green:T.text.red):T.text.amber}/>
-            <MetricBox T={T} label="HERFINDAHL" value={DEMO_HERFINDAHL.toFixed(3)} sub={DEMO_HERFINDAHL<0.1?"Low concentration":"High concentration"} color={DEMO_HERFINDAHL<0.1?T.text.green:T.text.red}/>
+          {(() => {
+            const schi = corpHealthLive.schi ?? DEMO_SCHI;
+            const reH = corpHealthLive.reHealth ?? DEMO_RE_HEALTH;
+            const div = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+            const hhi = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+            return <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
+            <MetricBox T={T} label="SCHI SCORE" value={schi.toFixed(1)} sub="Submarket Corporate Health" color={schi>=60?T.text.green:schi>=40?T.text.amber:T.text.red}/>
+            <MetricBox T={T} label="RE HEALTH" value={reH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
+            <MetricBox T={T} label="DIVERGENCE" value={(div>0?"+":"")+div.toFixed(1)} sub={Math.abs(div)>15?(div>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(div)>15?(div>0?T.text.green:T.text.red):T.text.amber}/>
+            <MetricBox T={T} label="HERFINDAHL" value={hhi.toFixed(3)} sub={hhi<0.1?"Low concentration":"High concentration"} color={hhi<0.1?T.text.green:T.text.red}/>
           </div>
-          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(DEMO_DIVERGENCE)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(DEMO_DIVERGENCE)>15?T.text.amber:T.text.green}`}}>
+          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
             <span style={{fontSize:9,color:T.text.secondary}}>
-              Corporate health is <span style={{fontWeight:700,color:DEMO_SCHI>=60?T.text.green:T.text.red}}>{DEMO_SCHI>=60?"STABLE":"AT RISK"}</span>.
-              {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(DEMO_DIVERGENCE)>15?T.text.amber:T.text.green}}>{Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
-              {" "}Top employer (Amazon) represents {CORP_HEALTH_DEMO[0].share}% of submarket employment.
+              Corporate health is <span style={{fontWeight:700,color:schi>=60?T.text.green:T.text.red}}>{schi>=60?"STABLE":"AT RISK"}</span>.
+              {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(div)>15?T.text.amber:T.text.green}}>{Math.abs(div)>15?(div>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
+              {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name || corpHealthLive.employers[0]?.company || "—"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
             </span>
-          </div>
+          </div>;})()}
           <div style={{margin:"0 10px"}}>
             <PanelHeader T={T} title="TOP EMPLOYERS — CORPORATE HEALTH"/>
             <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
@@ -1471,7 +1476,7 @@ export default function TerminalPage() {
                 <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
               ))}
             </div>
-            {CORP_HEALTH_DEMO.map((c,i)=>(
+            {(corpHealthLive.employers.length > 0 ? corpHealthLive.employers.map((e:any)=>({company:e.company_name||e.company,ticker:e.ticker,employees:e.employee_count||e.employees,share:e.employment_share ? (parseFloat(e.employment_share)*100) : (e.share||0),chs:e.chs??e.overall_score??null,tier:e.health_tier||e.tier||null,delta:e.chs_delta_qoq||e.delta||null,sector:e.sector||"",momentum:e.momentum||"N/A"})) : CORP_HEALTH_DEMO).map((c,i)=>(
               <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
                 <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{c.company}</div>
                 <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:c.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.ticker||"PRIVATE"}</div>
@@ -1734,13 +1739,32 @@ export default function TerminalPage() {
   useEffect(() => {
     if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
+
+    const submarketIds = SUBMARKETS.map((_:any, i:number) => i + 1);
+    const firstSubmarketId = submarketIds[0] || 1;
+
     Promise.all([
       corporateHealthAPI.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
       corporateHealthAPI.getSectorRotation().catch(() => ({data:{data:{sectors:{}}}})),
-    ]).then(([alertsRes, sectorsRes]) => {
+      corporateHealthAPI.getSubmarket(firstSubmarketId).catch(() => ({data:{data:null}})),
+      corporateHealthAPI.getConcentration(firstSubmarketId).catch(() => ({data:{data:null}})),
+    ]).then(([alertsRes, sectorsRes, subRes, concRes]) => {
       const alerts = Array.isArray(alertsRes.data?.data?.alerts) ? alertsRes.data.data.alerts : [];
       const sectors = sectorsRes.data?.data?.sectors || {};
-      setCorpHealthLive(prev => ({...prev, alerts, sectors, loaded: true, loading: false}));
+      const subData = subRes.data?.data;
+      const concData = concRes.data?.data;
+      setCorpHealthLive(prev => ({
+        ...prev,
+        alerts,
+        sectors,
+        schi: subData?.schi ?? null,
+        reHealth: subData?.reHealth ?? null,
+        divergence: subData?.divergence ?? null,
+        herfindahl: concData?.herfindahl ?? null,
+        employers: subData?.employers || [],
+        loaded: true,
+        loading: false,
+      }));
     }).catch(() => {
       setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
     });

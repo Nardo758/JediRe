@@ -1,0 +1,6 @@
+ALTER TABLE corporate_health_scores
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS overall_score DECIMAL(5,2);
+
+ALTER TABLE submarket_corporate_health
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
