@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Building3DEditor } from '../components/design';
 import { useDealStore } from '../stores/dealStore';
+import { apiClient } from '../services/api.client';
 import { useDealDataStore } from '../stores/dealData.store';
 import { useAutoSaveWithGuard } from '../hooks/useAutoSave';
 import { useDealModule } from '../contexts/DealModuleContext';
@@ -11,7 +12,7 @@ import type { Design3D } from '../types/financial.types';
 export const Design3DPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
-  const { fetchDealById, selectedDeal } = useDealStore();
+  const { selectedDeal } = useDealStore();
 
   const {
     marketIntelligence,
@@ -93,11 +94,6 @@ export const Design3DPage: React.FC = () => {
       try {
         setIsLoading(true);
         
-        // Load deal if not in store
-        if (!selectedDeal || selectedDeal.id !== dealId) {
-          await fetchDealById(dealId);
-        }
-        
         // Data is automatically loaded by useDealDataStore via useAutoSave hook
       } catch (err) {
         console.error('Failed to load deal/design:', err);
@@ -107,7 +103,7 @@ export const Design3DPage: React.FC = () => {
     };
     
     loadDealData();
-  }, [dealId, selectedDeal, fetchDealById]);
+  }, [dealId]);
 
   const handleMetricsChange = (metrics: any) => {
     const updatedDesign: Design3D = {
