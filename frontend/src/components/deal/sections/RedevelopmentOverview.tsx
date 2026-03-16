@@ -109,15 +109,16 @@ export interface RedevelopmentOverviewProps {
 }
 
 // ─── Default DD items ─────────────────────────────────────────────────────────
+// 3×3 module access grid — canonical redevelopment set M02…M20
 const DEFAULT_DD = [
   { module: 'M02', label: 'Property & Zoning',    status: 'not-started', link: 'zoning' },
   { module: 'M05', label: 'Market Intelligence',  status: 'not-started', link: 'market-intelligence' },
   { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-module' },
   { module: 'M09', label: 'Pro Forma',            status: 'not-started', link: 'proforma' },
   { module: 'M11', label: 'Capital Structure',    status: 'not-started', link: 'debt' },
-  { module: 'M13', label: 'DD Checklist',         status: 'not-started', link: 'due-diligence' },
   { module: 'M14', label: 'Risk Intelligence',    status: 'not-started', link: 'risk-intelligence' },
   { module: 'M15', label: 'Competition',          status: 'not-started', link: 'competition' },
+  { module: 'M16', label: 'Environmental & ESG',  status: 'not-started', link: 'due-diligence' },
   { module: 'M20', label: 'Project Timeline',     status: 'not-started', link: 'timeline' },
 ];
 
@@ -197,17 +198,19 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
   const expMix: any[]     = deal?.expansionMix ?? [];
 
   // §6 — Budget / timeline
+  const softCosts         = deal?.softCosts ?? deal?.soft_costs ?? deal?.closingCosts ?? null;
   const totalInvestment   = deal?.totalInvestment ?? (
-    askPrice != null && renovBudget != null && expCost != null
-      ? askPrice + renovBudget + expCost
+    askPrice != null
+      ? askPrice + (renovBudget ?? 0) + (expCost ?? 0) + (deferred ?? 0) + (softCosts ?? 0)
       : null
   );
   const rawBudget: any[]  = deal?.budgetBreakdown ?? [];
   const budgetRows        = rawBudget.length > 0 ? rawBudget : [
-    askPrice     != null ? { category: 'Acquisition',  amount: askPrice,    color: T.amberL } : null,
-    renovBudget  != null ? { category: 'Renovation',   amount: renovBudget, color: T.blueL  } : null,
-    expCost      != null ? { category: 'Expansion',    amount: expCost,     color: T.violL  } : null,
-    deferred     != null ? { category: 'Deferred',     amount: deferred,    color: T.redL   } : null,
+    askPrice    != null ? { category: 'Acquisition',    amount: askPrice,    color: T.amberL } : null,
+    renovBudget != null ? { category: 'Renovation',     amount: renovBudget, color: T.blueL  } : null,
+    expCost     != null ? { category: 'Expansion',      amount: expCost,     color: T.violL  } : null,
+    deferred    != null ? { category: 'Deferred Maint', amount: deferred,    color: T.redL   } : null,
+    softCosts   != null ? { category: 'Soft & Closing', amount: softCosts,   color: T.td     } : null,
   ].filter(Boolean) as any[];
   const renovMonths       = deal?.renovationMonths ?? null;
   const totalMonths       = deal?.totalTimelineMonths ?? null;
@@ -678,17 +681,19 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
           <Card style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, flexWrap: 'wrap' }}>
               {([
-                askPrice    != null ? { label: 'Acquisition', value: askPrice,   color: T.amberL } : null,
+                askPrice    != null ? { label: 'Acquisition', value: askPrice,    color: T.amberL } : null,
                 renovBudget != null ? { op: '+' } : null,
-                renovBudget != null ? { label: 'Renovation',  value: renovBudget, color: T.blueL } : null,
+                renovBudget != null ? { label: 'Renovation',  value: renovBudget, color: T.blueL  } : null,
                 deferred    != null ? { op: '+' } : null,
-                deferred    != null ? { label: 'Deferred',    value: deferred,   color: T.redL  } : null,
+                deferred    != null ? { label: 'Deferred',    value: deferred,    color: T.redL   } : null,
                 expCost     != null ? { op: '+' } : null,
-                expCost     != null ? { label: 'Expansion',   value: expCost,    color: T.violL } : null,
+                expCost     != null ? { label: 'Expansion',   value: expCost,     color: T.violL  } : null,
+                softCosts   != null ? { op: '+' } : null,
+                softCosts   != null ? { label: 'Soft + Closing', value: softCosts, color: T.td    } : null,
                 totalInvestment != null ? { op: '=' } : null,
-                totalInvestment != null ? { label: 'Total Basis', value: totalInvestment, color: T.amberL, bold: true } : null,
+                totalInvestment != null ? { label: 'Total Basis',  value: totalInvestment, color: T.amberL, bold: true } : null,
                 exitValue   != null ? { op: '→' } : null,
-                exitValue   != null ? { label: 'Exit Value',  value: exitValue,  color: T.greenL, bold: true } : null,
+                exitValue   != null ? { label: 'Exit Value',   value: exitValue,   color: T.greenL, bold: true } : null,
               ] as any[]).filter(Boolean).map((step: any, i: number) =>
                 step.op ? (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 4px', fontSize: 18, color: T.td }}>{step.op}</div>
