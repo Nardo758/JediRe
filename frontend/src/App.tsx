@@ -52,11 +52,6 @@ import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
-  CompareMarketsPage,
-  ActiveOwnersPage,
-  FutureSupplyPage,
-  TrafficIntelligencePage,
-  CompetitivePositionPage,
 } from './pages/MarketIntelligence';
 import {
   CompetitiveIntelligencePage,
@@ -67,6 +62,7 @@ import {
 } from './pages/CompetitiveIntelligence';
 import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 import TerminalPage from './pages/TerminalPage';
+import { OpportunitiesPage } from './pages/OpportunitiesPage';
 
 
 function AppContent() {
@@ -142,11 +138,11 @@ function AppContent() {
           <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
           <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
-          <Route path="/market-intelligence/compare" element={<CompareMarketsPage />} />
-          <Route path="/market-intelligence/owners" element={<ActiveOwnersPage />} />
-          <Route path="/market-intelligence/supply" element={<FutureSupplyPage />} />
-          <Route path="/market-intelligence/traffic-intelligence" element={<TrafficIntelligencePage />} />
-          <Route path="/market-intelligence/competitive-position" element={<CompetitivePositionPage />} />
+          <Route path="/market-intelligence/compare" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/owners" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/supply" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/market-intelligence" replace />} />
 
           {/* Competitive Intelligence */}
           <Route path="/competitive-intelligence" element={<Navigate to="/competitive-intelligence/performance" replace />} />
@@ -187,8 +183,11 @@ function AppContent() {
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
 
           {/* Strategy Builder */}
-          <Route path="/strategies" element={<StrategyBuilderPage />} />
+          <Route path="/strategies" element={<Navigate to="/deals" replace />} />
           <Route path="/strategies/:id" element={<StrategyBuilderPage />} />
+
+          {/* Opportunities (F7) */}
+          <Route path="/opportunities" element={<OpportunitiesPage />} />
 
           {/* Demo Routes */}
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />

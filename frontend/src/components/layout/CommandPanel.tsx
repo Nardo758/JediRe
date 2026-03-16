@@ -125,15 +125,28 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
   };
 
   const navigationItems = [
-    { label: 'Dashboard', path: '/dashboard', icon: '📊' },
-    { label: 'Pipeline', path: '/deals', icon: '📊' },
-    { label: 'Market Intelligence', path: '/market-intelligence', icon: '🧠' },
-    { label: 'Strategies', path: '/strategies', icon: '⚡' },
-    { label: 'Assets Owned', path: '/assets-owned', icon: '🏢' }
+    { label: 'Dashboard',         path: '/dashboard',                icon: '📊' },
+    { label: 'Pipeline',          path: '/deals',                    icon: '📋' },
+    { label: 'Portfolio Assets',  path: '/assets-owned',             icon: '🏢' },
+    { label: 'Market Intelligence', path: '/market-intelligence',    icon: '📈' },
+    { label: 'Compete',           path: '/competitive-intelligence', icon: '🎯' },
+    { label: 'News Intelligence', path: '/news-intel',               icon: '📰' },
+    { label: 'Opportunities',     path: '/opportunities',            icon: '⚡' },
+    { label: 'Reports',           path: '/reports',                  icon: '📄' },
+    { label: 'Settings',          path: '/settings',                 icon: '⚙️' },
+    { label: 'Email',             path: '/dashboard/email',          icon: '📧' },
+    { label: 'Tasks',             path: '/tasks',                    icon: '✅' },
+    { label: 'Team Management',   path: '/team',                     icon: '👥' },
+    { label: 'Strategy Builder',  path: '/strategy-builder',         icon: '🔬' },
+    { label: 'Create New Deal',   path: '/deals/create',             icon: '➕' },
   ];
 
   const filteredStrategies = strategies.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredNavItems = navigationItems.filter(item =>
+    !searchQuery || item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (!isOpen) return null;
@@ -302,13 +315,13 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
           </div>
 
           {/* Navigation Group */}
-          {!searchQuery && (
+          {filteredNavItems.length > 0 && (
             <div className="px-4 pb-4 border-t border-gray-200 pt-4">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Navigation
               </h3>
               <div className="space-y-1">
-                {navigationItems.map(item => (
+                {filteredNavItems.map(item => (
                   <button
                     key={item.path}
                     onClick={() => {

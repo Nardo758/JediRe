@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { SidebarItem } from './SidebarItem';
 import { MapTabsBar } from '../map/MapTabsBar';
 import { CommandPanel } from './CommandPanel';
@@ -13,20 +13,22 @@ import api from '../../lib/api';
 
 const DEFAULT_MAP_ID = 'default';
 
+const F_KEY_ROUTES = [
+  '/dashboard',
+  '/deals',
+  '/assets-owned',
+  '/market-intelligence',
+  '/competitive-intelligence',
+  '/news-intel',
+  '/opportunities',
+  '/reports',
+  '/settings',
+];
+
 export const MainLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    dashboard: true,
-    email: false,
-    pipeline: false,
-    assets: false,
-    intelligence: true,
-    market: false,
-    news: false,
-    competitive: false
-  });
-  
   const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
   const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
   const [layers, setLayers] = useState<MapLayer[]>([]);
@@ -36,13 +38,7 @@ export const MainLayout: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
   const isActivePrefix = (prefix: string) => location.pathname.startsWith(prefix);
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
+  const isInsideDeal = location.pathname.startsWith('/deals/');
 
   const handleShowOnMap = async (config: any) => {
     try {
@@ -58,13 +54,8 @@ export const MainLayout: React.FC = () => {
         style: config.style || {},
         source_config: {}
       });
-
-      console.log('[MainLayout] Layer created:', layer);
       setLayers([...layers, layer]);
-      
-      if (location.pathname !== '/') {
-        window.location.href = '/';
-      }
+      if (location.pathname !== '/') window.location.href = '/';
     } catch (error) {
       console.error('[MainLayout] Failed to create layer:', error);
       alert('Failed to add layer to map. Please try again.');
@@ -73,16 +64,12 @@ export const MainLayout: React.FC = () => {
 
   const handleConfigSelect = async (config: MapConfiguration) => {
     setActiveConfig(config);
-    
     if (config.layer_config && Array.isArray(config.layer_config)) {
       try {
         const configLayers = await Promise.all(
-          config.layer_config.map(async (layerDef: any) => {
-            return await layersService.createLayer({
-              map_id: DEFAULT_MAP_ID,
-              ...layerDef
-            });
-          })
+          config.layer_config.map(async (layerDef: any) =>
+            await layersService.createLayer({ map_id: DEFAULT_MAP_ID, ...layerDef })
+          )
         );
         setLayers(configLayers);
       } catch (error) {
@@ -91,7 +78,7 @@ export const MainLayout: React.FC = () => {
     }
   };
 
-  // Keyboard shortcut for command panel
+  // ⌘K — command panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -103,39 +90,44 @@ export const MainLayout: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // F1–F9 keyboard shortcuts (portfolio screens only — skip if inside deal)
+  useEffect(() => {
+    const handleFKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) return;
+      if (isInsideDeal) return;
+      const idx = ['F1','F2','F3','F4','F5','F6','F7','F8','F9'].indexOf(e.key);
+      if (idx === -1) return;
+      e.preventDefault();
+      navigate(F_KEY_ROUTES[idx]);
+    };
+    window.addEventListener('keydown', handleFKey);
+    return () => window.removeEventListener('keydown', handleFKey);
+  }, [isInsideDeal, navigate]);
+
   useEffect(() => {
     const handler = () => setIsWarMapsOpen(true);
     window.addEventListener('open-war-maps', handler);
     return () => window.removeEventListener('open-war-maps', handler);
   }, []);
 
-  // Check onboarding status on mount
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
-    if (!token) {
-      setOnboardingChecked(true);
-      return;
-    }
-
+    if (!token) { setOnboardingChecked(true); return; }
     const checkOnboarding = async () => {
       try {
         const response = await api.get('/preferences/user');
         const prefs = response.data.data;
-        
-        if (!prefs || !prefs.onboarding_completed) {
-          setShowOnboarding(true);
-        }
+        if (!prefs || !prefs.onboarding_completed) setShowOnboarding(true);
       } catch (error) {
         console.error('Failed to check onboarding status:', error);
       } finally {
         setOnboardingChecked(true);
       }
     };
-
     checkOnboarding();
   }, []);
 
-  // Handle War Maps creation
   const handleWarMapsCreated = (newLayers: MapLayer[]) => {
     setLayers([...layers, ...newLayers]);
   };
@@ -153,12 +145,12 @@ export const MainLayout: React.FC = () => {
         {/* Sidebar */}
         <aside
           className={`bg-white border-r border-gray-200 overflow-y-auto transition-all duration-300 relative ${
-            sidebarOpen ? 'w-96' : 'w-0'
+            sidebarOpen ? 'w-64' : 'w-0'
           }`}
         >
           {sidebarOpen && (
-            <div className="p-4 w-96">
-              <div className="flex items-center justify-end mb-4">
+            <div className="p-3 w-64">
+              <div className="flex items-center justify-end mb-3">
                 <button
                   onClick={() => setSidebarOpen(false)}
                   className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-xs"
@@ -168,217 +160,42 @@ export const MainLayout: React.FC = () => {
                 </button>
               </div>
 
-              <nav className="space-y-1">
-                {/* CONTROL PANEL */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Control Panel
+              <nav className="space-y-0.5">
+                {/* F-KEY SCREENS */}
+                <div className="mb-2">
+                  <h3 className="px-4 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-widest font-mono">
+                    Portfolio · F1–F9
                   </h3>
-                  
-                  <SidebarItem
-                    icon="📊"
-                    label="Dashboard"
-                    path="/dashboard"
-                    isActive={isActive('/dashboard')}
-                  />
-
-                  {/* EMAIL */}
-                  <SidebarItem
-                    icon="📧"
-                    label="Email"
-                    count={5}
-                    path="/dashboard/email"
-                    isActive={isActivePrefix('/dashboard/email')}
-                    layerConfig={{
-                      sourceType: 'email',
-                      layerType: 'pin',
-                      defaultStyle: {
-                        icon: '📧',
-                        color: '#f59e0b',
-                        size: 'small'
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-
-                  {/* PIPELINE */}
-                  <SidebarItem
-                    icon="📊"
-                    label="Pipeline"
-                    count={12}
-                    path="/deals"
-                    isActive={isActivePrefix('/deals')}
-                  />
-                  
-                  {/* ASSETS OWNED */}
-                  <SidebarItem
-                    icon="🏢"
-                    label="Assets Owned"
-                    count={23}
-                    path="/assets-owned"
-                    isActive={isActivePrefix('/assets-owned')}
-                    layerConfig={{
-                      sourceType: 'assets',
-                      layerType: 'pin',
-                      defaultStyle: {
-                        icon: '🏢',
-                        color: '#10b981',
-                        size: 'medium'
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-
                 </div>
 
-                {/* INTELLIGENCE */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Intelligence
-                  </h3>
+                <SidebarItem icon="📊" label="F1  Dashboard"     path="/dashboard"                isActive={isActive('/dashboard') || isActive('/terminal')} />
+                <SidebarItem icon="📋" label="F2  Pipeline"      path="/deals"        count={12}  isActive={isActivePrefix('/deals')} />
+                <SidebarItem
+                  icon="🏢" label="F3  Portfolio"    path="/assets-owned" count={23}
+                  isActive={isActivePrefix('/assets-owned')}
+                  layerConfig={{ sourceType: 'assets', layerType: 'pin', defaultStyle: { icon: '🏢', color: '#10b981', size: 'medium' } }}
+                  onShowOnMap={handleShowOnMap}
+                />
+                <SidebarItem icon="📈" label="F4  Markets"       path="/market-intelligence"      isActive={isActivePrefix('/market-intelligence')} />
+                <SidebarItem icon="🎯" label="F5  Compete"       path="/competitive-intelligence" isActive={isActivePrefix('/competitive-intelligence')} />
+                <SidebarItem
+                  icon="📰" label="F6  News"          path="/news-intel"   count={3}
+                  isActive={isActivePrefix('/news-intel')}
+                  layerConfig={{ sourceType: 'news', layerType: 'heatmap', defaultStyle: { colorScale: ['#fef3c7','#fbbf24','#f59e0b','#dc2626'], radius: 25, intensity: 1.0 } }}
+                  onShowOnMap={handleShowOnMap}
+                />
+                <SidebarItem icon="⚡" label="F7  Opportunities" path="/opportunities"            isActive={isActivePrefix('/opportunities')} />
+                <SidebarItem icon="📄" label="F8  Reports"       path="/reports"                  isActive={isActive('/reports')} />
+                <SidebarItem icon="⚙️" label="F9  Settings"      path="/settings"                 isActive={isActivePrefix('/settings')} />
 
-                  {/* MARKET INTELLIGENCE */}
-                  <SidebarItem
-                    icon="🧠"
-                    label="Market Intelligence"
-                    path="/market-intelligence"
-                    isActive={isActivePrefix('/market-intelligence')}
-                    hasSubItems={true}
-                    isExpanded={expandedSections.market}
-                    onToggle={() => toggleSection('market')}
-                  />
-                  {expandedSections.market && (
-                    <div className="ml-6 space-y-0.5">
-                      <SidebarItem
-                        icon="⚖️"
-                        label="Compare Markets"
-                        path="/market-intelligence/compare"
-                        isActive={isActive('/market-intelligence/compare')}
-                      />
-                      <SidebarItem
-                        icon="👥"
-                        label="Active Owners"
-                        path="/market-intelligence/owners"
-                        isActive={isActive('/market-intelligence/owners')}
-                      />
-                      <SidebarItem
-                        icon="🏗️"
-                        label="Future Supply"
-                        path="/market-intelligence/supply"
-                        isActive={isActive('/market-intelligence/supply')}
-                      />
-                      <SidebarItem
-                        icon="🚦"
-                        label="Traffic Intelligence"
-                        path="/market-intelligence/traffic-intelligence"
-                        isActive={isActive('/market-intelligence/traffic-intelligence')}
-                      />
-                      <SidebarItem
-                        icon="🏆"
-                        label="Competitive Position"
-                        path="/market-intelligence/competitive-position"
-                        isActive={isActive('/market-intelligence/competitive-position')}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* COMPETITIVE INTELLIGENCE */}
-                  <SidebarItem
-                    icon="🎯"
-                    label="Competitive Intel"
-                    path="/competitive-intelligence"
-                    isActive={isActivePrefix('/competitive-intelligence')}
-                    hasSubItems={true}
-                    isExpanded={expandedSections.competitive}
-                    onToggle={() => toggleSection('competitive')}
-                  />
-                  {expandedSections.competitive && (
-                    <div className="ml-6 space-y-0.5">
-                      <SidebarItem
-                        icon="📊"
-                        label="Performance Rankings"
-                        path="/competitive-intelligence/performance"
-                        isActive={isActive('/competitive-intelligence/performance')}
-                      />
-                      <SidebarItem
-                        icon="🔍"
-                        label="Acquisition Intel"
-                        path="/competitive-intelligence/acquisition"
-                        isActive={isActive('/competitive-intelligence/acquisition')}
-                      />
-                      <SidebarItem
-                        icon="⚖️"
-                        label="Comp Analysis"
-                        path="/competitive-intelligence/comps"
-                        isActive={isActive('/competitive-intelligence/comps')}
-                      />
-                      <SidebarItem
-                        icon="🔔"
-                        label="Opportunity Alerts"
-                        path="/competitive-intelligence/alerts"
-                        isActive={isActive('/competitive-intelligence/alerts')}
-                      />
-                    </div>
-                  )}
-
-                  {/* STRATEGIES */}
-                  <SidebarItem
-                    icon="⚡"
-                    label="Strategies"
-                    path="/strategies"
-                    isActive={isActivePrefix('/strategies')}
-                  />
-
-                  {/* NEWS INTEL */}
-                  <SidebarItem
-                    icon="📰"
-                    label="News Intel"
-                    count={3}
-                    path="/news-intel"
-                    isActive={isActivePrefix('/news-intel')}
-                    layerConfig={{
-                      sourceType: 'news',
-                      layerType: 'heatmap',
-                      defaultStyle: {
-                        colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
-                        radius: 25,
-                        intensity: 1.0
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-                </div>
-
-                {/* TOOLS */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Tools
-                  </h3>
-                  
-                  <SidebarItem
-                    icon="🎯"
-                    label="Tasks"
-                    path="/tasks"
-                    isActive={isActive('/tasks')}
-                  />
-                </div>
-
-                {/* Other sections */}
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <SidebarItem
-                    icon="📈"
-                    label="Reports"
-                    path="/reports"
-                    isActive={isActive('/reports')}
-                  />
-                  
-                  <SidebarItem
-                    icon="👥"
-                    label="Team"
-                    path="/team"
-                    isActive={isActive('/team')}
-                  />
-                  
+                {/* ⌘K hint */}
+                <div className="border-t border-gray-100 mt-4 pt-3">
+                  <button
+                    onClick={() => setCommandPanelOpen(true)}
+                    className="w-full text-left px-4 py-2 text-[10px] text-gray-400 hover:text-gray-600 font-mono transition-colors rounded hover:bg-gray-50"
+                  >
+                    ⌘K &nbsp; Email · Tasks · Search
+                  </button>
                 </div>
               </nav>
             </div>
@@ -402,7 +219,7 @@ export const MainLayout: React.FC = () => {
         </main>
       </div>
 
-      {/* War Maps Composer Modal - Global */}
+      {/* War Maps Composer Modal */}
       {isWarMapsOpen && (
         <WarMapsComposer
           isOpen={isWarMapsOpen}
@@ -418,10 +235,7 @@ export const MainLayout: React.FC = () => {
         <QuickSetupModal
           isOpen={showOnboarding}
           onClose={() => setShowOnboarding(false)}
-          onComplete={() => {
-            setShowOnboarding(false);
-            // Optionally reload user data or show success message
-          }}
+          onComplete={() => setShowOnboarding(false)}
         />
       )}
 
