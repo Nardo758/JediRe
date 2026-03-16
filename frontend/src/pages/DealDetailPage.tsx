@@ -28,18 +28,16 @@
  *       units split sourced from the envelope's selected_path metadata.
  * ═══════════════════════════════════════════════════════════════════
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  BarChart3, DollarSign, FileText, Bot, TrendingUp,
+  BarChart3, DollarSign, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
-  ClipboardCheck, Calendar, FolderOpen, Box,
-  Search, ArrowLeft, Activity, LineChart,
-  Lightbulb, StickyNote, Briefcase, LayoutDashboard,
-  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
-  Shield, Layers, BarChart2, Radar, Zap, ArrowRight
+  Search, ArrowLeft, Activity, LayoutDashboard,
+  Landmark, HardHat, Shield, ArrowRight
 } from 'lucide-react';
-import { TabGroup, Tab } from '../components/deal/TabGroup';
+import { Tab } from '../components/deal/TabGroup';
+import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
 import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
@@ -55,7 +53,6 @@ import { MarketIntelligencePage } from './development/MarketIntelligencePage';
 import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
-import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
 import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
@@ -74,7 +71,6 @@ import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
 import { StrategySection } from '../components/deal/sections/StrategySection';
-import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 
@@ -82,7 +78,6 @@ import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
 import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
@@ -121,6 +116,64 @@ function DevPathBadge() {
     </span>
   );
 }
+
+// ─── Module-level screen wrappers (stable references — prevents remount blink) ──
+const OverviewScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'overview',    label: 'Deal Overview',   component: OverviewRouter },
+    { id: 'context',     label: 'Context Tracker', component: ContextTrackerSection },
+    { id: 'team',        label: 'Team',            component: TeamManagementSection },
+    { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
+  ]} />
+);
+const MarketScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'market-intelligence', label: 'Market Intel', component: MarketIntelligencePage },
+    { id: 'unit-mix',            label: 'Unit Mix',     component: UnitMixIntelligence },
+    { id: 'trends',              label: 'Trends',       component: TrendsAnalysisSection },
+    { id: 'opportunity',         label: 'Opportunity',  component: OpportunityEngineSection },
+  ]} />
+);
+const CompetitionScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'competition', label: 'Competition Analysis', component: CompetitionPage },
+    { id: 'comps',       label: 'Sale Comps',           component: CompsModule },
+  ]} />
+);
+const StrategyScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'strategy',  label: 'Strategy',    component: StrategySection },
+    { id: '3d-design', label: '3D Building', component: Design3DPageEnhanced },
+  ]} />
+);
+const ProformaScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'proforma',            label: 'Pro Forma',           component: ProFormaTab },
+    { id: 'tax',                 label: 'Tax Intelligence',    component: TaxModule },
+    { id: 'financial-dashboard', label: 'Financial Dashboard', component: FinancialDashboard },
+  ]} />
+);
+const RiskScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'risk-intelligence', label: 'Risk Intelligence',  component: RiskIntelligence },
+    { id: 'collision',         label: 'Collision Analysis', component: CollisionAnalysisSection },
+    { id: 'due-diligence',     label: 'DD Checklist',       component: DueDiligencePage },
+    { id: 'files',             label: 'Files & Assets',     component: FilesSection },
+  ]} />
+);
+const ExecutionScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'timeline',           label: 'Project Timeline',   component: ProjectTimelinePage },
+    { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
+    { id: 'construction-mgmt',  label: 'Construction Mgmt',  component: ConstructionManagementSection },
+  ]} />
+);
+const AIAgentScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'opus-ai',            label: 'Opus AI Agent',      component: OpusAISection },
+    { id: 'ai-recommendations', label: 'AI Recommendations', component: AIRecommendationsSection },
+  ]} />
+);
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -232,244 +285,58 @@ const DealDetailPage: React.FC = () => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      const keyMap: { [key: string]: string } = {
-        '1': 'overview',
-        '2': 'market-intelligence',
-        '3': '3d-design',
-        '4': 'due-diligence',
-        '5': 'timeline',
-        '6': 'ai-agent',
+      const fKeyMap: { [key: string]: string } = {
+        F1: 'overview', F2: 'zoning', F3: 'market', F4: 'supply',
+        F5: 'competition', F6: 'strategy', F7: 'traffic',
+        F8: 'proforma', F9: 'capital', F10: 'risk',
+        F11: 'execution', F12: 'ai-agent',
       };
-      if (keyMap[e.key]) {
-        setActiveTab(keyMap[e.key]);
+      if (fKeyMap[e.key]) {
+        e.preventDefault();
+        setActiveTab(fKeyMap[e.key]);
       }
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  // Stage 1: OVERVIEW & SETUP - Get oriented
-  const overviewSetupTabs: Tab[] = [
-    {
-      id: 'overview',
-      label: 'Deal Overview',
-      icon: <BarChart3 size={16} />,
-      component: OverviewRouter,
-      moduleId: 'M01'
-    },
-    {
-      id: 'zoning',
-      label: 'Property & Zoning',
-      icon: <Landmark size={16} />,
-      component: ZoningModuleSection,
-      moduleId: 'M02'
-    },
-    {
-      id: 'context-tracker',
-      label: 'Context Tracker',
-      icon: <Compass size={16} />,
-      component: ContextTrackerSection
-    },
-    {
-      id: 'team',
-      label: 'Team & Collaborators',
-      icon: <Users size={16} />,
-      component: TeamManagementSection,
-      moduleId: 'M17'
-    },
+  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ───────────────────────────
+  const dealScreens = [
+    { id: 'overview',    fkey: 'F1',  code: 'M01', label: 'Overview',             icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      fkey: 'F2',  code: 'M02', label: 'Property & Zoning',    icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      fkey: 'F3',  code: 'M05', label: 'Market Intelligence',  icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',      icon: <Package size={14} />,         component: SupplyPipelinePage },
+    { id: 'competition', fkey: 'F5',  code: 'M15', label: 'Competition & Comps',  icon: <Target size={14} />,          component: CompetitionScreen },
+    { id: 'strategy',    fkey: 'F6',  code: 'M08', label: 'Strategy & Design',    icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'traffic',     fkey: 'F7',  code: 'M10', label: 'Traffic Module',       icon: <Activity size={14} />,        component: TrafficModule },
+    { id: 'proforma',    fkey: 'F8',  code: 'M11', label: 'Pro Forma',            icon: <Calculator size={14} />,      component: ProformaScreen },
+    { id: 'capital',     fkey: 'F9',  code: 'M12', label: 'Debt & Capital',       icon: <DollarSign size={14} />,      component: ExitCapitalModule },
+    { id: 'risk',        fkey: 'F10', code: 'M13', label: 'Risk & Due Diligence', icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'execution',   fkey: 'F11', code: 'M17', label: 'Execution',            icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'ai-agent',    fkey: 'F12', code: 'M20', label: 'AI Agent',             icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
-  // Stage 2: MARKET RESEARCH - Validate opportunity
-  const marketResearchTabs: Tab[] = [
-    {
-      id: 'market-intelligence',
-      label: 'Market Intelligence',
-      icon: <TrendingUp size={16} />,
-      component: MarketIntelligencePage,
-      moduleId: 'M05'
-    },
-    {
-      id: 'unit-mix-intelligence',
-      label: 'Unit Mix Intelligence',
-      icon: <Layers size={16} />,
-      component: UnitMixIntelligence,
-      // No moduleId — Unit Program tool, always visible across deal types
-    },
-    {
-      id: 'competition',
-      label: 'Competition Analysis',
-      icon: <Target size={16} />,
-      component: CompetitionPage,
-      moduleId: 'M15'
-    },
-    {
-      id: 'supply',
-      label: 'Supply Pipeline',
-      icon: <Package size={16} />,
-      component: SupplyPipelinePage,
-      moduleId: 'M04'
-    },
-    {
-      id: 'opportunity-engine',
-      label: 'Opportunity Engine',
-      icon: <Zap size={16} />,
-      component: OpportunityEngineSection,
-      moduleId: 'M05'
-    },
-    {
-      id: 'trends',
-      label: 'Trends Analysis',
-      icon: <LineChart size={16} />,
-      component: TrendsAnalysisSection,
-      moduleId: 'M05'
-    },
-    {
-      id: 'comps',
-      label: 'Sale Comps',
-      icon: <Briefcase size={16} />,
-      component: CompsModule,
-      moduleId: 'M15',
-    },
+  // ─── Search: flat list of all sub-components for search ────────────────
+  const allSearchableTabs: Tab[] = [
+    { id: 'overview', label: 'Deal Overview', icon: <BarChart3 size={16} />, component: OverviewRouter },
+    { id: 'zoning', label: 'Property & Zoning', icon: <Landmark size={16} />, component: ZoningModuleSection },
+    { id: 'market', label: 'Market Intelligence', icon: <TrendingUp size={16} />, component: MarketIntelligencePage },
+    { id: 'supply', label: 'Supply Pipeline', icon: <Package size={16} />, component: SupplyPipelinePage },
+    { id: 'competition', label: 'Competition Analysis', icon: <Target size={16} />, component: CompetitionPage },
+    { id: 'strategy', label: 'Strategy', icon: <Target size={16} />, component: StrategySection },
+    { id: 'traffic', label: 'Traffic Module', icon: <Activity size={16} />, component: TrafficModule },
+    { id: 'proforma', label: 'Pro Forma', icon: <Calculator size={16} />, component: ProFormaTab },
+    { id: 'capital', label: 'Debt & Capital', icon: <DollarSign size={16} />, component: ExitCapitalModule },
+    { id: 'risk', label: 'Risk & DD', icon: <Shield size={16} />, component: RiskIntelligence },
+    { id: 'execution', label: 'Execution', icon: <HardHat size={16} />, component: ProjectTimelinePage },
+    { id: 'ai-agent', label: 'AI Agent', icon: <Bot size={16} />, component: OpusAISection },
   ];
 
-  // Stage 3: DEAL DESIGN - Create the deal
-  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  const dealDesignTabs: Tab[] = [
-    { 
-      id: '3d-design', 
-      label: '3D Building Design', 
-      icon: <Box size={16} />, 
-      component: Design3DPageEnhanced 
-    },
-    { 
-      id: 'strategy', 
-      label: 'Strategy', 
-      icon: <Target size={16} />, 
-      component: StrategySection 
-    },
-    {
-      id: 'traffic-module',
-      label: 'Traffic Module',
-      icon: <Activity size={16} />,
-      component: TrafficModule
-    },
-    {
-      id: 'proforma',
-      label: 'Pro Forma',
-      icon: <Layers size={16} />,
-      component: ProFormaTab
-    },
-    {
-      id: 'tax',
-      label: 'Tax Intelligence',
-      icon: <Calculator size={16} />,
-      component: TaxModule
-    },
-    {
-      id: 'debt',
-      label: 'Debt, Equity & Exit',
-      icon: <DollarSign size={16} />,
-      component: ExitCapitalModule
-    },
-    {
-      id: 'financial-dashboard',
-      label: 'Financial Dashboard',
-      icon: <BarChart3 size={16} />,
-      component: FinancialDashboard
-    },
-  ];
+  // Keep allTabs alias for search compatibility
+  const allTabs = allSearchableTabs;
 
-  // Stage 4: DUE DILIGENCE - Verify & validate
-  const dueDiligenceTabs: DealTab[] = [
-    {
-      id: 'collision-analysis',
-      label: 'Collision Analysis',
-      icon: <Zap size={16} />,
-      component: CollisionAnalysisSection,
-      // No moduleId — always visible
-    },
-    {
-      id: 'due-diligence',
-      label: 'DD Checklist',
-      icon: <ClipboardCheck size={16} />,
-      component: DueDiligencePage,
-      moduleId: 'M13'
-    },
-    {
-      id: 'deal-status',
-      label: 'Deal Lifecycle',
-      icon: <LayoutDashboard size={16} />,
-      component: DealStatusSection
-    },
-    {
-      id: 'risk-intelligence',
-      label: 'Risk Intelligence',
-      icon: <Shield size={16} />,
-      component: RiskIntelligence,
-      moduleId: 'M14'
-    },
-    {
-      id: 'files',
-      label: 'Files & Assets',
-      icon: <FolderOpen size={16} />,
-      component: FilesSection,
-      moduleId: 'M18'
-    },
-  ];
-
-  // Stage 5: EXECUTION - Build & deliver
-  const executionTabs: Tab[] = [
-    {
-      id: 'timeline',
-      label: 'Project Timeline',
-      icon: <Calendar size={16} />,
-      component: ProjectTimelinePage
-    },
-    {
-      id: 'project-management',
-      label: 'Project Management',
-      icon: <Briefcase size={16} />,
-      component: ProjectManagementSection,
-      moduleId: 'M17'
-    },
-    {
-      id: 'construction-management',
-      label: 'Construction Management',
-      icon: <HardHat size={16} />,
-      component: ConstructionManagementSection
-    },
-  ];
-
-  // Always Available: AI ASSISTANT
-  const aiAssistantTabs: Tab[] = [
-    {
-      id: 'ai-agent',
-      label: 'Opus AI Agent',
-      icon: <Bot size={16} />,
-      component: OpusAISection
-    },
-    {
-      id: 'ai-recommendations',
-      label: 'AI Recommendations',
-      icon: <Lightbulb size={16} />,
-      component: AIRecommendationsSection
-    },
-  ];
-
-  // Filter tabs based on module visibility configuration
-  const filtered = (tabs: DealTab[]) => tabs.filter(t => !t.moduleId || config.isModuleVisible(t.moduleId as ModuleId));
-
-  const allTabs = [
-    ...filtered(overviewSetupTabs),
-    ...filtered(marketResearchTabs),
-    ...filtered(dealDesignTabs),
-    ...filtered(dueDiligenceTabs),
-    ...filtered(executionTabs),
-    ...aiAssistantTabs,
-  ];
-
-  const activeTabData = allTabs.find(tab => tab.id === activeTab);
-  const ActiveComponent = activeTabData?.component || OverviewRouter;
+  const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];
+  const ActiveComponent = activeScreenData.component;
 
   const filteredTabs = searchQuery
     ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -638,70 +505,41 @@ const DealDetailPage: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <nav className="flex-1">
-                  <TabGroup
-                    id="overview-setup"
-                    title="OVERVIEW & SETUP"
-                    icon={<LayoutDashboard size={18} />}
-                    tabs={overviewSetupTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    defaultExpanded={true}
-                  />
-                  <TabGroup
-                    id="market-research"
-                    title="MARKET RESEARCH"
-                    icon={<Search size={18} />}
-                    tabs={marketResearchTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="deal-design"
-                    title="DEAL DESIGN"
-                    icon={<Box size={18} />}
-                    tabs={dealDesignTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="due-diligence"
-                    title="DUE DILIGENCE"
-                    icon={<ClipboardCheck size={18} />}
-                    tabs={dueDiligenceTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="execution"
-                    title="EXECUTION"
-                    icon={<Activity size={18} />}
-                    tabs={executionTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="ai-assistant"
-                    title="AI ASSISTANT"
-                    icon={<Bot size={18} />}
-                    tabs={aiAssistantTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
+                <nav className="flex-1 space-y-0.5">
+                  {dealScreens.map(screen => (
+                    <button
+                      key={screen.id}
+                      onClick={() => setActiveTab(screen.id)}
+                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors group ${
+                        activeTab === screen.id
+                          ? 'bg-blue-500 text-white'
+                          : 'text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`text-[9px] font-bold font-mono w-5 text-center flex-shrink-0 ${
+                        activeTab === screen.id ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-500'
+                      }`}>{screen.fkey}</span>
+                      <span className="flex items-center flex-shrink-0 opacity-70">{screen.icon}</span>
+                      <span className="flex-1 text-xs font-medium truncate">{screen.label}</span>
+                      <span className={`text-[8px] font-mono flex-shrink-0 ${
+                        activeTab === screen.id ? 'text-blue-200' : 'text-slate-300'
+                      }`}>{screen.code}</span>
+                    </button>
+                  ))}
                 </nav>
               )}
             </div>
 
             <div className="mt-auto p-3 border-t border-slate-200">
               <div className="text-[10px] text-slate-400 text-center space-y-0.5">
-                <p>Press 1-6 for quick stage access</p>
-                <p className="text-slate-300">Deal Capsule | {allTabs.length} modules</p>
+                <p>Press F1–F12 for quick access</p>
+                <p className="text-slate-300">Deal Capsule · {dealScreens.length} screens</p>
               </div>
             </div>
           </aside>
 
-          <main className={`flex-1 min-w-0 min-h-0 flex flex-col ${activeTab === '3d-design' ? 'overflow-hidden' : ''}`}>
-            <div className={`flex-1 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
+          <main className="flex-1 min-w-0 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
@@ -717,7 +555,7 @@ const DealDetailPage: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveTab('unit-mix-intelligence')}
+                  onClick={() => setActiveTab('market')}
                   className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
                 >
                   {ctaLabel}

@@ -32,8 +32,11 @@ import DealFlywheelDashboard from './deal/DealFlywheelDashboard';
 export const DealView: React.FC = () => {
   const { id, module } = useParams<{ id: string; module?: string }>();
   const navigate = useNavigate();
-  const { selectedDeal, fetchDealById, isLoading, error } = useDealStore();
+  const { fetchDealContext, isLoading: storeLoading, error: storeError } = useDealStore();
   const { activeScope, setScope, loadTradeAreaForDeal } = useTradeAreaStore();
+  const [selectedDeal, setSelectedDeal] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [currentModule, setCurrentModule] = useState(module || 'map');
   const [modules, setModules] = useState<any[]>([]);
   const [modulesLoading, setModulesLoading] = useState(false);
@@ -76,12 +79,27 @@ export const DealView: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      fetchDealById(id);
+      fetchDeal(id);
       fetchModules(id);
       loadTradeAreaForDeal(id);
       fetchGeographicContext(id);
+      fetchDealContext(id);
     }
   }, [id]);
+
+  const fetchDeal = async (dealId: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}`);
+      const body = res.data;
+      setSelectedDeal(body?.deal || body?.data || body);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to load deal');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (module) {

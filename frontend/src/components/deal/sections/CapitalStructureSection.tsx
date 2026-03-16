@@ -47,13 +47,11 @@ interface CapitalStructureSectionProps {
   dealStatus?: 'pipeline' | 'owned';
 }
 
-type TabId = 'stack' | 'debt' | 'rates' | 'waterfall' | 'scenarios' | 'timeline' | 'integration';
+type TabId = 'debt' | 'rates' | 'scenarios' | 'timeline' | 'integration';
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'stack', label: 'Capital Stack', icon: '◈' },
   { id: 'debt', label: 'Debt Selector', icon: '◇' },
   { id: 'rates', label: 'Rate Environment', icon: '◆' },
-  { id: 'waterfall', label: 'Equity Waterfall', icon: '▽' },
   { id: 'scenarios', label: 'Scenarios', icon: '⬡' },
   { id: 'timeline', label: 'Timeline', icon: '◎' },
   { id: 'integration', label: 'Integration', icon: '⬢' },
@@ -83,7 +81,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   isPremium = false,
   dealStatus = 'pipeline',
 }) => {
-  const [activeTab, setActiveTab] = useState<TabId>('stack');
+  const [activeTab, setActiveTab] = useState<TabId>('debt');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
   const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
 
@@ -96,7 +94,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const [liveInsights, setLiveInsights] = useState<any>(null);
 
   const [tabLoading, setTabLoading] = useState<Record<TabId, boolean>>({
-    stack: false, debt: false, rates: false, waterfall: false,
+    debt: false, rates: false,
     scenarios: false, timeline: false, integration: false,
   });
   const [liveDataSources, setLiveDataSources] = useState<Set<TabId>>(new Set());
@@ -1226,10 +1224,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'stack' && (tabLoading.stack ? renderTabLoading() : renderCapitalStack())}
       {activeTab === 'debt' && (tabLoading.debt ? renderTabLoading() : renderDebtSelector())}
       {activeTab === 'rates' && (tabLoading.rates ? renderTabLoading() : renderRateEnvironment())}
-      {activeTab === 'waterfall' && (tabLoading.waterfall ? renderTabLoading() : renderEquityWaterfall())}
       {activeTab === 'scenarios' && (tabLoading.scenarios ? renderTabLoading() : renderScenarios())}
       {activeTab === 'timeline' && (tabLoading.timeline ? renderTabLoading() : renderTimeline())}
       {activeTab === 'integration' && renderIntegration()}
