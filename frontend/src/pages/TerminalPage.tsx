@@ -850,7 +850,6 @@ export default function TerminalPage() {
   // ─── WIDGET COMPONENTS ─────────────────────────────────────
   const WidgetKeyFindings = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="KEY FINDINGS" subtitle="News Intelligence" borderColor={T.text.amber}/>
       {STATIC_NEWS.map((n,i)=>(
         <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${T.text.amber}`}}>
           <div style={{flex:1}}>
@@ -866,7 +865,6 @@ export default function TerminalPage() {
 
   const WidgetMyDeals = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="MY DEALS" subtitle="" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:8,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"2px 8px",cursor:"pointer",fontWeight:700}}>+ New</button>}/>
       {liveDeals.slice(0,5).map((d,i)=>(
         <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -885,7 +883,6 @@ export default function TerminalPage() {
 
   const WidgetKPISummary = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-      <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:12,letterSpacing:1}}>KPI SUMMARY</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
         {[
           {l:"Total Pipeline",v:totalPV>0?`$${totalPV.toFixed(1)}M`:`${liveDeals.length} deals`,sub:liveDeals.length+" deals",c:T.text.amberBright},
@@ -913,7 +910,6 @@ export default function TerminalPage() {
 
   const WidgetAlertFeed = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="ALERT FEED" subtitle={`${hAlerts} critical/high`} borderColor={T.text.red}/>
       {liveAlerts.map((a,i)=>{
         const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
         return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
@@ -923,7 +919,6 @@ export default function TerminalPage() {
 
   const WidgetAgents = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="AGENT ACTIVITY" subtitle={`${liveAgents.filter(a=>a.st==="ON").length} active`} borderColor={T.text.green}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
@@ -938,7 +933,6 @@ export default function TerminalPage() {
 
   const WidgetLeaderboard = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="SCORE LEADERBOARD" subtitle="Ranked by JEDI score" borderColor={T.text.green}/>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
         <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
@@ -962,7 +956,6 @@ export default function TerminalPage() {
     const maxCount=Math.max(...Object.values(stages),1);
     return (
       <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-        <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:16,letterSpacing:1}}>STAGE FUNNEL</div>
         {stageOrder.map(s=>(
           <div key={s} style={{marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
@@ -983,7 +976,6 @@ export default function TerminalPage() {
 
   const WidgetStrategySnapshot = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-      <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:12,letterSpacing:1}}>STRATEGY SNAPSHOT</div>
       {[
         {s:"BUILD-TO-SELL",abbr:"BTS",c:T.text.green},
         {s:"RENTAL",abbr:"RENTAL",c:T.text.cyan},
