@@ -258,12 +258,12 @@ export class CorporateHealthService {
     return this.computeCHS(ticker);
   }
 
-  async getCompanyDetail(ticker: string): Promise<any> {
+  async getCompanyDetail(ticker: string): Promise<Record<string, unknown>> {
     const pool = getPool();
 
     const scores = await pool.query(
       `SELECT * FROM corporate_health_scores
-       WHERE ticker = $1 ORDER BY quarter DESC LIMIT 8`,
+       WHERE ticker = $1 ORDER BY fiscal_quarter DESC LIMIT 8`,
       [ticker],
     );
 

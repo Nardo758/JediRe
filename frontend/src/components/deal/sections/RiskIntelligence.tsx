@@ -127,15 +127,32 @@ const defaultRiskCategories: RiskCategory[] = [
     formula: 'Flood zone + hurricane + heat exposure',
     source: 'FEMA + climate data',
   },
+  {
+    id: 'corporate_concentration',
+    name: 'Corporate Concentration Risk',
+    weight: 10,
+    score: 40,
+    label: 'Moderate',
+    severity: 'moderate',
+    driver: 'Employer base concentration and corporate health scores affect demand stability.',
+    trend30d: 0,
+    trendDirection: 'stable',
+    sparkline: [40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40],
+    offsetting: 'Diversified employer base reduces single-company dependency.',
+    mitigation: 'Monitor top employer CHS scores for stress signals.',
+    formula: 'F72: hhiNormalized × (1 - minChs/100) × 100',
+    source: 'M33 Corporate Health Intelligence',
+  },
 ];
 
 const categoryWeights: Record<string, number> = {
-  supply: 35,
-  demand: 35,
+  supply: 30,
+  demand: 30,
   regulatory: 10,
   market: 10,
   execution: 5,
   climate: 5,
+  corporate_concentration: 10,
 };
 
 const categoryNames: Record<string, string> = {
@@ -145,6 +162,7 @@ const categoryNames: Record<string, string> = {
   market: 'Market Risk',
   execution: 'Execution Risk',
   climate: 'Climate Risk',
+  corporate_concentration: 'Corporate Concentration Risk',
 };
 
 function classifySeverity(score: number): 'low' | 'moderate' | 'elevated' | 'high' {
@@ -298,18 +316,16 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
       const minChs = corpHealthRisk.minChs ?? 50;
       const hhiNormalized = Math.min(1, hhi / 0.25);
       const f72 = hhiNormalized * (1 - minChs / 100) * 100;
+      const f72Severity = classifySeverity(f72);
 
       cats = cats.map(cat => {
-        if (cat.id !== 'demand') return cat;
-        const corpAdj = Math.round(f72 / 10);
-        const adjustedScore = Math.min(100, cat.score + corpAdj);
+        if (cat.id !== 'corporate_concentration') return cat;
         return {
           ...cat,
-          score: adjustedScore,
-          driver: corpAdj > 0
-            ? `${cat.driver} | Corp Concentration Risk (F72): ${f72.toFixed(1)} — HHI ${hhi.toFixed(3)}`
-            : cat.driver,
-          severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
+          score: Math.round(f72),
+          label: severityLabel(f72Severity),
+          severity: f72Severity,
+          driver: `F72 Score: ${f72.toFixed(1)} — HHI ${hhi.toFixed(3)}, Min CHS ${minChs.toFixed(0)}. ${corpHealthRisk.topShare !== null ? `Top employer share: ${(corpHealthRisk.topShare * 100).toFixed(1)}%` : ''}`,
         };
       });
     }

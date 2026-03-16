@@ -38,13 +38,13 @@ export class EmployerConcentrationService {
       };
     }
 
-    const shares = employers.map((e: any) => parseFloat(e.employment_share) || 0);
+    const shares = employers.map((e: Record<string, string>) => parseFloat(e.employment_share) || 0);
     const herfindahlIndex = shares.reduce((sum: number, s: number) => sum + s * s, 0);
     const top5Share = shares.slice(0, 5).reduce((sum: number, s: number) => sum + s, 0);
     const singleEmployerMaxShare = Math.max(...shares);
 
-    const publicEmployers = employers.filter((e: any) => e.is_public);
-    const publicCoverage = publicEmployers.reduce((sum: number, e: any) => sum + (parseFloat(e.employment_share) || 0), 0);
+    const publicEmployers = employers.filter((e: Record<string, string>) => e.is_public);
+    const publicCoverage = publicEmployers.reduce((sum: number, e: Record<string, string>) => sum + (parseFloat(e.employment_share) || 0), 0);
 
     const sectorMap: Record<string, number> = {};
     for (const e of employers) {
@@ -76,7 +76,7 @@ export class EmployerConcentrationService {
       `SELECT se.*, chs.composite_chs, chs.health_tier, chs.chs_delta_qoq
        FROM submarket_employers se
        LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker
-         AND chs.quarter = (SELECT MAX(quarter) FROM corporate_health_scores WHERE ticker = se.ticker)
+         AND chs.fiscal_quarter = (SELECT MAX(fiscal_quarter) FROM corporate_health_scores WHERE ticker = se.ticker)
        WHERE se.submarket_id = $1
        ORDER BY se.employment_share DESC NULLS LAST`,
       [submarketId],
