@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../services/api.client";
+import { layersService } from "../services/layers.service";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -101,6 +102,7 @@ const PORTFOLIO_NAV = [
   {key:"F6",label:"COMPETE"},
   {key:"F7",label:"STRATEGIES"},
   {key:"F8",label:"ORG TOOLS"},
+  {key:"F9",label:"ORG SETTINGS"},
 ];
 
 const WIDGET_CATALOG = [
@@ -127,6 +129,39 @@ const WIDGET_CATALOG = [
   {id:"tv",         label:"TV / Media",             desc:"Live business news channel selector",                  category:"MEDIA",  color:"#FF8C42"},
 ];
 
+const TV_CHANNELS = [
+  {id:"cnbc",label:"CNBC",url:"https://www.youtube.com/embed/9NyxcX3rhQs?autoplay=1&mute=1",color:"#005594"},
+  {id:"bloomberg",label:"Bloomberg TV",url:"https://www.youtube.com/embed/dp8PhLsUcFE?autoplay=1&mute=1",color:"#472F92"},
+  {id:"yahoo",label:"Yahoo Finance",url:"https://www.youtube.com/embed/hRs_gWRN0qs?autoplay=1&mute=1",color:"#6001D2"},
+  {id:"foxbiz",label:"Fox Business",url:"https://www.youtube.com/embed/xSGDNwtIFz8?autoplay=1&mute=1",color:"#003366"},
+];
+
+const NEWS_SOURCES = [
+  {id:"costar",label:"CoStar",rss:"https://product.costar.com/rss/news",color:"#0056B3"},
+  {id:"globest",label:"Globe St",rss:"https://www.globest.com/feed/",color:"#1A5276"},
+  {id:"bisnow",label:"Bisnow",rss:"https://www.bisnow.com/rss/feed",color:"#E74C3C"},
+  {id:"trd",label:"The Real Deal",rss:"https://therealdeal.com/feed/",color:"#000000"},
+  {id:"housingwire",label:"Housing Wire",rss:"https://www.housingwire.com/feed/",color:"#2E86C1"},
+];
+
+const SOCIAL_DEFAULTS = [
+  {id:"x-cre",handle:"#CRE",label:"#CRE"},
+  {id:"x-multifamily",handle:"#multifamily",label:"#multifamily"},
+  {id:"x-costar",handle:"@CoStarGroup",label:"@CoStarGroup"},
+];
+
+interface MediaWindow {
+  id: string;
+  type: "tv"|"rss"|"social";
+  title: string;
+  color: string;
+  url?: string;
+  rssUrl?: string;
+  handle?: string;
+}
+
+interface RssItem { title:string; link:string; pubDate:string; source:string; }
+
 const MAP_TYPES = [
   {id:"warmaps",     label:"War Maps",      color:"#00D26A"},
   {id:"companalysis",label:"Comp Analysis", color:"#A78BFA"},
@@ -135,6 +170,91 @@ const MAP_TYPES = [
 ];
 
 const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3"];
+
+// ─── API RESPONSE TYPES ──────────────────────────────────────
+interface ApiDeal {
+  id: string;
+  name?: string;
+  propertyAddress?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  purchasePrice?: number;
+  dealValue?: number;
+  budget?: number;
+  units?: number;
+  targetUnits?: number;
+  pipelineStage?: string;
+  stage?: string;
+  state_field?: string;
+  triageScore?: number;
+  signalConfidence?: number;
+  strategyName?: string;
+  strategy_name?: string;
+  dealType?: string;
+  irr?: string;
+  equityMultiple?: string;
+  daysInStage?: number;
+  daysInStation?: number;
+  project_type?: string;
+  projectType?: string;
+}
+
+interface ApiAlert {
+  id?: string;
+  alertType?: string;
+  type?: string;
+  severity?: string;
+  message?: string;
+  title?: string;
+  dealName?: string;
+  deal_name?: string;
+  createdAt?: string;
+}
+
+interface ApiTask {
+  id: string;
+  title?: string;
+  description?: string;
+  dealName?: string;
+  deal?: string;
+  priority?: string;
+  dueDate?: string;
+  status?: string;
+  assigneeName?: string;
+  assignee?: string;
+}
+
+interface ApiNewsEvent {
+  id?: string;
+  publishedAt?: string;
+  headline?: string;
+  title?: string;
+  description?: string;
+  impact?: string;
+  marketImpact?: string;
+  sentiment?: string;
+  scoreImpact?: number;
+  affectedDeals?: string[];
+  deals?: string[];
+}
+
+interface ApiEmail {
+  id?: number;
+  fromName?: string;
+  from?: { name?: string; organization?: string };
+  senderName?: string;
+  fromOrg?: string;
+  subject?: string;
+  preview?: string;
+  snippet?: string;
+  body?: string;
+  receivedAt?: string;
+  dealName?: string;
+  isRead?: boolean;
+  tag?: string;
+  label?: string;
+}
 
 // ─── LIVE DEAL ROW TYPE ───────────────────────────────────────
 interface LiveDeal {
@@ -156,7 +276,7 @@ interface LiveDeal {
   trend: number[];
 }
 
-function mapApiDealToLive(d: any): LiveDeal {
+function mapApiDealToLive(d: ApiDeal): LiveDeal {
   const price = d.purchasePrice || d.dealValue || d.budget || 0;
   const units = d.units || d.targetUnits || 0;
   const stage = (d.pipelineStage || d.stage || d.state || "LEAD").toUpperCase().replace(/_/g," ");
@@ -239,9 +359,13 @@ function MetricBox({label,value,sub,change,dir,T}:{label:string;value:string;sub
   );
 }
 
+interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
+
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
   const navigate = useNavigate();
+
+  const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const [theme, setTheme] = useState<"dark"|"light">(() => (localStorage.getItem("jedi-theme")||"dark") as "dark"|"light");
   const T = theme==="dark" ? DARK : LIGHT;
@@ -258,18 +382,86 @@ export default function TerminalPage() {
   const [mapOpen, setMapOpen] = useState(false);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
-  // Dashboard widget system
-  const [dashWidgets, setDashWidgets] = useState<string[]>(() => { try{const s=localStorage.getItem("jedi-dash-widgets");return s?JSON.parse(s):[];}catch{return [];} });
+  // Floating window dashboard system
+  const DASH_STORAGE_KEY = "jedi-dash-windows";
+  const loadWinState = (): Record<string, WinState> => { try { const s = localStorage.getItem(DASH_STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch { return {}; } };
+  const [dashWindows, setDashWindows] = useState<string[]>(() => { try { const s = localStorage.getItem("jedi-dash-open"); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [winStates, setWinStates] = useState<Record<string,WinState>>(loadWinState);
   const [dashMenuOpen, setDashMenuOpen] = useState(false);
+  const [dragInfo, setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
+  const [topZ, setTopZ] = useState(10);
+  const persistWins = (ids: string[], states: Record<string,WinState>) => { localStorage.setItem("jedi-dash-open", JSON.stringify(ids)); localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(states)); };
+  const [floatWidgets, setFloatWidgets] = useState<string[]>([]);
   const [widgetSizes, setWidgetSizes] = useState<Record<string,string>>({});
   const [widgetCols, setWidgetCols] = useState<Record<string,number>>({});
   const [widgetHeights, setWidgetHeights] = useState<Record<string,number>>({});
-  const [floatWidgets, setFloatWidgets] = useState<string[]>([]);
-  const [floatPos, setFloatPos] = useState<Record<string,{x:number,y:number,w:number,h:number}>>({});
-  const [dragInfo, setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
   const [gridResizing, setGridResizing] = useState<{id:string,startY:number,startH:number}|null>(null);
   const [gridDrag, setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
+
+  // Org settings state (F9)
+  const [orgData, setOrgData] = useState<any>(null);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const [orgInvitations, setOrgInvitations] = useState<any[]>([]);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("analyst");
+  const [orgError, setOrgError] = useState("");
+  const [orgSuccess, setOrgSuccess] = useState("");
+
+  // Media floating windows (global overlay, separate from dashboard windows)
+  const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
+  const [mediaWinStates, setMediaWinStates] = useState<Record<string,WinState>>({});
+  const [mediaDragInfo, setMediaDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
+  const [mediaTopZ, setMediaTopZ] = useState(100);
+  const [mediaWinDropdown, setMediaWinDropdown] = useState(false);
+  const [rssCache, setRssCache] = useState<Record<string,{items:RssItem[],ts:number}>>({});
+
+  const openMediaWindow = useCallback((win: MediaWindow) => {
+    setMediaWindows(prev => {
+      if (prev.find(w => w.id === win.id)) {
+        const nz = mediaTopZ + 1; setMediaTopZ(nz);
+        setMediaWinStates(ps => ({ ...ps, [win.id]: { ...ps[win.id], minimized: false, zIndex: nz } }));
+        return prev;
+      }
+      const nz = mediaTopZ + 1; setMediaTopZ(nz);
+      const idx = prev.length;
+      setMediaWinStates(ps => ({ ...ps, [win.id]: { x: 80 + idx * 40, y: 60 + idx * 30, w: 520, h: 380, minimized: false, maximized: false, zIndex: nz } }));
+      return [...prev, win];
+    });
+  }, [mediaTopZ]);
+
+  const closeMediaWindow = useCallback((id: string) => {
+    setMediaWindows(prev => prev.filter(w => w.id !== id));
+    setMediaWinStates(prev => { const ns = { ...prev }; delete ns[id]; return ns; });
+  }, []);
+
+  const minimizeMediaWindow = useCallback((id: string) => {
+    setMediaWinStates(prev => ({ ...prev, [id]: { ...prev[id], minimized: !prev[id]?.minimized } }));
+  }, []);
+
+  const maximizeMediaWindow = useCallback((id: string) => {
+    setMediaWinStates(prev => {
+      const cur = prev[id]; if (!cur) return prev;
+      return { ...prev, [id]: { ...cur, maximized: !cur.maximized, minimized: false } };
+    });
+  }, []);
+
+  const bringMediaToFront = useCallback((id: string) => {
+    const nz = mediaTopZ + 1; setMediaTopZ(nz);
+    setMediaWinStates(prev => ({ ...prev, [id]: { ...prev[id], zIndex: nz } }));
+  }, [mediaTopZ]);
+
+  const fetchRss = useCallback((rssUrl: string) => {
+    const cached = rssCache[rssUrl];
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return;
+    apiClient.get("/api/media/rss", { params: { url: rssUrl } })
+      .then(res => {
+        const items: RssItem[] = res.data?.data || [];
+        setRssCache(prev => ({ ...prev, [rssUrl]: { items, ts: Date.now() } }));
+      })
+      .catch(() => {});
+  }, [rssCache]);
 
   // Email UI state
   const [emailFolder, setEmailFolder] = useState("inbox");
@@ -287,6 +479,11 @@ export default function TerminalPage() {
   const [dealsLoading, setDealsLoading] = useState(true);
   const [liveAlerts, setLiveAlerts] = useState(STATIC_ALERTS);
   const [liveTasks, setLiveTasks] = useState(STATIC_TASKS);
+
+  // Live bottom panel data
+  const [liveNews, setLiveNews] = useState(STATIC_NEWS);
+  const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
+  const [liveAgents] = useState(STATIC_AGENTS);
 
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
@@ -308,7 +505,7 @@ export default function TerminalPage() {
     setDealsLoading(true);
     apiClient.get("/api/v1/deals", { params:{ limit:100 } })
       .then(res => {
-        const raw = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.deals || []);
+        const raw: ApiDeal[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.deals || []);
         setLiveDeals(raw.map(mapApiDealToLive));
       })
       .catch(() => setLiveDeals([]))
@@ -318,9 +515,9 @@ export default function TerminalPage() {
   useEffect(() => {
     apiClient.get("/api/v1/tasks", { params:{ limit:20 } })
       .then(res => {
-        const raw = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.tasks || []);
+        const raw: ApiTask[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.tasks || []);
         if(raw.length>0) {
-          setLiveTasks(raw.slice(0,10).map((t:any) => ({
+          setLiveTasks(raw.slice(0,10).map((t: ApiTask) => ({
             id: t.id, title: t.title||t.description||"Task", deal: t.dealName||t.deal||"—",
             pri: (t.priority||"med").toLowerCase(), due: t.dueDate?new Date(t.dueDate).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"—",
             status: (t.status||"TODO").toUpperCase().replace("PENDING","TODO").replace("COMPLETE","DONE"),
@@ -331,25 +528,126 @@ export default function TerminalPage() {
       .catch(()=>{});
   },[]);
 
-  // Float window drag
+  useEffect(() => {
+    const sevMap: Record<string,string> = { red:"critical", yellow:"high", green:"low" };
+    apiClient.get("/api/v1/jedi/alerts", { params:{ limit:30 } })
+      .then(res => {
+        const raw: ApiAlert[] = res.data?.data?.alerts || res.data?.alerts || [];
+        if(raw.length > 0) {
+          setLiveAlerts(raw.slice(0,20).map((a: ApiAlert, i: number) => ({
+            id: a.id || String(i),
+            type: (a.alertType || a.type || "INTEL").toUpperCase().replace(/_/g," ").slice(0,12),
+            sev: sevMap[a.severity || ""] || a.severity || "med",
+            msg: a.message || a.title || "Alert",
+            deal: a.dealName || a.deal_name || null,
+            time: a.createdAt ? (() => {
+              const d = new Date(a.createdAt);
+              const diff = Math.floor((Date.now() - d.getTime()) / 60000);
+              return diff < 60 ? `${diff}m` : diff < 1440 ? `${Math.floor(diff/60)}h` : `${Math.floor(diff/1440)}d`;
+            })() : "—",
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  useEffect(() => {
+    apiClient.get("/api/v1/news/events", { params:{ limit:15 } })
+      .then(res => {
+        const raw: ApiNewsEvent[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.events || []);
+        if(raw.length > 0) {
+          setLiveNews(raw.slice(0,12).map((n: ApiNewsEvent, i: number) => ({
+            id: n.id || String(i),
+            time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—",
+            hl: n.headline || n.title || n.description || "Market update",
+            impact: n.impact || n.marketImpact || (n.sentiment === "positive" ? "+DEMAND" : n.sentiment === "negative" ? "RISK DN" : "INFO"),
+            pts: n.scoreImpact ? (n.scoreImpact > 0 ? `+${n.scoreImpact.toFixed(1)}` : n.scoreImpact.toFixed(1)) : "0.0",
+            affects: n.affectedDeals || n.deals || [],
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  useEffect(() => {
+    apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })
+      .then(res => {
+        const raw: ApiEmail[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.emails || []);
+        if(raw.length > 0) {
+          setLiveEmails(raw.slice(0,10).map((e: ApiEmail, i: number) => ({
+            id: e.id || i,
+            from: e.fromName || e.from?.name || e.senderName || "Sender",
+            org: e.fromOrg || e.from?.organization || "",
+            subject: e.subject || "(no subject)",
+            preview: e.preview || e.snippet || e.body?.slice(0,80) || "",
+            time: e.receivedAt ? (() => {
+              const diff = Math.floor((Date.now() - new Date(e.receivedAt).getTime()) / 60000);
+              return diff < 60 ? `${diff}m` : diff < 1440 ? `${Math.floor(diff/60)}h` : `${Math.floor(diff/1440)}d`;
+            })() : "—",
+            deal: e.dealName || null,
+            unread: !e.isRead,
+            folder: "inbox",
+            tag: e.tag || e.label || null,
+            body: e.body || "",
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        cmdInputRef.current?.focus();
+        return;
+      }
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9" };
+      if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
+      if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  },[]);
+
+  // Floating window drag/resize
   useEffect(() => {
     if(!dragInfo) return;
     const onMove=(e:MouseEvent)=>{
-      setFloatPos(prev=>{
+      setWinStates(prev=>{
         const cur=prev[dragInfo.id];
         if(!cur) return prev;
-        if(dragInfo.mode==="move") return{...prev,[dragInfo.id]:{...cur,x:e.clientX-dragInfo.ox,y:e.clientY-dragInfo.oy}};
-        return{...prev,[dragInfo.id]:{...cur,w:Math.max(280,e.clientX-cur.x),h:Math.max(180,e.clientY-cur.y)}};
+        if(dragInfo.mode==="move") return{...prev,[dragInfo.id]:{...cur,x:e.clientX-dragInfo.ox,y:e.clientY-dragInfo.oy,maximized:false}};
+        return{...prev,[dragInfo.id]:{...cur,w:Math.max(320,e.clientX-cur.x),h:Math.max(200,e.clientY-cur.y),maximized:false}};
       });
     };
-    const onUp=()=>setDragInfo(null);
+    const onUp=()=>{setDragInfo(null);setWinStates(prev=>{persistWins(dashWindows,prev);return prev;});};
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
-  },[dragInfo]);
+  },[dragInfo,dashWindows]);
 
-  // Grid widget resize
+  // Media window drag/resize
   useEffect(() => {
+    if(!mediaDragInfo) return;
+    const onMove=(e:MouseEvent)=>{
+      setMediaWinStates(prev=>{
+        const cur=prev[mediaDragInfo.id];
+        if(!cur) return prev;
+        if(mediaDragInfo.mode==="move") return{...prev,[mediaDragInfo.id]:{...cur,x:e.clientX-mediaDragInfo.ox,y:e.clientY-mediaDragInfo.oy,maximized:false}};
+        return{...prev,[mediaDragInfo.id]:{...cur,w:Math.max(320,e.clientX-cur.x),h:Math.max(200,e.clientY-cur.y),maximized:false}};
+      });
+    };
+    const onUp=()=>setMediaDragInfo(null);
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[mediaDragInfo]);
+
+  // Grid widget vertical resize
+  useEffect(()=>{
     if(!gridResizing) return;
     const onMove=(e:MouseEvent)=>{const delta=e.clientY-gridResizing.startY;setWidgetHeights(prev=>({...prev,[gridResizing.id]:Math.max(120,gridResizing.startH+delta)}));};
     const onUp=()=>setGridResizing(null);
@@ -357,32 +655,79 @@ export default function TerminalPage() {
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
   },[gridResizing]);
 
-  // Grid widget drag-to-swap
-  useEffect(() => {
+  // Grid widget drag-to-reorder
+  useEffect(()=>{
     if(!gridDrag) return;
     const onMove=(e:MouseEvent)=>setGridDrag(prev=>prev?{...prev,x:e.clientX,y:e.clientY}:null);
     const onUp=()=>{
       if(gridDragOver&&gridDrag&&gridDragOver!==gridDrag.id){
-        setDashWidgets(prev=>{const arr=[...prev];const fi=arr.indexOf(gridDrag.id),ti=arr.indexOf(gridDragOver);if(fi!==-1&&ti!==-1){[arr[fi],arr[ti]]=[arr[ti],arr[fi]];}localStorage.setItem("jedi-dash-widgets",JSON.stringify(arr));return arr;});
+        setDashWindows(prev=>{const arr=[...prev];const fi=arr.indexOf(gridDrag.id),ti=arr.indexOf(gridDragOver);if(fi!==-1&&ti!==-1){[arr[fi],arr[ti]]=[arr[ti],arr[fi]];}persistWins(arr,winStates);return arr;});
       }
       setGridDrag(null);setGridDragOver(null);
     };
     document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
-  },[gridDrag,gridDragOver]);
+  },[gridDrag,gridDragOver,winStates]);
 
-  // ─── Widget helpers ────────────────────────────────────────
-  const addWidget = useCallback((id:string)=>{setDashWidgets(prev=>{const n=prev.includes(id)?prev:[...prev,id];localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});}, []);
-  const removeWidget = useCallback((id:string)=>{setDashWidgets(prev=>{const n=prev.filter(w=>w!==id);localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});setFloatWidgets(prev=>prev.filter(w=>w!==id));}, []);
-  const floatWidget = useCallback((id:string)=>{setFloatWidgets(prev=>prev.includes(id)?prev:[...prev,id]);setFloatPos(prev=>({...prev,[id]:prev[id]||{x:120,y:80,w:400,h:300}}));}, []);
-  const dockWidget = useCallback((id:string)=>setFloatWidgets(prev=>prev.filter(w=>w!==id)), []);
+  // ─── Window helpers ────────────────────────────────────────
+  const defaultWinPos = (id: string, idx: number): WinState => ({ x: 40 + idx * 30, y: 40 + idx * 30, w: 480, h: 340, minimized: false, maximized: false, zIndex: topZ + idx });
+  const openWindow = useCallback((id: string) => {
+    setDashWindows(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      const nz = topZ + 1;
+      setTopZ(nz);
+      setWinStates(ps => { const ns = { ...ps, [id]: ps[id] ? { ...ps[id], minimized: false, zIndex: nz } : defaultWinPos(id, next.length - 1) }; persistWins(next, ns); return ns; });
+      return next;
+    });
+  }, [topZ]);
+  const closeWindow = useCallback((id: string) => {
+    setDashWindows(prev => { const next = prev.filter(w => w !== id); setWinStates(ps => { persistWins(next, ps); return ps; }); return next; });
+  }, []);
+  const minimizeWindow = useCallback((id: string) => {
+    setWinStates(prev => { const ns = { ...prev, [id]: { ...prev[id], minimized: !prev[id]?.minimized } }; persistWins(dashWindows, ns); return ns; });
+  }, [dashWindows]);
+  const maximizeWindow = useCallback((id: string) => {
+    setWinStates(prev => { const cur = prev[id]; if (!cur) return prev; const ns = { ...prev, [id]: { ...cur, maximized: !cur.maximized, minimized: false } }; persistWins(dashWindows, ns); return ns; });
+  }, [dashWindows]);
+  const bringToFront = useCallback((id: string) => {
+    const nz = topZ + 1; setTopZ(nz);
+    setWinStates(prev => { const ns = { ...prev, [id]: { ...prev[id], zIndex: nz } }; persistWins(dashWindows, ns); return ns; });
+  }, [topZ, dashWindows]);
+  const floatWidget = useCallback((id: string) => {
+    const nz = topZ + 1; setTopZ(nz);
+    setFloatWidgets(prev => prev.includes(id) ? prev : [...prev, id]);
+    setWinStates(prev => ({ ...prev, [id]: prev[id] ? { ...prev[id], minimized: false, zIndex: nz } : defaultWinPos(id, 0) }));
+  }, [topZ]);
+  const dockWidget = useCallback((id: string) => {
+    setFloatWidgets(prev => prev.filter(w => w !== id));
+  }, []);
   const toggleSort = useCallback((c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}}, [sortBy]);
   const toggleTheme = useCallback(()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);}, [theme]);
 
   // Map layer helpers
   const addMapLayer = () => {
     if(!newMapName.trim()) return;
-    setMapLayers(prev=>[...prev,{id:`layer-${Date.now()}`,name:newMapName.trim(),type:newMapType,visible:true}]);
+    const localLayer = {id:`layer-${Date.now()}`,name:newMapName.trim(),type:newMapType,visible:true};
+    const layerTypeMap: Record<string, "pin" | "bubble" | "heatmap" | "boundary" | "overlay"> = {
+      warmaps:"overlay", deals:"pin", comps:"pin", companalysis:"bubble",
+      brokerintel:"pin", marketheat:"heatmap", zoning:"boundary", transit:"overlay", schools:"pin",
+    };
+    const sourceTypeMap: Record<string, "assets" | "pipeline" | "email" | "news" | "market" | "custom"> = {
+      warmaps:"market", deals:"pipeline", comps:"assets", companalysis:"market",
+      brokerintel:"news", marketheat:"market", zoning:"custom", transit:"custom", schools:"custom",
+    };
+    layersService.createLayer({
+      map_id: "terminal-default",
+      name: newMapName.trim(),
+      layer_type: layerTypeMap[newMapType] || "pin",
+      source_type: sourceTypeMap[newMapType] || "custom",
+      visible: true,
+    }).then(created => {
+      setMapLayers(prev=>[...prev,{id:created.id,name:created.name,type:newMapType,visible:true}]);
+    }).catch(() => {
+      setMapLayers(prev=>[...prev,localLayer]);
+    });
     setNewMapName("");setMapCreating(false);
   };
   const toggleLayerVis = (id:string)=>setMapLayers(prev=>prev.map(l=>l.id===id?{...l,visible:!l.visible}:l));
@@ -403,14 +748,6 @@ export default function TerminalPage() {
   // ─── DEAL GRID (F2) ────────────────────────────────────────
   const DealGrid = () => (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:10,fontWeight:700,color:T.text.white}}>DEAL PIPELINE</span>
-          <span style={{fontSize:8,color:T.text.secondary}}>{sorted.length} deals</span>
-          {dealsLoading&&<span style={{fontSize:8,color:T.text.muted,animation:"pulse 1.5s infinite"}}>loading…</span>}
-        </div>
-        <button onClick={()=>navigate("/deals/new")} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.4}}>+ CREATE DEAL</button>
-      </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
           <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:7,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
@@ -421,8 +758,7 @@ export default function TerminalPage() {
       <div style={{flex:1,overflow:"auto"}}>
         {sorted.length===0&&!dealsLoading&&(
           <div style={{padding:"40px 20px",textAlign:"center"}}>
-            <div style={{fontSize:12,color:T.text.muted,marginBottom:12}}>No deals in pipeline</div>
-            <button onClick={()=>navigate("/deals/new")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"8px 20px",cursor:"pointer"}}>+ CREATE YOUR FIRST DEAL</button>
+            <div style={{fontSize:12,color:T.text.muted}}>No deals in pipeline</div>
           </div>
         )}
         {sorted.map((d,i)=>(
@@ -514,7 +850,6 @@ export default function TerminalPage() {
   // ─── WIDGET COMPONENTS ─────────────────────────────────────
   const WidgetKeyFindings = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="KEY FINDINGS" subtitle="News Intelligence" borderColor={T.text.amber}/>
       {STATIC_NEWS.map((n,i)=>(
         <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${T.text.amber}`}}>
           <div style={{flex:1}}>
@@ -530,7 +865,6 @@ export default function TerminalPage() {
 
   const WidgetMyDeals = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="MY DEALS" subtitle="" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/deals/new")} style={{fontFamily:T.font.mono,fontSize:8,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"2px 8px",cursor:"pointer",fontWeight:700}}>+ New</button>}/>
       {liveDeals.slice(0,5).map((d,i)=>(
         <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -549,7 +883,6 @@ export default function TerminalPage() {
 
   const WidgetKPISummary = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-      <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:12,letterSpacing:1}}>KPI SUMMARY</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
         {[
           {l:"Total Pipeline",v:totalPV>0?`$${totalPV.toFixed(1)}M`:`${liveDeals.length} deals`,sub:liveDeals.length+" deals",c:T.text.amberBright},
@@ -577,7 +910,6 @@ export default function TerminalPage() {
 
   const WidgetAlertFeed = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="ALERT FEED" subtitle={`${hAlerts} critical/high`} borderColor={T.text.red}/>
       {liveAlerts.map((a,i)=>{
         const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
         return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
@@ -587,9 +919,8 @@ export default function TerminalPage() {
 
   const WidgetAgents = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="AGENT ACTIVITY" subtitle={`${STATIC_AGENTS.filter(a=>a.st==="ON").length} active`} borderColor={T.text.green}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
-        {STATIC_AGENTS.map((a,i)=>(
+        {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
             <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
@@ -602,7 +933,6 @@ export default function TerminalPage() {
 
   const WidgetLeaderboard = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="SCORE LEADERBOARD" subtitle="Ranked by JEDI score" borderColor={T.text.green}/>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
         <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
@@ -626,7 +956,6 @@ export default function TerminalPage() {
     const maxCount=Math.max(...Object.values(stages),1);
     return (
       <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-        <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:16,letterSpacing:1}}>STAGE FUNNEL</div>
         {stageOrder.map(s=>(
           <div key={s} style={{marginBottom:12}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
@@ -647,7 +976,6 @@ export default function TerminalPage() {
 
   const WidgetStrategySnapshot = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
-      <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:12,letterSpacing:1}}>STRATEGY SNAPSHOT</div>
       {[
         {s:"BUILD-TO-SELL",abbr:"BTS",c:T.text.green},
         {s:"RENTAL",abbr:"RENTAL",c:T.text.cyan},
@@ -887,149 +1215,146 @@ export default function TerminalPage() {
     }
   };
 
-  // ─── VIEW: F1 DASHBOARD ────────────────────────────────────
-  const ViewDashboard = () => (
-    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
-      {dashMenuOpen&&(
-        <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:20,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
-              <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWidgets.length} on dashboard</div>
+  // ─── VIEW: F1 DASHBOARD (Grid + Float Window System) ──────
+  const ViewDashboard = () => {
+    const gridWidgets = dashWindows.filter(id => !floatWidgets.includes(id));
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
+        {/* Widget catalog overlay */}
+        {dashMenuOpen&&(
+          <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
+                <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} on dashboard</div>
+              </div>
+              <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
             </div>
-            <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
-          </div>
-          <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
-            {["DEALS","INTEL","MARKET","OPS","MEDIA"].map(cat=>{
-              const items=WIDGET_CATALOG.filter(w=>w.category===cat);
-              if(!items.length) return null;
-              return (
-                <div key={cat} style={{marginBottom:20}}>
-                  <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-                    {items.map(w=>{
-                      const added=dashWidgets.includes(w.id);
-                      return (
-                        <div key={w.id} style={{background:T.bg.panel,border:`1px solid ${added?w.color+"44":T.border.subtle}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
-                            <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
+            <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
+              {["DEALS","INTEL","MARKET","OPS","MEDIA"].map(cat=>{
+                const items=WIDGET_CATALOG.filter(w=>w.category===cat);
+                if(!items.length) return null;
+                return (
+                  <div key={cat} style={{marginBottom:20}}>
+                    <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                      {items.map(w=>{
+                        const added=dashWindows.includes(w.id);
+                        return (
+                          <div key={w.id} style={{background:T.bg.panel,border:`1px solid ${added?w.color+"44":T.border.subtle}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
+                              <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
+                            </div>
+                            <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
+                            <button onClick={()=>{if(!added){openWindow(w.id);setDashMenuOpen(false);}else{closeWindow(w.id);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:"pointer",letterSpacing:0.3}}>
+                              {added?"✓ OPEN":"+ ADD"}
+                            </button>
                           </div>
-                          <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
-                          <button onClick={()=>{if(!added){addWidget(w.id);setDashMenuOpen(false);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:added?"default":"pointer",letterSpacing:0.3}}>
-                            {added?"✓ ADDED":"+ ADD"}
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
+            {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {dashWindows.length===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
+            <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:24,color:T.text.muted}}>+</span>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your dashboard is empty</div>
+              <div style={{fontSize:10,color:T.text.muted}}>Choose from {WIDGET_CATALOG.length} widgets to build your view</div>
+            </div>
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WIDGET</button>
+          </div>
+        )}
+
+        {/* All-floating placeholder */}
+        {dashWindows.length>0&&gridWidgets.length===0&&(
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>All widgets are floating — drag them freely on screen</span>
+          </div>
+        )}
+
+        {/* Widget grid (drag ghost cursor) */}
+        {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:300,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
+
+        {/* Widget grid */}
+        {gridWidgets.length>0&&(
+          <div style={{flex:1,overflow:"auto",padding:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridAutoFlow:"dense",gap:10,alignItems:"start"}}>
+              {gridWidgets.map(id=>{
+                const meta=WIDGET_CATALOG.find(w=>w.id===id);
+                if(!meta) return null;
+                const sz=widgetSizes[id]||"md";
+                const customH=widgetHeights[id];
+                const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
+                const h=customH?{min:customH,max:customH}:hMap[sz]||hMap.md;
+                const isDragging=gridDrag?.id===id;
+                const isDropTarget=gridDragOver===id&&gridDrag?.id!==id;
+                return (
+                  <div key={id}
+                    onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
+                    onMouseLeave={()=>setGridDragOver(null)}
+                    style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:`span ${widgetCols[id]||2}`,opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
+                    {/* Title bar */}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span onMouseDown={(e)=>{e.preventDefault();setGridDrag({id,x:e.clientX,y:e.clientY});}} style={{cursor:"grab",fontSize:13,color:T.text.muted,lineHeight:1,padding:"0 4px 0 0",userSelect:"none"}} title="Drag to reorder">⠿</span>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                        <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
+                      </div>
+                      <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                        {(["sm","md","lg"] as const).map(s=>(
+                          <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
+                            {s.toUpperCase()}
                           </button>
-                        </div>
-                      );
-                    })}
+                        ))}
+                        <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
+                        {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
+                          <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""}`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
+                            {c}
+                          </button>
+                        );})}
+                        <button onClick={()=>floatWidget(id)} title="Pop out as floating window" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
+                        <button onClick={()=>closeWindow(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
+                      </div>
+                    </div>
+                    {/* Content */}
+                    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+                      {renderWidget(id)}
+                    </div>
+                    {/* Vertical resize handle */}
+                    <div onMouseDown={(e)=>{e.preventDefault();const curH=customH||(sz==="sm"?160:sz==="lg"?420:280);setGridResizing({id,startY:e.clientY,startH:curH});}} style={{height:6,flexShrink:0,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",borderTop:`1px solid ${T.border.subtle}`}} title="Drag to resize height">
+                      <div style={{width:28,height:2,borderRadius:1,background:T.border.medium}}/>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
-          {dashWidgets.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{dashWidgets.length} widget{dashWidgets.length!==1?"s":""}</span>}
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          {dashWidgets.length>0&&<button onClick={()=>{setDashWidgets([]);localStorage.setItem("jedi-dash-widgets","[]");}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR</button>}
-          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
-        </div>
+        )}
       </div>
-      {dashWidgets.length===0&&(
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
-          <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:24,color:T.text.muted}}>+</span>
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your dashboard is empty</div>
-            <div style={{fontSize:10,color:T.text.muted}}>Choose from {WIDGET_CATALOG.length} widgets to build your view</div>
-          </div>
-          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WIDGET</button>
-        </div>
-      )}
-      {dashWidgets.length>0&&(
-        <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
-          {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:200,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color}}>⠿ {m.label}</div>:null;})()}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridAutoFlow:"dense",gap:10,alignItems:"start"}}>
-            {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
-              const meta=WIDGET_CATALOG.find(w=>w.id===id);
-              if(!meta) return null;
-              const sz=widgetSizes[id]||"md";
-              const customH=widgetHeights[id];
-              const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
-              const h=customH?{min:customH,max:customH}:hMap[sz]||hMap.md;
-              const isDragging=gridDrag?.id===id;
-              const isDropTarget=gridDragOver===id&&gridDrag?.id!==id;
-              return (
-                <div key={id}
-                  onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
-                  onMouseLeave={()=>setGridDragOver(null)}
-                  style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:`span ${widgetCols[id]||2}`,opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5}}>
-                      <span onMouseDown={(e)=>{e.preventDefault();setGridDrag({id,x:e.clientX,y:e.clientY});}} style={{cursor:"grab",fontSize:13,color:T.text.muted,lineHeight:1,padding:"0 4px 0 0",userSelect:"none"}} title="Drag to reorder">⠿</span>
-                      <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                      <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
-                    </div>
-                    <div style={{display:"flex",gap:3,alignItems:"center"}}>
-                      {(["sm","md","lg"] as const).map(s=>(
-                        <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
-                          {s.toUpperCase()}
-                        </button>
-                      ))}
-                      <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
-                      {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
-                        <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""} wide`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
-                          {c}
-                        </button>
-                      );})}
-                      <button onClick={()=>floatWidget(id)} title="Float as window" style={{fontFamily:T.font.mono,fontSize:11,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
-                      <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
-                    </div>
-                  </div>
-                  <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
-                    {renderWidget(id)}
-                  </div>
-                  <div onMouseDown={(e)=>{e.preventDefault();const curH=customH||(sz==="sm"?160:sz==="lg"?420:280);setGridResizing({id,startY:e.clientY,startH:curH});}} style={{height:6,flexShrink:0,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",borderTop:`1px solid ${T.border.subtle}`}} title="Drag to resize">
-                    <div style={{width:28,height:2,borderRadius:1,background:T.border.medium}}/>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {floatWidgets.map(id=>{
-        const meta=WIDGET_CATALOG.find(w=>w.id===id);
-        const pos=floatPos[id]||{x:120,y:80,w:400,h:300};
-        if(!meta) return null;
-        const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
-        return (
-          <div key={id} style={{position:"fixed",left:pos.x,top:pos.y,width:pos.w,height:pos.h,background:T.bg.panel,border:`1px solid ${meta.color}66`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:60,minWidth:280,minHeight:180}}>
-            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX-pos.x,oy:e.clientY-pos.y,mode:"move"});}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMoving?"grabbing":"grab"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
-                <span style={{fontSize:7,color:T.text.muted,marginLeft:2}}>FLOATING</span>
-              </div>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                <button onClick={()=>dockWidget(id)} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:`${T.text.cyan}11`,border:`1px solid ${T.text.cyan}44`,padding:"2px 7px",cursor:"pointer",letterSpacing:0.3}}>↙ DOCK</button>
-                <button onClick={()=>{dockWidget(id);removeWidget(id);}} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 3px",lineHeight:1}}>✕</button>
-              </div>
-            </div>
-            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
-              {renderWidget(id)}
-            </div>
-            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:16,height:16,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>
-          </div>
-        );
-      })}
-    </div>
-  );
+    );
+  };
 
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
   const ViewPortfolio = () => (
@@ -1277,6 +1602,167 @@ export default function TerminalPage() {
     </div>
   );
 
+  // ─── F9: ORG SETTINGS ─────────────────────────────────────
+  const fetchOrgData = useCallback(() => {
+    setOrgLoading(true); setOrgError(""); setOrgSuccess("");
+    apiClient.get("/api/v1/orgs/mine")
+      .then(res => {
+        const orgs = Array.isArray(res.data) ? res.data : [];
+        if(orgs.length > 0) {
+          const org = orgs[0];
+          setOrgData(org);
+          return Promise.all([
+            apiClient.get(`/api/v1/orgs/${org.id}/members`),
+            apiClient.get(`/api/v1/orgs/${org.id}/invitations`).catch(()=>({data:[]})),
+          ]);
+        }
+        setOrgData(null);
+        return null;
+      })
+      .then(results => {
+        if(results) {
+          setOrgMembers(Array.isArray(results[0].data) ? results[0].data : []);
+          setOrgInvitations(Array.isArray(results[1].data) ? results[1].data : []);
+        }
+      })
+      .catch(() => setOrgError("Failed to load organization data"))
+      .finally(() => setOrgLoading(false));
+  }, []);
+
+  useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
+
+  const handleInvite = () => {
+    if(!inviteEmail || !orgData) return;
+    setOrgError(""); setOrgSuccess("");
+    apiClient.post(`/api/v1/orgs/${orgData.id}/invitations`, { email: inviteEmail, role: inviteRole })
+      .then(() => { setOrgSuccess(`Invitation sent to ${inviteEmail}`); setInviteEmail(""); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to send invitation"));
+  };
+
+  const handleRoleChange = (memberId: string, newRole: string) => {
+    if(!orgData) return;
+    apiClient.put(`/api/v1/orgs/${orgData.id}/members/${memberId}/role`, { role: newRole })
+      .then(() => { setOrgSuccess("Role updated"); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to update role"));
+  };
+
+  const handleRemoveMember = (memberId: string, name: string) => {
+    if(!orgData || !confirm(`Remove ${name} from the organization?`)) return;
+    apiClient.delete(`/api/v1/orgs/${orgData.id}/members/${memberId}`)
+      .then(() => { setOrgSuccess("Member removed"); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to remove member"));
+  };
+
+  const ViewOrgSettings = () => {
+    const myRole = orgData?.my_role || "viewer";
+    const canManage = myRole === "owner" || myRole === "principal";
+    const isOwner = myRole === "owner";
+    const roleBadgeColor: Record<string,string> = { owner: T.text.amber, principal: T.text.cyan, analyst: T.text.green, viewer: T.text.muted };
+    return (
+      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+        <PanelHeader T={T} title="ORG SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
+          right={<span style={{fontSize:8,color:T.text.muted}}>YOUR ROLE: <span style={{color:roleBadgeColor[myRole]||T.text.muted,fontWeight:700}}>{myRole.toUpperCase()}</span></span>}/>
+        {orgLoading ? (
+          <div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading organization data...</span></div>
+        ) : !orgData ? (
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:60,gap:12}}>
+            <div style={{fontSize:14,color:T.text.muted}}>No organization found</div>
+            <div style={{fontSize:9,color:T.text.secondary}}>Contact support to create your organization</div>
+          </div>
+        ) : (
+          <div style={{padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {orgError && <div style={{gridColumn:"1/-1",background:T.text.red+"18",border:`1px solid ${T.text.red}44`,padding:"6px 10px",fontSize:9,color:T.text.red}}>{orgError}</div>}
+            {orgSuccess && <div style={{gridColumn:"1/-1",background:T.text.green+"18",border:`1px solid ${T.text.green}44`,padding:"6px 10px",fontSize:9,color:T.text.green}}>{orgSuccess}</div>}
+            <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+              <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>MEMBERS</span>
+                <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgMembers.length} total</span>
+              </div>
+              <div style={{maxHeight:300,overflow:"auto"}}>
+                {orgMembers.map((m,i)=>(
+                  <div key={m.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{m.full_name || m.first_name || m.email}</div>
+                      <div style={{fontSize:7,color:T.text.muted}}>{m.email}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {isOwner && m.role !== "owner" ? (
+                        <select value={m.role} onChange={e=>handleRoleChange(m.id, e.target.value)}
+                          style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"2px 4px",cursor:"pointer"}}>
+                          <option value="principal">PRINCIPAL</option>
+                          <option value="analyst">ANALYST</option>
+                          <option value="viewer">VIEWER</option>
+                        </select>
+                      ) : (
+                        <Bd c={roleBadgeColor[m.role]||T.text.muted}>{m.role}</Bd>
+                      )}
+                      {isOwner && m.role !== "owner" && (
+                        <button onClick={()=>handleRemoveMember(m.id, m.full_name||m.email)}
+                          style={{fontFamily:T.font.mono,fontSize:8,color:T.text.red,background:"transparent",border:`1px solid ${T.text.red}44`,padding:"1px 6px",cursor:"pointer"}}>x</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {canManage && (
+                <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+                  <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                    <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>INVITE MEMBER</span>
+                  </div>
+                  <div style={{padding:10}}>
+                    <div style={{display:"flex",gap:6,marginBottom:6}}>
+                      <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="email@example.com"
+                        style={{flex:1,fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",outline:"none"}}
+                        onKeyDown={e=>{if(e.key==="Enter")handleInvite();}}/>
+                      <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
+                        style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px",cursor:"pointer"}}>
+                        <option value="principal">PRINCIPAL</option>
+                        <option value="analyst">ANALYST</option>
+                        <option value="viewer">VIEWER</option>
+                      </select>
+                    </div>
+                    <button onClick={handleInvite}
+                      style={{fontFamily:T.font.mono,fontSize:8,color:T.text.white,background:T.text.cyan+"33",border:`1px solid ${T.text.cyan}`,padding:"4px 12px",cursor:"pointer",width:"100%",fontWeight:700,letterSpacing:0.5}}>+ SEND INVITATION</button>
+                    <div style={{marginTop:6,fontSize:7,color:T.text.muted}}>
+                      Roles: <span style={{color:T.text.amber}}>OWNER</span> (full control) · <span style={{color:T.text.cyan}}>PRINCIPAL</span> (manage + invite) · <span style={{color:T.text.green}}>ANALYST</span> (read/write deals) · <span style={{color:T.text.muted}}>VIEWER</span> (read-only)
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+                <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                  <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>PENDING INVITATIONS</span>
+                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv:any)=>inv.status==="pending").length} pending</span>
+                </div>
+                <div style={{maxHeight:200,overflow:"auto"}}>
+                  {orgInvitations.length === 0 ? (
+                    <div style={{padding:10,fontSize:9,color:T.text.muted,textAlign:"center"}}>No invitations sent</div>
+                  ) : orgInvitations.map((inv:any,i:number)=>(
+                    <div key={inv.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                      <div>
+                        <div style={{fontSize:9,color:T.text.primary}}>{inv.email}</div>
+                        <div style={{fontSize:7,color:T.text.muted}}>Invited by {inv.invited_by_name||"—"} · {inv.role}</div>
+                      </div>
+                      <Bd c={inv.status==="pending"?T.text.orange:inv.status==="accepted"?T.text.green:T.text.red}>{inv.status}</Bd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:10}}>
+                <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>ORGANIZATION</div>
+                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Name: <span style={{color:T.text.primary}}>{orgData.name}</span></div>
+                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Slug: <span style={{color:T.text.muted}}>{orgData.slug}</span></div>
+                <div style={{fontSize:8,color:T.text.secondary}}>Created: <span style={{color:T.text.muted}}>{orgData.created_at ? new Date(orgData.created_at).toLocaleDateString() : "—"}</span></div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── MAIN CONTENT ROUTER ───────────────────────────────────
   const renderContent = () => {
     switch(fkey) {
@@ -1288,6 +1774,7 @@ export default function TerminalPage() {
       case "F6": return ViewCompete();
       case "F7": return ViewStrategies();
       case "F8": return ViewTools();
+      case "F9": return ViewOrgSettings();
       default: return null;
     }
   };
@@ -1298,14 +1785,14 @@ export default function TerminalPage() {
       const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
       return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
     });
-    if(bottomTab==="news") return STATIC_NEWS.map((n,i)=>(
+    if(bottomTab==="news") return liveNews.map((n,i)=>(
       <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
         <span style={{fontSize:8,color:T.text.muted,minWidth:34}}>{n.time}</span>
         <div style={{flex:1}}><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>{n.affects.length>0&&<div style={{display:"flex",gap:3,marginTop:2}}>{n.affects.map((a,j)=><Bd key={j} c={T.text.amber}>{a}</Bd>)}</div>}</div>
         <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:8,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize:8,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
       </div>
     ));
-    if(bottomTab==="email") return STATIC_EMAILS.map((e,i)=>(
+    if(bottomTab==="email") return liveEmails.map((e,i)=>(
       <div key={i} style={{display:"flex",gap:8,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:e.unread?T.text.amber+"06":T.bg.panel}}>
         <div style={{flex:1}}>
           <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:1}}>
@@ -1319,7 +1806,7 @@ export default function TerminalPage() {
     ));
     if(bottomTab==="agents") return (
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
-        {STATIC_AGENTS.map((a,i)=>(
+        {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"5px 8px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}><span style={{fontSize:8,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
             <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
@@ -1344,6 +1831,115 @@ export default function TerminalPage() {
         </div>
       ));
     }
+    if(bottomTab==="media") return (
+      <div style={{display:"flex",gap:0,height:"100%"}}>
+        <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>LIVE TV</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}>
+            {TV_CHANNELS.map(ch=>{
+              const isOpen=mediaWindows.some(w=>w.id===`tv-${ch.id}`);
+              return (
+                <div key={ch.id} onClick={()=>openMediaWindow({id:`tv-${ch.id}`,type:"tv",title:ch.label,color:ch.color,url:ch.url})}
+                  style={{background:T.bg.panel,border:`1px solid ${isOpen?ch.color:T.border.subtle}`,padding:"8px 8px",cursor:"pointer",textAlign:"center",position:"relative"}}>
+                  {isOpen&&<span style={{position:"absolute",top:3,right:4,width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/>}
+                  <div style={{fontSize:10,fontWeight:700,color:isOpen?ch.color:T.text.primary,letterSpacing:0.5}}>{ch.label}</div>
+                  <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{isOpen?"WATCHING":"Click to open"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>NEWS FEEDS</div>
+          {NEWS_SOURCES.map(src=>{
+            const isOpen=mediaWindows.some(w=>w.id===`rss-${src.id}`);
+            return (
+              <div key={src.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:src.color,flexShrink:0,display:"inline-block"}}/>
+                <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{src.label}</span>
+                <button onClick={()=>{openMediaWindow({id:`rss-${src.id}`,type:"rss",title:src.label,color:src.color,rssUrl:src.rss});fetchRss(src.rss);}}
+                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?src.color+"22":"transparent",color:isOpen?src.color:T.text.muted,border:`1px solid ${isOpen?src.color:T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  {isOpen?"OPEN":"OPEN FEED"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{flex:1,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>SOCIAL / X</div>
+          {SOCIAL_DEFAULTS.map(s=>{
+            const isOpen=mediaWindows.some(w=>w.id===`social-${s.id}`);
+            return (
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{s.label}</span>
+                <button onClick={()=>openMediaWindow({id:`social-${s.id}`,type:"social",title:s.label,color:"#1DA1F2",handle:s.handle})}
+                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?"#1DA1F222":"transparent",color:isOpen?"#1DA1F2":T.text.muted,border:`1px solid ${isOpen?"#1DA1F2":T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  {isOpen?"OPEN":"OPEN"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+    return null;
+  };
+
+  const renderMediaWindowContent = (win: MediaWindow) => {
+    if (win.type === "tv") {
+      return (
+        <iframe src={win.url} style={{width:"100%",height:"100%",border:"none"}} allow="autoplay; encrypted-media" allowFullScreen/>
+      );
+    }
+    if (win.type === "rss") {
+      const items = rssCache[win.rssUrl||""]?.items || [];
+      return (
+        <div style={{flex:1,overflow:"auto",padding:0}}>
+          {items.length === 0 && (
+            <div style={{padding:20,textAlign:"center"}}>
+              <div style={{fontSize:9,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading feed...</div>
+            </div>
+          )}
+          {items.map((item, i) => (
+            <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
+              style={{display:"block",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,textDecoration:"none",background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+              <div style={{fontSize:9,fontWeight:600,color:T.text.primary,lineHeight:1.4}}>{item.title}</div>
+              <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>
+                {item.pubDate ? new Date(item.pubDate).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : ""}
+                {item.source && ` · ${item.source}`}
+              </div>
+            </a>
+          ))}
+          <div style={{padding:"6px 10px"}}>
+            <button onClick={() => { if(win.rssUrl) { setRssCache(prev => { const ns = {...prev}; delete ns[win.rssUrl!]; return ns; }); fetchRss(win.rssUrl); } }}
+              style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"3px 10px",cursor:"pointer",width:"100%"}}>
+              REFRESH
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (win.type === "social") {
+      const handle = win.handle || "";
+      const isHashtag = handle.startsWith("#");
+      const twitterUrl = isHashtag
+        ? `https://twitter.com/search?q=${encodeURIComponent(handle)}&src=typed_query&f=live`
+        : `https://twitter.com/${handle.replace("@","")}`;
+      return (
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:16}}>
+          <div style={{fontSize:24,color:"#1DA1F2",fontWeight:800}}>𝕏</div>
+          <div style={{fontSize:12,fontWeight:700,color:T.text.primary}}>{handle}</div>
+          <div style={{fontSize:9,color:T.text.secondary,textAlign:"center",lineHeight:1.5}}>
+            Twitter/X embeds require the platform widget script.<br/>
+            Click below to open in a new tab.
+          </div>
+          <a href={twitterUrl} target="_blank" rel="noopener noreferrer"
+            style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"#1DA1F2",color:"#fff",border:"none",padding:"8px 20px",cursor:"pointer",textDecoration:"none",letterSpacing:0.3}}>
+            OPEN ON X →
+          </a>
+        </div>
+      );
+    }
     return null;
   };
 
@@ -1364,8 +1960,38 @@ export default function TerminalPage() {
           <span style={{fontSize:9,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{STATIC_AGENTS.filter(a=>a.st==="ON").length} AGENTS</span>
-          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {STATIC_EMAILS.filter(e=>e.unread).length}</span>
+          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
+          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
+          {mediaWindows.length>0&&(
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>
+                {mediaWindows.length} WINDOW{mediaWindows.length!==1?"S":""}
+              </button>
+              {mediaWinDropdown&&(
+                <div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:T.bg.panel,border:`1px solid ${T.border.medium}`,boxShadow:"0 8px 24px rgba(0,0,0,0.6)",zIndex:9998,minWidth:200,maxHeight:300,overflow:"auto"}}>
+                  {mediaWindows.map(w=>(
+                    <div key={w.id} onClick={()=>{bringMediaToFront(w.id);if(mediaWinStates[w.id]?.minimized)minimizeMediaWindow(w.id);setMediaWinDropdown(false);}}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:T.bg.panel}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:w.color,flexShrink:0,display:"inline-block"}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{w.title}</div>
+                        <div style={{fontSize:7,color:T.text.muted}}>{w.type.toUpperCase()}{mediaWinStates[w.id]?.minimized?" · minimized":""}</div>
+                      </div>
+                      <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(w.id);}}
+                        style={{fontSize:8,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 4px"}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{padding:"4px 10px",borderTop:`1px solid ${T.border.medium}`}}>
+                    <button onClick={()=>{setMediaWindows([]);setMediaWinStates({});setMediaWinDropdown(false);}}
+                      style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>
+                      CLOSE ALL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
@@ -1410,7 +2036,7 @@ export default function TerminalPage() {
         <div style={{flex:1}}/>
         <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:12}}>
           <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
-          <button onClick={()=>navigate("/deals/new")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
         </div>
       </div>
 
@@ -1427,7 +2053,7 @@ export default function TerminalPage() {
         <div style={{padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`}}>
           <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,width:190}}>
             <span style={{color:T.text.amber,fontSize:9,fontWeight:700}}>{">"}</span>
-            <input value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (/ to focus)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,flex:1,width:"100%"}}/>
+            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,flex:1,width:"100%"}}/>
             <span style={{width:6,height:12,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block"}}/>
           </div>
         </div>
@@ -1464,10 +2090,11 @@ export default function TerminalPage() {
         <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
           {[
             {id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},
-            {id:"news",l:"NEWS",ct:STATIC_NEWS.length,cc:T.text.cyan},
-            {id:"email",l:"EMAIL",ct:STATIC_EMAILS.filter(e=>e.unread).length,cc:T.text.orange},
-            {id:"agents",l:"AGENTS",ct:STATIC_AGENTS.filter(a=>a.st==="ON").length,cc:T.text.green},
+            {id:"news",l:"NEWS",ct:liveNews.length,cc:T.text.cyan},
+            {id:"email",l:"EMAIL",ct:liveEmails.filter(e=>e.unread).length,cc:T.text.orange},
+            {id:"agents",l:"AGENTS",ct:liveAgents.filter(a=>a.st==="ON").length,cc:T.text.green},
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
+            {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
           ].map(tab=>(
             <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
               {tab.l}
@@ -1483,6 +2110,121 @@ export default function TerminalPage() {
           {renderBottomTab()}
         </div>
       </div>
+
+      {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
+      {floatWidgets.filter(id=>!winStates[id]?.minimized).map(id=>{
+        const meta=WIDGET_CATALOG.find(w=>w.id===id);
+        const ws=winStates[id]||defaultWinPos(id,0);
+        if(!meta) return null;
+        const isMax=ws.maximized;
+        const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
+        return (
+          <div key={id}
+            onMouseDown={()=>bringToFront(id)}
+            style={{
+              position:"fixed",
+              left:isMax?"5%":ws.x, top:isMax?"5%":ws.y,
+              width:isMax?"90%":ws.w, height:isMax?"90%":ws.h,
+              background:T.bg.panel,
+              border:`1px solid ${meta.color}55`,
+              boxShadow:isMax?"0 16px 64px rgba(0,0,0,0.7)":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+              display:"flex",flexDirection:"column",
+              zIndex:ws.zIndex||50,
+              minWidth:320,minHeight:200,
+              transition:isMoving||dragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
+            }}>
+            <div
+              onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringToFront(id);setDragInfo({id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
+              onDoubleClick={()=>maximizeWindow(id)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMax?"default":isMoving?"grabbing":"grab",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{meta.label}</span>
+                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
+              </div>
+              <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                <button onClick={(e)=>{e.stopPropagation();dockWidget(id);}} title="Dock back to grid" style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:T.text.cyan+"11",border:`1px solid ${T.text.cyan}33`,cursor:"pointer",padding:"1px 6px",lineHeight:1.5,letterSpacing:0.3,marginRight:2}}>↙ DOCK</button>
+                <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
+                <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
+                <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+              {renderWidget(id)}
+            </div>
+            {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringToFront(id);setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
+          </div>
+        );
+      })}
+      {floatWidgets.filter(id=>winStates[id]?.minimized).length>0&&(
+        <div style={{position:"fixed",bottom:210,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9996,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+          {floatWidgets.filter(id=>winStates[id]?.minimized).map(id=>{
+            const meta=WIDGET_CATALOG.find(w=>w.id===id);
+            if(!meta) return null;
+            return (
+              <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ═══ MEDIA FLOATING WINDOWS (global overlay) ═══ */}
+      {mediaWindows.filter(w=>!mediaWinStates[w.id]?.minimized).map(win=>{
+        const ws=mediaWinStates[win.id];
+        if(!ws) return null;
+        const isMax=ws.maximized;
+        const isDragging=mediaDragInfo?.id===win.id&&mediaDragInfo.mode==="move";
+        return (
+          <div key={win.id}
+            onMouseDown={()=>bringMediaToFront(win.id)}
+            style={{
+              position:"fixed",
+              left:isMax?"5%":ws.x, top:isMax?"5%":ws.y,
+              width:isMax?"90%":ws.w, height:isMax?"90%":ws.h,
+              background:T.bg.panel,
+              border:`1px solid ${win.color}66`,
+              boxShadow:isMax?"0 16px 64px rgba(0,0,0,0.7)":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+              display:"flex",flexDirection:"column",
+              zIndex:ws.zIndex||100,
+              minWidth:320,minHeight:200,
+              transition:isDragging||mediaDragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
+            }}>
+            <div
+              onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringMediaToFront(win.id);setMediaDragInfo({id:win.id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
+              onDoubleClick={()=>maximizeMediaWindow(win.id)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${win.color}44`,flexShrink:0,cursor:isMax?"default":isDragging?"grabbing":"grab",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{win.title}</span>
+                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{win.type.toUpperCase()}</span>
+                {win.type==="tv"&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/><span style={{fontSize:7,color:T.text.red,fontWeight:700}}>LIVE</span></span>}
+              </div>
+              <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                <button onClick={(e)=>{e.stopPropagation();minimizeMediaWindow(win.id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
+                <button onClick={(e)=>{e.stopPropagation();maximizeMediaWindow(win.id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
+                <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(win.id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+              {renderMediaWindowContent(win)}
+            </div>
+            {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringMediaToFront(win.id);setMediaDragInfo({id:win.id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
+          </div>
+        );
+      })}
+      {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).length>0&&(
+        <div style={{position:"fixed",bottom:236,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9997,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+          {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).map(win=>(
+            <button key={win.id} onClick={()=>minimizeMediaWindow(win.id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${win.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+              <span style={{width:5,height:5,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
+              {win.title}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ═══ STATUS BAR — 16px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:16,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>

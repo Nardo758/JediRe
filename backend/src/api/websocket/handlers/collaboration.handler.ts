@@ -1,8 +1,3 @@
-/**
- * Collaboration WebSocket Handler
- * Real-time collaboration features
- */
-
 import { Server as SocketIOServer, Socket } from 'socket.io';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
@@ -37,18 +32,45 @@ interface CommentCreateData {
   mentionedUsers?: string[];
 }
 
+interface DealPresenceData {
+  dealId: string;
+  activeModule?: string;
+}
+
+interface DealFieldChangeData {
+  dealId: string;
+  module: string;
+  field: string;
+  value: any;
+}
+
+interface DealCommentEventData {
+  dealId: string;
+  comment: {
+    id: string;
+    content: string;
+    module_anchor?: string;
+    author_name: string;
+    parent_comment_id?: string;
+  };
+}
+
+interface DealCommentResolvedData {
+  dealId: string;
+  commentId: string;
+  resolvedBy: string;
+}
+
+const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
+
 export function collaborationHandler(
   io: SocketIOServer,
   socket: AuthenticatedSocket
 ): void {
-  /**
-   * Join a collaboration session
-   */
   socket.on('session:join', async (data: SessionJoinData) => {
     try {
       const { sessionId } = data;
 
-      // Verify session exists and user has access
       const sessionResult = await query(
         'SELECT * FROM collaboration_sessions WHERE id = $1 AND is_active = TRUE',
         [sessionId]
@@ -59,10 +81,8 @@ export function collaborationHandler(
         return;
       }
 
-      // Join session room
       socket.join(`session:${sessionId}`);
 
-      // Add or update participant
       await query(
         `INSERT INTO session_participants (session_id, user_id, last_seen_at)
          VALUES ($1, $2, NOW())
@@ -71,7 +91,6 @@ export function collaborationHandler(
         [sessionId, socket.userId]
       );
 
-      // Get current participants
       const participantsResult = await query(
         `SELECT sp.*, u.email, u.first_name, u.last_name, u.avatar_url
          FROM session_participants sp
@@ -80,7 +99,6 @@ export function collaborationHandler(
         [sessionId]
       );
 
-      // Notify session about new participant
       io.to(`session:${sessionId}`).emit('session:user_joined', {
         sessionId,
         userId: socket.userId,
@@ -95,16 +113,12 @@ export function collaborationHandler(
     }
   });
 
-  /**
-   * Leave a collaboration session
-   */
   socket.on('session:leave', async (data: SessionJoinData) => {
     try {
       const { sessionId } = data;
 
       socket.leave(`session:${sessionId}`);
 
-      // Notify session about participant leaving
       io.to(`session:${sessionId}`).emit('session:user_left', {
         sessionId,
         userId: socket.userId,
@@ -116,9 +130,6 @@ export function collaborationHandler(
     }
   });
 
-  /**
-   * Broadcast cursor position
-   */
   socket.on('cursor:move', (data: CursorMoveData) => {
     const { sessionId, lat, lng } = data;
 
@@ -131,9 +142,6 @@ export function collaborationHandler(
     });
   });
 
-  /**
-   * Create a pin
-   */
   socket.on('pin:create', async (data: PinCreateData) => {
     try {
       const { sessionId, propertyId, color, icon, note } = data;
@@ -147,7 +155,6 @@ export function collaborationHandler(
 
       const pin = result.rows[0];
 
-      // Broadcast to session
       io.to(`session:${sessionId}`).emit('pin:created', {
         pin,
         userId: socket.userId,
@@ -161,9 +168,6 @@ export function collaborationHandler(
     }
   });
 
-  /**
-   * Delete a pin
-   */
   socket.on('pin:delete', async (data: { sessionId: string; pinId: string }) => {
     try {
       const { sessionId, pinId } = data;
@@ -173,7 +177,6 @@ export function collaborationHandler(
         socket.userId,
       ]);
 
-      // Broadcast to session
       io.to(`session:${sessionId}`).emit('pin:deleted', {
         pinId,
         userId: socket.userId,
@@ -186,9 +189,6 @@ export function collaborationHandler(
     }
   });
 
-  /**
-   * Create a comment
-   */
   socket.on('comment:create', async (data: CommentCreateData) => {
     try {
       const { propertyId, sessionId, content, mentionedUsers } = data;
@@ -202,7 +202,6 @@ export function collaborationHandler(
 
       const comment = result.rows[0];
 
-      // Broadcast to session if applicable
       if (sessionId) {
         io.to(`session:${sessionId}`).emit('comment:created', {
           comment,
@@ -211,7 +210,6 @@ export function collaborationHandler(
         });
       }
 
-      // Notify mentioned users
       if (mentionedUsers && mentionedUsers.length > 0) {
         mentionedUsers.forEach((userId) => {
           io.to(`user:${userId}`).emit('notification', {
@@ -230,9 +228,6 @@ export function collaborationHandler(
     }
   });
 
-  /**
-   * Update typing status
-   */
   socket.on('typing:start', (data: { sessionId: string; propertyId: string }) => {
     socket.to(`session:${data.sessionId}`).emit('typing:update', {
       userId: socket.userId,
@@ -249,5 +244,99 @@ export function collaborationHandler(
       propertyId: data.propertyId,
       isTyping: false,
     });
+  });
+
+  socket.on('deal:join', (data: DealPresenceData) => {
+    const { dealId, activeModule } = data;
+    const room = `deal:${dealId}`;
+    socket.join(room);
+
+    if (!dealPresence.has(dealId)) {
+      dealPresence.set(dealId, new Map());
+    }
+    dealPresence.get(dealId)!.set(socket.id, {
+      userId: socket.userId!,
+      email: socket.email!,
+      activeModule,
+      joinedAt: Date.now(),
+    });
+
+    const participants = Array.from(dealPresence.get(dealId)!.values());
+    io.to(room).emit('deal:presence', { dealId, participants });
+    logger.info('User joined deal:', { userId: socket.userId, dealId, activeModule });
+  });
+
+  socket.on('deal:leave', (data: { dealId: string }) => {
+    const { dealId } = data;
+    const room = `deal:${dealId}`;
+    socket.leave(room);
+
+    if (dealPresence.has(dealId)) {
+      dealPresence.get(dealId)!.delete(socket.id);
+      if (dealPresence.get(dealId)!.size === 0) {
+        dealPresence.delete(dealId);
+      } else {
+        const participants = Array.from(dealPresence.get(dealId)!.values());
+        io.to(room).emit('deal:presence', { dealId, participants });
+      }
+    }
+    logger.info('User left deal:', { userId: socket.userId, dealId });
+  });
+
+  socket.on('deal:module_change', (data: DealPresenceData) => {
+    const { dealId, activeModule } = data;
+    if (dealPresence.has(dealId) && dealPresence.get(dealId)!.has(socket.id)) {
+      dealPresence.get(dealId)!.get(socket.id)!.activeModule = activeModule;
+      const participants = Array.from(dealPresence.get(dealId)!.values());
+      io.to(`deal:${dealId}`).emit('deal:presence', { dealId, participants });
+    }
+  });
+
+  socket.on('deal:field_change', (data: DealFieldChangeData) => {
+    const { dealId, module, field, value } = data;
+    socket.to(`deal:${dealId}`).emit('deal:field_updated', {
+      dealId,
+      module,
+      field,
+      value,
+      userId: socket.userId,
+      email: socket.email,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_added', (data: DealCommentEventData) => {
+    io.to(`deal:${data.dealId}`).emit('deal:new_comment', {
+      dealId: data.dealId,
+      comment: data.comment,
+      userId: socket.userId,
+      email: socket.email,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_resolved', (data: DealCommentResolvedData) => {
+    io.to(`deal:${data.dealId}`).emit('deal:comment_resolved', {
+      dealId: data.dealId,
+      commentId: data.commentId,
+      resolvedBy: data.resolvedBy,
+      userId: socket.userId,
+      email: socket.email,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('disconnect', () => {
+    for (const [dealId, users] of dealPresence.entries()) {
+      if (users.has(socket.id)) {
+        users.delete(socket.id);
+        if (users.size === 0) {
+          dealPresence.delete(dealId);
+        } else {
+          const participants = Array.from(users.values());
+          io.to(`deal:${dealId}`).emit('deal:presence', { dealId, participants });
+        }
+      }
+    }
   });
 }

@@ -19,6 +19,18 @@ export type MetricCategory =
 
 export type MetricGranularity = 'property' | 'submarket' | 'zip' | 'county' | 'msa';
 
+export interface LeadLagRelationship {
+  metricId: string;
+  lagMonths: number;
+  typicalR: number;
+}
+
+export interface LaggedByRelationship {
+  metricId: string;
+  leadMonths: number;
+  typicalR: number;
+}
+
 export interface MetricDefinition {
   id: string;
   name: string;
@@ -32,10 +44,12 @@ export interface MetricDefinition {
   description: string;
   exampleValue: string;
   investmentSignal: string;
+  leadsMetrics?: LeadLagRelationship[];
+  laggedBy?: LaggedByRelationship[];
 }
 
 /**
- * Complete metrics catalog — 40 metrics across 12 categories
+ * Complete metrics catalog — 44 metrics across 12 categories
  * Covers all signals needed for deal-level and market-level strategy building
  */
 export const METRICS_CATALOG: MetricDefinition[] = [
@@ -203,6 +217,10 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Real-time traffic vs historical baseline. Positive = market overperforming expectations. The demand pulse.',
     exampleValue: '+0.35 (35% above baseline)',
     investmentSignal: 'THE key metric. Sustained +20% = demand building before rents catch up. Buy window signal.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.58 },
+      { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.50 },
+    ],
   },
   {
     id: 'C_DIGITAL_PHYSICAL_GAP',
@@ -263,6 +281,10 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Year-over-year change in rental rates. Fundamental income growth for rental properties.',
     exampleValue: '+3.2%',
     investmentSignal: '+2-4% = healthy. +5%+ = hot market. -1%+ = cooling/concern.',
+    laggedBy: [
+      { metricId: 'C_TRAFFIC_GROWTH_INDEX', leadMonths: 6, typicalR: 0.62 },
+      { metricId: 'DEMO_POPULATION_TREND_3Y', leadMonths: 12, typicalR: 0.55 },
+    ],
   },
   {
     id: 'F_RENT_INDEX',
@@ -337,6 +359,9 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'New supply coming to market. High pipeline = future supply pressure.',
     exampleValue: '2,450 units',
     investmentSignal: 'High pipeline = rents under pressure soon. Low pipeline = supply constrained.',
+    leadsMetrics: [
+      { metricId: 'M_VACANCY', lagMonths: 12, typicalR: 0.48 },
+    ],
   },
   {
     id: 'S_PIPELINE_TO_STOCK',
@@ -397,6 +422,9 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Year-over-year change in total employment. Jobs = demand.',
     exampleValue: '+2.1%',
     investmentSignal: '+2-3% = healthy. +4%+ = booming. -1%+ = concern.',
+    leadsMetrics: [
+      { metricId: 'L_JOBS_PER_UNIT', lagMonths: 0, typicalR: 0.85 },
+    ],
   },
   {
     id: 'E_WAGE_GROWTH',
@@ -785,6 +813,73 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Year-over-year growth in total households. Core demand metric.',
     exampleValue: '+2.1%',
     investmentSignal: '+1-2% = healthy. +3%+ = rapid growth.',
+  },
+  {
+    id: 'DEMO_POPULATION_DECLINE',
+    name: 'Population Decline Indicator',
+    category: 'demographic',
+    formula: 'Flag = 1 if YoY population growth < 0 for 2+ consecutive years; magnitude = avg decline %',
+    unit: 'boolean + %',
+    granularity: ['county', 'msa'],
+    source: 'Census ACS',
+    updateFrequency: 'annual',
+    higherIsBetter: false,
+    description: 'Flags sustained negative population growth (2+ consecutive decline years). Magnitude shows avg annual decline rate.',
+    exampleValue: 'TRUE (-0.8% avg)',
+    investmentSignal: 'Sustained decline = demand destruction. Exit signal for long-hold strategies. Check if migration-driven or aging.',
+  },
+  {
+    id: 'DEMO_POPULATION_TREND_3Y',
+    name: '3-Year Population CAGR',
+    category: 'demographic',
+    formula: '((Population_Current / Population_3YAgo) ^ (1/3) - 1) × 100',
+    unit: '%',
+    granularity: ['county', 'msa'],
+    source: 'Census ACS',
+    updateFrequency: 'annual',
+    higherIsBetter: true,
+    description: 'Compound annual growth rate of population over trailing 3 years. Smooths single-year Census noise.',
+    exampleValue: '+1.6% CAGR',
+    investmentSignal: '+1-2% = steady growth. +2.5%+ = rapid expansion. <0 = population loss.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 12, typicalR: 0.55 },
+    ],
+  },
+  {
+    id: 'L_JOBS_PER_UNIT',
+    name: 'Jobs-to-Housing Ratio',
+    category: 'demand',
+    formula: 'Total employed workers / Total apartment units in geography',
+    unit: 'jobs/unit',
+    granularity: ['submarket', 'county', 'msa'],
+    source: 'BLS QCEW + CoStar housing stock',
+    updateFrequency: 'quarterly',
+    higherIsBetter: true,
+    description: 'Ratio of total jobs to total apartment units. Measures housing demand pressure from employment base.',
+    exampleValue: '4.8 jobs/unit',
+    investmentSignal: '>4.0 in tight market = demand exceeds supply. <2.5 = oversupplied relative to jobs.',
+    laggedBy: [
+      { metricId: 'E_EMPLOYMENT_GROWTH', leadMonths: 0, typicalR: 0.85 },
+    ],
+  },
+  {
+    id: 'C_TRAFFIC_GROWTH_INDEX',
+    name: 'Traffic Growth Index',
+    category: 'traffic_composite',
+    formula: '(Google Realtime ADT − DOT Average ADT) / DOT Average ADT × 100',
+    unit: '%',
+    granularity: ['property', 'submarket'],
+    source: 'M07 Fusion Engine + DOT AADT',
+    updateFrequency: 'daily',
+    higherIsBetter: true,
+    description: 'Divergence between real-time Google traffic and historical DOT baseline. Distinct from composite Surge Index.',
+    exampleValue: '+22% above DOT baseline',
+    investmentSignal: '+15%+ sustained = demand building ahead of rents. Leading indicator of rent growth by ~6 months.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.62 },
+      { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.54 },
+      { metricId: 'M_ABSORPTION', lagMonths: 3, typicalR: 0.47 },
+    ],
   },
 ];
 

@@ -1,97 +1,560 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
-import { SidebarItem } from './SidebarItem';
-import { MapTabsBar } from '../map/MapTabsBar';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPanel } from './CommandPanel';
 import { WarMapsComposer } from '../map/WarMapsComposer';
 import { ChatOverlay } from '../chat/ChatOverlay';
 import QuickSetupModal from '../onboarding/QuickSetupModal';
-import { layersService } from '../../services/layers.service';
-import { mapConfigsService, MapConfiguration } from '../../services/map-configs.service';
 import { MapLayer } from '../../types/layers';
 import api from '../../lib/api';
+import { T } from '../../styles/terminal-tokens';
+import { TickerBar } from '../terminal/TickerBar';
+import { Badge } from '../terminal/Badge';
 
 const DEFAULT_MAP_ID = 'default';
 
+const PORTFOLIO_NAV = [
+  { key: 'F1', label: 'DASHBOARD', path: '/dashboard' },
+  { key: 'F2', label: 'PIPELINE',  path: '/deals' },
+  { key: 'F3', label: 'PORTFOLIO', path: '/assets-owned' },
+  { key: 'F4', label: 'MARKETS',   path: '/market-intelligence' },
+  { key: 'F5', label: 'COMPETE',   path: '/competitive-intelligence' },
+  { key: 'F6', label: 'NEWS',      path: '/news-intel' },
+  { key: 'F7', label: 'OPPS',      path: '/opportunities' },
+  { key: 'F8', label: 'REPORTS',   path: '/reports' },
+  { key: 'F9', label: 'SETTINGS',  path: '/settings' },
+];
+
+const DEAL_NAV = [
+  { key: 'F1',  label: 'OVERVIEW' },
+  { key: 'F2',  label: 'ZONING' },
+  { key: 'F3',  label: 'MARKET' },
+  { key: 'F4',  label: 'SUPPLY' },
+  { key: 'F5',  label: 'COMPS' },
+  { key: 'F6',  label: 'STRATEGY' },
+  { key: 'F7',  label: 'TRAFFIC' },
+  { key: 'F8',  label: 'PROFORMA' },
+  { key: 'F9',  label: 'CAPITAL' },
+  { key: 'F10', label: 'RISK' },
+  { key: 'F11', label: 'EXECUTE' },
+  { key: 'F12', label: 'AI AGENT' },
+];
+
+interface TickerDeal {
+  name: string;
+  score?: number;
+  delta?: string;
+}
+
+interface AlertItem {
+  id: string;
+  type: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  deal_name?: string;
+  message: string;
+  created_at: string;
+}
+
+interface NewsItem {
+  id: string;
+  headline: string;
+  published_at: string;
+  impact?: string;
+  jedi_delta?: number;
+  deals?: string[];
+}
+
+interface AgentItem {
+  id: string;
+  code: string;
+  name: string;
+  status: 'online' | 'idle' | 'offline';
+  last_action?: string;
+  last_active?: string;
+  message_count?: number;
+}
+
+const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCount: number }> = ({
+  contextLabel, agentCount, emailCount,
+}) => {
+  const [clock, setClock] = useState('');
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setClock(now.toLocaleTimeString('en-GB', { hour12: false }));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div style={{
+      height: 24,
+      background: T.bg.topBar,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '0 12px',
+      borderBottom: `1px solid ${T.border.subtle}`,
+      flexShrink: 0,
+      fontFamily: T.font.mono,
+      fontSize: T.fontSize.sm,
+      userSelect: 'none',
+      zIndex: 50,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{
+          fontWeight: 800,
+          fontSize: T.fontSize.md,
+          background: T.gradient.tealCyan,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          letterSpacing: 1.5,
+        }}>JEDI RE</span>
+        <span style={{ color: T.text.secondary, fontSize: T.fontSize.xs }}>|</span>
+        <span style={{ color: T.text.secondary, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          {contextLabel}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: T.text.secondary }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: T.text.green,
+            animation: 'pulse 2s ease-in-out infinite',
+            boxShadow: `0 0 4px ${T.text.green}88`,
+          }} />
+          {agentCount} AGENTS
+        </span>
+        <span style={{ color: T.text.secondary }}>
+          EMAIL: <span style={{ color: T.text.primary, fontWeight: 600 }}>{emailCount}</span>
+        </span>
+        <span style={{ color: T.text.secondary }}>
+          KAFKA: <span style={{ color: T.text.primary, fontWeight: 600 }}>312/s</span>
+        </span>
+        <span style={{ color: T.text.amber, fontWeight: 700, letterSpacing: 1 }}>
+          {clock}
+        </span>
+      </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+    </div>
+  );
+};
+
+interface FKeyNavBarProps {
+  activePath: string;
+  onNavigate: (path: string) => void;
+  isInsideDeal: boolean;
+}
+
+const DEAL_TAB_IDS = ['overview','zoning','market','supply','competition','strategy','traffic','proforma','capital','risk','execution','ai-agent'];
+
+const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
+  activePath, onNavigate, isInsideDeal,
+}) => {
+  const items = isInsideDeal ? DEAL_NAV : PORTFOLIO_NAV;
+  const [dealActiveTab, setDealActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (!isInsideDeal) return;
+    const handler = (e: Event) => {
+      const tabId = (e as CustomEvent<string>).detail;
+      if (tabId) setDealActiveTab(tabId);
+    };
+    window.addEventListener('deal-active-tab', handler);
+    return () => window.removeEventListener('deal-active-tab', handler);
+  }, [isInsideDeal]);
+
+  return (
+    <div style={{
+      height: 28,
+      background: T.bg.header,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0,
+      padding: '0 8px',
+      borderBottom: `1px solid ${T.border.subtle}`,
+      flexShrink: 0,
+      overflow: 'hidden',
+    }}>
+      {items.map((item, idx) => {
+        const isActive = isInsideDeal
+          ? (dealActiveTab === DEAL_TAB_IDS[idx])
+          : (activePath === (item as typeof PORTFOLIO_NAV[0]).path ||
+             ((item as typeof PORTFOLIO_NAV[0]).path === '/deals' && activePath.startsWith('/deals')) ||
+             ((item as typeof PORTFOLIO_NAV[0]).path === '/dashboard' && (activePath === '/' || activePath === '/terminal')));
+        return (
+          <button
+            key={item.key}
+            onClick={() => {
+              if (isInsideDeal) {
+                window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: DEAL_TAB_IDS[idx] }));
+              } else if ('path' in item) {
+                onNavigate((item as typeof PORTFOLIO_NAV[0]).path);
+              }
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '0 10px',
+              height: '100%',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: T.font.mono,
+              background: isActive ? T.text.amber : 'transparent',
+              color: isActive ? T.bg.terminal : T.text.secondary,
+              transition: 'all 0.15s',
+              borderRight: `1px solid ${T.border.subtle}`,
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => {
+              if (!isActive) (e.currentTarget.style.background = T.bg.hover);
+            }}
+            onMouseLeave={e => {
+              if (!isActive) (e.currentTarget.style.background = 'transparent');
+            }}
+          >
+            <span style={{ fontSize: '7px', fontWeight: 700, opacity: isActive ? 0.7 : 0.5 }}>{item.key}</span>
+            <span style={{ fontSize: T.fontSize.sm, fontWeight: 600, letterSpacing: 0.5 }}>{item.label}</span>
+          </button>
+        );
+      })}
+      <div style={{ flex: 1 }} />
+      <span style={{
+        fontSize: T.fontSize.xs,
+        color: T.text.muted,
+        fontFamily: T.font.mono,
+        paddingRight: 4,
+      }}>⌘K CMD</span>
+    </div>
+  );
+};
+
+interface DealContextInfo {
+  address?: string;
+  location?: string;
+  name?: string;
+  jedi_score?: number;
+  delta_30d?: number;
+  pipeline_stage?: string;
+  recommended_strategy?: string;
+}
+
+const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) => {
+  if (!deal) return null;
+
+  const label = deal.address || deal.location || deal.name || 'Deal';
+
+  return (
+    <div style={{
+      height: 32,
+      background: 'rgba(245, 166, 35, 0.08)',
+      borderBottom: `1px solid ${T.text.amber}22`,
+      display: 'flex',
+      alignItems: 'center',
+      padding: '0 12px',
+      gap: 16,
+      flexShrink: 0,
+      fontFamily: T.font.mono,
+      fontSize: T.fontSize.sm,
+    }}>
+      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+        📍 <span style={{ color: T.text.primary }}>{label}</span>
+      </span>
+      {deal.jedi_score != null && (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: T.text.amber, fontWeight: 700 }}>JEDI {deal.jedi_score}</span>
+          {deal.delta_30d != null && (
+            <span style={{
+              color: deal.delta_30d >= 0 ? T.text.green : T.text.red,
+              fontWeight: 600,
+            }}>
+              {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
+            </span>
+          )}
+        </span>
+      )}
+      {deal.pipeline_stage && (
+        <Badge label={deal.pipeline_stage.toUpperCase()} color={T.text.cyan} />
+      )}
+      {deal.recommended_strategy && (
+        <Badge label={deal.recommended_strategy.toUpperCase()} color={T.text.purple} />
+      )}
+    </div>
+  );
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: T.text.red,
+  high: T.text.orange,
+  medium: T.text.amber,
+  low: T.text.green,
+};
+
+const BottomPanel: React.FC = () => {
+  const [collapsed, setCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'alerts' | 'news' | 'agents'>('alerts');
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [agents, setAgents] = useState<AgentItem[]>([]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [alertRes, newsRes, agentRes] = await Promise.allSettled([
+        api.get('/jedi/alerts'),
+        api.get('/news/feed'),
+        api.get('/agent-status'),
+      ]);
+      if (alertRes.status === 'fulfilled') {
+        const ad = alertRes.value.data;
+        const raw = ad?.data?.alerts || ad?.alerts || ad?.data;
+        setAlerts(Array.isArray(raw) ? raw : []);
+      }
+      if (newsRes.status === 'fulfilled') {
+        const nd = newsRes.value.data;
+        const raw = nd?.data?.articles || nd?.articles || nd?.data;
+        setNews(Array.isArray(raw) ? raw : []);
+      }
+      if (agentRes.status === 'fulfilled') {
+        const gd = agentRes.value.data;
+        const raw = gd?.data?.agents || gd?.agents || gd?.data;
+        setAgents(Array.isArray(raw) ? raw : []);
+      }
+    } catch (err) {
+      console.warn('[BottomPanel] Failed to fetch panel data', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const id = setInterval(fetchData, 30000);
+    return () => clearInterval(id);
+  }, [fetchData]);
+
+  const tabs = [
+    { id: 'alerts' as const, label: 'ALERTS', count: alerts.length },
+    { id: 'news' as const,   label: 'NEWS',   count: news.length },
+    { id: 'agents' as const, label: 'AGENTS', count: agents.length },
+  ];
+
+  return (
+    <div style={{
+      height: collapsed ? 28 : 180,
+      background: T.bg.panel,
+      borderTop: `1px solid ${T.border.medium}`,
+      display: 'flex',
+      flexDirection: 'column',
+      flexShrink: 0,
+      transition: 'height 0.2s ease',
+      fontFamily: T.font.mono,
+    }}>
+      <div style={{
+        height: 28,
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 8px',
+        gap: 0,
+        borderBottom: collapsed ? 'none' : `1px solid ${T.border.subtle}`,
+        flexShrink: 0,
+      }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => { setActiveTab(tab.id); if (collapsed) setCollapsed(false); }}
+            style={{
+              height: '100%',
+              padding: '0 12px',
+              border: 'none',
+              borderBottom: activeTab === tab.id && !collapsed ? `2px solid ${T.text.amber}` : '2px solid transparent',
+              background: 'transparent',
+              color: activeTab === tab.id ? T.text.amber : T.text.muted,
+              fontSize: T.fontSize.xs,
+              fontFamily: T.font.mono,
+              fontWeight: 700,
+              letterSpacing: 1,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span style={{
+                fontSize: '7px',
+                background: `${T.text.amber}22`,
+                color: T.text.amber,
+                padding: '1px 4px',
+                borderRadius: 3,
+                fontWeight: 600,
+              }}>{tab.count}</span>
+            )}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: T.text.muted,
+            cursor: 'pointer',
+            fontSize: T.fontSize.sm,
+            fontFamily: T.font.mono,
+            padding: '2px 6px',
+          }}
+        >
+          {collapsed ? '▲ EXPAND' : '▼ COLLAPSE'}
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px' }}>
+          {activeTab === 'alerts' && (
+            <div>
+              {alerts.length === 0 && (
+                <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No alerts</div>
+              )}
+              {alerts.map(a => (
+                <div key={a.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '3px 6px',
+                  borderLeft: `3px solid ${SEVERITY_COLORS[a.severity] || T.text.muted}`,
+                  marginBottom: 2,
+                  fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt,
+                  borderRadius: '0 3px 3px 0',
+                }}>
+                  <Badge label={a.type?.toUpperCase() || 'ALERT'} color={SEVERITY_COLORS[a.severity] || T.text.amber} />
+                  {a.deal_name && <span style={{ color: T.text.amber, fontWeight: 600 }}>{a.deal_name}</span>}
+                  <span style={{ color: T.text.primary, flex: 1 }}>{a.message}</span>
+                  <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0 }}>
+                    {a.created_at ? new Date(a.created_at).toLocaleTimeString('en-GB', { hour12: false }) : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {activeTab === 'news' && (
+            <div>
+              {news.length === 0 && (
+                <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No news</div>
+              )}
+              {news.map(n => (
+                <div key={n.id} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '3px 6px',
+                  marginBottom: 2,
+                  fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt,
+                  borderRadius: 3,
+                }}>
+                  <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0, width: 50 }}>
+                    {n.published_at ? new Date(n.published_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                  <span style={{ color: T.text.primary, flex: 1 }}>{n.headline}</span>
+                  {n.impact && <Badge label={n.impact} color={T.text.cyan} />}
+                  {n.jedi_delta != null && (
+                    <span style={{ color: n.jedi_delta >= 0 ? T.text.green : T.text.red, fontWeight: 600, fontSize: T.fontSize.xs }}>
+                      {n.jedi_delta >= 0 ? '+' : ''}{n.jedi_delta} pts
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {activeTab === 'agents' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+              {agents.length === 0 && (
+                <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center', gridColumn: '1/-1' }}>No agents</div>
+              )}
+              {agents.map(ag => (
+                <div key={ag.id} style={{
+                  background: T.bg.panelAlt,
+                  borderRadius: 4,
+                  padding: '6px 8px',
+                  borderLeft: `3px solid ${ag.status === 'online' ? T.text.green : T.text.muted}`,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                    <span style={{ color: T.text.purple, fontWeight: 700, fontSize: T.fontSize.xs }}>{ag.code}</span>
+                    <span style={{ color: T.text.primary, fontSize: T.fontSize.sm, fontWeight: 600 }}>{ag.name}</span>
+                  </div>
+                  {ag.last_action && (
+                    <div style={{ color: T.text.secondary, fontSize: T.fontSize.xs }}>{ag.last_action}</div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                    <span style={{ color: T.text.muted, fontSize: '7px' }}>{ag.last_active || ''}</span>
+                    {ag.message_count != null && (
+                      <span style={{ color: T.text.muted, fontSize: '7px' }}>{ag.message_count} msgs</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const MainLayout: React.FC = () => {
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    dashboard: true,
-    email: false,
-    pipeline: false,
-    assets: false,
-    intelligence: true,
-    market: false,
-    news: false,
-    competitive: false
-  });
-  
-  const [activeConfig, setActiveConfig] = useState<MapConfiguration | null>(null);
-  const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
+  const navigate = useNavigate();
   const [layers, setLayers] = useState<MapLayer[]>([]);
+  const [isWarMapsOpen, setIsWarMapsOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [commandPanelOpen, setCommandPanelOpen] = useState(false);
+  const [tickerItems, setTickerItems] = useState<TickerDeal[]>([]);
+  const [dealContext, setDealContext] = useState<DealContextInfo | null>(null);
 
-  const isActive = (path: string) => location.pathname === path;
-  const isActivePrefix = (prefix: string) => location.pathname.startsWith(prefix);
+  const isInsideDeal = location.pathname.startsWith('/deals/');
+  const dealIdMatch = isInsideDeal ? location.pathname.match(/\/deals\/([^/]+)/) : null;
+  const dealId = dealIdMatch?.[1];
 
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
+  const contextLabel = isInsideDeal
+    ? (dealContext?.address || dealContext?.name || 'DEAL')
+    : 'PORTFOLIO';
 
-  const handleShowOnMap = async (config: any) => {
-    try {
-      const layer = await layersService.createLayer({
-        map_id: DEFAULT_MAP_ID,
-        name: config.name,
-        layer_type: config.layer_type,
-        source_type: config.source_type,
-        visible: true,
-        opacity: config.opacity || 1.0,
-        z_index: 0,
-        filters: {},
-        style: config.style || {},
-        source_config: {}
-      });
-
-      console.log('[MainLayout] Layer created:', layer);
-      setLayers([...layers, layer]);
-      
-      if (location.pathname !== '/') {
-        window.location.href = '/';
-      }
-    } catch (error) {
-      console.error('[MainLayout] Failed to create layer:', error);
-      alert('Failed to add layer to map. Please try again.');
-    }
-  };
-
-  const handleConfigSelect = async (config: MapConfiguration) => {
-    setActiveConfig(config);
-    
-    if (config.layer_config && Array.isArray(config.layer_config)) {
+  useEffect(() => {
+    if (!dealId) { setDealContext(null); return; }
+    const fetchDealAndScore = async () => {
       try {
-        const configLayers = await Promise.all(
-          config.layer_config.map(async (layerDef: any) => {
-            return await layersService.createLayer({
-              map_id: DEFAULT_MAP_ID,
-              ...layerDef
-            });
-          })
-        );
-        setLayers(configLayers);
-      } catch (error) {
-        console.error('Failed to load config layers:', error);
+        const dealRes = await api.get(`/deals/${dealId}`);
+        const d = dealRes.data?.deal || dealRes.data?.data || dealRes.data;
+        let ctx: DealContextInfo = d || {};
+        try {
+          const scoreRes = await api.get(`/jedi/score/${dealId}`);
+          const s = scoreRes.data?.data || scoreRes.data;
+          if (s?.score != null) ctx = { ...ctx, jedi_score: s.score, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
+        } catch {
+          /* JEDI score endpoint may not have data */
+        }
+        setDealContext(ctx);
+      } catch {
+        setDealContext(null);
       }
-    }
-  };
+    };
+    fetchDealAndScore();
+  }, [dealId]);
 
-  // Keyboard shortcut for command panel
+  useEffect(() => {
+    api.get('/deals').then(res => {
+      const deals: Array<Record<string, unknown>> = res.data?.deals || res.data?.data || [];
+      setTickerItems(deals.slice(0, 30).map(d => ({
+        name: (d.name as string) || 'Untitled',
+        score: d.jedi_score as number | undefined,
+        delta: d.delta_30d != null ? ((d.delta_30d as number) >= 0 ? `+${d.delta_30d}` : `${d.delta_30d}`) : undefined,
+      })));
+    }).catch(() => setTickerItems([]));
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -104,305 +567,69 @@ export const MainLayout: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const handleFKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) return;
+      if (isInsideDeal) return;
+      const idx = ['F1','F2','F3','F4','F5','F6','F7','F8','F9'].indexOf(e.key);
+      if (idx === -1) return;
+      e.preventDefault();
+      navigate(PORTFOLIO_NAV[idx].path);
+    };
+    window.addEventListener('keydown', handleFKey);
+    return () => window.removeEventListener('keydown', handleFKey);
+  }, [isInsideDeal, navigate]);
+
+  useEffect(() => {
     const handler = () => setIsWarMapsOpen(true);
     window.addEventListener('open-war-maps', handler);
     return () => window.removeEventListener('open-war-maps', handler);
   }, []);
 
-  // Check onboarding status on mount
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
-    if (!token) {
-      setOnboardingChecked(true);
-      return;
-    }
-
+    if (!token) { setOnboardingChecked(true); return; }
     const checkOnboarding = async () => {
       try {
         const response = await api.get('/preferences/user');
         const prefs = response.data.data;
-        
-        if (!prefs || !prefs.onboarding_completed) {
-          setShowOnboarding(true);
-        }
+        if (!prefs || !prefs.onboarding_completed) setShowOnboarding(true);
       } catch (error) {
         console.error('Failed to check onboarding status:', error);
       } finally {
         setOnboardingChecked(true);
       }
     };
-
     checkOnboarding();
   }, []);
 
-  // Handle War Maps creation
   const handleWarMapsCreated = (newLayers: MapLayer[]) => {
     setLayers([...layers, ...newLayers]);
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-      <MapTabsBar
-        activeConfigId={activeConfig?.id}
-        onConfigSelect={handleConfigSelect}
-        onNewConfig={() => setIsWarMapsOpen(true)}
-        onOpenCommandPanel={() => setCommandPanelOpen(true)}
-      />
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      background: T.bg.terminal,
+      color: T.text.primary,
+      overflow: 'hidden',
+    }}>
+      <TopStatusBar contextLabel={contextLabel} agentCount={5} emailCount={5} />
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside
-          className={`bg-white border-r border-gray-200 overflow-y-auto transition-all duration-300 relative ${
-            sidebarOpen ? 'w-96' : 'w-0'
-          }`}
-        >
-          {sidebarOpen && (
-            <div className="p-4 w-96">
-              <div className="flex items-center justify-end mb-4">
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors text-xs"
-                  title="Collapse sidebar"
-                >
-                  ◀◀
-                </button>
-              </div>
+      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={18} speed={30} />
 
-              <nav className="space-y-1">
-                {/* CONTROL PANEL */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Control Panel
-                  </h3>
-                  
-                  <SidebarItem
-                    icon="📊"
-                    label="Dashboard"
-                    path="/dashboard"
-                    isActive={isActive('/dashboard')}
-                  />
+      <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={isInsideDeal} />
 
-                  {/* EMAIL */}
-                  <SidebarItem
-                    icon="📧"
-                    label="Email"
-                    count={5}
-                    path="/dashboard/email"
-                    isActive={isActivePrefix('/dashboard/email')}
-                    layerConfig={{
-                      sourceType: 'email',
-                      layerType: 'pin',
-                      defaultStyle: {
-                        icon: '📧',
-                        color: '#f59e0b',
-                        size: 'small'
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
+      {isInsideDeal && <DealContextBar deal={dealContext} />}
 
-                  {/* PIPELINE */}
-                  <SidebarItem
-                    icon="📊"
-                    label="Pipeline"
-                    count={12}
-                    path="/deals"
-                    isActive={isActivePrefix('/deals')}
-                  />
-                  
-                  {/* ASSETS OWNED */}
-                  <SidebarItem
-                    icon="🏢"
-                    label="Assets Owned"
-                    count={23}
-                    path="/assets-owned"
-                    isActive={isActivePrefix('/assets-owned')}
-                    layerConfig={{
-                      sourceType: 'assets',
-                      layerType: 'pin',
-                      defaultStyle: {
-                        icon: '🏢',
-                        color: '#10b981',
-                        size: 'medium'
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
+      <main style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <Outlet context={{ layers, setLayers }} />
+      </main>
 
-                </div>
+      <BottomPanel />
 
-                {/* INTELLIGENCE */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Intelligence
-                  </h3>
-
-                  {/* MARKET INTELLIGENCE */}
-                  <SidebarItem
-                    icon="🧠"
-                    label="Market Intelligence"
-                    path="/market-intelligence"
-                    isActive={isActivePrefix('/market-intelligence')}
-                    hasSubItems={true}
-                    isExpanded={expandedSections.market}
-                    onToggle={() => toggleSection('market')}
-                  />
-                  {expandedSections.market && (
-                    <div className="ml-6 space-y-0.5">
-                      <SidebarItem
-                        icon="⚖️"
-                        label="Compare Markets"
-                        path="/market-intelligence/compare"
-                        isActive={isActive('/market-intelligence/compare')}
-                      />
-                      <SidebarItem
-                        icon="👥"
-                        label="Active Owners"
-                        path="/market-intelligence/owners"
-                        isActive={isActive('/market-intelligence/owners')}
-                      />
-                      <SidebarItem
-                        icon="🏗️"
-                        label="Future Supply"
-                        path="/market-intelligence/supply"
-                        isActive={isActive('/market-intelligence/supply')}
-                      />
-                      <SidebarItem
-                        icon="🚦"
-                        label="Traffic Intelligence"
-                        path="/market-intelligence/traffic-intelligence"
-                        isActive={isActive('/market-intelligence/traffic-intelligence')}
-                      />
-                      <SidebarItem
-                        icon="🏆"
-                        label="Competitive Position"
-                        path="/market-intelligence/competitive-position"
-                        isActive={isActive('/market-intelligence/competitive-position')}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* COMPETITIVE INTELLIGENCE */}
-                  <SidebarItem
-                    icon="🎯"
-                    label="Competitive Intel"
-                    path="/competitive-intelligence"
-                    isActive={isActivePrefix('/competitive-intelligence')}
-                    hasSubItems={true}
-                    isExpanded={expandedSections.competitive}
-                    onToggle={() => toggleSection('competitive')}
-                  />
-                  {expandedSections.competitive && (
-                    <div className="ml-6 space-y-0.5">
-                      <SidebarItem
-                        icon="📊"
-                        label="Performance Rankings"
-                        path="/competitive-intelligence/performance"
-                        isActive={isActive('/competitive-intelligence/performance')}
-                      />
-                      <SidebarItem
-                        icon="🔍"
-                        label="Acquisition Intel"
-                        path="/competitive-intelligence/acquisition"
-                        isActive={isActive('/competitive-intelligence/acquisition')}
-                      />
-                      <SidebarItem
-                        icon="⚖️"
-                        label="Comp Analysis"
-                        path="/competitive-intelligence/comps"
-                        isActive={isActive('/competitive-intelligence/comps')}
-                      />
-                      <SidebarItem
-                        icon="🔔"
-                        label="Opportunity Alerts"
-                        path="/competitive-intelligence/alerts"
-                        isActive={isActive('/competitive-intelligence/alerts')}
-                      />
-                    </div>
-                  )}
-
-                  {/* STRATEGIES */}
-                  <SidebarItem
-                    icon="⚡"
-                    label="Strategies"
-                    path="/strategies"
-                    isActive={isActivePrefix('/strategies')}
-                  />
-
-                  {/* NEWS INTEL */}
-                  <SidebarItem
-                    icon="📰"
-                    label="News Intel"
-                    count={3}
-                    path="/news-intel"
-                    isActive={isActivePrefix('/news-intel')}
-                    layerConfig={{
-                      sourceType: 'news',
-                      layerType: 'heatmap',
-                      defaultStyle: {
-                        colorScale: ['#fef3c7', '#fbbf24', '#f59e0b', '#dc2626'],
-                        radius: 25,
-                        intensity: 1.0
-                      }
-                    }}
-                    onShowOnMap={handleShowOnMap}
-                  />
-                </div>
-
-                {/* TOOLS */}
-                <div className="mb-4">
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Tools
-                  </h3>
-                  
-                  <SidebarItem
-                    icon="🎯"
-                    label="Tasks"
-                    path="/tasks"
-                    isActive={isActive('/tasks')}
-                  />
-                </div>
-
-                {/* Other sections */}
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <SidebarItem
-                    icon="📈"
-                    label="Reports"
-                    path="/reports"
-                    isActive={isActive('/reports')}
-                  />
-                  
-                  <SidebarItem
-                    icon="👥"
-                    label="Team"
-                    path="/team"
-                    isActive={isActive('/team')}
-                  />
-                  
-                </div>
-              </nav>
-            </div>
-          )}
-        </aside>
-
-        {/* Sidebar Toggle (when collapsed) */}
-        {!sidebarOpen && (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="fixed left-0 top-1/2 -translate-y-1/2 z-30 bg-white border border-gray-200 border-l-0 rounded-r-lg p-2 shadow-md hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors text-xs"
-            title="Expand sidebar"
-          >
-            ▶▶
-          </button>
-        )}
-
-        {/* Main Content */}
-        <main className="flex-1 min-w-0 overflow-y-auto p-6 pr-10">
-          <Outlet context={{ layers, setLayers }} />
-        </main>
-      </div>
-
-      {/* War Maps Composer Modal - Global */}
       {isWarMapsOpen && (
         <WarMapsComposer
           isOpen={isWarMapsOpen}
@@ -413,19 +640,14 @@ export const MainLayout: React.FC = () => {
         />
       )}
 
-      {/* Quick Setup Onboarding Modal */}
       {onboardingChecked && (
         <QuickSetupModal
           isOpen={showOnboarding}
           onClose={() => setShowOnboarding(false)}
-          onComplete={() => {
-            setShowOnboarding(false);
-            // Optionally reload user data or show success message
-          }}
+          onComplete={() => setShowOnboarding(false)}
         />
       )}
 
-      {/* Command Panel */}
       <CommandPanel
         isOpen={commandPanelOpen}
         onClose={() => setCommandPanelOpen(false)}

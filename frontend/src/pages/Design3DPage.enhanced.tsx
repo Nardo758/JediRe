@@ -45,8 +45,9 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ embe
   const { dealId: routeDealId } = useParams<{ dealId: string }>();
   const resolvedDealId = propDealId || routeDealId || parentDeal?.id;
   const navigate = useNavigate();
-  const { selectedDeal: storeDeal, fetchDealById: loadDeal } = useDealStore();
-  const currentDeal = parentDeal || storeDeal;
+  const { selectedDeal: storeDeal } = useDealStore();
+  const [localDeal, setLocalDeal] = useState<any>(null);
+  const currentDeal = parentDeal || localDeal || storeDeal;
   
   const {
     mapMode,
@@ -81,7 +82,13 @@ export const Design3DPageEnhanced: React.FC<Design3DPageEnhancedProps> = ({ embe
       setIsLoading(true);
       setError(null);
       
-      await loadDeal(resolvedDealId);
+      try {
+        const dealRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}`);
+        const body = dealRes.data;
+        setLocalDeal(body?.deal || body?.data || body);
+      } catch (dealErr) {
+        console.error('Failed to load deal:', dealErr);
+      }
       
       try {
         const zoningRes = await apiClient.get(`/api/v1/deals/${resolvedDealId}/zoning-profile`);
