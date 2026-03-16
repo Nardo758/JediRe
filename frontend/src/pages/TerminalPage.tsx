@@ -325,6 +325,8 @@ function MetricBox({label,value,sub,change,dir,T}:{label:string;value:string;sub
   );
 }
 
+interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
+
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
   const navigate = useNavigate();
@@ -346,18 +348,15 @@ export default function TerminalPage() {
   const [mapOpen, setMapOpen] = useState(false);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
-  // Dashboard widget system
-  const [dashWidgets, setDashWidgets] = useState<string[]>(() => { try{const s=localStorage.getItem("jedi-dash-widgets");return s?JSON.parse(s):[];}catch{return [];} });
+  // Floating window dashboard system
+  const DASH_STORAGE_KEY = "jedi-dash-windows";
+  const loadWinState = (): Record<string, WinState> => { try { const s = localStorage.getItem(DASH_STORAGE_KEY); return s ? JSON.parse(s) : {}; } catch { return {}; } };
+  const [dashWindows, setDashWindows] = useState<string[]>(() => { try { const s = localStorage.getItem("jedi-dash-open"); return s ? JSON.parse(s) : []; } catch { return []; } });
+  const [winStates, setWinStates] = useState<Record<string,WinState>>(loadWinState);
   const [dashMenuOpen, setDashMenuOpen] = useState(false);
-  const [widgetSizes, setWidgetSizes] = useState<Record<string,string>>({});
-  const [widgetCols, setWidgetCols] = useState<Record<string,number>>({});
-  const [widgetHeights, setWidgetHeights] = useState<Record<string,number>>({});
-  const [floatWidgets, setFloatWidgets] = useState<string[]>([]);
-  const [floatPos, setFloatPos] = useState<Record<string,{x:number,y:number,w:number,h:number}>>({});
   const [dragInfo, setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
-  const [gridResizing, setGridResizing] = useState<{id:string,startY:number,startH:number}|null>(null);
-  const [gridDrag, setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
-  const [gridDragOver, setGridDragOver] = useState<string|null>(null);
+  const [topZ, setTopZ] = useState(10);
+  const persistWins = (ids: string[], states: Record<string,WinState>) => { localStorage.setItem("jedi-dash-open", JSON.stringify(ids)); localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(states)); };
 
   // Email UI state
   const [emailFolder, setEmailFolder] = useState("inbox");
@@ -508,51 +507,48 @@ export default function TerminalPage() {
     return () => window.removeEventListener("keydown", handler);
   },[]);
 
-  // Float window drag
+  // Floating window drag/resize
   useEffect(() => {
     if(!dragInfo) return;
     const onMove=(e:MouseEvent)=>{
-      setFloatPos(prev=>{
+      setWinStates(prev=>{
         const cur=prev[dragInfo.id];
         if(!cur) return prev;
-        if(dragInfo.mode==="move") return{...prev,[dragInfo.id]:{...cur,x:e.clientX-dragInfo.ox,y:e.clientY-dragInfo.oy}};
-        return{...prev,[dragInfo.id]:{...cur,w:Math.max(280,e.clientX-cur.x),h:Math.max(180,e.clientY-cur.y)}};
+        if(dragInfo.mode==="move") return{...prev,[dragInfo.id]:{...cur,x:e.clientX-dragInfo.ox,y:e.clientY-dragInfo.oy,maximized:false}};
+        return{...prev,[dragInfo.id]:{...cur,w:Math.max(320,e.clientX-cur.x),h:Math.max(200,e.clientY-cur.y),maximized:false}};
       });
     };
-    const onUp=()=>setDragInfo(null);
+    const onUp=()=>{setDragInfo(null);setWinStates(prev=>{persistWins(dashWindows,prev);return prev;});};
     document.addEventListener("mousemove",onMove);
     document.addEventListener("mouseup",onUp);
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
-  },[dragInfo]);
+  },[dragInfo,dashWindows]);
 
-  // Grid widget resize
-  useEffect(() => {
-    if(!gridResizing) return;
-    const onMove=(e:MouseEvent)=>{const delta=e.clientY-gridResizing.startY;setWidgetHeights(prev=>({...prev,[gridResizing.id]:Math.max(120,gridResizing.startH+delta)}));};
-    const onUp=()=>setGridResizing(null);
-    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
-    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
-  },[gridResizing]);
-
-  // Grid widget drag-to-swap
-  useEffect(() => {
-    if(!gridDrag) return;
-    const onMove=(e:MouseEvent)=>setGridDrag(prev=>prev?{...prev,x:e.clientX,y:e.clientY}:null);
-    const onUp=()=>{
-      if(gridDragOver&&gridDrag&&gridDragOver!==gridDrag.id){
-        setDashWidgets(prev=>{const arr=[...prev];const fi=arr.indexOf(gridDrag.id),ti=arr.indexOf(gridDragOver);if(fi!==-1&&ti!==-1){[arr[fi],arr[ti]]=[arr[ti],arr[fi]];}localStorage.setItem("jedi-dash-widgets",JSON.stringify(arr));return arr;});
-      }
-      setGridDrag(null);setGridDragOver(null);
-    };
-    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
-    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
-  },[gridDrag,gridDragOver]);
-
-  // ─── Widget helpers ────────────────────────────────────────
-  const addWidget = useCallback((id:string)=>{setDashWidgets(prev=>{const n=prev.includes(id)?prev:[...prev,id];localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});}, []);
-  const removeWidget = useCallback((id:string)=>{setDashWidgets(prev=>{const n=prev.filter(w=>w!==id);localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});setFloatWidgets(prev=>prev.filter(w=>w!==id));}, []);
-  const floatWidget = useCallback((id:string)=>{setFloatWidgets(prev=>prev.includes(id)?prev:[...prev,id]);setFloatPos(prev=>({...prev,[id]:prev[id]||{x:120,y:80,w:400,h:300}}));}, []);
-  const dockWidget = useCallback((id:string)=>setFloatWidgets(prev=>prev.filter(w=>w!==id)), []);
+  // ─── Window helpers ────────────────────────────────────────
+  const defaultWinPos = (id: string, idx: number): WinState => ({ x: 40 + idx * 30, y: 40 + idx * 30, w: 480, h: 340, minimized: false, maximized: false, zIndex: topZ + idx });
+  const openWindow = useCallback((id: string) => {
+    setDashWindows(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      const nz = topZ + 1;
+      setTopZ(nz);
+      setWinStates(ps => { const ns = { ...ps, [id]: ps[id] ? { ...ps[id], minimized: false, zIndex: nz } : defaultWinPos(id, next.length - 1) }; persistWins(next, ns); return ns; });
+      return next;
+    });
+  }, [topZ]);
+  const closeWindow = useCallback((id: string) => {
+    setDashWindows(prev => { const next = prev.filter(w => w !== id); setWinStates(ps => { persistWins(next, ps); return ps; }); return next; });
+  }, []);
+  const minimizeWindow = useCallback((id: string) => {
+    setWinStates(prev => { const ns = { ...prev, [id]: { ...prev[id], minimized: !prev[id]?.minimized } }; persistWins(dashWindows, ns); return ns; });
+  }, [dashWindows]);
+  const maximizeWindow = useCallback((id: string) => {
+    setWinStates(prev => { const cur = prev[id]; if (!cur) return prev; const ns = { ...prev, [id]: { ...cur, maximized: !cur.maximized, minimized: false } }; persistWins(dashWindows, ns); return ns; });
+  }, [dashWindows]);
+  const bringToFront = useCallback((id: string) => {
+    const nz = topZ + 1; setTopZ(nz);
+    setWinStates(prev => { const ns = { ...prev, [id]: { ...prev[id], zIndex: nz } }; persistWins(dashWindows, ns); return ns; });
+  }, [topZ, dashWindows]);
   const toggleSort = useCallback((c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}}, [sortBy]);
   const toggleTheme = useCallback(()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);}, [theme]);
 
@@ -1083,149 +1079,134 @@ export default function TerminalPage() {
     }
   };
 
-  // ─── VIEW: F1 DASHBOARD ────────────────────────────────────
-  const ViewDashboard = () => (
-    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
-      {dashMenuOpen&&(
-        <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:20,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
-            <div>
-              <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
-              <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWidgets.length} on dashboard</div>
+  // ─── VIEW: F1 DASHBOARD (Floating Window System) ──────────
+  const ViewDashboard = () => {
+    const minimized = dashWindows.filter(id => winStates[id]?.minimized);
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
+        {dashMenuOpen&&(
+          <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WINDOW</div>
+                <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} open</div>
+              </div>
+              <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
             </div>
-            <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
-          </div>
-          <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
-            {["DEALS","INTEL","MARKET","OPS","MEDIA"].map(cat=>{
-              const items=WIDGET_CATALOG.filter(w=>w.category===cat);
-              if(!items.length) return null;
-              return (
-                <div key={cat} style={{marginBottom:20}}>
-                  <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-                    {items.map(w=>{
-                      const added=dashWidgets.includes(w.id);
-                      return (
-                        <div key={w.id} style={{background:T.bg.panel,border:`1px solid ${added?w.color+"44":T.border.subtle}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
-                            <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
+            <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
+              {["DEALS","INTEL","MARKET","OPS","MEDIA"].map(cat=>{
+                const items=WIDGET_CATALOG.filter(w=>w.category===cat);
+                if(!items.length) return null;
+                return (
+                  <div key={cat} style={{marginBottom:20}}>
+                    <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                      {items.map(w=>{
+                        const added=dashWindows.includes(w.id);
+                        return (
+                          <div key={w.id} style={{background:T.bg.panel,border:`1px solid ${added?w.color+"44":T.border.subtle}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
+                              <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
+                            </div>
+                            <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
+                            <button onClick={()=>{if(!added){openWindow(w.id);setDashMenuOpen(false);}else{closeWindow(w.id);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:"pointer",letterSpacing:0.3}}>
+                              {added?"✓ OPEN":"+ ADD"}
+                            </button>
                           </div>
-                          <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
-                          <button onClick={()=>{if(!added){addWidget(w.id);setDashMenuOpen(false);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:added?"default":"pointer",letterSpacing:0.3}}>
-                            {added?"✓ ADDED":"+ ADD"}
-                          </button>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
+            {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{dashWindows.length} window{dashWindows.length!==1?"s":""}</span>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLOSE ALL</button>}
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WINDOW</button>
+          </div>
+        </div>
+        {dashWindows.length===0&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
+            <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:24,color:T.text.muted}}>+</span>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your workspace is empty</div>
+              <div style={{fontSize:10,color:T.text.muted}}>Open windows from the {WIDGET_CATALOG.length} available panels</div>
+            </div>
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WINDOW</button>
+          </div>
+        )}
+        <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+          {dashWindows.filter(id=>!winStates[id]?.minimized).map(id=>{
+            const meta=WIDGET_CATALOG.find(w=>w.id===id);
+            const ws=winStates[id]||defaultWinPos(id,0);
+            if(!meta) return null;
+            const isMax=ws.maximized;
+            const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
+            return (
+              <div key={id}
+                onMouseDown={()=>bringToFront(id)}
+                style={{
+                  position:isMax?"absolute":"absolute",
+                  left:isMax?0:ws.x, top:isMax?0:ws.y,
+                  width:isMax?"100%":ws.w, height:isMax?"100%":ws.h,
+                  background:T.bg.panel,
+                  border:`1px solid ${meta.color}55`,
+                  boxShadow:isMax?"none":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+                  display:"flex",flexDirection:"column",
+                  zIndex:ws.zIndex||10,
+                  minWidth:320,minHeight:200,
+                  transition:isMoving||dragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
+                }}>
+                <div
+                  onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringToFront(id);setDragInfo({id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
+                  onDoubleClick={()=>maximizeWindow(id)}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMax?"default":isMoving?"grabbing":"grab",userSelect:"none"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{width:7,height:7,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                    <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{meta.label}</span>
+                    <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
+                  </div>
+                  <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                    <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
+                    <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
+                    <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+                <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+                  {renderWidget(id)}
+                </div>
+                {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringToFront(id);setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
+              </div>
+            );
+          })}
         </div>
-      )}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
-          {dashWidgets.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{dashWidgets.length} widget{dashWidgets.length!==1?"s":""}</span>}
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          {dashWidgets.length>0&&<button onClick={()=>{setDashWidgets([]);localStorage.setItem("jedi-dash-widgets","[]");}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR</button>}
-          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
-        </div>
-      </div>
-      {dashWidgets.length===0&&(
-        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
-          <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:24,color:T.text.muted}}>+</span>
-          </div>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your dashboard is empty</div>
-            <div style={{fontSize:10,color:T.text.muted}}>Choose from {WIDGET_CATALOG.length} widgets to build your view</div>
-          </div>
-          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WIDGET</button>
-        </div>
-      )}
-      {dashWidgets.length>0&&(
-        <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
-          {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:200,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color}}>⠿ {m.label}</div>:null;})()}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridAutoFlow:"dense",gap:10,alignItems:"start"}}>
-            {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
+        {minimized.length>0&&(
+          <div style={{display:"flex",gap:4,padding:"4px 8px",background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,flexShrink:0,flexWrap:"wrap"}}>
+            {minimized.map(id=>{
               const meta=WIDGET_CATALOG.find(w=>w.id===id);
               if(!meta) return null;
-              const sz=widgetSizes[id]||"md";
-              const customH=widgetHeights[id];
-              const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
-              const h=customH?{min:customH,max:customH}:hMap[sz]||hMap.md;
-              const isDragging=gridDrag?.id===id;
-              const isDropTarget=gridDragOver===id&&gridDrag?.id!==id;
               return (
-                <div key={id}
-                  onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
-                  onMouseLeave={()=>setGridDragOver(null)}
-                  style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:`span ${widgetCols[id]||2}`,opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5}}>
-                      <span onMouseDown={(e)=>{e.preventDefault();setGridDrag({id,x:e.clientX,y:e.clientY});}} style={{cursor:"grab",fontSize:13,color:T.text.muted,lineHeight:1,padding:"0 4px 0 0",userSelect:"none"}} title="Drag to reorder">⠿</span>
-                      <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                      <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
-                    </div>
-                    <div style={{display:"flex",gap:3,alignItems:"center"}}>
-                      {(["sm","md","lg"] as const).map(s=>(
-                        <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
-                          {s.toUpperCase()}
-                        </button>
-                      ))}
-                      <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
-                      {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
-                        <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""} wide`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
-                          {c}
-                        </button>
-                      );})}
-                      <button onClick={()=>floatWidget(id)} title="Float as window" style={{fontFamily:T.font.mono,fontSize:11,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
-                      <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
-                    </div>
-                  </div>
-                  <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
-                    {renderWidget(id)}
-                  </div>
-                  <div onMouseDown={(e)=>{e.preventDefault();const curH=customH||(sz==="sm"?160:sz==="lg"?420:280);setGridResizing({id,startY:e.clientY,startH:curH});}} style={{height:6,flexShrink:0,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",borderTop:`1px solid ${T.border.subtle}`}} title="Drag to resize">
-                    <div style={{width:28,height:2,borderRadius:1,background:T.border.medium}}/>
-                  </div>
-                </div>
+                <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+                  <span style={{width:5,height:5,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                  {meta.label}
+                </button>
               );
             })}
           </div>
-        </div>
-      )}
-      {floatWidgets.map(id=>{
-        const meta=WIDGET_CATALOG.find(w=>w.id===id);
-        const pos=floatPos[id]||{x:120,y:80,w:400,h:300};
-        if(!meta) return null;
-        const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
-        return (
-          <div key={id} style={{position:"fixed",left:pos.x,top:pos.y,width:pos.w,height:pos.h,background:T.bg.panel,border:`1px solid ${meta.color}66`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:60,minWidth:280,minHeight:180}}>
-            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX-pos.x,oy:e.clientY-pos.y,mode:"move"});}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMoving?"grabbing":"grab"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
-                <span style={{fontSize:7,color:T.text.muted,marginLeft:2}}>FLOATING</span>
-              </div>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                <button onClick={()=>dockWidget(id)} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:`${T.text.cyan}11`,border:`1px solid ${T.text.cyan}44`,padding:"2px 7px",cursor:"pointer",letterSpacing:0.3}}>↙ DOCK</button>
-                <button onClick={()=>{dockWidget(id);removeWidget(id);}} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 3px",lineHeight:1}}>✕</button>
-              </div>
-            </div>
-            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
-              {renderWidget(id)}
-            </div>
-            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:16,height:16,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>
-          </div>
-        );
-      })}
-    </div>
-  );
+        )}
+      </div>
+    );
+  };
 
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
   const ViewPortfolio = () => (
