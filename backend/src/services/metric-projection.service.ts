@@ -187,6 +187,25 @@ export class MetricProjectionService {
     };
   }
 
+  private async getPersistedCorrelation(
+    anchorMetricId: string,
+    metricId: string,
+    geoType: string,
+    geoId: string,
+  ): Promise<{ correlationR: number; bestLagMonths: number } | null> {
+    const result = await this.pool.query(
+      `SELECT correlation_r, lead_lag_months FROM metric_correlations
+       WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4
+       ORDER BY ABS(correlation_r) DESC LIMIT 1`,
+      [anchorMetricId, metricId, geoType, geoId],
+    );
+    if (result.rows.length === 0) return null;
+    return {
+      correlationR: parseFloat(result.rows[0].correlation_r),
+      bestLagMonths: parseInt(result.rows[0].lead_lag_months),
+    };
+  }
+
   private async projectAnchorCorrelation(
     metricId: string,
     geoType: string,
@@ -201,14 +220,24 @@ export class MetricProjectionService {
     const targetSeries = await this.fetchSeries(metricId, geoType, geoId);
     if (targetSeries.length < 3) return null;
 
-    const sweep = await this.correlationEngine.sweepLagsDirect(anchorSeries, targetSeries);
+    let bestR: number;
+    let bestLag: number;
 
-    if (sweep.sweepResults.length === 0 || Math.abs(sweep.bestR) < 0.2) {
-      return null;
+    const persisted = await this.getPersistedCorrelation(anchorMetricId, metricId, anchorGeoType, geoId);
+    if (persisted && Math.abs(persisted.correlationR) >= 0.2) {
+      bestR = persisted.correlationR;
+      bestLag = persisted.bestLagMonths;
+    } else {
+      const sweep = this.correlationEngine.sweepLagsDirect(anchorSeries, targetSeries);
+      if (sweep.sweepResults.length === 0 || Math.abs(sweep.bestR) < 0.2) {
+        return null;
+      }
+      bestR = sweep.bestR;
+      bestLag = sweep.bestLag;
     }
 
     const anchorProjection = this.projectOLS(
-      anchorMetricId, anchorGeoType, geoId, anchorSeries, horizonMonths + Math.abs(sweep.bestLag), true,
+      anchorMetricId, anchorGeoType, geoId, anchorSeries, horizonMonths + Math.abs(bestLag), true,
     );
 
     const targetMean = targetSeries.reduce((a, b) => a + b.value, 0) / targetSeries.length;
@@ -222,10 +251,10 @@ export class MetricProjectionService {
       anchorValues.reduce((a, b) => a + (b - anchorMean) ** 2, 0) / anchorValues.length,
     );
 
-    const uncertaintyExpansion = 1 + (1 - Math.abs(sweep.bestR));
+    const uncertaintyExpansion = 1 + (1 - Math.abs(bestR));
 
     const projectedValues: ProjectedValue[] = [];
-    const lagOffset = sweep.bestLag;
+    const lagOffset = bestLag;
 
     for (let h = 1; h <= horizonMonths; h++) {
       const anchorIdx = h + lagOffset - 1;
@@ -233,7 +262,7 @@ export class MetricProjectionService {
 
       const anchorPV = anchorProjection.projectedValues[anchorIdx];
       const anchorZ = anchorStd > 0 ? (anchorPV.value - anchorMean) / anchorStd : 0;
-      const derivedValue = targetMean + sweep.bestR * anchorZ * targetStd;
+      const derivedValue = targetMean + bestR * anchorZ * targetStd;
 
       const anchorCI80 = (anchorPV.upper_ci_80 - anchorPV.lower_ci_80) / 2;
       const anchorCI95 = (anchorPV.upper_ci_95 - anchorPV.lower_ci_95) / 2;
@@ -253,11 +282,11 @@ export class MetricProjectionService {
       });
     }
 
-    const rSquared = sweep.bestR * sweep.bestR * anchorProjection.rSquared;
+    const rSquared = bestR * bestR * anchorProjection.rSquared;
 
     let confidence: 'high' | 'medium' | 'low' = 'low';
-    if (Math.abs(sweep.bestR) > 0.6 && anchorProjection.trainingMonths >= 120) confidence = 'medium';
-    if (Math.abs(sweep.bestR) > 0.7 && anchorProjection.trainingMonths >= 200) confidence = 'high';
+    if (Math.abs(bestR) > 0.6 && anchorProjection.trainingMonths >= 120) confidence = 'medium';
+    if (Math.abs(bestR) > 0.7 && anchorProjection.trainingMonths >= 200) confidence = 'high';
 
     return {
       metricId,
@@ -270,8 +299,8 @@ export class MetricProjectionService {
       confidence,
       projectedValues,
       anchorMetric: anchorMetricId,
-      anchorLagMonths: sweep.bestLag,
-      anchorR: Math.round(sweep.bestR * 1000) / 1000,
+      anchorLagMonths: bestLag,
+      anchorR: Math.round(bestR * 1000) / 1000,
     };
   }
 

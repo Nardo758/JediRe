@@ -231,11 +231,46 @@ export class MetricCorrelationEngine {
     };
   }
 
+  private async upsertCorrelationAtLag(
+    metricA: string,
+    metricB: string,
+    geoType: string,
+    geoId: string,
+    seriesA: Array<{ date: string; value: number }>,
+    seriesB: Array<{ date: string; value: number }>,
+    lagMonths: number,
+    windowMonths: number,
+  ): Promise<boolean> {
+    const { aligned_a, aligned_b } = this.alignWithLag(seriesA, seriesB, lagMonths);
+    const { r, n } = this.pearsonR(aligned_a, aligned_b);
+    if (n < 5 || Math.abs(r) < 0.1) return false;
+
+    const pValue = this.approximatePValue(r, n);
+
+    await this.pool.query(
+      `INSERT INTO metric_correlations
+       (metric_a, metric_b, geography_type, geography_id, window_months,
+        correlation_r, lead_lag_months, p_value, sample_size, computed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
+       DO UPDATE SET
+         correlation_r = EXCLUDED.correlation_r,
+         lead_lag_months = EXCLUDED.lead_lag_months,
+         p_value = EXCLUDED.p_value,
+         sample_size = EXCLUDED.sample_size,
+         computed_at = NOW()`,
+      [metricA, metricB, geoType, geoId, windowMonths, r, lagMonths, pValue, n],
+    );
+    return true;
+  }
+
   async seedCorePairs(): Promise<{ computed: number; skipped: number }> {
     const corePairs = [
       { a: 'home_value_index_yoy', b: 'rent_index_yoy' },
       { a: 'rent_index_yoy', b: 'home_value_index_yoy' },
     ];
+
+    const coreLags = [0, 3, 6, 9, 12];
 
     const geos = await this.pool.query(
       `SELECT DISTINCT geography_id FROM metric_time_series
@@ -248,16 +283,24 @@ export class MetricCorrelationEngine {
     for (const pair of corePairs) {
       for (const geo of geos.rows) {
         try {
-          const result = await this.computeAndUpsert(
-            pair.a, pair.b, 'metro', geo.geography_id, 60,
-          );
-          if (result && Math.abs(result.correlationR) > 0.1) {
-            computed++;
-          } else {
-            skipped++;
+          const seriesA = await this.fetchSeries(pair.a, 'metro', geo.geography_id);
+          const seriesB = await this.fetchSeries(pair.b, 'metro', geo.geography_id);
+
+          if (seriesA.length < 10 || seriesB.length < 10) {
+            skipped += coreLags.length;
+            continue;
+          }
+
+          for (const lag of coreLags) {
+            const ok = await this.upsertCorrelationAtLag(
+              pair.a, pair.b, 'metro', geo.geography_id,
+              seriesA, seriesB, lag, lag,
+            );
+            if (ok) computed++;
+            else skipped++;
           }
         } catch (err: any) {
-          skipped++;
+          skipped += coreLags.length;
         }
       }
     }
