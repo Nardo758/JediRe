@@ -739,7 +739,7 @@ export class JEDIScoreService {
          FROM corporate_health_scores chs
          JOIN submarket_employers se ON se.ticker = chs.ticker
          WHERE se.submarket_id = $1
-           AND chs.quarter = (SELECT MAX(quarter) FROM corporate_health_scores)`,
+           AND chs.fiscal_quarter = (SELECT MAX(fiscal_quarter) FROM corporate_health_scores)`,
         [submarketId]
       );
       const minChs = parseFloat(minChsResult.rows[0]?.min_chs || '50');

@@ -11,7 +11,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { apiClient, api } from '../../../services/api.client';
-import { useCorporateHealthStore } from '../../../store/corporateHealthStore';
+import { useDealStore } from '../../../stores/dealStore';
 
 interface RiskCategory {
   id: string;
@@ -248,11 +248,11 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     return () => { cancelled = true; };
   }, [resolvedDealId]);
 
-  const fetchCorporateHealth = useCorporateHealthStore(s => s.fetchCorporateHealth);
+  const fetchCorporateHealthFromDealStore = useDealStore(s => s.fetchCorporateHealth);
 
   useEffect(() => {
     if (!resolvedDealId || corpHealthRisk.loaded) return;
-    fetchCorporateHealth(resolvedDealId).catch(() => {});
+    fetchCorporateHealthFromDealStore(resolvedDealId).catch(() => {});
     api.corporateHealth.getDealOverlay(resolvedDealId)
       .then(res => {
         const d = res.data?.data;

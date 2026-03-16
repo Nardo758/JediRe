@@ -70,8 +70,8 @@ export const useCorporateHealthStore = create<CorporateHealthState>((set) => ({
       } else {
         set({ loading: false });
       }
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Unknown error', loading: false });
     }
   },
 
@@ -96,8 +96,8 @@ export const useCorporateHealthStore = create<CorporateHealthState>((set) => ({
       } else {
         set({ loading: false });
       }
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : 'Unknown error', loading: false });
     }
   },
 

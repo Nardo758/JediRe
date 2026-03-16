@@ -99,7 +99,7 @@ export class CorporateHealthService {
     const priorQ = getPriorQuarter(q);
     const priorResult = await pool.query(
       `SELECT composite_chs FROM corporate_health_scores
-       WHERE ticker = $1 AND quarter = $2`,
+       WHERE ticker = $1 AND fiscal_quarter = $2`,
       [ticker, priorQ],
     );
     const priorCHS = priorResult.rows[0]?.composite_chs
@@ -109,10 +109,10 @@ export class CorporateHealthService {
 
     await pool.query(
       `INSERT INTO corporate_health_scores
-       (ticker, quarter, revenue_momentum, earnings_trajectory, headcount_signal,
+       (ticker, fiscal_quarter, revenue_momentum, earnings_trajectory, headcount_signal,
         guidance_sentiment, stock_momentum, composite_chs, chs_delta_qoq, health_tier)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (ticker, quarter) DO UPDATE SET
+       ON CONFLICT (ticker, fiscal_quarter) DO UPDATE SET
          revenue_momentum = EXCLUDED.revenue_momentum,
          earnings_trajectory = EXCLUDED.earnings_trajectory,
          headcount_signal = EXCLUDED.headcount_signal,
@@ -161,7 +161,7 @@ export class CorporateHealthService {
       `SELECT se.ticker, se.employment_share, se.is_public,
               chs.composite_chs, chs.health_tier
        FROM submarket_employers se
-       LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker AND chs.quarter = $2
+       LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker AND chs.fiscal_quarter = $2
        WHERE se.submarket_id = $1`,
       [submarketId, q],
     );
@@ -293,7 +293,7 @@ export class CorporateHealthService {
         composite: parseFloat(latest.composite_chs),
         tier: latest.health_tier,
         deltaQoQ: parseFloat(latest.chs_delta_qoq),
-        quarter: latest.quarter,
+        quarter: latest.fiscal_quarter,
       } : null,
       components: latest ? {
         revenueMomentum: parseFloat(latest.revenue_momentum),
@@ -302,8 +302,8 @@ export class CorporateHealthService {
         guidanceSentiment: parseFloat(latest.guidance_sentiment),
         stockMomentum: parseFloat(latest.stock_momentum),
       } : null,
-      history: scores.rows.map((r: any) => ({
-        quarter: r.quarter,
+      history: scores.rows.map((r: Record<string, string>) => ({
+        quarter: r.fiscal_quarter,
         chs: parseFloat(r.composite_chs),
         tier: r.health_tier,
         delta: parseFloat(r.chs_delta_qoq),
@@ -367,7 +367,7 @@ export class CorporateHealthService {
        FROM corporate_health_scores chs
        JOIN submarket_employers se ON se.ticker = chs.ticker
        WHERE se.submarket_id = $1
-         AND chs.quarter = (SELECT MAX(quarter) FROM corporate_health_scores)`,
+         AND chs.fiscal_quarter = (SELECT MAX(fiscal_quarter) FROM corporate_health_scores)`,
       [submarketId],
     );
     const minChs = minChsResult.rows[0]?.min_chs ? parseFloat(minChsResult.rows[0].min_chs) : null;
@@ -390,14 +390,14 @@ export class CorporateHealthService {
       topEmployerShare: concentration.singleEmployerMaxShare,
       top5Share: concentration.top5Share,
       minChs,
-      topEmployers: topEmployers.map((e: any) => ({
+      topEmployers: topEmployers.map((e: Record<string, string>) => ({
         company: e.company_name,
         ticker: e.ticker,
         chs: e.composite_chs ? parseFloat(e.composite_chs) : null,
         tier: e.health_tier,
         share: parseFloat(e.employment_share),
       })),
-      trend: health.rows.map((r: any) => ({
+      trend: health.rows.map((r: Record<string, string>) => ({
         quarter: r.quarter,
         schi: parseFloat(r.schi_score),
         divergence: parseFloat(r.divergence_score),
@@ -429,7 +429,7 @@ export class CorporateHealthService {
        FROM submarket_employers se
        JOIN submarkets s ON se.submarket_id = s.id
        LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker
-         AND chs.quarter = $1
+         AND chs.fiscal_quarter = $1
        WHERE se.is_public = true
        ORDER BY se.estimated_local_employees DESC NULLS LAST
        LIMIT 10`,
@@ -437,7 +437,7 @@ export class CorporateHealthService {
     );
 
     return {
-      submarkets: result.rows.map((r: any) => ({
+      submarkets: result.rows.map((r: Record<string, string>) => ({
         submarketId: r.submarket_id,
         name: r.submarket_name,
         msa: r.msa_name,
@@ -450,7 +450,7 @@ export class CorporateHealthService {
         employerCount: parseInt(r.employer_count || '0'),
         publicCount: parseInt(r.public_employer_count || '0'),
       })),
-      topEmployers: topEmployers.rows.map((r: any) => ({
+      topEmployers: topEmployers.rows.map((r: Record<string, string>) => ({
         company: r.company_name,
         ticker: r.ticker,
         employees: r.estimated_local_employees,
@@ -477,7 +477,7 @@ export class CorporateHealthService {
        FROM submarket_employers se
        JOIN submarkets s ON se.submarket_id = s.id
        LEFT JOIN msas m ON s.msa_id = m.id
-       LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker AND chs.quarter = $1
+       LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker AND chs.fiscal_quarter = $1
        WHERE se.is_public = true AND se.naics_code IS NOT NULL
        GROUP BY se.naics_code, s.name, s.msa_id, m.name
        ORDER BY se.naics_code, m.name`,
@@ -522,7 +522,7 @@ export class CorporateHealthService {
     );
 
     const stressAlerts = await pool.query(
-      `SELECT chs.ticker, chs.composite_chs, chs.chs_delta_qoq, chs.health_tier, chs.quarter,
+      `SELECT chs.ticker, chs.composite_chs, chs.chs_delta_qoq, chs.health_tier, chs.fiscal_quarter,
               se.company_name, se.employment_share, se.submarket_id,
               s.name as submarket_name
        FROM corporate_health_scores chs
@@ -533,7 +533,24 @@ export class CorporateHealthService {
        LIMIT 10`,
     );
 
-    const alerts: any[] = [];
+    interface CorporateAlert {
+      type: string;
+      submarket?: string;
+      msa?: string;
+      submarketId?: number;
+      signal?: string;
+      magnitude?: number;
+      schi?: number;
+      reHealth?: number;
+      divergence?: number;
+      quarter?: string;
+      company?: string;
+      ticker?: string;
+      chs?: number;
+      chsDelta?: number;
+      employmentShare?: number;
+    }
+    const alerts: CorporateAlert[] = [];
 
     for (const row of divergenceAlerts.rows) {
       alerts.push({
@@ -560,7 +577,7 @@ export class CorporateHealthService {
         chs: parseFloat(row.composite_chs),
         chsDelta: parseFloat(row.chs_delta_qoq),
         employmentShare: parseFloat(row.employment_share),
-        quarter: row.quarter,
+        quarter: row.fiscal_quarter,
       });
     }
 
@@ -630,14 +647,14 @@ export class CorporateHealthService {
     return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100) / 100;
   }
 
-  private computeRevenueMomentum(financials: any[]): number {
+  private computeRevenueMomentum(financials: Record<string, string | null>[]): number {
     if (financials.length < 2) return 50;
     const yoy = financials[0]?.revenue_yoy_pct;
     if (yoy === null || yoy === undefined) return 50;
     return normalizeToScale(parseFloat(yoy), -20, 30);
   }
 
-  private computeEarningsTrajectory(financials: any[]): number {
+  private computeEarningsTrajectory(financials: Record<string, string | null>[]): number {
     if (financials.length < 2) return 50;
 
     let beatCount = 0;
@@ -645,15 +662,15 @@ export class CorporateHealthService {
     for (const f of financials.slice(0, 4)) {
       if (f.eps_actual !== null && f.eps_estimate !== null) {
         total++;
-        if (parseFloat(f.eps_actual) >= parseFloat(f.eps_estimate)) beatCount++;
+        if (parseFloat(f.eps_actual!) >= parseFloat(f.eps_estimate!)) beatCount++;
       }
     }
 
     const beatRate = total > 0 ? beatCount / total : 0.5;
 
     const margins = financials
-      .filter((f: any) => f.operating_margin !== null)
-      .map((f: any) => parseFloat(f.operating_margin));
+      .filter((f) => f.operating_margin !== null)
+      .map((f) => parseFloat(f.operating_margin!));
 
     let marginTrend = 0;
     if (margins.length >= 2) {
@@ -666,14 +683,14 @@ export class CorporateHealthService {
     return Math.max(0, Math.min(100, beatScore + marginScore));
   }
 
-  private computeHeadcountSignal(financials: any[]): number {
+  private computeHeadcountSignal(financials: Record<string, string | null>[]): number {
     if (financials.length < 2) return 50;
     const yoy = financials[0]?.employee_yoy_pct;
     if (yoy === null || yoy === undefined) return 50;
     return normalizeToScale(parseFloat(yoy), -15, 20);
   }
 
-  private computeGuidanceSentiment(financials: any[]): number {
+  private computeGuidanceSentiment(financials: Record<string, string | null>[]): number {
     if (financials.length === 0) return 50;
     const sentiment = financials[0]?.guidance_sentiment;
     if (sentiment === null || sentiment === undefined) return 50;

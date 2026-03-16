@@ -39,7 +39,7 @@ router.get('/submarket/:submarketId', async (req: Request, res: Response, next: 
         herfindahl: schi.herfindahlIndex,
         top5Share: schi.top5Share,
         publicCoverage: schi.publicCoverage,
-        employers: employers.map((e: any) => ({
+        employers: employers.map((e: Record<string, string>) => ({
           company: e.company_name,
           ticker: e.ticker,
           isPublic: e.is_public,
@@ -49,7 +49,7 @@ router.get('/submarket/:submarketId', async (req: Request, res: Response, next: 
           tier: e.health_tier,
           delta: e.chs_delta_qoq ? parseFloat(e.chs_delta_qoq) : null,
         })),
-        trend: trend.rows.map((r: any) => ({
+        trend: trend.rows.map((r: Record<string, string>) => ({
           quarter: r.quarter,
           schi: parseFloat(r.schi_score),
           divergence: parseFloat(r.divergence_score),
@@ -178,7 +178,7 @@ router.get('/concentration/:submarketId', async (req: Request, res: Response, ne
         employerCount: concentration.employerCount,
         publicEmployerCount: concentration.publicEmployerCount,
         sectorBreakdown: concentration.sectorBreakdown,
-        employers: employers.map((e: any) => ({
+        employers: employers.map((e: Record<string, string>) => ({
           company: e.company_name,
           ticker: e.ticker,
           isPublic: e.is_public,

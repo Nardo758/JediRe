@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
+import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1886,6 +1887,7 @@ export default function TerminalPage() {
 
   const corpHealthStore = useCorporateHealth();
   const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
+  const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
 
   useEffect(() => {
     if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
@@ -1895,6 +1897,7 @@ export default function TerminalPage() {
     const firstSubmarketId = submarketIds[0] || 1;
 
     fetchSubmarketHealth(firstSubmarketId).catch(() => {});
+    dealStoreFetchSubmarketHealth(firstSubmarketId).catch(() => {});
 
     Promise.all([
       api.corporateHealth.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
