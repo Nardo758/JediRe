@@ -3,8 +3,8 @@
  * Endpoints for strategy building metric discovery and historical data retrieval
  */
 
-import { Router, Request, Response } from 'express';
-import { requireAuth } from '../../middleware/auth';
+import { Router, Request, Response, NextFunction } from 'express';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
 import { pool } from '../../database';
 import {
@@ -15,6 +15,8 @@ import {
   MetricGranularity,
 } from '../../services/metricsCatalog.service';
 import { DotAggregatorService } from '../../services/dot-aggregator.service';
+import { MetricCorrelationEngine } from '../../services/metric-correlation-engine.service';
+import { MetricProjectionService } from '../../services/metric-projection.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -32,6 +34,7 @@ router.get('/catalog', async (req: Request, res: Response) => {
       success: true,
       count: METRICS_CATALOG.length,
       metrics: METRICS_CATALOG,
+      categories: getCategoriesWithCounts(),
     });
   } catch (error) {
     logger.error('Error fetching metrics catalog:', error);
@@ -63,6 +66,8 @@ router.get('/categories', async (req: Request, res: Response) => {
 });
 
 const dotAggregator = new DotAggregatorService(pool);
+const correlationEngine = new MetricCorrelationEngine(pool);
+const projectionService = new MetricProjectionService(pool);
 
 router.get('/aadt-history', async (req: Request, res: Response) => {
   try {
@@ -88,6 +93,109 @@ router.get('/aadt-history', async (req: Request, res: Response) => {
       success: false,
       error: 'Failed to fetch AADT history',
     });
+  }
+});
+
+router.get('/correlations', async (req: Request, res: Response) => {
+  try {
+    const metricA = req.query.metricA as string | undefined;
+    const metricB = req.query.metricB as string | undefined;
+    const geoType = req.query.geoType as string | undefined;
+    const geoId = req.query.geoId as string | undefined;
+
+    const results = await correlationEngine.getCorrelations(metricA, metricB, geoType, geoId);
+    res.json({ success: true, count: results.length, correlations: results });
+  } catch (error) {
+    logger.error('Error fetching correlations:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch correlations' });
+  }
+});
+
+router.post('/correlations/compute', async (req: Request, res: Response) => {
+  try {
+    const { metricA, metricB, geoType, geoId } = req.body;
+    if (!metricA || !metricB || !geoType || !geoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: metricA, metricB, geoType, geoId',
+      });
+    }
+
+    const result = await correlationEngine.computeAndUpsert(metricA, metricB, geoType, geoId);
+    res.json({ success: true, correlation: result });
+  } catch (error) {
+    logger.error('Error computing correlation:', error);
+    res.status(500).json({ success: false, error: 'Failed to compute correlation' });
+  }
+});
+
+router.post('/correlations/seed', (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
+}, async (req: Request, res: Response) => {
+  try {
+    const result = await correlationEngine.seedCorePairs();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error('Error seeding correlations:', error);
+    res.status(500).json({ success: false, error: 'Failed to seed correlations' });
+  }
+});
+
+router.get('/correlations/sweep', async (req: Request, res: Response) => {
+  try {
+    const metricA = req.query.metricA as string;
+    const metricB = req.query.metricB as string;
+    const geoType = req.query.geoType as string;
+    const geoId = req.query.geoId as string;
+
+    if (!metricA || !metricB || !geoType || !geoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required params: metricA, metricB, geoType, geoId',
+      });
+    }
+
+    const result = await correlationEngine.sweepLags(metricA, metricB, geoType, geoId);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error('Error sweeping correlations:', error);
+    res.status(500).json({ success: false, error: 'Failed to sweep correlations' });
+  }
+});
+
+router.get('/:metricId/projection', async (req: Request, res: Response) => {
+  try {
+    const { metricId } = req.params;
+    const geoId = req.query.geoId as string;
+    const geoType = req.query.geoType as string;
+    const horizon = parseInt(req.query.horizon as string) || 60;
+
+    if (!geoId || !geoType) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required query params: geoId, geoType',
+      });
+    }
+
+    const result = await projectionService.getProjection(metricId, geoType, geoId, horizon);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: `Insufficient data to project ${metricId} for geography ${geoId}. Need at least 6 months of history (or a configured anchor metric).`,
+      });
+    }
+
+    res.json({
+      success: true,
+      projection: result,
+    });
+  } catch (error) {
+    logger.error('Error computing projection:', error);
+    res.status(500).json({ success: false, error: 'Failed to compute projection' });
   }
 });
 
