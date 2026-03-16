@@ -87,4 +87,23 @@ export const api = {
   },
 };
 
+export const corporateHealthAPI = {
+  getSubmarket: (submarketId: number) =>
+    apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`),
+  getCompany: (ticker: string) =>
+    apiClient.get(`/api/v1/corporate-health/company/${ticker}`),
+  getDealOverlay: (dealId: string) =>
+    apiClient.get(`/api/v1/corporate-health/deal/${dealId}`),
+  getSectorRotation: () =>
+    apiClient.get('/api/v1/corporate-health/sector-rotation'),
+  getAlerts: () =>
+    apiClient.get('/api/v1/corporate-health/alerts'),
+  refreshTicker: (ticker: string) =>
+    apiClient.post(`/api/v1/corporate-health/refresh/${ticker}`),
+  getConcentration: (submarketId: number) =>
+    apiClient.get(`/api/v1/corporate-health/concentration/${submarketId}`),
+  analyzeTranscript: (ticker: string, transcript: string, fiscalQuarter?: string) =>
+    apiClient.post(`/api/v1/corporate-health/transcript/${ticker}`, { transcript, fiscalQuarter }),
+};
+
 export default apiClient;

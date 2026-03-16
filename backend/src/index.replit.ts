@@ -120,6 +120,7 @@ import dealValidationRoutes from './api/rest/deal-validation.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import jediRoutes from './api/rest/jedi.routes';
+import corporateHealthRouter from './api/rest/corporate-health.routes';
 import mediaRouter from './api/rest/media.routes';
 import orgRouter from './api/rest/org.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
@@ -288,6 +289,7 @@ app.use('/api/v1/deals', requireAuth, dealContextRoutes);
 app.use('/api/v1/deals', requireAuth, financialModelRoutes);
 app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
 app.use('/api/v1/jedi', jediRoutes);
+app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/v1/orgs', requireAuth, orgRouter);
 

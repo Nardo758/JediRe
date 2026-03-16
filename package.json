@@ -24,6 +24,7 @@
     "react-virtualized-auto-sizer": "^2.0.2",
     "react-window": "^2.2.6",
     "stripe-replit-sync": "^1.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "yahoo-finance2": "^3.13.2"
   }
 }

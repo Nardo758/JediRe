@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiClient } from "../services/api.client";
+import { apiClient, corporateHealthAPI } from "../services/api.client";
 import { layersService } from "../services/layers.service";
 
 // ═══════════════════════════════════════════════════════════════
@@ -408,6 +408,8 @@ export default function TerminalPage() {
   const [inviteRole, setInviteRole] = useState("analyst");
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
+  const [marketTab, setMarketTab] = useState<"overview"|"corphealth">("overview");
+  const [corpHealthLive, setCorpHealthLive] = useState<{employers:any[],schi:number|null,reHealth:number|null,divergence:number|null,herfindahl:number|null,alerts:any[],sectors:Record<string,number>,loaded:boolean,loading:boolean}>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},loaded:false,loading:false});
 
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
@@ -1385,39 +1387,137 @@ export default function TerminalPage() {
   );
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
+  const CORP_HEALTH_DEMO = [
+    {company:"Amazon",ticker:"AMZN",employees:12500,share:18.2,chs:74,tier:"healthy" as const,delta:+3,sector:"Technology",momentum:"+2.1%"},
+    {company:"Microsoft",ticker:"MSFT",employees:8200,share:11.9,chs:82,tier:"healthy" as const,delta:+1,sector:"Technology",momentum:"+1.4%"},
+    {company:"Boeing",ticker:"BA",employees:6800,share:9.9,chs:38,tier:"stress" as const,delta:-8,sector:"Aerospace",momentum:"-4.2%"},
+    {company:"T-Mobile",ticker:"TMUS",employees:4100,share:6.0,chs:65,tier:"watch" as const,delta:-2,sector:"Telecom",momentum:"+0.8%"},
+    {company:"Starbucks",ticker:"SBUX",employees:3500,share:5.1,chs:71,tier:"healthy" as const,delta:+5,sector:"Consumer",momentum:"+1.9%"},
+    {company:"Costco",ticker:"COST",employees:2900,share:4.2,chs:88,tier:"healthy" as const,delta:+2,sector:"Retail",momentum:"+3.1%"},
+    {company:"Swedish Medical",ticker:null,employees:2400,share:3.5,chs:null,tier:null,delta:null,sector:"Healthcare",momentum:"N/A"},
+    {company:"Expedia",ticker:"EXPE",employees:2100,share:3.1,chs:59,tier:"watch" as const,delta:-4,sector:"Technology",momentum:"-1.3%"},
+  ];
+  const DEMO_SCHI = 68.4;
+  const DEMO_RE_HEALTH = 72.1;
+  const DEMO_DIVERGENCE = -3.7;
+  const DEMO_HERFINDAHL = 0.072;
+
+  const tierColor = (tier: string|null) => tier==="healthy"?T.text.green:tier==="stress"?T.text.red:tier==="watch"?T.text.amber:T.text.muted;
+
   const ViewMarkets = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
-      <div style={{padding:"10px 10px 0"}}>
-        <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
-        <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Is this submarket getting stronger or weaker — and how fast?</div>
-      </div>
-      <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-        {MARKET_VITALS.map((v,i)=><MetricBox key={i} {...v} T={T}/>)}
-      </div>
-      <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
-        <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>.</span>
-      </div>
-      <div style={{margin:"0 10px"}}>
-        <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
-        <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-          {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h=>(
-            <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-          ))}
-        </div>
-        {SUBMARKETS.map((s,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
-            <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
-          </div>
+      <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
+        {([["overview","MARKET OVERVIEW"],["corphealth","CORPORATE HEALTH"]] as const).map(([k,l])=>(
+          <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>
         ))}
       </div>
+      {marketTab==="overview" ? (
+        <div style={{flex:1,overflow:"auto"}}>
+          <div style={{padding:"10px 10px 0"}}>
+            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
+            <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Is this submarket getting stronger or weaker — and how fast?</div>
+          </div>
+          <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
+            {MARKET_VITALS.map((v,i)=><MetricBox key={i} {...v} T={T}/>)}
+          </div>
+          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
+            <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>.</span>
+          </div>
+          <div style={{margin:"0 10px"}}>
+            <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
+            <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+              {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h=>(
+                <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
+              ))}
+            </div>
+            {SUBMARKETS.map((s,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+                <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
+                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
+                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
+                <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{flex:1,overflow:"auto"}}>
+          <div style={{padding:"10px 10px 0"}}>
+            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
+            <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Are the employers in this submarket healthy enough to sustain demand?</div>
+          </div>
+          <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
+            <MetricBox T={T} label="SCHI SCORE" value={DEMO_SCHI.toFixed(1)} sub="Submarket Corporate Health" color={DEMO_SCHI>=60?T.text.green:DEMO_SCHI>=40?T.text.amber:T.text.red}/>
+            <MetricBox T={T} label="RE HEALTH" value={DEMO_RE_HEALTH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
+            <MetricBox T={T} label="DIVERGENCE" value={(DEMO_DIVERGENCE>0?"+":"")+DEMO_DIVERGENCE.toFixed(1)} sub={Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?T.text.green:T.text.red):T.text.amber}/>
+            <MetricBox T={T} label="HERFINDAHL" value={DEMO_HERFINDAHL.toFixed(3)} sub={DEMO_HERFINDAHL<0.1?"Low concentration":"High concentration"} color={DEMO_HERFINDAHL<0.1?T.text.green:T.text.red}/>
+          </div>
+          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(DEMO_DIVERGENCE)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(DEMO_DIVERGENCE)>15?T.text.amber:T.text.green}`}}>
+            <span style={{fontSize:9,color:T.text.secondary}}>
+              Corporate health is <span style={{fontWeight:700,color:DEMO_SCHI>=60?T.text.green:T.text.red}}>{DEMO_SCHI>=60?"STABLE":"AT RISK"}</span>.
+              {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(DEMO_DIVERGENCE)>15?T.text.amber:T.text.green}}>{Math.abs(DEMO_DIVERGENCE)>15?(DEMO_DIVERGENCE>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
+              {" "}Top employer (Amazon) represents {CORP_HEALTH_DEMO[0].share}% of submarket employment.
+            </span>
+          </div>
+          <div style={{margin:"0 10px"}}>
+            <PanelHeader T={T} title="TOP EMPLOYERS — CORPORATE HEALTH"/>
+            <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+              {["COMPANY","TICKER","EMPLOYEES","SHARE %","CHS","TIER","SECTOR","MOMENTUM"].map(h=>(
+                <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
+              ))}
+            </div>
+            {CORP_HEALTH_DEMO.map((c,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+                <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{c.company}</div>
+                <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:c.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.ticker||"PRIVATE"}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.employees?.toLocaleString()}</div>
+                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.share.toFixed(1)}%</div>
+                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:c.chs?tierColor(c.tier):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.chs??"-"}</div>
+                <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={tierColor(c.tier)}>{c.tier?.toUpperCase()||"N/A"}</Bd></div>
+                <div style={{padding:"5px 6px",fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.sector}</div>
+                <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:c.momentum.startsWith("+")?T.text.green:c.momentum.startsWith("-")?T.text.red:T.text.muted}}>{c.momentum}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{margin:"10px",display:"flex",gap:10}}>
+            <div style={{flex:1}}>
+              <PanelHeader T={T} title="SECTOR CONCENTRATION"/>
+              {[{sector:"Technology",pct:33.2,color:T.text.cyan},{sector:"Aerospace",pct:9.9,color:T.text.orange},{sector:"Telecom",pct:6.0,color:T.text.purple},{sector:"Consumer",pct:5.1,color:T.text.amber},{sector:"Retail",pct:4.2,color:T.text.green},{sector:"Healthcare",pct:3.5,color:T.text.red},{sector:"Other",pct:38.1,color:T.text.muted}].map((s,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
+                  <span style={{fontSize:9,color:T.text.primary,flex:1}}>{s.sector}</span>
+                  <div style={{width:100,height:6,background:T.bg.header,borderRadius:3,overflow:"hidden"}}>
+                    <div style={{width:`${s.pct}%`,height:"100%",background:s.color,borderRadius:3}}/>
+                  </div>
+                  <span style={{fontSize:8,color:T.text.secondary,width:35,textAlign:"right"}}>{s.pct}%</span>
+                </div>
+              ))}
+            </div>
+            <div style={{flex:1}}>
+              <PanelHeader T={T} title="STRESS ALERTS"/>
+              {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a:any)=>({sev:a.severity||"med",msg:a.message||a.msg||"",time:a.time||"now"})) : [
+                {sev:"high",msg:"Boeing (BA) CHS dropped to 38 — stress tier. 6,800 employees at risk.",time:"2h"},
+                {sev:"med",msg:"Expedia (EXPE) CHS declining: 59 (-4 QoQ). Watch for layoff announcements.",time:"5h"},
+                {sev:"low",msg:"T-Mobile (TMUS) slight CHS decline to 65. Monitor next earnings.",time:"1d"},
+              ]).map((a,i)=>{
+                const bc=({high:T.text.red,med:T.text.orange,low:T.text.amber} as Record<string,string>)[a.sev]||T.text.muted;
+                return <div key={i} style={{display:"flex",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev.toUpperCase()}</Bd></div>
+                    <div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div>
+                  </div>
+                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{a.time}</span>
+                </div>;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -1630,6 +1730,21 @@ export default function TerminalPage() {
   }, []);
 
   useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
+
+  useEffect(() => {
+    if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
+    setCorpHealthLive(prev => ({...prev, loading: true}));
+    Promise.all([
+      corporateHealthAPI.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
+      corporateHealthAPI.getSectorRotation().catch(() => ({data:{data:{sectors:{}}}})),
+    ]).then(([alertsRes, sectorsRes]) => {
+      const alerts = Array.isArray(alertsRes.data?.data?.alerts) ? alertsRes.data.data.alerts : [];
+      const sectors = sectorsRes.data?.data?.sectors || {};
+      setCorpHealthLive(prev => ({...prev, alerts, sectors, loaded: true, loading: false}));
+    }).catch(() => {
+      setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
+    });
+  }, [fkey, marketTab, corpHealthLive.loaded, corpHealthLive.loading]);
 
   const handleInvite = () => {
     if(!inviteEmail || !orgData) return;

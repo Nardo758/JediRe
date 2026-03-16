@@ -102,14 +102,16 @@ export class JEDIScoreService {
     }
 
     const demandIntel = await this.fetchDemandIntelligence(dealInfo.city);
+    const corpHealthAdj = await this.getCorporateHealthAdjustment(dealInfo.submarket_id || null);
 
-    const demandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
+    const rawDemandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
+    const demandScore = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
     const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId, demandIntel);
     const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId, demandIntel);
     const positionScore = await this.calculatePositionScore(dealId, tradeAreaId, demandIntel);
-    const riskScore = await this.calculateRiskScore(dealId, tradeAreaId, demandIntel);
+    const rawRiskScore = await this.calculateRiskScore(dealId, tradeAreaId, demandIntel);
+    const riskScore = Math.max(0, Math.min(100, rawRiskScore + corpHealthAdj.riskAdj));
 
-    // Calculate weighted contributions
     const demandContribution = demandScore * this.WEIGHTS.demand;
     const supplyContribution = supplyScore * this.WEIGHTS.supply;
     const momentumContribution = momentumScore * this.WEIGHTS.momentum;
@@ -703,7 +705,7 @@ export class JEDIScoreService {
    */
   private async getDealInfo(dealId: string) {
     const result = await query(
-      `SELECT d.*, d.city as city, p.id as property_id, ta.id as trade_area_id
+      `SELECT d.*, d.city as city, p.id as property_id, p.submarket_id, ta.id as trade_area_id
        FROM deals d
        LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
        LEFT JOIN properties p ON p.id = dp_link.property_id
@@ -714,6 +716,47 @@ export class JEDIScoreService {
     );
 
     return result.rows[0] || null;
+  }
+
+  private async getCorporateHealthAdjustment(submarketId: number | null): Promise<{demandAdj: number, riskAdj: number}> {
+    if (!submarketId) return { demandAdj: 0, riskAdj: 0 };
+    try {
+      const result = await query(
+        `SELECT schi_score, divergence_score, herfindahl_index, top_5_share
+         FROM submarket_corporate_health
+         WHERE submarket_id = $1
+         ORDER BY quarter DESC LIMIT 1`,
+        [submarketId]
+      );
+      if (result.rows.length === 0) return { demandAdj: 0, riskAdj: 0 };
+
+      const { schi_score, divergence_score, herfindahl_index, top_5_share } = result.rows[0];
+      const schiVal = parseFloat(schi_score || '50');
+      const divVal = parseFloat(divergence_score || '0');
+      const hhi = parseFloat(herfindahl_index || '0');
+      const topShare = parseFloat(top_5_share || '0') * 100;
+
+      let demandAdj = 0;
+      if (schiVal >= 70) demandAdj += 2;
+      else if (schiVal < 40) demandAdj -= 3;
+
+      if (Math.abs(divVal) > 15) {
+        demandAdj += divVal > 0 ? 1.5 : -2;
+      }
+
+      let riskAdj = 0;
+      if (hhi > 0.25) riskAdj += 5;
+      else if (hhi > 0.15) riskAdj += 3;
+
+      if (topShare > 30) riskAdj += 3;
+      else if (topShare > 20) riskAdj += 1;
+
+      if (schiVal < 40) riskAdj += 4;
+
+      return { demandAdj, riskAdj };
+    } catch {
+      return { demandAdj: 0, riskAdj: 0 };
+    }
   }
 
   /**
