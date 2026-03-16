@@ -118,17 +118,31 @@ const DEAL_NAV = [
   {key:"F10",label:"TRAFFIC",m:"M07"},{key:"F11",label:"DOCS",m:"M18"},{key:"F12",label:"EXIT",m:"M20"},
 ];
 
-const DASHBOARD_WIDGETS = [
-  {id:"pipeline",label:"Deal Pipeline"},
-  {id:"findings",label:"Key Findings"},
-  {id:"mydeals",label:"My Deals"},
-  {id:"kpi",label:"KPI Summary"},
-  {id:"alerts",label:"Alert Feed"},
-  {id:"agents",label:"Agent Activity"},
-  {id:"vitals",label:"Market Vitals"},
-  {id:"leaderboard",label:"Score Leaderboard"},
-  {id:"funnel",label:"Stage Funnel"},
-  {id:"strategy",label:"Strategy Snapshot"},
+const WIDGET_CATALOG = [
+  // ── DEALS ──
+  {id:"pipeline",   label:"Deal Pipeline",          desc:"Live scrollable deal list with JEDI scores",             category:"DEALS",    color:"#F5A623"},
+  {id:"mydeals",    label:"My Deals",                desc:"Personal deal ownership, stage and status",             category:"DEALS",    color:"#00BCD4"},
+  {id:"kpi",        label:"KPI Summary",             desc:"Pipeline value, active deals, portfolio metrics",        category:"DEALS",    color:"#FFD166"},
+  {id:"leaderboard",label:"Score Leaderboard",       desc:"Deals ranked by JEDI score with trend lines",           category:"DEALS",    color:"#00D26A"},
+  {id:"funnel",     label:"Stage Funnel",            desc:"DD / LOI / PROSPECT / LEAD deal counts",                category:"DEALS",    color:"#F5A623"},
+  {id:"calendar",   label:"Deal Calendar",           desc:"Upcoming DD expiries, closings and deadlines",          category:"DEALS",    color:"#FF8C42"},
+  // ── INTEL ──
+  {id:"findings",   label:"Key Findings",            desc:"AI-generated insights from News Intelligence",          category:"INTEL",    color:"#F5A623"},
+  {id:"alerts",     label:"Alert Feed",              desc:"Critical and high-priority deal alerts",                category:"INTEL",    color:"#FF4757"},
+  {id:"competitor", label:"Competitor Intelligence", desc:"Recent competitor closings and off-market activity",    category:"INTEL",    color:"#FF8C42"},
+  {id:"aibrief",    label:"AI Daily Brief",          desc:"AI morning market summary and recommendations",         category:"INTEL",    color:"#00D26A"},
+  // ── MARKET ──
+  {id:"vitals",     label:"Market Vitals",           desc:"Absorption, vacancy, and rent growth by market",        category:"MARKET",   color:"#00BCD4"},
+  {id:"rates",      label:"Interest Rate Monitor",   desc:"SOFR, Fed Funds, Prime, 10Y Treasury with trends",     category:"MARKET",   color:"#00BCD4"},
+  {id:"yieldcurve", label:"Treasury Yield Curve",    desc:"T-bill through 30Y yield curve chart",                 category:"MARKET",   color:"#A78BFA"},
+  {id:"caprates",   label:"Cap Rate Tracker",        desc:"Cap rates by asset class and market",                  category:"MARKET",   color:"#A78BFA"},
+  {id:"reits",      label:"REIT Market Watch",       desc:"Apartment, industrial and office REIT prices",         category:"MARKET",   color:"#00D26A"},
+  {id:"macro",      label:"Macro Indicators",        desc:"GDP, CPI, unemployment, housing starts",               category:"MARKET",   color:"#FF4757"},
+  {id:"debt",       label:"Debt Market Monitor",     desc:"CMBS spreads, agency rates, life company debt",        category:"MARKET",   color:"#A78BFA"},
+  // ── OPERATIONS ──
+  {id:"strategy",   label:"Strategy Snapshot",       desc:"BTS / RENTAL / FLIP / STR performance breakdown",      category:"OPS",      color:"#A78BFA"},
+  {id:"agents",     label:"Agent Activity",          desc:"Live status of all AI agents running",                 category:"OPS",      color:"#00D26A"},
+  {id:"tv",         label:"TV / Media",              desc:"Live business news channel selector",                  category:"MEDIA",    color:"#FF8C42"},
 ];
 
 const MAP_TYPES = [
@@ -213,7 +227,8 @@ export function TerminalPrototype() {
   const [fStage,setFStage] = useState("ALL");
   const [fStrat,setFStrat] = useState("ALL");
   const [flashes,setFlashes] = useState<Record<number,boolean>>({});
-  const [dashWidget,setDashWidget] = useState<string>(() => localStorage.getItem("jedi-dash-widget")||"pipeline");
+  const [dashWidgets,setDashWidgets] = useState<string[]>(()=>{try{const s=localStorage.getItem("jedi-dash-widgets");return s?JSON.parse(s):[]}catch{return []}});
+  const [dashMenuOpen,setDashMenuOpen] = useState(false);
   const [selEmail,setSelEmail] = useState<number|null>(1);
   const [emailFolder,setEmailFolder] = useState("inbox");
   const [emailSearch,setEmailSearch] = useState("");
@@ -226,7 +241,8 @@ export function TerminalPrototype() {
   useEffect(()=>{const t=setInterval(()=>{const id=DEALS[Math.floor(Math.random()*DEALS.length)].id;setFlashes(p=>({...p,[id]:true}));setTimeout(()=>setFlashes(p=>({...p,[id]:false})),700);},5000);return()=>clearInterval(t);},[]);
 
   const toggleTheme=()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);};
-  const selectWidget=(id:string)=>{setDashWidget(id);localStorage.setItem("jedi-dash-widget",id);};
+  const addWidget=(id:string)=>{setDashWidgets(prev=>{const n=prev.includes(id)?prev:[...prev,id];localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});};
+  const removeWidget=(id:string)=>{setDashWidgets(prev=>{const n=prev.filter(w=>w!==id);localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});};
   const enterDeal=(deal:Deal)=>{setActiveDeal(deal);setCtx("deal");setFkey("F1");};
   const exitDeal=()=>{setCtx("portfolio");setActiveDeal(null);setFkey("F1");};
   const toggleSort=(c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}};
@@ -538,21 +554,307 @@ export function TerminalPrototype() {
     </div>
   );
 
-  const renderDashWidget = () => {
-    switch(dashWidget) {
-      case "pipeline": return <DealGrid/>;
-      case "findings": return <WidgetKeyFindings/>;
-      case "mydeals":  return <WidgetMyDeals/>;
-      case "kpi":      return <WidgetKPISummary/>;
-      case "alerts":   return <WidgetAlertFeed/>;
-      case "agents":   return <WidgetAgents/>;
-      case "vitals":   return <ViewMarkets/>;
-      case "leaderboard": return <WidgetLeaderboard/>;
-      case "funnel":   return <WidgetFunnel/>;
-      case "strategy": return <WidgetStrategySnapshot/>;
-      default: return <DealGrid/>;
+  // ─── NEW WIDGETS (10) ────────────────────────────────────────
+  const WidgetRates = () => {
+    const rates = [{l:"Fed Funds",v:"5.33%",d:"-0bps",t:[5.0,5.1,5.25,5.33,5.33,5.33],c:T.text.red},{l:"SOFR",v:"5.31%",d:"-2bps",t:[5.05,5.1,5.22,5.29,5.30,5.31],c:T.text.orange},{l:"Prime Rate",v:"8.50%",d:"0bps",t:[7.5,7.8,8.0,8.25,8.50,8.50],c:T.text.amber},{l:"10Y Treasury",v:"4.41%",d:"+6bps",t:[3.8,4.0,4.2,4.31,4.35,4.41],c:T.text.cyan}];
+    return (
+      <div style={{flex:1,overflow:"auto",padding:12}}>
+        {rates.map((r,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{width:110,fontSize:9,fontWeight:600,color:T.text.secondary}}>{r.l}</div>
+            <div style={{fontSize:20,fontWeight:800,color:r.c,minWidth:64}}>{r.v}</div>
+            <div style={{fontSize:8,color:r.d.startsWith("+")?T.text.green:r.d.startsWith("-")?T.text.red:T.text.muted,minWidth:44}}>{r.d}</div>
+            <Spark data={r.t} color={r.c} w={72} h={20}/>
+          </div>
+        ))}
+        <div style={{padding:"6px 10px",fontSize:7,color:T.text.muted}}>Source: Federal Reserve · Updated daily</div>
+      </div>
+    );
+  };
+
+  const WidgetYieldCurve = () => {
+    const pts = [{m:"1M",v:5.27},{m:"3M",v:5.30},{m:"6M",v:5.28},{m:"1Y",v:5.05},{m:"2Y",v:4.72},{m:"5Y",v:4.50},{m:"10Y",v:4.41},{m:"20Y",v:4.62},{m:"30Y",v:4.58}];
+    const mn=Math.min(...pts.map(p=>p.v))-0.2, mx=Math.max(...pts.map(p=>p.v))+0.2, rng=mx-mn;
+    const W=280,H=80;
+    const polyline=pts.map((p,i)=>`${(i/(pts.length-1))*W},${H-((p.v-mn)/rng)*H}`).join(" ");
+    return (
+      <div style={{flex:1,overflow:"auto",padding:12}}>
+        <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"10px 12px"}}>
+          <svg width="100%" height={H+20} viewBox={`0 0 ${W} ${H+20}`} style={{display:"block",overflow:"visible"}}>
+            {[4.0,4.5,5.0,5.5].map((v,i)=>{const y=H-((v-mn)/rng)*H; return <line key={i} x1="0" y1={y} x2={W} y2={y} stroke={T.border.subtle} strokeWidth="0.5" strokeDasharray="3,3"/>;} )}
+            <polyline points={polyline} fill="none" stroke={T.text.purple} strokeWidth="2" strokeLinejoin="round"/>
+            {pts.map((p,i)=>{ const x=(i/(pts.length-1))*W,y=H-((p.v-mn)/rng)*H; return <g key={i}><circle cx={x} cy={y} r="3" fill={T.text.purple}/><text x={x} y={H+14} textAnchor="middle" fontSize="7" fill={T.text.muted}>{p.m}</text></g>; })}
+          </svg>
+        </div>
+        <div style={{marginTop:8,fontSize:8,color:T.text.muted}}>Inverted 2Y/10Y spread: <span style={{color:T.text.orange,fontWeight:700}}>-31bps</span> · Normalization in progress</div>
+      </div>
+    );
+  };
+
+  const WidgetTV = () => {
+    const [chan,setChan] = React.useState("CNBC");
+    const channels = ["CNBC","Bloomberg","Fox Business","Yahoo Finance"];
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",gap:0,background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+          {channels.map(c=><button key={c} onClick={()=>setChan(c)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:chan===c?T.text.orange:"transparent",color:chan===c?T.bg.terminal:T.text.secondary,border:"none"}}>{c}</button>)}
+        </div>
+        <div style={{flex:1,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,position:"relative"}}>
+          <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:T.text.red,display:"inline-block",animation:"pulse 1.5s infinite"}}/><span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.red,letterSpacing:1}}>LIVE</span></div>
+          <div style={{fontSize:24,color:"rgba(255,255,255,0.08)",fontWeight:800,letterSpacing:4}}>{chan.toUpperCase()}</div>
+          <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>Stream requires authenticated account</div>
+          <button style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.orange,color:"#000",border:"none",padding:"5px 14px",cursor:"pointer",marginTop:4}}>CONNECT ACCOUNT</button>
+          <div style={{position:"absolute",bottom:0,left:0,right:0,height:22,background:"rgba(255,150,0,0.12)",display:"flex",alignItems:"center",overflow:"hidden"}}>
+            <div style={{whiteSpace:"nowrap",fontSize:8,color:T.text.amber,animation:"ticker 20s linear infinite"}}>LIVE · FED HOLDS RATES · TAMPA MSA JOBS +3.2% · NOCATEE MPC #2 NATIONALLY · CMBS SPREADS TIGHTEN 18bps · GREYSTAR 380U GROUNDBREAKING · FL INSURANCE REFORM PASSES ·&nbsp;&nbsp;LIVE · FED HOLDS RATES · TAMPA MSA JOBS +3.2% · NOCATEE MPC #2 NATIONALLY · CMBS SPREADS TIGHTEN 18bps ·</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const WidgetCapRates = () => {
+    const data = [{cls:"Multifamily",markets:[{m:"Tampa",v:"5.1%"},{m:"Miami",v:"4.8%"},{m:"Orlando",v:"5.4%"},{m:"Jacksonville",v:"5.6%"}]},{cls:"Industrial",markets:[{m:"Tampa",v:"5.5%"},{m:"Miami",v:"4.9%"},{m:"Orlando",v:"5.9%"},{m:"Jacksonville",v:"6.1%"}]},{cls:"Retail",markets:[{m:"Tampa",v:"6.2%"},{m:"Miami",v:"5.7%"},{m:"Orlando",v:"6.4%"},{m:"Jacksonville",v:"7.0%"}]},{cls:"Office",markets:[{m:"Tampa",v:"7.8%"},{m:"Miami",v:"7.2%"},{m:"Orlando",v:"8.1%"},{m:"Jacksonville",v:"8.6%"}]}];
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          {["CLASS","TAMPA","MIAMI","ORLANDO","JACKSONVILLE"].map((h,i)=><div key={i} style={{padding:"4px 8px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>)}
+        </div>
+        {data.map((row,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+            <div style={{padding:"6px 8px",fontSize:8,fontWeight:700,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{row.cls}</div>
+            {row.markets.map((m,j)=><div key={j} style={{padding:"6px 8px",fontSize:10,fontWeight:700,color:parseFloat(m.v)>7?T.text.red:parseFloat(m.v)>6?T.text.orange:T.text.green,borderRight:`1px solid ${T.border.subtle}`}}>{m.v}</div>)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const WidgetREITs = () => {
+    const reits=[{t:"EQR",n:"Equity Residential",p:"$65.42",d:"+1.2%",ytd:"-4.1%",c:T.text.cyan},{t:"MAA",n:"Mid-America Apt",p:"$128.77",d:"+0.8%",ytd:"+2.3%",c:T.text.green},{t:"VNQ",n:"Vanguard RE ETF",p:"$84.31",d:"+0.5%",ytd:"-1.8%",c:T.text.amber},{t:"PLD",n:"Prologis (Ind)",p:"$112.55",d:"+2.1%",ytd:"+6.4%",c:T.text.green},{t:"BXP",n:"BXP (Office)",p:"$62.18",d:"-0.3%",ytd:"-8.2%",c:T.text.red},{t:"SPG",n:"Simon Property (Ret)",p:"$148.90",d:"+1.4%",ytd:"+3.7%",c:T.text.green}];
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {reits.map((r,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{width:36,fontSize:9,fontWeight:800,color:r.c}}>{r.t}</div>
+            <div style={{flex:1,fontSize:8,color:T.text.secondary}}>{r.n}</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.text.primary,minWidth:52,textAlign:"right"}}>{r.p}</div>
+            <div style={{fontSize:8,fontWeight:700,color:r.d.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.d}</div>
+            <div style={{fontSize:8,color:r.ytd.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.ytd} YTD</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const WidgetMacro = () => {
+    const rows=[{l:"GDP Growth (Q4 25)",v:"2.3%",note:"Above consensus 1.9%",arr:"↑",c:T.text.green},{l:"CPI (Feb 26)",v:"3.1%",note:"Core 3.4% — still elevated",arr:"↓",c:T.text.orange},{l:"Unemployment",v:"3.9%",note:"Slight uptick from 3.7%",arr:"↑",c:T.text.amber},{l:"Housing Starts",v:"1.42M",note:"Down 4.2% MoM from Jan",arr:"↓",c:T.text.red},{l:"30Y Mortgage",v:"7.11%",note:"Down from 7.35% peak",arr:"↓",c:T.text.orange},{l:"Consumer Conf.",v:"97.4",note:"Declined 3pts from prior month",arr:"↓",c:T.text.orange}];
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {rows.map((r,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{flex:1,fontSize:9,color:T.text.secondary}}>{r.l}</div>
+            <div style={{fontSize:16,fontWeight:800,color:r.c,minWidth:48}}>{r.v}</div>
+            <div style={{fontSize:12,color:r.c,minWidth:12}}>{r.arr}</div>
+            <div style={{fontSize:7,color:T.text.muted,minWidth:130,textAlign:"right"}}>{r.note}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const WidgetDebt = () => {
+    const rows=[{l:"CMBS AAA (10Y)",v:"175 bps",d:"-18bps WoW",c:T.text.green},{l:"CMBS AA",v:"215 bps",d:"-12bps WoW",c:T.text.green},{l:"Agency MF (Fannie)",v:"SOFR + 155",d:"+5bps WoW",c:T.text.red},{l:"Life Company MF",v:"SOFR + 185",d:"0bps",c:T.text.muted},{l:"Bridge / Value-Add",v:"SOFR + 350",d:"+25bps WoW",c:T.text.red},{l:"Construction (BTS)",v:"SOFR + 275",d:"-10bps WoW",c:T.text.green}];
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {rows.map((r,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{flex:1,fontSize:9,color:T.text.secondary}}>{r.l}</div>
+            <div style={{fontSize:12,fontWeight:700,color:T.text.amber,minWidth:96}}>{r.v}</div>
+            <div style={{fontSize:8,fontWeight:600,color:r.c,minWidth:80,textAlign:"right"}}>{r.d}</div>
+          </div>
+        ))}
+        <div style={{padding:"6px 12px",fontSize:7,color:T.text.muted}}>Spreads to SOFR 5.31% · Updated Mar 15</div>
+      </div>
+    );
+  };
+
+  const WidgetCalendar = () => {
+    const events=[{deal:"Dadeland Station",type:"DD EXPIRES",days:9,sev:"critical"},{deal:"Westshore Commons",type:"EARNEST WIRE",days:3,sev:"critical"},{deal:"Nocatee Parcels",type:"BEST & FINAL",days:4,sev:"high"},{deal:"Celebration South",type:"DD START",days:7,sev:"med"},{deal:"Riverview Preserve",type:"CITY MTG",days:14,sev:"low"},{deal:"Colonial Crossings",type:"LOI EXPIRES",days:21,sev:"low"}];
+    const sColors:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {events.map((e,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${sColors[e.sev]}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{width:40,textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:sColors[e.sev]}}>{e.days}</div><div style={{fontSize:6,color:T.text.muted}}>days</div></div>
+            <div style={{flex:1}}><div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{e.deal}</div><div style={{marginTop:2}}><Bd c={sColors[e.sev]}>{e.type}</Bd></div></div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const WidgetCompetitor = () => {
+    const items=[{who:"Greystar",action:"Broke ground 380u luxury tower, Downtown Tampa",impact:"SUPPLY +",time:"2d",threat:"HIGH"},{who:"Equity Residential",action:"Acquired 224u Westshore for $44.8M ($200K/door)",impact:"COMP ↑",time:"5d",threat:"MED"},{who:"MAA",action:"Filed permits for 156u Riverview mid-rise",impact:"SUPPLY +",time:"1w",threat:"LOW"},{who:"Blackstone RE",action:"Raised $4.2B multifamily fund — FL allocation $420M",impact:"CAPITAL",time:"1w",threat:"HIGH"},{who:"AvalonBay",action:"Announced Orlando market entry — seeking sites 200+ units",impact:"BUYER",time:"2w",threat:"MED"}];
+    const tc:Record<string,string>={HIGH:T.text.red,MED:T.text.orange,LOW:T.text.muted};
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {items.map((it,i)=>(
+          <div key={i} style={{padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+              <span style={{fontSize:9,fontWeight:700,color:T.text.amber}}>{it.who}</span>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}><Bd c={tc[it.threat]}>{it.threat}</Bd><span style={{fontSize:7,color:T.text.muted}}>{it.time}</span></div>
+            </div>
+            <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.4}}>{it.action}</div>
+            <div style={{marginTop:3}}><Bd c={T.text.cyan}>{it.impact}</Bd></div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const WidgetAIBrief = () => (
+    <div style={{flex:1,overflow:"auto",padding:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><span style={{fontSize:9,fontWeight:700,color:T.text.green}}>● AI ONLINE</span><span style={{fontSize:8,color:T.text.muted}}>Generated Mar 16, 2026 · 6:00 AM ET</span></div>
+      <div style={{fontSize:10,fontWeight:700,color:T.text.primary,marginBottom:8,lineHeight:1.4}}>Good morning. Today's top priorities:</div>
+      {[
+        {n:"① Nocatee Parcels",t:"Competing offer received at $4.6M. Best-and-final due Friday 5pm. Recommend counter at $4.5M with shortened inspection.",c:T.text.red},
+        {n:"② Dadeland Station",t:"DD expires in 9 days. 3 items outstanding. Escalate structural inspection scheduling immediately.",c:T.text.orange},
+        {n:"③ Westshore Commons",t:"LOI countersigned. Wire $250K earnest by Friday. Phase I ESA clean — no RECs. On track for closing.",c:T.text.green},
+        {n:"Market context",t:"Fed Funds held at 5.33%. Tampa MSA absorption 95.2% — strongest quarter in 3 years. BTS strategies showing 22pt advantage over rental in current rate environment.",c:T.text.cyan},
+      ].map((item,i)=>(
+        <div key={i} style={{padding:"8px 10px",marginBottom:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${item.c}`}}>
+          <div style={{fontSize:9,fontWeight:700,color:item.c,marginBottom:3}}>{item.n}</div>
+          <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5}}>{item.t}</div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // ─── WIDGET RENDER ROUTER ────────────────────────────────────
+  const renderWidget = (id:string) => {
+    switch(id) {
+      case "pipeline":    return <DealGrid/>;
+      case "findings":   return <WidgetKeyFindings/>;
+      case "mydeals":    return <WidgetMyDeals/>;
+      case "kpi":        return <WidgetKPISummary/>;
+      case "alerts":     return <WidgetAlertFeed/>;
+      case "agents":     return <WidgetAgents/>;
+      case "vitals":     return <ViewMarkets/>;
+      case "leaderboard":return <WidgetLeaderboard/>;
+      case "funnel":     return <WidgetFunnel/>;
+      case "strategy":   return <WidgetStrategySnapshot/>;
+      case "rates":      return <WidgetRates/>;
+      case "yieldcurve": return <WidgetYieldCurve/>;
+      case "tv":         return <WidgetTV/>;
+      case "caprates":   return <WidgetCapRates/>;
+      case "reits":      return <WidgetREITs/>;
+      case "macro":      return <WidgetMacro/>;
+      case "debt":       return <WidgetDebt/>;
+      case "calendar":   return <WidgetCalendar/>;
+      case "competitor": return <WidgetCompetitor/>;
+      case "aibrief":    return <WidgetAIBrief/>;
+      default: return null;
     }
   };
+
+  // ─── VIEW DASHBOARD ──────────────────────────────────────────
+  const CATEGORIES = ["DEALS","INTEL","MARKET","OPS","MEDIA"];
+  const ViewDashboard = () => (
+    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative",animation:"fadeIn 0.15s"}}>
+      {/* ── Widget menu overlay ── */}
+      {dashMenuOpen && (
+        <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:20,display:"flex",flexDirection:"column",animation:"fadeIn 0.15s"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
+              <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWidgets.length} on dashboard</div>
+            </div>
+            <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
+          </div>
+          <div style={{flex:1,overflow:"auto",padding:"12px 16px"}}>
+            {CATEGORIES.map(cat=>{
+              const items=WIDGET_CATALOG.filter(w=>w.category===cat);
+              if(!items.length) return null;
+              return (
+                <div key={cat} style={{marginBottom:20}}>
+                  <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                    {items.map(w=>{
+                      const added=dashWidgets.includes(w.id);
+                      return (
+                        <div key={w.id} style={{background:T.bg.panel,border:`1px solid ${added?w.color+"44":T.border.subtle}`,padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
+                            <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
+                          </div>
+                          <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
+                          <button onClick={()=>{if(!added){addWidget(w.id);setDashMenuOpen(false);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:added?"default":"pointer",letterSpacing:0.3}}>
+                            {added?"✓ ADDED":"+ ADD"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Dashboard header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
+          {dashWidgets.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{dashWidgets.length} widget{dashWidgets.length!==1?"s":""}</span>}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {dashWidgets.length>0&&<button onClick={()=>{setDashWidgets([]);localStorage.setItem("jedi-dash-widgets","[]");}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR</button>}
+          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
+        </div>
+      </div>
+
+      {/* ── Empty state ── */}
+      {dashWidgets.length===0 && (
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
+          <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:24,color:T.text.muted}}>+</span>
+          </div>
+          <div style={{textAlign:"center" as const}}>
+            <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your dashboard is empty</div>
+            <div style={{fontSize:10,color:T.text.muted}}>Choose from {WIDGET_CATALOG.length} widgets to build your view</div>
+          </div>
+          <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WIDGET</button>
+        </div>
+      )}
+
+      {/* ── Widget grid ── */}
+      {dashWidgets.length>0 && (
+        <div style={{flex:1,overflow:"auto",padding:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"start"}}>
+            {dashWidgets.map(id=>{
+              const meta=WIDGET_CATALOG.find(w=>w.id===id);
+              if(!meta) return null;
+              return (
+                <div key={id} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",minHeight:220,maxHeight:320}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                      <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
+                    </div>
+                    <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1}}>✕</button>
+                  </div>
+                  <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+                    {renderWidget(id)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // ─── PORTFOLIO VIEWS ────────────────────────────────────────
   const ViewPortfolio = () => (
@@ -907,7 +1209,7 @@ export function TerminalPrototype() {
   const renderContent = () => {
     if(ctx==="portfolio") {
       switch(fkey) {
-        case "F1": return renderDashWidget();
+        case "F1": return <ViewDashboard/>;
         case "F2": return <DealGrid/>;
         case "F3": return <ViewPortfolio/>;
         case "F4": return <ViewMarkets/>;
@@ -1056,17 +1358,6 @@ export function TerminalPrototype() {
           {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
           {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
           <span style={{fontSize:8,color:T.text.muted}}>{sorted.length} deals</span>
-        </div>
-      )}
-
-      {/* ═══ DASHBOARD WIDGET PICKER (F1 + portfolio only) ═══ */}
-      {ctx==="portfolio" && fkey==="F1" && (
-        <div style={{display:"flex",alignItems:"center",gap:0,background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0,overflow:"auto"}}>
-          {DASHBOARD_WIDGETS.map(w=>(
-            <button key={w.id} onClick={()=>selectWidget(w.id)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,padding:"0 10px",height:28,cursor:"pointer",background:dashWidget===w.id?T.text.amber+"22":"transparent",color:dashWidget===w.id?T.text.amber:T.text.muted,border:"none",borderBottom:dashWidget===w.id?`2px solid ${T.text.amber}`:"2px solid transparent",whiteSpace:"nowrap",flexShrink:0}}>
-              {w.label}
-            </button>
-          ))}
         </div>
       )}
 
