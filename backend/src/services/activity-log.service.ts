@@ -19,7 +19,12 @@ export type ActivityAction =
   | 'task_created'
   | 'task_completed'
   | 'member_joined'
-  | 'member_removed';
+  | 'member_removed'
+  | 'notarize_initiated'
+  | 'notarize_completed'
+  | 'notarize_cancelled'
+  | 'notarize_failed'
+  | 'pipeline_advanced';
 
 export interface LogActivityParams {
   dealId?: string;

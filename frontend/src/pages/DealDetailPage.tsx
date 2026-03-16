@@ -77,6 +77,7 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { StrategySection } from '../components/deal/sections/StrategySection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
+import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
@@ -183,6 +184,7 @@ const ExecutionScreen = (props: any) => (
     { id: 'timeline',           label: 'Project Timeline',   component: ProjectTimelinePage },
     { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
     { id: 'construction-mgmt',  label: 'Construction Mgmt',  component: ConstructionManagementSection },
+    { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
   ]} />
 );
 const AIAgentScreen = (props: any) => (
