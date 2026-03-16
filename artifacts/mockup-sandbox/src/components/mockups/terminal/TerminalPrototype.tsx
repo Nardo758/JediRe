@@ -236,13 +236,34 @@ export function TerminalPrototype() {
   const [mapCreating,setMapCreating] = useState(false);
   const [newMapName,setNewMapName] = useState("");
   const [newMapType,setNewMapType] = useState("warmaps");
+  const [widgetSizes,setWidgetSizes] = useState<Record<string,string>>({});
+  const [floatWidgets,setFloatWidgets] = useState<string[]>([]);
+  const [floatPos,setFloatPos] = useState<Record<string,{x:number,y:number,w:number,h:number}>>({});
+  const [dragInfo,setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
 
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{const t=setInterval(()=>{const id=DEALS[Math.floor(Math.random()*DEALS.length)].id;setFlashes(p=>({...p,[id]:true}));setTimeout(()=>setFlashes(p=>({...p,[id]:false})),700);},5000);return()=>clearInterval(t);},[]);
 
   const toggleTheme=()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);};
   const addWidget=(id:string)=>{setDashWidgets(prev=>{const n=prev.includes(id)?prev:[...prev,id];localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});};
-  const removeWidget=(id:string)=>{setDashWidgets(prev=>{const n=prev.filter(w=>w!==id);localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});};
+  const removeWidget=(id:string)=>{setDashWidgets(prev=>{const n=prev.filter(w=>w!==id);localStorage.setItem("jedi-dash-widgets",JSON.stringify(n));return n;});setFloatWidgets(prev=>prev.filter(w=>w!==id));};
+  const floatWidget=(id:string)=>{setFloatWidgets(prev=>prev.includes(id)?prev:[...prev,id]);setFloatPos(prev=>({...prev,[id]:prev[id]||{x:120,y:80,w:400,h:300}}));};
+  const dockWidget=(id:string)=>setFloatWidgets(prev=>prev.filter(w=>w!==id));
+  useEffect(()=>{
+    if(!dragInfo) return;
+    const onMove=(e:MouseEvent)=>{
+      setFloatPos(prev=>{
+        const cur=prev[dragInfo.id];
+        if(!cur) return prev;
+        if(dragInfo.mode==="move") return{...prev,[dragInfo.id]:{...cur,x:e.clientX-dragInfo.ox,y:e.clientY-dragInfo.oy}};
+        return{...prev,[dragInfo.id]:{...cur,w:Math.max(280,e.clientX-cur.x),h:Math.max(180,e.clientY-cur.y)}};
+      });
+    };
+    const onUp=()=>setDragInfo(null);
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[dragInfo]);
   const enterDeal=(deal:Deal)=>{setActiveDeal(deal);setCtx("deal");setFkey("F1");};
   const exitDeal=()=>{setCtx("portfolio");setActiveDeal(null);setFkey("F1");};
   const toggleSort=(c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}};
@@ -830,19 +851,30 @@ export function TerminalPrototype() {
 
       {/* ── Widget grid ── */}
       {dashWidgets.length>0 && (
-        <div style={{flex:1,overflow:"auto",padding:10}}>
+        <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"start"}}>
-            {dashWidgets.map(id=>{
+            {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
               const meta=WIDGET_CATALOG.find(w=>w.id===id);
               if(!meta) return null;
+              const sz=widgetSizes[id]||"md";
+              const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
+              const h=hMap[sz]||hMap.md;
               return (
-                <div key={id} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",minHeight:220,maxHeight:320}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div key={id} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,maxHeight:h.max,gridColumn:sz==="lg"?"span 2":"span 1"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
                       <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
                       <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
                     </div>
-                    <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1}}>✕</button>
+                    <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                      {(["sm","md","lg"] as const).map(s=>(
+                        <button key={s} onClick={()=>setWidgetSizes(prev=>({...prev,[id]:s}))} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:sz===s?T.text.amber+"22":"transparent",color:sz===s?T.text.amber:T.text.muted,border:`1px solid ${sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
+                          {s.toUpperCase()}
+                        </button>
+                      ))}
+                      <button onClick={()=>floatWidget(id)} title="Float as window" style={{fontFamily:T.font.mono,fontSize:11,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
+                      <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
+                    </div>
                   </div>
                   <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
                     {renderWidget(id)}
@@ -853,6 +885,36 @@ export function TerminalPrototype() {
           </div>
         </div>
       )}
+
+      {/* ── Floating windows ── */}
+      {floatWidgets.map(id=>{
+        const meta=WIDGET_CATALOG.find(w=>w.id===id);
+        const pos=floatPos[id]||{x:120,y:80,w:400,h:300};
+        if(!meta) return null;
+        const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
+        return (
+          <div key={id} style={{position:"fixed",left:pos.x,top:pos.y,width:pos.w,height:pos.h,background:T.bg.panel,border:`1px solid ${meta.color}66`,boxShadow:"0 12px 40px rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:60,userSelect:isMoving?"none":"auto" as any,minWidth:280,minHeight:180}}>
+            {/* Drag title bar */}
+            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX-pos.x,oy:e.clientY-pos.y,mode:"move"});}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 10px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMoving?"grabbing":"grab"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
+                <span style={{fontSize:7,color:T.text.muted,marginLeft:2}}>FLOATING</span>
+              </div>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                <button onClick={()=>dockWidget(id)} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:`${T.text.cyan}11`,border:`1px solid ${T.text.cyan}44`,padding:"2px 7px",cursor:"pointer",letterSpacing:0.3}}>↙ DOCK</button>
+                <button onClick={()=>{dockWidget(id);removeWidget(id);}} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 3px",lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            {/* Content */}
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+              {renderWidget(id)}
+            </div>
+            {/* Resize handle */}
+            <div onMouseDown={(e)=>{e.preventDefault();setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:16,height:16,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>
+          </div>
+        );
+      })}
     </div>
   );
 
