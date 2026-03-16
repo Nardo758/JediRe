@@ -115,10 +115,10 @@ const DEFAULT_DD = [
   { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-module' },
   { module: 'M09', label: 'Pro Forma',            status: 'not-started', link: 'proforma' },
   { module: 'M11', label: 'Capital Structure',    status: 'not-started', link: 'debt' },
-  { module: 'M14', label: 'Risk Management',      status: 'not-started', link: 'risk-intelligence' },
-  { module: 'M15', label: 'Competition',          status: 'not-started', link: 'competition' },
-  { module: 'M16', label: 'Environmental & ESG',  status: 'not-started', link: 'due-diligence' },
   { module: 'M13', label: 'DD Checklist',         status: 'not-started', link: 'due-diligence' },
+  { module: 'M14', label: 'Risk Intelligence',    status: 'not-started', link: 'risk-intelligence' },
+  { module: 'M15', label: 'Competition',          status: 'not-started', link: 'competition' },
+  { module: 'M20', label: 'Project Timeline',     status: 'not-started', link: 'timeline' },
 ];
 
 const BUDGET_PALETTE = [T.amberL, T.blueL, T.violL, T.redL, T.greenL, T.td, T.cyan];
@@ -216,7 +216,8 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
   // §7 — Capital (prefer context)
   const seniorDebt        = capitalStructure?.loanBalance?.[0] ?? deal?.seniorDebt ?? null;
   const ltv               = capitalStructure?.ltv ?? deal?.ltv ?? null;
-  const loanTerm          = deal?.term ?? '—';
+  const rate              = capitalStructure?.interestRate ?? deal?.rate ?? deal?.interestRate ?? null;
+  const loanTerm          = deal?.term ?? capitalStructure?.term ?? '—';
   const equityReq         = capitalStructure?.totalEquity ?? deal?.equityRequired ?? null;
   const equitySplit       = deal?.equitySplit ?? '—';
   const prefReturn        = deal?.prefReturn ?? null;
@@ -636,6 +637,7 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
               <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>SOURCES</div>
               {seniorDebt != null && <Row label="Senior Debt (Bridge)" value={fmt(seniorDebt)} />}
               {ltv        != null && <Row label="LTV" value={pct(ltv)} />}
+              {rate       != null && <Row label="Interest Rate" value={pct(rate)} />}
               {loanTerm   !== '—' && <Row label="Term" value={loanTerm} />}
               {lender     !== '—' && <Row label="Lender Type" value={lender} />}
               <div style={{ height: 12 }} />
