@@ -237,9 +237,13 @@ export function TerminalPrototype() {
   const [newMapName,setNewMapName] = useState("");
   const [newMapType,setNewMapType] = useState("warmaps");
   const [widgetSizes,setWidgetSizes] = useState<Record<string,string>>({});
+  const [widgetHeights,setWidgetHeights] = useState<Record<string,number>>({});
   const [floatWidgets,setFloatWidgets] = useState<string[]>([]);
   const [floatPos,setFloatPos] = useState<Record<string,{x:number,y:number,w:number,h:number}>>({});
   const [dragInfo,setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
+  const [gridResizing,setGridResizing] = useState<{id:string,startY:number,startH:number}|null>(null);
+  const [gridDrag,setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
+  const [gridDragOver,setGridDragOver] = useState<string|null>(null);
 
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{const t=setInterval(()=>{const id=DEALS[Math.floor(Math.random()*DEALS.length)].id;setFlashes(p=>({...p,[id]:true}));setTimeout(()=>setFlashes(p=>({...p,[id]:false})),700);},5000);return()=>clearInterval(t);},[]);
@@ -264,6 +268,25 @@ export function TerminalPrototype() {
     document.addEventListener("mouseup",onUp);
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
   },[dragInfo]);
+  useEffect(()=>{
+    if(!gridResizing) return;
+    const onMove=(e:MouseEvent)=>{const delta=e.clientY-gridResizing.startY;setWidgetHeights(prev=>({...prev,[gridResizing.id]:Math.max(120,gridResizing.startH+delta)}));};
+    const onUp=()=>setGridResizing(null);
+    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[gridResizing]);
+  useEffect(()=>{
+    if(!gridDrag) return;
+    const onMove=(e:MouseEvent)=>setGridDrag(prev=>prev?{...prev,x:e.clientX,y:e.clientY}:null);
+    const onUp=()=>{
+      if(gridDragOver&&gridDrag&&gridDragOver!==gridDrag.id){
+        setDashWidgets(prev=>{const arr=[...prev];const fi=arr.indexOf(gridDrag.id),ti=arr.indexOf(gridDragOver);if(fi!==-1&&ti!==-1){[arr[fi],arr[ti]]=[arr[ti],arr[fi]];}localStorage.setItem("jedi-dash-widgets",JSON.stringify(arr));return arr;});
+      }
+      setGridDrag(null);setGridDragOver(null);
+    };
+    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[gridDrag,gridDragOver]);
   const enterDeal=(deal:Deal)=>{setActiveDeal(deal);setCtx("deal");setFkey("F1");};
   const exitDeal=()=>{setCtx("portfolio");setActiveDeal(null);setFkey("F1");};
   const toggleSort=(c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}};
@@ -852,23 +875,33 @@ export function TerminalPrototype() {
       {/* ── Widget grid ── */}
       {dashWidgets.length>0 && (
         <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
+          {/* Drag ghost cursor */}
+          {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:200,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"start"}}>
             {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
               const meta=WIDGET_CATALOG.find(w=>w.id===id);
               if(!meta) return null;
               const sz=widgetSizes[id]||"md";
+              const customH=widgetHeights[id];
               const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
-              const h=hMap[sz]||hMap.md;
+              const h=customH?{min:customH,max:customH}:hMap[sz]||hMap.md;
+              const isDragging=gridDrag?.id===id;
+              const isDropTarget=gridDragOver===id&&gridDrag?.id!==id;
               return (
-                <div key={id} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,maxHeight:h.max,gridColumn:sz==="lg"?"span 2":"span 1"}}>
+                <div key={id}
+                  onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
+                  onMouseLeave={()=>setGridDragOver(null)}
+                  style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:sz==="lg"?"span 2":"span 1",opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
+                  {/* Title bar with drag handle */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <span onMouseDown={(e)=>{e.preventDefault();setGridDrag({id,x:e.clientX,y:e.clientY});}} style={{cursor:"grab",fontSize:13,color:T.text.muted,lineHeight:1,padding:"0 4px 0 0",userSelect:"none" as const}} title="Drag to reorder">⠿</span>
                       <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
                       <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
                     </div>
                     <div style={{display:"flex",gap:3,alignItems:"center"}}>
                       {(["sm","md","lg"] as const).map(s=>(
-                        <button key={s} onClick={()=>setWidgetSizes(prev=>({...prev,[id]:s}))} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:sz===s?T.text.amber+"22":"transparent",color:sz===s?T.text.amber:T.text.muted,border:`1px solid ${sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
+                        <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
                           {s.toUpperCase()}
                         </button>
                       ))}
@@ -876,8 +909,13 @@ export function TerminalPrototype() {
                       <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
                     </div>
                   </div>
+                  {/* Content */}
                   <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
                     {renderWidget(id)}
+                  </div>
+                  {/* Resize handle */}
+                  <div onMouseDown={(e)=>{e.preventDefault();const curH=customH||(sz==="sm"?160:sz==="lg"?420:280);setGridResizing({id,startY:e.clientY,startH:curH});}} style={{height:6,flexShrink:0,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",borderTop:`1px solid ${T.border.subtle}`}} title="Drag to resize">
+                    <div style={{width:28,height:2,borderRadius:1,background:T.border.medium}}/>
                   </div>
                 </div>
               );
