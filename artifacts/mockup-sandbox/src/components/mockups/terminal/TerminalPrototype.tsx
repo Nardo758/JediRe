@@ -65,11 +65,14 @@ const NEWS = [
 ];
 
 const EMAILS = [
-  {from:"Marcus Chen",subject:"Westshore Commons — LOI countersigned",time:"2h",deal:"Westshore Commons",unread:true},
-  {from:"Sarah Kim (Broker)",subject:"Nocatee Parcels: competing offer received",time:"3h",deal:"Nocatee Parcels",unread:true},
-  {from:"Deal Engine",subject:"Dadeland Station — DD checklist: 3 items outstanding",time:"5h",deal:"Dadeland Station",unread:true},
-  {from:"JP Morgan RE Debt",subject:"Term sheet: $28.8M senior, SOFR+275",time:"1d",deal:"Westshore Commons",unread:false},
-  {from:"City of Tampa",subject:"Re: Zoning pre-application, Boyette Rd parcel",time:"1d",deal:"Riverview Preserve",unread:false},
+  {id:1,from:"Marcus Chen",org:"CBRE Capital Markets",subject:"Westshore Commons — LOI countersigned",preview:"James, good news — seller's counsel returned the countersigned LOI...",body:"James,\n\nGood news — seller's counsel returned the countersigned LOI this afternoon. We are officially under contract. Next steps: wire $250K earnest money by Friday EOD, schedule Phase I for next week, and confirm your DD team roster by tomorrow morning. I'll coordinate the title company intro.\n\nLet me know if you need anything from our side.\n\nBest,\nMarcus Chen\nCBRE Capital Markets",time:"2h",date:"Today 11:42 AM",deal:"Westshore Commons",unread:true,folder:"inbox",tag:"LOI"},
+  {id:2,from:"Sarah Kim",org:"JLL Brokerage",subject:"Nocatee Parcels: competing offer received",preview:"Heads up — the seller just informed me there's a competing offer...",body:"James,\n\nHeads up — the seller just informed me there's a competing offer on Nocatee Parcel 7-A. Competing group is out of Atlanta, all-cash, 21-day close. Their number is reportedly $4.6M vs your $4.2M LOI.\n\nSeller wants best-and-final by this Friday at 5pm ET. I strongly recommend you go to $4.5M and shorten your inspection to 14 days. Demand is real here — Nocatee absorption is tracking 42% above projections.\n\nCall me when you can.\n\nSarah Kim\nJLL Brokerage — Jacksonville",time:"3h",date:"Today 10:18 AM",deal:"Nocatee Parcels",unread:true,folder:"inbox",tag:"URGENT"},
+  {id:3,from:"Deal Engine",org:"JediRe System",subject:"Dadeland Station — DD checklist: 3 items outstanding",preview:"Automated reminder: 3 due diligence items remain open with...",body:"AUTOMATED — DEAL ENGINE\n\nDadeland Station — Due Diligence Status\n──────────────────────────────────────\nDD Expires: 9 days remaining\n\nOUTSTANDING ITEMS:\n① Phase II Environmental — report pending (Terracon, ETA 6 days)\n② Structural Engineering Inspection — not yet scheduled\n③ Rent Roll Estoppels — 14 of 17 returned; 3 pending (units 204, 311, 408)\n\nCOMPLETED: Title, Survey, Zoning, Financial Audit, Insurance Review\n\nRecommendation: Schedule structural inspection immediately to avoid DD expiry risk.\n\n— JediRe Deal Engine",time:"5h",date:"Today 8:05 AM",deal:"Dadeland Station",unread:true,folder:"inbox",tag:"DD"},
+  {id:4,from:"Michael Torres",org:"JP Morgan RE Debt",subject:"Term sheet: $28.8M senior, SOFR+275",preview:"Please find attached the executed term sheet for Westshore Commons...",body:"James,\n\nPlease find attached the executed term sheet for Westshore Commons senior construction financing.\n\nHighlights:\n• Loan Amount: $28.8M (75% LTC)\n• Rate: SOFR + 275bps (currently ~8.05% all-in)\n• Term: 24 months + two 6-month extensions\n• Recourse: Non-recourse with carve-outs\n• Origination: 1.0pt\n• Required Equity: $9.6M (confirmed via equity stack)\n\nWe need executed term sheet back by next Wednesday to hold pricing. Rate lock available at funding.\n\nMichael Torres\nJP Morgan Real Estate Debt",time:"1d",date:"Yesterday 3:14 PM",deal:"Westshore Commons",unread:false,folder:"inbox",tag:"DEBT"},
+  {id:5,from:"City of Tampa",org:"Planning & Development",subject:"Re: Zoning pre-application, Boyette Rd parcel",preview:"Thank you for your pre-application submission. Staff has reviewed...",body:"Dear Mr. Dixon,\n\nThank you for your pre-application submission for the Boyette Rd parcel (Folio #12-34-567-89). Planning staff has completed initial review.\n\nThe parcel is currently zoned RSC-6. Your proposed 5-story BTS multifamily at 18 DU/ac is consistent with the adopted FLU designation. A formal Rezoning to PD is recommended to allow height flexibility.\n\nNext Steps:\n• Submit Rezoning application — $4,200 fee\n• Neighborhood meeting required (min. 30 days prior to hearing)\n• Estimated hearing date: Q3 2026\n\nOur office is available Tuesday/Thursday for pre-app consultations.\n\nCity of Tampa — Planning & Development",time:"1d",date:"Yesterday 1:30 PM",deal:"Riverview Preserve",unread:false,folder:"inbox",tag:"ZONING"},
+  {id:6,from:"Amanda Ross",org:"Terracon Consultants",subject:"Phase I ESA — Westshore Commons (draft)",preview:"Draft Phase I ESA attached for your review. No RECs identified...",body:"James,\n\nDraft Phase I ESA is attached for your review and comment.\n\nExecutive Summary:\n• No Recognized Environmental Conditions (RECs) identified\n• Historical use: light commercial since 1962, no petroleum or hazardous materials\n• ASTM E1527-21 compliant\n• Recommended: No Phase II warranted\n\nPlease review and confirm if you'd like any additional scope (vapor, asbestos survey, etc.) before we finalize. Final report turnaround 3 business days after your go-ahead.\n\nAmanda Ross\nTerracon Consultants",time:"2d",date:"Mar 14 9:22 AM",deal:"Westshore Commons",unread:false,folder:"inbox",tag:"DD"},
+  {id:7,from:"LP Investors",org:"Capital Group",subject:"Q1 2026 reporting — when can we expect the package?",preview:"Hi James, the Q1 close is approaching and our board is asking...",body:"Hi James,\n\nThe Q1 close is approaching and our board is asking about the portfolio reporting package. Can you give us a timeline? We'll need:\n\n① Updated NAV and performance vs. underwriting\n② Capital account statements for each LP\n③ Market commentary for Tampa and Jacksonville\n④ Forward outlook on exit timelines\n\nWe're happy with portfolio performance — just want to stay on top of the LP obligations. Let us know if you need anything from our side.\n\nBest,\nLP Capital Group",time:"2d",date:"Mar 14 8:00 AM",deal:null,unread:false,folder:"inbox",tag:"LP"},
+  {id:8,from:"Deal Engine",org:"JediRe System",subject:"Score alert: Celebration South crossed 85 threshold",preview:"Celebration South (Orlando) JEDI Score increased from 83 to 85...",body:"AUTOMATED — DEAL ENGINE ALERT\n\nCelebration South (Parcel 9, Celebration Blvd, Orlando)\nJEDI Score: 83 → 85 (+2pts)\nThreshold: STRONG_OPPORTUNITY (≥85) ✓\n\nTrigger factors:\n• Osceola County absorption upgraded to 91% (+4pts demand)\n• Celebration MPC ranked #1 top-selling community FL (Q1 2026)\n• BTS IRR model updated: 26.4% (+0.8pts from rate assumption)\n\nRecommended action: Advance to full DD authorization. Score trajectory is positive.\n\n— JediRe Deal Engine",time:"3d",date:"Mar 13 4:45 PM",deal:"Celebration South",unread:false,folder:"inbox",tag:"SCORE"},
 ];
 
 const AGENTS = [
@@ -102,9 +105,10 @@ const PORTFOLIO_NAV = [
   {key:"F2",label:"PIPELINE"},
   {key:"F3",label:"PORTFOLIO"},
   {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"COMPETE"},
-  {key:"F6",label:"STRATEGIES"},
-  {key:"F7",label:"TOOLS"},
+  {key:"F5",label:"EMAIL"},
+  {key:"F6",label:"COMPETE"},
+  {key:"F7",label:"STRATEGIES"},
+  {key:"F8",label:"TOOLS"},
 ];
 
 const DEAL_NAV = [
@@ -210,6 +214,9 @@ export function TerminalPrototype() {
   const [fStrat,setFStrat] = useState("ALL");
   const [flashes,setFlashes] = useState<Record<number,boolean>>({});
   const [dashWidget,setDashWidget] = useState<string>(() => localStorage.getItem("jedi-dash-widget")||"pipeline");
+  const [selEmail,setSelEmail] = useState<number|null>(1);
+  const [emailFolder,setEmailFolder] = useState("inbox");
+  const [emailSearch,setEmailSearch] = useState("");
   const [mapLayers,setMapLayers] = useState<{id:string;name:string;type:string;visible:boolean}[]>([]);
   const [mapCreating,setMapCreating] = useState(false);
   const [newMapName,setNewMapName] = useState("");
@@ -670,6 +677,106 @@ export function TerminalPrototype() {
     </div>
   );
 
+  const ViewEmail = () => {
+    const TAG_COLORS:Record<string,string> = {LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
+    const folders = [{id:"inbox",label:"INBOX",count:EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:2},{id:"all",label:"ALL MAIL",count:EMAILS.length}];
+    const filtered = EMAILS.filter(e=>{
+      const matchFolder = emailFolder==="all" || e.folder===emailFolder || emailFolder==="starred";
+      const matchSearch = !emailSearch || e.from.toLowerCase().includes(emailSearch.toLowerCase()) || e.subject.toLowerCase().includes(emailSearch.toLowerCase()) || (e.deal||"").toLowerCase().includes(emailSearch.toLowerCase());
+      return matchFolder && matchSearch;
+    });
+    const activeEmail = EMAILS.find(e=>e.id===selEmail)||null;
+    return (
+      <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
+        {/* ── Sidebar ── */}
+        <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+            <button style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>+ COMPOSE</button>
+          </div>
+          <div style={{flex:1,overflow:"auto"}}>
+            {folders.map(f=>(
+              <div key={f.id} onClick={()=>setEmailFolder(f.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",background:emailFolder===f.id?T.bg.active:"transparent",borderLeft:emailFolder===f.id?`2px solid ${T.text.amber}`:"2px solid transparent"}}>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:emailFolder===f.id?T.text.amber:T.text.secondary}}>{f.label}</span>
+                {f.count>0&&<span style={{fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
+              </div>
+            ))}
+            <div style={{height:1,background:T.border.subtle,margin:"6px 0"}}/>
+            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
+            {["LOI","DD","DEBT","ZONING","URGENT","SCORE","LP"].map(tag=>(
+              <div key={tag} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",cursor:"pointer"}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:TAG_COLORS[tag]||T.text.muted,display:"inline-block",flexShrink:0}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.secondary}}>{tag}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Email List ── */}
+        <div style={{width:300,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+          <div style={{padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:4,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"2px 7px",height:22}}>
+              <span style={{fontSize:9,color:T.text.muted}}>⌕</span>
+              <input value={emailSearch} onChange={e=>setEmailSearch(e.target.value)} placeholder="Search mail…" style={{flex:1,background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary}}/>
+            </div>
+          </div>
+          <div style={{flex:1,overflow:"auto"}}>
+            {filtered.length===0&&<div style={{padding:20,textAlign:"center" as const,fontSize:9,color:T.text.muted}}>No messages</div>}
+            {filtered.map(e=>(
+              <div key={e.id} onClick={()=>setSelEmail(e.id)} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:selEmail===e.id?T.bg.active:e.unread?T.text.amber+"06":T.bg.panel,borderLeft:selEmail===e.id?`2px solid ${T.text.amber}`:e.unread?`2px solid ${T.text.orange}`:`2px solid transparent`}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:9,fontWeight:e.unread?700:500,color:e.unread?T.text.primary:T.text.secondary}}>{e.from}</span>
+                    {e.unread&&<span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>}
+                  </div>
+                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
+                </div>
+                <div style={{fontSize:8,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
+                <div style={{fontSize:7,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
+                <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap" as const}}>
+                  {e.tag&&<Bd c={TAG_COLORS[e.tag]||T.text.muted}>{e.tag}</Bd>}
+                  {e.deal&&<Bd c={T.text.amber}>{e.deal}</Bd>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Reading Pane ── */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+          {!activeEmail&&(
+            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}>
+              <div style={{fontSize:10,color:T.text.muted}}>Select an email to read</div>
+            </div>
+          )}
+          {activeEmail&&(
+            <>
+              <div style={{padding:"10px 16px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text.primary,marginBottom:4}}>{activeEmail.subject}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
+                  <span style={{fontSize:9,fontWeight:600,color:T.text.amber}}>{activeEmail.from}</span>
+                  <span style={{fontSize:8,color:T.text.muted}}>{activeEmail.org}</span>
+                  <span style={{fontSize:7,color:T.text.muted}}>· {activeEmail.date}</span>
+                  {activeEmail.tag&&<Bd c={TAG_COLORS[activeEmail.tag]||T.text.muted}>{activeEmail.tag}</Bd>}
+                  {activeEmail.deal&&<Bd c={T.text.amber}>{activeEmail.deal}</Bd>}
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:8}}>
+                  {["REPLY","REPLY ALL","FORWARD"].map(a=>(
+                    <button key={a} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
+                  ))}
+                  <div style={{flex:1}}/>
+                  {activeEmail.deal&&<button onClick={()=>{ const d=DEALS.find(deal=>deal.name===activeEmail.deal); if(d) enterDeal(d); }} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,border:`1px solid ${T.text.amber}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN CAPSULE →</button>}
+                </div>
+              </div>
+              <div style={{flex:1,overflow:"auto",padding:"16px 18px"}}>
+                <pre style={{fontFamily:T.font.label,fontSize:10,color:T.text.primary,lineHeight:"1.7",whiteSpace:"pre-wrap",margin:0}}>{activeEmail.body}</pre>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const ViewTools = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <PanelHeader T={T} title="TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
@@ -804,9 +911,10 @@ export function TerminalPrototype() {
         case "F2": return <DealGrid/>;
         case "F3": return <ViewPortfolio/>;
         case "F4": return <ViewMarkets/>;
-        case "F5": return <ViewCompete/>;
-        case "F6": return <ViewStrategies/>;
-        case "F7": return <ViewTools/>;
+        case "F5": return <ViewEmail/>;
+        case "F6": return <ViewCompete/>;
+        case "F7": return <ViewStrategies/>;
+        case "F8": return <ViewTools/>;
         default: return null;
       }
     } else {
