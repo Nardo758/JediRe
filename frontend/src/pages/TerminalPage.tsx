@@ -128,6 +128,39 @@ const WIDGET_CATALOG = [
   {id:"tv",         label:"TV / Media",             desc:"Live business news channel selector",                  category:"MEDIA",  color:"#FF8C42"},
 ];
 
+const TV_CHANNELS = [
+  {id:"cnbc",label:"CNBC",url:"https://www.youtube.com/embed/9NyxcX3rhQs?autoplay=1&mute=1",color:"#005594"},
+  {id:"bloomberg",label:"Bloomberg TV",url:"https://www.youtube.com/embed/dp8PhLsUcFE?autoplay=1&mute=1",color:"#472F92"},
+  {id:"yahoo",label:"Yahoo Finance",url:"https://www.youtube.com/embed/hRs_gWRN0qs?autoplay=1&mute=1",color:"#6001D2"},
+  {id:"foxbiz",label:"Fox Business",url:"https://www.youtube.com/embed/xSGDNwtIFz8?autoplay=1&mute=1",color:"#003366"},
+];
+
+const NEWS_SOURCES = [
+  {id:"costar",label:"CoStar",rss:"https://product.costar.com/rss/news",color:"#0056B3"},
+  {id:"globest",label:"Globe St",rss:"https://www.globest.com/feed/",color:"#1A5276"},
+  {id:"bisnow",label:"Bisnow",rss:"https://www.bisnow.com/rss/feed",color:"#E74C3C"},
+  {id:"trd",label:"The Real Deal",rss:"https://therealdeal.com/feed/",color:"#000000"},
+  {id:"housingwire",label:"Housing Wire",rss:"https://www.housingwire.com/feed/",color:"#2E86C1"},
+];
+
+const SOCIAL_DEFAULTS = [
+  {id:"x-cre",handle:"#CRE",label:"#CRE"},
+  {id:"x-multifamily",handle:"#multifamily",label:"#multifamily"},
+  {id:"x-costar",handle:"@CoStarGroup",label:"@CoStarGroup"},
+];
+
+interface MediaWindow {
+  id: string;
+  type: "tv"|"rss"|"social";
+  title: string;
+  color: string;
+  url?: string;
+  rssUrl?: string;
+  handle?: string;
+}
+
+interface RssItem { title:string; link:string; pubDate:string; source:string; }
+
 const MAP_TYPES = [
   {id:"warmaps",     label:"War Maps",      color:"#00D26A"},
   {id:"companalysis",label:"Comp Analysis", color:"#A78BFA"},
@@ -358,6 +391,60 @@ export default function TerminalPage() {
   const [topZ, setTopZ] = useState(10);
   const persistWins = (ids: string[], states: Record<string,WinState>) => { localStorage.setItem("jedi-dash-open", JSON.stringify(ids)); localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(states)); };
 
+  // Media floating windows (global overlay, separate from dashboard windows)
+  const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
+  const [mediaWinStates, setMediaWinStates] = useState<Record<string,WinState>>({});
+  const [mediaDragInfo, setMediaDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
+  const [mediaTopZ, setMediaTopZ] = useState(100);
+  const [mediaWinDropdown, setMediaWinDropdown] = useState(false);
+  const [rssCache, setRssCache] = useState<Record<string,{items:RssItem[],ts:number}>>({});
+
+  const openMediaWindow = useCallback((win: MediaWindow) => {
+    setMediaWindows(prev => {
+      if (prev.find(w => w.id === win.id)) {
+        const nz = mediaTopZ + 1; setMediaTopZ(nz);
+        setMediaWinStates(ps => ({ ...ps, [win.id]: { ...ps[win.id], minimized: false, zIndex: nz } }));
+        return prev;
+      }
+      const nz = mediaTopZ + 1; setMediaTopZ(nz);
+      const idx = prev.length;
+      setMediaWinStates(ps => ({ ...ps, [win.id]: { x: 80 + idx * 40, y: 60 + idx * 30, w: 520, h: 380, minimized: false, maximized: false, zIndex: nz } }));
+      return [...prev, win];
+    });
+  }, [mediaTopZ]);
+
+  const closeMediaWindow = useCallback((id: string) => {
+    setMediaWindows(prev => prev.filter(w => w.id !== id));
+    setMediaWinStates(prev => { const ns = { ...prev }; delete ns[id]; return ns; });
+  }, []);
+
+  const minimizeMediaWindow = useCallback((id: string) => {
+    setMediaWinStates(prev => ({ ...prev, [id]: { ...prev[id], minimized: !prev[id]?.minimized } }));
+  }, []);
+
+  const maximizeMediaWindow = useCallback((id: string) => {
+    setMediaWinStates(prev => {
+      const cur = prev[id]; if (!cur) return prev;
+      return { ...prev, [id]: { ...cur, maximized: !cur.maximized, minimized: false } };
+    });
+  }, []);
+
+  const bringMediaToFront = useCallback((id: string) => {
+    const nz = mediaTopZ + 1; setMediaTopZ(nz);
+    setMediaWinStates(prev => ({ ...prev, [id]: { ...prev[id], zIndex: nz } }));
+  }, [mediaTopZ]);
+
+  const fetchRss = useCallback((rssUrl: string) => {
+    const cached = rssCache[rssUrl];
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return;
+    apiClient.get("/api/media/rss", { params: { url: rssUrl } })
+      .then(res => {
+        const items: RssItem[] = res.data?.data || [];
+        setRssCache(prev => ({ ...prev, [rssUrl]: { items, ts: Date.now() } }));
+      })
+      .catch(() => {});
+  }, [rssCache]);
+
   // Email UI state
   const [emailFolder, setEmailFolder] = useState("inbox");
   const [emailSearch, setEmailSearch] = useState("");
@@ -523,6 +610,23 @@ export default function TerminalPage() {
     document.addEventListener("mouseup",onUp);
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
   },[dragInfo,dashWindows]);
+
+  // Media window drag/resize
+  useEffect(() => {
+    if(!mediaDragInfo) return;
+    const onMove=(e:MouseEvent)=>{
+      setMediaWinStates(prev=>{
+        const cur=prev[mediaDragInfo.id];
+        if(!cur) return prev;
+        if(mediaDragInfo.mode==="move") return{...prev,[mediaDragInfo.id]:{...cur,x:e.clientX-mediaDragInfo.ox,y:e.clientY-mediaDragInfo.oy,maximized:false}};
+        return{...prev,[mediaDragInfo.id]:{...cur,w:Math.max(320,e.clientX-cur.x),h:Math.max(200,e.clientY-cur.y),maximized:false}};
+      });
+    };
+    const onUp=()=>setMediaDragInfo(null);
+    document.addEventListener("mousemove",onMove);
+    document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[mediaDragInfo]);
 
   // ─── Window helpers ────────────────────────────────────────
   const defaultWinPos = (id: string, idx: number): WinState => ({ x: 40 + idx * 30, y: 40 + idx * 30, w: 480, h: 340, minimized: false, maximized: false, zIndex: topZ + idx });
@@ -1521,6 +1625,115 @@ export default function TerminalPage() {
         </div>
       ));
     }
+    if(bottomTab==="media") return (
+      <div style={{display:"flex",gap:0,height:"100%"}}>
+        <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>LIVE TV</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}>
+            {TV_CHANNELS.map(ch=>{
+              const isOpen=mediaWindows.some(w=>w.id===`tv-${ch.id}`);
+              return (
+                <div key={ch.id} onClick={()=>openMediaWindow({id:`tv-${ch.id}`,type:"tv",title:ch.label,color:ch.color,url:ch.url})}
+                  style={{background:T.bg.panel,border:`1px solid ${isOpen?ch.color:T.border.subtle}`,padding:"8px 8px",cursor:"pointer",textAlign:"center",position:"relative"}}>
+                  {isOpen&&<span style={{position:"absolute",top:3,right:4,width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/>}
+                  <div style={{fontSize:10,fontWeight:700,color:isOpen?ch.color:T.text.primary,letterSpacing:0.5}}>{ch.label}</div>
+                  <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{isOpen?"WATCHING":"Click to open"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>NEWS FEEDS</div>
+          {NEWS_SOURCES.map(src=>{
+            const isOpen=mediaWindows.some(w=>w.id===`rss-${src.id}`);
+            return (
+              <div key={src.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:src.color,flexShrink:0,display:"inline-block"}}/>
+                <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{src.label}</span>
+                <button onClick={()=>{openMediaWindow({id:`rss-${src.id}`,type:"rss",title:src.label,color:src.color,rssUrl:src.rss});fetchRss(src.rss);}}
+                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?src.color+"22":"transparent",color:isOpen?src.color:T.text.muted,border:`1px solid ${isOpen?src.color:T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  {isOpen?"OPEN":"OPEN FEED"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{flex:1,overflow:"auto",padding:"6px 10px"}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>SOCIAL / X</div>
+          {SOCIAL_DEFAULTS.map(s=>{
+            const isOpen=mediaWindows.some(w=>w.id===`social-${s.id}`);
+            return (
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{s.label}</span>
+                <button onClick={()=>openMediaWindow({id:`social-${s.id}`,type:"social",title:s.label,color:"#1DA1F2",handle:s.handle})}
+                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?"#1DA1F222":"transparent",color:isOpen?"#1DA1F2":T.text.muted,border:`1px solid ${isOpen?"#1DA1F2":T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  {isOpen?"OPEN":"OPEN"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+    return null;
+  };
+
+  const renderMediaWindowContent = (win: MediaWindow) => {
+    if (win.type === "tv") {
+      return (
+        <iframe src={win.url} style={{width:"100%",height:"100%",border:"none"}} allow="autoplay; encrypted-media" allowFullScreen/>
+      );
+    }
+    if (win.type === "rss") {
+      const items = rssCache[win.rssUrl||""]?.items || [];
+      return (
+        <div style={{flex:1,overflow:"auto",padding:0}}>
+          {items.length === 0 && (
+            <div style={{padding:20,textAlign:"center"}}>
+              <div style={{fontSize:9,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading feed...</div>
+            </div>
+          )}
+          {items.map((item, i) => (
+            <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
+              style={{display:"block",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,textDecoration:"none",background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+              <div style={{fontSize:9,fontWeight:600,color:T.text.primary,lineHeight:1.4}}>{item.title}</div>
+              <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>
+                {item.pubDate ? new Date(item.pubDate).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : ""}
+                {item.source && ` · ${item.source}`}
+              </div>
+            </a>
+          ))}
+          <div style={{padding:"6px 10px"}}>
+            <button onClick={() => { if(win.rssUrl) { setRssCache(prev => { const ns = {...prev}; delete ns[win.rssUrl!]; return ns; }); fetchRss(win.rssUrl); } }}
+              style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"3px 10px",cursor:"pointer",width:"100%"}}>
+              REFRESH
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (win.type === "social") {
+      const handle = win.handle || "";
+      const isHashtag = handle.startsWith("#");
+      const twitterUrl = isHashtag
+        ? `https://twitter.com/search?q=${encodeURIComponent(handle)}&src=typed_query&f=live`
+        : `https://twitter.com/${handle.replace("@","")}`;
+      return (
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:16}}>
+          <div style={{fontSize:24,color:"#1DA1F2",fontWeight:800}}>𝕏</div>
+          <div style={{fontSize:12,fontWeight:700,color:T.text.primary}}>{handle}</div>
+          <div style={{fontSize:9,color:T.text.secondary,textAlign:"center",lineHeight:1.5}}>
+            Twitter/X embeds require the platform widget script.<br/>
+            Click below to open in a new tab.
+          </div>
+          <a href={twitterUrl} target="_blank" rel="noopener noreferrer"
+            style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"#1DA1F2",color:"#fff",border:"none",padding:"8px 20px",cursor:"pointer",textDecoration:"none",letterSpacing:0.3}}>
+            OPEN ON X →
+          </a>
+        </div>
+      );
+    }
     return null;
   };
 
@@ -1543,6 +1756,36 @@ export default function TerminalPage() {
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
           <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
+          {mediaWindows.length>0&&(
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>
+                {mediaWindows.length} WINDOW{mediaWindows.length!==1?"S":""}
+              </button>
+              {mediaWinDropdown&&(
+                <div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:T.bg.panel,border:`1px solid ${T.border.medium}`,boxShadow:"0 8px 24px rgba(0,0,0,0.6)",zIndex:9998,minWidth:200,maxHeight:300,overflow:"auto"}}>
+                  {mediaWindows.map(w=>(
+                    <div key={w.id} onClick={()=>{bringMediaToFront(w.id);if(mediaWinStates[w.id]?.minimized)minimizeMediaWindow(w.id);setMediaWinDropdown(false);}}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:T.bg.panel}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:w.color,flexShrink:0,display:"inline-block"}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{w.title}</div>
+                        <div style={{fontSize:7,color:T.text.muted}}>{w.type.toUpperCase()}{mediaWinStates[w.id]?.minimized?" · minimized":""}</div>
+                      </div>
+                      <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(w.id);}}
+                        style={{fontSize:8,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 4px"}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{padding:"4px 10px",borderTop:`1px solid ${T.border.medium}`}}>
+                    <button onClick={()=>{setMediaWindows([]);setMediaWinStates({});setMediaWinDropdown(false);}}
+                      style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>
+                      CLOSE ALL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
@@ -1645,6 +1888,7 @@ export default function TerminalPage() {
             {id:"email",l:"EMAIL",ct:liveEmails.filter(e=>e.unread).length,cc:T.text.orange},
             {id:"agents",l:"AGENTS",ct:liveAgents.filter(a=>a.st==="ON").length,cc:T.text.green},
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
+            {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
           ].map(tab=>(
             <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
               {tab.l}
@@ -1660,6 +1904,61 @@ export default function TerminalPage() {
           {renderBottomTab()}
         </div>
       </div>
+
+      {/* ═══ MEDIA FLOATING WINDOWS (global overlay) ═══ */}
+      {mediaWindows.filter(w=>!mediaWinStates[w.id]?.minimized).map(win=>{
+        const ws=mediaWinStates[win.id];
+        if(!ws) return null;
+        const isMax=ws.maximized;
+        const isDragging=mediaDragInfo?.id===win.id&&mediaDragInfo.mode==="move";
+        return (
+          <div key={win.id}
+            onMouseDown={()=>bringMediaToFront(win.id)}
+            style={{
+              position:"fixed",
+              left:isMax?"5%":ws.x, top:isMax?"5%":ws.y,
+              width:isMax?"90%":ws.w, height:isMax?"90%":ws.h,
+              background:T.bg.panel,
+              border:`1px solid ${win.color}66`,
+              boxShadow:isMax?"0 16px 64px rgba(0,0,0,0.7)":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+              display:"flex",flexDirection:"column",
+              zIndex:ws.zIndex||100,
+              minWidth:320,minHeight:200,
+              transition:isDragging||mediaDragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
+            }}>
+            <div
+              onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringMediaToFront(win.id);setMediaDragInfo({id:win.id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
+              onDoubleClick={()=>maximizeMediaWindow(win.id)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${win.color}44`,flexShrink:0,cursor:isMax?"default":isDragging?"grabbing":"grab",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{win.title}</span>
+                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{win.type.toUpperCase()}</span>
+                {win.type==="tv"&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/><span style={{fontSize:7,color:T.text.red,fontWeight:700}}>LIVE</span></span>}
+              </div>
+              <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                <button onClick={(e)=>{e.stopPropagation();minimizeMediaWindow(win.id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
+                <button onClick={(e)=>{e.stopPropagation();maximizeMediaWindow(win.id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
+                <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(win.id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+              {renderMediaWindowContent(win)}
+            </div>
+            {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringMediaToFront(win.id);setMediaDragInfo({id:win.id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
+          </div>
+        );
+      })}
+      {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).length>0&&(
+        <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9997,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+          {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).map(win=>(
+            <button key={win.id} onClick={()=>minimizeMediaWindow(win.id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${win.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+              <span style={{width:5,height:5,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
+              {win.title}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ═══ STATUS BAR — 16px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:16,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
