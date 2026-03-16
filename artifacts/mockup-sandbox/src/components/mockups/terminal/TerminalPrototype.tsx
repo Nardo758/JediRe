@@ -249,6 +249,7 @@ export function TerminalPrototype() {
   const [newMapName,setNewMapName] = useState("");
   const [newMapType,setNewMapType] = useState("warmaps");
   const [widgetSizes,setWidgetSizes] = useState<Record<string,string>>({});
+  const [widgetCols,setWidgetCols] = useState<Record<string,number>>({});
   const [widgetHeights,setWidgetHeights] = useState<Record<string,number>>({});
   const [floatWidgets,setFloatWidgets] = useState<string[]>([]);
   const [floatPos,setFloatPos] = useState<Record<string,{x:number,y:number,w:number,h:number}>>({});
@@ -914,7 +915,7 @@ export function TerminalPrototype() {
         <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
           {/* Drag ghost cursor */}
           {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:200,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"start"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,alignItems:"start"}}>
             {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
               const meta=WIDGET_CATALOG.find(w=>w.id===id);
               if(!meta) return null;
@@ -928,7 +929,7 @@ export function TerminalPrototype() {
                 <div key={id}
                   onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
                   onMouseLeave={()=>setGridDragOver(null)}
-                  style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:sz==="lg"?"span 2":"span 1",opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
+                  style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:`span ${widgetCols[id]||2}`,opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
                   {/* Title bar with drag handle */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -942,6 +943,12 @@ export function TerminalPrototype() {
                           {s.toUpperCase()}
                         </button>
                       ))}
+                      <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
+                      {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
+                        <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} column${c>1?"s":""} wide`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
+                          {c}
+                        </button>
+                      );})}
                       <button onClick={()=>floatWidget(id)} title="Float as window" style={{fontFamily:T.font.mono,fontSize:11,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
                       <button onClick={()=>removeWidget(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
                     </div>
