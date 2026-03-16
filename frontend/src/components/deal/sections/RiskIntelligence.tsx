@@ -10,7 +10,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { apiClient, corporateHealthAPI } from '../../../services/api.client';
+import { apiClient, api } from '../../../services/api.client';
+import { useCorporateHealthStore } from '../../../store/corporateHealthStore';
 
 interface RiskCategory {
   id: string;
@@ -247,9 +248,12 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     return () => { cancelled = true; };
   }, [resolvedDealId]);
 
+  const fetchCorporateHealth = useCorporateHealthStore(s => s.fetchCorporateHealth);
+
   useEffect(() => {
     if (!resolvedDealId || corpHealthRisk.loaded) return;
-    corporateHealthAPI.getDealOverlay(resolvedDealId)
+    fetchCorporateHealth(resolvedDealId).catch(() => {});
+    api.corporateHealth.getDealOverlay(resolvedDealId)
       .then(res => {
         const d = res.data?.data;
         if (d) {
@@ -266,7 +270,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
       .catch(() => {
         setCorpHealthRisk(prev => ({...prev, loaded: true}));
       });
-  }, [resolvedDealId, corpHealthRisk.loaded]);
+  }, [resolvedDealId, corpHealthRisk.loaded, fetchCorporateHealth]);
 
   const augmentedCategories = useMemo(() => {
     let cats = riskCategories;

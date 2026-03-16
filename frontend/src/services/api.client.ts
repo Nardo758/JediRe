@@ -85,27 +85,30 @@ export const api = {
     trigger: (dealId: string) => apiClient.post(`/api/v1/deals/${dealId}/analysis/trigger`),
     latest: (dealId: string) => apiClient.get(`/api/v1/deals/${dealId}/analysis/latest`),
   },
+
+  // Corporate Health (M33)
+  corporateHealth: {
+    getSubmarket: (submarketId: number) =>
+      apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`),
+    getCompany: (ticker: string) =>
+      apiClient.get(`/api/v1/corporate-health/company/${ticker}`),
+    getDealOverlay: (dealId: string) =>
+      apiClient.get(`/api/v1/corporate-health/deal/${dealId}`),
+    getSectorRotation: () =>
+      apiClient.get('/api/v1/corporate-health/sector-rotation'),
+    getAlerts: () =>
+      apiClient.get('/api/v1/corporate-health/alerts'),
+    getPortfolio: () =>
+      apiClient.get('/api/v1/corporate-health/portfolio'),
+    refreshTicker: (ticker: string) =>
+      apiClient.post(`/api/v1/corporate-health/refresh/${ticker}`),
+    getConcentration: (submarketId: number) =>
+      apiClient.get(`/api/v1/corporate-health/concentration/${submarketId}`),
+    analyzeTranscript: (ticker: string, transcript: string, fiscalQuarter?: string) =>
+      apiClient.post(`/api/v1/corporate-health/transcript/${ticker}`, { transcript, fiscalQuarter }),
+  },
 };
 
-export const corporateHealthAPI = {
-  getSubmarket: (submarketId: number) =>
-    apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`),
-  getCompany: (ticker: string) =>
-    apiClient.get(`/api/v1/corporate-health/company/${ticker}`),
-  getDealOverlay: (dealId: string) =>
-    apiClient.get(`/api/v1/corporate-health/deal/${dealId}`),
-  getSectorRotation: () =>
-    apiClient.get('/api/v1/corporate-health/sector-rotation'),
-  getAlerts: () =>
-    apiClient.get('/api/v1/corporate-health/alerts'),
-  getPortfolio: () =>
-    apiClient.get('/api/v1/corporate-health/portfolio'),
-  refreshTicker: (ticker: string) =>
-    apiClient.post(`/api/v1/corporate-health/refresh/${ticker}`),
-  getConcentration: (submarketId: number) =>
-    apiClient.get(`/api/v1/corporate-health/concentration/${submarketId}`),
-  analyzeTranscript: (ticker: string, transcript: string, fiscalQuarter?: string) =>
-    apiClient.post(`/api/v1/corporate-health/transcript/${ticker}`, { transcript, fiscalQuarter }),
-};
+export const corporateHealthAPI = api.corporateHealth;
 
 export default apiClient;

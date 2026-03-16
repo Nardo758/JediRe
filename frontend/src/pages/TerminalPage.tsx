@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiClient, corporateHealthAPI } from "../services/api.client";
+import { apiClient, api } from "../services/api.client";
+import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { layersService } from "../services/layers.service";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1878,6 +1879,9 @@ export default function TerminalPage() {
 
   useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
 
+  const corpHealthStore = useCorporateHealth();
+  const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
+
   useEffect(() => {
     if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
@@ -1885,12 +1889,14 @@ export default function TerminalPage() {
     const submarketIds = SUBMARKETS.map((_:any, i:number) => i + 1);
     const firstSubmarketId = submarketIds[0] || 1;
 
+    fetchSubmarketHealth(firstSubmarketId).catch(() => {});
+
     Promise.all([
-      corporateHealthAPI.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
-      corporateHealthAPI.getSectorRotation().catch(() => ({data:{data:{sectors:[],markets:[]}}})),
-      corporateHealthAPI.getSubmarket(firstSubmarketId).catch(() => ({data:{data:null}})),
-      corporateHealthAPI.getConcentration(firstSubmarketId).catch(() => ({data:{data:null}})),
-      corporateHealthAPI.getPortfolio().catch(() => ({data:{data:{submarkets:[],topEmployers:[]}}})),
+      api.corporateHealth.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
+      api.corporateHealth.getSectorRotation().catch(() => ({data:{data:{sectors:[],markets:[]}}})),
+      api.corporateHealth.getSubmarket(firstSubmarketId).catch(() => ({data:{data:null}})),
+      api.corporateHealth.getConcentration(firstSubmarketId).catch(() => ({data:{data:null}})),
+      api.corporateHealth.getPortfolio().catch(() => ({data:{data:{submarkets:[],topEmployers:[]}}})),
     ]).then(([alertsRes, sectorsRes, subRes, concRes, portfolioRes]) => {
       const alerts = Array.isArray(alertsRes.data?.data?.alerts) ? alertsRes.data.data.alerts : [];
       const sectorRotation = sectorsRes.data?.data || {sectors:[],markets:[]};
@@ -1915,7 +1921,7 @@ export default function TerminalPage() {
     }).catch(() => {
       setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
     });
-  }, [fkey, marketTab, corpHealthLive.loaded, corpHealthLive.loading]);
+  }, [fkey, marketTab, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
   const handleInvite = () => {
     if(!inviteEmail || !orgData) return;
