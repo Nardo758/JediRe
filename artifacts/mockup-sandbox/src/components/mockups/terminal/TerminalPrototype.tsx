@@ -84,6 +84,17 @@ const AGENTS = [
   {id:"A10",name:"Orchestrator",st:"ON",act:"Coordinating DD checklist, Dadeland",t:"12s",m:312},
 ];
 
+const TASKS = [
+  {id:"T01",title:"Schedule structural inspection",deal:"Dadeland Station",pri:"critical",due:"Mar 20",status:"TODO",owner:"M.Dixon"},
+  {id:"T02",title:"Wire $250K earnest deposit",deal:"Westshore Commons",pri:"critical",due:"Mar 19",status:"TODO",owner:"M.Dixon"},
+  {id:"T03",title:"Counter offer at $4.5M",deal:"Nocatee Parcels",pri:"high",due:"Mar 21",status:"IN PROGRESS",owner:"M.Dixon"},
+  {id:"T04",title:"Review Phase I ESA report",deal:"Celebration South",pri:"high",due:"Mar 22",status:"IN PROGRESS",owner:"S.Torres"},
+  {id:"T05",title:"Upload executed LOI to Capsule",deal:"Westshore Commons",pri:"med",due:"Mar 18",status:"DONE",owner:"M.Dixon"},
+  {id:"T06",title:"Pull 12-month rent rolls",deal:"Riverview Preserve",pri:"med",due:"Mar 25",status:"TODO",owner:"R.Patel"},
+  {id:"T07",title:"Confirm city meeting date",deal:"Riverview Preserve",pri:"low",due:"Mar 30",status:"TODO",owner:"S.Torres"},
+  {id:"T08",title:"Update pro forma for rate change",deal:"Colonial Crossings",pri:"high",due:"Mar 23",status:"TODO",owner:"R.Patel"},
+];
+
 const MARKET_VITALS = [
   {label:"Avg Effective Rent",value:"$1,908",sub:"/mo",change:"+3.0%",period:"90d",dir:"up"},
   {label:"Vacancy Rate",value:"8.5",sub:"%",change:"-0.8%",period:"12wk",dir:"down"},
@@ -108,7 +119,7 @@ const PORTFOLIO_NAV = [
   {key:"F5",label:"EMAIL"},
   {key:"F6",label:"COMPETE"},
   {key:"F7",label:"STRATEGIES"},
-  {key:"F8",label:"TOOLS"},
+  {key:"F8",label:"ORG TOOLS"},
 ];
 
 const DEAL_NAV = [
@@ -142,6 +153,7 @@ const WIDGET_CATALOG = [
   // ── OPERATIONS ──
   {id:"strategy",   label:"Strategy Snapshot",       desc:"BTS / RENTAL / FLIP / STR performance breakdown",      category:"OPS",      color:"#A78BFA"},
   {id:"agents",     label:"Agent Activity",          desc:"Live status of all AI agents running",                 category:"OPS",      color:"#00D26A"},
+  {id:"tasks",      label:"Task List",               desc:"Team task queue with deal assignments and priorities",  category:"OPS",      color:"#FFD166"},
   {id:"tv",         label:"TV / Media",              desc:"Live business news channel selector",                  category:"MEDIA",    color:"#FF8C42"},
 ];
 
@@ -774,6 +786,30 @@ export function TerminalPrototype() {
     </div>
   );
 
+  const WidgetTaskList = () => {
+    const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
+    const sc:Record<string,string>={"TODO":T.text.muted,"IN PROGRESS":T.text.cyan,"DONE":T.text.green};
+    return (
+      <div style={{flex:1,overflow:"auto"}}>
+        {TASKS.map((t,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"7px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${pc[t.pri]}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,opacity:t.status==="DONE"?0.5:1}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:9,fontWeight:600,color:t.status==="DONE"?T.text.muted:T.text.primary,textDecoration:t.status==="DONE"?"line-through":"none",lineHeight:1.4}}>{t.title}</div>
+              <div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap" as const}}>
+                <Bd c={T.text.amber}>{t.deal}</Bd>
+                <Bd c={pc[t.pri]}>{t.pri.toUpperCase()}</Bd>
+              </div>
+            </div>
+            <div style={{textAlign:"right" as const,flexShrink:0}}>
+              <div style={{fontSize:8,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
+              <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{t.due} · {t.owner}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   // ─── WIDGET RENDER ROUTER ────────────────────────────────────
   const renderWidget = (id:string) => {
     switch(id) {
@@ -797,6 +833,7 @@ export function TerminalPrototype() {
       case "calendar":   return <WidgetCalendar/>;
       case "competitor": return <WidgetCompetitor/>;
       case "aibrief":    return <WidgetAIBrief/>;
+      case "tasks":      return <WidgetTaskList/>;
       default: return null;
     }
   };
@@ -1181,7 +1218,7 @@ export function TerminalPrototype() {
 
   const ViewTools = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
+      <PanelHeader T={T} title="ORG TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TASKS</div>
@@ -1476,6 +1513,7 @@ export function TerminalPrototype() {
               {id:"news",l:"NEWS",ct:NEWS.length,cc:T.text.cyan},
               {id:"email",l:"EMAIL",ct:unreadEmails,cc:T.text.orange},
               {id:"agents",l:"AGENTS",ct:AGENTS.filter(a=>a.st==="ON").length,cc:T.text.green},
+              {id:"tasks",l:"TASKS",ct:TASKS.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
             ].map(tab=>(
               <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
                 {tab.l}
@@ -1519,6 +1557,22 @@ export function TerminalPrototype() {
                 ))}
               </div>
             )}
+            {bottomTab==="tasks" && (()=>{
+              const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
+              const sc:Record<string,string>={"TODO":T.text.muted,"IN PROGRESS":T.text.cyan,"DONE":T.text.green};
+              return TASKS.map((t,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${pc[t.pri]}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,opacity:t.status==="DONE"?0.5:1}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:9,fontWeight:600,color:t.status==="DONE"?T.text.muted:T.text.primary,textDecoration:t.status==="DONE"?"line-through":"none"}}>{t.title}</div>
+                    <div style={{marginTop:2,display:"flex",gap:4}}><Bd c={T.text.amber}>{t.deal}</Bd><Bd c={pc[t.pri]}>{t.pri.toUpperCase()}</Bd></div>
+                  </div>
+                  <div style={{textAlign:"right" as const,flexShrink:0}}>
+                    <div style={{fontSize:8,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
+                    <div style={{fontSize:7,color:T.text.muted,marginTop:1}}>{t.due} · {t.owner}</div>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}
