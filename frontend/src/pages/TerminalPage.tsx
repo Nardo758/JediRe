@@ -288,6 +288,11 @@ export default function TerminalPage() {
   const [liveAlerts, setLiveAlerts] = useState(STATIC_ALERTS);
   const [liveTasks, setLiveTasks] = useState(STATIC_TASKS);
 
+  // Live bottom panel data
+  const [liveNews, setLiveNews] = useState(STATIC_NEWS);
+  const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
+  const [liveAgents] = useState(STATIC_AGENTS);
+
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
@@ -329,6 +334,88 @@ export default function TerminalPage() {
         }
       })
       .catch(()=>{});
+  },[]);
+
+  // Fetch real alerts from JEDI alerts API
+  useEffect(() => {
+    const sevMap: Record<string,string> = { red:"critical", yellow:"high", green:"low" };
+    apiClient.get("/api/v1/jedi/alerts", { params:{ limit:30 } })
+      .then(res => {
+        const raw: any[] = res.data?.data?.alerts || res.data?.alerts || [];
+        if(raw.length > 0) {
+          setLiveAlerts(raw.slice(0,20).map((a:any,i:number) => ({
+            id: a.id || String(i),
+            type: (a.alertType || a.type || "INTEL").toUpperCase().replace(/_/g," ").slice(0,12),
+            sev: sevMap[a.severity] || a.severity || "med",
+            msg: a.message || a.title || "Alert",
+            deal: a.dealName || a.deal_name || null,
+            time: a.createdAt ? (() => {
+              const d = new Date(a.createdAt);
+              const diff = Math.floor((Date.now() - d.getTime()) / 60000);
+              return diff < 60 ? `${diff}m` : diff < 1440 ? `${Math.floor(diff/60)}h` : `${Math.floor(diff/1440)}d`;
+            })() : "—",
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  // Fetch real news from news events API
+  useEffect(() => {
+    apiClient.get("/api/v1/news/events", { params:{ limit:15 } })
+      .then(res => {
+        const raw: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.events || []);
+        if(raw.length > 0) {
+          setLiveNews(raw.slice(0,12).map((n:any,i:number) => ({
+            id: n.id || String(i),
+            time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—",
+            hl: n.headline || n.title || n.description || "Market update",
+            impact: n.impact || n.marketImpact || (n.sentiment === "positive" ? "+DEMAND" : n.sentiment === "negative" ? "RISK DN" : "INFO"),
+            pts: n.scoreImpact ? (n.scoreImpact > 0 ? `+${n.scoreImpact.toFixed(1)}` : n.scoreImpact.toFixed(1)) : "0.0",
+            affects: n.affectedDeals || n.deals || [],
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  // Fetch real emails from email API
+  useEffect(() => {
+    apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })
+      .then(res => {
+        const raw: any[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.emails || []);
+        if(raw.length > 0) {
+          setLiveEmails(raw.slice(0,10).map((e:any,i:number) => ({
+            id: e.id || i,
+            from: e.fromName || e.from?.name || e.senderName || "Sender",
+            org: e.fromOrg || e.from?.organization || "",
+            subject: e.subject || "(no subject)",
+            preview: e.preview || e.snippet || e.body?.slice(0,80) || "",
+            time: e.receivedAt ? (() => {
+              const diff = Math.floor((Date.now() - new Date(e.receivedAt).getTime()) / 60000);
+              return diff < 60 ? `${diff}m` : diff < 1440 ? `${Math.floor(diff/60)}h` : `${Math.floor(diff/1440)}d`;
+            })() : "—",
+            deal: e.dealName || null,
+            unread: !e.isRead,
+            folder: "inbox",
+            tag: e.tag || e.label || null,
+            body: e.body || "",
+          })));
+        }
+      })
+      .catch(()=>{});
+  },[]);
+
+  // F1–F8 keyboard shortcuts inside the terminal
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8" };
+      if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   },[]);
 
   // Float window drag
@@ -587,9 +674,9 @@ export default function TerminalPage() {
 
   const WidgetAgents = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="AGENT ACTIVITY" subtitle={`${STATIC_AGENTS.filter(a=>a.st==="ON").length} active`} borderColor={T.text.green}/>
+      <PanelHeader T={T} title="AGENT ACTIVITY" subtitle={`${liveAgents.filter(a=>a.st==="ON").length} active`} borderColor={T.text.green}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
-        {STATIC_AGENTS.map((a,i)=>(
+        {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
             <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
@@ -1298,14 +1385,14 @@ export default function TerminalPage() {
       const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
       return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
     });
-    if(bottomTab==="news") return STATIC_NEWS.map((n,i)=>(
+    if(bottomTab==="news") return liveNews.map((n,i)=>(
       <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
         <span style={{fontSize:8,color:T.text.muted,minWidth:34}}>{n.time}</span>
         <div style={{flex:1}}><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>{n.affects.length>0&&<div style={{display:"flex",gap:3,marginTop:2}}>{n.affects.map((a,j)=><Bd key={j} c={T.text.amber}>{a}</Bd>)}</div>}</div>
         <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:8,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize:8,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
       </div>
     ));
-    if(bottomTab==="email") return STATIC_EMAILS.map((e,i)=>(
+    if(bottomTab==="email") return liveEmails.map((e,i)=>(
       <div key={i} style={{display:"flex",gap:8,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:e.unread?T.text.amber+"06":T.bg.panel}}>
         <div style={{flex:1}}>
           <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:1}}>
@@ -1319,7 +1406,7 @@ export default function TerminalPage() {
     ));
     if(bottomTab==="agents") return (
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
-        {STATIC_AGENTS.map((a,i)=>(
+        {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"5px 8px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}><span style={{fontSize:8,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
             <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
@@ -1364,8 +1451,8 @@ export default function TerminalPage() {
           <span style={{fontSize:9,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{STATIC_AGENTS.filter(a=>a.st==="ON").length} AGENTS</span>
-          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {STATIC_EMAILS.filter(e=>e.unread).length}</span>
+          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
+          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
@@ -1464,9 +1551,9 @@ export default function TerminalPage() {
         <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
           {[
             {id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},
-            {id:"news",l:"NEWS",ct:STATIC_NEWS.length,cc:T.text.cyan},
-            {id:"email",l:"EMAIL",ct:STATIC_EMAILS.filter(e=>e.unread).length,cc:T.text.orange},
-            {id:"agents",l:"AGENTS",ct:STATIC_AGENTS.filter(a=>a.st==="ON").length,cc:T.text.green},
+            {id:"news",l:"NEWS",ct:liveNews.length,cc:T.text.cyan},
+            {id:"email",l:"EMAIL",ct:liveEmails.filter(e=>e.unread).length,cc:T.text.orange},
+            {id:"agents",l:"AGENTS",ct:liveAgents.filter(a=>a.st==="ON").length,cc:T.text.green},
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
           ].map(tab=>(
             <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
