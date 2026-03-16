@@ -119,6 +119,7 @@ import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import jediRoutes from './api/rest/jedi.routes';
 import mediaRouter from './api/rest/media.routes';
+import orgRouter from './api/rest/org.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -284,6 +285,7 @@ app.use('/api/v1/deals', requireAuth, financialModelRoutes);
 app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
 app.use('/api/v1/jedi', jediRoutes);
 app.use('/api/media', mediaRouter);
+app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 // Phase 10: Cross-Module Validation
 app.use('/api/v1/deals', requireAuth, dealValidationRoutes);

@@ -102,6 +102,7 @@ const PORTFOLIO_NAV = [
   {key:"F6",label:"COMPETE"},
   {key:"F7",label:"STRATEGIES"},
   {key:"F8",label:"ORG TOOLS"},
+  {key:"F9",label:"ORG SETTINGS"},
 ];
 
 const WIDGET_CATALOG = [
@@ -391,6 +392,16 @@ export default function TerminalPage() {
   const [topZ, setTopZ] = useState(10);
   const persistWins = (ids: string[], states: Record<string,WinState>) => { localStorage.setItem("jedi-dash-open", JSON.stringify(ids)); localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(states)); };
 
+  // Org settings state (F9)
+  const [orgData, setOrgData] = useState<any>(null);
+  const [orgMembers, setOrgMembers] = useState<any[]>([]);
+  const [orgInvitations, setOrgInvitations] = useState<any[]>([]);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("analyst");
+  const [orgError, setOrgError] = useState("");
+  const [orgSuccess, setOrgSuccess] = useState("");
+
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
   const [mediaWinStates, setMediaWinStates] = useState<Record<string,WinState>>({});
@@ -586,7 +597,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8" };
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9" };
       if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
@@ -1558,6 +1569,167 @@ export default function TerminalPage() {
     </div>
   );
 
+  // ─── F9: ORG SETTINGS ─────────────────────────────────────
+  const fetchOrgData = useCallback(() => {
+    setOrgLoading(true); setOrgError(""); setOrgSuccess("");
+    apiClient.get("/api/v1/orgs/mine")
+      .then(res => {
+        const orgs = Array.isArray(res.data) ? res.data : [];
+        if(orgs.length > 0) {
+          const org = orgs[0];
+          setOrgData(org);
+          return Promise.all([
+            apiClient.get(`/api/v1/orgs/${org.id}/members`),
+            apiClient.get(`/api/v1/orgs/${org.id}/invitations`).catch(()=>({data:[]})),
+          ]);
+        }
+        setOrgData(null);
+        return null;
+      })
+      .then(results => {
+        if(results) {
+          setOrgMembers(Array.isArray(results[0].data) ? results[0].data : []);
+          setOrgInvitations(Array.isArray(results[1].data) ? results[1].data : []);
+        }
+      })
+      .catch(() => setOrgError("Failed to load organization data"))
+      .finally(() => setOrgLoading(false));
+  }, []);
+
+  useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
+
+  const handleInvite = () => {
+    if(!inviteEmail || !orgData) return;
+    setOrgError(""); setOrgSuccess("");
+    apiClient.post(`/api/v1/orgs/${orgData.id}/invitations`, { email: inviteEmail, role: inviteRole })
+      .then(() => { setOrgSuccess(`Invitation sent to ${inviteEmail}`); setInviteEmail(""); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to send invitation"));
+  };
+
+  const handleRoleChange = (memberId: string, newRole: string) => {
+    if(!orgData) return;
+    apiClient.put(`/api/v1/orgs/${orgData.id}/members/${memberId}/role`, { role: newRole })
+      .then(() => { setOrgSuccess("Role updated"); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to update role"));
+  };
+
+  const handleRemoveMember = (memberId: string, name: string) => {
+    if(!orgData || !confirm(`Remove ${name} from the organization?`)) return;
+    apiClient.delete(`/api/v1/orgs/${orgData.id}/members/${memberId}`)
+      .then(() => { setOrgSuccess("Member removed"); fetchOrgData(); })
+      .catch(err => setOrgError(err.response?.data?.error || "Failed to remove member"));
+  };
+
+  const ViewOrgSettings = () => {
+    const myRole = orgData?.my_role || "viewer";
+    const canManage = myRole === "owner" || myRole === "principal";
+    const isOwner = myRole === "owner";
+    const roleBadgeColor: Record<string,string> = { owner: T.text.amber, principal: T.text.cyan, analyst: T.text.green, viewer: T.text.muted };
+    return (
+      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+        <PanelHeader T={T} title="ORG SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
+          right={<span style={{fontSize:8,color:T.text.muted}}>YOUR ROLE: <span style={{color:roleBadgeColor[myRole]||T.text.muted,fontWeight:700}}>{myRole.toUpperCase()}</span></span>}/>
+        {orgLoading ? (
+          <div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading organization data...</span></div>
+        ) : !orgData ? (
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:60,gap:12}}>
+            <div style={{fontSize:14,color:T.text.muted}}>No organization found</div>
+            <div style={{fontSize:9,color:T.text.secondary}}>Contact support to create your organization</div>
+          </div>
+        ) : (
+          <div style={{padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {orgError && <div style={{gridColumn:"1/-1",background:T.text.red+"18",border:`1px solid ${T.text.red}44`,padding:"6px 10px",fontSize:9,color:T.text.red}}>{orgError}</div>}
+            {orgSuccess && <div style={{gridColumn:"1/-1",background:T.text.green+"18",border:`1px solid ${T.text.green}44`,padding:"6px 10px",fontSize:9,color:T.text.green}}>{orgSuccess}</div>}
+            <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+              <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>MEMBERS</span>
+                <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgMembers.length} total</span>
+              </div>
+              <div style={{maxHeight:300,overflow:"auto"}}>
+                {orgMembers.map((m,i)=>(
+                  <div key={m.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{m.full_name || m.first_name || m.email}</div>
+                      <div style={{fontSize:7,color:T.text.muted}}>{m.email}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {isOwner && m.role !== "owner" ? (
+                        <select value={m.role} onChange={e=>handleRoleChange(m.id, e.target.value)}
+                          style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"2px 4px",cursor:"pointer"}}>
+                          <option value="principal">PRINCIPAL</option>
+                          <option value="analyst">ANALYST</option>
+                          <option value="viewer">VIEWER</option>
+                        </select>
+                      ) : (
+                        <Bd c={roleBadgeColor[m.role]||T.text.muted}>{m.role}</Bd>
+                      )}
+                      {isOwner && m.role !== "owner" && (
+                        <button onClick={()=>handleRemoveMember(m.id, m.full_name||m.email)}
+                          style={{fontFamily:T.font.mono,fontSize:8,color:T.text.red,background:"transparent",border:`1px solid ${T.text.red}44`,padding:"1px 6px",cursor:"pointer"}}>x</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {canManage && (
+                <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+                  <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                    <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>INVITE MEMBER</span>
+                  </div>
+                  <div style={{padding:10}}>
+                    <div style={{display:"flex",gap:6,marginBottom:6}}>
+                      <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="email@example.com"
+                        style={{flex:1,fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",outline:"none"}}
+                        onKeyDown={e=>{if(e.key==="Enter")handleInvite();}}/>
+                      <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
+                        style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px",cursor:"pointer"}}>
+                        <option value="principal">PRINCIPAL</option>
+                        <option value="analyst">ANALYST</option>
+                        <option value="viewer">VIEWER</option>
+                      </select>
+                    </div>
+                    <button onClick={handleInvite}
+                      style={{fontFamily:T.font.mono,fontSize:8,color:T.text.white,background:T.text.cyan+"33",border:`1px solid ${T.text.cyan}`,padding:"4px 12px",cursor:"pointer",width:"100%",fontWeight:700,letterSpacing:0.5}}>+ SEND INVITATION</button>
+                    <div style={{marginTop:6,fontSize:7,color:T.text.muted}}>
+                      Roles: <span style={{color:T.text.amber}}>OWNER</span> (full control) · <span style={{color:T.text.cyan}}>PRINCIPAL</span> (manage + invite) · <span style={{color:T.text.green}}>ANALYST</span> (read/write deals) · <span style={{color:T.text.muted}}>VIEWER</span> (read-only)
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+                <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
+                  <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>PENDING INVITATIONS</span>
+                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv:any)=>inv.status==="pending").length} pending</span>
+                </div>
+                <div style={{maxHeight:200,overflow:"auto"}}>
+                  {orgInvitations.length === 0 ? (
+                    <div style={{padding:10,fontSize:9,color:T.text.muted,textAlign:"center"}}>No invitations sent</div>
+                  ) : orgInvitations.map((inv:any,i:number)=>(
+                    <div key={inv.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                      <div>
+                        <div style={{fontSize:9,color:T.text.primary}}>{inv.email}</div>
+                        <div style={{fontSize:7,color:T.text.muted}}>Invited by {inv.invited_by_name||"—"} · {inv.role}</div>
+                      </div>
+                      <Bd c={inv.status==="pending"?T.text.orange:inv.status==="accepted"?T.text.green:T.text.red}>{inv.status}</Bd>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:10}}>
+                <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>ORGANIZATION</div>
+                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Name: <span style={{color:T.text.primary}}>{orgData.name}</span></div>
+                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Slug: <span style={{color:T.text.muted}}>{orgData.slug}</span></div>
+                <div style={{fontSize:8,color:T.text.secondary}}>Created: <span style={{color:T.text.muted}}>{orgData.created_at ? new Date(orgData.created_at).toLocaleDateString() : "—"}</span></div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── MAIN CONTENT ROUTER ───────────────────────────────────
   const renderContent = () => {
     switch(fkey) {
@@ -1569,6 +1741,7 @@ export default function TerminalPage() {
       case "F6": return ViewCompete();
       case "F7": return ViewStrategies();
       case "F8": return ViewTools();
+      case "F9": return ViewOrgSettings();
       default: return null;
     }
   };

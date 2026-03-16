@@ -165,6 +165,13 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     }
 
     const userTier = tier || 'basic';
+
+    const orgResult = await client.query(
+      'SELECT org_id FROM org_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1',
+      [req.user!.userId]
+    );
+    const userOrgId = orgResult.rows.length > 0 ? orgResult.rows[0].org_id : null;
+
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
@@ -172,9 +179,9 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description
+        deal_category, development_type, address, description, org_id
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15)
       RETURNING *
     `, [
       req.user!.userId,
@@ -191,6 +198,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       development_type || 'new',
       address || null,
       description || null,
+      userOrgId,
     ]);
 
     const row = result.rows[0];
