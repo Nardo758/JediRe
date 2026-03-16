@@ -230,8 +230,7 @@ export class MetricCorrelationEngine {
 
     const geos = await this.pool.query(
       `SELECT DISTINCT geography_id FROM metric_time_series
-       WHERE metric_id = 'home_value_index_yoy' AND geography_type = 'metro'
-       LIMIT 100`,
+       WHERE metric_id = 'home_value_index_yoy' AND geography_type = 'metro'`,
     );
 
     let computed = 0;

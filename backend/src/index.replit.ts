@@ -610,6 +610,19 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('PST backflow startup check failed (non-fatal):', error);
   }
 
+  try {
+    const { MetricCorrelationEngine } = await import('./services/metric-correlation-engine.service');
+    const correlationPool = getPool();
+    const correlationEngine = new MetricCorrelationEngine(correlationPool);
+    correlationEngine.seedCorePairs().then(result => {
+      console.log(`Correlation seeding complete: ${result.computed} computed, ${result.skipped} skipped`);
+    }).catch(err => {
+      console.error('Correlation seeding failed (non-fatal):', err);
+    });
+  } catch (error) {
+    console.error('Correlation engine startup failed (non-fatal):', error);
+  }
+
   await initStripe();
 });
 

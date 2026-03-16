@@ -171,12 +171,20 @@ router.get('/:metricId/projection', async (req: Request, res: Response) => {
     const { metricId } = req.params;
     const geoId = req.query.geoId as string;
     const geoType = req.query.geoType as string;
-    const horizon = parseInt(req.query.horizon as string) || 60;
+    const rawHorizon = parseInt(req.query.horizon as string) || 60;
+    const horizon = Math.min(Math.max(rawHorizon, 1), 60);
 
     if (!geoId || !geoType) {
       return res.status(400).json({
         success: false,
         error: 'Missing required query params: geoId, geoType',
+      });
+    }
+
+    if (rawHorizon > 60) {
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum projection horizon is 60 months (5 years)',
       });
     }
 

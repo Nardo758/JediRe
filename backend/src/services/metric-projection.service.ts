@@ -28,11 +28,23 @@ export interface ProjectionResult {
 
 const CACHE_DAYS = 30;
 
-const ANCHOR_CONFIGS: Record<string, { anchorMetricId: string; anchorGeoType: string }> = {
-  'C_TRAFFIC_GROWTH_INDEX': { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
-  'C_SURGE_INDEX': { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
-  'T_AADT_YOY': { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
-  'F_RENT_GROWTH': { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
+const ANCHOR_CONFIGS: Record<string, Array<{ anchorMetricId: string; anchorGeoType: string }>> = {
+  'C_TRAFFIC_GROWTH_INDEX': [
+    { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
+    { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
+  ],
+  'C_SURGE_INDEX': [
+    { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
+    { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
+  ],
+  'T_AADT_YOY': [
+    { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
+    { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
+  ],
+  'F_RENT_GROWTH': [
+    { anchorMetricId: 'home_value_index_yoy', anchorGeoType: 'metro' },
+    { anchorMetricId: 'rent_index_yoy', anchorGeoType: 'metro' },
+  ],
 };
 
 export class MetricProjectionService {
@@ -48,7 +60,7 @@ export class MetricProjectionService {
     geoId: string,
     horizonMonths: number = 60,
   ): Promise<ProjectionResult | null> {
-    if (horizonMonths < 1 || horizonMonths > 120) horizonMonths = 60;
+    if (horizonMonths < 1 || horizonMonths > 60) horizonMonths = 60;
 
     const cached = await this.getCachedProjection(metricId, geoType, geoId, horizonMonths);
     if (cached) return cached;
@@ -67,15 +79,17 @@ export class MetricProjectionService {
       return result;
     }
 
-    const anchorConfig = ANCHOR_CONFIGS[metricId];
-    if (anchorConfig) {
-      const result = await this.projectAnchorCorrelation(
-        metricId, geoType, geoId, horizonMonths,
-        anchorConfig.anchorMetricId, anchorConfig.anchorGeoType,
-      );
-      if (result) {
-        await this.cacheProjection(result);
-        return result;
+    const anchorChain = ANCHOR_CONFIGS[metricId];
+    if (anchorChain) {
+      for (const anchorConfig of anchorChain) {
+        const result = await this.projectAnchorCorrelation(
+          metricId, geoType, geoId, horizonMonths,
+          anchorConfig.anchorMetricId, anchorConfig.anchorGeoType,
+        );
+        if (result) {
+          await this.cacheProjection(result);
+          return result;
+        }
       }
     }
 
