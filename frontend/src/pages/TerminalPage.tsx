@@ -391,6 +391,13 @@ export default function TerminalPage() {
   const [dragInfo, setDragInfo] = useState<{id:string,ox:number,oy:number,mode:"move"|"resize"}|null>(null);
   const [topZ, setTopZ] = useState(10);
   const persistWins = (ids: string[], states: Record<string,WinState>) => { localStorage.setItem("jedi-dash-open", JSON.stringify(ids)); localStorage.setItem(DASH_STORAGE_KEY, JSON.stringify(states)); };
+  const [floatWidgets, setFloatWidgets] = useState<string[]>([]);
+  const [widgetSizes, setWidgetSizes] = useState<Record<string,string>>({});
+  const [widgetCols, setWidgetCols] = useState<Record<string,number>>({});
+  const [widgetHeights, setWidgetHeights] = useState<Record<string,number>>({});
+  const [gridResizing, setGridResizing] = useState<{id:string,startY:number,startH:number}|null>(null);
+  const [gridDrag, setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
+  const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
   // Org settings state (F9)
   const [orgData, setOrgData] = useState<any>(null);
@@ -639,6 +646,29 @@ export default function TerminalPage() {
     return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
   },[mediaDragInfo]);
 
+  // Grid widget vertical resize
+  useEffect(()=>{
+    if(!gridResizing) return;
+    const onMove=(e:MouseEvent)=>{const delta=e.clientY-gridResizing.startY;setWidgetHeights(prev=>({...prev,[gridResizing.id]:Math.max(120,gridResizing.startH+delta)}));};
+    const onUp=()=>setGridResizing(null);
+    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[gridResizing]);
+
+  // Grid widget drag-to-reorder
+  useEffect(()=>{
+    if(!gridDrag) return;
+    const onMove=(e:MouseEvent)=>setGridDrag(prev=>prev?{...prev,x:e.clientX,y:e.clientY}:null);
+    const onUp=()=>{
+      if(gridDragOver&&gridDrag&&gridDragOver!==gridDrag.id){
+        setDashWindows(prev=>{const arr=[...prev];const fi=arr.indexOf(gridDrag.id),ti=arr.indexOf(gridDragOver);if(fi!==-1&&ti!==-1){[arr[fi],arr[ti]]=[arr[ti],arr[fi]];}persistWins(arr,winStates);return arr;});
+      }
+      setGridDrag(null);setGridDragOver(null);
+    };
+    document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp);
+    return()=>{document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp);};
+  },[gridDrag,gridDragOver,winStates]);
+
   // ─── Window helpers ────────────────────────────────────────
   const defaultWinPos = (id: string, idx: number): WinState => ({ x: 40 + idx * 30, y: 40 + idx * 30, w: 480, h: 340, minimized: false, maximized: false, zIndex: topZ + idx });
   const openWindow = useCallback((id: string) => {
@@ -664,6 +694,14 @@ export default function TerminalPage() {
     const nz = topZ + 1; setTopZ(nz);
     setWinStates(prev => { const ns = { ...prev, [id]: { ...prev[id], zIndex: nz } }; persistWins(dashWindows, ns); return ns; });
   }, [topZ, dashWindows]);
+  const floatWidget = useCallback((id: string) => {
+    const nz = topZ + 1; setTopZ(nz);
+    setFloatWidgets(prev => prev.includes(id) ? prev : [...prev, id]);
+    setWinStates(prev => ({ ...prev, [id]: prev[id] ? { ...prev[id], minimized: false, zIndex: nz } : defaultWinPos(id, 0) }));
+  }, [topZ]);
+  const dockWidget = useCallback((id: string) => {
+    setFloatWidgets(prev => prev.filter(w => w !== id));
+  }, []);
   const toggleSort = useCallback((c:string)=>{if(sortBy===c)setSortDir(d=>d==="desc"?"asc":"desc");else{setSortBy(c);setSortDir("desc");}}, [sortBy]);
   const toggleTheme = useCallback(()=>{const n=theme==="dark"?"light":"dark";setTheme(n);localStorage.setItem("jedi-theme",n);}, [theme]);
 
@@ -1194,16 +1232,18 @@ export default function TerminalPage() {
     }
   };
 
-  // ─── VIEW: F1 DASHBOARD (Floating Window System) ──────────
+  // ─── VIEW: F1 DASHBOARD (Grid + Float Window System) ──────
   const ViewDashboard = () => {
+    const gridWidgets = dashWindows.filter(id => !floatWidgets.includes(id));
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
+        {/* Widget catalog overlay */}
         {dashMenuOpen&&(
           <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
               <div>
-                <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WINDOW</div>
-                <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} open</div>
+                <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
+                <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} on dashboard</div>
               </div>
               <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
             </div>
@@ -1237,29 +1277,98 @@ export default function TerminalPage() {
             </div>
           </div>
         )}
+
+        {/* Dashboard header */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
-            {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{dashWindows.length} window{dashWindows.length!==1?"s":""}</span>}
+            {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
           </div>
           <div style={{display:"flex",gap:6}}>
-            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLOSE ALL</button>}
-            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WINDOW</button>
+            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
           </div>
         </div>
+
+        {/* Empty state */}
         {dashWindows.length===0&&(
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,animation:"fadeIn 0.3s"}}>
             <div style={{width:48,height:48,border:`2px solid ${T.border.medium}`,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <span style={{fontSize:24,color:T.text.muted}}>+</span>
             </div>
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your workspace is empty</div>
-              <div style={{fontSize:10,color:T.text.muted}}>Open windows from the {WIDGET_CATALOG.length} available panels</div>
+              <div style={{fontSize:14,fontWeight:700,color:T.text.primary,marginBottom:6}}>Your dashboard is empty</div>
+              <div style={{fontSize:10,color:T.text.muted}}>Choose from {WIDGET_CATALOG.length} widgets to build your view</div>
             </div>
-            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WINDOW</button>
+            <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WIDGET</button>
           </div>
         )}
-        <div style={{flex:1}} />
+
+        {/* All-floating placeholder */}
+        {dashWindows.length>0&&gridWidgets.length===0&&(
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>All widgets are floating — drag them freely on screen</span>
+          </div>
+        )}
+
+        {/* Widget grid (drag ghost cursor) */}
+        {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:300,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
+
+        {/* Widget grid */}
+        {gridWidgets.length>0&&(
+          <div style={{flex:1,overflow:"auto",padding:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridAutoFlow:"dense",gap:10,alignItems:"start"}}>
+              {gridWidgets.map(id=>{
+                const meta=WIDGET_CATALOG.find(w=>w.id===id);
+                if(!meta) return null;
+                const sz=widgetSizes[id]||"md";
+                const customH=widgetHeights[id];
+                const hMap:{[k:string]:{min:number,max:number}}={sm:{min:140,max:180},md:{min:220,max:320},lg:{min:320,max:500}};
+                const h=customH?{min:customH,max:customH}:hMap[sz]||hMap.md;
+                const isDragging=gridDrag?.id===id;
+                const isDropTarget=gridDragOver===id&&gridDrag?.id!==id;
+                return (
+                  <div key={id}
+                    onMouseEnter={()=>{if(gridDrag&&gridDrag.id!==id)setGridDragOver(id);}}
+                    onMouseLeave={()=>setGridDragOver(null)}
+                    style={{background:T.bg.panel,border:`1px solid ${isDropTarget?T.text.cyan:T.border.medium}`,display:"flex",flexDirection:"column",minHeight:h.min,height:customH?customH:undefined,maxHeight:customH?undefined:h.max,gridColumn:`span ${widgetCols[id]||2}`,opacity:isDragging?0.35:1,boxShadow:isDropTarget?`0 0 0 2px ${T.text.cyan}44`:"none",transition:"opacity 0.1s,box-shadow 0.1s",position:"relative"}}>
+                    {/* Title bar */}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span onMouseDown={(e)=>{e.preventDefault();setGridDrag({id,x:e.clientX,y:e.clientY});}} style={{cursor:"grab",fontSize:13,color:T.text.muted,lineHeight:1,padding:"0 4px 0 0",userSelect:"none"}} title="Drag to reorder">⠿</span>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                        <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary}}>{meta.label}</span>
+                      </div>
+                      <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                        {(["sm","md","lg"] as const).map(s=>(
+                          <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
+                            {s.toUpperCase()}
+                          </button>
+                        ))}
+                        <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
+                        {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
+                          <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""}`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
+                            {c}
+                          </button>
+                        );})}
+                        <button onClick={()=>floatWidget(id)} title="Pop out as floating window" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"0px 5px",cursor:"pointer",marginLeft:2,lineHeight:1.4}}>⊡</button>
+                        <button onClick={()=>closeWindow(id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1,marginLeft:1}}>✕</button>
+                      </div>
+                    </div>
+                    {/* Content */}
+                    <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+                      {renderWidget(id)}
+                    </div>
+                    {/* Vertical resize handle */}
+                    <div onMouseDown={(e)=>{e.preventDefault();const curH=customH||(sz==="sm"?160:sz==="lg"?420:280);setGridResizing({id,startY:e.clientY,startH:curH});}} style={{height:6,flexShrink:0,cursor:"ns-resize",display:"flex",alignItems:"center",justifyContent:"center",background:"transparent",borderTop:`1px solid ${T.border.subtle}`}} title="Drag to resize height">
+                      <div style={{width:28,height:2,borderRadius:1,background:T.border.medium}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2019,8 +2128,8 @@ export default function TerminalPage() {
         </div>
       </div>
 
-      {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay) ═══ */}
-      {dashWindows.filter(id=>!winStates[id]?.minimized).map(id=>{
+      {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
+      {floatWidgets.filter(id=>!winStates[id]?.minimized).map(id=>{
         const meta=WIDGET_CATALOG.find(w=>w.id===id);
         const ws=winStates[id]||defaultWinPos(id,0);
         if(!meta) return null;
@@ -2051,6 +2160,7 @@ export default function TerminalPage() {
                 <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
               </div>
               <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                <button onClick={(e)=>{e.stopPropagation();dockWidget(id);}} title="Dock back to grid" style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:T.text.cyan+"11",border:`1px solid ${T.text.cyan}33`,cursor:"pointer",padding:"1px 6px",lineHeight:1.5,letterSpacing:0.3,marginRight:2}}>↙ DOCK</button>
                 <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
                 <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
                 <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
@@ -2063,9 +2173,9 @@ export default function TerminalPage() {
           </div>
         );
       })}
-      {dashWindows.filter(id=>winStates[id]?.minimized).length>0&&(
+      {floatWidgets.filter(id=>winStates[id]?.minimized).length>0&&(
         <div style={{position:"fixed",bottom:210,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9996,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
-          {dashWindows.filter(id=>winStates[id]?.minimized).map(id=>{
+          {floatWidgets.filter(id=>winStates[id]?.minimized).map(id=>{
             const meta=WIDGET_CATALOG.find(w=>w.id===id);
             if(!meta) return null;
             return (
