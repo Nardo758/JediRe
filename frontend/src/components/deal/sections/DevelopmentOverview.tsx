@@ -87,7 +87,10 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
     if (!id) return;
     setEntitlementLoading(true);
     apiClient.get(`/api/v1/entitlements/deal/${id}`)
-      .then(res => setEntitlements(res.data?.entitlements || res.data || []))
+      .then(res => {
+        const raw = res.data?.data ?? res.data?.entitlements ?? res.data;
+        setEntitlements(Array.isArray(raw) ? raw : []);
+      })
       .catch(() => setEntitlements([]))
       .finally(() => setEntitlementLoading(false));
   }, [id]);
@@ -97,7 +100,15 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
     const state = f(deal, 'state', 'state', '');
     if (!county || !state) return;
     apiClient.get('/api/v1/benchmark-timeline/benchmarks', { params: { county, state } })
-      .then(res => setBenchmarks(res.data))
+      .then(res => {
+        const sums: any[] = res.data?.summaries || [];
+        if (sums.length === 0) return setBenchmarks(null);
+        const avg = (key: string) => {
+          const vals = sums.map((s: any) => s[key]).filter((v: any) => typeof v === 'number' && v > 0);
+          return vals.length ? Math.round((vals.reduce((a: number, b: number) => a + b, 0) / vals.length) * 10) / 10 : null;
+        };
+        setBenchmarks({ p25: avg('p25Months'), p50: avg('medianMonths'), p75: avg('p75Months'), p90: avg('p90Months') });
+      })
       .catch(() => setBenchmarks(null));
   }, [deal?.county, deal?.state]);
 
@@ -215,7 +226,7 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
                 <div key={k} className="text-center bg-stone-50 rounded p-2">
                   <div className="text-[9px] text-stone-400 uppercase">{k}</div>
                   <div className="text-sm font-bold text-stone-700 font-mono">
-                    {benchmarks[k] != null ? `${benchmarks[k]}d` : '—'}
+                    {benchmarks[k] != null ? `${benchmarks[k]}mo` : '—'}
                   </div>
                 </div>
               ))}
