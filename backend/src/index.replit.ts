@@ -70,6 +70,7 @@ import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
 import teamManagementRouter from './api/rest/team-management.routes';
+import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
@@ -328,6 +329,7 @@ app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
 app.use('/api/v1', requireAuth, zoningProfileRouter);
 app.use('/api/v1', requireAuth, developmentScenariosRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
+app.use('/api/v1', requireAuth, collaborationRouter);
 app.use('/api/v1/emails', emailRouter);
 app.use('/api/v1/email-extractions', emailExtractionsRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
@@ -414,9 +416,67 @@ io.on('connection', (socket) => {
     });
   });
   
+  const dealPresenceMap = new Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>();
+
+  socket.on('deal:join', (data: { dealId: string; activeModule?: string }) => {
+    const room = `deal:${data.dealId}`;
+    socket.join(room);
+    dealPresenceMap.set(data.dealId, {
+      userId: (socket as any).userId || socket.id,
+      email: (socket as any).email || 'unknown',
+      activeModule: data.activeModule,
+      joinedAt: Date.now(),
+    });
+    const members = io.sockets.adapter.rooms.get(room);
+    io.to(room).emit('deal:presence', { dealId: data.dealId, count: members?.size || 1 });
+  });
+
+  socket.on('deal:leave', (data: { dealId: string }) => {
+    socket.leave(`deal:${data.dealId}`);
+    dealPresenceMap.delete(data.dealId);
+    const room = `deal:${data.dealId}`;
+    const members = io.sockets.adapter.rooms.get(room);
+    io.to(room).emit('deal:presence', { dealId: data.dealId, count: members?.size || 0 });
+  });
+
+  socket.on('deal:module_change', (data: { dealId: string; activeModule?: string }) => {
+    if (dealPresenceMap.has(data.dealId)) {
+      dealPresenceMap.get(data.dealId)!.activeModule = data.activeModule;
+    }
+  });
+
+  socket.on('deal:field_change', (data: { dealId: string; module: string; field: string; value: any }) => {
+    socket.to(`deal:${data.dealId}`).emit('deal:field_updated', {
+      ...data,
+      userId: (socket as any).userId || socket.id,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_added', (data: { dealId: string; comment: any }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:new_comment', {
+      ...data,
+      userId: (socket as any).userId || socket.id,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_resolved', (data: { dealId: string; commentId: string }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:comment_resolved', {
+      ...data,
+      userId: (socket as any).userId || socket.id,
+      timestamp: Date.now(),
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`WebSocket disconnected: ${socket.id}`);
     activeUsers.delete(socket.id);
+    for (const dealId of dealPresenceMap.keys()) {
+      const room = `deal:${dealId}`;
+      const members = io.sockets.adapter.rooms.get(room);
+      io.to(room).emit('deal:presence', { dealId, count: members?.size || 0 });
+    }
     io.emit('users:update', Array.from(activeUsers.values()));
   });
 });

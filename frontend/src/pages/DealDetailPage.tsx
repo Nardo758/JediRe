@@ -48,6 +48,10 @@ import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { Design3DPageEnhanced } from './Design3DPage.enhanced';
+import { PresenceIndicator } from '../components/deal/PresenceIndicator';
+import { ActivityFeed } from '../components/deal/ActivityFeed';
+import { CommentThread } from '../components/deal/CommentThread';
+import { DealTeamPanel } from '../components/deal/DealTeamPanel';
 
 import { MarketIntelligencePage } from './development/MarketIntelligencePage';
 import CompetitionPage from './development/CompetitionPage';
@@ -118,11 +122,24 @@ function DevPathBadge() {
 }
 
 // ─── Module-level screen wrappers (stable references — prevents remount blink) ──
+const CollaborationSection = (props: any) => {
+  const dId = props?.dealId;
+  if (!dId) return <div className="p-4 text-sm text-slate-500">No deal selected</div>;
+  return (
+    <div className="p-4 space-y-4">
+      <DealTeamPanel dealId={dId} />
+      <CommentThread dealId={dId} />
+      <ActivityFeed dealId={dId} />
+    </div>
+  );
+};
+
 const OverviewScreen = (props: any) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'overview',    label: 'Deal Overview',   component: OverviewRouter },
     { id: 'context',     label: 'Context Tracker', component: ContextTrackerSection },
     { id: 'team',        label: 'Team',            component: TeamManagementSection },
+    { id: 'collaborate', label: 'Collaborate',      component: CollaborationSection },
     { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
   ]} />
 );
@@ -430,6 +447,7 @@ const DealDetailPage: React.FC = () => {
                 stats={geographicStats || {}}
                 compact
               />
+              {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
               {deal.jedi_score && (
                 <span className="flex items-center gap-1 text-xs text-slate-500">
                   <Activity size={12} />
@@ -529,6 +547,12 @@ const DealDetailPage: React.FC = () => {
                 </nav>
               )}
             </div>
+
+            {dealId && (
+              <div className="p-3 border-t border-slate-200">
+                <ActivityFeed dealId={dealId} limit={10} compact />
+              </div>
+            )}
 
             <div className="mt-auto p-3 border-t border-slate-200">
               <div className="text-[10px] text-slate-400 text-center space-y-0.5">
