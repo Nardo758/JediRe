@@ -340,11 +340,8 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
           <KVCard label="Equity Multiple" value={em != null ? `${em.toFixed(2)}x` : '—'} valueColor="text-violet-600" />
           <KVCard label="Profit Margin" value={profitMargin != null ? pct(profitMargin) : '—'} valueColor="text-cyan-600" />
         </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <SectionHead title="Module Access" accentColor="border-stone-400" />
-        <div className="grid grid-cols-3 gap-3 mt-3">
+        <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mt-5 mb-3">MODULE ACCESS</div>
+        <div className="grid grid-cols-3 gap-3">
           {moduleLinks.map((m, i) => (
             <button
               key={i}
