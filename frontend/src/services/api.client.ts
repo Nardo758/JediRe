@@ -98,6 +98,8 @@ export const corporateHealthAPI = {
     apiClient.get('/api/v1/corporate-health/sector-rotation'),
   getAlerts: () =>
     apiClient.get('/api/v1/corporate-health/alerts'),
+  getPortfolio: () =>
+    apiClient.get('/api/v1/corporate-health/portfolio'),
   refreshTicker: (ticker: string) =>
     apiClient.post(`/api/v1/corporate-health/refresh/${ticker}`),
   getConcentration: (submarketId: number) =>

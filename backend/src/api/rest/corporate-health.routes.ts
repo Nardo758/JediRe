@@ -94,6 +94,20 @@ router.get('/deal/:dealId', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
+router.get('/portfolio', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const portfolio = await corporateHealthService.getPortfolioDivergence();
+
+    res.json({
+      success: true,
+      data: portfolio,
+    });
+  } catch (error) {
+    logger.error('[CorporateHealth] Error fetching portfolio divergence:', error);
+    next(error);
+  }
+});
+
 router.get('/sector-rotation', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rotation = await corporateHealthService.getSectorRotation();

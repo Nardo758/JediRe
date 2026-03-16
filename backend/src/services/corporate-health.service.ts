@@ -390,6 +390,66 @@ export class CorporateHealthService {
     };
   }
 
+  async getPortfolioDivergence(): Promise<any> {
+    const pool = getPool();
+    const q = getCurrentQuarter();
+
+    const result = await pool.query(
+      `SELECT sch.submarket_id, s.name as submarket_name, m.name as msa_name,
+              sch.schi_score, sch.divergence_score, sch.divergence_signal,
+              sch.re_health_score, sch.herfindahl_index, sch.top_5_share,
+              sch.employer_count, sch.public_employer_count
+       FROM submarket_corporate_health sch
+       JOIN submarkets s ON sch.submarket_id = s.id
+       LEFT JOIN msas m ON s.msa_id = m.id
+       WHERE sch.quarter = $1
+       ORDER BY ABS(sch.divergence_score) DESC`,
+      [q],
+    );
+
+    const topEmployers = await pool.query(
+      `SELECT se.company_name, se.ticker, se.estimated_local_employees,
+              se.employment_share, se.submarket_id, s.name as submarket_name,
+              chs.composite_chs, chs.health_tier, chs.chs_delta_qoq, se.naics_code
+       FROM submarket_employers se
+       JOIN submarkets s ON se.submarket_id = s.id
+       LEFT JOIN corporate_health_scores chs ON se.ticker = chs.ticker
+         AND chs.quarter = $1
+       WHERE se.is_public = true
+       ORDER BY se.estimated_local_employees DESC NULLS LAST
+       LIMIT 10`,
+      [q],
+    );
+
+    return {
+      submarkets: result.rows.map((r: any) => ({
+        submarketId: r.submarket_id,
+        name: r.submarket_name,
+        msa: r.msa_name,
+        schi: parseFloat(r.schi_score || '0'),
+        divergence: parseFloat(r.divergence_score || '0'),
+        signal: r.divergence_signal,
+        reHealth: parseFloat(r.re_health_score || '0'),
+        hhi: parseFloat(r.herfindahl_index || '0'),
+        top5Share: parseFloat(r.top_5_share || '0'),
+        employerCount: parseInt(r.employer_count || '0'),
+        publicCount: parseInt(r.public_employer_count || '0'),
+      })),
+      topEmployers: topEmployers.rows.map((r: any) => ({
+        company: r.company_name,
+        ticker: r.ticker,
+        employees: r.estimated_local_employees,
+        share: parseFloat(r.employment_share || '0'),
+        submarket: r.submarket_name,
+        chs: r.composite_chs ? parseFloat(r.composite_chs) : null,
+        tier: r.health_tier,
+        delta: r.chs_delta_qoq ? parseFloat(r.chs_delta_qoq) : null,
+        naics: r.naics_code,
+      })),
+      quarter: q,
+    };
+  }
+
   async getSectorRotation(): Promise<any> {
     const pool = getPool();
     const q = getCurrentQuarter();

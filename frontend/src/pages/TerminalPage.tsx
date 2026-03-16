@@ -345,16 +345,18 @@ function PanelHeader({title,subtitle,right,borderColor,T}:{title:string;subtitle
   );
 }
 
-function MetricBox({label,value,sub,change,dir,T}:{label:string;value:string;sub:string;change:string;dir:string;T:ThemeType}) {
+function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:string;sub:string;change?:string;dir?:string;color?:string;T:ThemeType}) {
+  const valColor = color || T.text.amber;
+  const chColor = dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.secondary;
   return (
     <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"8px 10px",flex:1}}>
       <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,fontWeight:600,marginBottom:4}}>{label}</div>
       <div style={{display:"flex",alignItems:"baseline",gap:2}}>
-        <span style={{fontSize:18,fontWeight:800,color:T.text.amber}}>{value}</span>
+        <span style={{fontSize:18,fontWeight:800,color:valColor}}>{value}</span>
         <span style={{fontSize:10,color:T.text.secondary}}>{sub}</span>
       </div>
-      <div style={{fontSize:8,color:dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.secondary,marginTop:2,fontWeight:600}}>{change}</div>
-      <Spark data={[3,4,3,5,4,6,5,7,8]} color={dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.amber} w={80} h={12}/>
+      {change && <div style={{fontSize:8,color:chColor,marginTop:2,fontWeight:600}}>{change}</div>}
+      <Spark data={[3,4,3,5,4,6,5,7,8]} color={color||chColor||T.text.amber} w={80} h={12}/>
     </div>
   );
 }
@@ -409,7 +411,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [marketTab, setMarketTab] = useState<"overview"|"corphealth">("overview");
-  const [corpHealthLive, setCorpHealthLive] = useState<{employers:any[],schi:number|null,reHealth:number|null,divergence:number|null,herfindahl:number|null,alerts:any[],sectors:Record<string,number>,loaded:boolean,loading:boolean}>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},loaded:false,loading:false});
+  const [corpHealthLive, setCorpHealthLive] = useState<{employers:any[],schi:number|null,reHealth:number|null,divergence:number|null,herfindahl:number|null,alerts:any[],sectors:any,portfolioSubmarkets:any[],topEmployers:any[],sectorRotation:any,loaded:boolean,loading:boolean}>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
 
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
@@ -1358,6 +1360,22 @@ export default function TerminalPage() {
     );
   };
 
+  const CORP_HEALTH_DEMO = [
+    {company:"Amazon",ticker:"AMZN",employees:12500,share:18.2,chs:74,tier:"healthy" as const,delta:+3,sector:"Technology",momentum:"+2.1%"},
+    {company:"Microsoft",ticker:"MSFT",employees:8200,share:11.9,chs:82,tier:"healthy" as const,delta:+1,sector:"Technology",momentum:"+1.4%"},
+    {company:"Boeing",ticker:"BA",employees:6800,share:9.9,chs:38,tier:"stress" as const,delta:-8,sector:"Aerospace",momentum:"-4.2%"},
+    {company:"T-Mobile",ticker:"TMUS",employees:4100,share:6.0,chs:65,tier:"watch" as const,delta:-2,sector:"Telecom",momentum:"+0.8%"},
+    {company:"Starbucks",ticker:"SBUX",employees:3500,share:5.1,chs:71,tier:"healthy" as const,delta:+5,sector:"Consumer",momentum:"+1.9%"},
+    {company:"Costco",ticker:"COST",employees:2900,share:4.2,chs:88,tier:"healthy" as const,delta:+2,sector:"Retail",momentum:"+3.1%"},
+    {company:"Swedish Medical",ticker:null,employees:2400,share:3.5,chs:null,tier:null,delta:null,sector:"Healthcare",momentum:"N/A"},
+    {company:"Expedia",ticker:"EXPE",employees:2100,share:3.1,chs:59,tier:"watch" as const,delta:-4,sector:"Technology",momentum:"-1.3%"},
+  ];
+  const DEMO_SCHI = 68.4;
+  const DEMO_RE_HEALTH = 72.1;
+  const DEMO_DIVERGENCE = -3.7;
+  const DEMO_HERFINDAHL = 0.072;
+  const tierColor = (tier: string|null) => tier==="healthy"?T.text.green:tier==="stress"?T.text.red:tier==="watch"?T.text.amber:T.text.muted;
+
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
   const ViewPortfolio = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
@@ -1383,27 +1401,38 @@ export default function TerminalPage() {
           </div>
         ))}
       </div>
+      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
+          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
+        </div>
+        {(() => {
+          const s = corpHealthLive.schi ?? DEMO_SCHI;
+          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
+          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
+              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
+            </div>
+            <div style={{width:1,height:30,background:T.border.subtle}}/>
+            <div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+            </div>
+            <div style={{marginLeft:"auto"}}>
+              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
+              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
+            </div>
+          </div>;
+        })()}
+      </div>
     </div>
   );
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
-  const CORP_HEALTH_DEMO = [
-    {company:"Amazon",ticker:"AMZN",employees:12500,share:18.2,chs:74,tier:"healthy" as const,delta:+3,sector:"Technology",momentum:"+2.1%"},
-    {company:"Microsoft",ticker:"MSFT",employees:8200,share:11.9,chs:82,tier:"healthy" as const,delta:+1,sector:"Technology",momentum:"+1.4%"},
-    {company:"Boeing",ticker:"BA",employees:6800,share:9.9,chs:38,tier:"stress" as const,delta:-8,sector:"Aerospace",momentum:"-4.2%"},
-    {company:"T-Mobile",ticker:"TMUS",employees:4100,share:6.0,chs:65,tier:"watch" as const,delta:-2,sector:"Telecom",momentum:"+0.8%"},
-    {company:"Starbucks",ticker:"SBUX",employees:3500,share:5.1,chs:71,tier:"healthy" as const,delta:+5,sector:"Consumer",momentum:"+1.9%"},
-    {company:"Costco",ticker:"COST",employees:2900,share:4.2,chs:88,tier:"healthy" as const,delta:+2,sector:"Retail",momentum:"+3.1%"},
-    {company:"Swedish Medical",ticker:null,employees:2400,share:3.5,chs:null,tier:null,delta:null,sector:"Healthcare",momentum:"N/A"},
-    {company:"Expedia",ticker:"EXPE",employees:2100,share:3.1,chs:59,tier:"watch" as const,delta:-4,sector:"Technology",momentum:"-1.3%"},
-  ];
-  const DEMO_SCHI = 68.4;
-  const DEMO_RE_HEALTH = 72.1;
-  const DEMO_DIVERGENCE = -3.7;
-  const DEMO_HERFINDAHL = 0.072;
-
-  const tierColor = (tier: string|null) => tier==="healthy"?T.text.green:tier==="stress"?T.text.red:tier==="watch"?T.text.amber:T.text.muted;
-
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
@@ -1456,71 +1485,156 @@ export default function TerminalPage() {
             const reH = corpHealthLive.reHealth ?? DEMO_RE_HEALTH;
             const div = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
             const hhi = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
-            return <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-            <MetricBox T={T} label="SCHI SCORE" value={schi.toFixed(1)} sub="Submarket Corporate Health" color={schi>=60?T.text.green:schi>=40?T.text.amber:T.text.red}/>
-            <MetricBox T={T} label="RE HEALTH" value={reH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
-            <MetricBox T={T} label="DIVERGENCE" value={(div>0?"+":"")+div.toFixed(1)} sub={Math.abs(div)>15?(div>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(div)>15?(div>0?T.text.green:T.text.red):T.text.amber}/>
-            <MetricBox T={T} label="HERFINDAHL" value={hhi.toFixed(3)} sub={hhi<0.1?"Low concentration":"High concentration"} color={hhi<0.1?T.text.green:T.text.red}/>
-          </div>
-          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
-            <span style={{fontSize:9,color:T.text.secondary}}>
-              Corporate health is <span style={{fontWeight:700,color:schi>=60?T.text.green:T.text.red}}>{schi>=60?"STABLE":"AT RISK"}</span>.
-              {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(div)>15?T.text.amber:T.text.green}}>{Math.abs(div)>15?(div>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
-              {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name || corpHealthLive.employers[0]?.company || "—"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
-            </span>
-          </div>;})()}
-          <div style={{margin:"0 10px"}}>
-            <PanelHeader T={T} title="TOP EMPLOYERS — CORPORATE HEALTH"/>
-            <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-              {["COMPANY","TICKER","EMPLOYEES","SHARE %","CHS","TIER","SECTOR","MOMENTUM"].map(h=>(
-                <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-              ))}
+            const divSubmarkets = corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
+              {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,top5Share:0.42,employerCount:24,publicCount:8},
+              {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,top5Share:0.58,employerCount:18,publicCount:6},
+              {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,top5Share:0.63,employerCount:12,publicCount:5},
+              {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,top5Share:0.31,employerCount:45,publicCount:15},
+              {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,top5Share:0.48,employerCount:30,publicCount:9},
+            ];
+            const topEmps = corpHealthLive.topEmployers.length > 0 ? corpHealthLive.topEmployers : CORP_HEALTH_DEMO.slice(0,10).map(c=>({company:c.company,ticker:c.ticker,employees:c.employees,share:c.share/100,submarket:"Bellevue CBD",chs:c.chs,tier:c.tier,delta:c.delta,naics:"51"}));
+            const sectorColors:Record<string,string> = {"51":T.text.cyan,"33":T.text.orange,"48":T.text.purple,"44":T.text.amber,"62":T.text.red,"72":T.text.green,"52":T.text.purple,"54":T.text.orange};
+            const naicsLabels:Record<string,string> = {"51":"Technology","33":"Aerospace/Mfg","48":"Telecom","44":"Retail","62":"Healthcare","72":"Hospitality","52":"Finance","54":"Professional Svc","XX":"Other"};
+            const rotation = corpHealthLive.sectorRotation;
+            const rotSectors:any[] = rotation?.sectors || [];
+            const rotMarkets:string[] = rotation?.markets || [];
+            return <>
+            <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
+              <MetricBox T={T} label="SCHI SCORE" value={schi.toFixed(1)} sub="Submarket Corporate Health" color={schi>=60?T.text.green:schi>=40?T.text.amber:T.text.red}/>
+              <MetricBox T={T} label="RE HEALTH" value={reH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
+              <MetricBox T={T} label="DIVERGENCE" value={(div>0?"+":"")+div.toFixed(1)} sub={Math.abs(div)>15?(div>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(div)>15?(div>0?T.text.green:T.text.red):T.text.amber}/>
+              <MetricBox T={T} label="HERFINDAHL" value={hhi.toFixed(3)} sub={hhi<0.1?"Low concentration":"High concentration"} color={hhi<0.1?T.text.green:T.text.red}/>
             </div>
-            {(corpHealthLive.employers.length > 0 ? corpHealthLive.employers.map((e:any)=>({company:e.company_name||e.company,ticker:e.ticker,employees:e.employee_count||e.employees,share:e.employment_share ? (parseFloat(e.employment_share)*100) : (e.share||0),chs:e.chs??e.overall_score??null,tier:e.health_tier||e.tier||null,delta:e.chs_delta_qoq||e.delta||null,sector:e.sector||"",momentum:e.momentum||"N/A"})) : CORP_HEALTH_DEMO).map((c,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.6fr 0.6fr 0.6fr 0.5fr 0.5fr 0.6fr 0.6fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-                <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{c.company}</div>
-                <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:c.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.ticker||"PRIVATE"}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.employees?.toLocaleString()}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.share.toFixed(1)}%</div>
-                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:c.chs?tierColor(c.tier):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.chs??"-"}</div>
-                <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={tierColor(c.tier)}>{c.tier?.toUpperCase()||"N/A"}</Bd></div>
-                <div style={{padding:"5px 6px",fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.sector}</div>
-                <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:c.momentum.startsWith("+")?T.text.green:c.momentum.startsWith("-")?T.text.red:T.text.muted}}>{c.momentum}</div>
+            <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
+              <span style={{fontSize:9,color:T.text.secondary}}>
+                Corporate health is <span style={{fontWeight:700,color:schi>=60?T.text.green:T.text.red}}>{schi>=60?"STABLE":"AT RISK"}</span>.
+                {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(div)>15?T.text.amber:T.text.green}}>{Math.abs(div)>15?(div>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
+                {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name || corpHealthLive.employers[0]?.company || "\u2014"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
+              </span>
+            </div>
+
+            <div style={{margin:"0 10px"}}>
+              <PanelHeader T={T} title="DIVERGENCE SCANNER \u2014 ALL SUBMARKETS" subtitle="Sorted by |divergence|"/>
+              <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+                {["SUBMARKET","MSA","SCHI","RE HEALTH","DIVERGENCE","SIGNAL","HHI","EMPLOYERS"].map(h=>(
+                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div style={{margin:"10px",display:"flex",gap:10}}>
-            <div style={{flex:1}}>
-              <PanelHeader T={T} title="SECTOR CONCENTRATION"/>
-              {[{sector:"Technology",pct:33.2,color:T.text.cyan},{sector:"Aerospace",pct:9.9,color:T.text.orange},{sector:"Telecom",pct:6.0,color:T.text.purple},{sector:"Consumer",pct:5.1,color:T.text.amber},{sector:"Retail",pct:4.2,color:T.text.green},{sector:"Healthcare",pct:3.5,color:T.text.red},{sector:"Other",pct:38.1,color:T.text.muted}].map((s,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`}}>
-                  <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
-                  <span style={{fontSize:9,color:T.text.primary,flex:1}}>{s.sector}</span>
-                  <div style={{width:100,height:6,background:T.bg.header,borderRadius:3,overflow:"hidden"}}>
-                    <div style={{width:`${s.pct}%`,height:"100%",background:s.color,borderRadius:3}}/>
-                  </div>
-                  <span style={{fontSize:8,color:T.text.secondary,width:35,textAlign:"right"}}>{s.pct}%</span>
-                </div>
-              ))}
-            </div>
-            <div style={{flex:1}}>
-              <PanelHeader T={T} title="STRESS ALERTS"/>
-              {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a:any)=>({sev:a.severity||"med",msg:a.message||a.msg||"",time:a.time||"now"})) : [
-                {sev:"high",msg:"Boeing (BA) CHS dropped to 38 — stress tier. 6,800 employees at risk.",time:"2h"},
-                {sev:"med",msg:"Expedia (EXPE) CHS declining: 59 (-4 QoQ). Watch for layoff announcements.",time:"5h"},
-                {sev:"low",msg:"T-Mobile (TMUS) slight CHS decline to 65. Monitor next earnings.",time:"1d"},
-              ]).map((a,i)=>{
-                const bc=({high:T.text.red,med:T.text.orange,low:T.text.amber} as Record<string,string>)[a.sev]||T.text.muted;
-                return <div key={i} style={{display:"flex",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}>
-                  <div style={{flex:1}}>
-                    <div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev.toUpperCase()}</Bd></div>
-                    <div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div>
-                  </div>
-                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{a.time}</span>
+              {divSubmarkets.sort((a:any,b:any)=>Math.abs(b.divergence)-Math.abs(a.divergence)).map((s:any,i:number)=>{
+                const sigColor = s.signal==="bullish_divergence"?T.text.green:s.signal==="bearish_divergence"?T.text.red:T.text.amber;
+                return <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.msa||"\u2014"}</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.schi>=60?T.text.green:s.schi>=40?T.text.amber:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.schi.toFixed(1)}</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.cyan,borderRight:`1px solid ${T.border.subtle}`}}>{s.reHealth.toFixed(1)}</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:sigColor,borderRight:`1px solid ${T.border.subtle}`}}>{(s.divergence>0?"+":"")+s.divergence.toFixed(1)}</div>
+                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={sigColor}>{s.signal==="bullish_divergence"?"BULL":s.signal==="bearish_divergence"?"BEAR":"ALIGN"}</Bd></div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:s.hhi<0.1?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.hhi.toFixed(3)}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary}}>{s.employerCount} ({s.publicCount} pub)</div>
                 </div>;
               })}
             </div>
-          </div>
+
+            <div style={{margin:"10px"}}>
+              <PanelHeader T={T} title="TOP 10 PUBLIC EMPLOYERS \u2014 PORTFOLIO-WIDE"/>
+              <div style={{display:"grid",gridTemplateColumns:"1.3fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 0.5fr 0.8fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+                {["COMPANY","TICKER","EMPLOYEES","SHARE %","CHS","TIER","\u0394 QoQ","SUBMARKET"].map(h=>(
+                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
+                ))}
+              </div>
+              {topEmps.slice(0,10).map((e:any,i:number)=>(
+                <div key={i} style={{display:"grid",gridTemplateColumns:"1.3fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 0.5fr 0.8fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{e.company}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:e.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.ticker||"PVT"}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{e.employees?.toLocaleString()||"\u2014"}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{(e.share*100).toFixed(1)}%</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:e.chs?tierColor(e.tier):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.chs??"\u2014"}</div>
+                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={tierColor(e.tier)}>{e.tier?.toUpperCase()||"N/A"}</Bd></div>
+                  <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:e.delta!=null?(e.delta>0?T.text.green:e.delta<0?T.text.red:T.text.muted):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.delta!=null?(e.delta>0?"+":"")+e.delta:"\u2014"}</div>
+                  <div style={{padding:"5px 6px",fontSize:8,color:T.text.secondary}}>{e.submarket||"\u2014"}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{margin:"10px"}}>
+              <PanelHeader T={T} title="SECTOR ROTATION MATRIX" subtitle="Sectors \u00D7 Markets \u2014 Avg CHS Heat Grid"/>
+              {rotSectors.length > 0 && rotMarkets.length > 0 ? (
+                <div style={{overflowX:"auto"}}>
+                  <div style={{display:"grid",gridTemplateColumns:`120px repeat(${rotMarkets.length}, 1fr)`,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+                    <div style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>SECTOR</div>
+                    {rotMarkets.map((m:string)=>(
+                      <div key={m} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,textAlign:"center"}}>{m.length>12?m.slice(0,12)+"..":m}</div>
+                    ))}
+                  </div>
+                  {rotSectors.map((sec:any,si:number)=>(
+                    <div key={si} style={{display:"grid",gridTemplateColumns:`120px repeat(${rotMarkets.length}, 1fr)`,background:si%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+                      <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{naicsLabels[sec.naics]||sec.naics}</div>
+                      {rotMarkets.map((m:string)=>{
+                        const cell = sec.markets?.[m];
+                        const v = cell?.avgCHS;
+                        const bg = v!=null ? (v>=70?T.text.green+"22":v>=50?T.text.amber+"22":T.text.red+"22") : "transparent";
+                        const tc = v!=null ? (v>=70?T.text.green:v>=50?T.text.amber:T.text.red) : T.text.muted;
+                        return <div key={m} style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:tc,background:bg,textAlign:"center",borderRight:`1px solid ${T.border.subtle}`}}>{v!=null?v.toFixed(0):"\u2014"}</div>;
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{display:"grid",gridTemplateColumns:"120px repeat(3, 1fr)",gap:0}}>
+                  <div style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.medium}`}}>SECTOR</div>
+                  {["Seattle","Bellevue","Redmond"].map(m=>(
+                    <div key={m} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.medium}`,textAlign:"center"}}>{m}</div>
+                  ))}
+                  {[{s:"Technology",v:[78,82,85]},{s:"Aerospace",v:[38,null,null]},{s:"Telecom",v:[65,61,null]},{s:"Retail",v:[88,71,74]},{s:"Healthcare",v:[null,72,68]}].map((row,ri)=><>
+                    <div key={ri+"s"} style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:T.text.primary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`}}>{row.s}</div>
+                    {row.v.map((v,ci)=>{
+                      const bg2 = v!=null?(v>=70?T.text.green+"22":v>=50?T.text.amber+"22":T.text.red+"22"):"transparent";
+                      const tc2 = v!=null?(v>=70?T.text.green:v>=50?T.text.amber:T.text.red):T.text.muted;
+                      return <div key={ci} style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:tc2,background:ri%2===0?`${T.bg.panel}`:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`,textAlign:"center"}}><span style={{background:bg2,padding:"1px 6px",borderRadius:2}}>{v!=null?v:"\u2014"}</span></div>;
+                    })}
+                  </>)}
+                </div>
+              )}
+            </div>
+
+            <div style={{margin:"10px",display:"flex",gap:10}}>
+              <div style={{flex:1}}>
+                <PanelHeader T={T} title="SECTOR CONCENTRATION"/>
+                {(() => {
+                  const sectorBreakdown = corpHealthLive.sectors && typeof corpHealthLive.sectors === 'object' && !Array.isArray(corpHealthLive.sectors) && Object.keys(corpHealthLive.sectors).length > 0
+                    ? Object.entries(corpHealthLive.sectors).map(([k,v])=>({sector:naicsLabels[k]||k,pct:typeof v === 'number' ? v : parseFloat(String(v))||0,color:sectorColors[k]||T.text.muted})).sort((a,b)=>b.pct-a.pct)
+                    : [{sector:"Technology",pct:33.2,color:T.text.cyan},{sector:"Aerospace",pct:9.9,color:T.text.orange},{sector:"Telecom",pct:6.0,color:T.text.purple},{sector:"Consumer",pct:5.1,color:T.text.amber},{sector:"Retail",pct:4.2,color:T.text.green},{sector:"Healthcare",pct:3.5,color:T.text.red},{sector:"Other",pct:38.1,color:T.text.muted}];
+                  return sectorBreakdown.map((s,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`}}>
+                      <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
+                      <span style={{fontSize:9,color:T.text.primary,flex:1}}>{s.sector}</span>
+                      <div style={{width:100,height:6,background:T.bg.header,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{width:`${Math.min(s.pct,100)}%`,height:"100%",background:s.color,borderRadius:3}}/>
+                      </div>
+                      <span style={{fontSize:8,color:T.text.secondary,width:35,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+              <div style={{flex:1}}>
+                <PanelHeader T={T} title="STRESS ALERTS"/>
+                {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a:any)=>({sev:a.severity||"med",msg:a.message||a.msg||"",time:a.time||"now"})) : [
+                  {sev:"high",msg:"Boeing (BA) CHS dropped to 38 \u2014 stress tier. 6,800 employees at risk.",time:"2h"},
+                  {sev:"med",msg:"Expedia (EXPE) CHS declining: 59 (-4 QoQ). Watch for layoff announcements.",time:"5h"},
+                  {sev:"low",msg:"T-Mobile (TMUS) slight CHS decline to 65. Monitor next earnings.",time:"1d"},
+                ]).map((a,i)=>{
+                  const bc=({high:T.text.red,med:T.text.orange,low:T.text.amber} as Record<string,string>)[a.sev]||T.text.muted;
+                  return <div key={i} style={{display:"flex",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev.toUpperCase()}</Bd></div>
+                      <div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div>
+                    </div>
+                    <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{a.time}</span>
+                  </div>;
+                })}
+              </div>
+            </div>
+          </>;})()}
         </div>
       )}
     </div>
@@ -1704,6 +1818,34 @@ export default function TerminalPage() {
           <button onClick={()=>navigate("/team")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
         </div>
       </div>
+      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
+          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
+        </div>
+        {(() => {
+          const s = corpHealthLive.schi ?? DEMO_SCHI;
+          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
+          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
+              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
+            </div>
+            <div style={{width:1,height:30,background:T.border.subtle}}/>
+            <div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+            </div>
+            <div style={{marginLeft:"auto"}}>
+              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
+              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
+            </div>
+          </div>;
+        })()}
+      </div>
     </div>
   );
 
@@ -1745,18 +1887,23 @@ export default function TerminalPage() {
 
     Promise.all([
       corporateHealthAPI.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
-      corporateHealthAPI.getSectorRotation().catch(() => ({data:{data:{sectors:{}}}})),
+      corporateHealthAPI.getSectorRotation().catch(() => ({data:{data:{sectors:[],markets:[]}}})),
       corporateHealthAPI.getSubmarket(firstSubmarketId).catch(() => ({data:{data:null}})),
       corporateHealthAPI.getConcentration(firstSubmarketId).catch(() => ({data:{data:null}})),
-    ]).then(([alertsRes, sectorsRes, subRes, concRes]) => {
+      corporateHealthAPI.getPortfolio().catch(() => ({data:{data:{submarkets:[],topEmployers:[]}}})),
+    ]).then(([alertsRes, sectorsRes, subRes, concRes, portfolioRes]) => {
       const alerts = Array.isArray(alertsRes.data?.data?.alerts) ? alertsRes.data.data.alerts : [];
-      const sectors = sectorsRes.data?.data?.sectors || {};
+      const sectorRotation = sectorsRes.data?.data || {sectors:[],markets:[]};
       const subData = subRes.data?.data;
       const concData = concRes.data?.data;
+      const portfolioData = portfolioRes.data?.data || {};
       setCorpHealthLive(prev => ({
         ...prev,
         alerts,
-        sectors,
+        sectors: subData?.sectorBreakdown || {},
+        sectorRotation,
+        portfolioSubmarkets: portfolioData.submarkets || [],
+        topEmployers: portfolioData.topEmployers || [],
         schi: subData?.schi ?? null,
         reHealth: subData?.reHealth ?? null,
         divergence: subData?.divergence ?? null,

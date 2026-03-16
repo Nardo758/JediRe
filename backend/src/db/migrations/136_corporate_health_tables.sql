@@ -78,9 +78,11 @@ CREATE TABLE IF NOT EXISTS corporate_health_scores (
   guidance_sentiment DECIMAL(5,2),
   stock_momentum DECIMAL(5,2),
   composite_chs DECIMAL(5,2),
+  overall_score DECIMAL(5,2),
   chs_delta_qoq DECIMAL(6,2),
   health_tier TEXT CHECK (health_tier IN ('healthy', 'watch', 'stress')),
   computed_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(ticker, quarter)
 );
 
@@ -105,6 +107,7 @@ CREATE TABLE IF NOT EXISTS submarket_corporate_health (
   public_employer_count INTEGER,
   sector_breakdown JSONB,
   computed_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(submarket_id, quarter)
 );
 
