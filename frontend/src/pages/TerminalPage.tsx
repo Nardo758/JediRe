@@ -754,7 +754,6 @@ export default function TerminalPage() {
           <span style={{fontSize:8,color:T.text.secondary}}>{sorted.length} deals</span>
           {dealsLoading&&<span style={{fontSize:8,color:T.text.muted,animation:"pulse 1.5s infinite"}}>loading…</span>}
         </div>
-        <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.4}}>+ CREATE DEAL</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
@@ -766,8 +765,7 @@ export default function TerminalPage() {
       <div style={{flex:1,overflow:"auto"}}>
         {sorted.length===0&&!dealsLoading&&(
           <div style={{padding:"40px 20px",textAlign:"center"}}>
-            <div style={{fontSize:12,color:T.text.muted,marginBottom:12}}>No deals in pipeline</div>
-            <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"8px 20px",cursor:"pointer"}}>+ CREATE YOUR FIRST DEAL</button>
+            <div style={{fontSize:12,color:T.text.muted}}>No deals in pipeline</div>
           </div>
         )}
         {sorted.map((d,i)=>(
