@@ -319,6 +319,19 @@ const DealDetailPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
+  useEffect(() => {
+    const handleNavTabChange = (e: Event) => {
+      const tabId = (e as CustomEvent<string>).detail;
+      if (tabId) setActiveTab(tabId);
+    };
+    window.addEventListener('deal-tab-change', handleNavTabChange);
+    return () => window.removeEventListener('deal-tab-change', handleNavTabChange);
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
+  }, [activeTab]);
+
   // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ───────────────────────────
   const dealScreens = [
     { id: 'overview',    fkey: 'F1',  code: 'M01', label: 'Overview',             icon: <LayoutDashboard size={14} />, component: OverviewScreen },

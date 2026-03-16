@@ -145,15 +145,25 @@ interface FKeyNavBarProps {
   activePath: string;
   onNavigate: (path: string) => void;
   isInsideDeal: boolean;
-  dealActiveTab?: string;
 }
 
 const DEAL_TAB_IDS = ['overview','zoning','market','supply','competition','strategy','traffic','proforma','capital','risk','execution','ai-agent'];
 
 const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
-  activePath, onNavigate, isInsideDeal, dealActiveTab,
+  activePath, onNavigate, isInsideDeal,
 }) => {
   const items = isInsideDeal ? DEAL_NAV : PORTFOLIO_NAV;
+  const [dealActiveTab, setDealActiveTab] = useState('overview');
+
+  useEffect(() => {
+    if (!isInsideDeal) return;
+    const handler = (e: Event) => {
+      const tabId = (e as CustomEvent<string>).detail;
+      if (tabId) setDealActiveTab(tabId);
+    };
+    window.addEventListener('deal-active-tab', handler);
+    return () => window.removeEventListener('deal-active-tab', handler);
+  }, [isInsideDeal]);
 
   return (
     <div style={{
@@ -177,7 +187,9 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
           <button
             key={item.key}
             onClick={() => {
-              if (!isInsideDeal && 'path' in item) {
+              if (isInsideDeal) {
+                window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: DEAL_TAB_IDS[idx] }));
+              } else if ('path' in item) {
                 onNavigate((item as typeof PORTFOLIO_NAV[0]).path);
               }
             }}
@@ -188,7 +200,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
               padding: '0 10px',
               height: '100%',
               border: 'none',
-              cursor: isInsideDeal ? 'default' : 'pointer',
+              cursor: 'pointer',
               fontFamily: T.font.mono,
               background: isActive ? T.text.amber : 'transparent',
               color: isActive ? T.bg.terminal : T.text.secondary,
@@ -500,10 +512,24 @@ export const MainLayout: React.FC = () => {
 
   useEffect(() => {
     if (!dealId) { setDealContext(null); return; }
-    api.get(`/deals/${dealId}`).then(res => {
-      const d = res.data?.deal || res.data?.data || res.data;
-      setDealContext(d || null);
-    }).catch(() => setDealContext(null));
+    const fetchDealAndScore = async () => {
+      try {
+        const dealRes = await api.get(`/deals/${dealId}`);
+        const d = dealRes.data?.deal || dealRes.data?.data || dealRes.data;
+        let ctx: DealContextInfo = d || {};
+        try {
+          const scoreRes = await api.get(`/jedi/score/${dealId}`);
+          const s = scoreRes.data?.data || scoreRes.data;
+          if (s?.score != null) ctx = { ...ctx, jedi_score: s.score, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
+        } catch {
+          /* JEDI score endpoint may not have data */
+        }
+        setDealContext(ctx);
+      } catch {
+        setDealContext(null);
+      }
+    };
+    fetchDealAndScore();
   }, [dealId]);
 
   useEffect(() => {
